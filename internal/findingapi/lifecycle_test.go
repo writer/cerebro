@@ -10,7 +10,7 @@ import (
 
 func TestApplyMCPGraphActionProposalReturnsTargetErrors(t *testing.T) {
 	proposal := MCPActionProposalPayload{"finding_id": "finding-1"}
-	err := ApplyMCPGraphActionProposal(proposal, &ports.FindingRecord{ID: "finding-1"}, "execute_graph_action", MCPArguments{
+	err := ApplyMCPGraphActionProposal(proposal, eligibleGraphActionFinding(map[string]string{"okta_user_email": "alice@example.com"}), "execute_graph_action", MCPArguments{
 		"graph_action": graphactions.ActionIdentityOktaSuspendUser,
 		"target":       "other@example.com",
 	}, "cerebro.graph_actions.write")
@@ -31,10 +31,7 @@ func TestApplyMCPGraphActionProposalPopulatesValidProposal(t *testing.T) {
 		"external_status_reason": "waiting",
 		"lifecycle_owner":        "external_owned",
 	}
-	err := ApplyMCPGraphActionProposal(proposal, &ports.FindingRecord{
-		ID:         "finding-1",
-		Attributes: map[string]string{"okta_user_email": "alice@example.com"},
-	}, "execute_graph_action", MCPArguments{
+	err := ApplyMCPGraphActionProposal(proposal, eligibleGraphActionFinding(map[string]string{"okta_user_email": "alice@example.com"}), "execute_graph_action", MCPArguments{
 		"graph_action": graphactions.ActionIdentityOktaSuspendUser,
 		"target":       "alice@example.com",
 	}, "cerebro.graph_actions.write")
@@ -62,10 +59,7 @@ func TestApplyMCPGraphActionProposalClearsStaleExternalLifecycleFields(t *testin
 		"external_status":        "open",
 		"external_status_reason": "waiting",
 	}
-	err := ApplyMCPGraphActionProposal(proposal, &ports.FindingRecord{
-		ID:         "finding-1",
-		Attributes: map[string]string{"okta_user_email": "alice@example.com"},
-	}, "execute_graph_action", MCPArguments{
+	err := ApplyMCPGraphActionProposal(proposal, eligibleGraphActionFinding(map[string]string{"okta_user_email": "alice@example.com"}), "execute_graph_action", MCPArguments{
 		"graph_action": graphactions.ActionIdentityOktaSuspendUser,
 		"target":       "alice@example.com",
 	}, "cerebro.graph_actions.write")
@@ -79,5 +73,17 @@ func TestApplyMCPGraphActionProposalClearsStaleExternalLifecycleFields(t *testin
 		if proposal[key] != "" {
 			t.Fatalf("proposal[%q] = %#v, want stale external ref field cleared", key, proposal[key])
 		}
+	}
+}
+
+func eligibleGraphActionFinding(attrs map[string]string) *ports.FindingRecord {
+	if attrs == nil {
+		attrs = map[string]string{}
+	}
+	attrs["graph_actions_allowed"] = graphactions.ActionIdentityOktaSuspendUser + "," + graphactions.ActionIdentityOktaUnsuspendUser
+	return &ports.FindingRecord{
+		ID:         "finding-1",
+		Status:     "open",
+		Attributes: attrs,
 	}
 }

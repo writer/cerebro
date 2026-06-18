@@ -164,8 +164,8 @@ Core runtime and store variables:
 | `CEREBRO_RATE_LIMIT_ENABLED` | enable global API rate limiting | `true` outside acknowledged dev mode |
 | `CEREBRO_RATE_LIMIT_RPS` | global API rate-limit refill rate | `100` |
 | `CEREBRO_RATE_LIMIT_BURST` | global API rate-limit burst size | `150` |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | access-approvals base URL for provider-backed graph actions | unset |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | bearer token for access-approvals graph actions; supports `_FILE` | unset |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | access-approvals base URL for provider-backed graph actions and reconciliation | unset |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | bearer token for access-approvals graph action create/read calls; supports `_FILE` | unset |
 | `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | access-approvals graph action request timeout | `10s` |
 | `CEREBRO_APPEND_LOG_DRIVER` | append-log driver; supported value: `jetstream` | unset |
 | `CEREBRO_JETSTREAM_URL` | NATS URL for JetStream | unset |

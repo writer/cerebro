@@ -94,6 +94,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Exact: "/platform/runtime-freshness", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/neighborhood", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/graph/actions", Scope: scopeGraphActionsWrite, Static: true},
+	{Method: http.MethodPost, Exact: "/platform/graph/actions/reconcile", Scope: scopeGraphActionsWrite, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/provenance", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/impact/package", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/impact/asset", Scope: scopeCosmoSecurityRead, Static: true},

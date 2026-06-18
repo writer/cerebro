@@ -45,6 +45,11 @@ type AccessApprovalsUserActionRequest struct {
 	Source         string `json:"source,omitempty"`
 	TicketURL      string `json:"ticket_url,omitempty"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	TenantID       string `json:"tenant_id,omitempty"`
+	FindingID      string `json:"finding_id,omitempty"`
+	FindingRuleID  string `json:"finding_rule_id,omitempty"`
+	ResourceURN    string `json:"resource_urn,omitempty"`
+	SubjectURN     string `json:"subject_urn,omitempty"`
 }
 
 type AccessApprovalsUserAction struct {
@@ -58,6 +63,11 @@ type AccessApprovalsUserAction struct {
 	Source          string `json:"source,omitempty"`
 	TicketURL       string `json:"ticket_url,omitempty"`
 	IdempotencyKey  string `json:"idempotency_key,omitempty"`
+	TenantID        string `json:"tenant_id,omitempty"`
+	FindingID       string `json:"finding_id,omitempty"`
+	FindingRuleID   string `json:"finding_rule_id,omitempty"`
+	ResourceURN     string `json:"resource_urn,omitempty"`
+	SubjectURN      string `json:"subject_urn,omitempty"`
 	ActorType       string `json:"actor_type,omitempty"`
 	ActorSubject    string `json:"actor_subject,omitempty"`
 	CreatedAtUnix   int64  `json:"created_at_unix"`
@@ -92,6 +102,7 @@ type GraphAction struct {
 type AccessApprovalsClient interface {
 	SuspendOktaUser(context.Context, AccessApprovalsUserActionRequest) (*AccessApprovalsUserAction, error)
 	UnsuspendOktaUser(context.Context, AccessApprovalsUserActionRequest) (*AccessApprovalsUserAction, error)
+	GetOktaUserAction(context.Context, string) (*AccessApprovalsUserAction, error)
 	ActionURL(string) string
 }
 
@@ -101,8 +112,10 @@ type FindingWorkflow interface {
 }
 
 type Service struct {
-	Findings FindingWorkflow
-	Client   AccessApprovalsClient
+	Findings   FindingWorkflow
+	Client     AccessApprovalsClient
+	Registry   Registry
+	BeforeLink func(context.Context, *ports.FindingRecord, *GraphAction, string) error
 }
 
 type Input struct {
@@ -113,6 +126,12 @@ type Input struct {
 	TicketURL      string
 	IdempotencyKey string
 	Source         string
+	Parameters     map[string]string
+}
+
+type ReconcileInput struct {
+	FindingID  string
+	ExternalID string
 }
 
 type Result struct {
@@ -139,8 +158,17 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	action := strings.TrimSpace(input.Action)
-	target, err := TargetForAction(action, finding, input.Target)
+	spec, err := s.actionSpec(input.Action)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateParameters(input.Parameters); err != nil {
+		return nil, err
+	}
+	if err := checkSpecEligibility(spec, finding); err != nil {
+		return nil, err
+	}
+	target, err := resolveSpecTarget(spec, finding, input.Target)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +186,7 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	}
 	idempotencyKey := strings.TrimSpace(input.IdempotencyKey)
 	if idempotencyKey == "" {
-		idempotencyKey = IdempotencyKey(action, findingID, target)
+		idempotencyKey = IdempotencyKey(spec.ID, findingID, target)
 	}
 	actionRequest := AccessApprovalsUserActionRequest{
 		EmailOrUserID:  target,
@@ -166,9 +194,14 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 		Source:         source,
 		TicketURL:      ticketURL,
 		IdempotencyKey: idempotencyKey,
+		TenantID:       strings.TrimSpace(finding.TenantID),
+		FindingID:      strings.TrimSpace(finding.ID),
+		FindingRuleID:  strings.TrimSpace(finding.RuleID),
+		ResourceURN:    primaryResourceURN(finding),
+		SubjectURN:     subjectURNForFinding(finding),
 	}
 	var externalAction *AccessApprovalsUserAction
-	if action == ActionIdentityOktaSuspendUser {
+	if spec.AccessApprovalsAction == AccessApprovalsActionSuspend {
 		externalAction, err = s.Client.SuspendOktaUser(ctx, actionRequest)
 	} else {
 		externalAction, err = s.Client.UnsuspendOktaUser(ctx, actionRequest)
@@ -179,10 +212,15 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if externalAction == nil {
 		return nil, fmt.Errorf("%w: response missing action", ErrRemote)
 	}
-	graphAction := GraphActionFromAccessApprovals(action, externalAction, s.Client.ActionURL(externalAction.ID))
+	graphAction := GraphActionFromAccessApprovals(spec.ID, externalAction, s.Client.ActionURL(externalAction.ID), target)
 	var ref ports.FindingExternalRef
 	updated := finding
 	if finding != nil {
+		if s.BeforeLink != nil {
+			if err := s.BeforeLink(ctx, finding, graphAction, target); err != nil {
+				return nil, err
+			}
+		}
 		ref = ExternalRef(graphAction)
 		updated, err = s.Findings.LinkFindingExternalRef(ctx, finding.ID, ref)
 		if err != nil {
@@ -192,12 +230,133 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	return &Result{Finding: updated, Action: graphAction, Target: target, ExternalRef: ref}, nil
 }
 
-func TargetForAction(action string, finding *ports.FindingRecord, explicit string) (string, error) {
+func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, error) {
+	if s.Client == nil || s.Findings == nil {
+		return nil, ErrNotConfigured
+	}
+	findingID := strings.TrimSpace(input.FindingID)
+	if findingID == "" {
+		return nil, fmt.Errorf("%w: finding_id is required", ErrInvalidRequest)
+	}
+	externalID := strings.TrimSpace(input.ExternalID)
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: external_id is required", ErrInvalidRequest)
+	}
+	finding, err := s.Findings.GetFinding(ctx, findingID)
+	if err != nil {
+		return nil, err
+	}
+	if !findingHasGraphActionRef(finding, externalID) {
+		return nil, fmt.Errorf("%w: external_id is not linked to finding", ErrInvalidRequest)
+	}
+	externalAction, err := s.Client.GetOktaUserAction(ctx, externalID)
+	if err != nil {
+		return nil, err
+	}
+	if externalAction == nil || strings.TrimSpace(externalAction.ID) == "" {
+		return nil, fmt.Errorf("%w: response missing action", ErrRemote)
+	}
+	action, err := graphActionIDFromAccessApprovals(externalAction.Action)
+	if err != nil {
+		return nil, err
+	}
+	graphAction := GraphActionFromAccessApprovals(action, externalAction, s.Client.ActionURL(externalAction.ID), externalAction.Target)
+	target := strings.TrimSpace(graphAction.Target)
+	if s.BeforeLink != nil {
+		if err := s.BeforeLink(ctx, finding, graphAction, target); err != nil {
+			return nil, err
+		}
+	}
+	ref := ExternalRef(graphAction)
+	updated, err := s.Findings.LinkFindingExternalRef(ctx, finding.ID, ref)
+	if err != nil {
+		return nil, err
+	}
+	return &Result{Finding: updated, Action: graphAction, Target: target, ExternalRef: ref}, nil
+}
+
+func (s Service) actionSpec(action string) (ActionSpec, error) {
+	return s.Registry.Lookup(action)
+}
+
+func validateParameters(parameters map[string]string) error {
+	for key, value := range parameters {
+		if strings.TrimSpace(key) != "" || strings.TrimSpace(value) != "" {
+			return fmt.Errorf("%w: parameters are reserved and not supported for this action", ErrInvalidRequest)
+		}
+	}
+	return nil
+}
+
+func checkSpecEligibility(spec ActionSpec, finding *ports.FindingRecord) error {
+	if spec.CheckEligibility == nil {
+		return nil
+	}
+	return spec.CheckEligibility(spec.ID, finding)
+}
+
+func resolveSpecTarget(spec ActionSpec, finding *ports.FindingRecord, explicit string) (string, error) {
+	if spec.ResolveTarget == nil {
+		return "", fmt.Errorf("%w: action %q has no target resolver", ErrInvalidRequest, spec.ID)
+	}
+	return spec.ResolveTarget(finding, explicit)
+}
+
+func primaryResourceURN(finding *ports.FindingRecord) string {
+	if finding == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(finding.Attributes["primary_resource_urn"]); value != "" {
+		return value
+	}
+	for _, urn := range finding.ResourceURNs {
+		if value := strings.TrimSpace(urn); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func subjectURNForFinding(finding *ports.FindingRecord) string {
+	if finding == nil {
+		return ""
+	}
+	for _, key := range []string{"okta_user_urn", "subject_urn", "principal_urn", "primary_resource_urn"} {
+		if value := strings.TrimSpace(finding.Attributes[key]); value != "" {
+			return value
+		}
+	}
+	for _, urn := range finding.ResourceURNs {
+		if strings.Contains(urn, ":okta.user:") || strings.Contains(urn, ":okta_user:") || strings.Contains(urn, ":identity:email:") {
+			return strings.TrimSpace(urn)
+		}
+	}
+	return ""
+}
+
+func findingHasGraphActionRef(finding *ports.FindingRecord, externalID string) bool {
+	externalID = strings.TrimSpace(externalID)
+	if finding == nil || externalID == "" {
+		return false
+	}
+	for _, ref := range finding.ExternalRefs {
+		if strings.TrimSpace(ref.System) == ProviderAccessApprovals &&
+			strings.TrimSpace(ref.Kind) == RefKind &&
+			strings.TrimSpace(ref.ExternalID) == externalID {
+			return true
+		}
+	}
+	return false
+}
+
+func graphActionIDFromAccessApprovals(action string) (string, error) {
 	switch strings.TrimSpace(action) {
-	case ActionIdentityOktaSuspendUser, ActionIdentityOktaUnsuspendUser:
-		return OktaUserTargetForFinding(finding, explicit)
+	case AccessApprovalsActionSuspend:
+		return ActionIdentityOktaSuspendUser, nil
+	case AccessApprovalsActionUnsuspend:
+		return ActionIdentityOktaUnsuspendUser, nil
 	default:
-		return "", fmt.Errorf("%w: unsupported action %q", ErrInvalidRequest, action)
+		return "", fmt.Errorf("%w: unsupported access-approvals action %q", ErrRemote, action)
 	}
 }
 
@@ -397,7 +556,7 @@ func IdempotencyKey(action string, findingID string, target string) string {
 	return "cerebro:graph-action:" + strings.TrimSpace(action) + ":" + hex.EncodeToString(sum[:])
 }
 
-func GraphActionFromAccessApprovals(action string, external *AccessApprovalsUserAction, actionURL string) *GraphAction {
+func GraphActionFromAccessApprovals(action string, external *AccessApprovalsUserAction, actionURL string, fallbackTarget string) *GraphAction {
 	if external == nil {
 		return nil
 	}
@@ -411,15 +570,30 @@ func GraphActionFromAccessApprovals(action string, external *AccessApprovalsUser
 	if value := strings.TrimSpace(external.OktaUserStatus); value != "" {
 		metadata["okta_user_status"] = value
 	}
+	for key, value := range map[string]string{
+		"tenant_id":       external.TenantID,
+		"finding_id":      external.FindingID,
+		"finding_rule_id": external.FindingRuleID,
+		"resource_urn":    external.ResourceURN,
+		"subject_urn":     external.SubjectURN,
+	} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			metadata[key] = trimmed
+		}
+	}
 	if len(metadata) == 0 {
 		metadata = nil
+	}
+	target := strings.TrimSpace(external.Target)
+	if target == "" {
+		target = strings.TrimSpace(fallbackTarget)
 	}
 	return &GraphAction{
 		ID:                   external.ID,
 		Action:               strings.TrimSpace(action),
 		Provider:             ProviderAccessApprovals,
 		Status:               external.Status,
-		Target:               external.Target,
+		Target:               target,
 		ExternalID:           external.ID,
 		ExternalURL:          strings.TrimSpace(actionURL),
 		ExternalStatus:       external.Status,

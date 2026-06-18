@@ -9,32 +9,39 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
+	"github.com/writer/cerebro/internal/graphactionworkflow"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcehttp/graphactionhandler"
 )
 
 func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
-	request := &cerebrov1.ExecuteGraphActionRequest{}
-	if err := readProtoJSON(r, request); err != nil {
-		writeGraphActionError(w, err)
-		return
-	}
-	result, err := executeGraphAction(r.Context(), graphactionapi.InputFromRequest(request), a.services.graphActions, a.deps)
-	if err != nil {
-		writeGraphActionError(w, err)
-		return
-	}
-	writeProtoJSON(w, http.StatusAccepted, graphactionapi.ResponseMessage(result, findingMessage(result.Finding)))
+	graphActionHandler(a.services.graphActions, a.deps).HandleExecute(w, r)
 }
 
 func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.Request[cerebrov1.ExecuteGraphActionRequest]) (*connect.Response[cerebrov1.ExecuteGraphActionResponse], error) {
-	result, err := executeGraphAction(ctx, graphactionapi.InputFromRequest(req.Msg), s.graphActions, s.deps)
-	if err != nil {
-		return nil, graphactionapi.ConnectError(err, graphActionErrors)
-	}
-	return connect.NewResponse(graphactionapi.ResponseMessage(result, findingMessage(result.Finding))), nil
+	return graphActionHandler(s.graphActions, s.deps).ExecuteConnect(ctx, req.Msg)
 }
 
-func executeGraphAction(ctx context.Context, input graphactions.Input, service *graphactions.Service, deps Dependencies) (*graphactions.Result, error) {
+func (a *App) handleReconcileGraphAction(w http.ResponseWriter, r *http.Request) {
+	graphActionHandler(a.services.graphActions, a.deps).HandleReconcile(w, r)
+}
+
+func (s *bootstrapService) ReconcileGraphAction(ctx context.Context, req *connect.Request[cerebrov1.ReconcileGraphActionRequest]) (*connect.Response[cerebrov1.ReconcileGraphActionResponse], error) {
+	return graphActionHandler(s.graphActions, s.deps).ReconcileConnect(ctx, req.Msg)
+}
+
+func graphActionHandler(service *graphactions.Service, deps Dependencies) graphactionhandler.Handler {
+	return graphactionhandler.Handler{
+		Executor:       graphActionExecutor(service, deps),
+		ErrorSentinels: graphactionapi.ErrorSentinelsFor(errInvalidHTTPRequest, errTenantForbidden, errScopeForbidden),
+		ReadProtoJSON:  readProtoJSON,
+		WriteProtoJSON: writeProtoJSON,
+		ErrorMessage:   safeHTTPErrorMessage,
+		FindingMessage: findingMessage,
+	}
+}
+
+func graphActionExecutor(service *graphactions.Service, deps Dependencies) graphactionapi.Executor {
 	return graphactionapi.Executor{
 		Service: service,
 		AuthorizeFinding: func(ctx context.Context, findingID string) error {
@@ -43,16 +50,6 @@ func executeGraphAction(ctx context.Context, input graphactions.Input, service *
 		BumpFinding: func(ctx context.Context, finding *ports.FindingRecord) {
 			bumpGRCCacheForFinding(ctx, deps.QueryCache, finding)
 		},
-	}.Execute(ctx, input)
-}
-
-func writeGraphActionError(w http.ResponseWriter, err error) {
-	status := graphactionapi.HTTPStatus(err, graphActionErrors)
-	writeJSON(w, status, map[string]string{"error": safeHTTPErrorMessage(status, err)})
-}
-
-var graphActionErrors = graphactionapi.ErrorSentinels{
-	InvalidHTTPRequest: errInvalidHTTPRequest,
-	TenantForbidden:    errTenantForbidden,
-	ScopeForbidden:     errScopeForbidden,
+		BeforeLink: graphactionworkflow.BeforeLink(deps.AppendLog),
+	}
 }

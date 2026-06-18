@@ -78,9 +78,11 @@ func TestFindingLifecycleHTTPRoutesRequireWriteScope(t *testing.T) {
 }
 
 func TestGraphActionHTTPRoutesRequireDedicatedScope(t *testing.T) {
-	policy := httpRoutePolicyFor(http.MethodPost, "/platform/graph/actions")
-	if policy.Scope != scopeGraphActionsWrite || policy.AdminOnly {
-		t.Fatalf("POST /platform/graph/actions policy = %#v, want graph action write scope", policy)
+	for _, path := range []string{"/platform/graph/actions", "/platform/graph/actions/reconcile"} {
+		policy := httpRoutePolicyFor(http.MethodPost, path)
+		if policy.Scope != scopeGraphActionsWrite || policy.AdminOnly {
+			t.Fatalf("POST %s policy = %#v, want graph action write scope", path, policy)
+		}
 	}
 }
 
@@ -213,10 +215,14 @@ func TestFindingLifecycleConnectProceduresRequireWriteScope(t *testing.T) {
 }
 
 func TestGraphActionConnectProceduresRequireDedicatedScope(t *testing.T) {
-	procedure := cerebrov1connect.BootstrapServiceExecuteGraphActionProcedure
-	policy := connectProcedurePolicyFor(procedure)
-	if policy.Scope != scopeGraphActionsWrite || policy.AdminOnly {
-		t.Fatalf("%s policy = %#v, want graph action write scope", procedure, policy)
+	for _, procedure := range []string{
+		cerebrov1connect.BootstrapServiceExecuteGraphActionProcedure,
+		cerebrov1connect.BootstrapServiceReconcileGraphActionProcedure,
+	} {
+		policy := connectProcedurePolicyFor(procedure)
+		if policy.Scope != scopeGraphActionsWrite || policy.AdminOnly {
+			t.Fatalf("%s policy = %#v, want graph action write scope", procedure, policy)
+		}
 	}
 }
 
