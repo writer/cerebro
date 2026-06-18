@@ -249,12 +249,25 @@ func cerebroEventLinkAttributes(event *cerebrov1.EventEnvelope, matchType string
 }
 
 func cerebroAccessAllowed(attrs map[string]string) bool {
+	if cerebroAccessDenied(attrs) {
+		return false
+	}
 	outcome := normalizeIdentifier(firstNonEmpty(attrs["outcome_result"], attrs["status"]))
 	if outcome == "allowed" || outcome == "allow" || outcome == "success" || outcome == "ok" {
 		return true
 	}
 	status := strings.TrimSpace(firstNonEmpty(attrs["effective_status_code"], attrs["status_code"]))
 	return strings.HasPrefix(status, "2")
+}
+
+func cerebroAccessDenied(attrs map[string]string) bool {
+	outcome := normalizeIdentifier(firstNonEmpty(attrs["outcome_result"], attrs["status"]))
+	switch outcome {
+	case "denied", "deny", "blocked", "block", "forbidden", "unauthorized", "rejected", "reject", "failed", "failure", "error":
+		return true
+	default:
+		return strings.TrimSpace(attrs["denial_reason"]) != ""
+	}
 }
 
 func normalizeCerebroRouteID(value string) string {

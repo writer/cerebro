@@ -101,6 +101,33 @@ func TestCerebroHighRiskAPIAccessResolvesOnRiskDowngrade(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newCerebroHighRiskAPIAccessRule(), open, downgraded, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestCerebroHighRiskAPIAccessSupportsConnectProcedure(t *testing.T) {
+	rule := newCerebroHighRiskAPIAccessRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-cerebro-access",
+		SourceId: "cerebro",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "access"},
+	}
+	event := cerebroAPIAccessEvent("cerebro-connect-risk", map[string]string{
+		"event_type":        "cerebro.v1.FindingsService/GetFinding",
+		"route":             "",
+		"connect_procedure": "cerebro.v1.FindingsService/GetFinding",
+		"risk_level":        "critical",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(connect procedure) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(connect procedure) emitted %d findings, want 1", len(records))
+	}
+	if got := records[0].Attributes["connect_procedure"]; got != "cerebro.v1.FindingsService/GetFinding" {
+		t.Fatalf("connect_procedure attribute = %q, want preserved procedure identity", got)
+	}
+}
+
 func TestCerebroHighRiskAPIAccessReopensOnRecurrence(t *testing.T) {
 	rule := newCerebroHighRiskAPIAccessRule()
 	runtime := &cerebrov1.SourceRuntime{

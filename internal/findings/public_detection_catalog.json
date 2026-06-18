@@ -77,7 +77,7 @@
       ],
       "runbook": "Review the Cerebro principal and credential behind the high-risk access; revoke or scope down the credential, correct the tenant binding, or document a risk-accepted exception if the access is authorized.",
       "required_attributes": [
-        "route"
+        "event_type"
       ],
       "fingerprint_fields": [
         "cerebro_principal_urn"

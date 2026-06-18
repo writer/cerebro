@@ -159,3 +159,44 @@ func TestProjectCerebroAPIAccessDeniedDoesNotGrantRoute(t *testing.T) {
 	assertProjectedLink(t, state, principalURN, relationActedOn, routeURN)
 	assertProjectedLinkMissing(t, state, principalURN, relationCanPerform, routeURN)
 }
+
+func TestProjectCerebroAPIAccessDenied2xxDoesNotGrantRoute(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "cerebro-api-access-denied-2xx",
+		TenantId:   "writer",
+		SourceId:   "cerebro",
+		Kind:       "cerebro.api_access",
+		OccurredAt: timestamppb.New(time.Date(2026, 6, 9, 12, 3, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"auth_mode":             "api_key",
+			"credential_id":         "cred-limited",
+			"denial_reason":         "insufficient_scope",
+			"effective_status_code": "200",
+			"method":                "POST",
+			"missing_scopes":        "cerebro.findings.write",
+			"operation_family":      "finding",
+			"operation_type":        "write",
+			"outcome_result":        "denied",
+			"principal":             "ci@example.com",
+			"required_scopes":       "cerebro.findings.write",
+			"request_id":            "denied-request-2xx",
+			"route":                 "POST /findings/{findingID}/notes",
+			"sensitive_action":      "true",
+			"status_code":           "200",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	principalURN := "urn:cerebro:writer:cerebro_principal:ci@example.com"
+	credentialURN := "urn:cerebro:writer:cerebro_credential:cred-limited" // #nosec G101 -- test graph URN, not credential material.
+	routeURN := "urn:cerebro:writer:cerebro_route:post:/findings/{findingid}/notes"
+	scopeURN := "urn:cerebro:writer:cerebro_scope:cerebro.findings.write"
+	assertProjectedLink(t, state, principalURN, relationActedOn, routeURN)
+	assertProjectedLinkMissing(t, state, principalURN, relationCanPerform, routeURN)
+	assertProjectedLinkMissing(t, state, credentialURN, relationCanPerform, routeURN)
+	assertProjectedLinkMissing(t, state, principalURN, relationCanPerform, scopeURN)
+	assertProjectedLinkMissing(t, state, credentialURN, relationCanPerform, scopeURN)
+}

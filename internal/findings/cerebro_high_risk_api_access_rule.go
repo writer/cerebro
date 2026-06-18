@@ -53,7 +53,7 @@ var cerebroHighRiskAPIAccessDefinition = RuleDefinition{
 	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/ARCHITECTURE.md"},
 	FalsePositives:     []string{"Authorized administrative or support principals that intentionally hold elevated cross-tenant access under a documented, risk-accepted exception."},
 	Runbook:            "Review the Cerebro principal and credential behind the high-risk access; revoke or scope down the credential, correct the tenant binding, or document a risk-accepted exception if the access is authorized.",
-	RequiredAttributes: []string{"route"},
+	RequiredAttributes: []string{"event_type"},
 	FingerprintFields:  []string{"cerebro_principal_urn"},
 	ControlRefs:        cerebroHighRiskAPIAccessControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
@@ -95,6 +95,9 @@ func (r *cerebroHighRiskAPIAccessRule) CloseOnEvent(event Event) (string, bool) 
 		return "", false
 	}
 	attributes := eventAttributes(event)
+	if cerebroAPIAccessRouteIdentity(attributes) == "" {
+		return "", false
+	}
 	if !cerebroAPIAccessRemediated(attributes) {
 		return "", false
 	}
@@ -108,6 +111,9 @@ func matchesCerebroHighRiskAPIAccess(event *cerebrov1.EventEnvelope) bool {
 		return false
 	}
 	attributes := eventAttributes(event)
+	if cerebroAPIAccessRouteIdentity(attributes) == "" {
+		return false
+	}
 	if cerebroPrincipalFindingURN(event.GetTenantId(), attributes) == "" {
 		return false
 	}
@@ -129,6 +135,7 @@ func cerebroHighRiskAPIAccessFinding(event *cerebrov1.EventEnvelope, runtimeID s
 		"client_id":             strings.TrimSpace(attrs["client_id"]),
 		"auth_mode":             strings.TrimSpace(attrs["auth_mode"]),
 		"route":                 strings.TrimSpace(attrs["route"]),
+		"connect_procedure":     strings.TrimSpace(attrs["connect_procedure"]),
 		"method":                strings.TrimSpace(attrs["method"]),
 		"operation_family":      strings.TrimSpace(attrs["operation_family"]),
 		"operation_type":        strings.TrimSpace(attrs["operation_type"]),
@@ -236,6 +243,10 @@ func cerebroAccessSubject(attributes map[string]string) string {
 		strings.TrimSpace(attributes["client_id"]),
 		strings.TrimSpace(attributes["credential_id"]),
 	)
+}
+
+func cerebroAPIAccessRouteIdentity(attributes map[string]string) string {
+	return firstNonEmpty(strings.TrimSpace(attributes["route"]), strings.TrimSpace(attributes["connect_procedure"]))
 }
 
 func cerebroPrincipalFindingURN(tenantID string, attributes map[string]string) string {

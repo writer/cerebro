@@ -115,7 +115,7 @@
         "tenant_mismatch": "true",
         "risk_reason": "cross_tenant_access",
         "primary_resource_urn": "urn:cerebro:writer:cerebro_principal:alice@example.com",
-        "rule_required_attributes": "route"
+        "rule_required_attributes": "event_type"
       }
     },
     {
