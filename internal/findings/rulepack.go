@@ -197,6 +197,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "trusted_endpoint",
+			Name:        "Trusted Endpoint",
+			Description: "Trusted Endpoint workstation posture and trust-gate findings.",
+			Rules: []Rule{
+				newTrustedEndpointActiveTrustGateFailureRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
