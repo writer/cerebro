@@ -729,12 +729,7 @@ func eventFromRecord(settings settings, family string, record record) *primitive
 }
 
 func eventID(settings settings, family string, recordID string) string {
-	return strings.Join([]string{
-		sourceID,
-		normalizeID(settings.tenantID),
-		family,
-		sourceidentity.HashedExternalIDKey(recordID, "unknown"),
-	}, "-")
+	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(recordID, "unknown")}, "-")
 }
 
 func attributesFor(family string, values map[string]any) map[string]string {
@@ -1153,9 +1148,6 @@ func stableID(parts ...string) string {
 		if value := strings.TrimSpace(part); value != "" {
 			values = append(values, value)
 		}
-	}
-	if len(values) == 0 {
-		return ""
 	}
 	return strings.Join(values, ":")
 }

@@ -25,7 +25,7 @@ Legacy sources above the 300 LOC budget are grandfathered with exact no-growth c
 | `aurelius` | 653 | Split source orchestration from record mapping and shared request plumbing. |
 | `aws` | 19155 | Extract common AWS client/session, pagination, ARN parsing, and resource-family traversal helpers. |
 | `azure` | 2856 | Extract subscription traversal, client factories, and paginated resource readers. |
-| `cosmo` | 1112 | Move shared API pagination and response normalization into reusable source helpers. |
+| `cosmo` | 1104 | Move shared API pagination and response normalization into reusable source helpers. |
 | `gcp` | 2120 | Extract project traversal, service clients, and resource-family pagination helpers. |
 | `github` | 2110 | Split audit/event readers from repository/user normalization and shared pagination. |
 | `googleworkspace` | 827 | Extract API client setup and paginated directory readers. |
