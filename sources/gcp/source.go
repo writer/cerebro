@@ -722,19 +722,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 		settings.perPage = perPage
 	}
-	if settings.token == "" {
-		if settings.wifAudience == "" && settings.wifServiceAccount == "" {
-			return settings, fmt.Errorf("gcp token or wif_audience and wif_service_account_email are required")
-		}
-		if settings.wifAudience == "" {
-			return settings, fmt.Errorf("gcp wif_audience is required when token is not provided")
-		}
-		if settings.wifServiceAccount == "" {
-			return settings, fmt.Errorf("gcp wif_service_account_email is required when token is not provided")
-		}
-		if err := validateGCPWIFConfig(settings); err != nil {
-			return settings, err
-		}
+	if err := sourceconfig.ValidateGCPTokenOrWIF(settings.token, settings.wifAudience, settings.wifServiceAccount, settings.tenantID, settings.wifBindings); err != nil {
+		return settings, err
 	}
 	switch settings.family {
 	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBinaryAuthorizationPolicy, familyBinaryAuthorizationAttestor, familyBigQueryDataset, familyBigQueryTable, familyBigtableInstance, familyBigtableTable, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLDatabase, familyCloudSQLInstance, familyCloudSQLUser, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingMetric, familyLoggingSink, familyMonitoringAlertPolicy, familyMonitoringNotificationChannel, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familySecretVersion, familySecurityCenterFinding, familyServiceAcct, familyServiceUsageService, familySpannerDatabase, familySpannerInstance, familyVPCAccessConnector, familyWorkloadIdentityPool, familyWorkloadIdentityProvider:
@@ -777,45 +766,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("gcp family must be one of asset_metadata, aiplatform_dataset, aiplatform_endpoint, artifact_registry_image, artifact_registry_repository, audit, binary_authorization_policy, binary_authorization_attestor, bigquery_dataset, bigquery_table, bigtable_instance, bigtable_table, certificate_manager_certificate, certificate_manager_certificate_map, certificate_manager_certificate_map_entry, certificate_manager_dns_authorization, cloud_function, cloud_ids_endpoint, cloud_scheduler_job, cloud_run_revision, cloud_run_service, cloud_sql_database, cloud_sql_instance, cloud_sql_user, compute_address, compute_backend_bucket, compute_backend_service, compute_disk, compute_external_vpn_gateway, compute_firewall, compute_forwarding_rule, compute_health_check, compute_instance, compute_instance_group, compute_instance_group_manager, compute_instance_template, compute_interconnect, compute_interconnect_attachment, compute_network_endpoint_group, compute_network_firewall_policy, compute_network, compute_packet_mirroring, compute_route, compute_router, compute_security_policy, compute_ssl_certificate, compute_ssl_policy, compute_subnetwork, compute_target_grpc_proxy, compute_target_http_proxy, compute_target_https_proxy, compute_target_ssl_proxy, compute_target_tcp_proxy, compute_target_vpn_gateway, compute_url_map, compute_vpn_gateway, compute_vpn_tunnel, container_registry, container_vulnerability, dns_managed_zone, dns_record_set, effective_permission, gcs_bucket, gcs_object, gke_cluster, gke_node_pool, group, group_membership, iam_role_assignment, kms_key, logging_metric, logging_project_sink, monitoring_alert_policy, monitoring_notification_channel, org_policy, pubsub_subscription, pubsub_topic, resource_exposure, resourcemanager_project, secret_manager_secret, secret_manager_version, security_center_finding, service_account, service_account_impersonation, service_usage_service, spanner_database, spanner_instance, vpc_access_connector, workload_identity_pool, workload_identity_provider, or service_account_key")
 	}
 	return settings, nil
-}
-
-func validateGCPWIFConfig(settings settings) error {
-	if strings.TrimSpace(settings.token) != "" {
-		return nil
-	}
-	if strings.TrimSpace(settings.tenantID) == "" {
-		return fmt.Errorf("gcp wif auth requires runtime tenant_id")
-	}
-	if !gcpWIFBindingAllowed(settings.tenantID, settings.wifAudience, settings.wifServiceAccount, settings.wifBindings) {
-		return fmt.Errorf("gcp wif audience and service account are not allowed")
-	}
-	return nil
-}
-
-func gcpWIFBindingAllowed(tenantID string, audience string, serviceAccount string, allowlist string) bool {
-	tenantID = strings.TrimSpace(tenantID)
-	audience = strings.TrimSpace(audience)
-	serviceAccount = strings.TrimSpace(serviceAccount)
-	if tenantID == "" || audience == "" || serviceAccount == "" {
-		return false
-	}
-	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\t'
-	}) {
-		value = strings.TrimSpace(value)
-		tenant, binding, ok := strings.Cut(value, "=")
-		if !ok || strings.TrimSpace(tenant) != tenantID {
-			continue
-		}
-		allowedAudience, allowedServiceAccount, ok := strings.Cut(strings.TrimSpace(binding), "|")
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(allowedAudience) == audience && strings.TrimSpace(allowedServiceAccount) == serviceAccount {
-			return true
-		}
-	}
-	return false
 }
 
 func listServiceAccounts(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]serviceAccountRecord, string, error) {

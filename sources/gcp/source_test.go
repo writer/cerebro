@@ -47,68 +47,6 @@ func TestCheckRequiresProjectAndAuth(t *testing.T) {
 	}
 }
 
-func TestParseSettingsRejectsUntrustedWIFRuntime(t *testing.T) {
-	audience := "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"
-	serviceAccount := "scanner@writer-iam.iam.gserviceaccount.com"
-	for _, tt := range []struct {
-		name   string
-		config map[string]string
-	}{
-		{
-			name: "missing runtime tenant",
-			config: map[string]string{
-				"project_id":                    "writer-prod",
-				"wif_audience":                  audience,
-				"wif_service_account_email":     serviceAccount,
-				sourceconfig.GCPWIFAllowlistKey: "writer=" + audience + "|" + serviceAccount,
-			},
-		},
-		{
-			name: "missing trusted binding",
-			config: map[string]string{
-				"project_id":                    "writer-prod",
-				"wif_audience":                  audience,
-				"wif_service_account_email":     serviceAccount,
-				sourceconfig.RuntimeTenantIDKey: "writer",
-			},
-		},
-		{
-			name: "service account mismatch",
-			config: map[string]string{
-				"project_id":                    "writer-prod",
-				"wif_audience":                  audience,
-				"wif_service_account_email":     serviceAccount,
-				sourceconfig.RuntimeTenantIDKey: "writer",
-				sourceconfig.GCPWIFAllowlistKey: "writer=" + audience + "|other@writer-iam.iam.gserviceaccount.com",
-			},
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := parseSettings(sourcecdk.NewConfig(tt.config)); err == nil {
-				t.Fatal("parseSettings() error = nil, want non-nil")
-			}
-		})
-	}
-}
-
-func TestParseSettingsAllowsTrustedWIFRuntime(t *testing.T) {
-	audience := "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"
-	serviceAccount := "scanner@writer-iam.iam.gserviceaccount.com"
-	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
-		"project_id":                    "writer-prod",
-		"wif_audience":                  audience,
-		"wif_service_account_email":     serviceAccount,
-		sourceconfig.RuntimeTenantIDKey: "writer",
-		sourceconfig.GCPWIFAllowlistKey: "writer=" + audience + "|" + serviceAccount,
-	}))
-	if err != nil {
-		t.Fatalf("parseSettings() error = %v", err)
-	}
-	if settings.wifAudience != audience || settings.wifServiceAccount != serviceAccount {
-		t.Fatalf("wif settings = %q, %q", settings.wifAudience, settings.wifServiceAccount)
-	}
-}
-
 func TestGCPPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	pull, err := gcpcloud.PullFromRecords[string](nil, "next-page", nil)
 	if err != nil {

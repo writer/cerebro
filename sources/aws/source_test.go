@@ -220,40 +220,6 @@ func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 	}
 }
 
-func TestValidateAWSCredentialSourceRejectsHostFallback(t *testing.T) {
-	for _, tt := range []struct {
-		name     string
-		settings settings
-	}{
-		{name: "empty", settings: settings{accountID: "123456789012", region: defaultRegion}},
-		{name: "shared profile", settings: settings{accountID: "123456789012", region: defaultRegion, profile: "prod"}},
-		{name: "partial static credentials", settings: settings{accountID: "123456789012", region: defaultRegion, accessKeyID: "AKIA_TEST"}},
-		{name: "session token only", settings: settings{accountID: "123456789012", region: defaultRegion, sessionToken: "token"}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := validateAWSCredentialSource(tt.settings); err == nil {
-				t.Fatal("validateAWSCredentialSource() error = nil, want non-nil")
-			}
-		})
-	}
-}
-
-func TestValidateAWSCredentialSourceAllowsExplicitCredentialsOrDelegation(t *testing.T) {
-	for _, tt := range []struct {
-		name     string
-		settings settings
-	}{
-		{name: "static credentials", settings: settings{accountID: "123456789012", region: defaultRegion, accessKeyID: "AKIA_TEST", secretAccessKey: "secret"}},
-		{name: "allowlisted role", settings: settings{accountID: "123456789012", region: defaultRegion, roleARN: "arn:aws:iam::123456789012:role/cerebro-org-scan-role"}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := validateAWSCredentialSource(tt.settings); err != nil {
-				t.Fatalf("validateAWSCredentialSource() error = %v", err)
-			}
-		})
-	}
-}
-
 func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	pull, err := sourcecdk.PullFromRecords[string](nil, "next-page", nil, nil)
 	if err != nil {
