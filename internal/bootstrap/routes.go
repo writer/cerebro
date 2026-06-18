@@ -111,6 +111,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "PATCH /grc/inventory/asset-reports/{reportID}/triage", routeSurfacePlatformHTTP, app.handleUpdateGRCInventoryAssetReportTriage)
 	registerHTTPRoute(mux, "GET /grc/entities/{entityID}/impact", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("entity.impact", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCEntityImpact))
 	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("audit.packet", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCAuditPacket))
+	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}/export", routeSurfacePlatformHTTP, app.handleGRCAuditPacketExport)
 }
 
 func (app *App) registerFindingRoutes(mux *http.ServeMux) {
