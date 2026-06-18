@@ -71,6 +71,7 @@ const (
 	anthropicCredentialKindComplianceAccessKey = "compliance_access_key"
 	anthropicCredentialKindOrgAdminOAuth       = "org_admin_oauth"      // #nosec G101 -- credential kind label, not credential material.
 	anthropicCredentialKindScopedAdminAPIKey   = "scoped_admin_api_key" // #nosec G101 -- credential kind label, not credential material.
+	openAICredentialKindAdminAPIKey            = "admin_api_key"
 )
 
 var errConnectorAccessRestricted = errors.New("connector access restricted")
@@ -1649,8 +1650,11 @@ var connectorSchemas = map[string]connectorSchema{
 			"actor_emails",
 			"actor_ids",
 			"api_key_ids",
+			"base_url",
 			"batch",
 			"bucket_width",
+			"credential_kind",
+			"credential_scopes",
 			"effective_at_gt",
 			"effective_at_gte",
 			"effective_at_lt",
@@ -1661,6 +1665,7 @@ var connectorSchemas = map[string]connectorSchema{
 			"group_by",
 			"group_id",
 			"models",
+			"per_page",
 			"project_id",
 			"project_ids",
 			"start_time",
@@ -2469,11 +2474,34 @@ func connectorProviderPreflightChecks(sourceID string, authMethod string, config
 			})
 		}
 		return checks
+	case "openai":
+		return openAIProviderPreflightChecks(config, policy)
 	case "anthropic":
 		return anthropicProviderPreflightChecks(config, policy)
 	default:
 		return nil
 	}
+}
+
+func openAIProviderPreflightChecks(config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
+	family := strings.TrimSpace(config["family"])
+	if family == "" {
+		family = "user"
+	}
+	if policy.ExcludesFamily("openai", family) {
+		return nil
+	}
+	if normalizedCredentialHint(config["credential_kind"]) == openAICredentialKindAdminAPIKey {
+		return nil
+	}
+	return []connectorPreflightCheckView{{
+		ID:         "openai_admin_api_key",
+		Label:      "OpenAI Admin API key",
+		Status:     "warning",
+		Severity:   "warning",
+		Detail:     "OpenAI governance families read Admin API endpoints and require an Admin API key; record credential_kind=admin_api_key when configuring this runtime.",
+		NextAction: "use_openai_admin_api_key",
+	}}
 }
 
 func anthropicProviderPreflightChecks(config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
