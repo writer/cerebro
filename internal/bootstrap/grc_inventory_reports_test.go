@@ -212,6 +212,30 @@ func TestGRCInventoryAssetReportRejectsMalformedAssetURN(t *testing.T) {
 	}
 }
 
+func TestGRCInventoryAssetReportNormalizesForeignTenantLookup(t *testing.T) {
+	store := &memoryGRCInventoryAssetReportStore{reports: map[string]*ports.GRCInventoryAssetReportRecord{
+		"report-other": {
+			ID:           "report-other",
+			TenantID:     "tenant-b",
+			AssetURN:     "urn:cerebro:tenant-b:aws_s3_bucket:bucket-a",
+			Reason:       "foreign report",
+			Reporter:     "security@example.com",
+			TriageStatus: "open",
+		},
+	}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	request := httptest.NewRequest(http.MethodGet, "/grc/inventory/asset-reports/report-other", nil)
+	request.SetPathValue("reportID", "report-other")
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "tenant-a"},
+	}))
+	recorder := httptest.NewRecorder()
+	app.handleGetGRCInventoryAssetReport(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("GET asset report status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}
+
 func TestGRCInventoryAssetReportSummaryPreservesCountsAcrossListCap(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	store := &memoryGRCInventoryAssetReportStore{reports: map[string]*ports.GRCInventoryAssetReportRecord{}}
