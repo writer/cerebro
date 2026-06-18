@@ -106,6 +106,18 @@
     }
   },
   {
+    "id": "graph-action-execution-platform-contract",
+    "scenario_id": "graph-action-execution-safety",
+    "description": "Graph action execution preserves dedicated scope, finding-scoped targets, provider adapter events, workflow linkage, and reconciliation.",
+    "expect": {
+      "required_capability_ids": ["graph-action-execution"],
+      "required_runtime_events": ["adapter.execution.started", "adapter.execution.completed", "adapter.execution.failed"],
+      "required_provenance_surfaces": ["runtime-response-action"],
+      "required_rubric_verifier_ids": ["graph-action-safety-boundary"],
+      "required_integration_strategy_ids": ["action-ladder", "cerebro-agent-platform-eval"]
+    }
+  },
+  {
     "id": "finding-quality-platform-contract",
     "scenario_id": "false-positive-suppression",
     "description": "Finding rule evaluation remains eval-gated before candidate promotion.",

@@ -49,6 +49,8 @@ func TestClientSuspendPostsAccessApprovalsRequest(t *testing.T) {
 		Source:         graphactions.Source,
 		TicketURL:      "https://tickets.example.com/SEC-1",
 		IdempotencyKey: "idem-1",
+		TenantID:       "writer",
+		FindingID:      "finding-1",
 	})
 	if err != nil {
 		t.Fatalf("Suspend() error = %v", err)
@@ -59,7 +61,7 @@ func TestClientSuspendPostsAccessApprovalsRequest(t *testing.T) {
 	if gotAuth != "Bearer token-1" {
 		t.Fatalf("Authorization = %q, want bearer token", gotAuth)
 	}
-	if gotRequest.EmailOrUserID != "alice@writer.com" || gotRequest.Source != graphactions.Source || gotRequest.IdempotencyKey != "idem-1" {
+	if gotRequest.EmailOrUserID != "alice@writer.com" || gotRequest.Source != graphactions.Source || gotRequest.IdempotencyKey != "idem-1" || gotRequest.TenantID != "writer" || gotRequest.FindingID != "finding-1" {
 		t.Fatalf("request = %#v", gotRequest)
 	}
 	if action.ID != "act-1" || action.Target != "alice@writer.com" {
@@ -67,6 +69,40 @@ func TestClientSuspendPostsAccessApprovalsRequest(t *testing.T) {
 	}
 	if got := client.ActionURL("act-1"); got != server.URL+"/root/admin/okta-jail/actions/act-1" {
 		t.Fatalf("ActionURL() = %q", got)
+	}
+}
+
+func TestClientGetOktaUserAction(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %q, want GET", r.Method)
+		}
+		writeAction(t, w, graphactions.AccessApprovalsUserAction{
+			ID:        "act-1",
+			Action:    graphactions.AccessApprovalsActionSuspend,
+			Status:    "succeeded",
+			Target:    "alice@writer.com",
+			TenantID:  "writer",
+			FindingID: "finding-1",
+		})
+	}))
+	defer server.Close()
+
+	client, err := New(config.AccessApprovalsActionConfig{BaseURL: server.URL + "/root", BearerToken: "token"}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	action, err := client.GetOktaUserAction(context.Background(), "act-1")
+	if err != nil {
+		t.Fatalf("GetOktaUserAction() error = %v", err)
+	}
+	if gotPath != "/root/admin/okta-jail/actions/act-1" {
+		t.Fatalf("path = %q, want action get path", gotPath)
+	}
+	if action.Status != "succeeded" || action.TenantID != "writer" || action.FindingID != "finding-1" {
+		t.Fatalf("action = %#v", action)
 	}
 }
 

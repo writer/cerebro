@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
@@ -36,6 +38,11 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 			Source:         gotRequest.Source,
 			TicketURL:      gotRequest.TicketURL,
 			IdempotencyKey: gotRequest.IdempotencyKey,
+			TenantID:       gotRequest.TenantID,
+			FindingID:      gotRequest.FindingID,
+			FindingRuleID:  gotRequest.FindingRuleID,
+			ResourceURN:    gotRequest.ResourceURN,
+			SubjectURN:     gotRequest.SubjectURN,
 			CreatedAtUnix:  time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC).Unix(),
 			UpdatedAtUnix:  time.Date(2026, 6, 18, 12, 1, 0, 0, time.UTC).Unix(),
 		})
@@ -51,11 +58,13 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 			Title:     "Deprovisioned Okta user still active in GitHub",
 			Status:    "open",
 			Attributes: map[string]string{
-				"okta_user_urn":   "urn:cerebro:writer:okta.user:alice@writer.com",
-				"okta_user_label": "Alice",
+				"okta_user_urn":         "urn:cerebro:writer:okta.user:alice@writer.com",
+				"okta_user_label":       "Alice",
+				"graph_actions_allowed": graphactions.ActionIdentityOktaSuspendUser,
 			},
 		},
 	}}
+	appendLog := &recordingAppendLog{}
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
@@ -66,7 +75,7 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 				Timeout:     time.Second,
 			},
 		},
-	}, Dependencies{StateStore: store}, nil)
+	}, Dependencies{StateStore: store, AppendLog: appendLog}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -103,6 +112,20 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	}
 	if !strings.HasPrefix(gotRequest.IdempotencyKey, "cerebro:graph-action:identity.okta.suspend_user:") {
 		t.Fatalf("idempotency_key = %q, want stable graph action key", gotRequest.IdempotencyKey)
+	}
+	if gotRequest.TenantID != "writer" || gotRequest.FindingID != "finding-1" || gotRequest.FindingRuleID != "identity-deprovisioned-okta-active-github" || gotRequest.SubjectURN != "urn:cerebro:writer:okta.user:alice@writer.com" {
+		t.Fatalf("access-approvals metadata = %#v", gotRequest)
+	}
+	actionEvent := firstGraphActionWorkflowEvent(appendLog.events)
+	if actionEvent == nil {
+		t.Fatalf("workflow events = %d, want an action-recorded event", len(appendLog.events))
+	}
+	actionPayload, err := workflowevents.DecodeActionRecorded(actionEvent)
+	if err != nil {
+		t.Fatalf("DecodeActionRecorded() error = %v", err)
+	}
+	if actionPayload.ActionType != graphactions.ActionIdentityOktaSuspendUser || actionPayload.SourceEventID != "oja-1" || actionPayload.Status != "pending" {
+		t.Fatalf("workflow action payload = %#v", actionPayload)
 	}
 	updated := store.findings["finding-1"]
 	if len(updated.ExternalRefs) != 1 {
@@ -155,6 +178,82 @@ func TestHandleExecuteGraphActionRejectsTargetOnlyUnsuspend(t *testing.T) {
 	}
 }
 
+func TestHandleReconcileGraphActionRefreshesLinkedAction(t *testing.T) {
+	var gotPath string
+	accessApprovals := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.Method != http.MethodGet {
+			t.Fatalf("access-approvals method = %q, want GET", r.Method)
+		}
+		writeGraphActionTestAction(t, w, graphactions.AccessApprovalsUserAction{
+			ID:            "oja-1",
+			Action:        graphactions.AccessApprovalsActionSuspend,
+			Status:        "succeeded",
+			Target:        "alice@writer.com",
+			TenantID:      "writer",
+			FindingID:     "finding-1",
+			FindingRuleID: "identity-deprovisioned-okta-active-github",
+			SubjectURN:    "urn:cerebro:writer:okta.user:alice@writer.com",
+			UpdatedAtUnix: time.Date(2026, 6, 18, 12, 5, 0, 0, time.UTC).Unix(),
+		})
+	}))
+	defer accessApprovals.Close()
+
+	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
+		"finding-1": {
+			ID:       "finding-1",
+			TenantID: "writer",
+			RuleID:   "identity-deprovisioned-okta-active-github",
+			Status:   "open",
+			Attributes: map[string]string{
+				"okta_user_urn":         "urn:cerebro:writer:okta.user:alice@writer.com",
+				"graph_actions_allowed": graphactions.ActionIdentityOktaSuspendUser,
+			},
+			FindingWorkflow: ports.FindingWorkflow{
+				ExternalRefs: []ports.FindingExternalRef{{
+					System:         graphactions.ProviderAccessApprovals,
+					Kind:           graphactions.RefKind,
+					ExternalID:     "oja-1",
+					ExternalStatus: "pending",
+				}},
+			},
+		},
+	}}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		GraphActions: config.GraphActionsConfig{
+			AccessApprovals: config.AccessApprovalsActionConfig{
+				BaseURL:     accessApprovals.URL,
+				BearerToken: "graph-action-token",
+				Timeout:     time.Second,
+			},
+		},
+	}, Dependencies{StateStore: store, AppendLog: appendLog}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	response, err := server.Client().Post(server.URL+"/platform/graph/actions/reconcile", "application/json", strings.NewReader(`{"finding_id":"finding-1","external_id":"oja-1"}`))
+	if err != nil {
+		t.Fatalf("POST reconcile graph action: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", response.StatusCode)
+	}
+	if gotPath != "/admin/okta-jail/actions/oja-1" {
+		t.Fatalf("access-approvals path = %q, want action lookup", gotPath)
+	}
+	if firstGraphActionWorkflowEvent(appendLog.events) == nil {
+		t.Fatalf("workflow events = %d, want an action-recorded event", len(appendLog.events))
+	}
+	updated := store.findings["finding-1"]
+	if len(updated.ExternalRefs) != 1 || updated.ExternalRefs[0].ExternalStatus != "succeeded" {
+		t.Fatalf("external refs = %#v, want refreshed succeeded ref", updated.ExternalRefs)
+	}
+}
+
 func TestGraphActionTargetForFindingAllowsMatchingExplicitTarget(t *testing.T) {
 	finding := &ports.FindingRecord{
 		TenantID: "writer",
@@ -169,6 +268,15 @@ func TestGraphActionTargetForFindingAllowsMatchingExplicitTarget(t *testing.T) {
 	if target != "alice@writer.com" {
 		t.Fatalf("target = %q, want normalized explicit target", target)
 	}
+}
+
+func firstGraphActionWorkflowEvent(events []*cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
+	for _, event := range events {
+		if event.GetKind() == workflowevents.EventKindKnowledgeActionRecorded {
+			return event
+		}
+	}
+	return nil
 }
 
 func TestGraphActionNotConfiguredReturnsServiceUnavailable(t *testing.T) {
@@ -195,7 +303,7 @@ func TestGraphActionNotConfiguredReturnsServiceUnavailable(t *testing.T) {
 }
 
 func TestGraphActionConnectErrorMapsRemoteToUnavailable(t *testing.T) {
-	err := graphactionapi.ConnectError(graphactions.ErrRemote, graphActionErrors)
+	err := graphactionapi.ConnectError(graphactions.ErrRemote, graphactionapi.ErrorSentinelsFor(errInvalidHTTPRequest, errTenantForbidden, errScopeForbidden))
 	if !errors.Is(err, graphactions.ErrRemote) && err == nil {
 		t.Fatalf("graphActionConnectError() = %v, want connect error", err)
 	}

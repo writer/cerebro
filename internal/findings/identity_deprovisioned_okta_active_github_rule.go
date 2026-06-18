@@ -429,6 +429,7 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		"target_urns":           strings.Join(targetURNs, ","),
 		"target_labels":         strings.Join(targetLabels, ","),
 		"target_entity_types":   strings.Join(sortedKeys(targetTypes), ","),
+		"graph_actions_allowed": "identity.okta.suspend_user",
 		"source_runtime_id":     triggeringRuntimeID,
 		"source_runtime_tenant": tenantID,
 	}

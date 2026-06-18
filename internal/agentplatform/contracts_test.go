@@ -82,6 +82,7 @@ func TestCapabilityScopesUsePublicContracts(t *testing.T) {
 		ScopeConnectorCredentialsRead:  true,
 		ScopeConnectorCredentialsWrite: true,
 		ScopeFindingCandidatePromote:   true,
+		ScopeGraphActionsWrite:         true,
 		ScopeRuntimeResponseWrite:      true,
 	}
 	for _, capability := range Capabilities {
@@ -393,6 +394,32 @@ func TestDecideCapabilityPreviewGate(t *testing.T) {
 	}
 	if !allowed.Enabled || allowed.Reason != "preview_allowed" {
 		t.Fatalf("preview decision = %+v, want enabled preview_allowed", allowed)
+	}
+}
+
+func TestDecideGraphActionCapabilityRequiresDedicatedScope(t *testing.T) {
+	blocked, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:    "graph-action-execution",
+		RequestedScopes: []string{ScopeRuntimeResponseWrite},
+		AllowPreview:    true,
+	})
+	if !ok {
+		t.Fatal("graph-action-execution capability missing")
+	}
+	if blocked.Enabled || !decisionHasBlocker(blocked, "missing_scope") || !containsString(blocked.MissingScopes, ScopeGraphActionsWrite) {
+		t.Fatalf("graph action decision = %+v, want missing dedicated graph action scope", blocked)
+	}
+
+	allowed, ok := DecideCapability(CapabilityDecisionRequest{
+		CapabilityID:    "graph-action-execution",
+		RequestedScopes: []string{ScopeGraphActionsWrite},
+		AllowPreview:    true,
+	})
+	if !ok {
+		t.Fatal("graph-action-execution capability missing")
+	}
+	if !allowed.Enabled || allowed.Reason != "preview_allowed" {
+		t.Fatalf("graph action decision = %+v, want enabled preview_allowed", allowed)
 	}
 }
 

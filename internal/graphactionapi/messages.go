@@ -22,6 +22,7 @@ func InputFromRequest(request *cerebrov1.ExecuteGraphActionRequest) graphactions
 		Reason:         request.GetReason(),
 		TicketURL:      request.GetTicketUrl(),
 		IdempotencyKey: request.GetIdempotencyKey(),
+		Parameters:     request.GetParameters(),
 	}
 }
 
@@ -35,6 +36,29 @@ func ResponseMessage(result *graphactions.Result, finding *cerebrov1.Finding) *c
 		Action:      ActionMessage(result.Action),
 		Target:      result.Target,
 		ExternalRef: ExternalRefMessage(result.ExternalRef),
+	}
+}
+
+// ReconcileResponseMessage converts a graph action reconciliation result into the public proto response.
+func ReconcileResponseMessage(result *graphactions.Result, finding *cerebrov1.Finding) *cerebrov1.ReconcileGraphActionResponse {
+	if result == nil {
+		return &cerebrov1.ReconcileGraphActionResponse{}
+	}
+	return &cerebrov1.ReconcileGraphActionResponse{
+		Finding:     finding,
+		Action:      ActionMessage(result.Action),
+		Target:      result.Target,
+		ExternalRef: ExternalRefMessage(result.ExternalRef),
+	}
+}
+
+func ReconcileInputFromRequest(request *cerebrov1.ReconcileGraphActionRequest) graphactions.ReconcileInput {
+	if request == nil {
+		return graphactions.ReconcileInput{}
+	}
+	return graphactions.ReconcileInput{
+		FindingID:  request.GetFindingId(),
+		ExternalID: request.GetExternalId(),
 	}
 }
 

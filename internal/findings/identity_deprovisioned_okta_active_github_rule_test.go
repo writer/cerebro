@@ -107,6 +107,16 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testi
 	}
 }
 
+func TestDeprovisionedOktaActiveGitHubRuleAllowsOnlySuspendGraphAction(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
+	finding := rule.buildFinding(runtime, "writer", group, deprovisionedOktaRuleFixedNow())
+	if got := finding.Attributes["graph_actions_allowed"]; got != "identity.okta.suspend_user" {
+		t.Fatalf("graph_actions_allowed = %q, want only suspend action for deprovisioned identity finding", got)
+	}
+}
+
 // The rule stamps the triggering runtime onto the persisted record so the finding stays
 // addressable through the real runtime-scoped read paths (Service.ListFindings, ListEvidence,
 // reports, GRC). The store pins runtime_id on first insert via UpsertFinding's ON CONFLICT

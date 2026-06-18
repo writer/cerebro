@@ -25,6 +25,14 @@ type ErrorSentinels struct {
 	ScopeForbidden     error
 }
 
+func ErrorSentinelsFor(invalidHTTPRequest error, tenantForbidden error, scopeForbidden error) ErrorSentinels {
+	return ErrorSentinels{
+		InvalidHTTPRequest: invalidHTTPRequest,
+		TenantForbidden:    tenantForbidden,
+		ScopeForbidden:     scopeForbidden,
+	}
+}
+
 func HTTPStatus(err error, sentinels ErrorSentinels) int {
 	switch {
 	case errors.Is(err, graphactions.ErrInvalidRequest), errors.Is(err, sentinels.InvalidHTTPRequest):

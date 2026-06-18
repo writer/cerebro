@@ -65,7 +65,8 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
 		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeFindingLifecycleWrite}
-	case cerebrov1connect.BootstrapServiceExecuteGraphActionProcedure:
+	case cerebrov1connect.BootstrapServiceExecuteGraphActionProcedure,
+		cerebrov1connect.BootstrapServiceReconcileGraphActionProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeGraphActionsWrite}
 	case cerebrov1connect.BootstrapServiceRunReportProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeReportsRun}

@@ -176,7 +176,7 @@ Current route scopes include:
 | `cerebro.connector_credentials.read` | Read connector credential metadata. |
 | `cerebro.connector_credentials.write` | Create, rotate, or revoke connector credentials. |
 | `cerebro.runtime_response.write` | Execute runtime response actions and revoke runtime blocklist entries. |
-| `cerebro.graph_actions.write` | Execute provider-backed graph actions such as access-approvals Okta user suspend/unsuspend. |
+| `cerebro.graph_actions.write` | Execute and reconcile eligible provider-backed graph actions such as access-approvals Okta user suspend/unsuspend. |
 | `cerebro.reports.run` | Start report runs. |
 | `cerebro.knowledge.write` | Write platform knowledge decisions, actions, recommendations, and outcomes. |
 | `cerebro.workflow.replay` | Replay workflow events. |

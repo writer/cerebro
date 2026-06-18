@@ -16,6 +16,7 @@ type Executor struct {
 	NewService       func() (*graphactions.Service, error)
 	AuthorizeFinding func(context.Context, string) error
 	BumpFinding      func(context.Context, *ports.FindingRecord)
+	BeforeLink       func(context.Context, *ports.FindingRecord, *graphactions.GraphAction, string) error
 }
 
 func (e Executor) Execute(ctx context.Context, input graphactions.Input) (*graphactions.Result, error) {
@@ -28,6 +29,45 @@ func (e Executor) Execute(ctx context.Context, input graphactions.Input) (*graph
 			return nil, err
 		}
 	}
+	service, err := e.service()
+	if err != nil {
+		return nil, err
+	}
+	result, err := service.Execute(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if result.Finding != nil && e.BumpFinding != nil {
+		e.BumpFinding(ctx, result.Finding)
+	}
+	return result, nil
+}
+
+func (e Executor) Reconcile(ctx context.Context, input graphactions.ReconcileInput) (*graphactions.Result, error) {
+	input.FindingID = strings.TrimSpace(input.FindingID)
+	if input.FindingID == "" {
+		return nil, fmt.Errorf("%w: finding_id is required", graphactions.ErrInvalidRequest)
+	}
+	if e.AuthorizeFinding != nil {
+		if err := e.AuthorizeFinding(ctx, input.FindingID); err != nil {
+			return nil, err
+		}
+	}
+	service, err := e.service()
+	if err != nil {
+		return nil, err
+	}
+	result, err := service.Reconcile(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if result.Finding != nil && e.BumpFinding != nil {
+		e.BumpFinding(ctx, result.Finding)
+	}
+	return result, nil
+}
+
+func (e Executor) service() (*graphactions.Service, error) {
 	service := e.Service
 	if service == nil && e.NewService != nil {
 		var err error
@@ -39,14 +79,12 @@ func (e Executor) Execute(ctx context.Context, input graphactions.Input) (*graph
 	if service == nil {
 		return nil, graphactions.ErrNotConfigured
 	}
-	result, err := service.Execute(ctx, input)
-	if err != nil {
-		return nil, err
+	if e.BeforeLink == nil {
+		return service, nil
 	}
-	if result.Finding != nil && e.BumpFinding != nil {
-		e.BumpFinding(ctx, result.Finding)
-	}
-	return result, nil
+	copy := *service
+	copy.BeforeLink = e.BeforeLink
+	return &copy, nil
 }
 
 func AccessApprovalsConfigured(cfg config.AccessApprovalsActionConfig) bool {

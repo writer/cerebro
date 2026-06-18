@@ -75,6 +75,14 @@ func (c *Client) UnsuspendOktaUser(ctx context.Context, request graphactions.Acc
 	return c.createAction(ctx, graphactions.AccessApprovalsActionUnsuspend, request)
 }
 
+func (c *Client) GetOktaUserAction(ctx context.Context, actionID string) (*graphactions.AccessApprovalsUserAction, error) {
+	actionID = strings.TrimSpace(actionID)
+	if actionID == "" {
+		return nil, fmt.Errorf("%w: action id is required", graphactions.ErrInvalidRequest)
+	}
+	return c.getAction(ctx, actionID)
+}
+
 func (c *Client) ActionURL(actionID string) string {
 	if c == nil || c.baseURL == nil {
 		return ""
@@ -84,6 +92,34 @@ func (c *Client) ActionURL(actionID string) string {
 		return ""
 	}
 	return c.resolvePath("/admin/okta-jail/actions/" + url.PathEscape(actionID))
+}
+
+func (c *Client) getAction(ctx context.Context, actionID string) (*graphactions.AccessApprovalsUserAction, error) {
+	if c == nil || c.baseURL == nil || c.httpClient == nil || strings.TrimSpace(c.bearer) == "" {
+		return nil, graphactions.ErrNotConfigured
+	}
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, c.resolvePath("/admin/okta-jail/actions/"+url.PathEscape(actionID)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: build request: %w", graphactions.ErrInvalidRequest, err)
+	}
+	httpRequest.Header.Set("Authorization", "Bearer "+c.bearer)
+	httpRequest.Header.Set("Accept", "application/json")
+	response, err := c.httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", graphactions.ErrRemote, err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, remoteStatusError(response)
+	}
+	var actionResponse graphactions.AccessApprovalsUserAction
+	if err := json.NewDecoder(io.LimitReader(response.Body, defaultMaxSuccessBodyBytes)).Decode(&actionResponse); err != nil {
+		return nil, fmt.Errorf("%w: decode response: %w", graphactions.ErrRemote, err)
+	}
+	if strings.TrimSpace(actionResponse.ID) == "" {
+		return nil, fmt.Errorf("%w: response missing action id", graphactions.ErrRemote)
+	}
+	return &actionResponse, nil
 }
 
 func (c *Client) createAction(ctx context.Context, action string, request graphactions.AccessApprovalsUserActionRequest) (*graphactions.AccessApprovalsUserAction, error) {

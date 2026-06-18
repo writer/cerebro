@@ -1581,7 +1581,7 @@ paths:
   /platform/graph/actions:
     post:
       summary: Execute graph action
-      description: Executes a supported provider-backed action against a graph target. Supplying `finding_id` lets Cerebro derive the target and link the provider action back to the finding as an external lifecycle reference; supplying `target` supports programmatic invocation. Requires the `cerebro.graph_actions.write` scope. Currently supported actions are `identity.okta.suspend_user` and `identity.okta.unsuspend_user`.
+      description: Executes a supported provider-backed action against an eligible finding-scoped graph target. `finding_id` is required so Cerebro can authorize the tenant, verify the finding allows the action, derive the default target, emit a workflow action event, and link the provider action back to the finding as an external lifecycle reference. `target` is an optional explicit target assertion within the authorized finding context. Requires the `cerebro.graph_actions.write` scope. Currently supported actions are `identity.okta.suspend_user` and `identity.okta.unsuspend_user`.
       tags:
         - Graph
       requestBody:
@@ -1593,6 +1593,25 @@ paths:
       responses:
         '202':
           description: Graph action queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphActionResponse'
+  /platform/graph/actions/reconcile:
+    post:
+      summary: Reconcile graph action
+      description: Refreshes one provider-backed graph action already linked to a finding. Cerebro authorizes the finding tenant, reads the action status from the provider, emits a workflow action event, and updates the finding external lifecycle reference. Requires the `cerebro.graph_actions.write` scope.
+      tags:
+        - Graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileGraphActionRequest'
+      responses:
+        '202':
+          description: Graph action status refreshed.
           content:
             application/json:
               schema:
@@ -6774,7 +6793,19 @@ components:
           type: object
           additionalProperties:
             type: string
-          description: Reserved generic action parameters for future executors.
+          description: Reserved generic action parameters for future executors. Current actions reject non-empty parameters.
+    ReconcileGraphActionRequest:
+      type: object
+      required: [finding_id, external_id]
+      properties:
+        finding_id:
+          type: string
+          minLength: 1
+          description: Finding id that already owns the graph action external reference.
+        external_id:
+          type: string
+          minLength: 1
+          description: Provider action id to refresh.
     GraphActionResponse:
       type: object
       properties:
