@@ -164,9 +164,12 @@ func redisAnnotateMain(ctx context.Context, namespace string, operation string, 
 	case "skipped":
 		telemetry.IncrementMain(ctx, "cache.redis.skipped.count", 1)
 	}
-	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "cache.redis.last_namespace", Value: strings.TrimSpace(namespace)},
 		telemetry.Field{Key: "cache.redis.last_operation", Value: strings.TrimSpace(operation)},
 		telemetry.Field{Key: "cache.redis.last_status", Value: strings.TrimSpace(status)},
-	))
+		telemetry.Field{Key: "cache.namespace", Value: strings.TrimSpace(namespace)},
+	)
+	telemetry.AnnotateMain(ctx, attrs)
+	telemetry.AnnotateMainDependency(ctx, "cache.redis", "querycache.redis", operation, status, attrs)
 }

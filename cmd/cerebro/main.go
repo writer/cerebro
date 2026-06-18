@@ -220,6 +220,10 @@ func runtimeTelemetryMetadataFromEnv() telemetry.RuntimeMetadata {
 			os.Getenv("ECS_CONTAINER_METADATA_URI"),
 		),
 		AWSExecutionEnvironment: os.Getenv("AWS_EXECUTION_ENV"),
+		ECSCluster:              os.Getenv("ECS_CLUSTER"),
+		ECSServiceName:          os.Getenv("ECS_SERVICE_NAME"),
+		ECSTaskFamily:           os.Getenv("ECS_TASK_FAMILY"),
+		ECSTaskRevision:         os.Getenv("ECS_TASK_REVISION"),
 	}
 }
 
@@ -272,6 +276,8 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 		defer close(done)
 		_, hasPreparer := stateStore.(grcReadModelPreparer)
 		ctx, span := telemetry.StartMain(ctx, "grc.read_model_warmup", telemetry.Attrs(
+			telemetry.Field{Key: "operation.type", Value: "startup_job"},
+			telemetry.Field{Key: "job.name", Value: "grc.read_model_warmup"},
 			telemetry.Field{Key: "preparer_present", Value: hasPreparer},
 		))
 		status := "completed"
@@ -280,6 +286,7 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 			status = "skipped"
 		}
 		defer func() {
+			telemetry.AnnotateMainPhase(ctx, "grc.read_model_warmup", status, attrs)
 			telemetry.End(span, status, attrs)
 		}()
 		if err := prepareGRCReadModels(ctx, stateStore); err != nil && ctx.Err() == nil {
@@ -296,21 +303,28 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {
 	done := make(chan struct{})
 	if backfiller == nil {
-		_, span := telemetry.StartMain(ctx, "finding.risk_backfill", telemetry.Attrs(
+		attrs := telemetry.Attrs(
+			telemetry.Field{Key: "operation.type", Value: "startup_job"},
+			telemetry.Field{Key: "job.name", Value: "finding.risk_backfill"},
 			telemetry.Field{Key: "backfiller_present", Value: false},
-		))
-		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: false}))
+		)
+		_, span := telemetry.StartMain(ctx, "finding.risk_backfill", attrs)
+		telemetry.AnnotateMainPhase(ctx, "finding.risk_backfill", "skipped", attrs)
+		telemetry.End(span, "skipped", attrs)
 		close(done)
 		return done
 	}
 	go func() {
 		defer close(done)
 		ctx, span := telemetry.StartMain(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "operation.type", Value: "startup_job"},
+			telemetry.Field{Key: "job.name", Value: "finding.risk_backfill"},
 			telemetry.Field{Key: "backfiller_present", Value: true},
 		))
 		status := "completed"
 		attrs := telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: true})
 		defer func() {
+			telemetry.AnnotateMainPhase(ctx, "finding.risk_backfill", status, attrs)
 			telemetry.End(span, status, attrs)
 		}()
 		if err := backfiller.BackfillFindingRisk(ctx); err != nil && ctx.Err() == nil {

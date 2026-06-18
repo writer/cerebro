@@ -46,6 +46,7 @@ func (c *instrumentedLLMClient) DraftCypher(ctx context.Context, req DraftReques
 			WithField(telemetry.Field{Key: "graphagent.cypher.present", Value: strings.TrimSpace(response.Cypher) != ""}).
 			WithField(telemetry.Field{Key: "graphagent.cypher.bytes", Value: len(response.Cypher)})
 	}
+	c.annotateMain(ctx, "draft", status, attrs.With(endAttrs))
 	telemetry.End(span, status, endAttrs)
 	return response, err
 }
@@ -68,6 +69,7 @@ func (c *instrumentedLLMClient) Summarize(ctx context.Context, req SummarizeRequ
 	} else {
 		endAttrs = endAttrs.WithField(telemetry.Field{Key: "graphagent.summary.bytes", Value: len(summary)})
 	}
+	c.annotateMain(ctx, "summarize", status, attrs.With(endAttrs))
 	telemetry.End(span, status, endAttrs)
 	return summary, err
 }
@@ -87,6 +89,7 @@ func (c *instrumentedLLMClient) Probe(ctx context.Context) error {
 		endAttrs = endAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 		telemetry.CaptureError(ctx, "graphagent.llm.error", err, attrs)
 	}
+	c.annotateMain(ctx, "probe", status, attrs.With(endAttrs))
 	telemetry.End(span, status, endAttrs)
 	return err
 }
@@ -98,4 +101,19 @@ func (c *instrumentedLLMClient) operationAttrs(operation string, model string, t
 		telemetry.Field{Key: "gen_ai.request.model", Value: normalizeModel(model)},
 		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(tenantID)},
 	)
+}
+
+func (c *instrumentedLLMClient) annotateMain(ctx context.Context, operation string, status string, attrs telemetry.Attributes) {
+	telemetry.IncrementMain(ctx, "gen_ai.operation.count", 1)
+	if status == "failed" {
+		telemetry.IncrementMain(ctx, "gen_ai.error.count", 1)
+	}
+	mainAttrs := attrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "gen_ai.last_provider.name", Value: strings.TrimSpace(c.provider)},
+		telemetry.Field{Key: "gen_ai.last_operation.name", Value: strings.TrimSpace(operation)},
+		telemetry.Field{Key: "gen_ai.last_status", Value: strings.TrimSpace(status)},
+	))
+	telemetry.AnnotateMain(ctx, mainAttrs)
+	telemetry.AnnotateMainDependency(ctx, "gen_ai", "graphagent.llm", operation, status, mainAttrs)
+	telemetry.AnnotateMainPhase(ctx, "graphagent.llm."+strings.TrimSpace(operation), status, mainAttrs)
 }

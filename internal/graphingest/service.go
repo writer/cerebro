@@ -177,6 +177,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 			telemetry.Field{Key: "graph.ingest.runtime_id", Value: strings.TrimSpace(request.RuntimeID)},
 			telemetry.Field{Key: "graph.ingest.trigger", Value: strings.TrimSpace(request.Trigger)},
 		)))
+		telemetry.AnnotateMainPhase(ctx, "graph.ingest_runtime", status, spanAttributes)
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.runtimeStore == nil || s.graphStore == nil || s.projector == nil {
@@ -388,6 +389,7 @@ func (s *Service) Health(ctx context.Context, limit uint32) (result *HealthResul
 				WithField(telemetry.Field{Key: "failed_count", Value: result.FailedCount}).
 				WithField(telemetry.Field{Key: "running_count", Value: result.RunningCount})
 		}
+		telemetry.AnnotateMainPhase(ctx, "graph.ingest_health", status, attrs)
 		telemetry.End(span, status, attrs)
 	}()
 	runStore, err := s.runStore()

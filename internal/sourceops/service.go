@@ -226,10 +226,12 @@ func annotateMainSourceOperation(ctx context.Context, operation string, status s
 	if status == "failed" {
 		telemetry.IncrementMain(ctx, "source.operation.error.count", 1)
 	}
-	telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+	mainAttrs := attrs.With(telemetry.Attrs(
 		telemetry.Field{Key: "source.operation", Value: operation},
 		telemetry.Field{Key: "source.operation.status", Value: status},
-	)))
+	))
+	telemetry.AnnotateMain(ctx, mainAttrs)
+	telemetry.AnnotateMainPhase(ctx, "source."+strings.TrimSpace(operation), status, mainAttrs)
 }
 
 func sourceOperationTelemetryErrorKind(err error) string {
