@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectorpreflight"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -64,14 +65,6 @@ const (
 	connectorReadinessStageAuthExtensionNeeded = "auth_extension_required"
 	connectorReadinessStageRuntimeNeeded       = "runtime_required"
 	connectorReadinessStageRuntimeUnknown      = "runtime_unknown"
-)
-
-const (
-	anthropicCredentialKindAdminAPIKey         = "admin_api_key"
-	anthropicCredentialKindComplianceAccessKey = "compliance_access_key"
-	anthropicCredentialKindOrgAdminOAuth       = "org_admin_oauth"      // #nosec G101 -- credential kind label, not credential material.
-	anthropicCredentialKindScopedAdminAPIKey   = "scoped_admin_api_key" // #nosec G101 -- credential kind label, not credential material.
-	openAICredentialKindAdminAPIKey            = "admin_api_key"
 )
 
 var errConnectorAccessRestricted = errors.New("connector access restricted")
@@ -2443,191 +2436,23 @@ func connectorPreflightCredentialPassed(authMethod string) connectorPreflightChe
 }
 
 func connectorProviderPreflightChecks(sourceID string, authMethod string, config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
-	switch strings.TrimSpace(sourceID) {
-	case "aws":
-		checks := []connectorPreflightCheckView{}
-		if authMethod == connectorAuthMethodAWSSSOProfile || strings.TrimSpace(config["role_arn"]) != "" {
-			checks = append(checks, connectorPreflightCheckView{
-				ID:       "aws_access_model",
-				Label:    "AWS access model",
-				Status:   "passed",
-				Severity: "success",
-				Detail:   "AWS access uses a role or deployment-managed SSO profile.",
-			})
-		} else {
-			checks = append(checks, connectorPreflightCheckView{
-				ID:         "aws_access_model",
-				Label:      "AWS access model",
-				Status:     "warning",
-				Severity:   "warning",
-				Detail:     "Prefer AWS SSO or role assumption over long-lived access keys for production connections.",
-				NextAction: "prefer_role_or_sso",
-			})
-		}
-		if policy.ExcludesFamily("aws", "organizations_account") {
-			checks = append(checks, connectorPreflightCheckView{
-				ID:       "aws_organizations_scope",
-				Label:    "AWS Organizations coverage",
-				Status:   "warning",
-				Severity: "warning",
-				Detail:   "Organizations families are scoped out, so account and OU discovery will be skipped.",
-			})
-		}
-		return checks
-	case "openai":
-		return openAIProviderPreflightChecks(config, policy)
-	case "anthropic":
-		return anthropicProviderPreflightChecks(config, policy)
-	default:
+	checks := connectorpreflight.ProviderChecks(sourceID, authMethod, config, policy)
+	if len(checks) == 0 {
 		return nil
 	}
-}
-
-func openAIProviderPreflightChecks(config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
-	family := strings.TrimSpace(config["family"])
-	if family == "" {
-		family = "user"
+	views := make([]connectorPreflightCheckView, 0, len(checks))
+	for _, check := range checks {
+		views = append(views, connectorPreflightCheckView{
+			ID:         check.ID,
+			Label:      check.Label,
+			Status:     check.Status,
+			Severity:   check.Severity,
+			Detail:     check.Detail,
+			NextAction: check.NextAction,
+			Blocking:   check.Blocking,
+		})
 	}
-	if policy.ExcludesFamily("openai", family) {
-		return nil
-	}
-	if normalizedCredentialHint(config["credential_kind"]) == openAICredentialKindAdminAPIKey {
-		return nil
-	}
-	return []connectorPreflightCheckView{{
-		ID:         "openai_admin_api_key",
-		Label:      "OpenAI Admin API key",
-		Status:     "warning",
-		Severity:   "warning",
-		Detail:     "OpenAI governance families read Admin API endpoints and require an Admin API key; record credential_kind=admin_api_key when configuring this runtime.",
-		NextAction: "use_openai_admin_api_key",
-	}}
-}
-
-func anthropicProviderPreflightChecks(config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
-	family := strings.TrimSpace(config["family"])
-	if family == "" {
-		family = "user"
-	}
-	if policy.ExcludesFamily("anthropic", family) {
-		return nil
-	}
-	authModel := strings.ToLower(strings.TrimSpace(config["auth_model"]))
-	if authModel == "" {
-		authModel = "legacy_token"
-	}
-	credentialKind := normalizedCredentialHint(config["credential_kind"])
-	scopes := connectorTokenSet(config["credential_scopes"])
-	checks := []connectorPreflightCheckView{}
-	switch family {
-	case "service_account", "federation_issuer", "federation_rule":
-		if authModel != "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindOrgAdminOAuth) || !setContains(scopes, "org:admin") {
-			checks = append(checks, connectorPreflightCheckView{
-				ID:         "anthropic_org_admin_oauth",
-				Label:      "Anthropic org admin OAuth",
-				Status:     "warning",
-				Severity:   "warning",
-				Detail:     "Service account and workload identity federation families require an org:admin OAuth bearer token; set auth_model=bearer_token and record credential_scopes=org:admin when configuring this runtime.",
-				NextAction: "use_anthropic_org_admin_oauth",
-			})
-		}
-	case "compliance_activity":
-		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindAdminAPIKey && credentialKind != anthropicCredentialKindComplianceAccessKey) || !setContains(scopes, "read:compliance_activities") {
-			checks = append(checks, connectorPreflightCheckView{
-				ID:         "anthropic_compliance_scope",
-				Label:      "Anthropic compliance scope",
-				Status:     "warning",
-				Severity:   "warning",
-				Detail:     "Compliance Activity Feed reads use x-api-key and require read:compliance_activities on an Admin API key or Compliance Access Key; record credential_kind and credential_scopes to make that explicit.",
-				NextAction: "confirm_anthropic_compliance_scope",
-			})
-		}
-	case "compliance_organization", "compliance_role", "compliance_group":
-		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
-			RequiredScope: "read:compliance_org_data",
-			ID:            "anthropic_compliance_org_data_scope",
-			Label:         "Anthropic compliance org-data scope",
-			Detail:        "Compliance organization, role, and group families use x-api-key and require read:compliance_org_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_org_data.",
-		})...)
-	case "compliance_organization_user", "compliance_group_member":
-		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
-			RequiredScope: "read:compliance_user_data",
-			ID:            "anthropic_compliance_user_data_scope",
-			Label:         "Anthropic compliance user-data scope",
-			Detail:        "Compliance user and group-member families use x-api-key and require read:compliance_user_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_user_data.",
-		})...)
-	case "compliance_organization_setting":
-		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
-			RequiredScope: "read:compliance_org_settings",
-			ID:            "anthropic_compliance_org_settings_scope",
-			Label:         "Anthropic compliance settings scope",
-			Detail:        "Compliance organization settings use x-api-key and require read:compliance_org_settings on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_org_settings.",
-		})...)
-	case "spend_limit", "spend_limit_increase_request":
-		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindScopedAdminAPIKey) || !setContains(scopes, "read:spend_limits") {
-			checks = append(checks, connectorPreflightCheckView{
-				ID:         "anthropic_spend_limit_scope",
-				Label:      "Anthropic spend-limit scope",
-				Status:     "warning",
-				Severity:   "warning",
-				Detail:     "Read-only spend-limit families require an Enterprise scoped Admin API key with read:spend_limits in x-api-key; record credential_kind=scoped_admin_api_key and credential_scopes=read:spend_limits.",
-				NextAction: "confirm_anthropic_spend_limit_scope",
-			})
-		}
-	}
-	return checks
-}
-
-type anthropicCompliancePreflight struct {
-	RequiredScope string
-	ID            string
-	Label         string
-	Detail        string
-}
-
-func anthropicComplianceAccessKeyCheck(authModel string, credentialKind string, scopes map[string]struct{}, preflight anthropicCompliancePreflight) []connectorPreflightCheckView {
-	if authModel != "bearer_token" && (credentialKind == "" || credentialKind == anthropicCredentialKindComplianceAccessKey) && setContains(scopes, preflight.RequiredScope) {
-		return nil
-	}
-	return []connectorPreflightCheckView{{
-		ID:         preflight.ID,
-		Label:      preflight.Label,
-		Status:     "warning",
-		Severity:   "warning",
-		Detail:     preflight.Detail,
-		NextAction: "confirm_anthropic_compliance_scope",
-	}}
-}
-
-func normalizedCredentialHint(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	replacer := strings.NewReplacer("-", "_", " ", "_")
-	value = replacer.Replace(value)
-	switch value {
-	case "oauth", "oauth_bearer", "org_admin", "org_admin_token":
-		return anthropicCredentialKindOrgAdminOAuth
-	case "admin", "admin_key", "admin_api":
-		return anthropicCredentialKindAdminAPIKey
-	case "compliance", "compliance_key":
-		return anthropicCredentialKindComplianceAccessKey
-	case "spend_limit_admin_key", "spend_limits_admin_key":
-		return anthropicCredentialKindScopedAdminAPIKey
-	default:
-		return value
-	}
-}
-
-func connectorTokenSet(value string) map[string]struct{} {
-	tokens := map[string]struct{}{}
-	for _, token := range strings.FieldsFunc(value, func(r rune) bool {
-		return r == ',' || r == ' ' || r == '\n' || r == '\t'
-	}) {
-		token = strings.ToLower(strings.TrimSpace(token))
-		if token != "" {
-			tokens[token] = struct{}{}
-		}
-	}
-	return tokens
+	return views
 }
 
 func connectorPreflightErrorDetail(err error) string {
