@@ -41677,7 +41677,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 100
+        mapped_rules: 101
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41834,7 +41834,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 8
+          rule_count: 9
           mapped_rules:
             - github-org-owner-role-review-needed
             - identity-okta-admin-plus-app-owner
@@ -41844,6 +41844,7 @@ profiles:
             - identity-okta-group-grants-admin-app
             - identity-okta-superadmin-count
             - identity-okta-support-session-impersonation-30d
+            - tailscale-tailnet-device-approval-disabled
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -42495,6 +42496,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.16
+        - rule_id: tailscale-tailnet-device-approval-disabled
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
         - rule_id: threat-intel-malicious-domain-resolution
           controls:
             - framework_name: ISO 27001:2022
@@ -61042,7 +61047,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 920
+        mapped_rules: 921
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61590,7 +61595,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 427
+          rule_count: 428
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -62018,6 +62023,7 @@ profiles:
             - k8s-service-loadbalancer-internal
             - k8s-service-no-nodeport
             - k8s-workload-not-default-namespace
+            - tailscale-tailnet-device-approval-disabled
             - vpc-external-peering
         - framework_name: SOC 2
           family_id: CC6
@@ -66071,6 +66077,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6
+        - rule_id: tailscale-tailnet-device-approval-disabled
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: terraform-cloud-no-team-access-control
           controls:
             - framework_name: SOC 2

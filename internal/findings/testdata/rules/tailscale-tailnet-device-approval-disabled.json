@@ -1,0 +1,65 @@
+{
+  "rule_id": "tailscale-tailnet-device-approval-disabled",
+  "runtime": {
+    "id": "writer-tailscale-tailnet",
+    "source_id": "tailscale",
+    "tenant_id": "writer",
+    "config": {
+      "family": "tailnet"
+    }
+  },
+  "events": [
+    {
+      "id": "tailscale-tailnet-approval-on",
+      "tenant_id": "writer",
+      "source_id": "tailscale",
+      "kind": "tailscale.tailnet",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "tailscale/tailnet/v1",
+      "attributes": {
+        "family": "tailnet",
+        "tailnet": "writer.com",
+        "devices_approval_on": "true",
+        "users_approval_on": "true",
+        "source_runtime_id": "writer-tailscale-tailnet"
+      }
+    },
+    {
+      "id": "tailscale-tailnet-approval-off",
+      "tenant_id": "writer",
+      "source_id": "tailscale",
+      "kind": "tailscale.tailnet",
+      "occurred_at": "2026-04-23T12:05:00Z",
+      "schema_ref": "tailscale/tailnet/v1",
+      "attributes": {
+        "family": "tailnet",
+        "tailnet": "writer.com",
+        "devices_approval_on": "false",
+        "users_approval_on": "true",
+        "source_runtime_id": "writer-tailscale-tailnet"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "tailscale-tailnet-device-approval-disabled",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Tailscale tailnet writer.com has device approval disabled",
+      "event_ids": ["tailscale-tailnet-approval-off"],
+      "attributes": {
+        "tailscale_tailnet_urn": "urn:cerebro:writer:tailscale_tailnet:writer.com",
+        "tailnet": "writer.com",
+        "devices_approval_on": "false",
+        "primary_resource_urn": "urn:cerebro:writer:tailscale_tailnet:writer.com",
+        "rule_required_attributes": "tailnet"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "tailscale-tailnet-approval-on",
+      "reason": "tailnet with device approval enabled is healthy"
+    }
+  ]
+}

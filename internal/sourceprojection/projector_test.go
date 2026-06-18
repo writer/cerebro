@@ -197,6 +197,20 @@ func TestProjectionRetractionReason(t *testing.T) {
 			want: "trivy_vulnerability_resolved",
 		},
 		{
+			name: "tailscale deauthorized device",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "tailscale_device_deauthorized"},
+			}},
+			want: "tailscale_device_deauthorized",
+		},
+		{
+			name: "tailscale disabled grant",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "tailscale_grant_disabled"},
+			}},
+			want: "tailscale_grant_disabled",
+		},
+		{
 			name: "mixed",
 			links: []*ports.ProjectedLink{
 				{Attributes: map[string]string{"retraction": "endpoint_owner_id"}},

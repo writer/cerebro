@@ -191,7 +191,11 @@ func projectionRetractionReason(links []*ports.ProjectedLink) string {
 
 func boundedProjectionRetractionReason(value string) string {
 	switch strings.TrimSpace(value) {
-	case "endpoint_owner_id", "cloudflare_dns_record_zone_reassigned", "trivy_vulnerability_resolved":
+	case "endpoint_owner_id",
+		"cloudflare_dns_record_zone_reassigned",
+		"trivy_vulnerability_resolved",
+		"tailscale_device_deauthorized",
+		"tailscale_grant_disabled":
 		return strings.TrimSpace(value)
 	default:
 		return "unknown"
@@ -477,6 +481,11 @@ func (s *Service) ProjectRetractions(event *cerebrov1.EventEnvelope) ([]*ports.P
 		return nil, err
 	}
 	links = append(links, trivyRetractions...)
+	tailscaleRetractions, err := tailscaleAccessRetractions(event)
+	if err != nil {
+		return nil, err
+	}
+	links = append(links, tailscaleRetractions...)
 	stampProjectionRuntime(event, nil, links)
 	return links, nil
 }
