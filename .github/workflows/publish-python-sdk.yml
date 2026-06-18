@@ -1,0 +1,194 @@
+name: Publish Cerebro Python SDK
+run-name: Cerebro SDK ${{ github.event.client_payload.image_tag || github.event.inputs.release_tag || 'manual' }} ${{ github.event.client_payload.request_id || github.run_id }}
+
+on:
+  repository_dispatch:
+    types:
+      - cerebro-release-published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable writer/cerebro release tag to publish, for example v2.1.431.
+        required: true
+        type: string
+      dry_run:
+        description: Build and validate without uploading to Artifact Registry.
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-cerebro-python-sdk-${{ github.event.client_payload.image_tag || github.event.inputs.release_tag || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Python SDK
+    if: github.event_name != 'repository_dispatch' || github.event.client_payload.target_environment == 'sec-dev'
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_SDK_DIST: ${{ github.workspace }}/python-sdk-dist
+    steps:
+      - name: Resolve release inputs
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ github.event.client_payload.image_tag || '' }}
+          DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
+          DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
+          DISPATCH_RELEASE_URL: ${{ github.event.client_payload.release_url || '' }}
+          DISPATCH_TARGET_ENVIRONMENT: ${{ github.event.client_payload.target_environment || '' }}
+          INPUT_TAG: ${{ github.event.inputs.release_tag || '' }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [ "${EVENT_NAME}" = "repository_dispatch" ]; then
+            tag="${DISPATCH_TAG}"
+            dry_run=false
+            if [ "${DISPATCH_TARGET_ENVIRONMENT}" != "sec-dev" ]; then
+              echo "repository_dispatch publishes only from sec-dev dispatches; got ${DISPATCH_TARGET_ENVIRONMENT}" >&2
+              exit 1
+            fi
+            if [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro" ]; then
+              echo "repository_dispatch must originate from writer/cerebro; got ${DISPATCH_SOURCE_REPOSITORY}" >&2
+              exit 1
+            fi
+            if [ "${DISPATCH_SOURCE_REF}" != "refs/tags/${tag}" ]; then
+              echo "repository_dispatch source ref ${DISPATCH_SOURCE_REF} does not match refs/tags/${tag}" >&2
+              exit 1
+            fi
+          else
+            tag="${INPUT_TAG}"
+            dry_run="${INPUT_DRY_RUN}"
+          fi
+
+          if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release_tag must be a stable tag matching vMAJOR.MINOR.PATCH; got ${tag}" >&2
+            exit 1
+          fi
+
+          release_json="$(gh api "repos/writer/cerebro/releases/tags/${tag}")"
+          release_url="$(jq -r '.html_url // empty' <<<"${release_json}")"
+          if [ "$(jq -r '.draft' <<<"${release_json}")" = "true" ]; then
+            echo "Release ${tag} is still a draft" >&2
+            exit 1
+          fi
+          if [ "$(jq -r '.prerelease' <<<"${release_json}")" = "true" ]; then
+            echo "Python SDK publishing only accepts stable releases; ${tag} is a prerelease" >&2
+            exit 1
+          fi
+          if [ -n "${DISPATCH_RELEASE_URL}" ] && [ -n "${release_url}" ] && [ "${DISPATCH_RELEASE_URL}" != "${release_url}" ]; then
+            echo "Dispatched release URL ${DISPATCH_RELEASE_URL} does not match GitHub release ${release_url}" >&2
+            exit 1
+          fi
+
+          {
+            echo "tag=${tag}"
+            echo "version=${tag#v}"
+            echo "dry_run=${dry_run}"
+            echo "release_url=${release_url}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out writer/cerebro release source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: writer/cerebro
+          ref: ${{ steps.release.outputs.tag }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Authenticate to Google Artifact Registry
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: "projects/788018447969/locations/global/workloadIdentityPools/writer-iam-wip/providers/github-gar-write-20240221"
+          service_account: "github-gar-write-20240221@writer-iam.iam.gserviceaccount.com"
+          token_format: "access_token"
+          access_token_lifetime: "900s"
+          project_id: "qordoba-devel"
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Set package version
+        working-directory: upstream/sdk/python
+        env:
+          SDK_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          pyproject = Path("pyproject.toml")
+          content = pyproject.read_text(encoding="utf-8")
+          updated = re.sub(
+              r'^version\s*=\s*"[^"]+"',
+              f'version = "{os.environ["SDK_VERSION"]}"',
+              content,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if updated == content:
+              raise SystemExit("could not locate [project].version in upstream/sdk/python/pyproject.toml")
+          pyproject.write_text(updated, encoding="utf-8")
+          PY
+
+      - name: Build and check package
+        working-directory: upstream/sdk/python
+        run: |
+          set -euo pipefail
+          rm -rf "${PYTHON_SDK_DIST}"
+          python -m build --sdist --wheel --outdir "${PYTHON_SDK_DIST}" .
+          python -m twine check "${PYTHON_SDK_DIST}"/*
+
+      - name: Smoke install package
+        run: |
+          set -euo pipefail
+          python -m venv .smoke-venv
+          .smoke-venv/bin/python -m pip install --upgrade pip
+          .smoke-venv/bin/python -m pip install "${PYTHON_SDK_DIST}"/cerebro_sdk-*.whl
+          .smoke-venv/bin/python - <<'PY'
+          import cerebro.v1.bootstrap_pb2
+          import cerebro_sdk
+
+          print("cerebro-sdk smoke import ok")
+          PY
+
+      - name: Publish package to Artifact Registry
+        if: steps.release.outputs.dry_run != 'true'
+        env:
+          GCLOUD_AUTH_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GCLOUD_AUTH_TOKEN}" ]; then
+            echo "GCP access token is missing" >&2
+            exit 1
+          fi
+          python -m twine upload \
+            --skip-existing \
+            --repository-url https://us-central1-python.pkg.dev/qordoba-devel/writer-internal-packages/ \
+            --username oauth2accesstoken \
+            --password "${GCLOUD_AUTH_TOKEN}" \
+            "${PYTHON_SDK_DIST}"/*
+
+      - name: Summarize
+        run: |
+          {
+            echo "## Cerebro Python SDK"
+            echo ""
+            echo "- Release: [${{ steps.release.outputs.tag }}](${{ steps.release.outputs.release_url }})"
+            echo "- Package version: \`${{ steps.release.outputs.version }}\`"
+            echo "- Dry run: \`${{ steps.release.outputs.dry_run }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
