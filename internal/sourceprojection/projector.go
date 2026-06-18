@@ -195,6 +195,7 @@ func boundedProjectionRetractionReason(value string) string {
 		"cloudflare_dns_record_zone_reassigned",
 		"trivy_vulnerability_resolved",
 		"tailscale_device_deauthorized",
+		"tailscale_device_blocks_incoming",
 		"tailscale_grant_disabled":
 		return strings.TrimSpace(value)
 	default:
