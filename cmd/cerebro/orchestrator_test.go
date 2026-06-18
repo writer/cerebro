@@ -216,34 +216,70 @@ func TestAnnotateOrchestratorRuntimeMainAddsHealthFields(t *testing.T) {
 
 	payload := lastCommandTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"source_runtime.family":                        "code",
-		"source_runtime.enabled_state":                 "enabled",
-		"source_runtime.freshness_state":               "healthy",
-		"source_runtime.source_sync_state":             "current",
-		"source_runtime.graph_ingest_state":            "current",
-		"source_runtime.finding_evaluation_state":      "current",
-		"source_runtime.next_action":                   "monitor",
-		"source_runtime.backfill_eligible":             false,
-		"source_runtime.contract_probe_state":          "passing",
-		"source_runtime.contract_probe_status":         "success",
-		"source_runtime.cursor_pending":                true,
-		"source_runtime.checkpoint_cursor_present":     true,
-		"orchestrator.runtime.freshness.healthy.count": float64(1),
+		"source_runtime.family":                           "code",
+		"source_runtime.enabled_state":                    "enabled",
+		"source_runtime.freshness_state":                  "healthy",
+		"source_runtime.source_sync_state":                "current",
+		"source_runtime.graph_ingest_state":               "current",
+		"source_runtime.finding_evaluation_state":         "current",
+		"source_runtime.next_action":                      "monitor",
+		"source_runtime.backfill_eligible":                false,
+		"source_runtime.contract_probe_state":             "passing",
+		"source_runtime.contract_probe_status":            "success",
+		"source_runtime.cursor_pending":                   true,
+		"source_runtime.checkpoint_cursor_present":        true,
+		"orchestrator.runtime.freshness.healthy.count":    float64(1),
+		"orchestrator.runtime_health_gate.status":         "pass",
+		"orchestrator.runtime_health_gate.blocking_state": "none",
+		"orchestrator.runtime_health_gate.pass_count":     float64(1),
+		"orchestrator.runtime_health_gate.healthy_count":  float64(1),
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
 	}
 	for key, want := range map[string]float64{
-		"source_runtime.sync_lag_seconds":         30,
-		"source_runtime.watermark_lag_seconds":    45,
-		"source_runtime.graph_lag_seconds":        60,
-		"source_runtime.expected_cadence_seconds": 300,
-		"source_runtime.stale_after_seconds":      600,
+		"source_runtime.sync_lag_seconds":                            30,
+		"source_runtime.watermark_lag_seconds":                       45,
+		"source_runtime.graph_lag_seconds":                           60,
+		"source_runtime.expected_cadence_seconds":                    300,
+		"source_runtime.stale_after_seconds":                         600,
+		"orchestrator.runtime_health_gate.max_sync_lag_seconds":      30,
+		"orchestrator.runtime_health_gate.max_watermark_lag_seconds": 45,
+		"orchestrator.runtime_health_gate.max_graph_lag_seconds":     60,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
+	}
+}
+
+func TestCaptureOrchestratorErrorAnnotatesFirstFailureOnly(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	stderr := captureCommandStderr(t, func() {
+		ctx, span := telemetry.StartMain(context.Background(), "orchestrator.run", telemetry.Attrs())
+		captureOrchestratorError(ctx, "orchestrator.runtime.error", 1, runtime, "sync", context.DeadlineExceeded)
+		captureOrchestratorError(ctx, "orchestrator.runtime.error", 1, runtime, "graph_ingest", errors.New("graph failed"))
+		telemetry.End(span, "failed", telemetry.Attrs())
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"orchestrator.first_failure.present":    true,
+		"orchestrator.first_failure.event_name": "orchestrator.runtime.error",
+		"orchestrator.first_failure.stage":      "sync",
+		"orchestrator.first_failure.error_kind": "context_deadline_exceeded",
+		"orchestrator.first_failure.iteration":  float64(1),
+		"orchestrator.first_failure.runtime_id": "runtime-1",
+		"orchestrator.first_failure.source_id":  "github",
+		"orchestrator.first_failure.tenant_id":  "writer",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got, ok := payload["orchestrator.first_failure.error_fingerprint"].(string); !ok || got == "" {
+		t.Fatalf("first failure fingerprint missing: %#v", payload)
 	}
 }
 

@@ -219,6 +219,11 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 			Field{Key: "oversized", Value: strings.Repeat("x", maxAttributeStringLength+256)},
 		))
 		AnnotateMain(ctx, Attrs(Field{Key: "cache.redis.last_status", Value: "hit"}))
+		AnnotateMainIfAbsent(ctx, Attrs(Field{Key: "first.error_stage", Value: "sync"}))
+		AnnotateMainIfAbsent(ctx, Attrs(
+			Field{Key: "first.error_stage", Value: "graph_ingest"},
+			Field{Key: "first.error_kind", Value: "context_deadline_exceeded"},
+		))
 		IncrementMain(ctx, "cache.redis.hit.count", 1)
 		IncrementMain(ctx, "cache.redis.hit.count", 2)
 		MaxMain(ctx, "cache.redis.max_latency_ms", 5)
@@ -246,6 +251,12 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	}
 	if got := payload["cache.redis.max_latency_ms"]; got != float64(5) {
 		t.Fatalf("max value = %#v, want 5; payload=%#v", got, payload)
+	}
+	if got := payload["first.error_stage"]; got != "sync" {
+		t.Fatalf("first-if-absent attr = %#v, want sync; payload=%#v", got, payload)
+	}
+	if got := payload["first.error_kind"]; got != "context_deadline_exceeded" {
+		t.Fatalf("first-if-absent new attr = %#v, want context_deadline_exceeded; payload=%#v", got, payload)
 	}
 	if got := payload["explicit_end_attr"]; got != "kept" {
 		t.Fatalf("explicit end attr missing: %#v", payload)
