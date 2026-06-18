@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -44,6 +45,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
+	archetypesource "github.com/writer/cerebro/sources/archetype"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
@@ -63,6 +65,14 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 		req.Header.Set("X-Cerebro-Source-Config", string(payload))
 	}
 	return server.Client().Do(req)
+}
+
+func writeTestJSON(t *testing.T, w http.ResponseWriter, payload any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		t.Fatalf("encode test JSON: %v", err)
+	}
 }
 
 func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
@@ -4906,6 +4916,138 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	}
 }
 
+func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
+	var sawAuth bool
+	archetypeAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer test-token" {
+			sawAuth = true
+		}
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			writeTestJSON(t, w, []map[string]any{{
+				"id":            1,
+				"repository_id": 7,
+				"status":        "completed",
+				"completed_at":  "2026-06-17T12:05:00Z",
+			}})
+		case "/api/v1/repositories":
+			writeTestJSON(t, w, []map[string]any{{
+				"id":    7,
+				"owner": "WriterInternal",
+				"name":  "Archetype",
+			}})
+		case "/api/v1/scans/1/vulnerabilities":
+			writeTestJSON(t, w, []map[string]any{{
+				"id":             10,
+				"scan_id":        1,
+				"line_number":    42,
+				"file_path":      "backend/app/core/security.py",
+				"category":       "ssrf",
+				"severity":       "high",
+				"description":    "Server-side request forgery in outbound fetch path",
+				"analyzer_score": 0.91,
+				"analyzer_label": "high-confidence",
+				"created_at":     "2026-06-17T12:06:00Z",
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer archetypeAPI.Close()
+
+	source, err := archetypesource.NewFixture()
+	if err != nil {
+		t.Fatalf("archetype NewFixture() error = %v", err)
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry(archetype) error = %v", err)
+	}
+	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-archetype-vulnerabilities": {
+			Id:       "writer-archetype-vulnerabilities",
+			SourceId: "archetype",
+			TenantId: "writer",
+			Config: map[string]string{
+				"base_url": archetypeAPI.URL,
+				"family":   "vulnerability",
+				"token":    "test-token",
+			},
+		},
+	}}
+	graphStore := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: runtimeStore,
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	runResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-archetype-vulnerabilities/graph-ingest-runs?page_limit=1&checkpoint_id=graph-archetype", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/graph-ingest-runs error = %v", err)
+	}
+	defer func() { _ = runResp.Body.Close() }()
+	if runResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(runResp.Body)
+		t.Fatalf("graph ingest status = %d, want 200: %s", runResp.StatusCode, body)
+	}
+	var runPayload map[string]any
+	if err := json.NewDecoder(runResp.Body).Decode(&runPayload); err != nil {
+		t.Fatalf("decode graph ingest response: %v", err)
+	}
+	resultPayload, ok := runPayload["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph ingest result = %#v, want object", runPayload["result"])
+	}
+	ingestPayload, ok := resultPayload["ingest"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph ingest details = %#v, want object", resultPayload["ingest"])
+	}
+	if got := ingestPayload["events_read"]; got != float64(2) {
+		t.Fatalf("events_read = %#v, want 2", got)
+	}
+	if got := ingestPayload["entities_projected"]; got != float64(3) {
+		t.Fatalf("entities_projected = %#v, want 3", got)
+	}
+	if got := ingestPayload["links_projected"]; got != float64(5) {
+		t.Fatalf("links_projected = %#v, want 5", got)
+	}
+	if !sawAuth {
+		t.Fatal("Archetype API did not receive bearer token")
+	}
+
+	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/Archetype"
+	scanURN := "urn:cerebro:writer:archetype_scan:1"
+	findingURN := "urn:cerebro:writer:archetype_finding:10"
+	if entity := graphStore.entities[findingURN]; entity == nil || entity.EntityType != "archetype.finding" {
+		t.Fatalf("projected finding entity = %#v, want archetype.finding", entity)
+	}
+	if entity := graphStore.entities[scanURN]; entity == nil || entity.EntityType != "archetype.scan" {
+		t.Fatalf("projected scan entity = %#v, want archetype.scan", entity)
+	}
+	if entity := graphStore.entities[repoURN]; entity == nil || entity.EntityType != "github.code.repository" {
+		t.Fatalf("projected repository entity = %#v, want github.code.repository", entity)
+	}
+	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", scanURN)
+	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", findingURN)
+	assertBootstrapProjectedLink(t, graphStore, findingURN, "belongs_to", scanURN)
+	assertBootstrapProjectedLink(t, graphStore, findingURN, "affects", repoURN)
+
+	neighborhoodResp, err := server.Client().Get(server.URL + "/platform/graph/neighborhood?root_urn=" + url.QueryEscape(findingURN) + "&limit=10")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
+	}
+	defer func() { _ = neighborhoodResp.Body.Close() }()
+	if neighborhoodResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(neighborhoodResp.Body)
+		t.Fatalf("graph neighborhood status = %d, want 200: %s", neighborhoodResp.StatusCode, body)
+	}
+	if graphStore.neighborhoodRootURN != findingURN {
+		t.Fatalf("graph neighborhood root = %q, want %q", graphStore.neighborhoodRootURN, findingURN)
+	}
+}
+
 func TestGraphIngestResolvesConnectorCredentialRuntimeConfig(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)
@@ -7066,6 +7208,17 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, okta, sdk)
+}
+
+func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {
+	t.Helper()
+	if graph == nil {
+		t.Fatal("graph store is nil")
+	}
+	key := fromURN + "|" + relation + "|" + toURN
+	if _, ok := graph.links[key]; !ok {
+		t.Fatalf("missing projected link %s; links = %#v", key, graph.links)
+	}
 }
 
 func TestFindingMessageIncludesRiskFactors(t *testing.T) {

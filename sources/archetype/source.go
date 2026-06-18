@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,7 +31,14 @@ type Source struct {
 	allowLoopbackBaseURL bool
 }
 
-type settings struct{ tenantID, family, baseURL, token, apiPrefix string }
+type settings struct {
+	tenantID                 string
+	family                   string
+	baseURL                  string
+	token                    string
+	apiPrefix                string
+	privateEndpointAllowlist []string
+}
 type scanRecord struct {
 	ID           int    `json:"id"`
 	RepositoryID int    `json:"repository_id"`
@@ -70,12 +78,12 @@ func New() (*Source, error) {
 }
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	st, err := parseSettings(cfg)
+	st, err := parseSettings(cfg, s != nil && s.allowLoopbackBaseURL)
 	if err != nil {
 		return err
 	}
 	var scans []scanRecord
-	return s.get(ctx, st, "/scans", &scans)
+	return s.get(ctx, st, "/scans", nil, &scans)
 }
 func (s *Source) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
@@ -84,12 +92,12 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.ReadWithCheckpoint(ctx, cfg, cursor, nil)
 }
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
-	st, err := parseSettings(cfg)
+	st, err := parseSettings(cfg, s != nil && s.allowLoopbackBaseURL)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	var scans []scanRecord
-	if err := s.get(ctx, st, "/scans", &scans); err != nil {
+	if err := s.get(ctx, st, "/scans", nil, &scans); err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	sort.Slice(scans, func(i, j int) bool { return scans[i].ID < scans[j].ID })
@@ -108,7 +116,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 			continue
 		}
 		var vulns []vulnerabilityRecord
-		if err := s.get(ctx, st, fmt.Sprintf("/scans/%d/vulnerabilities", scan.ID), &vulns); err != nil {
+		if err := s.get(ctx, st, fmt.Sprintf("/scans/%d/vulnerabilities", scan.ID), nil, &vulns); err != nil {
 			return sourcecdk.Pull{}, err
 		}
 		for _, vuln := range vulns {
@@ -121,7 +129,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	next := strconv.Itoa(maxScanID(scans))
 	return sourcecdk.Pull{Events: events, Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: next, Watermark: events[len(events)-1].OccurredAt}}, nil
 }
-func parseSettings(cfg sourcecdk.Config) (settings, error) {
+func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	st := settings{
 		tenantID:  first(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
 		family:    first(configValue(cfg, "family"), "vulnerability"),
@@ -135,10 +143,36 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if st.family != "scan" && st.family != "vulnerability" {
 		return st, fmt.Errorf("%w: archetype family must be scan or vulnerability", sourcecdk.ErrInvalidConfig)
 	}
+	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, configValue(cfg, "private_endpoint_allowlist"))
+	if err != nil {
+		return st, err
+	}
+	baseURL, _, err := sourcehttp.NormalizeBaseURLWithOptions(sourceID, st.baseURL, sourcehttp.URLValidationOptions{
+		AllowLoopback:            allowLoopback,
+		PrivateEndpointAllowlist: privateEndpointAllowlist,
+	})
+	if err != nil {
+		return st, err
+	}
+	apiPrefix, err := sourcehttp.NormalizeRequestPath(sourceID, st.apiPrefix)
+	if err != nil {
+		return st, err
+	}
+	st.baseURL = baseURL
+	st.apiPrefix = strings.TrimRight(apiPrefix, "/")
+	st.privateEndpointAllowlist = privateEndpointAllowlist
 	return st, nil
 }
-func (s *Source) get(ctx context.Context, st settings, path string, out any) error {
-	req, err := sourcehttp.NewRequest(ctx, sourceID, st.baseURL, s.allowLoopbackBaseURL, http.MethodGet, st.apiPrefix+path, nil, nil)
+func (s *Source) get(ctx context.Context, st settings, path string, query url.Values, out any) error {
+	requestPath, err := sourcehttp.NormalizeRequestPath(sourceID, st.apiPrefix+path)
+	if err != nil {
+		return err
+	}
+	endpoint := st.baseURL + requestPath
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -146,7 +180,11 @@ func (s *Source) get(ctx context.Context, st settings, path string, out any) err
 		req.Header.Set("Authorization", "Bearer "+st.token)
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := sourcehttp.DoWithRetry(ctx, sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s.allowLoopbackBaseURL}), req, sourcehttp.RetryOptions{})
+	resp, err := sourcehttp.DoWithRetry(ctx, sourcehttp.NewClient(sourcehttp.ClientOptions{
+		SourceID:                 sourceID,
+		AllowLoopback:            s != nil && s.allowLoopbackBaseURL,
+		PrivateEndpointAllowlist: st.privateEndpointAllowlist,
+	}), req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return err
 	}
@@ -157,7 +195,7 @@ func (s *Source) get(ctx context.Context, st settings, path string, out any) err
 }
 func (s *Source) repositories(ctx context.Context, st settings) map[int]repositoryRecord {
 	var repos []repositoryRecord
-	if err := s.get(ctx, st, "/repositories", &repos); err != nil {
+	if err := s.get(ctx, st, "/repositories", nil, &repos); err != nil {
 		return nil
 	}
 	out := map[int]repositoryRecord{}

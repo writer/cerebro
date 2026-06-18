@@ -107,6 +107,34 @@ func TestSourceCheckRejectsBadFamily(t *testing.T) {
 	}
 }
 
+func TestParseSettingsSupportsPrivateEndpointAllowlist(t *testing.T) {
+	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":                  "writer",
+		"base_url":                   "https://archetype.internal.example",
+		"private_endpoint_allowlist": "archetype.internal.example",
+	}), false)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if settings.baseURL != "https://archetype.internal.example" {
+		t.Fatalf("baseURL = %q, want normalized private endpoint origin", settings.baseURL)
+	}
+	if got := settings.privateEndpointAllowlist; len(got) != 1 || got[0] != "archetype.internal.example" {
+		t.Fatalf("privateEndpointAllowlist = %#v, want archetype.internal.example", got)
+	}
+}
+
+func TestParseSettingsRejectsPrivateEndpointAllowlistMismatch(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":                  "writer",
+		"base_url":                   "https://archetype.internal.example",
+		"private_endpoint_allowlist": "other.internal.example",
+	}), false)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want mismatch error")
+	}
+}
+
 func writeJSON(t *testing.T, w http.ResponseWriter, payload any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
