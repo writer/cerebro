@@ -603,11 +603,10 @@ func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error
 	}
 	date := time.Now().UTC().Format(time.RFC1123Z)
 	req.Header.Set("Date", date)
-	req.Header.Set("Host", req.URL.Host)
 	canonical := strings.Join([]string{
 		date,
 		strings.ToUpper(req.Method),
-		req.URL.Host,
+		strings.ToLower(req.URL.Host),
 		req.URL.EscapedPath(),
 		req.URL.Query().Encode(),
 	}, "\n")

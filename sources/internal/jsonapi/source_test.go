@@ -2,12 +2,16 @@ package jsonapi
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,6 +145,50 @@ func TestReadUsesBasicAuth(t *testing.T) {
 	}
 	if len(pull.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+}
+
+func TestDuoHMACAuthLowercasesCanonicalHost(t *testing.T) {
+	request, err := http.NewRequest(http.MethodGet, "https://API-ABC.DUOSECURITY.COM/admin/v1/users?limit=1", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	err = setDuoHMACAuth(request, settings{
+		clientID:     "DIXXXXXXXXXXXXXXXXXX",
+		clientSecret: "deadbeefsecret",
+	}, "duo")
+	if err != nil {
+		t.Fatalf("setDuoHMACAuth: %v", err)
+	}
+	if got := request.Header.Get("Host"); got != "" {
+		t.Fatalf("Host header map value = %q, want empty", got)
+	}
+	date := request.Header.Get("Date")
+	if date == "" {
+		t.Fatal("Date header is empty")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(request.Header.Get("Authorization"), "Basic "))
+	if err != nil {
+		t.Fatalf("decode Authorization: %v", err)
+	}
+	username, signature, ok := strings.Cut(string(decoded), ":")
+	if !ok {
+		t.Fatalf("Authorization payload = %q, want username:signature", decoded)
+	}
+	if username != "DIXXXXXXXXXXXXXXXXXX" {
+		t.Fatalf("Duo integration key = %q, want DIXXXXXXXXXXXXXXXXXX", username)
+	}
+	canonical := strings.Join([]string{
+		date,
+		http.MethodGet,
+		"api-abc.duosecurity.com",
+		"/admin/v1/users",
+		"limit=1",
+	}, "\n")
+	mac := hmac.New(sha1.New, []byte("deadbeefsecret"))
+	_, _ = mac.Write([]byte(canonical))
+	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
+		t.Fatalf("Duo HMAC signature = %q, want %q", signature, want)
 	}
 }
 
