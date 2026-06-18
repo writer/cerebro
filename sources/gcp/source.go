@@ -1124,7 +1124,7 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 	gcpcloud.AddPageToken(query, pageToken)
 	var response computeAggregatedListResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/instances"
-	if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
+	if err := getComputeJSON(ctx, source, settings, path, query, &response); err != nil {
 		return nil, "", err
 	}
 	rawRecords := make([]json.RawMessage, 0)
@@ -1164,7 +1164,7 @@ func computeGlobalLister[T any](collection, label string, extraQuery url.Values)
 		gcpcloud.AddPageToken(query, pageToken)
 		var response pageResponse
 		path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/" + collection
-		if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
+		if err := getComputeJSON(ctx, source, settings, path, query, &response); err != nil {
 			return nil, "", err
 		}
 		records, err := gcpcloud.DecodeRecords(response.Items, label, gcpcloud.SaveRawField[T])
@@ -1196,7 +1196,7 @@ func listComputeAggregatedRecords[T any](ctx context.Context, source *Source, se
 	gcpcloud.AddPageToken(query, pageToken)
 	var response computeAggregatedListResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/" + collection
-	if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
+	if err := getComputeJSON(ctx, source, settings, path, query, &response); err != nil {
 		return nil, "", err
 	}
 	records, err := gcpcloud.DecodeRecords(gcpcloud.ComputeAggregatedRawRecords(response.Items, selectRecords, scopeField), label, gcpcloud.SaveRawField[T])
@@ -1791,7 +1791,7 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 	gcpcloud.AddPageToken(query, pageToken)
 	var response pageResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/firewalls"
-	if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
+	if err := getComputeJSON(ctx, source, settings, path, query, &response); err != nil {
 		return nil, "", err
 	}
 	firewalls, err := gcpcloud.DecodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.Raw = append(json.RawMessage(nil), raw...) })
@@ -1972,8 +1972,8 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 	return getJSONWithMaxBytes(ctx, source, settings, defaultBaseURL, method, requestPath, query, body, target, 0)
 }
 
-func getComputeJSON(ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, body any, target any) error {
-	return getJSONWithMaxBytes(ctx, source, settings, computeBaseURL, http.MethodGet, requestPath, query, body, target, gcpComputeInventoryMaxBodyBytes)
+func getComputeJSON(ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, target any) error {
+	return getJSONWithMaxBytes(ctx, source, settings, computeBaseURL, http.MethodGet, requestPath, query, nil, target, gcpComputeInventoryMaxBodyBytes)
 }
 
 func getJSONWithMaxBytes(ctx context.Context, source *Source, settings settings, defaultBaseURL func() string, method string, requestPath string, query url.Values, body any, target any, maxBytes int) error {
