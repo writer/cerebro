@@ -153,8 +153,9 @@ workflow-replay-test: ## Run workflow replay focused tests.
 finding-rule-test: ## Run finding rule focused tests.
 	go test ./internal/findings -run '$(FINDING_RULE_TESTS)' -count=1 -v
 
-agent-platform-eval: ## Run agent platform protocol, webhook, idempotency, and security eval fixtures.
+agent-platform-eval: ## Run agent platform protocol, webhook, idempotency, security, and Graph Ask eval fixtures.
 	go test ./internal/agentplatform -run 'TestRun(SecurityAgent|AgentPlatform)EvalSuiteFixture|Test(SecurityAgentEvalFixtureCoversSecurityScenarios|AgentPlatformEvalFixtureCoversControlPlane)' -count=1 -v
+	go test ./internal/graphagent -run 'TestAskTrajectoryGoldenEvals|TestScoreAskEvents' -count=1 -v
 
 github-findings-e2e: ## Run GitHub findings end-to-end test against configured repo.
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v

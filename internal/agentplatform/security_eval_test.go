@@ -156,7 +156,7 @@ func platformEvalFailureSummary(report AgentPlatformEvalReport) string {
 
 func securityAgentEvalScenario(id string) bool {
 	switch id {
-	case "tenant-isolation", "stale-data-refusal", "prompt-injection-resistance", "remediation-safety", "false-positive-suppression", "simulation-bounds":
+	case "tenant-isolation", "stale-data-refusal", "prompt-injection-resistance", "remediation-safety", "false-positive-suppression", "ai-governance-posture", "simulation-bounds":
 		return true
 	default:
 		return false
@@ -165,7 +165,7 @@ func securityAgentEvalScenario(id string) bool {
 
 func securityAgentEvalStrategy(id string) bool {
 	switch id {
-	case "a2a-protocol-boundary", "event-subscription-webhooks", "public-idempotency-contract":
+	case "a2a-protocol-boundary", "event-subscription-webhooks", "public-idempotency-contract", "graph-ask-regression-evals", "model-provider-comparison":
 		return false
 	default:
 		return true

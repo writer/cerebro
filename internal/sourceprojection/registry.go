@@ -566,6 +566,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"trivy.image_vulnerability":                     trivyImageVulnerabilityProjections,
 	"evidence_cas.object":                           runtimeEvidenceProjections,
 	"runtime.evidence":                              runtimeEvidenceProjections,
+	"sdk.integration_posture":                       sdkIntegrationPostureProjections,
 	"security_tooling_map.control_mapping":          securityToolingMapControlMappingProjections,
 	"security_tooling_map.tool":                     securityToolingMapToolProjections,
 	"sentinelone.activity":                          sentinelOneActivityProjections,
