@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -76,7 +77,30 @@ func NewWithRegistry(state ports.ProjectionStateStore, graph ports.ProjectionGra
 }
 
 // Project applies one source event to the configured state and graph stores.
-func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (result ports.ProjectionResult, err error) {
+	started := time.Now()
+	defer func() {
+		sourceID := ""
+		eventKind := ""
+		if event != nil {
+			sourceID = event.GetSourceId()
+			eventKind = event.GetKind()
+		}
+		status := "completed"
+		if err != nil {
+			status = "failed"
+		}
+		observability.RecordSourceProjection(ctx, observability.SourceProjectionMetrics{
+			SourceID:          sourceID,
+			EventKind:         eventKind,
+			Status:            status,
+			Duration:          time.Since(started),
+			EntitiesProjected: result.EntitiesProjected,
+			LinksProjected:    result.LinksProjected,
+			EntitiesDeleted:   result.EntitiesDeleted,
+			LinksDeleted:      result.LinksDeleted,
+		})
+	}()
 	if event == nil {
 		return ports.ProjectionResult{}, fmt.Errorf("event is required")
 	}

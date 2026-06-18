@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -241,6 +242,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		telemetry.Field{Key: "page_limit", Value: req.GetPageLimit()},
 		telemetry.Field{Key: "operation.type", Value: "source_runtime_sync"},
 	))
+	started := time.Now()
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
 	var (
@@ -248,6 +250,12 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventContracts      []sourcecdk.EventContract
 		contractConfigured  bool
 		runtimeLoadedForRun bool
+		eventsAppended      uint32
+		pagesRead           uint32
+		recordsScanned      uint32
+		recordsRejected     uint32
+		entitiesProjected   uint32
+		linksProjected      uint32
 	)
 	defer func() {
 		if err != nil {
@@ -267,6 +275,29 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "source_runtime.id", Value: runtimeID},
 		)))
 		telemetry.AnnotateMainPhase(ctx, "source_runtime.sync", status, spanAttributes)
+		sourceID := ""
+		watermarkLagSeconds := int64(0)
+		hasWatermarkLag := false
+		if runtime != nil {
+			sourceID = runtime.GetSourceId()
+			_, watermarkLagSeconds, hasWatermarkLag = runtimeWatermarkLag(runtime, time.Now().UTC())
+		}
+		observability.RecordSourceRuntimeSync(ctx, observability.SourceRuntimeSyncMetrics{
+			SourceID:            sourceID,
+			Status:              status,
+			ErrorKind:           sourceRuntimeTelemetryErrorKind(err),
+			ContractConfigured:  contractConfigured,
+			Duration:            time.Since(started),
+			PagesRead:           pagesRead,
+			RecordsScanned:      recordsScanned,
+			RecordsAccepted:     eventsAppended,
+			RecordsRejected:     recordsRejected,
+			EventsAppended:      eventsAppended,
+			EntitiesProjected:   entitiesProjected,
+			LinksProjected:      linksProjected,
+			WatermarkLagSeconds: watermarkLagSeconds,
+			HasWatermarkLag:     hasWatermarkLag,
+		})
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.store == nil || s.appendLog == nil {
@@ -298,14 +329,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		return nil, err
 	}
 	cursor := runtimeStartCursor(runtime)
-	var (
-		eventsAppended    uint32
-		pagesRead         uint32
-		recordsScanned    uint32
-		recordsRejected   uint32
-		entitiesProjected uint32
-		linksProjected    uint32
-	)
 	if provider, ok := source.(sourcecdk.EventContractProvider); ok {
 		eventContracts = provider.EventContracts()
 	}
@@ -465,6 +488,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 }
 
 func sourceRuntimeTelemetryErrorKind(err error) string {
+	if err == nil {
+		return ""
+	}
 	switch {
 	case errors.Is(err, ErrInvalidRequest):
 		return "invalid_request"
