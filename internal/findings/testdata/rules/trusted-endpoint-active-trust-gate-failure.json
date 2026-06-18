@@ -68,28 +68,16 @@
         "primary_resource_urn": "urn:cerebro:writer:trusted_endpoint_agent:dev-risky",
         "rule_required_attributes": "agent_id,action,decision"
       }
-    },
-    {
-      "rule_id": "trusted-endpoint-active-trust-gate-failure",
-      "severity": "HIGH",
-      "status": "open",
-      "summary": "Trusted Endpoint agent dev-offboarded is failing the trust gate for action git_push",
-      "event_ids": ["trusted-endpoint-gate-deprovisioned"],
-      "attributes": {
-        "trusted_endpoint_gate_urn": "urn:cerebro:writer:trusted_endpoint_trust_gate:dev-offboarded:git_push",
-        "trusted_endpoint_agent_urn": "urn:cerebro:writer:trusted_endpoint_agent:dev-offboarded",
-        "agent_id": "dev-offboarded",
-        "action": "git_push",
-        "decision": "deny",
-        "primary_resource_urn": "urn:cerebro:writer:trusted_endpoint_agent:dev-offboarded",
-        "rule_required_attributes": "agent_id,action,decision"
-      }
     }
   ],
   "expected_no_match": [
     {
       "event_id": "trusted-endpoint-gate-allow",
       "reason": "allow decision means the agent currently passes the trust gate"
+    },
+    {
+      "event_id": "trusted-endpoint-gate-deprovisioned",
+      "reason": "deprovisioned agents should close or suppress stale trust-gate failures"
     }
   ]
 }
