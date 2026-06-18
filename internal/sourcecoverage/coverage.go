@@ -70,6 +70,31 @@ type Summary struct {
 	BlindSpots   int    `json:"blind_spots"`
 }
 
+type Report struct {
+	Version            string    `json:"version"`
+	GeneratedAt        string    `json:"generated_at,omitempty"`
+	TenantID           string    `json:"tenant_id,omitempty"`
+	SourceID           string    `json:"source_id,omitempty"`
+	Totals             Totals    `json:"totals"`
+	Records            []Record  `json:"records"`
+	BlindSpots         []Record  `json:"blind_spots"`
+	Summaries          []Summary `json:"summaries"`
+	BlindSpotSummaries []Summary `json:"blind_spot_summaries"`
+}
+
+type Totals struct {
+	Dimensions          int `json:"dimensions"`
+	HighValueDimensions int `json:"high_value_dimensions"`
+	Healthy             int `json:"healthy"`
+	Partial             int `json:"partial"`
+	Unsupported         int `json:"unsupported"`
+	Unconfigured        int `json:"unconfigured"`
+	Stale               int `json:"stale"`
+	Failed              int `json:"failed"`
+	Unknown             int `json:"unknown"`
+	BlindSpots          int `json:"blind_spots"`
+}
+
 func ContractsFromRegistry(registry *sourcecdk.Registry) []sourcecdk.CoverageContract {
 	if registry == nil {
 		return nil
@@ -142,6 +167,75 @@ func BlindSpots(records []Record) []Record {
 	return out
 }
 
+func FirstTenantID(records []Record) string {
+	for _, record := range records {
+		if tenantID := strings.TrimSpace(record.TenantID); tenantID != "" {
+			return tenantID
+		}
+	}
+	return ""
+}
+
+func BuildReport(records []Record, options Options, generatedAt time.Time) Report {
+	options.TenantID = strings.TrimSpace(options.TenantID)
+	options.SourceID = strings.TrimSpace(options.SourceID)
+	clonedRecords := cloneRecords(records)
+	blindSpots := BlindSpots(clonedRecords)
+	return Report{
+		Version:            "source-coverage/v1",
+		GeneratedAt:        generatedAt.UTC().Format(time.RFC3339Nano),
+		TenantID:           options.TenantID,
+		SourceID:           options.SourceID,
+		Totals:             TotalsFor(clonedRecords),
+		Records:            clonedRecords,
+		BlindSpots:         blindSpots,
+		Summaries:          Summaries(clonedRecords),
+		BlindSpotSummaries: Summaries(blindSpots),
+	}
+}
+
+func BuildScopedReport(records []Record, tenantID string, sourceID string, generatedAt string) Report {
+	reportTime := time.Now().UTC()
+	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(generatedAt)); err == nil {
+		reportTime = parsed
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		tenantID = FirstTenantID(records)
+	}
+	return BuildReport(records, Options{TenantID: tenantID, SourceID: strings.TrimSpace(sourceID)}, reportTime)
+}
+
+func TotalsFor(records []Record) Totals {
+	var totals Totals
+	for _, record := range records {
+		totals.Dimensions++
+		if record.HighValue {
+			totals.HighValueDimensions++
+		}
+		switch record.State {
+		case StateHealthy:
+			totals.Healthy++
+		case StatePartial:
+			totals.Partial++
+		case StateUnsupported:
+			totals.Unsupported++
+		case StateUnconfigured:
+			totals.Unconfigured++
+		case StateStale:
+			totals.Stale++
+		case StateFailed:
+			totals.Failed++
+		default:
+			totals.Unknown++
+		}
+		if record.BlindSpot {
+			totals.BlindSpots++
+		}
+	}
+	return totals
+}
+
 func Summaries(records []Record) []Summary {
 	bySource := map[string]*Summary{}
 	for _, record := range records {
@@ -189,6 +283,17 @@ func Summaries(records []Record) []Summary {
 		return summaries[i].SourceID < summaries[j].SourceID
 	})
 	return summaries
+}
+
+func cloneRecords(records []Record) []Record {
+	cloned := make([]Record, len(records))
+	for i, record := range records {
+		cloned[i] = record
+		cloned[i].KnownUnsupportedFields = append([]string(nil), record.KnownUnsupportedFields...)
+		cloned[i].Notes = append([]string(nil), record.Notes...)
+		cloned[i].SupportedRuntimeFamilies = append([]string(nil), record.SupportedRuntimeFamilies...)
+	}
+	return cloned
 }
 
 func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.CoverageDimension, observations []RuntimeObservation, options Options) Record {

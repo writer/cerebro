@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,10 +20,14 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	networkingv1client "k8s.io/client-go/kubernetes/typed/networking/v1"
+	rbacv1client "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -34,9 +39,14 @@ const (
 	sourceID = "kubernetes"
 
 	familyCluster                 = "cluster"
+	familyIngress                 = "ingress"
 	familyNamespace               = "namespace"
+	familyNode                    = "node"
 	familyPod                     = "pod"
+	familyService                 = "service"
 	familyContainer               = "container"
+	familyRBACBinding             = "rbac_binding"
+	familyRBACRole                = "rbac_role"
 	familyServiceAccount          = "service_account"
 	familyWorkload                = "workload"
 	familyWorkloadIdentityBinding = "workload_identity_binding"
@@ -49,6 +59,8 @@ const (
 type clientset interface {
 	Discovery() discovery.DiscoveryInterface
 	CoreV1() corev1client.CoreV1Interface
+	NetworkingV1() networkingv1client.NetworkingV1Interface
+	RbacV1() rbacv1client.RbacV1Interface
 }
 
 type settings struct {
@@ -106,9 +118,14 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	return sourcecdk.NewFamilyEngine(s.parseSettings, func(st settings) string { return st.family },
 		sourcecdk.Family[settings]{Name: familyCluster, Check: s.check, Discover: s.discoverCluster, Read: s.readCluster},
+		sourcecdk.Family[settings]{Name: familyIngress, Check: s.check, Discover: s.discoverIngresses, Read: s.readIngresses},
 		sourcecdk.Family[settings]{Name: familyNamespace, Check: s.check, Discover: s.discoverNamespaces, Read: s.readNamespaces},
+		sourcecdk.Family[settings]{Name: familyNode, Check: s.check, Discover: s.discoverNodes, Read: s.readNodes},
 		sourcecdk.Family[settings]{Name: familyPod, Check: s.check, Discover: s.discoverPods, Read: s.readPods},
+		sourcecdk.Family[settings]{Name: familyService, Check: s.check, Discover: s.discoverServices, Read: s.readServices},
 		sourcecdk.Family[settings]{Name: familyContainer, Check: s.check, Discover: s.discoverPods, Read: s.readContainers},
+		sourcecdk.Family[settings]{Name: familyRBACRole, Check: s.check, Discover: s.discoverRBACRoles, Read: s.readRBACRoles},
+		sourcecdk.Family[settings]{Name: familyRBACBinding, Check: s.check, Discover: s.discoverRBACBindings, Read: s.readRBACBindings},
 		sourcecdk.Family[settings]{Name: familyServiceAccount, Check: s.check, Discover: s.discoverServiceAccounts, Read: s.readServiceAccounts},
 		sourcecdk.Family[settings]{Name: familyWorkload, Check: s.check, Discover: s.discoverPods, Read: s.readWorkloads},
 		sourcecdk.Family[settings]{Name: familyWorkloadIdentityBinding, Check: s.check, Discover: s.discoverServiceAccounts, Read: s.readWorkloadIdentityBindings},
@@ -132,9 +149,9 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		st.family = defaultFamily
 	}
 	switch st.family {
-	case familyCluster, familyNamespace, familyPod, familyContainer, familyServiceAccount, familyWorkload, familyWorkloadIdentityBinding:
+	case familyCluster, familyIngress, familyNamespace, familyNode, familyPod, familyService, familyContainer, familyRBACBinding, familyRBACRole, familyServiceAccount, familyWorkload, familyWorkloadIdentityBinding:
 	default:
-		return st, fmt.Errorf("kubernetes family must be one of cluster, namespace, pod, container, service_account, workload, or workload_identity_binding")
+		return st, fmt.Errorf("kubernetes family must be one of cluster, ingress, namespace, node, pod, service, container, rbac_binding, rbac_role, service_account, workload, or workload_identity_binding")
 	}
 	if st.tenantID == "" {
 		return st, fmt.Errorf("kubernetes tenant_id is required")
@@ -195,6 +212,22 @@ func (s *Source) discoverCluster(ctx context.Context, st settings) ([]sourcecdk.
 	return parseURNs(clusterURN(st, info.ClusterID))
 }
 
+func (s *Source) discoverIngresses(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return nil, err
+	}
+	items, _, err := listIngresses(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	urns := make([]string, 0, len(items))
+	for _, item := range items {
+		urns = append(urns, ingressURN(st, item.Namespace, item.Name))
+	}
+	return parseURNs(urns...)
+}
+
 func (s *Source) discoverNamespaces(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
 	client, err := s.clientFactory(st)
 	if err != nil {
@@ -207,6 +240,22 @@ func (s *Source) discoverNamespaces(ctx context.Context, st settings) ([]sourcec
 	urns := make([]string, 0, len(items))
 	for _, item := range items {
 		urns = append(urns, namespaceURN(st, string(item.UID), item.Name))
+	}
+	return parseURNs(urns...)
+}
+
+func (s *Source) discoverNodes(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return nil, err
+	}
+	items, _, err := listNodes(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	urns := make([]string, 0, len(items))
+	for _, item := range items {
+		urns = append(urns, nodeURN(st, item.Name))
 	}
 	return parseURNs(urns...)
 }
@@ -227,6 +276,22 @@ func (s *Source) discoverPods(ctx context.Context, st settings) ([]sourcecdk.URN
 	return parseURNs(urns...)
 }
 
+func (s *Source) discoverServices(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return nil, err
+	}
+	items, _, err := listServices(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	urns := make([]string, 0, len(items))
+	for _, item := range items {
+		urns = append(urns, serviceURN(st, item.Namespace, item.Name))
+	}
+	return parseURNs(urns...)
+}
+
 func (s *Source) discoverServiceAccounts(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
 	client, err := s.clientFactory(st)
 	if err != nil {
@@ -243,6 +308,52 @@ func (s *Source) discoverServiceAccounts(ctx context.Context, st settings) ([]so
 	return parseURNs(urns...)
 }
 
+func (s *Source) discoverRBACRoles(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return nil, err
+	}
+	roles, _, err := listRBACRoles(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	clusterRoles, _, err := listRBACClusterRoles(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	urns := make([]string, 0, len(roles)+len(clusterRoles))
+	for _, item := range roles {
+		urns = append(urns, rbacRoleURN(st, "Role", item.Namespace, item.Name))
+	}
+	for _, item := range clusterRoles {
+		urns = append(urns, rbacRoleURN(st, "ClusterRole", "", item.Name))
+	}
+	return parseURNs(urns...)
+}
+
+func (s *Source) discoverRBACBindings(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return nil, err
+	}
+	bindings, _, err := listRBACRoleBindings(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	clusterBindings, _, err := listRBACClusterRoleBindings(ctx, client, st.perPage, "")
+	if err != nil {
+		return nil, err
+	}
+	urns := make([]string, 0, len(bindings)+len(clusterBindings))
+	for _, item := range bindings {
+		urns = append(urns, rbacBindingURN(st, "RoleBinding", item.Namespace, item.Name))
+	}
+	for _, item := range clusterBindings {
+		urns = append(urns, rbacBindingURN(st, "ClusterRoleBinding", "", item.Name))
+	}
+	return parseURNs(urns...)
+}
+
 func (s *Source) readCluster(ctx context.Context, st settings, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	info, err := s.clusterInfo(ctx, st)
 	if err != nil {
@@ -253,6 +364,29 @@ func (s *Source) readCluster(ctx context.Context, st settings, _ *cerebrov1.Sour
 		return sourcecdk.Pull{}, err
 	}
 	return sourcecdk.Pull{Events: []*primitives.Event{event}}, nil
+}
+
+func (s *Source) readIngresses(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	items, next, err := listIngresses(ctx, client, st.perPage, cursor.GetOpaque())
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := make([]*primitives.Event, 0, len(items))
+	for _, item := range items {
+		payload := ingressPayload(item)
+		attrs := ingressAttributes(st, item)
+		id := "kubernetes-ingress-" + stableID(st.clusterIdentity()+"/"+item.Namespace+"/"+item.Name)
+		event, err := s.event(st, id, "kubernetes.ingress", "kubernetes/ingress/v1", payload, attrs, objectTime(item.CreationTimestamp, s.now()))
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	return pullWithCursor(events, next), nil
 }
 
 func (s *Source) readNamespaces(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
@@ -270,6 +404,29 @@ func (s *Source) readNamespaces(ctx context.Context, st settings, cursor *cerebr
 		attrs := resourceAttributes(st, "namespace", string(item.UID), item.Name, item.Name)
 		attrs["namespace"] = item.Name
 		event, err := s.event(st, "kubernetes-namespace-"+string(item.UID), "kubernetes.namespace", "kubernetes/namespace/v1", payload, attrs, objectTime(item.CreationTimestamp, s.now()))
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	return pullWithCursor(events, next), nil
+}
+
+func (s *Source) readNodes(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	items, next, err := listNodes(ctx, client, st.perPage, cursor.GetOpaque())
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := make([]*primitives.Event, 0, len(items))
+	for _, item := range items {
+		payload := nodePayload(item)
+		attrs := nodeAttributes(st, item)
+		id := "kubernetes-node-" + stableID(st.clusterIdentity()+"/"+item.Name)
+		event, err := s.event(st, id, "kubernetes.node", "kubernetes/node/v1", payload, attrs, objectTime(item.CreationTimestamp, s.now()))
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -309,6 +466,29 @@ func (s *Source) readPodLike(ctx context.Context, st settings, cursor *cerebrov1
 	return pullWithCursor(events, next), nil
 }
 
+func (s *Source) readServices(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	items, next, err := listServices(ctx, client, st.perPage, cursor.GetOpaque())
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := make([]*primitives.Event, 0, len(items))
+	for _, item := range items {
+		payload := servicePayload(item)
+		attrs := serviceAttributes(st, item)
+		id := "kubernetes-service-" + stableID(st.clusterIdentity()+"/"+item.Namespace+"/"+item.Name)
+		event, err := s.event(st, id, "kubernetes.service", "kubernetes/service/v1", payload, attrs, objectTime(item.CreationTimestamp, s.now()))
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	return pullWithCursor(events, next), nil
+}
+
 func (s *Source) readContainers(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	client, err := s.clientFactory(st)
 	if err != nil {
@@ -334,6 +514,104 @@ func (s *Source) readContainers(ctx context.Context, st settings, cursor *cerebr
 		}
 	}
 	return pullWithCursor(events, next), nil
+}
+
+func (s *Source) readRBACRoles(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	state, err := parseKubernetesStageCursor(cursor.GetOpaque(), "role", "rbac_role")
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := []*primitives.Event{}
+	switch state.Stage {
+	case "role":
+		roles, next, err := listRBACRoles(ctx, client, st.perPage, state.Token)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		for _, role := range roles {
+			event, err := s.rbacRoleEvent(st, kubernetesRBACRole{Kind: "Role", Name: role.Name, Namespace: role.Namespace, UID: string(role.UID), Rules: role.Rules, Created: role.CreationTimestamp})
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			events = append(events, event)
+		}
+		if next != "" {
+			return pullWithCursor(events, encodeKubernetesStageCursor(kubernetesStageCursor{Stage: "role", Token: next})), nil
+		}
+		state = kubernetesStageCursor{Stage: "cluster_role"}
+		fallthrough
+	case "cluster_role":
+		clusterRoles, next, err := listRBACClusterRoles(ctx, client, st.perPage, state.Token)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		for _, role := range clusterRoles {
+			event, err := s.rbacRoleEvent(st, kubernetesRBACRole{Kind: "ClusterRole", Name: role.Name, UID: string(role.UID), Rules: role.Rules, Created: role.CreationTimestamp})
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			events = append(events, event)
+		}
+		if next != "" {
+			return pullWithCursor(events, encodeKubernetesStageCursor(kubernetesStageCursor{Stage: "cluster_role", Token: next})), nil
+		}
+	default:
+		return sourcecdk.Pull{}, fmt.Errorf("unknown kubernetes rbac_role cursor stage %q", state.Stage)
+	}
+	return sourcecdk.Pull{Events: events}, nil
+}
+
+func (s *Source) readRBACBindings(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	client, err := s.clientFactory(st)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	state, err := parseKubernetesStageCursor(cursor.GetOpaque(), "role_binding", "rbac_binding")
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := []*primitives.Event{}
+	switch state.Stage {
+	case "role_binding":
+		bindings, next, err := listRBACRoleBindings(ctx, client, st.perPage, state.Token)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		for _, binding := range bindings {
+			event, err := s.rbacBindingEvent(st, kubernetesRBACBinding{Kind: "RoleBinding", Name: binding.Name, Namespace: binding.Namespace, UID: string(binding.UID), RoleRef: binding.RoleRef, Subjects: binding.Subjects, Created: binding.CreationTimestamp})
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			events = append(events, event)
+		}
+		if next != "" {
+			return pullWithCursor(events, encodeKubernetesStageCursor(kubernetesStageCursor{Stage: "role_binding", Token: next})), nil
+		}
+		state = kubernetesStageCursor{Stage: "cluster_role_binding"}
+		fallthrough
+	case "cluster_role_binding":
+		clusterBindings, next, err := listRBACClusterRoleBindings(ctx, client, st.perPage, state.Token)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		for _, binding := range clusterBindings {
+			event, err := s.rbacBindingEvent(st, kubernetesRBACBinding{Kind: "ClusterRoleBinding", Name: binding.Name, UID: string(binding.UID), RoleRef: binding.RoleRef, Subjects: binding.Subjects, Created: binding.CreationTimestamp})
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			events = append(events, event)
+		}
+		if next != "" {
+			return pullWithCursor(events, encodeKubernetesStageCursor(kubernetesStageCursor{Stage: "cluster_role_binding", Token: next})), nil
+		}
+	default:
+		return sourcecdk.Pull{}, fmt.Errorf("unknown kubernetes rbac_binding cursor stage %q", state.Stage)
+	}
+	return sourcecdk.Pull{Events: events}, nil
 }
 
 func (s *Source) readServiceAccounts(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
@@ -422,6 +700,22 @@ func listNamespaces(ctx context.Context, client clientset, limit int64, cursor s
 	return out.Items, out.Continue, nil
 }
 
+func listIngresses(ctx context.Context, client clientset, limit int64, cursor string) ([]networkingv1.Ingress, string, error) {
+	out, err := client.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes ingresses: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
+func listNodes(ctx context.Context, client clientset, limit int64, cursor string) ([]v1.Node, string, error) {
+	out, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes nodes: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
 func listPods(ctx context.Context, client clientset, limit int64, cursor string) ([]v1.Pod, string, error) {
 	out, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
 	if err != nil {
@@ -430,10 +724,50 @@ func listPods(ctx context.Context, client clientset, limit int64, cursor string)
 	return out.Items, out.Continue, nil
 }
 
+func listServices(ctx context.Context, client clientset, limit int64, cursor string) ([]v1.Service, string, error) {
+	out, err := client.CoreV1().Services("").List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes services: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
 func listServiceAccounts(ctx context.Context, client clientset, limit int64, cursor string) ([]v1.ServiceAccount, string, error) {
 	out, err := client.CoreV1().ServiceAccounts("").List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
 	if err != nil {
 		return nil, "", fmt.Errorf("list kubernetes service accounts: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
+func listRBACRoles(ctx context.Context, client clientset, limit int64, cursor string) ([]rbacv1.Role, string, error) {
+	out, err := client.RbacV1().Roles("").List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes roles: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
+func listRBACClusterRoles(ctx context.Context, client clientset, limit int64, cursor string) ([]rbacv1.ClusterRole, string, error) {
+	out, err := client.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes cluster roles: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
+func listRBACRoleBindings(ctx context.Context, client clientset, limit int64, cursor string) ([]rbacv1.RoleBinding, string, error) {
+	out, err := client.RbacV1().RoleBindings("").List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes role bindings: %w", err)
+	}
+	return out.Items, out.Continue, nil
+}
+
+func listRBACClusterRoleBindings(ctx context.Context, client clientset, limit int64, cursor string) ([]rbacv1.ClusterRoleBinding, string, error) {
+	out, err := client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{Limit: limit, Continue: strings.TrimSpace(cursor)})
+	if err != nil {
+		return nil, "", fmt.Errorf("list kubernetes cluster role bindings: %w", err)
 	}
 	return out.Items, out.Continue, nil
 }
@@ -486,6 +820,45 @@ func resourceAttributes(st settings, resourceType string, resourceID string, res
 	return attrs
 }
 
+func ingressAttributes(st settings, ingress networkingv1.Ingress) map[string]string {
+	attrs := resourceAttributes(st, "ingress", firstNonEmpty(string(ingress.UID), ingress.Namespace+"/"+ingress.Name), ingress.Name, ingress.Namespace)
+	attrs["uid"] = string(ingress.UID)
+	attrs["ingress_name"] = ingress.Name
+	add(attrs, "ingress_class_name", stringPointerValue(ingress.Spec.IngressClassName))
+	add(attrs, "hosts", strings.Join(ingressHosts(ingress), ","))
+	add(attrs, "tls_hosts", strings.Join(ingressTLSHosts(ingress), ","))
+	add(attrs, "tls_secret_names", strings.Join(ingressTLSSecretNames(ingress), ","))
+	add(attrs, "backend_services", strings.Join(ingressBackendServices(ingress), ","))
+	add(attrs, "load_balancer_ips", strings.Join(ingressLoadBalancerIPs(ingress), ","))
+	add(attrs, "load_balancer_hostnames", strings.Join(ingressLoadBalancerHostnames(ingress), ","))
+	add(attrs, "rules", jsonAttribute(ingressRuleSummaries(ingress)))
+	return attrs
+}
+
+func nodeAttributes(st settings, node v1.Node) map[string]string {
+	attrs := resourceAttributes(st, "node", firstNonEmpty(string(node.UID), node.Name), node.Name, "")
+	attrs["uid"] = string(node.UID)
+	attrs["node_name"] = node.Name
+	attrs["ready"] = boolString(nodeReady(node))
+	attrs["unschedulable"] = boolString(node.Spec.Unschedulable)
+	add(attrs, "provider_id", node.Spec.ProviderID)
+	add(attrs, "pod_cidr", node.Spec.PodCIDR)
+	add(attrs, "pod_cidrs", strings.Join(node.Spec.PodCIDRs, ","))
+	add(attrs, "internal_ip", nodeAddress(node, v1.NodeInternalIP))
+	add(attrs, "external_ip", nodeAddress(node, v1.NodeExternalIP))
+	add(attrs, "kernel_version", node.Status.NodeInfo.KernelVersion)
+	add(attrs, "kubelet_version", node.Status.NodeInfo.KubeletVersion)
+	add(attrs, "container_runtime_version", node.Status.NodeInfo.ContainerRuntimeVersion)
+	add(attrs, "os_image", node.Status.NodeInfo.OSImage)
+	add(attrs, "operating_system", node.Status.NodeInfo.OperatingSystem)
+	add(attrs, "architecture", node.Status.NodeInfo.Architecture)
+	add(attrs, "labels", jsonAttribute(node.Labels))
+	add(attrs, "taints", jsonAttribute(node.Spec.Taints))
+	add(attrs, "capacity", jsonAttribute(node.Status.Capacity))
+	add(attrs, "allocatable", jsonAttribute(node.Status.Allocatable))
+	return attrs
+}
+
 func podAttributes(st settings, pod v1.Pod) map[string]string {
 	attrs := resourceAttributes(st, "pod", string(pod.UID), pod.Name, pod.Namespace)
 	attrs["uid"] = string(pod.UID)
@@ -532,6 +905,22 @@ func containerAttributes(st settings, pod v1.Pod, container v1.Container, status
 	return attrs
 }
 
+func serviceAttributes(st settings, service v1.Service) map[string]string {
+	attrs := resourceAttributes(st, "service", firstNonEmpty(string(service.UID), service.Namespace+"/"+service.Name), service.Name, service.Namespace)
+	attrs["uid"] = string(service.UID)
+	attrs["service_name"] = service.Name
+	attrs["service_type"] = string(service.Spec.Type)
+	add(attrs, "cluster_ip", service.Spec.ClusterIP)
+	add(attrs, "cluster_ips", strings.Join(service.Spec.ClusterIPs, ","))
+	add(attrs, "external_name", service.Spec.ExternalName)
+	add(attrs, "external_ips", strings.Join(service.Spec.ExternalIPs, ","))
+	add(attrs, "load_balancer_ips", strings.Join(serviceLoadBalancerIPs(service), ","))
+	add(attrs, "load_balancer_hostnames", strings.Join(serviceLoadBalancerHostnames(service), ","))
+	add(attrs, "ports", jsonAttribute(servicePortSummaries(service.Spec.Ports)))
+	add(attrs, "selector", jsonAttribute(service.Spec.Selector))
+	return attrs
+}
+
 func serviceAccountAttributes(st settings, account v1.ServiceAccount) map[string]string {
 	attrs := resourceAttributes(st, "service_account", firstNonEmpty(string(account.UID), account.Namespace+"/"+account.Name), account.Name, account.Namespace)
 	attrs["service_account_name"] = account.Name
@@ -546,6 +935,133 @@ func serviceAccountAttributes(st settings, account v1.ServiceAccount) map[string
 		attrs["gcp_service_account"] = email
 	}
 	return attrs
+}
+
+type kubernetesRBACRole struct {
+	Kind      string
+	Name      string
+	Namespace string
+	UID       string
+	Rules     []rbacv1.PolicyRule
+	Created   metav1.Time
+}
+
+type kubernetesRBACBinding struct {
+	Kind      string
+	Name      string
+	Namespace string
+	UID       string
+	RoleRef   rbacv1.RoleRef
+	Subjects  []rbacv1.Subject
+	Created   metav1.Time
+}
+
+func (s *Source) rbacRoleEvent(st settings, role kubernetesRBACRole) (*primitives.Event, error) {
+	attrs := rbacRoleAttributes(st, role)
+	rules := role.Rules
+	if rules == nil {
+		rules = []rbacv1.PolicyRule{}
+	}
+	payload := map[string]any{
+		"uid":        role.UID,
+		"name":       role.Name,
+		"namespace":  role.Namespace,
+		"role_kind":  role.Kind,
+		"role_scope": rbacScope(role.Namespace),
+		"rules":      rules,
+	}
+	id := "kubernetes-rbac-role-" + stableID(st.clusterIdentity()+"/"+role.Kind+"/"+role.Namespace+"/"+role.Name+"/"+role.UID)
+	return s.event(st, id, "kubernetes.rbac_role", "kubernetes/rbac_role/v1", payload, attrs, objectTime(role.Created, s.now()))
+}
+
+func (s *Source) rbacBindingEvent(st settings, binding kubernetesRBACBinding) (*primitives.Event, error) {
+	attrs := rbacBindingAttributes(st, binding)
+	payload := map[string]any{
+		"uid":           binding.UID,
+		"name":          binding.Name,
+		"namespace":     binding.Namespace,
+		"binding_kind":  binding.Kind,
+		"binding_scope": rbacScope(binding.Namespace),
+		"role_ref":      binding.RoleRef,
+		"subjects":      binding.Subjects,
+	}
+	id := "kubernetes-rbac-binding-" + stableID(st.clusterIdentity()+"/"+binding.Kind+"/"+binding.Namespace+"/"+binding.Name+"/"+binding.UID)
+	return s.event(st, id, "kubernetes.rbac_binding", "kubernetes/rbac_binding/v1", payload, attrs, objectTime(binding.Created, s.now()))
+}
+
+func rbacRoleAttributes(st settings, role kubernetesRBACRole) map[string]string {
+	attrs := resourceAttributes(st, "rbac_role", firstNonEmpty(role.UID, role.Kind+"/"+role.Namespace+"/"+role.Name), role.Name, role.Namespace)
+	attrs["uid"] = role.UID
+	attrs["role_kind"] = role.Kind
+	attrs["role_name"] = role.Name
+	attrs["role_scope"] = rbacScope(role.Namespace)
+	attrs["rules"] = strings.Join(rbacRuleSummaries(role.Rules), ";")
+	attrs["api_groups"] = strings.Join(rbacRuleValues(role.Rules, func(rule rbacv1.PolicyRule) []string { return rule.APIGroups }), ",")
+	attrs["resources"] = strings.Join(rbacRuleValues(role.Rules, func(rule rbacv1.PolicyRule) []string { return rule.Resources }), ",")
+	attrs["verbs"] = strings.Join(rbacRuleValues(role.Rules, func(rule rbacv1.PolicyRule) []string { return rule.Verbs }), ",")
+	return attrs
+}
+
+func rbacBindingAttributes(st settings, binding kubernetesRBACBinding) map[string]string {
+	attrs := resourceAttributes(st, "rbac_binding", firstNonEmpty(binding.UID, binding.Kind+"/"+binding.Namespace+"/"+binding.Name), binding.Name, binding.Namespace)
+	attrs["uid"] = binding.UID
+	attrs["binding_kind"] = binding.Kind
+	attrs["binding_name"] = binding.Name
+	attrs["binding_scope"] = rbacScope(binding.Namespace)
+	attrs["role_api_group"] = binding.RoleRef.APIGroup
+	attrs["role_kind"] = binding.RoleRef.Kind
+	attrs["role_name"] = binding.RoleRef.Name
+	attrs["subject_count"] = strconv.Itoa(len(binding.Subjects))
+	attrs["subject_refs"] = rbacSubjectRefsAttribute(binding.Subjects, binding.Namespace)
+	attrs["subject_kinds"] = strings.Join(rbacSubjectValues(binding.Subjects, func(subject rbacv1.Subject) string { return subject.Kind }), ",")
+	attrs["subject_names"] = strings.Join(rbacSubjectValues(binding.Subjects, func(subject rbacv1.Subject) string {
+		return subject.Name
+	}), ",")
+	return attrs
+}
+
+func ingressPayload(ingress networkingv1.Ingress) map[string]any {
+	return map[string]any{
+		"uid":                     string(ingress.UID),
+		"name":                    ingress.Name,
+		"namespace":               ingress.Namespace,
+		"ingress_class_name":      ingress.Spec.IngressClassName,
+		"rules":                   ingressPayloadRules(ingress.Spec.Rules),
+		"tls":                     ingress.Spec.TLS,
+		"default_backend":         ingress.Spec.DefaultBackend,
+		"load_balancer_ingress":   ingress.Status.LoadBalancer.Ingress,
+		"hosts":                   ingressHosts(ingress),
+		"tls_hosts":               ingressTLSHosts(ingress),
+		"backend_services":        ingressBackendServices(ingress),
+		"load_balancer_ips":       ingressLoadBalancerIPs(ingress),
+		"load_balancer_hostnames": ingressLoadBalancerHostnames(ingress),
+		"labels":                  ingress.Labels,
+		"annotations":             ingress.Annotations,
+	}
+}
+
+func nodePayload(node v1.Node) map[string]any {
+	return map[string]any{
+		"uid":               string(node.UID),
+		"name":              node.Name,
+		"provider_id":       node.Spec.ProviderID,
+		"unschedulable":     node.Spec.Unschedulable,
+		"pod_cidr":          node.Spec.PodCIDR,
+		"pod_cidrs":         node.Spec.PodCIDRs,
+		"taints":            node.Spec.Taints,
+		"labels":            node.Labels,
+		"annotations":       node.Annotations,
+		"addresses":         node.Status.Addresses,
+		"conditions":        node.Status.Conditions,
+		"capacity":          node.Status.Capacity,
+		"allocatable":       node.Status.Allocatable,
+		"node_info":         node.Status.NodeInfo,
+		"ready":             nodeReady(node),
+		"internal_ip":       nodeAddress(node, v1.NodeInternalIP),
+		"external_ip":       nodeAddress(node, v1.NodeExternalIP),
+		"kubelet_version":   node.Status.NodeInfo.KubeletVersion,
+		"container_runtime": node.Status.NodeInfo.ContainerRuntimeVersion,
+	}
 }
 
 func podPayload(pod v1.Pod) map[string]any {
@@ -587,6 +1103,41 @@ func containerPayload(pod v1.Pod, container v1.Container, status *v1.ContainerSt
 	return payload
 }
 
+func servicePayload(service v1.Service) map[string]any {
+	return map[string]any{
+		"uid":                     string(service.UID),
+		"name":                    service.Name,
+		"namespace":               service.Namespace,
+		"type":                    string(service.Spec.Type),
+		"cluster_ip":              service.Spec.ClusterIP,
+		"cluster_ips":             service.Spec.ClusterIPs,
+		"external_ips":            service.Spec.ExternalIPs,
+		"external_name":           service.Spec.ExternalName,
+		"ip_families":             service.Spec.IPFamilies,
+		"ports":                   servicePayloadPorts(service.Spec.Ports),
+		"selector":                service.Spec.Selector,
+		"load_balancer_ingress":   service.Status.LoadBalancer.Ingress,
+		"load_balancer_ips":       serviceLoadBalancerIPs(service),
+		"load_balancer_hostnames": serviceLoadBalancerHostnames(service),
+		"labels":                  service.Labels,
+		"annotations":             service.Annotations,
+	}
+}
+
+func ingressPayloadRules(rules []networkingv1.IngressRule) []networkingv1.IngressRule {
+	if rules == nil {
+		return []networkingv1.IngressRule{}
+	}
+	return rules
+}
+
+func servicePayloadPorts(ports []v1.ServicePort) []v1.ServicePort {
+	if ports == nil {
+		return []v1.ServicePort{}
+	}
+	return ports
+}
+
 func serviceAccountPayload(account v1.ServiceAccount) map[string]any {
 	return map[string]any{
 		"uid":                             string(account.UID),
@@ -620,6 +1171,38 @@ func workloadIdentityBindings(st settings, account v1.ServiceAccount) []map[stri
 		bindings = append(bindings, next)
 	}
 	return bindings
+}
+
+type kubernetesStageCursor struct {
+	Stage string `json:"stage,omitempty"`
+	Token string `json:"token,omitempty"`
+}
+
+func parseKubernetesStageCursor(raw string, defaultStage string, label string) (kubernetesStageCursor, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return kubernetesStageCursor{Stage: defaultStage}, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return kubernetesStageCursor{}, fmt.Errorf("decode kubernetes %s cursor: %w", label, err)
+	}
+	cursor := kubernetesStageCursor{}
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return kubernetesStageCursor{}, fmt.Errorf("parse kubernetes %s cursor: %w", label, err)
+	}
+	if cursor.Stage == "" {
+		cursor.Stage = defaultStage
+	}
+	return cursor, nil
+}
+
+func encodeKubernetesStageCursor(cursor kubernetesStageCursor) string {
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func pullWithCursor(events []*primitives.Event, next string) sourcecdk.Pull {
@@ -658,8 +1241,28 @@ func workloadURN(st settings, uid string, namespace string, name string) string 
 	return fmt.Sprintf("urn:cerebro:%s:kubernetes_workload:%s:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(namespace), url.PathEscape(firstNonEmpty(uid, name)))
 }
 
+func ingressURN(st settings, namespace string, name string) string {
+	return fmt.Sprintf("urn:cerebro:%s:kubernetes_ingress:%s:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(namespace), url.PathEscape(name))
+}
+
+func nodeURN(st settings, name string) string {
+	return fmt.Sprintf("urn:cerebro:%s:kubernetes_node:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(name))
+}
+
+func serviceURN(st settings, namespace string, name string) string {
+	return fmt.Sprintf("urn:cerebro:%s:kubernetes_service:%s:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(namespace), url.PathEscape(name))
+}
+
 func serviceAccountURN(st settings, namespace string, name string) string {
 	return fmt.Sprintf("urn:cerebro:%s:kubernetes_service_account:%s:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(namespace), url.PathEscape(name))
+}
+
+func rbacRoleURN(st settings, kind string, namespace string, name string) string {
+	return fmt.Sprintf("urn:cerebro:%s:kubernetes_rbac_role:%s:%s:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(kind), url.PathEscape(firstNonEmpty(namespace, "cluster")), url.PathEscape(name))
+}
+
+func rbacBindingURN(st settings, kind string, namespace string, name string) string {
+	return fmt.Sprintf("urn:cerebro:%s:kubernetes_rbac_binding:%s:%s:%s:%s", url.PathEscape(st.tenantID), url.PathEscape(st.clusterIdentity()), url.PathEscape(kind), url.PathEscape(firstNonEmpty(namespace, "cluster")), url.PathEscape(name))
 }
 
 func parseURNs(raw ...string) ([]sourcecdk.URN, error) {
@@ -729,6 +1332,262 @@ func containerState(state v1.ContainerState) string {
 	}
 }
 
+func rbacScope(namespace string) string {
+	if strings.TrimSpace(namespace) == "" {
+		return "cluster"
+	}
+	return "namespace"
+}
+
+func rbacRuleSummaries(rules []rbacv1.PolicyRule) []string {
+	values := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		values = append(values, fmt.Sprintf("%s:%s:%s", strings.Join(rule.APIGroups, ","), strings.Join(rule.Resources, ","), strings.Join(rule.Verbs, ",")))
+	}
+	sort.Strings(values)
+	return values
+}
+
+func rbacRuleValues(rules []rbacv1.PolicyRule, field func(rbacv1.PolicyRule) []string) []string {
+	seen := map[string]struct{}{}
+	values := []string{}
+	for _, rule := range rules {
+		for _, value := range field(rule) {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			values = append(values, value)
+		}
+	}
+	sort.Strings(values)
+	return values
+}
+
+type rbacSubjectRef struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name"`
+}
+
+func rbacSubjectRefsAttribute(subjects []rbacv1.Subject, bindingNamespace string) string {
+	refs := rbacSubjectRefs(subjects, bindingNamespace)
+	raw, _ := json.Marshal(refs)
+	return string(raw)
+}
+
+func rbacSubjectRefs(subjects []rbacv1.Subject, bindingNamespace string) []rbacSubjectRef {
+	values := make([]rbacSubjectRef, 0, len(subjects))
+	for _, subject := range subjects {
+		namespace := subject.Namespace
+		if subject.Kind == "ServiceAccount" {
+			namespace = firstNonEmpty(namespace, bindingNamespace, "default")
+		}
+		ref := rbacSubjectRef{
+			Kind: strings.TrimSpace(subject.Kind),
+			Name: strings.TrimSpace(subject.Name),
+		}
+		if strings.TrimSpace(namespace) != "" {
+			ref.Namespace = strings.TrimSpace(namespace)
+		}
+		if ref.Kind == "" || ref.Name == "" {
+			continue
+		}
+		values = append(values, ref)
+	}
+	sort.Slice(values, func(i int, j int) bool {
+		if values[i].Kind != values[j].Kind {
+			return values[i].Kind < values[j].Kind
+		}
+		if values[i].Namespace != values[j].Namespace {
+			return values[i].Namespace < values[j].Namespace
+		}
+		return values[i].Name < values[j].Name
+	})
+	return values
+}
+
+func rbacSubjectValues(subjects []rbacv1.Subject, field func(rbacv1.Subject) string) []string {
+	seen := map[string]struct{}{}
+	values := []string{}
+	for _, subject := range subjects {
+		value := strings.TrimSpace(field(subject))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func nodeReady(node v1.Node) bool {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == v1.NodeReady {
+			return condition.Status == v1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func nodeAddress(node v1.Node, addressType v1.NodeAddressType) string {
+	for _, address := range node.Status.Addresses {
+		if address.Type == addressType && strings.TrimSpace(address.Address) != "" {
+			return strings.TrimSpace(address.Address)
+		}
+	}
+	return ""
+}
+
+func serviceLoadBalancerIPs(service v1.Service) []string {
+	values := []string{}
+	for _, ingress := range service.Status.LoadBalancer.Ingress {
+		values = append(values, ingress.IP)
+	}
+	return sortedUnique(values)
+}
+
+func serviceLoadBalancerHostnames(service v1.Service) []string {
+	values := []string{}
+	for _, ingress := range service.Status.LoadBalancer.Ingress {
+		values = append(values, ingress.Hostname)
+	}
+	return sortedUnique(values)
+}
+
+func servicePortSummaries(ports []v1.ServicePort) []map[string]string {
+	values := make([]map[string]string, 0, len(ports))
+	for _, port := range ports {
+		value := map[string]string{
+			"name":        port.Name,
+			"protocol":    string(port.Protocol),
+			"port":        strconv.Itoa(int(port.Port)),
+			"target_port": port.TargetPort.String(),
+		}
+		if port.NodePort != 0 {
+			value["node_port"] = strconv.Itoa(int(port.NodePort))
+		}
+		values = append(values, value)
+	}
+	sort.Slice(values, func(i int, j int) bool {
+		if values[i]["port"] != values[j]["port"] {
+			return values[i]["port"] < values[j]["port"]
+		}
+		return values[i]["name"] < values[j]["name"]
+	})
+	return values
+}
+
+func ingressHosts(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	for _, rule := range ingress.Spec.Rules {
+		values = append(values, rule.Host)
+	}
+	return sortedUnique(values)
+}
+
+func ingressTLSHosts(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	for _, tls := range ingress.Spec.TLS {
+		values = append(values, tls.Hosts...)
+	}
+	return sortedUnique(values)
+}
+
+func ingressTLSSecretNames(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	for _, tls := range ingress.Spec.TLS {
+		values = append(values, tls.SecretName)
+	}
+	return sortedUnique(values)
+}
+
+func ingressBackendServices(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
+		values = append(values, ingressBackendServiceName(*ingress.Spec.DefaultBackend.Service))
+	}
+	for _, rule := range ingress.Spec.Rules {
+		if rule.HTTP == nil {
+			continue
+		}
+		for _, path := range rule.HTTP.Paths {
+			if path.Backend.Service == nil {
+				continue
+			}
+			values = append(values, ingressBackendServiceName(*path.Backend.Service))
+		}
+	}
+	return sortedUnique(values)
+}
+
+func ingressBackendServiceName(service networkingv1.IngressServiceBackend) string {
+	port := service.Port.Name
+	if port == "" && service.Port.Number != 0 {
+		port = strconv.Itoa(int(service.Port.Number))
+	}
+	return strings.Trim(service.Name+":"+port, ":")
+}
+
+func ingressLoadBalancerIPs(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	for _, item := range ingress.Status.LoadBalancer.Ingress {
+		values = append(values, item.IP)
+	}
+	return sortedUnique(values)
+}
+
+func ingressLoadBalancerHostnames(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	for _, item := range ingress.Status.LoadBalancer.Ingress {
+		values = append(values, item.Hostname)
+	}
+	return sortedUnique(values)
+}
+
+func ingressRuleSummaries(ingress networkingv1.Ingress) []string {
+	values := []string{}
+	for _, rule := range ingress.Spec.Rules {
+		if rule.HTTP == nil {
+			continue
+		}
+		host := firstNonEmpty(rule.Host, "*")
+		for _, path := range rule.HTTP.Paths {
+			if path.Backend.Service == nil {
+				continue
+			}
+			values = append(values, host+":"+path.Path+"->"+ingressBackendServiceName(*path.Backend.Service))
+		}
+	}
+	return sortedUnique(values)
+}
+
+func sortedUnique(values []string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func objectTime(value metav1.Time, fallback time.Time) time.Time {
 	if !value.IsZero() {
 		return value.UTC()
@@ -766,6 +1625,21 @@ func add(attrs map[string]string, key string, value string) {
 	if value = strings.TrimSpace(value); value != "" {
 		attrs[key] = value
 	}
+}
+
+func jsonAttribute(value any) string {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func stringPointerValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func compact(attrs map[string]string) map[string]string {

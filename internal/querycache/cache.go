@@ -46,6 +46,7 @@ type Cache interface {
 type Options struct {
 	Namespace       string
 	MaxPayloadBytes int
+	MaxEntries      int
 }
 
 func normalizeOptions(options Options) Options {
@@ -55,6 +56,9 @@ func normalizeOptions(options Options) Options {
 	}
 	if options.MaxPayloadBytes <= 0 {
 		options.MaxPayloadBytes = 1 << 20
+	}
+	if options.MaxEntries <= 0 {
+		options.MaxEntries = 4096
 	}
 	return options
 }

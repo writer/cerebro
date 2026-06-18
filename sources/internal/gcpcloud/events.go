@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 )
 
@@ -20,6 +21,35 @@ var gcsContentEmailRE = regexp.MustCompile(`[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{
 var gcsContentClassificationRE = regexp.MustCompile(`\b(restricted|confidential|internal|public)\b`)
 var gcsContentSecretRE = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|private[_-]?key)\s*[:=]\s*["']?[a-z0-9_./+=\-]{12,}`)
 var gcsContentSSNRE = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
+
+const FindingCheckpointLookback = 2 * time.Minute
+
+func CheckpointStart(checkpoint *cerebrov1.SourceCheckpoint, lookback time.Duration) (time.Time, bool) {
+	if checkpoint == nil || checkpoint.GetWatermark() == nil {
+		return time.Time{}, false
+	}
+	watermark := checkpoint.GetWatermark().AsTime().UTC()
+	if watermark.IsZero() {
+		return time.Time{}, false
+	}
+	if lookback > 0 {
+		watermark = watermark.Add(-lookback)
+	}
+	return watermark, true
+}
+
+func CombineFilters(existing string, incremental string) string {
+	existing = strings.TrimSpace(existing)
+	incremental = strings.TrimSpace(incremental)
+	switch {
+	case existing == "":
+		return incremental
+	case incremental == "":
+		return existing
+	default:
+		return "(" + existing + ") AND (" + incremental + ")"
+	}
+}
 
 type Settings struct {
 	ProjectID           string
@@ -125,6 +155,58 @@ type ServiceAccountImpersonationRecord struct {
 	Role   string
 	Member string
 	Raw    json.RawMessage
+}
+
+type BinaryAuthorizationPolicyRecord struct {
+	Name                                   string                                      `json:"name"`
+	Description                            string                                      `json:"description"`
+	GlobalPolicyEvaluationMode             string                                      `json:"globalPolicyEvaluationMode"`
+	AdmissionWhitelistPatterns             []BinaryAuthorizationWhitelistPattern       `json:"admissionWhitelistPatterns"`
+	ClusterAdmissionRules                  map[string]BinaryAuthorizationAdmissionRule `json:"clusterAdmissionRules"`
+	KubernetesNamespaceAdmissionRules      map[string]BinaryAuthorizationAdmissionRule `json:"kubernetesNamespaceAdmissionRules"`
+	KubernetesServiceAccountAdmissionRules map[string]BinaryAuthorizationAdmissionRule `json:"kubernetesServiceAccountAdmissionRules"`
+	IstioServiceIdentityAdmissionRules     map[string]BinaryAuthorizationAdmissionRule `json:"istioServiceIdentityAdmissionRules"`
+	DefaultAdmissionRule                   BinaryAuthorizationAdmissionRule            `json:"defaultAdmissionRule"`
+	UpdateTime                             string                                      `json:"updateTime"`
+	Etag                                   string                                      `json:"etag"`
+	Raw                                    json.RawMessage                             `json:"-"`
+}
+
+type BinaryAuthorizationAdmissionRule struct {
+	EvaluationMode        string   `json:"evaluationMode"`
+	EnforcementMode       string   `json:"enforcementMode"`
+	RequireAttestationsBy []string `json:"requireAttestationsBy"`
+}
+
+type BinaryAuthorizationWhitelistPattern struct {
+	NamePattern string `json:"namePattern"`
+}
+
+type BinaryAuthorizationAttestorRecord struct {
+	Name                 string                                  `json:"name"`
+	Description          string                                  `json:"description"`
+	UpdateTime           string                                  `json:"updateTime"`
+	Etag                 string                                  `json:"etag"`
+	UserOwnedGrafeasNote BinaryAuthorizationUserOwnedGrafeasNote `json:"userOwnedGrafeasNote"`
+	Raw                  json.RawMessage                         `json:"-"`
+}
+
+type BinaryAuthorizationUserOwnedGrafeasNote struct {
+	NoteReference                 string                                 `json:"noteReference"`
+	PublicKeys                    []BinaryAuthorizationAttestorPublicKey `json:"publicKeys"`
+	DelegationServiceAccountEmail string                                 `json:"delegationServiceAccountEmail"`
+}
+
+type BinaryAuthorizationAttestorPublicKey struct {
+	Comment                  string                           `json:"comment"`
+	ID                       string                           `json:"id"`
+	AsciiArmoredPGPPublicKey string                           `json:"asciiArmoredPgpPublicKey"`
+	PKIXPublicKey            BinaryAuthorizationPKIXPublicKey `json:"pkixPublicKey"`
+}
+
+type BinaryAuthorizationPKIXPublicKey struct {
+	PublicKeyPEM       string `json:"publicKeyPem"`
+	SignatureAlgorithm string `json:"signatureAlgorithm"`
 }
 
 type AuditRecord struct {
@@ -1801,6 +1883,14 @@ func (record SpannerDatabaseRecord) CerebroResourceID() string {
 	return record.Name
 }
 
+func (record WorkloadIdentityPoolRecord) CerebroResourceID() string {
+	return record.Name
+}
+
+func (record WorkloadIdentityProviderRecord) CerebroResourceID() string {
+	return record.Name
+}
+
 type GKEClusterRecord struct {
 	Name                           string                            `json:"name"`
 	SelfLink                       string                            `json:"selfLink"`
@@ -2566,6 +2656,93 @@ type OrgPolicyRule struct {
 type OrgPolicyValues struct {
 	AllowedValues []string `json:"allowedValues"`
 	DeniedValues  []string `json:"deniedValues"`
+}
+
+type SecurityCenterFindingRecord struct {
+	Finding  SecurityCenterFinding  `json:"finding"`
+	Resource SecurityCenterResource `json:"resource"`
+	Raw      json.RawMessage        `json:"-"`
+}
+
+type SecurityCenterFinding struct {
+	Name             string                     `json:"name"`
+	Parent           string                     `json:"parent"`
+	ResourceName     string                     `json:"resourceName"`
+	State            string                     `json:"state"`
+	Category         string                     `json:"category"`
+	ExternalURI      string                     `json:"externalUri"`
+	Severity         string                     `json:"severity"`
+	Mute             string                     `json:"mute"`
+	FindingClass     string                     `json:"findingClass"`
+	Description      string                     `json:"description"`
+	NextSteps        string                     `json:"nextSteps"`
+	EventTime        string                     `json:"eventTime"`
+	CreateTime       string                     `json:"createTime"`
+	CanonicalName    string                     `json:"canonicalName"`
+	CloudDlpData     json.RawMessage            `json:"cloudDlpData"`
+	SourceProperties map[string]json.RawMessage `json:"sourceProperties"`
+	SecurityMarks    json.RawMessage            `json:"securityMarks"`
+	Vulnerability    json.RawMessage            `json:"vulnerability"`
+	MITREAttack      json.RawMessage            `json:"mitreAttack"`
+}
+
+type SecurityCenterResource struct {
+	Name               string `json:"name"`
+	DisplayName        string `json:"displayName"`
+	Type               string `json:"type"`
+	Service            string `json:"service"`
+	Location           string `json:"location"`
+	CloudProvider      string `json:"cloudProvider"`
+	ProjectName        string `json:"projectName"`
+	ProjectDisplayName string `json:"projectDisplayName"`
+	Parent             string `json:"parent"`
+	ParentDisplayName  string `json:"parentDisplayName"`
+	Folders            []struct {
+		ResourceFolder     string `json:"resourceFolder"`
+		ResourceFolderName string `json:"resourceFolderDisplayName"`
+	} `json:"folders"`
+}
+
+type WorkloadIdentityPoolRecord struct {
+	Name                            string          `json:"name"`
+	DisplayName                     string          `json:"displayName"`
+	Description                     string          `json:"description"`
+	State                           string          `json:"state"`
+	Disabled                        bool            `json:"disabled"`
+	ExpireTime                      string          `json:"expireTime"`
+	InlineCertificateIssuanceConfig json.RawMessage `json:"inlineCertificateIssuanceConfig"`
+	Raw                             json.RawMessage `json:"-"`
+}
+
+type WorkloadIdentityProviderRecord struct {
+	Name               string                       `json:"name"`
+	DisplayName        string                       `json:"displayName"`
+	Description        string                       `json:"description"`
+	State              string                       `json:"state"`
+	Disabled           bool                         `json:"disabled"`
+	ExpireTime         string                       `json:"expireTime"`
+	AttributeMapping   map[string]string            `json:"attributeMapping"`
+	AttributeCondition string                       `json:"attributeCondition"`
+	AWS                WorkloadIdentityProviderAWS  `json:"aws"`
+	OIDC               WorkloadIdentityProviderOIDC `json:"oidc"`
+	SAML               WorkloadIdentityProviderSAML `json:"saml"`
+	X509               json.RawMessage              `json:"x509"`
+	PoolName           string                       `json:"-"`
+	Raw                json.RawMessage              `json:"-"`
+}
+
+type WorkloadIdentityProviderAWS struct {
+	AccountID string `json:"accountId"`
+}
+
+type WorkloadIdentityProviderOIDC struct {
+	IssuerURI        string   `json:"issuerUri"`
+	AllowedAudiences []string `json:"allowedAudiences"`
+	JwksJSON         string   `json:"jwksJson"`
+}
+
+type WorkloadIdentityProviderSAML struct {
+	IDPMetadataXML string `json:"idpMetadataXml"`
 }
 
 func ServiceAccountEvent(settings Settings, record ServiceAccountRecord) (*primitives.Event, error) {
@@ -5216,6 +5393,163 @@ func OrgPolicyEvent(settings Settings, record OrgPolicyRecord) (*primitives.Even
 	return sourceEvent(settings, "gcp-org-policy-"+resourceID, "gcp.org_policy", "gcp/org_policy/v1", payload, attributes)
 }
 
+func BinaryAuthorizationPolicyEvent(settings Settings, record BinaryAuthorizationPolicyRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.Name, "projects/"+settings.ProjectID+"/policy")
+	defaultRule := record.DefaultAdmissionRule
+	clusterKeys, clusterRequired := binaryAuthorizationRuleSummary(record.ClusterAdmissionRules)
+	namespaceKeys, namespaceRequired := binaryAuthorizationRuleSummary(record.KubernetesNamespaceAdmissionRules)
+	serviceAccountKeys, serviceAccountRequired := binaryAuthorizationRuleSummary(record.KubernetesServiceAccountAdmissionRules)
+	istioKeys, istioRequired := binaryAuthorizationRuleSummary(record.IstioServiceIdentityAdmissionRules)
+	requiredAttestors := uniqueSortedStrings(append(append(append(append([]string{}, defaultRule.RequireAttestationsBy...), clusterRequired...), namespaceRequired...), append(serviceAccountRequired, istioRequired...)...))
+	attributes := cloudResourceAttributes(settings, "binary_authorization_policy", resourceID, lastPathSegment(resourceID), "binary_authorization_policy", "global", nil)
+	attributes["admission_whitelist_patterns"] = strings.Join(binaryAuthorizationWhitelistPatterns(record.AdmissionWhitelistPatterns), ",")
+	attributes["admission_whitelist_patterns_count"] = strconv.Itoa(len(record.AdmissionWhitelistPatterns))
+	attributes["cluster_admission_rule_keys"] = strings.Join(clusterKeys, ",")
+	attributes["cluster_admission_rules_count"] = strconv.Itoa(len(record.ClusterAdmissionRules))
+	attributes["default_enforcement_mode"] = defaultRule.EnforcementMode
+	attributes["default_evaluation_mode"] = defaultRule.EvaluationMode
+	attributes["description"] = record.Description
+	attributes["etag"] = record.Etag
+	attributes["global_policy_evaluation_mode"] = record.GlobalPolicyEvaluationMode
+	attributes["istio_service_identity_admission_rule_keys"] = strings.Join(istioKeys, ",")
+	attributes["istio_service_identity_admission_rules_count"] = strconv.Itoa(len(record.IstioServiceIdentityAdmissionRules))
+	attributes["kubernetes_namespace_admission_rule_keys"] = strings.Join(namespaceKeys, ",")
+	attributes["kubernetes_namespace_admission_rules_count"] = strconv.Itoa(len(record.KubernetesNamespaceAdmissionRules))
+	attributes["kubernetes_service_account_admission_rule_keys"] = strings.Join(serviceAccountKeys, ",")
+	attributes["kubernetes_service_account_admission_rules_count"] = strconv.Itoa(len(record.KubernetesServiceAccountAdmissionRules))
+	attributes["require_attestations_by"] = strings.Join(requiredAttestors, ",")
+	attributes["require_attestations_by_count"] = strconv.Itoa(len(requiredAttestors))
+	attributes["requires_attestation"] = boolString(strings.EqualFold(defaultRule.EvaluationMode, "REQUIRE_ATTESTATION") || len(requiredAttestors) != 0)
+	attributes["status"] = firstNonEmpty(defaultRule.EnforcementMode, record.GlobalPolicyEvaluationMode)
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-binary-authorization-policy-"+resourceID, "gcp.binary_authorization_policy", "gcp/binary_authorization_policy/v1", payload, attributes)
+}
+
+func BinaryAuthorizationAttestorEvent(settings Settings, record BinaryAuthorizationAttestorRecord) (*primitives.Event, error) {
+	note := record.UserOwnedGrafeasNote
+	pgpCount, pkixCount := binaryAuthorizationPublicKeyCounts(note.PublicKeys)
+	keyIDs := binaryAuthorizationPublicKeyIDs(note.PublicKeys)
+	resourceID := firstNonEmpty(record.Name, "projects/"+settings.ProjectID+"/attestors/"+record.Description)
+	attributes := cloudResourceAttributes(settings, "binary_authorization_attestor", resourceID, firstNonEmpty(record.Description, lastPathSegment(resourceID)), "binary_authorization_attestor", "global", nil)
+	attributes["attestor_id"] = lastPathSegment(resourceID)
+	attributes["delegation_service_account_email"] = note.DelegationServiceAccountEmail
+	attributes["description"] = record.Description
+	attributes["etag"] = record.Etag
+	attributes["note_reference"] = note.NoteReference
+	attributes["public_key_ids"] = strings.Join(keyIDs, ",")
+	attributes["public_keys_count"] = strconv.Itoa(len(note.PublicKeys))
+	attributes["pgp_public_keys_count"] = strconv.Itoa(pgpCount)
+	attributes["pkix_public_keys_count"] = strconv.Itoa(pkixCount)
+	attributes["status"] = "NO_KEYS"
+	if len(note.PublicKeys) != 0 {
+		attributes["status"] = "ACTIVE"
+	}
+	attributes["update_time"] = record.UpdateTime
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-binary-authorization-attestor-"+resourceID, "gcp.binary_authorization_attestor", "gcp/binary_authorization_attestor/v1", payload, attributes)
+}
+
+func SecurityCenterFindingEvent(settings Settings, record SecurityCenterFindingRecord) (*primitives.Event, error) {
+	resourceID := firstNonEmpty(record.Finding.Name, record.Finding.CanonicalName, record.Finding.ResourceName, record.Resource.Name)
+	affectedResourceID := firstNonEmpty(record.Finding.ResourceName, record.Resource.Name)
+	location := firstNonEmpty(record.Resource.Location, locationFromResourceName(affectedResourceID), "global")
+	attributes := cloudResourceAttributes(settings, "security_center_finding", resourceID, firstNonEmpty(record.Finding.Category, lastPathSegment(resourceID)), "security_center_finding", location, nil)
+	attributes["affected_resource_id"] = affectedResourceID
+	attributes["affected_resource_name"] = firstNonEmpty(record.Resource.DisplayName, lastPathSegment(affectedResourceID))
+	attributes["affected_resource_type"] = record.Resource.Type
+	attributes["category"] = record.Finding.Category
+	attributes["cloud_provider"] = record.Resource.CloudProvider
+	attributes["created_at"] = record.Finding.CreateTime
+	attributes["description"] = record.Finding.Description
+	attributes["event_time"] = record.Finding.EventTime
+	attributes["external_uri"] = record.Finding.ExternalURI
+	attributes["finding_class"] = record.Finding.FindingClass
+	attributes["finding_name"] = record.Finding.Name
+	attributes["mute"] = record.Finding.Mute
+	attributes["muted"] = boolString(strings.EqualFold(record.Finding.Mute, "MUTED"))
+	attributes["next_steps"] = record.Finding.NextSteps
+	attributes["parent"] = record.Finding.Parent
+	attributes["project_name"] = record.Resource.ProjectName
+	attributes["resource_service"] = record.Resource.Service
+	attributes["severity"] = record.Finding.Severity
+	attributes["source_provider"] = "gcp_security_command_center"
+	attributes["state"] = record.Finding.State
+	attributes["status"] = record.Finding.State
+	attributes["source_properties_count"] = strconv.Itoa(len(record.Finding.SourceProperties))
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEventAt(settings, "gcp-security-center-finding-"+resourceID, "gcp.security_center_finding", "gcp/security_center_finding/v1", payload, attributes, securityCenterFindingOccurredAt(record))
+}
+
+func securityCenterFindingOccurredAt(record SecurityCenterFindingRecord) time.Time {
+	for _, value := range []string{record.Finding.EventTime, record.Finding.CreateTime} {
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
+func WorkloadIdentityPoolEvent(settings Settings, record WorkloadIdentityPoolRecord) (*primitives.Event, error) {
+	location := firstNonEmpty(locationFromResourceName(record.Name), settings.Location, "global")
+	attributes := cloudResourceAttributes(settings, "workload_identity_pool", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "workload_identity_pool", location, nil)
+	attributes["description"] = record.Description
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["display_name"] = record.DisplayName
+	attributes["expire_time"] = record.ExpireTime
+	attributes["pool_id"] = lastPathSegment(record.Name)
+	attributes["state"] = record.State
+	attributes["status"] = disabledStatus(record.Disabled)
+	attributes["inline_certificate_issuance_configured"] = boolString(len(record.InlineCertificateIssuanceConfig) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-workload-identity-pool-"+record.Name, "gcp.workload_identity_pool", "gcp/workload_identity_pool/v1", payload, attributes)
+}
+
+func WorkloadIdentityProviderEvent(settings Settings, record WorkloadIdentityProviderRecord) (*primitives.Event, error) {
+	providerType := workloadIdentityProviderType(record)
+	mappingKeys := workloadIdentityProviderMappingKeys(record.AttributeMapping)
+	location := firstNonEmpty(locationFromResourceName(record.Name), locationFromResourceName(record.PoolName), settings.Location, "global")
+	poolName := firstNonEmpty(record.PoolName, parentResourceName(record.Name, "providers"))
+	attributes := cloudResourceAttributes(settings, "workload_identity_provider", record.Name, firstNonEmpty(record.DisplayName, lastPathSegment(record.Name)), "workload_identity_provider", location, nil)
+	attributes["attribute_condition"] = record.AttributeCondition
+	attributes["attribute_condition_configured"] = boolString(record.AttributeCondition != "")
+	attributes["attribute_mapping_keys"] = strings.Join(mappingKeys, ",")
+	attributes["attribute_mappings_count"] = strconv.Itoa(len(record.AttributeMapping))
+	attributes["aws_account_id"] = record.AWS.AccountID
+	attributes["description"] = record.Description
+	attributes["disabled"] = boolString(record.Disabled)
+	attributes["display_name"] = record.DisplayName
+	attributes["expire_time"] = record.ExpireTime
+	attributes["oidc_allowed_audiences"] = strings.Join(record.OIDC.AllowedAudiences, ",")
+	attributes["oidc_allowed_audiences_count"] = strconv.Itoa(len(record.OIDC.AllowedAudiences))
+	attributes["oidc_issuer_uri"] = record.OIDC.IssuerURI
+	attributes["pool_id"] = lastPathSegment(poolName)
+	attributes["pool_name"] = poolName
+	attributes["provider_id"] = lastPathSegment(record.Name)
+	attributes["provider_type"] = providerType
+	attributes["saml_metadata_configured"] = boolString(record.SAML.IDPMetadataXML != "")
+	attributes["state"] = record.State
+	attributes["status"] = disabledStatus(record.Disabled)
+	attributes["x509_configured"] = boolString(len(record.X509) != 0)
+	payload, err := payloadWithRaw(record.Raw, map[string]any{"pool_name": poolName, "project_id": settings.ProjectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-workload-identity-provider-"+record.Name, "gcp.workload_identity_provider", "gcp/workload_identity_provider/v1", payload, attributes)
+}
+
 type cloudSchedulerTargetSummary struct {
 	Type                string
 	Target              string
@@ -6062,6 +6396,61 @@ func orgPolicyRuleValues(rules []OrgPolicyRule) ([]string, []string) {
 	return allowed, denied
 }
 
+func binaryAuthorizationRuleSummary(rules map[string]BinaryAuthorizationAdmissionRule) ([]string, []string) {
+	keys := make([]string, 0, len(rules))
+	required := []string{}
+	for key, rule := range rules {
+		keys = append(keys, key)
+		for _, attestor := range rule.RequireAttestationsBy {
+			required = appendUnique(required, attestor)
+		}
+	}
+	sort.Strings(keys)
+	sort.Strings(required)
+	return keys, required
+}
+
+func binaryAuthorizationWhitelistPatterns(patterns []BinaryAuthorizationWhitelistPattern) []string {
+	names := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		names = appendUnique(names, pattern.NamePattern)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func binaryAuthorizationPublicKeyCounts(keys []BinaryAuthorizationAttestorPublicKey) (int, int) {
+	pgpCount := 0
+	pkixCount := 0
+	for _, key := range keys {
+		if key.AsciiArmoredPGPPublicKey != "" {
+			pgpCount++
+		}
+		if key.PKIXPublicKey.PublicKeyPEM != "" || key.PKIXPublicKey.SignatureAlgorithm != "" {
+			pkixCount++
+		}
+	}
+	return pgpCount, pkixCount
+}
+
+func binaryAuthorizationPublicKeyIDs(keys []BinaryAuthorizationAttestorPublicKey) []string {
+	ids := make([]string, 0, len(keys))
+	for _, key := range keys {
+		ids = appendUnique(ids, key.ID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func uniqueSortedStrings(values []string) []string {
+	unique := []string{}
+	for _, value := range values {
+		unique = appendUnique(unique, value)
+	}
+	sort.Strings(unique)
+	return unique
+}
+
 func enforcedOrgPolicyConstraints(policies []OrgPolicyRecord) []string {
 	constraints := make([]string, 0, len(policies))
 	for _, policy := range policies {
@@ -6105,6 +6494,32 @@ func appendUnique(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func workloadIdentityProviderType(record WorkloadIdentityProviderRecord) string {
+	switch {
+	case record.AWS.AccountID != "":
+		return "aws"
+	case record.OIDC.IssuerURI != "" || len(record.OIDC.AllowedAudiences) != 0 || record.OIDC.JwksJSON != "":
+		return "oidc"
+	case record.SAML.IDPMetadataXML != "":
+		return "saml"
+	case len(record.X509) != 0:
+		return "x509"
+	default:
+		return ""
+	}
+}
+
+func workloadIdentityProviderMappingKeys(mapping map[string]string) []string {
+	keys := make([]string, 0, len(mapping))
+	for key := range mapping {
+		if strings.TrimSpace(key) != "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func dnsManagedZoneNetworks(record DNSManagedZoneRecord) []string {

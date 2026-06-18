@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/tools/sourcedeploy"
 )
@@ -51,11 +52,18 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		"- demo_source.asset_host",
 		"- demo_source.finding_vulnerability",
 		"- demo_source.evidence_cas_reference",
+		"coverage_contract:",
+		"authority_domain: demo_source",
+		"families: [asset_host]",
+		"id: incremental_sync",
 		"schema_ref: demo_source/asset_host/v1",
 	} {
 		if !strings.Contains(catalog, want) {
 			t.Fatalf("catalog missing %q:\n%s", want, catalog)
 		}
+	}
+	if _, err := sourcecdk.LoadSourceCatalog([]byte(catalog)); err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v\n%s", err, catalog)
 	}
 	receipt := map[string]any{}
 	if err := json.Unmarshal([]byte(readGeneratedFile(t, outputDir, "sources/demo_source/source_health_receipt.json")), &receipt); err != nil {
@@ -80,7 +88,7 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	}
 	sourceTest := readGeneratedFile(t, outputDir, "sources/demo_source/source_test.go")
 	authCheck := strings.Index(sourceTest, `r.Header.Get("Authorization")`)
-	healthCheck := strings.Index(sourceTest, `r.URL.Path == defaultHealthPath`)
+	healthCheck := strings.Index(sourceTest, `r.URL.RequestURI() == defaultHealthPath`)
 	if authCheck < 0 || healthCheck < 0 || authCheck > healthCheck {
 		t.Fatalf("generated source test must assert health auth before health short-circuit:\n%s", sourceTest)
 	}
@@ -105,6 +113,280 @@ func TestGenerateDryRunDoesNotWriteFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "sources/demo_source/source.go")); !os.IsNotExist(err) {
 		t.Fatalf("source.go exists after dry run, err=%v", err)
+	}
+}
+
+func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-example_idp",
+			TenantID:      "tenant-a",
+			SourceID:      "example_idp",
+			DisplayName:   "Example IDP",
+			Auth: connectordefinitions.AuthSpec{ // #nosec G101 -- credential field names only, not secret values.
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_idp.user",
+					SchemaRef: "example_idp/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{
+					Type:    "entity_family",
+					Support: "supported",
+				}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.SourceID != "example_idp" || result.AuthModel != AuthModelBearerToken {
+		t.Fatalf("result = %#v", result)
+	}
+	catalog := readGeneratedFile(t, outputDir, "sources/example_idp/catalog.yaml")
+	for _, want := range []string{"- example_idp.user", "families: [users]", "schema_ref: example_idp/user/v1"} {
+		if !strings.Contains(catalog, want) {
+			t.Fatalf("catalog missing %q:\n%s", want, catalog)
+		}
+	}
+	if _, err := sourcecdk.LoadSourceCatalog([]byte(catalog)); err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v\n%s", err, catalog)
+	}
+	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/example_idp.go")
+	for _, want := range []string{"exampleIdpUsersProjections", "identityUserProjections", `Provider: "example_idp"`} {
+		if !strings.Contains(projection, want) {
+			t.Fatalf("projection missing %q:\n%s", want, projection)
+		}
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
+	if strings.Contains(sourceTest, "evidence_cas_uri") {
+		t.Fatalf("definition generated source test should not assume EvidenceCAS fields:\n%s", sourceTest)
+	}
+}
+
+func TestGenerateDefinitionHealthPathWithQueryUsesRequestURI(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-query_health",
+			TenantID:      "tenant-a",
+			SourceID:      "query_health",
+			DisplayName:   "Query Health",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/about?fields=user",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "query_health.user",
+					SchemaRef: "query_health/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+				Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/query_health/source.go")
+	if !strings.Contains(source, `"/about?fields=user"`) {
+		t.Fatalf("generated source missing query health path:\n%s", source)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/query_health/source_test.go")
+	if !strings.Contains(sourceTest, `r.URL.RequestURI() == defaultHealthPath`) {
+		t.Fatalf("generated source test does not compare RequestURI:\n%s", sourceTest)
+	}
+}
+
+func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-auth0",
+			TenantID:      "tenant-a",
+			SourceID:      "auth0",
+			DisplayName:   "Auth0",
+			ConfigFields: []connectordefinitions.Field{{
+				Key:      "domain",
+				Required: true,
+			}},
+			Auth: connectordefinitions.AuthSpec{ // #nosec G101 -- Test-only OAuth credential field names, not live secrets.
+				Model:    AuthModelOAuthClientCredentials,
+				TokenURL: "https://${config.domain}/oauth/token",
+				Scopes:   []string{"read:users"},
+				TokenParams: map[string]string{
+					"audience": "https://${config.domain}/api/v2/",
+				},
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "client_id",
+					ReferenceOnly: true,
+				}, {
+					Key:           "client_secret",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://${config.domain}/api/v2",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/users",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/users",
+				RecordSelector: "$[*]",
+				IDField:        "user_id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "auth0.users",
+					SchemaRef: "auth0/users/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{
+					Type:      "entity_family",
+					Support:   "supported",
+					HighValue: true,
+				}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.SourceID != "auth0" || result.AuthModel != AuthModelOAuthClientCredentials {
+		t.Fatalf("result = %#v", result)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/auth0/source.go")
+	for _, want := range []string{
+		"oauthTokenURLTemplate",
+		"sourcehttp.ClientCredentialsOptions",
+		"TokenURLTemplate: oauthTokenURLTemplate",
+		"sourcehttp.ClientCredentialsCache",
+		"oauthTokenExpirationBuffer",
+		"renderTemplate(defaultBaseURLTemplate",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+	deploy := readGeneratedFile(t, outputDir, "sources/auth0/deploy.yaml")
+	for _, want := range []string{
+		"domain: env:AUTH0_DOMAIN",
+		"client_id: env:AUTH0_CLIENT_ID",
+		"client_secret: env:AUTH0_CLIENT_SECRET",
+	} {
+		if !strings.Contains(deploy, want) {
+			t.Fatalf("deploy.yaml missing %q:\n%s", want, deploy)
+		}
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/auth0/source_test.go")
+	for _, want := range []string{
+		`r.URL.Path == "/oauth/token"`,
+		`tokenRequests != 1`,
+		`"token_url": server.URL + "/oauth/token"`,
+	} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+}
+
+func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-a-example",
+			TenantID:    "tenant-a",
+			SourceID:    "example",
+			DisplayName: "Example",
+			//nolint:gosec // Test auth descriptor only; no credential value is stored.
+			Auth: connectordefinitions.AuthSpec{
+				Model:            "oauth_authorization_code",
+				AuthorizationURL: "https://example.test/oauth/authorize",
+				TokenURL:         "https://example.test/oauth/token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "oauth_client_reference",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example.user",
+					SchemaRef: "example/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	if result.AuthModel != AuthModelOAuthAuthorizationCode {
+		t.Fatalf("AuthModel = %q, want %q", result.AuthModel, AuthModelOAuthAuthorizationCode)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/example/source.go")
+	for _, want := range []string{`AuthModel:`, `"oauth_authorization_code"`, `OAuthTokenURL:`, `"https://example.test/oauth/token"`} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
 	}
 }
 

@@ -137,11 +137,7 @@ func (s *Store) ListJobs(ctx context.Context, filter ports.JobFilter) ([]*ports.
 	if err := s.ensureJobTables(ctx); err != nil {
 		return nil, err
 	}
-	clauses := []string{"1=1"}
-	args := []any{}
-	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
-	addTextFilter(&clauses, &args, "kind", filter.Kind)
-	addTextFilter(&clauses, &args, "status", filter.Status)
+	clauses, args := jobFilterClauses(filter)
 	limit := filter.Limit
 	if limit == 0 || limit > 200 {
 		limit = 50
@@ -170,6 +166,39 @@ LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()
+}
+
+// CountJobs returns the total platform jobs matching the supplied filter.
+func (s *Store) CountJobs(ctx context.Context, filter ports.JobFilter) (uint64, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("postgres is not configured")
+	}
+	if err := s.ensureJobTables(ctx); err != nil {
+		return 0, err
+	}
+	clauses, args := jobFilterClauses(filter)
+	// #nosec G201 -- clauses are fixed column predicates built by jobFilterClauses.
+	query := fmt.Sprintf(`
+	SELECT COUNT(*)
+	FROM platform_jobs
+	WHERE %s`, strings.Join(clauses, " AND "))
+	var count int64
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count platform jobs: %w", err)
+	}
+	if count < 0 {
+		return 0, nil
+	}
+	return uint64(count), nil
+}
+
+func jobFilterClauses(filter ports.JobFilter) ([]string, []any) {
+	clauses := []string{"1=1"}
+	args := []any{}
+	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
+	addTextFilter(&clauses, &args, "kind", filter.Kind)
+	addTextFilter(&clauses, &args, "status", filter.Status)
+	return clauses, args
 }
 
 // UpdateJob applies a partial job state update.

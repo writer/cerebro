@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"gopkg.in/yaml.v3"
 )
 
 type cloudCoverageAlias struct {
@@ -35,8 +36,10 @@ var cloudPolicyCoverageAliases = map[string]cloudCoverageAlias{
 	"aws::ec2::ebs_snapshot":                          {SourceID: "aws", DimensionID: "ebs_snapshot"},
 	"aws::ec2::ebs_volume":                            {SourceID: "aws", DimensionID: "ebs_volume"},
 	"aws::ec2::instance":                              {SourceID: "aws", DimensionID: "ec2_instance"},
+	"aws::ec2::network_acl":                           {SourceID: "aws", DimensionID: "network_acl"},
 	"aws::ec2::security_group":                        {SourceID: "aws", DimensionID: "security_group"},
 	"aws::ec2::vpc":                                   {SourceID: "aws", DimensionID: "vpc"},
+	"aws::ec2::vpc_flow_log":                          {SourceID: "aws", DimensionID: "vpc_flow_log"},
 	"aws::ecr::repository":                            {SourceID: "aws", DimensionID: "ecr_repository"},
 	"aws::ecr_public::repository":                     {SourceID: "aws", DimensionID: "ecr_public_repository"},
 	"aws::ecs::task_definition":                       {SourceID: "aws", DimensionID: "ecs_task_definition"},
@@ -113,6 +116,8 @@ var cloudPolicyCoverageAliases = map[string]cloudCoverageAlias{
 	"gcp::aiplatform::dataset":                        {SourceID: "gcp", DimensionID: "aiplatform_dataset"},
 	"gcp::aiplatform::endpoint":                       {SourceID: "gcp", DimensionID: "aiplatform_endpoint"},
 	"gcp::artifact_registry::repository":              {SourceID: "gcp", DimensionID: "artifact_registry_repository"},
+	"gcp::asset::data_sensitivity":                    {SourceID: "gcp", DimensionID: "asset_metadata"},
+	"gcp::asset::metadata":                            {SourceID: "gcp", DimensionID: "asset_metadata"},
 	"gcp::bigquery::dataset":                          {SourceID: "gcp", DimensionID: "bigquery_dataset"},
 	"gcp::bigquery::table":                            {SourceID: "gcp", DimensionID: "bigquery_table"},
 	"gcp::bigtable::instance":                         {SourceID: "gcp", DimensionID: "bigtable_instance"},
@@ -125,7 +130,9 @@ var cloudPolicyCoverageAliases = map[string]cloudCoverageAlias{
 	"gcp::certificatemanager::certificate_map":        {SourceID: "gcp", DimensionID: "certificate_manager_certificate_map"},
 	"gcp::certificatemanager::certificate_map_entry":  {SourceID: "gcp", DimensionID: "certificate_manager_certificate_map_entry"},
 	"gcp::certificatemanager::dns_authorization":      {SourceID: "gcp", DimensionID: "certificate_manager_dns_authorization"},
+	"gcp::cloud_scheduler::job":                       {SourceID: "gcp", DimensionID: "cloud_scheduler_job"},
 	"gcp::cloudfunctions::function":                   {SourceID: "gcp", DimensionID: "cloud_function"},
+	"gcp::cloudscheduler::job":                        {SourceID: "gcp", DimensionID: "cloud_scheduler_job"},
 	"gcp::cloudrun::revision":                         {SourceID: "gcp", DimensionID: "cloud_run_revision"},
 	"gcp::cloudrun::service":                          {SourceID: "gcp", DimensionID: "cloud_run_service"},
 	"gcp::compute::address":                           {SourceID: "gcp", DimensionID: "compute_address"},
@@ -161,9 +168,11 @@ var cloudPolicyCoverageAliases = map[string]cloudCoverageAlias{
 	"gcp::container::node_pool":                       {SourceID: "gcp", DimensionID: "gke_node_pool"},
 	"gcp::container_registry::registry":               {SourceID: "gcp", DimensionID: "container_registry"},
 	"gcp::dns::managed_zone":                          {SourceID: "gcp", DimensionID: "dns_managed_zone"},
+	"gcp::dns::record_set":                            {SourceID: "gcp", DimensionID: "dns_record_set"},
 	"gcp::gke::cluster_role":                          {SourceID: "kubernetes", DimensionID: "rbac_roles"},
 	"gcp::gke::cluster_role_binding":                  {SourceID: "kubernetes", DimensionID: "rbac_bindings"},
 	"gcp::gke::role":                                  {SourceID: "kubernetes", DimensionID: "rbac_roles"},
+	"gcp::iam::effective_permission":                  {SourceID: "gcp", DimensionID: "effective_permission"},
 	"gcp::iam::member":                                {SourceID: "gcp", DimensionID: "iam_role_assignment"},
 	"gcp::iam::policy":                                {SourceID: "gcp", DimensionID: "iam_role_assignment"},
 	"gcp::iam::service_account":                       {SourceID: "gcp", DimensionID: "service_account"},
@@ -173,10 +182,16 @@ var cloudPolicyCoverageAliases = map[string]cloudCoverageAlias{
 	"gcp::logging::project_sink":                      {SourceID: "gcp", DimensionID: "logging_project_sink"},
 	"gcp::monitoring::alert_policy":                   {SourceID: "gcp", DimensionID: "monitoring_alert_policy"},
 	"gcp::monitoring::notification_channel":           {SourceID: "gcp", DimensionID: "monitoring_notification_channel"},
+	"gcp::org_policy::policy":                         {SourceID: "gcp", DimensionID: "org_policy"},
+	"gcp::orgpolicy::policy":                          {SourceID: "gcp", DimensionID: "org_policy"},
+	"gcp::pubsub::subscription":                       {SourceID: "gcp", DimensionID: "pubsub_subscription"},
+	"gcp::pubsub::topic":                              {SourceID: "gcp", DimensionID: "pubsub_topic"},
 	"gcp::resourcemanager::project":                   {SourceID: "gcp", DimensionID: "resourcemanager_project"},
 	"gcp::run::service":                               {SourceID: "gcp", DimensionID: "cloud_run_service"},
 	"gcp::secretmanager::secret_version":              {SourceID: "gcp", DimensionID: "secret_manager_version"},
 	"gcp::secret_manager::secret_version":             {SourceID: "gcp", DimensionID: "secret_manager_version"},
+	"gcp::service_usage::service":                     {SourceID: "gcp", DimensionID: "service_usage_service"},
+	"gcp::serviceusage::service":                      {SourceID: "gcp", DimensionID: "service_usage_service"},
 	"gcp::spanner::database":                          {SourceID: "gcp", DimensionID: "spanner_database"},
 	"gcp::spanner::instance":                          {SourceID: "gcp", DimensionID: "spanner_instance"},
 	"gcp::sql::database":                              {SourceID: "gcp", DimensionID: "cloud_sql_database"},
@@ -330,6 +345,7 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"aiplatform_endpoint",
 		"artifact_registry_image",
 		"artifact_registry_repository",
+		"asset_metadata",
 		"audit",
 		"bigquery_dataset",
 		"bigquery_table",
@@ -343,6 +359,7 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"cloud_ids_endpoint",
 		"cloud_run_revision",
 		"cloud_run_service",
+		"cloud_scheduler_job",
 		"cloud_sql_database",
 		"cloud_sql_instance",
 		"cloud_sql_user",
@@ -382,6 +399,8 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"container_registry",
 		"container_vulnerability",
 		"dns_managed_zone",
+		"dns_record_set",
+		"effective_permission",
 		"gcs_bucket",
 		"gcs_object",
 		"gke_cluster",
@@ -394,6 +413,9 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"logging_project_sink",
 		"monitoring_alert_policy",
 		"monitoring_notification_channel",
+		"org_policy",
+		"pubsub_subscription",
+		"pubsub_topic",
 		"resourcemanager_project",
 		"resource_exposure",
 		"secret_manager_secret",
@@ -401,6 +423,7 @@ var minimumCloudCoverageDimensions = map[string][]string{
 		"service_account",
 		"service_account_impersonation",
 		"service_account_key",
+		"service_usage_service",
 		"spanner_database",
 		"spanner_instance",
 		"vpc_access_connector",
@@ -413,6 +436,7 @@ func checkCloudPolicyCoverage(root string) ([]issue, error) {
 		return nil, err
 	}
 	issues := checkRequiredCloudCoverageDimensions(dimensions)
+	issues = append(issues, checkStrictDeployRuntimeCoverage(root, dimensions)...)
 	policiesRoot := filepath.Join(root, "policies")
 	err = filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -482,6 +506,35 @@ func checkRequiredCloudCoverageDimensions(dimensions map[string]map[string]sourc
 	return issues
 }
 
+func checkStrictDeployRuntimeCoverage(root string, dimensions map[string]map[string]sourcecdk.CoverageDimension) []issue {
+	var issues []issue
+	for sourceID, sourceDimensions := range dimensions {
+		sourceDir := filepath.Join(root, "sources", sourceID)
+		hasDeployManifest, err := hasSourceDeployManifest(sourceDir)
+		if err != nil {
+			issues = append(issues, issue{path: fmt.Sprintf("sources/%s/catalog.yaml", sourceID), message: err.Error()})
+			continue
+		}
+		if !hasDeployManifest {
+			continue
+		}
+		deployFamilies, err := loadDeployRuntimeFamilies(filepath.Join(sourceDir, "deploy.yaml"))
+		if err != nil {
+			issues = append(issues, issue{path: fmt.Sprintf("sources/%s/deploy.yaml", sourceID), message: err.Error()})
+			continue
+		}
+		coveredFamilies := coverageFamilies(sourceDimensions)
+		missing := sortedStringSetDifference(deployFamilies, coveredFamilies)
+		if len(missing) > 0 {
+			issues = append(issues, issue{
+				path:    fmt.Sprintf("sources/%s/catalog.yaml", sourceID),
+				message: fmt.Sprintf("coverage_contract does not cover deploy runtime families: %s", strings.Join(missing, ", ")),
+			})
+		}
+	}
+	return issues
+}
+
 func loadCoverageDimensions(root string) (map[string]map[string]sourcecdk.CoverageDimension, error) {
 	sourcesRoot := filepath.Join(root, "sources")
 	dimensions := map[string]map[string]sourcecdk.CoverageDimension{}
@@ -518,6 +571,61 @@ func loadCoverageDimensions(root string) (map[string]map[string]sourcecdk.Covera
 		return nil, err
 	}
 	return dimensions, nil
+}
+
+type sourceDeployManifest struct {
+	Runtimes []struct {
+		Config map[string]string `yaml:"config"`
+	} `yaml:"runtimes"`
+}
+
+func loadDeployRuntimeFamilies(path string) (map[string]struct{}, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read deploy.yaml: %w", err)
+	}
+	var manifest sourceDeployManifest
+	if err := yaml.Unmarshal(content, &manifest); err != nil {
+		return nil, fmt.Errorf("decode deploy.yaml: %w", err)
+	}
+	families := map[string]struct{}{}
+	for _, runtime := range manifest.Runtimes {
+		family := strings.TrimSpace(runtime.Config["family"])
+		if family == "" {
+			continue
+		}
+		families[family] = struct{}{}
+	}
+	return families, nil
+}
+
+func coverageFamilies(dimensions map[string]sourcecdk.CoverageDimension) map[string]struct{} {
+	families := map[string]struct{}{}
+	for _, dimension := range dimensions {
+		switch dimension.Support {
+		case sourcecdk.CoverageSupportSupported, sourcecdk.CoverageSupportPartial:
+		default:
+			continue
+		}
+		for _, family := range dimension.Families {
+			family = strings.TrimSpace(family)
+			if family != "" {
+				families[family] = struct{}{}
+			}
+		}
+	}
+	return families
+}
+
+func sortedStringSetDifference(left map[string]struct{}, right map[string]struct{}) []string {
+	out := make([]string, 0)
+	for value := range left {
+		if _, ok := right[value]; !ok {
+			out = append(out, value)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func splitPolicyResources(value string) []string {

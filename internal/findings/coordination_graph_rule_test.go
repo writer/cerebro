@@ -21,7 +21,7 @@ func TestCoordinationGraphRuleSupportsRuntime(t *testing.T) {
 }
 
 func TestCoordinationGraphRuleQueryRequiresTenant(t *testing.T) {
-	rule := newResourceMultipleOpenFindingsRule().(GraphRule)
+	rule := newGRCSourceConcentratedOpenFindingsRule().(GraphRule)
 	if got := rule.QueryFor(&cerebrov1.SourceRuntime{}); got.Query != "" {
 		t.Fatalf("QueryFor(runtime without tenant) = %q, want empty", got.Query)
 	}
@@ -38,9 +38,6 @@ func TestCoordinationGraphRuleQueryRequiresTenant(t *testing.T) {
 	if !strings.Contains(query.Query, "findings[0..20] | {urn: f.urn") {
 		t.Fatalf("query does not cap related finding evidence: %s", query.Query)
 	}
-	if strings.Contains(query.Query, "+ [f IN findings") {
-		t.Fatalf("query projects related finding anchors as ResourceURNs: %s", query.Query)
-	}
 	if !strings.Contains(query.Query, "ORDER BY finding.urn") {
 		t.Fatalf("query does not deterministically order findings before capping: %s", query.Query)
 	}
@@ -49,7 +46,6 @@ func TestCoordinationGraphRuleQueryRequiresTenant(t *testing.T) {
 func TestCoordinationGraphRuleQueryOrdersFindingsBeforeSlice(t *testing.T) {
 	for _, ruleID := range []string{
 		"grc-source-integration-concentrated-open-findings",
-		"graph-resource-multiple-open-findings",
 	} {
 		registry := Builtin()
 		rule, ok := registry.Get(ruleID)
@@ -69,6 +65,39 @@ func TestCoordinationGraphRuleQueryOrdersFindingsBeforeSlice(t *testing.T) {
 	}
 }
 
+func TestResourceMultipleOpenFindingsRuleRetired(t *testing.T) {
+	rule := newResourceMultipleOpenFindingsRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleRetired || definition.Lifecycle.Anchor != AnchorNone {
+		t.Fatalf("Lifecycle = %+v, want retired/none", definition.Lifecycle)
+	}
+	if definition.Maturity != RuleMaturityRetired || definition.Status != "retired" {
+		t.Fatalf("retirement metadata = maturity %q status %q", definition.Maturity, definition.Status)
+	}
+	graphRule, ok := rule.(GraphRule)
+	if !ok {
+		t.Fatal("retired resource multiple-open rule must remain a GraphRule for stale closeout")
+	}
+	query := graphRule.QueryFor(&cerebrov1.SourceRuntime{Id: "runtime", TenantId: "writer", SourceId: "graph"})
+	if query.Query != "" {
+		t.Fatalf("retired rule QueryFor() = %q, want empty", query.Query)
+	}
+	findings, err := graphRule.EvaluateRows(context.Background(), &cerebrov1.SourceRuntime{Id: "runtime", TenantId: "writer", SourceId: "graph"}, []ports.CypherRow{{Values: map[string]any{
+		"primary_urn":     "urn:cerebro:writer:resource:one",
+		"fingerprint_key": "urn:cerebro:writer:resource:one",
+	}}})
+	if err != nil {
+		t.Fatalf("EvaluateRows(retired rule) error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows(retired rule) returned %d findings, want 0", len(findings))
+	}
+}
+
 func TestReviewCoordinationGraphRulesHaveDirectCoverage(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -79,7 +108,6 @@ func TestReviewCoordinationGraphRulesHaveDirectCoverage(t *testing.T) {
 	}{
 		{name: "github org owner", rule: newGitHubOrgOwnerConcentrationRule(), sourceID: "github", family: "org_inventory", querySnippet: `"role":"admin"`},
 		{name: "github programmatic credential", rule: newGitHubProgrammaticCredentialReviewRule(), sourceID: "github", family: "audit", querySnippet: `"resource_type":"personal_access_token"`},
-		{name: "github self-hosted runner", rule: newGitHubSelfHostedRunnerReviewRule(), sourceID: "github", family: "audit", querySnippet: `"runner_ephemeral":"true"`},
 		{name: "okta oauth public client", rule: newOktaOAuthPublicClientReviewRule(), sourceID: "okta", family: "application", querySnippet: `"oauth_public_client":"true"`},
 		{name: "okta weak authenticator", rule: newOktaAuthenticatorWeakFactorRule(), sourceID: "okta", family: "authenticator", querySnippet: `"key":"sms"`},
 		{name: "okta threat insight", rule: newOktaThreatInsightNotBlockingRule(), sourceID: "okta", family: "threat_insight", querySnippet: `"action":"block"`},
@@ -187,7 +215,7 @@ func TestCoordinationGraphRuleEvaluateRowsBuildsFinding(t *testing.T) {
 }
 
 func TestCoordinationGraphRuleEvaluateRowsCapsResourceURNs(t *testing.T) {
-	rule := newResourceMultipleOpenFindingsRule().(GraphRule)
+	rule := newGRCSourceConcentratedOpenFindingsRule().(GraphRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-survey-feedback", TenantId: "writer", SourceId: "cosmo", Config: map[string]string{"family": "survey_feedback"}}
 	resourceURNs := []any{"urn:cerebro:writer:resource:one"}
 	for i := 1; i <= coordinationGraphRelatedResourceLimit+5; i++ {
@@ -217,7 +245,7 @@ func TestCoordinationGraphRuleEvaluateRowsCapsResourceURNs(t *testing.T) {
 }
 
 func TestCoordinationGraphRuleEvaluateRowsDropsEvidenceFindingURNResources(t *testing.T) {
-	rule := newResourceMultipleOpenFindingsRule().(GraphRule)
+	rule := newGRCSourceConcentratedOpenFindingsRule().(GraphRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-message", TenantId: "writer", SourceId: "cosmo", Config: map[string]string{"family": "message"}}
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{{Values: map[string]any{

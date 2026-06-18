@@ -448,6 +448,32 @@ func (s *tenantCheckSource) Read(context.Context, sourcecdk.Config, *cerebrov1.S
 	return sourcecdk.Pull{}, nil
 }
 
+type checkpointAwareRuntimeSource struct {
+	seenCheckpoint *cerebrov1.SourceCheckpoint
+	pull           sourcecdk.Pull
+}
+
+func (s *checkpointAwareRuntimeSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "checkpoint_aware"}
+}
+
+func (s *checkpointAwareRuntimeSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (s *checkpointAwareRuntimeSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *checkpointAwareRuntimeSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, errors.New("Read called instead of ReadWithCheckpoint")
+}
+
+func (s *checkpointAwareRuntimeSource) ReadWithCheckpoint(_ context.Context, _ sourcecdk.Config, _ *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	s.seenCheckpoint = cloneCheckpoint(checkpoint)
+	return s.pull, nil
+}
+
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -1238,6 +1264,58 @@ func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeTelemetryIncludesBoundedFreshnessMetadata(t *testing.T) {
+	checkpoint := sourcecdk.FamilyFreshnessCheckpoint("github", "audit", nil, sourcecdk.FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "github-audit-sensitive-document-id",
+		Hash:       "sensitive-canary-hash",
+		Confidence: sourcecdk.FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  2,
+		Reason:     sourcecdk.FamilyFreshnessReasonShortCircuit,
+	})
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Checkpoint:         checkpoint,
+		ShortCircuitReason: sourcecdk.PullShortCircuitReasonNotModified,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"}); err != nil {
+			t.Fatalf("Sync() error = %v", err)
+		}
+	})
+
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync")
+	for key, want := range map[string]any{
+		"family_freshness_source":           "github",
+		"family_freshness_family":           "audit",
+		"family_freshness_confidence":       "heuristic",
+		"family_freshness_reconcile_reason": "short_circuit",
+		"family_freshness_forced_reconcile": false,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got := payload["family_freshness_skip_count"]; got != float64(2) {
+		t.Fatalf("telemetry family_freshness_skip_count = %#v, want 2; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "github-audit-sensitive-document-id") || strings.Contains(stderr, "sensitive-canary-hash") {
+		t.Fatalf("freshness telemetry leaked raw canary metadata: %s", stderr)
+	}
+}
+
 func TestSyncRuntimePersistsFailureCategories(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -1410,6 +1488,237 @@ func TestSyncRuntimeFollowUpUsesPersistedResumableCheckpointCursor(t *testing.T)
 	}
 	if source.seenCursors[1] != checkpointCursor {
 		t.Fatalf("follow-up sync cursor = %q, want persisted checkpoint cursor %q", source.seenCursors[1], checkpointCursor)
+	}
+}
+
+func TestSyncRuntimePassesCheckpointAndPersistsShortCircuitReason(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	existingCheckpoint := &cerebrov1.SourceCheckpoint{
+		Watermark:    timestamppb.New(watermark),
+		CursorOpaque: `{"source":"github","resumable_checkpoint":true}`,
+	}
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(watermark),
+			CursorOpaque: `{"source":"github","family":"pull_request","resumable_checkpoint":true}`,
+		},
+		ShortCircuitReason: sourcecdk.PullShortCircuitReasonNotModified,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:         "writer-checkpoint-aware",
+			SourceId:   "checkpoint_aware",
+			TenantId:   "writer",
+			Checkpoint: existingCheckpoint,
+		},
+	}}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if !proto.Equal(source.seenCheckpoint, existingCheckpoint) {
+		t.Fatalf("ReadWithCheckpoint checkpoint = %v, want %v", source.seenCheckpoint, existingCheckpoint)
+	}
+	if resp.GetPagesRead() != 1 || resp.GetEventsAppended() != 0 {
+		t.Fatalf("Sync() pages/events = %d/%d, want 1/0", resp.GetPagesRead(), resp.GetEventsAppended())
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+	stored := store.runtimes["writer-checkpoint-aware"]
+	if got := stored.GetConfig()[runtimeShortCircuitReasonConfigKey]; got != "not_modified" {
+		t.Fatalf("short circuit reason = %q, want not_modified", got)
+	}
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != source.pull.Checkpoint.GetCursorOpaque() {
+		t.Fatalf("stored checkpoint cursor = %q, want %q", got, source.pull.Checkpoint.GetCursorOpaque())
+	}
+}
+
+func TestSyncRuntimePersistsReconciliationReason(t *testing.T) {
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Events:               []*cerebrov1.EventEnvelope{runtimeTestEvent("event-1", "checkpoint_aware", "checkpoint_aware.event")},
+		ReconciliationReason: sourcecdk.PullReconciliationReasonMaxConsecutiveSkips,
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	stored := store.runtimes["writer-checkpoint-aware"]
+	if got := stored.GetConfig()[runtimeReconciliationReasonConfigKey]; got != "max_consecutive_skips" {
+		t.Fatalf("reconciliation reason = %q, want max_consecutive_skips", got)
+	}
+	if got := stored.GetConfig()[runtimeShortCircuitReasonConfigKey]; got != "" {
+		t.Fatalf("short circuit reason = %q, want empty", got)
+	}
+}
+
+func TestSyncRuntimeDoesNotRegressCheckpointWatermark(t *testing.T) {
+	newer := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	older := newer.Add(-time.Hour)
+	existingEnvelope := sourcecdk.CursorEnvelope{
+		Version:             1,
+		Source:              "github",
+		Family:              "pull_request",
+		Mode:                "incremental_watermark",
+		ResumableCheckpoint: true,
+		Token:               "2",
+		BoundaryIDs:         []string{"newer"},
+	}
+	sourcecdk.SetCursorWatermark(&existingEnvelope, newer)
+	existingCursor, err := sourcecdk.EncodeCursorEnvelope(existingEnvelope)
+	if err != nil {
+		t.Fatalf("EncodeCursorEnvelope(existing) error = %v", err)
+	}
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(older),
+			CursorOpaque: "older",
+		},
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+			Checkpoint: &cerebrov1.SourceCheckpoint{
+				Watermark:    timestamppb.New(newer),
+				CursorOpaque: existingCursor,
+			},
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	stored := store.runtimes["writer-checkpoint-aware"]
+	if got := stored.GetCheckpoint().GetWatermark().AsTime(); !got.Equal(newer) {
+		t.Fatalf("stored watermark = %s, want %s", got, newer)
+	}
+	storedEnvelope, ok := sourcecdk.DecodeCursorEnvelope(stored.GetCheckpoint().GetCursorOpaque())
+	if !ok {
+		t.Fatal("stored checkpoint cursor is not an envelope")
+	}
+	if storedEnvelope.Token != "" {
+		t.Fatalf("stored token = %q, want terminal checkpoint without continuation token", storedEnvelope.Token)
+	}
+	if got := storedEnvelope.BoundaryIDs; len(got) != 1 || got[0] != "newer" {
+		t.Fatalf("stored boundary IDs = %#v, want newer", got)
+	}
+	if got := stored.GetConfig()[runtimeShortCircuitReasonConfigKey]; got != "checkpoint_advanced" {
+		t.Fatalf("short circuit reason = %q, want checkpoint_advanced", got)
+	}
+}
+
+func TestSyncRuntimeMergesEqualWatermarkCheckpointBoundaries(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	existingEnvelope := sourcecdk.CursorEnvelope{
+		Version:             1,
+		Source:              "github",
+		Family:              "pull_request",
+		Mode:                "incremental_watermark",
+		ResumableCheckpoint: true,
+		Token:               "2",
+		BoundaryIDs:         []string{"first"},
+		Extra: map[string]string{
+			sourcecdk.FamilyFreshnessExtraKind:       "repo_updated_at",
+			sourcecdk.FamilyFreshnessExtraResourceID: "writer/cerebro",
+			sourcecdk.FamilyFreshnessExtraHash:       "old-hash",
+			"preserved":                              "yes",
+		},
+	}
+	sourcecdk.SetCursorWatermark(&existingEnvelope, watermark)
+	existingCursor, err := sourcecdk.EncodeCursorEnvelope(existingEnvelope)
+	if err != nil {
+		t.Fatalf("EncodeCursorEnvelope(existing) error = %v", err)
+	}
+	nextEnvelope := sourcecdk.CursorEnvelope{
+		Version:             1,
+		Source:              "github",
+		Family:              "pull_request",
+		Mode:                "incremental_watermark",
+		ResumableCheckpoint: true,
+		BoundaryIDs:         []string{"second"},
+		Extra: map[string]string{
+			sourcecdk.FamilyFreshnessExtraHash: "new-hash",
+		},
+	}
+	sourcecdk.SetCursorWatermark(&nextEnvelope, watermark)
+	nextCursor, err := sourcecdk.EncodeCursorEnvelope(nextEnvelope)
+	if err != nil {
+		t.Fatalf("EncodeCursorEnvelope(next) error = %v", err)
+	}
+	source := &checkpointAwareRuntimeSource{pull: sourcecdk.Pull{
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(watermark),
+			CursorOpaque: nextCursor,
+		},
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-checkpoint-aware": {
+			Id:       "writer-checkpoint-aware",
+			SourceId: "checkpoint_aware",
+			TenantId: "writer",
+			Checkpoint: &cerebrov1.SourceCheckpoint{
+				Watermark:    timestamppb.New(watermark),
+				CursorOpaque: existingCursor,
+			},
+		},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint-aware"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	storedEnvelope, ok := sourcecdk.DecodeCursorEnvelope(store.runtimes["writer-checkpoint-aware"].GetCheckpoint().GetCursorOpaque())
+	if !ok {
+		t.Fatal("stored checkpoint cursor is not an envelope")
+	}
+	if storedEnvelope.Token != "" {
+		t.Fatalf("stored token = %q, want terminal checkpoint without continuation token", storedEnvelope.Token)
+	}
+	if got := storedEnvelope.BoundaryIDs; len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Fatalf("stored boundary IDs = %#v, want first and second", got)
+	}
+	if got := storedEnvelope.Extra["preserved"]; got != "yes" {
+		t.Fatalf("stored preserved extra = %q, want yes", got)
+	}
+	if got := storedEnvelope.Extra[sourcecdk.FamilyFreshnessExtraHash]; got != "new-hash" {
+		t.Fatalf("stored canary hash = %q, want next checkpoint hash", got)
+	}
+	if got := storedEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind]; got != "repo_updated_at" {
+		t.Fatalf("stored canary kind = %q, want existing kind", got)
 	}
 }
 

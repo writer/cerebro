@@ -659,6 +659,41 @@ func TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag(t *testi
 	}
 }
 
+func TestEvaluateSourceRuntimeGraphRulesRetiredEmptyQueryResolvesOpenFindings(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-graph", SourceId: "graph", TenantId: "writer"}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"stale-meta": {
+			ID:             "stale-meta",
+			TenantID:       "writer",
+			RuntimeID:      "runtime-old",
+			RuleID:         "graph-resource-multiple-open-findings",
+			Status:         findingStatusOpen,
+			LastObservedAt: time.Now().UTC().Add(-time.Hour),
+		},
+	}}
+	registry, err := NewRegistry(newResourceMultipleOpenFindingsRule())
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(&stubGraphStore{})
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if len(result.Evaluations) != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", len(result.Evaluations))
+	}
+	if got := store.findings["stale-meta"].Status; got != findingStatusResolved {
+		t.Fatalf("retired graph finding status = %q, want resolved", got)
+	}
+	if got := store.findings["stale-meta"].StatusReason; got != "graph_rule_no_longer_matches" {
+		t.Fatalf("retired graph finding status reason = %q", got)
+	}
+	if len(store.updateStatusCalls) != 1 {
+		t.Fatalf("len(updateStatusCalls) = %d, want 1", len(store.updateStatusCalls))
+	}
+}
+
 // TestEvaluateSourceRuntimeGraphRulesFailedRunPreservesGraphTelemetry confirms
 // that even when the cypher query fails the persisted failed run still marks
 // itself as a graph rule, so the rule-class discriminator survives failures

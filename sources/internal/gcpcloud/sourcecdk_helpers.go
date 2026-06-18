@@ -119,6 +119,72 @@ type NextPage struct {
 
 func (page NextPage) NextToken() string { return page.NextPageToken }
 
+type GenericPageResponse struct {
+	Accounts      []json.RawMessage `json:"accounts"`
+	Policies      []json.RawMessage `json:"policies"`
+	Groups        []json.RawMessage `json:"groups"`
+	Items         []json.RawMessage `json:"items"`
+	Memberships   []json.RawMessage `json:"memberships"`
+	Entries       []json.RawMessage `json:"entries"`
+	Keys          []json.RawMessage `json:"keys"`
+	Results       []json.RawMessage `json:"results"`
+	Clusters      []json.RawMessage `json:"clusters"`
+	Datasets      []json.RawMessage `json:"datasets"`
+	Services      []json.RawMessage `json:"services"`
+	Revisions     []json.RawMessage `json:"revisions"`
+	Functions     []json.RawMessage `json:"functions"`
+	Secrets       []json.RawMessage `json:"secrets"`
+	CryptoKeys    []json.RawMessage `json:"cryptoKeys"`
+	Endpoints     []json.RawMessage `json:"endpoints"`
+	ManagedZones  []json.RawMessage `json:"managedZones"`
+	RRSets        []json.RawMessage `json:"rrsets"`
+	NodePools     []json.RawMessage `json:"nodePools"`
+	Repositories  []json.RawMessage `json:"repositories"`
+	Occurrences   []json.RawMessage `json:"occurrences"`
+	Sinks         []json.RawMessage `json:"sinks"`
+	DockerImages  []json.RawMessage `json:"dockerImages"`
+	NextPageToken string            `json:"nextPageToken"`
+}
+
+type BinaryAuthorizationAttestorsPageResponse struct {
+	NextPage
+	Attestors []json.RawMessage `json:"attestors"`
+}
+
+type CertificateManagerPageResponse struct {
+	Certificates          []json.RawMessage `json:"certificates"`
+	CertificateMaps       []json.RawMessage `json:"certificateMaps"`
+	CertificateMapEntries []json.RawMessage `json:"certificateMapEntries"`
+	DNSAuthorizations     []json.RawMessage `json:"dnsAuthorizations"`
+	NextPageToken         string            `json:"nextPageToken"`
+}
+
+type PubSubPageResponse struct {
+	Subscriptions []json.RawMessage `json:"subscriptions"`
+	Topics        []json.RawMessage `json:"topics"`
+	NextPageToken string            `json:"nextPageToken"`
+}
+
+type SecurityCenterFindingsPageResponse struct {
+	NextPage
+	ListFindingsResults []json.RawMessage `json:"listFindingsResults"`
+}
+
+type VPCAccessPageResponse struct {
+	Connectors    []json.RawMessage `json:"connectors"`
+	NextPageToken string            `json:"nextPageToken"`
+}
+
+type WorkloadIdentityPoolsPageResponse struct {
+	NextPage
+	WorkloadIdentityPools []json.RawMessage `json:"workloadIdentityPools"`
+}
+
+type WorkloadIdentityProvidersPageResponse struct {
+	NextPage
+	WorkloadIdentityPoolProviders []json.RawMessage `json:"workloadIdentityPoolProviders"`
+}
+
 type BigtablePageResponse struct {
 	NextPage
 	Instances []json.RawMessage `json:"instances"`
@@ -199,6 +265,27 @@ func CollectChildPages[P any, C any](parents []P, parentName func(P) string, lis
 			attach(&children[index], parent)
 		}
 		records = append(records, children...)
+	}
+	return records, nil
+}
+
+func CollectWorkloadIdentityProviders(pools []WorkloadIdentityPoolRecord, list func(string, string) ([]WorkloadIdentityProviderRecord, string, error)) ([]WorkloadIdentityProviderRecord, error) {
+	records := make([]WorkloadIdentityProviderRecord, 0)
+	for _, pool := range pools {
+		if strings.TrimSpace(pool.Name) == "" {
+			continue
+		}
+		providers, err := CollectPages(func(pageToken string) ([]WorkloadIdentityProviderRecord, string, error) {
+			page, next, err := list(pool.Name, pageToken)
+			for index := range page {
+				page[index].PoolName = pool.Name
+			}
+			return page, next, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, providers...)
 	}
 	return records, nil
 }

@@ -224,7 +224,7 @@ func accessAttributes(body map[string]any) map[string]string {
 		"actor_user":     stringField(body, "principal"),
 		"resource_type":  "cerebro_api_route",
 	}
-	for _, key := range []string{"auth_mode", "client_id", "connect_code", "connect_procedure", "credential_id", "denial_reason", "device_id", "duration_ms", "effective_status_code", "effective_tenant_id", "operation_family", "operation_type", "principal", "principal_tenant_id", "remote_ip", "request_id", "requested_tenant_id", "risk_level", "risk_score", "sensitive_action", "status", "status_code", "tenant_id", "tenant_mismatch"} {
+	for _, key := range []string{"auth_mode", "client_id", "connect_code", "connect_procedure", "credential_id", "denial_reason", "device_id", "duration_ms", "effective_status_code", "effective_tenant_id", "matched_scope", "missing_scopes", "operation_family", "operation_type", "principal", "principal_tenant_id", "remote_ip", "request_id", "requested_tenant_id", "required_scopes", "risk_level", "risk_score", "scopes", "sensitive_action", "status", "status_code", "tenant_id", "tenant_mismatch"} {
 		if value := stringField(body, key); value != "" {
 			attrs[key] = value
 		}
@@ -265,6 +265,27 @@ func stringField(body map[string]any, key string) string {
 		return strconv.FormatFloat(value, 'f', -1, 64)
 	case bool:
 		return strconv.FormatBool(value)
+	case []any:
+		parts := make([]string, 0, len(value))
+		for _, item := range value {
+			if rendered := scalarString(item); rendered != "" {
+				parts = append(parts, rendered)
+			}
+		}
+		return strings.Join(parts, ",")
+	default:
+		return ""
+	}
+}
+
+func scalarString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(typed)
 	default:
 		return ""
 	}

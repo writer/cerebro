@@ -3,11 +3,13 @@ package bootstrap
 import "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 
 const (
-	scopeCosmoSecurityRead       = "cerebro.cosmo.security.read"
-	scopeFindingCandidatePromote = "cerebro.finding_candidates.promote"
-	scopeFindingLifecycleWrite   = "cerebro.findings.write"
-	scopeGRCInventoryWrite       = "cerebro.grc.inventory.write"
-	scopeRuntimeResponseWrite    = "cerebro.runtime_response.write"
+	scopeCosmoSecurityRead         = "cerebro.cosmo.security.read"
+	scopeFindingCandidatePromote   = "cerebro.finding_candidates.promote"
+	scopeFindingLifecycleWrite     = "cerebro.findings.write"
+	scopeGRCInventoryWrite         = "cerebro.grc.inventory.write"
+	scopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
+	scopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
+	scopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
 )
 
 type connectProcedureAuthPolicy struct {
@@ -55,7 +57,8 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		cerebrov1connect.BootstrapServiceAssignFindingProcedure,
 		cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure,
 		cerebrov1connect.BootstrapServiceAddFindingNoteProcedure,
-		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:
+		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
+		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeFindingLifecycleWrite}
 	case cerebrov1connect.BootstrapServiceRunReportProcedure,
 		cerebrov1connect.BootstrapServiceCheckSourceProcedure,

@@ -23,5 +23,8 @@ func applyResourceScopePolicy(pull Pull, policy resourcescope.Policy) Pull {
 		return pull
 	}
 	pull.Events = events
+	if len(events) == 0 && pull.ShortCircuitReason == "" {
+		pull.ShortCircuitReason = PullShortCircuitReasonResourceScopeFiltered
+	}
 	return pull
 }

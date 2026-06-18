@@ -15,13 +15,16 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -32,16 +35,21 @@ import (
 type connectorTestStore struct {
 	*stubRuntimeStore
 	credentials map[string]*ports.ConnectorCredentialRecord
+	audit       []*ports.ConnectorCredentialAuditRecord
+	definitions map[string]*ports.ConnectorDefinitionRecord
 }
 
 func (s *connectorTestStore) PutConnectorCredential(_ context.Context, record *ports.ConnectorCredentialRecord) error {
 	if s.credentials == nil {
 		s.credentials = map[string]*ports.ConnectorCredentialRecord{}
 	}
-	cloned := *record
-	cloned.Sealed = append([]byte{}, record.Sealed...)
-	cloned.CreatedAt = time.Now().UTC()
-	cloned.UpdatedAt = cloned.CreatedAt
+	cloned := cloneConnectorTestCredential(record)
+	if cloned.CreatedAt.IsZero() {
+		cloned.CreatedAt = time.Now().UTC()
+	}
+	if cloned.UpdatedAt.IsZero() {
+		cloned.UpdatedAt = cloned.CreatedAt
+	}
 	s.credentials[record.ID] = &cloned
 	return nil
 }
@@ -51,9 +59,140 @@ func (s *connectorTestStore) GetConnectorCredential(_ context.Context, id string
 	if !ok {
 		return nil, ports.ErrConnectorCredentialNotFound
 	}
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, nil
+}
+
+func (s *connectorTestStore) ListConnectorCredentials(_ context.Context, filter ports.ConnectorCredentialFilter) ([]*ports.ConnectorCredentialRecord, error) {
+	records := []*ports.ConnectorCredentialRecord{}
+	for _, record := range s.credentials {
+		if !connectorCredentialRecordMatches(record, filter) {
+			continue
+		}
+		cloned := cloneConnectorTestCredential(record)
+		records = append(records, &cloned)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].UpdatedAt.After(records[j].UpdatedAt)
+	})
+	if filter.Limit > 0 && len(records) > filter.Limit {
+		records = records[:filter.Limit]
+	}
+	return records, nil
+}
+
+func (s *connectorTestStore) UpdateConnectorCredentialMetadata(_ context.Context, id string, update ports.ConnectorCredentialMetadataUpdate) (*ports.ConnectorCredentialRecord, error) {
+	record, ok := s.credentials[id]
+	if !ok {
+		return nil, ports.ErrConnectorCredentialNotFound
+	}
+	if update.Status != "" {
+		record.Status = update.Status
+	}
+	if update.Fields != nil {
+		record.Fields = append([]string{}, update.Fields...)
+	}
+	if update.UpdatedBy != "" {
+		record.UpdatedBy = update.UpdatedBy
+	}
+	if update.RevokedBy != "" {
+		record.RevokedBy = update.RevokedBy
+	}
+	if update.PreviousCredentialID != "" {
+		record.PreviousCredentialID = update.PreviousCredentialID
+	}
+	if update.RevokedAt != nil {
+		record.RevokedAt = *update.RevokedAt
+	}
+	if update.LastUsedAt != nil {
+		record.LastUsedAt = *update.LastUsedAt
+	}
+	if update.LastValidatedAt != nil {
+		record.LastValidatedAt = *update.LastValidatedAt
+	}
+	record.UpdatedAt = time.Now().UTC()
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, nil
+}
+
+func (s *connectorTestStore) MarkConnectorCredentialUsed(_ context.Context, id string, usedAt time.Time, staleBefore time.Time) (*ports.ConnectorCredentialRecord, bool, error) {
+	record, ok := s.credentials[id]
+	if !ok {
+		return nil, false, ports.ErrConnectorCredentialNotFound
+	}
+	if usedAt.IsZero() {
+		usedAt = time.Now().UTC()
+	}
+	if staleBefore.IsZero() {
+		staleBefore = usedAt.Add(-time.Hour)
+	}
+	if !record.LastUsedAt.IsZero() && record.LastUsedAt.After(staleBefore) {
+		cloned := cloneConnectorTestCredential(record)
+		return &cloned, false, nil
+	}
+	record.LastUsedAt = usedAt.UTC()
+	record.UpdatedAt = usedAt.UTC()
+	cloned := cloneConnectorTestCredential(record)
+	return &cloned, true, nil
+}
+
+func (s *connectorTestStore) AppendConnectorCredentialAuditEvent(_ context.Context, event *ports.ConnectorCredentialAuditRecord) error {
+	if event == nil {
+		return nil
+	}
+	cloned := *event
+	s.audit = append(s.audit, &cloned)
+	return nil
+}
+
+func (s *connectorTestStore) ListConnectorCredentialAuditEvents(_ context.Context, credentialID string, limit int) ([]*ports.ConnectorCredentialAuditRecord, error) {
+	events := []*ports.ConnectorCredentialAuditRecord{}
+	for _, event := range s.audit {
+		if event.CredentialID != credentialID {
+			continue
+		}
+		cloned := *event
+		events = append(events, &cloned)
+	}
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].CreatedAt.After(events[j].CreatedAt)
+	})
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+func cloneConnectorTestCredential(record *ports.ConnectorCredentialRecord) ports.ConnectorCredentialRecord {
 	cloned := *record
 	cloned.Sealed = append([]byte{}, record.Sealed...)
-	return &cloned, nil
+	cloned.Fields = append([]string{}, record.Fields...)
+	return cloned
+}
+
+func connectorCredentialRecordMatches(record *ports.ConnectorCredentialRecord, filter ports.ConnectorCredentialFilter) bool {
+	if record == nil {
+		return false
+	}
+	if filter.ID != "" && record.ID != filter.ID {
+		return false
+	}
+	if filter.TenantID != "" && record.TenantID != filter.TenantID {
+		return false
+	}
+	if filter.SourceID != "" && record.SourceID != filter.SourceID {
+		return false
+	}
+	if filter.RuntimeID != "" && record.RuntimeID != filter.RuntimeID {
+		return false
+	}
+	if filter.Status != "" && record.Status != filter.Status {
+		return false
+	}
+	if filter.IdempotencyKey != "" && record.IdempotencyKey != filter.IdempotencyKey {
+		return false
+	}
+	return true
 }
 
 func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
@@ -127,6 +266,32 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	if got := credentialPayload["credential_store_id"]; got != defaultConnectorCredentialStoreID {
 		t.Fatalf("credential_store_id = %#v, want %q", got, defaultConnectorCredentialStoreID)
 	}
+	if got := credentialPayload["status"]; got != connectorcredentials.StatusValid {
+		t.Fatalf("credential status = %#v, want %q", got, connectorcredentials.StatusValid)
+	}
+	credentialID, ok := credentialPayload["id"].(string)
+	if !ok || credentialID == "" {
+		t.Fatalf("credential id = %#v, want non-empty string", credentialPayload["id"])
+	}
+	if got, ok := credentialPayload["last_validated_at"].(string); !ok || strings.TrimSpace(got) == "" {
+		t.Fatalf("credential last_validated_at = %#v, want validation timestamp", credentialPayload["last_validated_at"])
+	}
+	record := store.credentials[credentialID]
+	if record == nil {
+		t.Fatalf("stored credential %q missing", credentialID)
+	}
+	if record.LastValidatedAt.IsZero() {
+		t.Fatal("stored credential LastValidatedAt is zero")
+	}
+	auditTypes := map[string]bool{}
+	for _, event := range store.audit {
+		if event.CredentialID == credentialID {
+			auditTypes[event.EventType] = true
+		}
+	}
+	if !auditTypes[connectorcredentials.AuditEventStored] || !auditTypes[connectorcredentials.AuditEventValidated] {
+		t.Fatalf("credential audit types = %#v, want stored and validated", auditTypes)
+	}
 	runtime := store.runtimes["runtime-a"]
 	if runtime == nil {
 		t.Fatal("stored runtime missing")
@@ -139,6 +304,497 @@ func TestConnectorConnectionStoresCredentialReference(t *testing.T) {
 	}
 	if source.checkToken != "secret-token" {
 		t.Fatalf("source check token = %q, want decrypted secret", source.checkToken)
+	}
+}
+
+func TestConnectorCredentialBrokerStoresReferencesWithoutLeakingSecret(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("POST /connectors/{sourceID}/credentials status = %d, want 201: %s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "secret-token") {
+		t.Fatalf("credential broker response leaked secret: %s", recorder.Body.String())
+	}
+	var payload connectorCredentialBrokerResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "stored" {
+		t.Fatalf("status = %q, want stored", payload.Status)
+	}
+	if payload.TenantID != "tenant-a" || payload.SourceID != "bootstrap_token" || payload.RuntimeID != "runtime-a" {
+		t.Fatalf("response identity = tenant %q source %q runtime %q", payload.TenantID, payload.SourceID, payload.RuntimeID)
+	}
+	reference := payload.CredentialReferences["token"]
+	if want := connectorcredentials.Reference(payload.Credential.ID, "token"); reference != want {
+		t.Fatalf("token reference = %q, want %q", reference, want)
+	}
+	record := store.credentials[payload.Credential.ID]
+	if record == nil {
+		t.Fatalf("stored credential %q missing", payload.Credential.ID)
+	}
+	if record.TenantID != "tenant-a" || record.SourceID != "bootstrap_token" || record.RuntimeID != "runtime-a" {
+		t.Fatalf("stored credential identity = tenant %q source %q runtime %q", record.TenantID, record.SourceID, record.RuntimeID)
+	}
+	if strings.Contains(string(record.Sealed), "secret-token") {
+		t.Fatalf("sealed credential leaked secret: %s", string(record.Sealed))
+	}
+	vault, err := connectorCredentialVault(app.cfg.ConnectorCredentials, app.deps.StateStore)
+	if err != nil {
+		t.Fatalf("connectorCredentialVault() error = %v", err)
+	}
+	resolved, err := vault.ResolveReferences(context.Background(), "bootstrap_token", "tenant-a", "runtime-a", map[string]string{"token": reference})
+	if err != nil {
+		t.Fatalf("ResolveReferences() error = %v", err)
+	}
+	if resolved["token"] != "secret-token" {
+		t.Fatalf("resolved token = %q, want secret-token", resolved["token"])
+	}
+	if _, err := vault.ResolveReferences(context.Background(), "bootstrap_token", "tenant-b", "runtime-a", map[string]string{"token": reference}); err == nil {
+		t.Fatal("ResolveReferences() succeeded for the wrong tenant")
+	}
+}
+
+func TestConnectorCredentialBrokerListsAndDeduplicatesByIdempotencyKey(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"idempotency_key":       "request-1",
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	for i, wantStatus := range []int{http.StatusCreated, http.StatusOK} {
+		req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+		req.SetPathValue("sourceID", "bootstrap_token")
+		recorder := httptest.NewRecorder()
+		app.handleCreateConnectorCredential(recorder, req)
+		if recorder.Code != wantStatus {
+			t.Fatalf("request %d status = %d, want %d: %s", i+1, recorder.Code, wantStatus, recorder.Body.String())
+		}
+	}
+	if got := len(store.credentials); got != 1 {
+		t.Fatalf("stored credentials = %d, want 1", got)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/connectors/bootstrap_token/credentials?tenant_id=tenant-a", nil)
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleListConnectorCredentials(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID}/credentials status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var payload connectorCredentialListResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(payload.Credentials) != 1 {
+		t.Fatalf("listed credentials = %d, want 1", len(payload.Credentials))
+	}
+	if got := payload.Credentials[0].Status; got != connectorcredentials.StatusValid {
+		t.Fatalf("listed credential status = %q, want valid", got)
+	}
+	if got := payload.Credentials[0].Fields; len(got) != 1 || got[0] != "token" {
+		t.Fatalf("listed credential fields = %#v, want token", got)
+	}
+	if strings.Contains(recorder.Body.String(), "secret-token") {
+		t.Fatalf("list response leaked secret: %s", recorder.Body.String())
+	}
+}
+
+func TestConnectorCredentialBrokerRevocationBlocksUse(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	createReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	createReq.SetPathValue("sourceID", "bootstrap_token")
+	createRecorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201: %s", createRecorder.Code, createRecorder.Body.String())
+	}
+	var created connectorCredentialBrokerResponse
+	if err := json.NewDecoder(createRecorder.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	revokeReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/revoke", strings.NewReader(`{"reason":"operator requested"}`))
+	revokeReq.SetPathValue("sourceID", "bootstrap_token")
+	revokeReq.SetPathValue("credentialID", created.Credential.ID)
+	revokeRecorder := httptest.NewRecorder()
+	app.handleRevokeConnectorCredential(revokeRecorder, revokeReq)
+	if revokeRecorder.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d, want 200: %s", revokeRecorder.Code, revokeRecorder.Body.String())
+	}
+	if got := store.credentials[created.Credential.ID].Status; got != connectorcredentials.StatusRevoked {
+		t.Fatalf("stored status = %q, want revoked", got)
+	}
+	broker, err := connectorCredentialBroker(app.cfg.ConnectorCredentials, app.deps.StateStore, nil)
+	if err != nil {
+		t.Fatalf("connectorCredentialBroker() error = %v", err)
+	}
+	if _, err := broker.ResolveReferences(context.Background(), "bootstrap_token", "tenant-a", "runtime-a", map[string]string{"token": created.CredentialReferences["token"]}); err == nil {
+		t.Fatal("ResolveReferences() after revoke error = nil, want error")
+	}
+}
+
+func TestConnectorCredentialBrokerRotatesCredential(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	initialEncrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "old-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt initial credentials: %v", err)
+	}
+	initialBody, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": initialEncrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal initial request: %v", err)
+	}
+	createReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(initialBody))
+	createReq.SetPathValue("sourceID", "bootstrap_token")
+	createRecorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201: %s", createRecorder.Code, createRecorder.Body.String())
+	}
+	var created connectorCredentialBrokerResponse
+	if err := json.NewDecoder(createRecorder.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	rotatedEncrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "new-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt rotated credentials: %v", err)
+	}
+	rotateBody, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"idempotency_key":       "rotate-request-1",
+		"revoke_previous":       true,
+		"encrypted_credentials": rotatedEncrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal rotate request: %v", err)
+	}
+	rotateReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/rotate", bytes.NewReader(rotateBody))
+	rotateReq.SetPathValue("sourceID", "bootstrap_token")
+	rotateReq.SetPathValue("credentialID", created.Credential.ID)
+	rotateRecorder := httptest.NewRecorder()
+	app.handleRotateConnectorCredential(rotateRecorder, rotateReq)
+	if rotateRecorder.Code != http.StatusCreated {
+		t.Fatalf("rotate status = %d, want 201: %s", rotateRecorder.Code, rotateRecorder.Body.String())
+	}
+	var rotated connectorCredentialBrokerResponse
+	if err := json.NewDecoder(rotateRecorder.Body).Decode(&rotated); err != nil {
+		t.Fatalf("decode rotate response: %v", err)
+	}
+	if rotated.Credential.ID == created.Credential.ID {
+		t.Fatalf("rotated credential reused previous id %q", rotated.Credential.ID)
+	}
+	if got := rotated.Credential.PreviousCredentialID; got != created.Credential.ID {
+		t.Fatalf("previous credential id = %q, want %q", got, created.Credential.ID)
+	}
+	if got := store.credentials[created.Credential.ID].Status; got != connectorcredentials.StatusRevoked {
+		t.Fatalf("previous credential status = %q, want revoked", got)
+	}
+	revokedAt := store.credentials[created.Credential.ID].RevokedAt
+	auditCount := len(store.audit)
+	replayReq := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials/"+created.Credential.ID+"/rotate", bytes.NewReader(rotateBody))
+	replayReq.SetPathValue("sourceID", "bootstrap_token")
+	replayReq.SetPathValue("credentialID", created.Credential.ID)
+	replayRecorder := httptest.NewRecorder()
+	app.handleRotateConnectorCredential(replayRecorder, replayReq)
+	if replayRecorder.Code != http.StatusOK {
+		t.Fatalf("rotate replay status = %d, want 200: %s", replayRecorder.Code, replayRecorder.Body.String())
+	}
+	var replayed connectorCredentialBrokerResponse
+	if err := json.NewDecoder(replayRecorder.Body).Decode(&replayed); err != nil {
+		t.Fatalf("decode replay response: %v", err)
+	}
+	if replayed.Credential.ID != rotated.Credential.ID {
+		t.Fatalf("replayed credential id = %q, want %q", replayed.Credential.ID, rotated.Credential.ID)
+	}
+	if got := store.credentials[created.Credential.ID].RevokedAt; !got.Equal(revokedAt) {
+		t.Fatalf("replay mutated previous revoked_at = %s, want %s", got, revokedAt)
+	}
+	if got := len(store.audit); got != auditCount {
+		t.Fatalf("replay audit count = %d, want %d", got, auditCount)
+	}
+	broker, err := connectorCredentialBroker(app.cfg.ConnectorCredentials, app.deps.StateStore, nil)
+	if err != nil {
+		t.Fatalf("connectorCredentialBroker() error = %v", err)
+	}
+	resolved, err := broker.ResolveReferences(context.Background(), "bootstrap_token", "tenant-a", "runtime-a", map[string]string{"token": rotated.CredentialReferences["token"]})
+	if err != nil {
+		t.Fatalf("ResolveReferences() rotated error = %v", err)
+	}
+	if got := resolved["token"]; got != "new-token" {
+		t.Fatalf("resolved rotated token = %q, want new-token", got)
+	}
+}
+
+func TestConnectorCredentialBrokerRejectsCrossTenantRequest(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-b", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-b",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "tenant-a"},
+	}))
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("cross-tenant credential status = %d, want 403", recorder.Code)
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials after forbidden request = %#v, want none", store.credentials)
+	}
+}
+
+func TestConnectorCredentialBrokerRejectsExistingRuntimeTenantMismatch(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {
+			Id:       "runtime-a",
+			SourceId: "bootstrap_token",
+			TenantId: "tenant-b",
+		},
+	}}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-a", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("runtime tenant mismatch status = %d, want 403", recorder.Code)
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials after runtime mismatch = %#v, want none", store.credentials)
+	}
+}
+
+func TestConnectorCredentialBrokerRejectsCredentialPayloadAADMismatch(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	key := app.connectorTransitKey.PublicKey()
+	encrypted, err := encryptConnectorCredentialsForTestWithAAD(
+		key,
+		map[string]string{"token": "secret-token"},
+		connectorCredentialAdditionalData(key.KeyID, "bootstrap_token", "tenant-b", "runtime-a", defaultConnectorCredentialStoreID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt credentials: %v", err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":            "runtime-a",
+		"tenant_id":             "tenant-a",
+		"credential_store_id":   defaultConnectorCredentialStoreID,
+		"encrypted_credentials": encrypted,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/connectors/bootstrap_token/credentials", bytes.NewReader(body))
+	req.SetPathValue("sourceID", "bootstrap_token")
+	recorder := httptest.NewRecorder()
+	app.handleCreateConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("AAD mismatch status = %d, want 400", recorder.Code)
+	}
+	if len(store.credentials) != 0 {
+		t.Fatalf("stored credentials after AAD mismatch = %#v, want none", store.credentials)
 	}
 }
 
@@ -347,6 +1003,37 @@ func TestConnectorConnectionRejectsUnsupportedCredentialStore(t *testing.T) {
 	}
 }
 
+func TestConnectorConnectionMissingTransitKeyIsUnavailable(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key: "test-connector-vault-key",
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-a","tenant_id":"tenant-a","credential_store_id":"cerebro_vault","encrypted_credentials":{"key_id":"ignored","algorithm":"RSA-OAEP-256+A256GCM"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors missing transit key error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST /connectors missing transit key status = %d, want 503", resp.StatusCode)
+	}
+}
+
 func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
 	registry, err := sourcecdk.NewRegistry(source)
@@ -390,8 +1077,11 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 			} `json:"scope_options"`
 		} `json:"connectors"`
 		CredentialStores []struct {
-			ID        string `json:"id"`
-			Available bool   `json:"available"`
+			ID                        string   `json:"id"`
+			Available                 bool     `json:"available"`
+			Status                    string   `json:"status"`
+			ReferencePrefixes         []string `json:"reference_prefixes"`
+			NativeResolutionAvailable bool     `json:"native_resolution_available"`
 		} `json:"credential_stores"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -420,12 +1110,530 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 		t.Fatalf("environment-managed method not saveable: %#v", methods)
 	}
 	stores := map[string]bool{}
+	storePrefixes := map[string][]string{}
+	storeStatuses := map[string]string{}
 	for _, store := range payload.CredentialStores {
 		stores[store.ID] = store.Available
+		storePrefixes[store.ID] = store.ReferencePrefixes
+		storeStatuses[store.ID] = store.Status
 	}
 	if !stores[connectorStoreEnvironmentManaged] {
 		t.Fatalf("environment-managed store not advertised available: %#v", stores)
 	}
+	if stores[connectorStoreAWSSecretsManager] {
+		t.Fatalf("aws secrets manager unexpectedly advertised available without opt-in: %#v", stores)
+	}
+	if got := storeStatuses[connectorStoreAWSSecretsManager]; got != "needs_configuration" {
+		t.Fatalf("aws secrets manager status = %q, want needs_configuration", got)
+	}
+	if got := storePrefixes[connectorStoreAWSSecretsManager]; len(got) != 1 || got[0] != "env:" {
+		t.Fatalf("aws secrets manager prefixes = %#v, want env only until native resolver is configured", got)
+	}
+}
+
+func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	type catalogResourceFamily struct {
+		ID                 string `json:"id"`
+		ProjectionTemplate string `json:"projection_template"`
+		HighValue          bool   `json:"high_value"`
+	}
+	type catalogConnector struct {
+		SourceID              string                        `json:"source_id"`
+		CatalogStatus         string                        `json:"catalog_status"`
+		ClassifierOutput      string                        `json:"classifier_output"`
+		AuthModel             string                        `json:"auth_model"`
+		RuntimeExecutable     bool                          `json:"runtime_executable"`
+		VerificationEndpoint  string                        `json:"verification_endpoint"`
+		ResourceFamilies      []catalogResourceFamily       `json:"resource_families"`
+		CatalogSchemaVersion  string                        `json:"catalog_schema_version"`
+		CatalogCurrentVersion int                           `json:"catalog_current_version"`
+		CatalogSourcePath     string                        `json:"catalog_source_path"`
+		DefinitionOrigin      string                        `json:"definition_origin"`
+		ReadinessStage        string                        `json:"readiness_stage"`
+		IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth"`
+		AccessStatus          string                        `json:"access_status"`
+		SetupAllowed          bool                          `json:"setup_allowed"`
+		Requestable           bool                          `json:"requestable"`
+	}
+	var payload struct {
+		Connectors          []catalogConnector `json:"connectors"`
+		GeneratedAt         string             `json:"generated_at"`
+		CatalogVersion      string             `json:"catalog_version"`
+		CatalogSourceCommit string             `json:"catalog_source_commit"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.GeneratedAt == "" || payload.CatalogVersion != connectordefinitions.SchemaVersionIntegrationV1 || payload.CatalogSourceCommit == "" {
+		t.Fatalf("catalog response metadata generated=%q version=%q commit=%q, want populated catalog contract", payload.GeneratedAt, payload.CatalogVersion, payload.CatalogSourceCommit)
+	}
+	if len(payload.Connectors) < 109 {
+		t.Fatalf("connectors len = %d, want fixture source plus 108 catalog definitions", len(payload.Connectors))
+	}
+	bySourceID := map[string]catalogConnector{}
+	for _, connector := range payload.Connectors {
+		bySourceID[connector.SourceID] = connector
+	}
+	jumpcloud := bySourceID["jumpcloud"]
+	if jumpcloud.CatalogStatus != connectorcatalog.StatusGenerateable || !jumpcloud.RuntimeExecutable {
+		t.Fatalf("jumpcloud status = %q executable=%v, want generateable executable", jumpcloud.CatalogStatus, jumpcloud.RuntimeExecutable)
+	}
+	if jumpcloud.AccessStatus != connectorAccessCatalogOnly || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
+		t.Fatalf("jumpcloud access = %q setup=%v requestable=%v, want catalog-only requestable", jumpcloud.AccessStatus, jumpcloud.SetupAllowed, jumpcloud.Requestable)
+	}
+	if jumpcloud.DefinitionOrigin != connectorDefinitionOriginCatalog || jumpcloud.CatalogSchemaVersion != connectordefinitions.SchemaVersionIntegrationV1 || jumpcloud.CatalogSourcePath == "" {
+		t.Fatalf("jumpcloud catalog provenance = origin %q schema %q version %d path %q, want builtin catalog provenance", jumpcloud.DefinitionOrigin, jumpcloud.CatalogSchemaVersion, jumpcloud.CatalogCurrentVersion, jumpcloud.CatalogSourcePath)
+	}
+	if jumpcloud.ReadinessStage != connectorReadinessStageSourcegenReady || jumpcloud.IntegrationDepth.Score == 0 || jumpcloud.IntegrationDepth.ResourceFamilies == 0 {
+		t.Fatalf("jumpcloud readiness/depth = %q/%#v, want sourcegen-ready depth signal", jumpcloud.ReadinessStage, jumpcloud.IntegrationDepth)
+	}
+	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
+		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
+	}
+	entraID := bySourceID["microsoft_entra_id"]
+	if entraID.CatalogStatus != connectorcatalog.StatusGenerateable || !entraID.RuntimeExecutable {
+		t.Fatalf("microsoft_entra_id status = %q executable=%v, want generateable executable", entraID.CatalogStatus, entraID.RuntimeExecutable)
+	}
+	if entraID.ClassifierOutput != "supported" {
+		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
+	}
+	auth0 := bySourceID["auth0"]
+	if auth0.CatalogStatus != connectorcatalog.StatusGenerateable || !auth0.RuntimeExecutable {
+		t.Fatalf("auth0 status = %q executable=%v, want generateable executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
+	}
+	if auth0.AuthModel != "oauth_client_credentials" || auth0.VerificationEndpoint != "/users" {
+		t.Fatalf("auth0 auth/verification = %q/%q, want oauth client credentials /users", auth0.AuthModel, auth0.VerificationEndpoint)
+	}
+	jenkins := bySourceID["jenkins"]
+	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {
+		t.Fatalf("jenkins status = %q executable=%v, want generateable executable", jenkins.CatalogStatus, jenkins.RuntimeExecutable)
+	}
+	if len(jenkins.ResourceFamilies) < 2 {
+		t.Fatalf("jenkins resource families = %#v, want high-value catalog families", jenkins.ResourceFamilies)
+	}
+	for _, family := range jenkins.ResourceFamilies {
+		if family.ProjectionTemplate == "" || !family.HighValue {
+			t.Fatalf("jenkins family = %#v, want projection and high-value coverage", family)
+		}
+	}
+}
+
+func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
+	schema, ok := connectorSchemaForSource("auth0")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(auth0) = false, want catalog-derived schema")
+	}
+	for _, key := range []string{"domain", "family", "health_path", "token_url", "per_page", "take", "from", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"} {
+		if _, ok := schema.ConfigKeys[key]; !ok {
+			t.Fatalf("auth0 config keys missing %q: %#v", key, sortedSetKeys(schema.ConfigKeys))
+		}
+	}
+	if got := strings.Join(schema.RequiredConfig, ","); got != "domain" {
+		t.Fatalf("auth0 required config = %q, want domain", got)
+	}
+	for _, key := range []string{"client_id", "client_secret"} {
+		if _, ok := schema.CredentialKeys[key]; !ok {
+			t.Fatalf("auth0 credential keys missing %q: %#v", key, sortedSetKeys(schema.CredentialKeys))
+		}
+	}
+	if got := strings.Join(schema.RequiredCredentials, ","); got != "client_id,client_secret" {
+		t.Fatalf("auth0 required credentials = %q, want client_id,client_secret", got)
+	}
+	err := validateConnectorConfigFields("auth0", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"domain":        "example.us.auth0.com",
+		"family":        "users",
+		"health_path":   "/users",
+		"per_page":      "100",
+		"client_id":     "env:AUTH0_CLIENT_ID",
+		"client_secret": "env:AUTH0_CLIENT_SECRET",
+	}, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"client_id":     "env:AUTH0_CLIENT_ID",
+		"client_secret": "env:AUTH0_CLIENT_SECRET",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(auth0 external reference) error = %v", err)
+	}
+	err = validateConnectorCredentialFields("auth0", connectorAuthMethodEncryptedSubmission, map[string]string{ // #nosec G101 -- Test-only credential values, not live secrets.
+		"client_id":     "auth0-client",
+		"client_secret": "auth0-secret",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorCredentialFields(auth0 encrypted submission) error = %v", err)
+	}
+	jenkinsSchema, ok := connectorSchemaForSource("jenkins")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(jenkins) = false, want catalog-derived schema")
+	}
+	if got := strings.Join(jenkinsSchema.RequiredCredentials, ","); got != "password,username" {
+		t.Fatalf("jenkins required credentials = %q, want password,username", got)
+	}
+	anthropicSchema, ok := connectorSchemaForSource("anthropic")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(anthropic) = false, want builtin schema")
+	}
+	for _, key := range []string{"credential_kind", "credential_scopes"} {
+		if _, ok := anthropicSchema.ConfigKeys[key]; !ok {
+			t.Fatalf("anthropic config keys missing %q: %#v", key, sortedSetKeys(anthropicSchema.ConfigKeys))
+		}
+	}
+	err = validateConnectorConfigFields("anthropic", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"api_key":           "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
+		"credential_kind":   anthropicCredentialKindScopedAdminAPIKey,
+		"credential_scopes": "read:spend_limits",
+		"family":            "spend_limit",
+	}, map[string]string{
+		"api_key": "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(anthropic credential hints) error = %v", err)
+	}
+}
+
+func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     map[string]string
+		wantCheck  string
+		wantAction string
+	}{
+		{
+			name:       "service account needs org admin OAuth",
+			config:     map[string]string{"family": "service_account"},
+			wantCheck:  "anthropic_org_admin_oauth",
+			wantAction: "use_anthropic_org_admin_oauth",
+		},
+		{
+			name:       "compliance activity needs read compliance scope",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "compliance_activity"},
+			wantCheck:  "anthropic_compliance_scope",
+			wantAction: "confirm_anthropic_compliance_scope",
+		},
+		{
+			name:       "spend limits need scoped admin key",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:usage"},
+			wantCheck:  "anthropic_spend_limit_scope",
+			wantAction: "confirm_anthropic_spend_limit_scope",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			checks := connectorProviderPreflightChecks("anthropic", connectorAuthMethodExternalReference, test.config, resourcescope.Policy{})
+			check := findConnectorPreflightCheck(checks, test.wantCheck)
+			if check == nil {
+				t.Fatalf("check %q missing from %#v", test.wantCheck, checks)
+			}
+			if check.Status != "warning" || check.NextAction != test.wantAction {
+				t.Fatalf("check = %#v, want warning action %q", check, test.wantAction)
+			}
+		})
+	}
+}
+
+func TestAnthropicProviderPreflightChecksPassWithCredentialHints(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]string
+	}{
+		{
+			name:   "service account org admin oauth",
+			config: map[string]string{"auth_model": "bearer_token", "credential_kind": anthropicCredentialKindOrgAdminOAuth, "credential_scopes": "org:admin", "family": "service_account"},
+		},
+		{
+			name:   "compliance activity scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_activities", "family": "compliance_activity"},
+		},
+		{
+			name:   "spend limit scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindScopedAdminAPIKey, "credential_scopes": "read:spend_limits", "family": "spend_limit"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if checks := connectorProviderPreflightChecks("anthropic", connectorAuthMethodExternalReference, test.config, resourcescope.Policy{}); len(checks) != 0 {
+				t.Fatalf("checks = %#v, want none", checks)
+			}
+		})
+	}
+}
+
+func findConnectorPreflightCheck(checks []connectorPreflightCheckView, id string) *connectorPreflightCheckView {
+	for i := range checks {
+		if checks[i].ID == id {
+			return &checks[i]
+		}
+	}
+	return nil
+}
+
+func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+		ConnectorAccess: config.ConnectorAccessConfig{
+			HiddenSources:       []string{"auth0", "duo"},
+			RestrictedSources:   []string{"bootstrap_token", "duo", "jumpcloud"},
+			RestrictionReason:   "limited preview",
+			RequestAccessURL:    "https://access.example.com/request?source={source_id}&tenant={tenant_id}",
+			RequestAccessAction: "Request in Access Hub",
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Connectors []struct {
+			SourceID            string `json:"source_id"`
+			AccessStatus        string `json:"access_status"`
+			AccessReason        string `json:"access_reason"`
+			SetupAllowed        bool   `json:"setup_allowed"`
+			Requestable         bool   `json:"requestable"`
+			RequestableReason   string `json:"requestable_reason"`
+			RequestAccessURL    string `json:"request_access_url"`
+			RequestAccessAction string `json:"request_access_action"`
+			ReadinessStage      string `json:"readiness_stage"`
+			ConnectionMethods   []struct {
+				ID string `json:"id"`
+			} `json:"connection_methods"`
+		} `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	bySourceID := map[string]struct {
+		SourceID            string `json:"source_id"`
+		AccessStatus        string `json:"access_status"`
+		AccessReason        string `json:"access_reason"`
+		SetupAllowed        bool   `json:"setup_allowed"`
+		Requestable         bool   `json:"requestable"`
+		RequestableReason   string `json:"requestable_reason"`
+		RequestAccessURL    string `json:"request_access_url"`
+		RequestAccessAction string `json:"request_access_action"`
+		ReadinessStage      string `json:"readiness_stage"`
+		ConnectionMethods   []struct {
+			ID string `json:"id"`
+		} `json:"connection_methods"`
+	}{}
+	for _, connector := range payload.Connectors {
+		bySourceID[connector.SourceID] = connector
+	}
+	if _, ok := bySourceID["auth0"]; ok {
+		t.Fatal("auth0 was returned despite connector hidden source config")
+	}
+	if _, ok := bySourceID["duo"]; ok {
+		t.Fatal("duo was returned despite hidden source precedence over restricted source config")
+	}
+	bootstrapToken := bySourceID["bootstrap_token"]
+	if bootstrapToken.AccessStatus != connectorAccessRestricted || bootstrapToken.AccessReason != "limited preview" || bootstrapToken.SetupAllowed || !bootstrapToken.Requestable || len(bootstrapToken.ConnectionMethods) != 0 {
+		t.Fatalf("bootstrap_token access = %#v, want restricted without setup methods", bootstrapToken)
+	}
+	if bootstrapToken.RequestableReason != "limited preview" || bootstrapToken.RequestAccessAction != "Request in Access Hub" || bootstrapToken.RequestAccessURL != "https://access.example.com/request?source=bootstrap_token&tenant=" || bootstrapToken.ReadinessStage != connectorReadinessStageAPIRestricted {
+		t.Fatalf("bootstrap_token request metadata = %#v, want requestable restricted connector", bootstrapToken)
+	}
+	jumpcloud := bySourceID["jumpcloud"]
+	if jumpcloud.AccessStatus != connectorAccessRestricted || jumpcloud.AccessReason != "limited preview" || jumpcloud.SetupAllowed || !jumpcloud.Requestable {
+		t.Fatalf("jumpcloud access = %#v, want restricted catalog metadata", jumpcloud)
+	}
+
+	preflightResp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /connectors/bootstrap_token/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := preflightResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close preflight response: %v", closeErr)
+		}
+	}()
+	if preflightResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("restricted preflight status = %d, want 403", preflightResp.StatusCode)
+	}
+	hiddenResp, err := server.Client().Post(server.URL+"/connectors/duo/preflight", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /connectors/duo/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := hiddenResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close hidden response: %v", closeErr)
+		}
+	}()
+	if hiddenResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("hidden+restricted preflight status = %d, want hidden precedence 404", hiddenResp.StatusCode)
+	}
+}
+
+func TestConnectorCatalogAdvertisesAWSSecretStoreEnvProjectionUntilNativeConfigured(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		CredentialStores []struct {
+			ID                         string   `json:"id"`
+			Available                  bool     `json:"available"`
+			Detail                     string   `json:"detail"`
+			ReferencePrefixes          []string `json:"reference_prefixes"`
+			ReferenceNamespaceTemplate string   `json:"reference_namespace_template"`
+			ReferenceFieldTemplate     string   `json:"reference_field_template"`
+			NativeResolutionAvailable  bool     `json:"native_resolution_available"`
+		} `json:"credential_stores"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, store := range payload.CredentialStores {
+		if store.ID != connectorStoreAWSSecretsManager {
+			continue
+		}
+		if !store.Available || store.NativeResolutionAvailable || store.Detail != "ready via env projection" {
+			t.Fatalf("aws secret store = %#v, want env projection availability", store)
+		}
+		if len(store.ReferencePrefixes) != 1 || store.ReferencePrefixes[0] != "env:" {
+			t.Fatalf("aws reference prefixes = %#v, want env only", store.ReferencePrefixes)
+		}
+		if store.ReferenceNamespaceTemplate != "CEREBRO_SOURCE_<SOURCE>_*" {
+			t.Fatalf("aws reference namespace template = %q", store.ReferenceNamespaceTemplate)
+		}
+		if store.ReferenceFieldTemplate != "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>" {
+			t.Fatalf("aws reference field template = %q", store.ReferenceFieldTemplate)
+		}
+		return
+	}
+	t.Fatalf("aws secret store missing: %#v", payload.CredentialStores)
+}
+
+func TestConnectorCatalogAdvertisesConfiguredAWSSecretStore(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-east-1",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		CredentialStores []struct {
+			ID                         string `json:"id"`
+			Available                  bool   `json:"available"`
+			Detail                     string `json:"detail"`
+			ReferenceNamespaceTemplate string `json:"reference_namespace_template"`
+			ReferenceFieldTemplate     string `json:"reference_field_template"`
+			NativeResolutionAvailable  bool   `json:"native_resolution_available"`
+		} `json:"credential_stores"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, store := range payload.CredentialStores {
+		if store.ID != connectorStoreAWSSecretsManager {
+			continue
+		}
+		if !store.Available || !store.NativeResolutionAvailable || store.Detail != "native resolver ready" {
+			t.Fatalf("aws secret store = %#v, want available native resolver", store)
+		}
+		if store.ReferenceNamespaceTemplate != "cerebro/<tenant>/<source>/<runtime>/credentials" {
+			t.Fatalf("aws reference namespace template = %q", store.ReferenceNamespaceTemplate)
+		}
+		if store.ReferenceFieldTemplate != "aws-sm:<region>:cerebro/<tenant>/<source>/<runtime>/credentials#<field>" {
+			t.Fatalf("aws reference field template = %q", store.ReferenceFieldTemplate)
+		}
+		return
+	}
+	t.Fatalf("aws secret store missing: %#v", payload.CredentialStores)
 }
 
 func TestConnectorCatalogAdvertisesAWSOnboardingGuidance(t *testing.T) {
@@ -920,6 +2128,9 @@ func TestConnectorConnectionStoresEnvironmentManagedReference(t *testing.T) {
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreInfisical},
+		},
 	}, Dependencies{StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -1062,6 +2273,9 @@ func TestConnectorConnectionStoresExternalStoreReference(t *testing.T) {
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreInfisical},
+		},
 	}, Dependencies{StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -1115,6 +2329,40 @@ func TestConnectorConnectionStoresExternalStoreReference(t *testing.T) {
 	}
 	if got := credentialPayload["credential_store_id"]; got != connectorStoreInfisical {
 		t.Fatalf("credential_store_id = %#v, want %q", got, connectorStoreInfisical)
+	}
+}
+
+func TestConnectorConnectionRejectsMismatchedExternalStoreReference(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreInfisical},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"runtime_id":"runtime-external","tenant_id":"tenant-a","auth_method":"external_reference","credential_store_id":"infisical","config":{"family":"audit"},"credential_references":{"token":"aws-sm:us-east-1:cerebro/bootstrap-token#token"}}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/connections", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors mismatched external reference error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /connectors mismatched external reference status = %d, want 400", resp.StatusCode)
+	}
+	if source.checkToken != "" {
+		t.Fatalf("source check token = %q, want no source check", source.checkToken)
 	}
 }
 
@@ -1246,6 +2494,232 @@ func TestConnectorPreflightValidatesWithoutPersisting(t *testing.T) {
 	}
 	if checks["source_check"] != "passed" {
 		t.Fatalf("source_check status = %q, want passed; checks=%#v", checks["source_check"], checks)
+	}
+}
+
+func TestConnectorPreflightReturnsReferencePlanWhenReferencesMissing(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-west-2",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreAWSSecretsManager,
+		"config":              map[string]string{"family": "audit"},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status             string `json:"status"`
+		CredentialBoundary struct {
+			ReferenceTemplates []struct {
+				Field     string `json:"field"`
+				Required  bool   `json:"required"`
+				Reference string `json:"reference"`
+			} `json:"reference_templates"`
+		} `json:"credential_boundary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "blocked" {
+		t.Fatalf("preflight status = %q, want blocked", payload.Status)
+	}
+	if len(payload.CredentialBoundary.ReferenceTemplates) != 1 {
+		t.Fatalf("reference templates = %#v, want token template", payload.CredentialBoundary.ReferenceTemplates)
+	}
+	template := payload.CredentialBoundary.ReferenceTemplates[0]
+	if template.Field != "token" || !template.Required || template.Reference != "aws-sm:us-west-2:cerebro/tenant-a/bootstrap_token/runtime-external/credentials#token" {
+		t.Fatalf("reference template = %#v", template)
+	}
+}
+
+func TestConnectorPreflightBlocksUnscopedAWSReferenceAsCredentialBoundary(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-west-2",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreAWSSecretsManager,
+		"config":              map[string]string{"family": "audit"},
+		"credential_references": map[string]string{
+			"token": "aws-sm:us-west-2:shared/credentials#token", // #nosec G101 -- reference string, not secret material.
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Checks []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "blocked" {
+		t.Fatalf("preflight status = %q, want blocked", payload.Status)
+	}
+	checks := map[string]string{}
+	for _, check := range payload.Checks {
+		checks[check.ID] = check.Status
+	}
+	if checks["credential_boundary"] != "blocked" {
+		t.Fatalf("credential_boundary status = %q, want blocked; checks=%#v", checks["credential_boundary"], checks)
+	}
+	if _, ok := checks["source_check"]; ok {
+		t.Fatalf("source_check ran for unscoped reference; checks=%#v", checks)
+	}
+}
+
+func TestConnectorPreflightReturnsExternalReferencePlan(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token", emittedKinds: []string{"bootstrap.token"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorSecretStores: config.ConnectorSecretStoreConfig{
+			Enabled: []string{connectorStoreAWSSecretsManager},
+			AWSSecretsManager: config.AWSSecretsManagerStoreConfig{
+				Region: "us-west-2",
+			},
+		},
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+	t.Setenv("CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", "resolved-token")
+
+	body, err := json.Marshal(map[string]any{
+		"runtime_id":          "runtime-external",
+		"tenant_id":           "tenant-a",
+		"auth_method":         connectorAuthMethodExternalReference,
+		"credential_store_id": connectorStoreAWSSecretsManager,
+		"config":              map[string]string{"family": "audit"},
+		"credential_references": map[string]string{
+			"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", // #nosec G101 -- env reference string, not a secret value.
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status             string `json:"status"`
+		CredentialBoundary struct {
+			StoreID                   string   `json:"credential_store_id"`
+			StoreStatus               string   `json:"store_status"`
+			ReferenceNamespace        string   `json:"reference_namespace"`
+			ReferencePrefixes         []string `json:"reference_prefixes"`
+			NativeResolutionAvailable bool     `json:"native_resolution_available"`
+			FieldsAccepted            []string `json:"fields_accepted"`
+			ReferenceTemplates        []struct {
+				Field       string `json:"field"`
+				Label       string `json:"label"`
+				Required    bool   `json:"required"`
+				Reference   string `json:"reference"`
+				Description string `json:"description"`
+			} `json:"reference_templates"`
+		} `json:"credential_boundary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "ready" {
+		t.Fatalf("preflight status = %q, want ready", payload.Status)
+	}
+	boundary := payload.CredentialBoundary
+	if boundary.StoreID != connectorStoreAWSSecretsManager || boundary.StoreStatus != "ready" || !boundary.NativeResolutionAvailable {
+		t.Fatalf("credential boundary store metadata = %#v", boundary)
+	}
+	if boundary.ReferenceNamespace != "cerebro/tenant-a/bootstrap_token/runtime-external/credentials" {
+		t.Fatalf("reference namespace = %q", boundary.ReferenceNamespace)
+	}
+	if len(boundary.ReferencePrefixes) != 2 || boundary.ReferencePrefixes[0] != "env:" || boundary.ReferencePrefixes[1] != "aws-sm:" {
+		t.Fatalf("reference prefixes = %#v, want env and aws-sm", boundary.ReferencePrefixes)
+	}
+	if len(boundary.ReferenceTemplates) != 1 {
+		t.Fatalf("reference templates = %#v, want one token template", boundary.ReferenceTemplates)
+	}
+	template := boundary.ReferenceTemplates[0]
+	if template.Field != "token" || !template.Required || template.Reference != "aws-sm:us-west-2:cerebro/tenant-a/bootstrap_token/runtime-external/credentials#token" {
+		t.Fatalf("reference template = %#v", template)
+	}
+	if source.checkToken != "resolved-token" {
+		t.Fatalf("source check token = %q, want env-resolved token", source.checkToken)
 	}
 }
 

@@ -94,15 +94,18 @@ func TestReadLiveGoogleWorkspaceUserPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(user first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "page-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "page-2" {
 		t.Fatalf("first.NextCursor = %#v, want page-2", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 	if got := first.Events[0].Attributes["email"]; got != "admin@writer.com" {
 		t.Fatalf("first event email = %q, want admin@writer.com", got)
 	}
-	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, first.Checkpoint)
 	if err != nil {
-		t.Fatalf("Read(user second) error = %v", err)
+		t.Fatalf("ReadWithCheckpoint(user second) error = %v", err)
 	}
 	if len(second.Events) != 1 {
 		t.Fatalf("len(Read(user second).Events) = %d, want 1", len(second.Events))

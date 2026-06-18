@@ -49,7 +49,7 @@ func (a *App) jobService() *platformjobs.Service {
 }
 
 func (a *App) newJobService() *platformjobs.Service {
-	service := platformjobs.New(jobStore(a.deps.StateStore))
+	service := newJobFeatureService(newJobFeatureDeps(a.deps))
 	service.WithRunner(platformjobs.KindSourceRuntimeSync, a.runSourceRuntimeSyncJob)
 	service.WithRunner(platformjobs.KindSourceRuntimeOrchestrate, a.runSourceRuntimeOrchestrateJob)
 	service.WithRunner(platformjobs.KindGraphIngestRuntime, a.runGraphIngestRuntimeJob)

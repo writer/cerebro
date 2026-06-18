@@ -188,7 +188,7 @@ func parseSettingsWithLoopback(cfg sourcecdk.Config, allowLoopback bool) (settin
 		perPage:   defaultPageSize,
 	}
 	if st.family == "" {
-		st.family = familyAlert
+		st.family = familyCase
 	}
 	if st.tenantID == "" {
 		return settings{}, ErrTenantIDRequired

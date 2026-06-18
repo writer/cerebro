@@ -7,3 +7,37 @@ emitted_kinds:
   - kolide.software
   - kolide.user_device
   - kolide.vulnerability
+coverage_contract:
+  owner_domain: endpoint
+  authority_domain: kolide
+  dimensions:
+    - id: devices
+      type: entity_family
+      title: Endpoint devices
+      families: [device]
+      support: supported
+      high_value: true
+    - id: checks
+      type: lifecycle_state
+      title: Device compliance checks
+      families: [check]
+      support: supported
+      high_value: true
+    - id: software_inventory
+      type: entity_family
+      title: Installed software inventory
+      families: [software]
+      support: supported
+      high_value: true
+    - id: user_device_relationships
+      type: relationship
+      title: User to device relationships
+      families: [user_device]
+      support: supported
+      high_value: true
+    - id: vulnerabilities
+      type: entity_family
+      title: Endpoint software vulnerabilities
+      families: [vulnerability]
+      support: supported
+      high_value: true

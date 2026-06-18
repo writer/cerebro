@@ -7,6 +7,17 @@ emitted_kinds:
   - google_workspace.group_member
   - google_workspace.role_assignment
   - google_workspace.user
+families:
+  - id: audit
+    incremental: watermark
+  - id: group
+    incremental: watermark
+  - id: group_member
+    incremental: watermark
+  - id: role_assignment
+    incremental: watermark
+  - id: user
+    incremental: watermark
 coverage_contract:
   owner_domain: identity
   authority_domain: google_workspace
@@ -32,6 +43,7 @@ coverage_contract:
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
+      families: [audit, group, group_member, role_assignment, user]
       support: partial
       high_value: true
       known_unsupported_fields:
@@ -39,10 +51,14 @@ coverage_contract:
     - id: remediation_state
       type: remediation_state
       title: Remediation lifecycle state
-      support: unsupported
+      families: [audit, group_member, user]
+      support: partial
       high_value: true
       known_unsupported_fields:
-        - remediation workflow state
+        - Cerebro remediation workflow assignment, exception, SLA, and approval state
+      notes:
+        - Google Workspace suspended, archived, member status, and admin audit attributes are surfaced as provider lifecycle evidence.
+        - Cerebro finding remediation lifecycle remains owned by the finding/workflow surfaces and their typed action boundaries.
     - id: role_assignments
       type: app_entitlement
       title: Role assignments

@@ -328,9 +328,11 @@ func ValidateRuleMetadataCompleteness(metadatas []RuleDefinition) []error {
 		}
 		requiredSlices := map[string][]string{
 			"tags":               metadata.Tags,
-			"references":         metadata.References,
 			"false_positives":    metadata.FalsePositives,
 			"fingerprint_fields": metadata.FingerprintFields,
+		}
+		if !policyRuleMetadata(metadata) {
+			requiredSlices["references"] = metadata.References
 		}
 		for field, values := range requiredSlices {
 			if retiredRuleMetadata(metadata) && (field == "fingerprint_fields") {
@@ -427,6 +429,18 @@ func retiredRuleMetadata(metadata RuleDefinition) bool {
 	}
 	for _, tag := range metadata.Tags {
 		if strings.EqualFold(strings.TrimSpace(tag), "retired") {
+			return true
+		}
+	}
+	return false
+}
+
+func policyRuleMetadata(metadata RuleDefinition) bool {
+	if !strings.EqualFold(strings.TrimSpace(metadata.SourceID), policyRuleSourceID) {
+		return false
+	}
+	for _, tag := range metadata.Tags {
+		if strings.EqualFold(strings.TrimSpace(tag), "policy") {
 			return true
 		}
 	}

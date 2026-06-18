@@ -43,6 +43,9 @@ func TestFamilyEngineSkipsOutOfScopeFamilyBeforeRead(t *testing.T) {
 	if len(pull.Events) != 0 {
 		t.Fatalf("events len = %d, want 0", len(pull.Events))
 	}
+	if pull.ShortCircuitReason != PullShortCircuitReasonScopeExcluded {
+		t.Fatalf("ShortCircuitReason = %q, want scope_excluded", pull.ShortCircuitReason)
+	}
 }
 
 func TestFamilyEngineFiltersOutOfScopeEvents(t *testing.T) {
@@ -84,5 +87,273 @@ func TestFamilyEngineFiltersOutOfScopeEvents(t *testing.T) {
 	}
 	if len(pull.Events) != 1 || pull.Events[0].GetId() != "keep" {
 		t.Fatalf("events = %#v, want only keep", pull.Events)
+	}
+}
+
+func TestFamilyEngineMarksFullyFilteredEvents(t *testing.T) {
+	engine, err := NewFamilyEngineWithSourceID("aws", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name: "cloudtrail",
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			return Pull{Events: []*primitives.Event{
+				{
+					Id:         "drop",
+					Kind:       "aws.cloudtrail",
+					OccurredAt: timestamppb.New(time.Now().UTC()),
+					Attributes: map[string]string{"resource_urn": "urn:cerebro:tenant:aws_s3_bucket:excluded"},
+				},
+			}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+	rawPolicy, err := resourcescope.ConfigValue(resourcescope.Policy{ExcludedResourceURNs: []string{"urn:cerebro:tenant:aws_s3_bucket:excluded"}})
+	if err != nil {
+		t.Fatalf("ConfigValue() error = %v", err)
+	}
+	pull, err := engine.Read(context.Background(), NewConfig(map[string]string{
+		"family":                "cloudtrail",
+		resourcescope.ConfigKey: rawPolicy,
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("events = %#v, want none", pull.Events)
+	}
+	if pull.ShortCircuitReason != PullShortCircuitReasonResourceScopeFiltered {
+		t.Fatalf("ShortCircuitReason = %q, want resource_scope_filtered", pull.ShortCircuitReason)
+	}
+}
+
+func TestFamilyEngineProbeShortCircuitsBeforeRead(t *testing.T) {
+	readCalled := false
+	probeCheckpoint := &cerebrov1.SourceCheckpoint{
+		Watermark: timestamppb.New(time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)),
+	}
+	engine, err := NewFamilyEngine(func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name: "pull_request",
+		Probe: func(context.Context, string, *cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+			return ChangeProbe{Unchanged: true, Checkpoint: probeCheckpoint}, nil
+		},
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			readCalled = true
+			return Pull{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngine() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "pull_request"}), nil, &cerebrov1.SourceCheckpoint{})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if readCalled {
+		t.Fatal("family Read was called after unchanged probe")
+	}
+	if pull.Checkpoint != probeCheckpoint {
+		t.Fatal("probe checkpoint was not returned")
+	}
+	if pull.ShortCircuitReason != PullShortCircuitReasonNotModified {
+		t.Fatalf("ShortCircuitReason = %q, want not_modified", pull.ShortCircuitReason)
+	}
+}
+
+func TestFamilyEngineUsesCheckpointAwareRead(t *testing.T) {
+	checkpoint := &cerebrov1.SourceCheckpoint{
+		Watermark: timestamppb.New(time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)),
+	}
+	var seenCheckpoint *cerebrov1.SourceCheckpoint
+	readCalled := false
+	engine, err := NewFamilyEngine(func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name: "securityhub_finding",
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			readCalled = true
+			return Pull{}, nil
+		},
+		ReadWithCheckpoint: func(_ context.Context, _ string, _ *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+			seenCheckpoint = checkpoint
+			return Pull{ShortCircuitReason: PullShortCircuitReasonWatermarkReached}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngine() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "securityhub_finding"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if readCalled {
+		t.Fatal("fallback Read was called")
+	}
+	if seenCheckpoint != checkpoint {
+		t.Fatalf("checkpoint = %p, want %p", seenCheckpoint, checkpoint)
+	}
+	if pull.ShortCircuitReason != PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+}
+
+func TestFamilyEngineForcedFreshnessReconcilePassesProbeCheckpointToRead(t *testing.T) {
+	now := time.Date(2026, 6, 16, 15, 30, 0, 0, time.UTC)
+	hash := FamilyFreshnessHash("audit_log_latest_event", "latest_event", now.Format(time.RFC3339Nano))
+	checkpoint := FamilyFreshnessCheckpoint("github", "audit", nil, FamilyFreshnessProbe{
+		Kind:       "audit_log_latest_event",
+		ResourceID: "latest_event",
+		UpdatedAt:  now,
+		Hash:       hash,
+		Confidence: FamilyFreshnessConfidenceHeuristic,
+		SkipCount:  1,
+		FullReadAt: now.Add(-time.Minute),
+	})
+	var seenCheckpoint *cerebrov1.SourceCheckpoint
+	engine, err := NewFamilyEngineWithSourceID("github", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name: "audit",
+		Probe: func(context.Context, string, *cerebrov1.SourceCheckpoint) (ChangeProbe, error) {
+			return FamilyFreshnessChangeProbe("github", "audit", checkpoint, FamilyFreshnessProbe{
+				Kind:       "audit_log_latest_event",
+				ResourceID: "latest_event",
+				ObservedAt: now,
+				UpdatedAt:  now,
+				Hash:       hash,
+				Confidence: FamilyFreshnessConfidenceHeuristic,
+			}), nil
+		},
+		ProbeOptions: FamilyFreshnessReadOptions{
+			MaxSkipCount: 1,
+			Now:          func() time.Time { return now },
+		},
+		ReadWithCheckpoint: func(_ context.Context, _ string, _ *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+			seenCheckpoint = checkpoint
+			return Pull{Checkpoint: checkpoint}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "audit"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if seenCheckpoint == nil {
+		t.Fatal("ReadWithCheckpoint checkpoint = nil, want forced reconcile checkpoint")
+	}
+	probe, ok := FamilyFreshnessProbeFromCheckpoint("github", "audit", seenCheckpoint)
+	if !ok {
+		t.Fatalf("seen checkpoint %q missing freshness probe", seenCheckpoint.GetCursorOpaque())
+	}
+	if probe.Reason != FamilyFreshnessReasonMaxSkipCount {
+		t.Fatalf("seen checkpoint reason = %q, want max_skip_count", probe.Reason)
+	}
+	if pull.Checkpoint != seenCheckpoint {
+		t.Fatal("pull did not preserve forced reconcile checkpoint")
+	}
+}
+
+func TestFamilyEngineAppliesIncrementalWatermarkFallback(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	checkpoint := IncrementalWatermarkCheckpoint("github", "pull_request", []*primitives.Event{
+		{Id: "known", OccurredAt: timestamppb.New(watermark)},
+	}, IncrementalWatermarkState{})
+	engine, err := NewFamilyEngineWithSourceID("github", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name:                 "pull_request",
+		IncrementalWatermark: true,
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			return Pull{
+				Events: []*primitives.Event{
+					{Id: "new", OccurredAt: timestamppb.New(watermark.Add(time.Minute))},
+				},
+				NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{"family": "pull_request"}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "new" {
+		t.Fatalf("events = %#v, want event newer than checkpoint", pull.Events)
+	}
+	if pull.NextCursor == nil || CursorToken(pull.NextCursor) != "2" {
+		t.Fatalf("NextCursor = %#v, want provider token 2", pull.NextCursor)
+	}
+	if !ResumableCursorOpaque(pull.NextCursor.GetOpaque()) {
+		t.Fatalf("NextCursor opaque = %q, want resumable envelope", pull.NextCursor.GetOpaque())
+	}
+}
+
+func TestFamilyEngineCarriesResourceScopeThroughIncrementalWatermark(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	checkpoint := IncrementalWatermarkCheckpoint("aws", "cloudtrail", []*primitives.Event{
+		{Id: "known", OccurredAt: timestamppb.New(watermark)},
+	}, IncrementalWatermarkState{})
+	engine, err := NewFamilyEngineWithSourceID("aws", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name:                 "cloudtrail",
+		IncrementalWatermark: true,
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			return Pull{
+				Events: []*primitives.Event{
+					{
+						Id:         "keep",
+						Kind:       "aws.cloudtrail",
+						OccurredAt: timestamppb.New(watermark.Add(time.Minute)),
+						Attributes: map[string]string{"resource_urn": "urn:cerebro:tenant:aws_s3_bucket:kept"},
+					},
+					{
+						Id:         "drop",
+						Kind:       "aws.cloudtrail",
+						OccurredAt: timestamppb.New(watermark.Add(2 * time.Minute)),
+						Attributes: map[string]string{"resource_urn": "urn:cerebro:tenant:aws_s3_bucket:excluded"},
+					},
+				},
+				NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+	rawPolicy, err := resourcescope.ConfigValue(resourcescope.Policy{ExcludedResourceURNs: []string{"urn:cerebro:tenant:aws_s3_bucket:excluded"}})
+	if err != nil {
+		t.Fatalf("ConfigValue() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{
+		"family":                "cloudtrail",
+		resourcescope.ConfigKey: rawPolicy,
+	}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "keep" {
+		t.Fatalf("events = %#v, want resource-scope exclusion applied after incremental filtering", pull.Events)
+	}
+	if pull.NextCursor == nil || !ResumableCursorOpaque(pull.NextCursor.GetOpaque()) {
+		t.Fatalf("NextCursor = %#v, want resumable incremental cursor", pull.NextCursor)
 	}
 }

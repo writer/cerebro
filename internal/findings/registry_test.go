@@ -88,8 +88,8 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 9 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 9", got)
+	if got := len(packs); got != 12 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 12", got)
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {
@@ -116,6 +116,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(runtimeActiveThreatEvidenceRuleID); !ok {
 		t.Fatalf("registry missing %q", runtimeActiveThreatEvidenceRuleID)
+	}
+	if _, ok := registry.Get(panopticonCuratedCaseRuleID); !ok {
+		t.Fatalf("registry missing %q", panopticonCuratedCaseRuleID)
 	}
 	if _, ok := registry.Get(grcControlTestNeedsAttentionRuleID); !ok {
 		t.Fatalf("registry missing %q", grcControlTestNeedsAttentionRuleID)
@@ -149,6 +152,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(dataSensitiveAssetRiskRuleID); !ok {
 		t.Fatalf("registry missing %q", dataSensitiveAssetRiskRuleID)
+	}
+	if _, ok := registry.Get("aws-s3-bucket-no-public-access"); !ok {
+		t.Fatal("registry missing generated policy rule aws-s3-bucket-no-public-access")
 	}
 	// Graph rules must be in the catalog so the orchestrator's
 	// graph-rule evaluator picks them up when okta-user / github-audit

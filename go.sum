@@ -26,12 +26,16 @@ github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5 h1:V++M+jksBqWbQAqgXz1
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5/go.mod h1:198XfedFZvclpFwW+UK7OE38WPRTY9Yj5dlM/3RC5Jc=
 github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5 h1:F9+qleYIBE+8vTDc7ziud/VDz/lwnOylAneeEwa6758=
 github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5/go.mod h1:7lvd8HgCk8mPW3LkZTpuc1r5xux1ZWi7cQ5wmORIdCA=
+github.com/aws/aws-sdk-go-v2/service/appsync v1.53.4 h1:1QJO5y7nB7YNidwgUSEIXf4WgchD8DQSlQ8zNSi7WN0=
+github.com/aws/aws-sdk-go-v2/service/appsync v1.53.4/go.mod h1:Oz2xOV2phzKkePQEs7CRZsLQVxuIniPX/VDTvxbYUUQ=
 github.com/aws/aws-sdk-go-v2/service/athena v1.58.3 h1:vjEUIly6U1SrRUajgNsF/Pv9ZRsf12S0gzMjbPzQZxc=
 github.com/aws/aws-sdk-go-v2/service/athena v1.58.3/go.mod h1:SfNoP5HUXFw60kcWKmm7V0CoF9OZdhmhwfkesm1+A+g=
 github.com/aws/aws-sdk-go-v2/service/backup v1.57.5 h1:ohRgK/UYcre3jF4pxxIrslY9kUuuzpz2zTzs3RNu2Ms=
 github.com/aws/aws-sdk-go-v2/service/backup v1.57.5/go.mod h1:buhCYnahTK+Q2AKqU21CsvhlB1iTb79M+L82ASQk+d0=
 github.com/aws/aws-sdk-go-v2/service/batch v1.65.5 h1:+bOiP++19XAWs3CRhFNkAhAe+DAGMF/eq7Q+4Ib5OlE=
 github.com/aws/aws-sdk-go-v2/service/batch v1.65.5/go.mod h1:H9zD0xL2LX2iF6XQAcvP1aJiMbIXTF2gVMoIG36mQTQ=
+github.com/aws/aws-sdk-go-v2/service/bedrock v1.63.0 h1:GhGAt2Ts45K2P/Imlpjh8N8yA01RCPcfLpfpBYvjz64=
+github.com/aws/aws-sdk-go-v2/service/bedrock v1.63.0/go.mod h1:L1Dj1EqgvYvL4GGPNNRBf8CwN6xvnqxz2rcZ4c6SopU=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4 h1:gNpZEJpHw/ANDvgAk2Z9yaiLmuFWfDnjZmzXZBMfhaw=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4/go.mod h1:fNEfSXojRCcvbtl0KYGJrkHS17eHaHvSgZqNNVOxZQU=
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1 h1:UXPRXa3HLrJolDM098DfXgLJrbB086+Zip3M+4Dy1WI=
@@ -58,6 +62,8 @@ github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2 h1:xcHUdx4FNgUZmLuI6vqB5QDsVnW
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2/go.mod h1:SUtka5kgdr5Wx2BdRrH/IGkCKHW63IVQoyBkP0P1gdo=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2 h1:sSfN1WfNyYjV0CQC8moHP4uxgNXSUxDT0X2vXbcJSbc=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2/go.mod h1:CJsIIgsVqF1YRtS436i4RKrNFlo2LtQ7gORkdhKaj3k=
+github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.38.11 h1:2T9NCuNzzBh6RUrwYZBFl1D9lLJ2r2CCbg7w383DjQE=
+github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.38.11/go.mod h1:FkD34cqOmnqfAEiNHeqOT50SoXqHEgdDsa8BrMw9t+w=
 github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3 h1:0h+khLoWaCU9JE6ZeQrQ9xZS+EnrjISQlnt/xtxEL/I=
 github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3/go.mod h1:st/PIQyL6fJSoYTxijbYIKZjPpPP2JiUdcUf++xX0Kk=
 github.com/aws/aws-sdk-go-v2/service/efs v1.42.0 h1:sXKdeXhXjJ4nu7m+YtTWjk0jfpB+mQ02Nhw4uBsnRzI=
@@ -134,6 +140,8 @@ github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2 h1:b4ikkRk22T4xYkEgaWc3Voe+3xbt
 github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2/go.mod h1:Gp7eHZ0NZ8ZK5RXpoIUp/C8OeAmJqpCgdwEK1D/QOek=
 github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4 h1:Or+7J1Kr4sNlGT/5Uh3VvtIFrwoABZ3NMWXNL61mfzo=
 github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4/go.mod h1:hpR7KgZJuRoBndHkhYXZmPNjsvuanVWC4G1tMVNXBIc=
+github.com/aws/aws-sdk-go-v2/service/sagemaker v1.250.2 h1:N2bf77yKmfEviYZ+4lHX2XScGegPP0f6fqR7YTnnBWs=
+github.com/aws/aws-sdk-go-v2/service/sagemaker v1.250.2/go.mod h1:FoNxu0tmIV4tlnQeW6+MZSMEJpZVztQbnzyNiIuAHbk=
 github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5 h1:lKGt/dMVNdPRoMPT2zTiWnOZS2arZxxNzqUvl+J8eao=
 github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5/go.mod h1:YjcAUo+VhdCsp9Q0AV/3EObtEdALb789sdTw+8ELrDc=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1 h1:AH4hyaVe/2+p7zx/GkmjQLXOfVTul6EFMTRy8QVl71Q=
@@ -164,6 +172,10 @@ github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3 h1:+kDjxyj48ZdOWEIaIzim8UXY4o
 github.com/aws/aws-sdk-go-v2/service/wafv2 v1.72.3/go.mod h1:XxiDY93cTKh8UPcNQCfk/b3vnrVOPu38YZSBlYmaNn4=
 github.com/aws/smithy-go v1.27.1 h1:4T340VFndXtADGF52gYa1POyL7s9E4Z1OeZ1hCscIw8=
 github.com/aws/smithy-go v1.27.1/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
+github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
+github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
+github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
+github.com/bsm/gomega v1.27.10/go.mod h1:JyEr/xRbxbtgWNi8tIEVPUYZ5Dzef52k01W3YH0H+O0=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

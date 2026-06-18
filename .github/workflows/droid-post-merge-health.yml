@@ -20,13 +20,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 1
+          fetch-depth: 0
       - name: Generate post-merge health context
-        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           DROID_POST_MERGE_HEAD: ${{ github.sha }}
+          DROID_POST_MERGE_STRICT: "true"
           DROID_POST_MERGE_OUT: tmp/droid-post-merge-health.md
           DROID_POST_MERGE_JSON_OUT: tmp/droid-post-merge-health.json
         run: |

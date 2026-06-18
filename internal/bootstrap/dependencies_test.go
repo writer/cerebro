@@ -87,3 +87,22 @@ func TestOpenDependenciesRejectsUnsupportedGraphStoreDriver(t *testing.T) {
 		t.Fatal("OpenDependencies() error = nil, want non-nil")
 	}
 }
+
+func TestOpenSourceRuntimeBootstrapDependenciesIgnoresUnusedStores(t *testing.T) {
+	deps, closeAll, err := OpenSourceRuntimeBootstrapDependencies(context.Background(), config.Config{
+		AppendLog:  config.AppendLogConfig{Driver: config.AppendLogDriverJetStream},
+		GraphStore: config.GraphStoreConfig{Driver: "alternate"},
+	})
+	if err != nil {
+		t.Fatalf("OpenSourceRuntimeBootstrapDependencies() error = %v", err)
+	}
+	if deps.AppendLog != nil {
+		t.Fatal("AppendLog != nil, want nil")
+	}
+	if deps.GraphStore != nil {
+		t.Fatal("GraphStore != nil, want nil")
+	}
+	if err := closeAll(); err != nil {
+		t.Fatalf("closeAll() error = %v", err)
+	}
+}

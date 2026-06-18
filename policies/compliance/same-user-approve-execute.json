@@ -16,5 +16,20 @@
     "financial-controls",
     "separation-of-duties",
     "fraud-prevention"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC5.2",
+        "CC5.3"
+      ]
+    },
+    {
+      "name": "Cerebro Financial Controls",
+      "controls": [
+        "FIN-1"
+      ]
+    }
   ]
 }

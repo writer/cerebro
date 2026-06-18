@@ -17,5 +17,19 @@
     "sla",
     "support",
     "zendesk"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "A1.1"
+      ]
+    },
+    {
+      "name": "Cerebro Operational Resilience",
+      "controls": [
+        "OPS-2"
+      ]
+    }
   ]
 }

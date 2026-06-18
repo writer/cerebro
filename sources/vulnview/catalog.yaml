@@ -7,3 +7,48 @@ emitted_kinds:
   - vulnview.vulnerability
   - vulnview.asset
   - vulnview.dns_alert
+coverage_contract:
+  owner_domain: security
+  authority_domain: vulnview
+  dimensions:
+    - id: sites
+      type: entity_family
+      title: Attack-surface sites
+      families: [site]
+      support: supported
+      high_value: true
+    - id: scans
+      type: lifecycle_state
+      title: Scan lifecycle state
+      families: [scan]
+      support: supported
+      high_value: true
+    - id: vulnerabilities
+      type: entity_family
+      title: Vulnerabilities
+      families: [vulnerability]
+      support: supported
+      high_value: true
+    - id: assets
+      type: entity_family
+      title: Attack-surface assets
+      families: [asset]
+      support: supported
+      high_value: true
+    - id: dns_alerts
+      type: entity_family
+      title: DNS alerts
+      families: [dns_alert]
+      support: supported
+      high_value: true
+    - id: remediation_state
+      type: remediation_state
+      title: Vulnerability remediation lifecycle state
+      families: [vulnerability, dns_alert]
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - Cerebro remediation workflow assignment, exception, SLA, and approval state
+      notes:
+        - VulnView vulnerability and DNS alert state attributes are surfaced as provider lifecycle evidence.
+        - Cerebro finding remediation lifecycle remains owned by the finding/workflow surfaces and their typed action boundaries.

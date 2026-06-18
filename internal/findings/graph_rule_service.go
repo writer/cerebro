@@ -89,6 +89,12 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	}
 	queryRequest := rule.QueryFor(runtime)
 	if strings.TrimSpace(queryRequest.Query) == "" {
+		if retiredGraphRule(rule) {
+			if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), nil); err != nil {
+				evaluationErr := fmt.Errorf("resolve retired graph findings for rule %q: %w", spec.GetId(), err)
+				return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
+			}
+		}
 		if err := s.finishCompletedGraphRun(ctx, run, 0, nil); err != nil {
 			return result, err
 		}
@@ -142,6 +148,10 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
+		if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
+			evaluationErr := fmt.Errorf("project graph rule %q finding %q external refs: %w", spec.GetId(), stored.ID, err)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+		}
 		if isNewFinding {
 			if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
 				evaluationErr := fmt.Errorf("project graph rule %q finding %q action recommendations: %w", spec.GetId(), stored.ID, err)
@@ -159,6 +169,14 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, err
 	}
 	return result, nil
+}
+
+func retiredGraphRule(rule GraphRule) bool {
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		return false
+	}
+	return metadataRule.RuleMetadata().Lifecycle.Kind == LifecycleRetired
 }
 
 // cypherRowsTruncated reports whether the cypher result hit the effective row cap. When the

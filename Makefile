@@ -1,8 +1,9 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
+PYTHON ?= python3
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
@@ -13,11 +14,15 @@ PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
 DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
 DOCKER_SMOKE_GOARCH ?= amd64
+DOCKER_RUNTIME_BASE_IMAGE ?= alpine:3.24
+DOCKER_SMOKE_BASE_IMAGES ?= $(DOCKER_RUNTIME_BASE_IMAGE) public.ecr.aws/docker/library/alpine:3.24 mirror.gcr.io/library/alpine:3.24
 DOCKER_BUILD_ATTEMPTS ?= 3
 DOCKER_BUILD_RETRY_SLEEP ?= 10
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 COVER_PACKAGES ?= ./internal/runtimeresponse ./internal/graphagent ./internal/deviceauth ./internal/sourceprojection ./internal/findings
 COVERAGE_OUT ?= tmp/coverage.out
+SDK_PYTHON_VENV ?= tmp/sdk-python-test-venv
+SDK_AUDIT_VENV ?= tmp/sdk-audit-venv
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
 WORKFLOW_E2E_PACKAGES := ./internal/workflowevents ./internal/workflowprojection ./internal/knowledge ./internal/findings ./internal/bootstrap
@@ -59,6 +64,10 @@ DROID_CONTEXT_JSON_OUT ?= tmp/droid-review-context.json
 DROID_POST_MERGE_OUT ?= tmp/droid-post-merge-health.md
 DROID_POST_MERGE_JSON_OUT ?= tmp/droid-post-merge-health.json
 DROID_SAST_POST_COMMENT ?= false
+LAND_PR_REPO ?= writer/cerebro
+LAND_PR_ADMIN ?= false
+LAND_PR_KEEP_BRANCH ?= false
+LAND_PR_ALLOW_LARGE ?= false
 
 help: ## Show this help message.
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n"} /^##@/ {printf "\n%s\n", substr($$0, 5); next} /^[A-Za-z0-9_.-]+:.*##/ {printf "  %-34s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -87,10 +96,17 @@ cover: ## Run Go coverage for high-stakes packages.
 
 test-coverage: cover ## Alias for coverage validation.
 
-sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
+sdk-test: sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
+
+sdk-go-test: ## Run Go SDK unit tests and vet.
+	go -C sdk/go/cerebroapi test ./...
+	go -C sdk/go/cerebroapi vet ./...
 
 sdk-python-test: ## Run Python SDK unit tests.
-	cd sdk/python && python3 -m pip install 'protobuf>=5.29.5,<6' && python3 -m unittest discover -s tests
+	$(PYTHON) -m venv "$(SDK_PYTHON_VENV)"
+	"$(SDK_PYTHON_VENV)/bin/python" -m pip install --upgrade pip
+	"$(SDK_PYTHON_VENV)/bin/python" -m pip install 'protobuf>=5.29.5,<6'
+	PYTHONPATH=sdk/python "$(SDK_PYTHON_VENV)/bin/python" -m unittest discover -s sdk/python/tests
 
 sdk-typescript-test: ## Run TypeScript SDK tests.
 	cd sdk/typescript && npm test
@@ -99,9 +115,10 @@ sdk-typescript-check: ## Install TypeScript SDK dependencies and run type checks
 	cd sdk/typescript && npm ci && npm run typecheck
 
 sdk-dependency-audit: ## Audit SDK dependencies for known vulnerabilities.
-	python3 -m unittest scripts.test_sdk_dependency_audit
-	python3 -m pip install --user pip-audit
-	python3 scripts/sdk_dependency_audit.py
+	$(PYTHON) -m unittest scripts.test_sdk_dependency_audit
+	$(PYTHON) -m venv "$(SDK_AUDIT_VENV)"
+	"$(SDK_AUDIT_VENV)/bin/python" -m pip install --upgrade pip pip-audit
+	"$(SDK_AUDIT_VENV)/bin/python" scripts/sdk_dependency_audit.py
 
 # ==== Focused Tests ====
 ##@ Focused Tests
@@ -113,6 +130,9 @@ workflow-replay-test: ## Run workflow replay focused tests.
 
 finding-rule-test: ## Run finding rule focused tests.
 	go test ./internal/findings -run '$(FINDING_RULE_TESTS)' -count=1 -v
+
+agent-platform-eval: ## Run agent platform protocol, webhook, idempotency, and security eval fixtures.
+	go test ./internal/agentplatform -run 'TestRun(SecurityAgent|AgentPlatform)EvalSuiteFixture|Test(SecurityAgentEvalFixtureCoversSecurityScenarios|AgentPlatformEvalFixtureCoversControlPlane)' -count=1 -v
 
 github-findings-e2e: ## Run GitHub findings end-to-end test against configured repo.
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v
@@ -186,9 +206,10 @@ proto-lint: ## Lint protobuf definitions.
 
 proto-generate: ## Generate protobuf-derived code.
 	$(BUF) generate
+	$(BUF) generate --template buf.gen.sdk.yaml --path proto/cerebro/v1/primitives.proto
 
 proto-generate-check: proto-generate ## Verify protobuf generated files are current.
-	git diff --exit-code -- gen sdk/python/cerebro/v1
+	git diff --exit-code -- gen sdk/python/cerebro/v1 sdk/go/cerebroapi/genproto
 
 proto-breaking: ## Check protobuf compatibility against PROTO_BREAKING_BASE.
 	$(BUF) breaking --against '.git#branch=$(PROTO_BREAKING_BASE)'
@@ -202,8 +223,24 @@ openapi-lint: ## Lint the OpenAPI spec with Spectral.
 openapi-sync: ## Update OpenAPI route parity metadata.
 	go run ./scripts/openapi_route_parity.go --write
 
-catalog-check: ## Verify the source catalog is current.
+catalog-check: ## Verify source, connector, and compliance catalogs are current.
 	go run ./tools/catalogcheck
+	go run ./tools/controlindex --check
+
+control-index-generate: ## Regenerate compliance control coverage index.
+	go run ./tools/controlindex --write
+
+control-index-check: ## Verify compliance control coverage index is current.
+	go run ./tools/controlindex --check
+
+sourcegen-check: ## Verify connector definitions remain sourcegen-ready.
+	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
+
+policy-rule-generate: ## Regenerate generated policy rule catalog.
+	go run ./tools/policyrulegen --write
+
+policy-rule-check: ## Verify generated policy rule catalog is current.
+	go run ./tools/policyrulegen --check
 
 detection-catalog-generate: ## Regenerate public detection catalog.
 	go run ./tools/detectioncatalog --write
@@ -211,7 +248,15 @@ detection-catalog-generate: ## Regenerate public detection catalog.
 detection-catalog-check: ## Verify public detection catalog is current.
 	go run ./tools/detectioncatalog --check
 
-docs-autogen: openapi-sync proto-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
+new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_TYPE=awsFooBar LIST_FUNC=listFooBars EVENT_FUNC=fooBarEvent URN_EXPR=record.ID).
+	@test -n "$(FAMILY)" || (echo "FAMILY is required, e.g. make new-aws-collector FAMILY=ec2_transit_gateway" && exit 1)
+	@test -n "$(RECORD_TYPE)" || (echo "RECORD_TYPE is required" && exit 1)
+	@test -n "$(LIST_FUNC)" || (echo "LIST_FUNC is required" && exit 1)
+	@test -n "$(EVENT_FUNC)" || (echo "EVENT_FUNC is required" && exit 1)
+	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
+	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
+
+docs-autogen: openapi-sync proto-generate policy-rule-generate control-index-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	python3 scripts/docs_drift_check.py
@@ -235,25 +280,37 @@ govulncheck: ## Run govulncheck gate for reachable vulnerabilities.
 contracts-check: ## Run contract and compatibility checks with a final summary.
 	python3 scripts/contracts_check.py
 
+changed-check: ## Run validation selected from changed paths.
+	python3 scripts/changed_checks.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --run
+
 # ==== Release and Environment ====
 ##@ Release and Environment
 docker-smoke: ## Build and smoke-test the runtime Docker image.
 	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
 	mkdir -p .dist
 	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
-	@attempt=1; \
-	while :; do \
-		if docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
-			break; \
-		fi; \
-		if [ "$$attempt" -ge "$(DOCKER_BUILD_ATTEMPTS)" ]; then \
-			echo "docker build failed after $(DOCKER_BUILD_ATTEMPTS) attempts" >&2; \
-			exit 1; \
-		fi; \
-		echo "docker build failed; retrying in $(DOCKER_BUILD_RETRY_SLEEP)s" >&2; \
-		attempt=$$((attempt + 1)); \
-		sleep "$(DOCKER_BUILD_RETRY_SLEEP)"; \
-	done
+	@build_ok=0; \
+	for base_image in $(DOCKER_SMOKE_BASE_IMAGES); do \
+		attempt=1; \
+		while :; do \
+			echo "building runtime image with base $$base_image (attempt $$attempt/$(DOCKER_BUILD_ATTEMPTS))"; \
+			if docker build --build-arg RUNTIME_BASE_IMAGE="$$base_image" -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
+				build_ok=1; \
+				break 2; \
+			fi; \
+			if [ "$$attempt" -ge "$(DOCKER_BUILD_ATTEMPTS)" ]; then \
+				echo "docker build failed with base $$base_image after $(DOCKER_BUILD_ATTEMPTS) attempts" >&2; \
+				break; \
+			fi; \
+			echo "docker build failed; retrying in $(DOCKER_BUILD_RETRY_SLEEP)s" >&2; \
+			attempt=$$((attempt + 1)); \
+			sleep "$(DOCKER_BUILD_RETRY_SLEEP)"; \
+		done; \
+	done; \
+	if [ "$$build_ok" != "1" ]; then \
+		echo "docker build failed for all runtime base images: $(DOCKER_SMOKE_BASE_IMAGES)" >&2; \
+		exit 1; \
+	fi
 	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
 release-smoke: ## Validate GoReleaser configuration.
@@ -287,11 +344,15 @@ droid-review-context: ## Combine Droid review context inputs.
 	python3 scripts/droid_review_context.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --preflight-json "$(DROID_PREFLIGHT_JSON_OUT)" --sast-json "$(DROID_SAST_JSON_OUT)" --ci-json "$(DROID_CI_JSON_OUT)" --feedback-json "$(DROID_FEEDBACK_JSON_OUT)" --markdown-out "$(DROID_CONTEXT_OUT)" --json-out "$(DROID_CONTEXT_JSON_OUT)"
 
 droid-post-merge-health: ## Build Droid post-merge health summary.
-	python3 scripts/droid_post_merge_health.py --markdown-out "$(DROID_POST_MERGE_OUT)" --json-out "$(DROID_POST_MERGE_JSON_OUT)"
+	python3 scripts/droid_post_merge_health.py --markdown-out "$(DROID_POST_MERGE_OUT)" --json-out "$(DROID_POST_MERGE_JSON_OUT)" $(if $(filter true,$(DROID_POST_MERGE_STRICT)),--strict,)
 
 droid-feedback: ## Fetch and normalize Droid feedback for DROID_PR.
 	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
 	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)") --json-out "$(DROID_FEEDBACK_JSON_OUT)"
+
+land-pr: ## Wait for core/Droid gates, merge PR, then delete the PR branch.
+	@if [ -z "$(PR)" ]; then echo "PR is required, e.g. make land-pr PR=719" >&2; exit 2; fi
+	python3 scripts/land_pr.py "$(PR)" --repo "$(LAND_PR_REPO)" $(if $(filter true,$(LAND_PR_ADMIN)),--admin,) $(if $(filter true,$(LAND_PR_KEEP_BRANCH)),--keep-branch,) $(if $(filter true,$(LAND_PR_ALLOW_LARGE)),--allow-large-pr,)
 
 # ==== Project Hygiene ====
 ##@ Project Hygiene
@@ -304,7 +365,7 @@ hooks: ## Install repository git hooks.
 pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test sdk-test lint proto-lint proto-generate-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
+check: build test sdk-test lint proto-lint proto-generate-check policy-rule-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -320,4 +381,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

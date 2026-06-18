@@ -76,9 +76,45 @@ func (c Config) Values() map[string]string {
 
 // Pull is one page of source output.
 type Pull struct {
-	Events     []*primitives.Event
-	Checkpoint *cerebrov1.SourceCheckpoint
-	NextCursor *cerebrov1.SourceCursor
+	Events               []*primitives.Event
+	Checkpoint           *cerebrov1.SourceCheckpoint
+	NextCursor           *cerebrov1.SourceCursor
+	ShortCircuitReason   PullShortCircuitReason
+	ReconciliationReason PullReconciliationReason
+}
+
+// PullShortCircuitReason describes source work that intentionally produced no
+// new append-log events.
+type PullShortCircuitReason string
+
+const (
+	PullShortCircuitReasonScopeExcluded         PullShortCircuitReason = "scope_excluded"
+	PullShortCircuitReasonResourceScopeFiltered PullShortCircuitReason = "resource_scope_filtered"
+	PullShortCircuitReasonNotModified           PullShortCircuitReason = "not_modified"
+	PullShortCircuitReasonCheckpointAdvanced    PullShortCircuitReason = "checkpoint_advanced"
+	PullShortCircuitReasonWatermarkReached      PullShortCircuitReason = "watermark_reached"
+)
+
+// PullReconciliationReason describes why a source intentionally bypassed an
+// otherwise-unchanged freshness probe and ran a normal reconciliation.
+type PullReconciliationReason string
+
+const (
+	PullReconciliationReasonMaxSkipDuration        PullReconciliationReason = "max_skip_duration"
+	PullReconciliationReasonMaxConsecutiveSkips    PullReconciliationReason = "max_consecutive_skips"
+	PullReconciliationReasonReconciliationInterval PullReconciliationReason = "reconciliation_interval"
+	PullReconciliationReasonCanaryManifestChanged  PullReconciliationReason = "canary_manifest_version_changed"
+	PullReconciliationReasonSourceConfigChanged    PullReconciliationReason = "source_config_changed"
+	PullReconciliationReasonCanaryStateMissing     PullReconciliationReason = "canary_state_missing"
+)
+
+// NotModifiedPull returns a not_modified short-circuit when a checkpoint was
+// refreshed without producing events.
+func NotModifiedPull(checkpoint *cerebrov1.SourceCheckpoint) Pull {
+	if checkpoint == nil {
+		return Pull{}
+	}
+	return Pull{Checkpoint: checkpoint, ShortCircuitReason: PullShortCircuitReasonNotModified}
 }
 
 // Source is the common integration contract for the rewrite.
@@ -87,6 +123,14 @@ type Source interface {
 	Check(context.Context, Config) error
 	Discover(context.Context, Config) ([]URN, error)
 	Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error)
+}
+
+// CheckpointAwareSource can use the last durable checkpoint while deciding how
+// much remote data to fetch. Source runtimes still pass the normal page cursor
+// for continuation, and provide checkpoint separately so legacy cursor formats
+// do not need to carry watermark metadata.
+type CheckpointAwareSource interface {
+	ReadWithCheckpoint(context.Context, Config, *cerebrov1.SourceCursor, *cerebrov1.SourceCheckpoint) (Pull, error)
 }
 
 // EventContractProvider lets sources attach catalog-level per-kind validation to emitted events.
@@ -101,7 +145,8 @@ type CoverageContractProvider interface {
 
 // Registry indexes sources by their stable identifier.
 type Registry struct {
-	sources map[string]Source
+	sources                         map[string]Source
+	includeBuiltinDefinitionCatalog bool
 }
 
 // NewRegistry constructs a source registry and rejects duplicate or invalid specs.
@@ -133,6 +178,21 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 	return &Registry{sources: indexed}, nil
 }
 
+// WithBuiltinDefinitionCatalog marks registries composed from compiled built-in
+// sources as eligible for the embedded connector-definition catalog surface.
+func (r *Registry) WithBuiltinDefinitionCatalog() *Registry {
+	if r != nil {
+		r.includeBuiltinDefinitionCatalog = true
+	}
+	return r
+}
+
+// IncludesBuiltinDefinitionCatalog reports whether API surfaces should include
+// catalog-only connector definitions alongside executable built-in sources.
+func (r *Registry) IncludesBuiltinDefinitionCatalog() bool {
+	return r != nil && r.includeBuiltinDefinitionCatalog
+}
+
 type catalogContractSource struct {
 	Source
 	contracts []EventContract
@@ -143,6 +203,16 @@ func (s *catalogContractSource) EventContracts() []EventContract {
 		return nil
 	}
 	return cloneEventContracts(s.contracts)
+}
+
+func (s *catalogContractSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+	if s == nil || sourceIsNil(s.Source) {
+		return Pull{}, fmt.Errorf("source is required")
+	}
+	if reader, ok := s.Source.(CheckpointAwareSource); ok {
+		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+	}
+	return s.Read(ctx, cfg, cursor)
 }
 
 func sourceWithCatalogEventContracts(source Source, sourceID string) Source {
@@ -166,6 +236,27 @@ func (s *catalogCoverageSource) CoverageContract() CoverageContract {
 		return CoverageContract{}
 	}
 	return cloneCoverageContract(s.coverage)
+}
+
+func (s *catalogCoverageSource) EventContracts() []EventContract {
+	if s == nil {
+		return nil
+	}
+	provider, ok := s.Source.(EventContractProvider)
+	if !ok {
+		return nil
+	}
+	return cloneEventContracts(provider.EventContracts())
+}
+
+func (s *catalogCoverageSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+	if s == nil || sourceIsNil(s.Source) {
+		return Pull{}, fmt.Errorf("source is required")
+	}
+	if reader, ok := s.Source.(CheckpointAwareSource); ok {
+		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+	}
+	return s.Read(ctx, cfg, cursor)
 }
 
 func sourceWithCatalogCoverageContract(source Source, sourceID string) Source {

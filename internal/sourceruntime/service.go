@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -50,6 +49,8 @@ const (
 	runtimeContractProbeStateConfigKey    = "__cerebro_runtime_contract_probe_state"
 	runtimeLastSyncWatermarkConfigKey     = "__cerebro_runtime_last_sync_watermark"
 	runtimeLastSyncCompletedAtConfigKey   = "__cerebro_runtime_last_sync_completed_at"
+	runtimeShortCircuitReasonConfigKey    = "__cerebro_runtime_short_circuit_reason"
+	runtimeReconciliationReasonConfigKey  = "__cerebro_runtime_reconciliation_reason"
 )
 
 var (
@@ -293,24 +294,39 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventContracts = provider.EventContracts()
 	}
 	contractConfigured = len(eventContracts) > 0
+	sourceConfig := sourcecdk.NewConfig(runtimeConfig)
+	originalCheckpoint := cloneCheckpoint(runtime.GetCheckpoint())
+	shortCircuitReason := ""
+	reconciliationReason := ""
 	for i := uint32(0); i < pageLimit; i++ {
-		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtimeConfig), cursor)
+		pull, err := readSourcePull(ctx, source, sourceConfig, cursor, originalCheckpoint)
 		if err != nil {
 			return nil, err
 		}
 		pageNumber := i + 1
+		pageShortCircuitReason := string(pullShortCircuitReason(pull))
+		if pageShortCircuitReason != "" {
+			shortCircuitReason = pageShortCircuitReason
+		}
+		pageReconciliationReason := strings.TrimSpace(string(pull.ReconciliationReason))
+		if pageReconciliationReason != "" {
+			reconciliationReason = pageReconciliationReason
+		}
 		eventsRead := boundedUint32(len(pull.Events))
 		recordsScanned += eventsRead
-		telemetry.Event(ctx, "source_runtime.page_read", telemetry.Attrs(
+		pageReadAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
 			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
 			telemetry.Field{Key: "page", Value: pageNumber},
 			telemetry.Field{Key: "events_read", Value: eventsRead},
 			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
-		))
+			telemetry.Field{Key: "short_circuit_reason", Value: pageShortCircuitReason},
+			telemetry.Field{Key: "reconciliation_reason", Value: pageReconciliationReason},
+		), pull.Checkpoint)
+		telemetry.Event(ctx, "source_runtime.page_read", pageReadAttrs)
 		if pull.Checkpoint != nil {
-			runtime.Checkpoint = cloneCheckpoint(pull.Checkpoint)
+			advanceRuntimeCheckpoint(runtime, pull.Checkpoint)
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
 		pagesRead++
@@ -353,19 +369,21 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		runtime.LastSyncedAt = timestamppb.Now()
 		updateRuntimeSyncStatus(runtime, runtimeSyncStatus{
-			Status:             "completed",
-			RecordsScanned:     recordsScanned,
-			RecordsAccepted:    eventsAppended,
-			RecordsRejected:    recordsRejected,
-			EntitiesProjected:  entitiesProjected,
-			LinksProjected:     linksProjected,
-			CompletedAt:        runtime.GetLastSyncedAt().AsTime().UTC(),
-			ContractConfigured: len(eventContracts) > 0,
+			Status:               "completed",
+			RecordsScanned:       recordsScanned,
+			RecordsAccepted:      eventsAppended,
+			RecordsRejected:      recordsRejected,
+			EntitiesProjected:    entitiesProjected,
+			LinksProjected:       linksProjected,
+			CompletedAt:          runtime.GetLastSyncedAt().AsTime().UTC(),
+			ContractConfigured:   len(eventContracts) > 0,
+			ShortCircuitReason:   shortCircuitReason,
+			ReconciliationReason: reconciliationReason,
 		})
 		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 			return nil, err
 		}
-		telemetry.Event(ctx, "source_runtime.page_committed", telemetry.Attrs(
+		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
 			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
@@ -377,7 +395,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "entities_projected", Value: entitiesProjected},
 			telemetry.Field{Key: "links_projected", Value: linksProjected},
 			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
-		))
+			telemetry.Field{Key: "short_circuit_reason", Value: pageShortCircuitReason},
+			telemetry.Field{Key: "reconciliation_reason", Value: pageReconciliationReason},
+		), runtime.GetCheckpoint())
+		telemetry.Event(ctx, "source_runtime.page_committed", pageCommittedAttrs)
 		if pull.NextCursor == nil {
 			break
 		}
@@ -392,6 +413,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "has_next_cursor", Value: runtime.GetNextCursor() != nil})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "short_circuit_reason", Value: shortCircuitReason})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "reconciliation_reason", Value: reconciliationReason})
+	spanAttributes = withFamilyFreshnessTelemetry(spanAttributes, runtime.GetCheckpoint())
 	if watermark, lagSeconds, ok := runtimeWatermarkLag(runtime, time.Now().UTC()); ok {
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "checkpoint_watermark", Value: watermark.Format(time.RFC3339Nano)})
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_runtime_watermark_lag_seconds", Value: lagSeconds})
@@ -475,14 +499,16 @@ func sourceRuntimeFailureCategory(err error) string {
 }
 
 type runtimeSyncStatus struct {
-	Status             string
-	RecordsScanned     uint32
-	RecordsAccepted    uint32
-	RecordsRejected    uint32
-	EntitiesProjected  uint32
-	LinksProjected     uint32
-	CompletedAt        time.Time
-	ContractConfigured bool
+	Status               string
+	RecordsScanned       uint32
+	RecordsAccepted      uint32
+	RecordsRejected      uint32
+	EntitiesProjected    uint32
+	LinksProjected       uint32
+	CompletedAt          time.Time
+	ContractConfigured   bool
+	ShortCircuitReason   string
+	ReconciliationReason string
 }
 
 func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyncStatus) {
@@ -500,6 +526,16 @@ func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyn
 	setRuntimeConfig(runtime.Config, runtimeLinksProjectedConfigKey, fmt.Sprint(status.LinksProjected))
 	if !status.CompletedAt.IsZero() {
 		setRuntimeConfig(runtime.Config, runtimeLastSyncCompletedAtConfigKey, status.CompletedAt.UTC().Format(time.RFC3339Nano))
+	}
+	if strings.TrimSpace(status.ShortCircuitReason) != "" {
+		setRuntimeConfig(runtime.Config, runtimeShortCircuitReasonConfigKey, status.ShortCircuitReason)
+	} else {
+		delete(runtime.Config, runtimeShortCircuitReasonConfigKey)
+	}
+	if strings.TrimSpace(status.ReconciliationReason) != "" {
+		setRuntimeConfig(runtime.Config, runtimeReconciliationReasonConfigKey, status.ReconciliationReason)
+	} else {
+		delete(runtime.Config, runtimeReconciliationReasonConfigKey)
 	}
 	if watermark := timestampValue(runtime.GetCheckpoint().GetWatermark()); !watermark.IsZero() {
 		setRuntimeConfig(runtime.Config, runtimeLastSyncWatermarkConfigKey, watermark.UTC().Format(time.RFC3339Nano))
@@ -643,6 +679,37 @@ func runtimeWatermarkLag(runtime *cerebrov1.SourceRuntime, now time.Time) (time.
 	return watermark, int64(lag.Seconds()), true
 }
 
+func withFamilyFreshnessTelemetry(attributes telemetry.Attributes, checkpoint *cerebrov1.SourceCheckpoint) telemetry.Attributes {
+	info, ok := sourcecdk.FamilyFreshnessInfoFromCheckpoint(checkpoint)
+	if !ok {
+		return attributes
+	}
+	if strings.TrimSpace(info.Source) != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_source", Value: info.Source})
+	}
+	if strings.TrimSpace(info.Family) != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_family", Value: info.Family})
+	}
+	if info.Confidence != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_confidence", Value: string(info.Confidence)})
+	}
+	attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_skip_count", Value: info.SkipCount})
+	if info.Reason != "" {
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_reconcile_reason", Value: info.Reason})
+		attributes = attributes.WithField(telemetry.Field{Key: "family_freshness_forced_reconcile", Value: familyFreshnessForcedReconcile(info.Reason)})
+	}
+	return attributes
+}
+
+func familyFreshnessForcedReconcile(reason string) bool {
+	switch strings.TrimSpace(reason) {
+	case sourcecdk.FamilyFreshnessReasonMaxSkipAge, sourcecdk.FamilyFreshnessReasonMaxSkipCount:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) resolveConfig(ctx context.Context, sourceID string, tenantID string, runtimeID string, config map[string]string) (map[string]string, error) {
 	resolver := s.resolver
 	if resolver == nil {
@@ -693,6 +760,106 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 		return 0, fmt.Errorf("%w: page_limit must be between 1 and %d", ErrInvalidRequest, maxPageLimit)
 	}
 	return pageLimit, nil
+}
+
+func readSourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	if reader, ok := source.(sourcecdk.CheckpointAwareSource); ok {
+		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+	}
+	return source.Read(ctx, cfg, cursor)
+}
+
+func pullShortCircuitReason(pull sourcecdk.Pull) sourcecdk.PullShortCircuitReason {
+	if pull.ShortCircuitReason != "" {
+		return pull.ShortCircuitReason
+	}
+	if len(pull.Events) == 0 && pull.Checkpoint != nil {
+		return sourcecdk.PullShortCircuitReasonCheckpointAdvanced
+	}
+	return ""
+}
+
+func advanceRuntimeCheckpoint(runtime *cerebrov1.SourceRuntime, checkpoint *cerebrov1.SourceCheckpoint) {
+	if runtime == nil || checkpoint == nil {
+		return
+	}
+	next := cloneCheckpoint(checkpoint)
+	if next == nil {
+		return
+	}
+	existingWatermark := timestampValue(runtime.GetCheckpoint().GetWatermark())
+	nextWatermark := timestampValue(next.GetWatermark())
+	if !existingWatermark.IsZero() && (nextWatermark.IsZero() || existingWatermark.After(nextWatermark)) {
+		runtime.Checkpoint = checkpointWithoutContinuationToken(runtime.GetCheckpoint())
+		return
+	}
+	if !existingWatermark.IsZero() && existingWatermark.Equal(nextWatermark) {
+		next = mergeEqualWatermarkCheckpoint(runtime.GetCheckpoint(), next)
+	}
+	runtime.Checkpoint = next
+}
+
+func checkpointWithoutContinuationToken(checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
+	terminal := cloneCheckpoint(checkpoint)
+	if terminal == nil {
+		return nil
+	}
+	opaque := strings.TrimSpace(terminal.GetCursorOpaque())
+	if opaque == "" {
+		return terminal
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(opaque)
+	if !ok {
+		terminal.CursorOpaque = ""
+		return terminal
+	}
+	if envelope.Token == "" {
+		return terminal
+	}
+	envelope.Token = ""
+	nextOpaque, err := sourcecdk.EncodeCursorEnvelope(envelope)
+	if err != nil {
+		terminal.CursorOpaque = ""
+		return terminal
+	}
+	terminal.CursorOpaque = nextOpaque
+	return terminal
+}
+
+func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
+	existingEnvelope, existingOK := sourcecdk.DecodeCursorEnvelope(existing.GetCursorOpaque())
+	nextEnvelope, nextOK := sourcecdk.DecodeCursorEnvelope(next.GetCursorOpaque())
+	if !existingOK || !nextOK {
+		return next
+	}
+	if strings.TrimSpace(existingEnvelope.Source) != strings.TrimSpace(nextEnvelope.Source) ||
+		strings.TrimSpace(existingEnvelope.Family) != strings.TrimSpace(nextEnvelope.Family) ||
+		strings.TrimSpace(existingEnvelope.Mode) != strings.TrimSpace(nextEnvelope.Mode) {
+		return next
+	}
+	nextEnvelope.BoundaryIDs = append(nextEnvelope.BoundaryIDs, existingEnvelope.BoundaryIDs...)
+	nextEnvelope.Extra = mergeCursorEnvelopeExtra(existingEnvelope.Extra, nextEnvelope.Extra)
+	opaque, err := sourcecdk.EncodeCursorEnvelope(nextEnvelope)
+	if err != nil {
+		return next
+	}
+	merged := cloneCheckpoint(next)
+	merged.CursorOpaque = opaque
+	return merged
+}
+
+func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string) map[string]string {
+	if len(existing) == 0 && len(next) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(existing)+len(next))
+	for key, value := range existing {
+		merged[key] = value
+	}
+	for key, value := range next {
+		merged[key] = value
+	}
+	return merged
 }
 
 func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeFilter, error) {
@@ -993,20 +1160,10 @@ func runtimeStartCursor(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceCurso
 		return cursor
 	}
 	opaque := strings.TrimSpace(runtime.GetCheckpoint().GetCursorOpaque())
-	if opaque == "" || !resumableCheckpointCursor(opaque) {
+	if opaque == "" || !sourcecdk.ResumableCursorOpaque(opaque) {
 		return nil
 	}
 	return &cerebrov1.SourceCursor{Opaque: opaque}
-}
-
-func resumableCheckpointCursor(opaque string) bool {
-	var payload struct {
-		ResumableCheckpoint bool `json:"resumable_checkpoint"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(opaque)), &payload); err != nil {
-		return false
-	}
-	return payload.ResumableCheckpoint
 }
 
 func cloneCheckpoint(checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {

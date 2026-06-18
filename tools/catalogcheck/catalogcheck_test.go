@@ -24,12 +24,31 @@ func TestCheckRepositoryAcceptsMinimalCatalogs(t *testing.T) {
   "frameworks": [{"name": "SOC 2", "controls": ["CC6"]}]
 }`)
 	writeFile(t, root, "policies/cerebro/control-mapping.json", `{"version":"1.0.0","controls":{}}`)
+	writeFile(t, root, "internal/compliance/control_families.yaml", `
+version: "2026-06-16"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6
+`)
 	writeFile(t, root, "sources/github/catalog.yaml", `
 id: github
 name: GitHub
 description: GitHub source
 emitted_kinds:
   - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Audit events
+      families: [audit]
+      support: supported
 kind_lifecycle:
   - kind: github.secret_scanning
     status: planned
@@ -61,6 +80,100 @@ emitted_kinds: []
 	}
 }
 
+func TestCheckConnectorDefinitionCatalogRejectsProofGateIssues(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/connectorcatalog/catalog/batch.yaml", `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-incomplete
+      tenant_id: builtin_catalog
+      source_id: incomplete
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+      resource_families:
+        - id: users
+          path: /v1/users
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: incomplete.user, schema_ref: incomplete/user/v1}
+          projection: {template: identity_user}
+`)
+
+	issues, err := checkConnectorDefinitionCatalog(root)
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalog() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "verification endpoint is required") {
+		t.Fatalf("issues = %#v, want proof gate issue", issues)
+	}
+}
+
+func TestCheckConnectorDefinitionCatalogRequiresSourcegenReady(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/connectorcatalog/catalog/batch.yaml", `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-app-entitlement
+      tenant_id: builtin_catalog
+      source_id: app_entitlement_demo
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /healthz
+      resource_families:
+        - id: entitlements
+          path: /v1/entitlements
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: app_entitlement_demo.entitlements, schema_ref: app_entitlement_demo/entitlements/v1}
+          projection: {template: app_entitlement}
+          coverage:
+            - id: entitlements
+              type: app_entitlement
+              title: Entitlements
+              families: [entitlements]
+              support: partial
+              high_value: true
+        - id: assets
+          path: /v1/assets
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: app_entitlement_demo.assets, schema_ref: app_entitlement_demo/assets/v1}
+          projection: {template: asset}
+          coverage:
+            - id: assets
+              type: entity_family
+              title: Assets
+              families: [assets]
+              support: partial
+              high_value: true
+`)
+
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{requireSourcegenReady: true})
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "want generateable") {
+		t.Fatalf("issues = %#v, want sourcegen-ready issue", issues)
+	}
+}
+
 func TestCheckRepositoryRejectsUnprojectedEmittedKind(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/github/test.json", `{
@@ -83,6 +196,132 @@ emitted_kinds:
 	}
 	if len(issues) == 0 {
 		t.Fatal("issues = 0, want unprojected emitted kind issue")
+	}
+}
+
+func TestCheckSourceCatalogsRejectsSourceWithoutCoverageContract(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract is required for built-in sources") {
+		t.Fatalf("issues = %#v, want missing coverage_contract issue", issues)
+	}
+}
+
+func TestCheckSourceCatalogsAcceptsSourceWithCoverageContract(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Audit events
+      families: [audit]
+      support: supported
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if issueMessagesContain(issues, "coverage_contract is required for built-in sources") {
+		t.Fatalf("issues = %#v, want no coverage_contract issue", issues)
+	}
+}
+
+func TestCheckSourceCatalogsSkipsCatalogRuntimeAdapter(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/catalogruntime/catalog.yaml", `
+id: catalogruntime
+name: Catalog Runtime Adapter
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want adapter package skipped", issues)
+	}
+}
+
+func TestCheckSourceCatalogsRejectsRuntimeFamilyMissingFixturePair(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/aws/catalog.yaml", `
+id: aws
+name: AWS
+description: AWS source
+emitted_kinds:
+  - aws.access_key
+runtime_families:
+  - access_key
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: aws
+  dimensions:
+    - id: access_key
+      type: entity_family
+      title: Access keys
+      families: [access_key]
+      support: supported
+`)
+	writeFile(t, root, "sources/aws/testdata/discover_access_key.json", `[]`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, `runtime family fixture "read_access_key.json" is required`) {
+		t.Fatalf("issues = %#v, want missing runtime fixture issue", issues)
+	}
+}
+
+func TestCheckSourceCatalogsAcceptsRuntimeFamilyFixturePair(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/aws/catalog.yaml", `
+id: aws
+name: AWS
+description: AWS source
+emitted_kinds:
+  - aws.access_key
+runtime_families:
+  - access_key
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: aws
+  dimensions:
+    - id: access_key
+      type: entity_family
+      title: Access keys
+      families: [access_key]
+      support: supported
+`)
+	writeFile(t, root, "sources/aws/testdata/discover_access_key.json", `[]`)
+	writeFile(t, root, "sources/aws/testdata/read_access_key.json", `[]`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if issueMessagesContain(issues, "runtime family fixture") {
+		t.Fatalf("issues = %#v, want no runtime fixture issue", issues)
 	}
 }
 
@@ -137,6 +376,13 @@ func TestCloudPolicyCoverageMapsGCPExpansionTargets(t *testing.T) {
 		"gcp::certificatemanager::certificate_map":        "certificate_manager_certificate_map",
 		"gcp::certificatemanager::certificate_map_entry":  "certificate_manager_certificate_map_entry",
 		"gcp::certificatemanager::dns_authorization":      "certificate_manager_dns_authorization",
+		"gcp::cloudscheduler::job":                        "cloud_scheduler_job",
+		"gcp::dns::record_set":                            "dns_record_set",
+		"gcp::iam::effective_permission":                  "effective_permission",
+		"gcp::orgpolicy::policy":                          "org_policy",
+		"gcp::pubsub::subscription":                       "pubsub_subscription",
+		"gcp::pubsub::topic":                              "pubsub_topic",
+		"gcp::serviceusage::service":                      "service_usage_service",
 		"gcp::vpcaccess::connector":                       "vpc_access_connector",
 	}
 	for resource, wantDimension := range tests {
@@ -147,6 +393,133 @@ func TestCloudPolicyCoverageMapsGCPExpansionTargets(t *testing.T) {
 		if alias.SourceID != "gcp" || alias.DimensionID != wantDimension {
 			t.Fatalf("cloudPolicyCoverageAliases[%q] = %#v, want gcp/%s", resource, alias, wantDimension)
 		}
+	}
+}
+
+func TestCloudPolicyCoverageMapsAWSNetworkExpansionTargets(t *testing.T) {
+	tests := map[string]string{
+		"aws::ec2::network_acl":  "network_acl",
+		"aws::ec2::vpc_flow_log": "vpc_flow_log",
+	}
+	for resource, wantDimension := range tests {
+		alias, ok := cloudPolicyCoverageAliases[resource]
+		if !ok {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] missing", resource)
+		}
+		if alias.SourceID != "aws" || alias.DimensionID != wantDimension {
+			t.Fatalf("cloudPolicyCoverageAliases[%q] = %#v, want aws/%s", resource, alias, wantDimension)
+		}
+	}
+}
+
+func TestCheckCloudPolicyCoverageRejectsUncoveredStrictRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
+	writeFile(t, root, "sources/gcp/catalog.yaml", `
+id: gcp
+name: GCP
+description: GCP source
+emitted_kinds:
+  - gcp.compute_instance
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: gcp
+  dimensions:
+    - id: compute_instance
+      type: entity_family
+      title: Compute instances
+      families: [compute_instance]
+      support: supported
+`)
+	writeFile(t, root, "sources/gcp/deploy.yaml", `
+runtimes:
+  - localId: compute-instance
+    config:
+      family: compute_instance
+  - localId: effective-permission
+    config:
+      family: effective_permission
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: effective_permission") {
+		t.Fatalf("issues = %#v, want missing strict runtime family coverage issue", issues)
+	}
+}
+
+func TestCheckCloudPolicyCoverageRejectsUnsupportedStrictRuntimeFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
+	writeFile(t, root, "sources/gcp/catalog.yaml", `
+id: gcp
+name: GCP
+description: GCP source
+emitted_kinds:
+  - gcp.effective_permission
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: gcp
+  dimensions:
+    - id: effective_permission
+      type: app_entitlement
+      title: Effective IAM permissions
+      families: [effective_permission]
+      support: planned
+`)
+	writeFile(t, root, "sources/gcp/deploy.yaml", `
+runtimes:
+  - localId: effective-permission
+    config:
+      family: effective_permission
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: effective_permission") {
+		t.Fatalf("issues = %#v, want unsupported strict runtime family coverage issue", issues)
+	}
+}
+
+func TestCheckCloudPolicyCoverageRejectsUncoveredDeployRuntimeFamilyForAnySource(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/custom/test.json", `{}`)
+	writeFile(t, root, "sources/okta/catalog.yaml", `
+id: okta
+name: Okta
+description: Okta source
+emitted_kinds:
+  - okta.user
+coverage_contract:
+  owner_domain: identity
+  authority_domain: okta
+  dimensions:
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+`)
+	writeFile(t, root, "sources/okta/deploy.yaml", `
+runtimes:
+  - localId: user
+    config:
+      family: user
+  - localId: authenticator
+    config:
+      family: authenticator
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "coverage_contract does not cover deploy runtime families: authenticator") {
+		t.Fatalf("issues = %#v, want uncovered deploy runtime family issue", issues)
 	}
 }
 
@@ -231,7 +604,7 @@ func TestCheckPoliciesRejectsSymlinkedPolicyFiles(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "missing.json"), filepath.Join(policiesDir, "policy.json")); err != nil {
 		t.Skipf("Symlink() unsupported: %v", err)
 	}
-	issues, err := checkPolicies(root)
+	issues, err := checkPolicies(root, nil)
 	if err != nil {
 		t.Fatalf("checkPolicies() error = %v", err)
 	}

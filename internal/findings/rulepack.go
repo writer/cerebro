@@ -60,6 +60,18 @@ func builtinRulePacks() []RulePack {
 			Rules:       []Rule{newRuntimeActiveThreatEvidenceRule()},
 		},
 		{
+			ID:          "panopticon",
+			Name:        "Panopticon",
+			Description: "Panopticon curated security operations cases.",
+			Rules:       []Rule{newPanopticonCuratedCaseRule()},
+		},
+		{
+			ID:          "security_reviewer",
+			Name:        "Security Reviewer",
+			Description: "Security-reviewer reported code and workflow findings.",
+			Rules:       []Rule{newSecurityReviewerFindingRule()},
+		},
+		{
 			ID:          "grc",
 			Name:        "GRC",
 			Description: "Provider-neutral GRC control, vulnerability, and vendor-risk findings.",
@@ -111,6 +123,12 @@ func builtinRulePacks() []RulePack {
 			Rules: []Rule{
 				newEmailDomainAuthenticationMisconfiguredRule(),
 			},
+		},
+		{
+			ID:          "policy",
+			Name:        "Policy",
+			Description: "Generated compliance policy checks and evidence mappings.",
+			Rules:       newPolicyCatalogRules(),
 		},
 	}
 }

@@ -8,6 +8,8 @@ emitted_kinds:
   - gcp.artifact_registry_image
   - gcp.artifact_registry_repository
   - gcp.audit
+  - gcp.binary_authorization_attestor
+  - gcp.binary_authorization_policy
   - gcp.bigquery_dataset
   - gcp.bigquery_table
   - gcp.bigtable_instance
@@ -81,6 +83,7 @@ emitted_kinds:
   - gcp.resource_exposure
   - gcp.secret_manager_secret
   - gcp.secret_manager_version
+  - gcp.security_center_finding
   - gcp.service_account
   - gcp.service_account_impersonation
   - gcp.service_account_key
@@ -88,6 +91,8 @@ emitted_kinds:
   - gcp.spanner_database
   - gcp.spanner_instance
   - gcp.vpc_access_connector
+  - gcp.workload_identity_pool
+  - gcp.workload_identity_provider
 runtime_families:
   - asset_metadata
   - aiplatform_dataset
@@ -95,6 +100,8 @@ runtime_families:
   - artifact_registry_image
   - artifact_registry_repository
   - audit
+  - binary_authorization_attestor
+  - binary_authorization_policy
   - bigquery_dataset
   - bigquery_table
   - bigtable_instance
@@ -168,6 +175,7 @@ runtime_families:
   - resource_exposure
   - secret_manager_secret
   - secret_manager_version
+  - security_center_finding
   - service_account
   - service_account_impersonation
   - service_account_key
@@ -175,6 +183,8 @@ runtime_families:
   - spanner_database
   - spanner_instance
   - vpc_access_connector
+  - workload_identity_pool
+  - workload_identity_provider
 coverage_contract:
   owner_domain: cloud
   authority_domain: gcp
@@ -207,6 +217,18 @@ coverage_contract:
       type: audit_event
       title: GCP audit logs
       families: [audit]
+      support: supported
+      high_value: true
+    - id: binary_authorization_attestor
+      type: entity_family
+      title: Binary Authorization attestors
+      families: [binary_authorization_attestor]
+      support: supported
+      high_value: true
+    - id: binary_authorization_policy
+      type: entity_family
+      title: Binary Authorization policy
+      families: [binary_authorization_policy]
       support: supported
       high_value: true
     - id: bigquery_dataset
@@ -518,7 +540,13 @@ coverage_contract:
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
-      families: [dns_managed_zone, dns_record_set]
+      families: [dns_managed_zone]
+      support: supported
+      high_value: true
+    - id: dns_record_set
+      type: entity_family
+      title: Cloud DNS record sets
+      families: [dns_record_set]
       support: supported
       high_value: true
     - id: gcs_bucket
@@ -561,6 +589,18 @@ coverage_contract:
       type: app_entitlement
       title: IAM policy bindings
       families: [iam_role_assignment]
+      support: supported
+      high_value: true
+    - id: effective_permission
+      type: app_entitlement
+      title: Effective IAM permissions
+      families: [effective_permission]
+      support: supported
+      high_value: true
+    - id: asset_metadata
+      type: entity_family
+      title: Cloud Asset metadata and data sensitivity
+      families: [asset_metadata]
       support: supported
       high_value: true
     - id: kms_key
@@ -635,6 +675,12 @@ coverage_contract:
       families: [secret_manager_version]
       support: supported
       high_value: true
+    - id: security_center_finding
+      type: entity_family
+      title: Security Command Center findings
+      families: [security_center_finding]
+      support: supported
+      high_value: true
     - id: service_account
       type: entity_family
       title: Service accounts
@@ -675,5 +721,17 @@ coverage_contract:
       type: entity_family
       title: Serverless VPC Access connectors
       families: [vpc_access_connector]
+      support: supported
+      high_value: true
+    - id: workload_identity_pool
+      type: entity_family
+      title: Workload Identity pools
+      families: [workload_identity_pool]
+      support: supported
+      high_value: true
+    - id: workload_identity_provider
+      type: entity_family
+      title: Workload Identity providers
+      families: [workload_identity_provider]
       support: supported
       high_value: true

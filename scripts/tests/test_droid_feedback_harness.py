@@ -18,6 +18,10 @@ class DroidFeedbackHarnessTests(unittest.TestCase):
         self.assertEqual(payload["active_comments"][0]["pass"], "finding-state")
         self.assertTrue(payload["active_comments"][0]["suggested_checks"])
 
+    def test_is_droid_requires_bot_login(self):
+        self.assertTrue(fb.is_droid({"user": {"login": "factory-droid[bot]", "type": "Bot"}}))
+        self.assertFalse(fb.is_droid({"user": {"login": "factory-droid", "type": "User"}}))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,5 +22,13 @@
   "risk_categories": [
     "SILO_RISK",
     "OPERATIONAL_FRAGMENTATION"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Organizational Resilience",
+      "controls": [
+        "ORG-3"
+      ]
+    }
   ]
 }

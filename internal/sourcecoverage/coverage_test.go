@@ -53,6 +53,34 @@ func TestEvaluateDistinguishesCoverageStates(t *testing.T) {
 	}
 }
 
+func TestBuildReportSummarizesRecordsAndBlindSpots(t *testing.T) {
+	generatedAt := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	records := []Record{
+		{SourceID: "okta", TenantID: "tenant-a", DimensionID: "users", State: StateHealthy, HighValue: true},
+		{SourceID: "okta", TenantID: "tenant-a", DimensionID: "apps", State: StateUnconfigured, HighValue: true, BlindSpot: true},
+		{SourceID: "github", TenantID: "tenant-a", DimensionID: "audit", State: StateFailed, HighValue: true, BlindSpot: true},
+		{SourceID: "github", TenantID: "tenant-a", DimensionID: "deps", State: StatePartial},
+	}
+
+	report := BuildReport(records, Options{TenantID: "tenant-a"}, generatedAt)
+
+	if report.Version != "source-coverage/v1" || report.GeneratedAt != generatedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("report metadata = %#v", report)
+	}
+	if report.Totals.Dimensions != 4 || report.Totals.HighValueDimensions != 3 || report.Totals.BlindSpots != 2 {
+		t.Fatalf("report totals = %#v", report.Totals)
+	}
+	if report.Totals.Healthy != 1 || report.Totals.Unconfigured != 1 || report.Totals.Failed != 1 || report.Totals.Partial != 1 {
+		t.Fatalf("report state totals = %#v", report.Totals)
+	}
+	if len(report.BlindSpots) != 2 || len(report.BlindSpotSummaries) != 2 {
+		t.Fatalf("blind spot report = %#v", report)
+	}
+	if len(report.Summaries) != 2 {
+		t.Fatalf("summary count = %d, want 2", len(report.Summaries))
+	}
+}
+
 func TestObservationsFromRuntimesPreservesFamilyStatusAndLastSync(t *testing.T) {
 	lastSync := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	runtimes := []*cerebrov1.SourceRuntime{{

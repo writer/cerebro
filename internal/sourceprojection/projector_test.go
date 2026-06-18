@@ -818,6 +818,136 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 	}
 }
 
+func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
+	tests := []struct {
+		name           string
+		kind           string
+		attributes     map[string]string
+		wantURN        string
+		wantEntityType string
+		wantLabel      string
+		wantAttrs      map[string]string
+	}{
+		{
+			name: "identity provider",
+			kind: "okta.identity_provider",
+			attributes: map[string]string{
+				"domain":        "writer.okta.com",
+				"acs_type":      "HTTP-POST",
+				"idp_id":        "idp-saml",
+				"issuer":        "https://idp.example.com",
+				"name":          "Partner SAML IdP",
+				"protocol_type": "SAML2",
+				"status":        "ACTIVE",
+				"type":          "SAML2",
+			},
+			wantURN:        "urn:cerebro:writer:okta_identity_provider:idp-saml",
+			wantEntityType: "okta.identity_provider",
+			wantLabel:      "Partner SAML IdP",
+			wantAttrs: map[string]string{
+				"acs_type":      "HTTP-POST",
+				"idp_id":        "idp-saml",
+				"issuer":        "https://idp.example.com",
+				"name":          "Partner SAML IdP",
+				"protocol_type": "SAML2",
+				"status":        "ACTIVE",
+				"type":          "SAML2",
+			},
+		},
+		{
+			name: "network zone",
+			kind: "okta.network_zone",
+			attributes: map[string]string{
+				"domain":          "writer.okta.com",
+				"gateway_count":   "1",
+				"gateway_values":  "203.0.113.0/24",
+				"name":            "Corporate VPN",
+				"network_zone_id": "zone-corp",
+				"status":          "ACTIVE",
+				"type":            "IP",
+				"usage":           "POLICY",
+				"zone_id":         "zone-corp",
+			},
+			wantURN:        "urn:cerebro:writer:okta_network_zone:zone-corp",
+			wantEntityType: "okta.network_zone",
+			wantLabel:      "Corporate VPN",
+			wantAttrs: map[string]string{
+				"gateway_count":   "1",
+				"gateway_values":  "203.0.113.0/24",
+				"network_zone_id": "zone-corp",
+				"status":          "ACTIVE",
+				"type":            "IP",
+				"usage":           "POLICY",
+				"zone_id":         "zone-corp",
+			},
+		},
+		{
+			name: "trusted origin",
+			kind: "okta.trusted_origin",
+			attributes: map[string]string{
+				"cors":              "true",
+				"domain":            "writer.okta.com",
+				"name":              "Production Console",
+				"origin":            "https://app.example.com",
+				"origin_host":       "app.example.com",
+				"redirect":          "true",
+				"scope_count":       "2",
+				"scope_types":       "CORS,REDIRECT",
+				"status":            "ACTIVE",
+				"trusted_origin_id": "origin-prod",
+			},
+			wantURN:        "urn:cerebro:writer:okta_trusted_origin:origin-prod",
+			wantEntityType: "okta.trusted_origin",
+			wantLabel:      "Production Console",
+			wantAttrs: map[string]string{
+				"cors":              "true",
+				"origin":            "https://app.example.com",
+				"origin_host":       "app.example.com",
+				"redirect":          "true",
+				"scope_count":       "2",
+				"scope_types":       "CORS,REDIRECT",
+				"status":            "ACTIVE",
+				"trusted_origin_id": "origin-prod",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "okta-durable-" + tt.name,
+				TenantId:   "writer",
+				SourceId:   "okta",
+				Kind:       tt.kind,
+				Attributes: tt.attributes,
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			if result.EntitiesProjected != 2 {
+				t.Fatalf("Project().EntitiesProjected = %d, want 2", result.EntitiesProjected)
+			}
+			entity, ok := state.entities[tt.wantURN]
+			if !ok {
+				t.Fatalf("state entity %q missing", tt.wantURN)
+			}
+			if got := entity.EntityType; got != tt.wantEntityType {
+				t.Fatalf("EntityType = %q, want %q", got, tt.wantEntityType)
+			}
+			if got := entity.Label; got != tt.wantLabel {
+				t.Fatalf("Label = %q, want %q", got, tt.wantLabel)
+			}
+			for key, want := range tt.wantAttrs {
+				if got := entity.Attributes[key]; got != want {
+					t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+				}
+			}
+			assertProjectedLink(t, state, tt.wantURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+		})
+	}
+}
+
 func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -2337,6 +2467,59 @@ func TestProjectGitHubAuditProjectsSelfHostedRunnerState(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditSkipsWorkflowJobHostedRunnerInventory(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-workflow-job",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"action":                  "workflows.prepared_workflow_job",
+			"org":                     "writer",
+			"repo":                    "writer/cerebro",
+			"resource_id":             "writer/cerebro",
+			"resource_type":           "repo",
+			"runner_group_name":       "GitHub Actions",
+			"runner_id":               "1002207767",
+			"runner_name":             "GitHub Actions 1002207767",
+			"runner_scope":            "repo:writer/cerebro",
+			"source_runtime_id":       "writer-github-audit",
+			"transport_protocol_name": "ssh",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	for urn, entity := range graph.entities {
+		if entity.EntityType == "github.runner" {
+			t.Fatalf("unexpected github.runner entity %q from workflow job audit row: %#v", urn, entity)
+		}
+	}
+}
+
+func TestGitHubSelfHostedRunnerAuditActionClassifiesAssetLifecycleOnly(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+		want   bool
+	}{
+		{action: "repo.register_self_hosted_runner", want: true},
+		{action: "repo.remove_self_hosted_runner", want: true},
+		{action: "org.register_self_hosted_runner", want: true},
+		{action: "business.remove_self_hosted_runner", want: true},
+		{action: "workflows.prepared_workflow_job", want: false},
+		{action: "workflows.completed_workflow_run", want: false},
+		{action: "repo.runner_group_updated", want: false},
+		{action: "repo.register_runner", want: false},
+		{action: "", want: false},
+	} {
+		if got := githubSelfHostedRunnerAuditAction(tc.action); got != tc.want {
+			t.Fatalf("githubSelfHostedRunnerAuditAction(%q) = %v, want %v", tc.action, got, tc.want)
+		}
+	}
+}
+
 // Missing actor_id alone is not enough to call an audit actor a credential:
 // GitHub git audit rows for real users can also omit actor_id. The source
 // resolves those actors through /users/{login} and stamps actor_type=User, and
@@ -3460,6 +3643,10 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			Kind:     "aws.ec2_instance",
 			Attributes: map[string]string{
 				"domain":                "123456789012",
+				"eks_cluster_name":      "prod-eks",
+				"eks_node":              "true",
+				"eks_nodegroup_name":    "managed-linux",
+				"eks_nodegroup_type":    "managed",
 				"instance_id":           "i-123",
 				"network_interface_ids": "eni-1",
 				"region":                "us-east-1",
@@ -3499,16 +3686,21 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.ecs_service",
 			Attributes: map[string]string{
-				"cluster_arn":         "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
-				"cluster_name":        "prod",
-				"domain":              "123456789012",
-				"resource_id":         "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
-				"resource_name":       "orders",
-				"resource_provider":   "aws",
-				"resource_type":       "ecs_service",
-				"service_arn":         "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
-				"service_name":        "orders",
-				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"cluster_arn":                     "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
+				"cluster_name":                    "prod",
+				"domain":                          "123456789012",
+				"assign_public_ip":                "ENABLED",
+				"capacity_providers":              "FARGATE_SPOT",
+				"fargate_service":                 "true",
+				"launch_type_effective":           "FARGATE",
+				"load_balancer_target_group_arns": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/123",
+				"resource_id":                     "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"resource_name":                   "orders",
+				"resource_provider":               "aws",
+				"resource_type":                   "ecs_service",
+				"service_arn":                     "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"service_name":                    "orders",
+				"task_definition_arn":             "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
 			},
 		},
 		{
@@ -3517,21 +3709,25 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.ecs_task",
 			Attributes: map[string]string{
-				"cluster_arn":           "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
-				"cluster_name":          "prod",
-				"domain":                "123456789012",
-				"network_interface_ids": "eni-task",
-				"resource_id":           "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
-				"resource_name":         "abcd1234",
-				"resource_provider":     "aws",
-				"resource_type":         "ecs_task",
-				"security_group_ids":    "sg-task",
-				"service_arn":           "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
-				"service_name":          "orders",
-				"subnet_ids":            "subnet-task",
-				"task_arn":              "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
-				"task_definition_arn":   "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
-				"vpc_id":                "vpc-1",
+				"cluster_arn":                "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
+				"cluster_name":               "prod",
+				"domain":                     "123456789012",
+				"capacity_provider_name":     "FARGATE_SPOT",
+				"ephemeral_storage_size_gib": "40",
+				"fargate_task":               "true",
+				"launch_type":                "FARGATE",
+				"network_interface_ids":      "eni-task",
+				"resource_id":                "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
+				"resource_name":              "abcd1234",
+				"resource_provider":          "aws",
+				"resource_type":              "ecs_task",
+				"security_group_ids":         "sg-task",
+				"service_arn":                "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"service_name":               "orders",
+				"subnet_ids":                 "subnet-task",
+				"task_arn":                   "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
+				"task_definition_arn":        "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"vpc_id":                     "vpc-1",
 			},
 		},
 		{
@@ -3540,16 +3736,21 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.ecs_task_definition",
 			Attributes: map[string]string{
-				"domain":              "123456789012",
-				"execution_role_arn":  "arn:aws:iam::123456789012:role/ECSExecutionRole",
-				"execution_role_name": "ECSExecutionRole",
-				"resource_id":         "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
-				"resource_name":       "orders",
-				"resource_provider":   "aws",
-				"resource_type":       "ecs_task_definition",
-				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
-				"task_role_arn":       "arn:aws:iam::123456789012:role/ECSTaskRole",
-				"task_role_name":      "ECSTaskRole",
+				"domain":                     "123456789012",
+				"awsvpc_required":            "true",
+				"container_count":            "1",
+				"ephemeral_storage_size_gib": "40",
+				"execution_role_arn":         "arn:aws:iam::123456789012:role/ECSExecutionRole",
+				"execution_role_name":        "ECSExecutionRole",
+				"fargate_compatible":         "true",
+				"resource_id":                "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"resource_name":              "orders",
+				"resource_provider":          "aws",
+				"resource_type":              "ecs_task_definition",
+				"task_definition_arn":        "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"runtime_cpu_architecture":   "ARM64",
+				"task_role_arn":              "arn:aws:iam::123456789012:role/ECSTaskRole",
+				"task_role_name":             "ECSTaskRole",
 			},
 		},
 		{
@@ -3580,18 +3781,21 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.eks_nodegroup",
 			Attributes: map[string]string{
-				"cluster_arn":       "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
-				"cluster_name":      "prod-eks",
-				"domain":            "123456789012",
-				"nodegroup_arn":     "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
-				"nodegroup_name":    "managed-linux",
-				"resource_id":       "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
-				"resource_name":     "managed-linux",
-				"resource_provider": "aws",
-				"resource_type":     "eks_nodegroup",
-				"role_arn":          "arn:aws:iam::123456789012:role/EKSNodeRole",
-				"role_name":         "EKSNodeRole",
-				"subnet_ids":        "subnet-eks",
+				"cluster_arn":        "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"cluster_name":       "prod-eks",
+				"domain":             "123456789012",
+				"desired_size":       "3",
+				"health_issue_codes": "AsgInstanceLaunchFailures",
+				"label_keys":         "workload",
+				"nodegroup_arn":      "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
+				"nodegroup_name":     "managed-linux",
+				"resource_id":        "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
+				"resource_name":      "managed-linux",
+				"resource_provider":  "aws",
+				"resource_type":      "eks_nodegroup",
+				"role_arn":           "arn:aws:iam::123456789012:role/EKSNodeRole",
+				"role_name":          "EKSNodeRole",
+				"subnet_ids":         "subnet-eks",
 			},
 		},
 		{
@@ -3635,6 +3839,25 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 				"service_account": "api",
 			},
 		},
+		{
+			Id:       "aws-ec2-instance-i-456",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.ec2_instance",
+			Attributes: map[string]string{
+				"domain":             "123456789012",
+				"eks_cluster_name":   "prod-eks",
+				"eks_node":           "true",
+				"eks_nodegroup_name": "managed-linux",
+				"instance_id":        "i-456",
+				"region":             "us-east-1",
+				"resource_id":        "i-456",
+				"resource_name":      "later-node",
+				"resource_provider":  "aws",
+				"resource_type":      "ec2_instance",
+				"state":              "running",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -3648,7 +3871,9 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	ecsTaskURN := "urn:cerebro:writer:aws_ecs_task:arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234"
 	ecsTaskDefinitionURN := "urn:cerebro:writer:aws_ecs_task_definition:arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
 	eksClusterURN := "urn:cerebro:writer:aws_eks_cluster:arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
+	eksClusterNameURN := "urn:cerebro:writer:aws_eks_cluster:prod-eks"
 	eksNodegroupURN := "urn:cerebro:writer:aws_eks_nodegroup:arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid"
+	eksNodegroupNameURN := "urn:cerebro:writer:aws_eks_nodegroup:prod-eks:managed-linux"
 	eksFargateProfileURN := "urn:cerebro:writer:aws_eks_fargate_profile:arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid"
 	eksPodIdentityURN := "urn:cerebro:writer:aws_eks_pod_identity_association:arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"
 	kubernetesNamespaceURN := "urn:cerebro:writer:kubernetes_namespace:123456789012:prod-eks:payments"
@@ -3662,19 +3887,54 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	assertProjectedLink(t, state, ec2URN, relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-1")
 	assertProjectedLink(t, state, ec2URN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, ec2URN)
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, eksClusterNameURN)
+	assertProjectedLink(t, state, eksClusterNameURN, relationRepresents, eksClusterURN)
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, eksNodegroupNameURN)
+	assertProjectedLink(t, state, eksNodegroupNameURN, relationRepresents, eksNodegroupURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_ec2_instance:i-456", relationBelongsTo, eksNodegroupNameURN)
 	assertProjectedLink(t, state, lambdaURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaOrdersRole")
 	assertProjectedLink(t, state, lambdaURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-lambda")
+	if got := state.entities[ecsServiceURN].Attributes["fargate_service"]; got != "true" {
+		t.Fatalf("ecs service fargate_service = %q, want true", got)
+	}
+	if got := state.entities[ecsServiceURN].Attributes["launch_type_effective"]; got != "FARGATE" {
+		t.Fatalf("ecs service launch_type_effective = %q, want FARGATE", got)
+	}
 	assertProjectedLink(t, state, ecsServiceURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
 	assertProjectedLink(t, state, ecsServiceURN, relationDependsOn, ecsTaskDefinitionURN)
+	if got := state.entities[ecsTaskURN].Attributes["fargate_task"]; got != "true" {
+		t.Fatalf("ecs task fargate_task = %q, want true", got)
+	}
+	if got := state.entities[ecsTaskURN].Attributes["ephemeral_storage_size_gib"]; got != "40" {
+		t.Fatalf("ecs task ephemeral_storage_size_gib = %q, want 40", got)
+	}
 	assertProjectedLink(t, state, ecsTaskURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
 	assertProjectedLink(t, state, ecsTaskURN, relationBelongsTo, ecsServiceURN)
 	assertProjectedLink(t, state, ecsTaskURN, relationDependsOn, ecsTaskDefinitionURN)
 	assertProjectedLink(t, state, ecsTaskURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-task")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-task", relationAttachedTo, ecsTaskURN)
+	if got := state.entities[ecsTaskDefinitionURN].Attributes["fargate_compatible"]; got != "true" {
+		t.Fatalf("ecs task definition fargate_compatible = %q, want true", got)
+	}
+	if got := state.entities[ecsTaskDefinitionURN].Attributes["awsvpc_required"]; got != "true" {
+		t.Fatalf("ecs task definition awsvpc_required = %q, want true", got)
+	}
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSTaskRole")
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSExecutionRole")
 	assertProjectedLink(t, state, eksClusterURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSClusterRole")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, eksClusterURN)
+	if got := state.entities[eksNodegroupURN].Attributes["desired_size"]; got != "3" {
+		t.Fatalf("eks nodegroup desired_size = %q, want 3", got)
+	}
+	if got := state.entities[eksNodegroupURN].Attributes["health_issue_codes"]; got != "AsgInstanceLaunchFailures" {
+		t.Fatalf("eks nodegroup health_issue_codes = %q, want AsgInstanceLaunchFailures", got)
+	}
+	if got := state.entities[eksNodegroupURN].Attributes["resource_id"]; got != "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid" {
+		t.Fatalf("eks nodegroup resource_id = %q, want nodegroup ARN", got)
+	}
+	if got := state.entities[eksNodegroupURN].Attributes["resource_type"]; got != "eks_nodegroup" {
+		t.Fatalf("eks nodegroup resource_type = %q, want eks_nodegroup", got)
+	}
 	assertProjectedLink(t, state, eksNodegroupURN, relationBelongsTo, eksClusterURN)
 	assertProjectedLink(t, state, eksNodegroupURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSNodeRole")
 	assertProjectedLink(t, state, eksFargateProfileURN, relationBelongsTo, eksClusterURN)
@@ -4014,6 +4274,79 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 	resourceURN := "urn:cerebro:writer:aws_bucket:arn:aws:s3:::writer-bucket"
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanPerform, resourceURN)
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:aws:123456789012:user:analyst")
+}
+
+func TestProjectKubernetesInfrastructureEntities(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "k8s-node",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.node",
+			Attributes: map[string]string{
+				"cluster_id":                "prod-cluster",
+				"cluster_name":              "prod",
+				"container_runtime_version": "containerd://1.7.0",
+				"kubelet_version":           "v1.35.0",
+				"node_name":                 "ip-10-0-1-10",
+				"ready":                     "true",
+			},
+		},
+		{
+			Id:       "k8s-service",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.service",
+			Attributes: map[string]string{
+				"cluster_id":        "prod-cluster",
+				"namespace":         "payments",
+				"service_name":      "payments",
+				"service_type":      "LoadBalancer",
+				"load_balancer_ips": "198.51.100.20",
+			},
+		},
+		{
+			Id:       "k8s-ingress",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.ingress",
+			Attributes: map[string]string{
+				"backend_services":  "payments:443",
+				"cluster_id":        "prod-cluster",
+				"hosts":             "payments.example.com",
+				"ingress_name":      "payments",
+				"namespace":         "payments",
+				"tls_secret_names":  "payments-tls",
+				"load_balancer_ips": "198.51.100.30",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
+	serviceURN := "urn:cerebro:writer:kubernetes_service:prod-cluster:payments:payments"
+	ingressURN := "urn:cerebro:writer:kubernetes_ingress:prod-cluster:payments:payments"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	if got := state.entities[nodeURN].EntityType; got != "kubernetes.node" {
+		t.Fatalf("node entity type = %q", got)
+	}
+	if got := state.entities[serviceURN].Attributes["service_type"]; got != "LoadBalancer" {
+		t.Fatalf("service_type = %q", got)
+	}
+	if got := state.entities[ingressURN].Attributes["tls_secret_names"]; got != "payments-tls" {
+		t.Fatalf("tls_secret_names = %q", got)
+	}
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, serviceURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, ingressURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, ingressURN, relationCanReach, serviceURN)
 }
 
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
@@ -4660,6 +4993,117 @@ func TestProjectKubernetesWorkloadIdentityBindingAddsContainmentLinks(t *testing
 	assertProjectedLink(t, state, serviceAccountURN, relationCanImpersonate, targetURN)
 	assertProjectedLink(t, state, targetURN, relationRepresentsIdentity, targetIdentityURN)
 	assertProjectedLink(t, state, "urn:cerebro:writer:identifier:email:payments-sa@writer-prod.iam.gserviceaccount.com", relationRepresentsIdentity, targetIdentityURN)
+}
+
+func TestProjectKubernetesRBACBindingLinksSubjectsToRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-rbac-binding",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.rbac_binding",
+		Attributes: map[string]string{
+			"binding_kind": "RoleBinding",
+			"binding_name": "secret-reader-binding",
+			"cluster_id":   "prod-cluster",
+			"namespace":    "payments",
+			"role_kind":    "Role",
+			"role_name":    "secret-reader",
+			"subject_refs": "ServiceAccount:payments/api;ServiceAccount:platform/deployer;User:arn:aws:sts::123456789012:assumed-role/Admin/alice@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	bindingURN := "urn:cerebro:writer:kubernetes_rbac_binding:prod-cluster:RoleBinding:payments:secret-reader-binding"
+	roleURN := "urn:cerebro:writer:kubernetes_rbac_role:prod-cluster:Role:payments:secret-reader"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	crossNamespaceServiceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:platform:deployer"
+	userURN := "urn:cerebro:writer:kubernetes_user:prod-cluster:arn:aws:sts::123456789012:assumed-role/Admin/alice@example.com"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	crossNamespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:platform"
+	assertProjectedLink(t, state, bindingURN, relationAttachedTo, roleURN)
+	assertProjectedLink(t, state, bindingURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, serviceAccountURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, crossNamespaceServiceAccountURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, userURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, crossNamespaceServiceAccountURN, relationBelongsTo, crossNamespaceURN)
+	assertProjectedLinkMissing(t, state, crossNamespaceServiceAccountURN, relationBelongsTo, namespaceURN)
+}
+
+func TestProjectKubernetesRBACBindingJSONSubjectRefsDoNotInjectSubjects(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-rbac-binding-injection",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.rbac_binding",
+		Attributes: map[string]string{
+			"binding_kind": "RoleBinding",
+			"binding_name": "secret-reader-binding",
+			"cluster_id":   "prod-cluster",
+			"namespace":    "payments",
+			"role_kind":    "Role",
+			"role_name":    "secret-reader",
+			"subject_refs": `[{"kind":"User","name":"alice@example.com;ServiceAccount:payments/admin"},{"kind":"ServiceAccount","namespace":"payments","name":"api"}]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	roleURN := "urn:cerebro:writer:kubernetes_rbac_role:prod-cluster:Role:payments:secret-reader"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	userURN := "urn:cerebro:writer:kubernetes_user:prod-cluster:alice@example.com;ServiceAccount:payments/admin"
+	injectedServiceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:admin"
+	assertProjectedLink(t, state, serviceAccountURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, userURN, relationAssignedTo, roleURN)
+	assertProjectedLinkMissing(t, state, injectedServiceAccountURN, relationAssignedTo, roleURN)
+	if entity := state.entities[injectedServiceAccountURN]; entity != nil {
+		t.Fatalf("injected service account entity should not be created: %#v", entity)
+	}
+}
+
+func TestProjectKubernetesRBACClusterRoleBindingStaysClusterScoped(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-cluster-rbac-binding",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.rbac_binding",
+		Attributes: map[string]string{
+			"binding_kind": "ClusterRoleBinding",
+			"binding_name": "cluster-admin-binding",
+			"cluster_id":   "prod-cluster",
+			"role_kind":    "ClusterRole",
+			"role_name":    "cluster-admin",
+			"subject_refs": "Group:system:masters",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	bindingURN := "urn:cerebro:writer:kubernetes_rbac_binding:prod-cluster:ClusterRoleBinding:cluster:cluster-admin-binding"
+	roleURN := "urn:cerebro:writer:kubernetes_rbac_role:prod-cluster:ClusterRole:cluster:cluster-admin"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	groupURN := "urn:cerebro:writer:kubernetes_group:prod-cluster:system:masters"
+	defaultNamespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:default"
+	assertProjectedLink(t, state, bindingURN, relationAttachedTo, roleURN)
+	assertProjectedLink(t, state, bindingURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, groupURN, relationAssignedTo, roleURN)
+	assertProjectedLinkMissing(t, state, defaultNamespaceURN, relationBelongsTo, clusterURN)
+	if entity := state.entities[defaultNamespaceURN]; entity != nil {
+		t.Fatalf("default namespace entity should not be created for cluster-scoped RBAC: %#v", entity)
+	}
 }
 
 func TestProjectKubernetesWorkloadFallbackURNIncludesKind(t *testing.T) {

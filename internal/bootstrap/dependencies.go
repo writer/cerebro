@@ -14,7 +14,7 @@ import (
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
 
-const dependencyPingTimeout = 5 * time.Second
+const dependencyPingTimeout = 15 * time.Second
 
 type closer func(context.Context) error
 
@@ -127,6 +127,45 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 			return fail(fmt.Errorf("open graph agent llm: %w", err))
 		}
 		deps.GraphAgentLLM = llm
+	}
+	return deps, closeAll, nil
+}
+
+// OpenSourceRuntimeBootstrapDependencies opens only the state-store dependency
+// required to validate and persist source runtime definitions.
+func OpenSourceRuntimeBootstrapDependencies(ctx context.Context, cfg config.Config) (Dependencies, func() error, error) {
+	var (
+		deps    Dependencies
+		closers []closer
+	)
+	closeAll := func() error {
+		var errs []error
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dependencyPingTimeout)
+		defer cancel()
+		for i := len(closers) - 1; i >= 0; i-- {
+			if err := closers[i](closeCtx); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return errors.Join(errs...)
+	}
+	fail := func(err error) (Dependencies, func() error, error) {
+		_ = closeAll()
+		return Dependencies{}, func() error { return nil }, err
+	}
+
+	if cfg.StateStore.Driver == config.StateStoreDriverPostgres {
+		stateStore, err := statestorepostgres.Open(cfg.StateStore)
+		if err != nil {
+			return fail(fmt.Errorf("open state store: %w", err))
+		}
+		deps.StateStore = stateStore
+		closers = append(closers, func(context.Context) error {
+			return stateStore.Close()
+		})
+	}
+	if err := pingDependency(ctx, "state store", deps.StateStore); err != nil {
+		return fail(err)
 	}
 	return deps, closeAll, nil
 }

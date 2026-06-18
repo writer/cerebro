@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,8 +17,12 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -44,26 +49,108 @@ const (
 	connectorStoreAzureKeyVault      = "azure_key_vault"
 	connectorStoreHashiCorpVault     = "hashicorp_vault"
 	connectorCredentialStoreModeRefs = "reference"
+
+	connectorAccessAvailable   = "available"
+	connectorAccessCatalogOnly = "catalog_only"
+	connectorAccessRestricted  = "restricted"
+
+	connectorDefinitionOriginCompiled = "compiled_source"
+	connectorDefinitionOriginCatalog  = "builtin_catalog"
+
+	connectorReadinessStageSetupEnabled        = "setup_enabled"
+	connectorReadinessStageAPIRestricted       = "api_restricted"
+	connectorReadinessStageSourcegenReady      = "sourcegen_ready"
+	connectorReadinessStageCatalogReady        = "catalog_ready"
+	connectorReadinessStageAuthExtensionNeeded = "auth_extension_required"
+	connectorReadinessStageRuntimeNeeded       = "runtime_required"
+	connectorReadinessStageRuntimeUnknown      = "runtime_unknown"
 )
 
+const (
+	anthropicCredentialKindAdminAPIKey         = "admin_api_key"
+	anthropicCredentialKindComplianceAccessKey = "compliance_access_key"
+	anthropicCredentialKindOrgAdminOAuth       = "org_admin_oauth"      // #nosec G101 -- credential kind label, not credential material.
+	anthropicCredentialKindScopedAdminAPIKey   = "scoped_admin_api_key" // #nosec G101 -- credential kind label, not credential material.
+)
+
+var errConnectorAccessRestricted = errors.New("connector access restricted")
+
 type connectorCatalogEntry struct {
-	SourceID               string                          `json:"source_id"`
-	Name                   string                          `json:"name"`
-	DisplayName            string                          `json:"display_name"`
-	Description            string                          `json:"description"`
-	EmittedKinds           []string                        `json:"emitted_kinds"`
-	Status                 string                          `json:"status"`
-	ConfiguredRuntimes     int                             `json:"configured_runtimes"`
-	HealthyRuntimes        int                             `json:"healthy_runtimes"`
-	NeedsAttentionRuntimes int                             `json:"needs_attention_runtimes"`
-	ConnectionMethods      []connectorConnectionMethodView `json:"connection_methods,omitempty"`
-	ScopeOptions           []connectorScopeOptionView      `json:"scope_options,omitempty"`
+	connectorCatalogIdentity
+	connectorCatalogDefinitionState
+	connectorCatalogRuntimeState
+	connectorCatalogSetupState
+	connectorCatalogAccessState
+}
+
+type connectorCatalogIdentity struct {
+	SourceID    string `json:"source_id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+}
+
+type connectorCatalogDefinitionState struct {
+	EmittedKinds          []string                      `json:"emitted_kinds"`
+	CatalogStatus         string                        `json:"catalog_status,omitempty"`
+	ClassifierOutput      string                        `json:"classifier_output,omitempty"`
+	AuthModel             string                        `json:"auth_model,omitempty"`
+	RuntimeExecutable     bool                          `json:"runtime_executable,omitempty"`
+	MissingFeatures       []string                      `json:"missing_features,omitempty"`
+	CatalogCategories     []string                      `json:"catalog_categories,omitempty"`
+	VerificationEndpoint  string                        `json:"verification_endpoint,omitempty"`
+	ResourceFamilies      []connectorResourceFamilyView `json:"resource_families,omitempty"`
+	CatalogSchemaVersion  string                        `json:"catalog_schema_version,omitempty"`
+	CatalogCurrentVersion int                           `json:"catalog_current_version,omitempty"`
+	CatalogSourcePath     string                        `json:"catalog_source_path,omitempty"`
+	DefinitionOrigin      string                        `json:"definition_origin,omitempty"`
+	ReadinessStage        string                        `json:"readiness_stage,omitempty"`
+	IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth,omitempty"`
+}
+
+type connectorCatalogRuntimeState struct {
+	Status                 string `json:"status"`
+	ConfiguredRuntimes     int    `json:"configured_runtimes"`
+	HealthyRuntimes        int    `json:"healthy_runtimes"`
+	NeedsAttentionRuntimes int    `json:"needs_attention_runtimes"`
+}
+
+type connectorCatalogSetupState struct {
+	ConnectionMethods []connectorConnectionMethodView `json:"connection_methods,omitempty"`
+	ScopeOptions      []connectorScopeOptionView      `json:"scope_options,omitempty"`
+}
+
+type connectorCatalogAccessState struct {
+	AccessStatus        string `json:"access_status,omitempty"`
+	AccessReason        string `json:"access_reason,omitempty"`
+	SetupAllowed        bool   `json:"setup_allowed"`
+	Requestable         bool   `json:"requestable,omitempty"`
+	RequestableReason   string `json:"requestable_reason,omitempty"`
+	RequestAccessURL    string `json:"request_access_url,omitempty"`
+	RequestAccessAction string `json:"request_access_action,omitempty"`
+}
+
+type connectorIntegrationDepthView struct {
+	Level               string `json:"level,omitempty"`
+	Score               int    `json:"score"`
+	AuthModel           string `json:"auth_model,omitempty"`
+	ResourceFamilies    int    `json:"resource_families"`
+	EmittedKinds        int    `json:"emitted_kinds"`
+	CoverageDimensions  int    `json:"coverage_dimensions"`
+	HighValueFamilies   int    `json:"high_value_families"`
+	ProjectionTemplates int    `json:"projection_templates"`
+	ScopeOptions        int    `json:"scope_options"`
+	RuntimeExecutable   bool   `json:"runtime_executable"`
+	SetupEnabled        bool   `json:"setup_enabled"`
 }
 
 type connectorLibraryResponse struct {
 	Connectors          []connectorCatalogEntry `json:"connectors"`
+	GeneratedAt         string                  `json:"generated_at"`
 	TenantID            string                  `json:"tenant_id,omitempty"`
 	RuntimeStore        string                  `json:"runtime_store"`
+	CatalogVersion      string                  `json:"catalog_version,omitempty"`
+	CatalogSourceCommit string                  `json:"catalog_source_commit,omitempty"`
 	CredentialTransport connectorTransportView  `json:"credential_transport"`
 	CredentialVault     connectorVaultView      `json:"credential_vault"`
 	CredentialStores    []connectorStoreView    `json:"credential_stores,omitempty"`
@@ -150,13 +237,36 @@ type connectorVaultView struct {
 }
 
 type connectorStoreView struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	Provider  string `json:"provider"`
-	Available bool   `json:"available"`
-	Default   bool   `json:"default,omitempty"`
-	Mode      string `json:"mode"`
-	Detail    string `json:"detail,omitempty"`
+	ID                         string                          `json:"id"`
+	Label                      string                          `json:"label"`
+	Provider                   string                          `json:"provider"`
+	Available                  bool                            `json:"available"`
+	Default                    bool                            `json:"default,omitempty"`
+	Mode                       string                          `json:"mode"`
+	Status                     string                          `json:"status,omitempty"`
+	Detail                     string                          `json:"detail,omitempty"`
+	Description                string                          `json:"description,omitempty"`
+	ReferencePrefixes          []string                        `json:"reference_prefixes,omitempty"`
+	ReferenceNamespaceTemplate string                          `json:"reference_namespace_template,omitempty"`
+	ReferenceFieldTemplate     string                          `json:"reference_field_template,omitempty"`
+	ReferencePlaceholder       string                          `json:"reference_placeholder,omitempty"`
+	NativeResolutionAvailable  bool                            `json:"native_resolution_available,omitempty"`
+	SetupSteps                 []connectorStoreSetupStepView   `json:"setup_steps,omitempty"`
+	RequiredConfig             []connectorStoreConfigFieldView `json:"required_config,omitempty"`
+}
+
+type connectorStoreSetupStepView struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	Command     string `json:"command,omitempty"`
+}
+
+type connectorStoreConfigFieldView struct {
+	Env         string `json:"env"`
+	Label       string `json:"label"`
+	Required    bool   `json:"required,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type connectorFieldView struct {
@@ -243,6 +353,17 @@ type connectorScopeOptionView struct {
 	Notes                  []string `json:"notes,omitempty"`
 }
 
+type connectorResourceFamilyView struct {
+	ID                 string   `json:"id"`
+	Label              string   `json:"label,omitempty"`
+	Path               string   `json:"path,omitempty"`
+	EventKind          string   `json:"event_kind,omitempty"`
+	SchemaRef          string   `json:"schema_ref,omitempty"`
+	ProjectionTemplate string   `json:"projection_template,omitempty"`
+	Coverage           []string `json:"coverage,omitempty"`
+	HighValue          bool     `json:"high_value,omitempty"`
+}
+
 type connectorConnectionRequest struct {
 	RuntimeID            string                                `json:"runtime_id"`
 	TenantID             string                                `json:"tenant_id"`
@@ -253,6 +374,27 @@ type connectorConnectionRequest struct {
 	ScopePolicy          resourcescope.Policy                  `json:"scope_policy,omitempty"`
 	CredentialReferences map[string]string                     `json:"credential_references,omitempty"`
 	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
+}
+
+type connectorCredentialBrokerRequest struct {
+	RuntimeID            string                                `json:"runtime_id"`
+	TenantID             string                                `json:"tenant_id,omitempty"`
+	CredentialStoreID    string                                `json:"credential_store_id,omitempty"`
+	IdempotencyKey       string                                `json:"idempotency_key,omitempty"`
+	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
+}
+
+type connectorCredentialRotateRequest struct {
+	RuntimeID            string                                `json:"runtime_id,omitempty"`
+	TenantID             string                                `json:"tenant_id,omitempty"`
+	CredentialStoreID    string                                `json:"credential_store_id,omitempty"`
+	IdempotencyKey       string                                `json:"idempotency_key,omitempty"`
+	RevokePrevious       bool                                  `json:"revoke_previous,omitempty"`
+	EncryptedCredentials connectorcredentials.EncryptedPayload `json:"encrypted_credentials"`
+}
+
+type connectorCredentialRevokeRequest struct {
+	Reason string `json:"reason,omitempty"`
 }
 
 type connectorPreflightResponse struct {
@@ -290,11 +432,25 @@ type connectorScopePreviewView struct {
 }
 
 type connectorCredentialBoundaryView struct {
-	Mode           string   `json:"mode,omitempty"`
-	StoreID        string   `json:"credential_store_id,omitempty"`
-	SendsSecrets   bool     `json:"sends_secrets"`
-	ReferenceOnly  bool     `json:"reference_only"`
-	FieldsAccepted []string `json:"fields_accepted,omitempty"`
+	Mode                      string                           `json:"mode,omitempty"`
+	StoreID                   string                           `json:"credential_store_id,omitempty"`
+	StoreStatus               string                           `json:"store_status,omitempty"`
+	StoreDetail               string                           `json:"store_detail,omitempty"`
+	SendsSecrets              bool                             `json:"sends_secrets"`
+	ReferenceOnly             bool                             `json:"reference_only"`
+	ReferenceNamespace        string                           `json:"reference_namespace,omitempty"`
+	ReferencePrefixes         []string                         `json:"reference_prefixes,omitempty"`
+	NativeResolutionAvailable bool                             `json:"native_resolution_available,omitempty"`
+	FieldsAccepted            []string                         `json:"fields_accepted,omitempty"`
+	ReferenceTemplates        []connectorReferenceTemplateView `json:"reference_templates,omitempty"`
+}
+
+type connectorReferenceTemplateView struct {
+	Field       string `json:"field"`
+	Label       string `json:"label,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+	Reference   string `json:"reference"`
+	Description string `json:"description,omitempty"`
 }
 
 type connectorConnectionResponse struct {
@@ -305,17 +461,60 @@ type connectorConnectionResponse struct {
 	Status      string                  `json:"status,omitempty"`
 }
 
+type connectorCredentialBrokerResponse struct {
+	SourceID             string                  `json:"source_id"`
+	TenantID             string                  `json:"tenant_id"`
+	RuntimeID            string                  `json:"runtime_id"`
+	Status               string                  `json:"status"`
+	Credential           connectorCredentialView `json:"credential"`
+	CredentialReferences map[string]string       `json:"credential_references"`
+}
+
 type connectorCredentialView struct {
-	ID         string   `json:"id"`
-	TenantID   string   `json:"tenant_id"`
-	SourceID   string   `json:"source_id"`
-	RuntimeID  string   `json:"runtime_id"`
-	StoreID    string   `json:"credential_store_id"`
-	AuthMethod string   `json:"auth_method"`
-	KeyID      string   `json:"key_id"`
-	Fields     []string `json:"fields"`
-	CreatedAt  string   `json:"created_at,omitempty"`
-	UpdatedAt  string   `json:"updated_at,omitempty"`
+	ID                   string   `json:"id"`
+	TenantID             string   `json:"tenant_id"`
+	SourceID             string   `json:"source_id"`
+	RuntimeID            string   `json:"runtime_id"`
+	StoreID              string   `json:"credential_store_id"`
+	AuthMethod           string   `json:"auth_method"`
+	Status               string   `json:"status"`
+	KeyID                string   `json:"key_id"`
+	Fields               []string `json:"fields"`
+	CreatedBy            string   `json:"created_by,omitempty"`
+	UpdatedBy            string   `json:"updated_by,omitempty"`
+	RevokedBy            string   `json:"revoked_by,omitempty"`
+	PreviousCredentialID string   `json:"previous_credential_id,omitempty"`
+	CreatedAt            string   `json:"created_at,omitempty"`
+	UpdatedAt            string   `json:"updated_at,omitempty"`
+	RevokedAt            string   `json:"revoked_at,omitempty"`
+	LastUsedAt           string   `json:"last_used_at,omitempty"`
+	LastValidatedAt      string   `json:"last_validated_at,omitempty"`
+}
+
+type connectorCredentialListResponse struct {
+	SourceID    string                    `json:"source_id"`
+	TenantID    string                    `json:"tenant_id"`
+	RuntimeID   string                    `json:"runtime_id,omitempty"`
+	Credentials []connectorCredentialView `json:"credentials"`
+}
+
+type connectorCredentialDetailResponse struct {
+	SourceID   string                         `json:"source_id"`
+	Credential connectorCredentialView        `json:"credential"`
+	Audit      []connectorCredentialAuditView `json:"audit,omitempty"`
+}
+
+type connectorCredentialAuditView struct {
+	ID           string `json:"id"`
+	CredentialID string `json:"credential_id"`
+	TenantID     string `json:"tenant_id"`
+	SourceID     string `json:"source_id"`
+	RuntimeID    string `json:"runtime_id"`
+	EventType    string `json:"event_type"`
+	Actor        string `json:"actor,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Detail       string `json:"detail,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"`
 }
 
 func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
@@ -340,18 +539,36 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		transport.Algorithm = a.connectorTransitKey.PublicKey().Algorithm
 	}
 	vaultStatus := connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
-	stores := connectorStoreViews(vaultStatus, transport)
+	stores := connectorStoreViews(vaultStatus, transport, a.cfg.ConnectorSecretStores)
+	definitionCatalog := a.connectorDefinitionCatalog()
+	definitionsBySourceID := connectorDefinitionCatalogBySourceID(definitionCatalog)
+	seen := map[string]struct{}{}
 	entries := make([]connectorCatalogEntry, 0, len(sources))
 	for _, source := range sources {
 		entry := connectorCatalogEntry{
-			SourceID:          source.GetId(),
-			Name:              source.GetName(),
-			DisplayName:       connectorDisplayName(source.GetId(), source.GetName()),
-			Description:       source.GetDescription(),
-			EmittedKinds:      append([]string{}, source.GetEmittedKinds()...),
-			Status:            "available",
-			ConnectionMethods: connectorConnectionMethods(source.GetId(), stores),
-			ScopeOptions:      a.connectorScopeOptions(source.GetId(), source.GetEmittedKinds()),
+			connectorCatalogIdentity: connectorCatalogIdentity{
+				SourceID:    source.GetId(),
+				Name:        source.GetName(),
+				DisplayName: connectorDisplayName(source.GetId(), source.GetName()),
+				Description: source.GetDescription(),
+			},
+			connectorCatalogDefinitionState: connectorCatalogDefinitionState{
+				EmittedKinds:     append([]string{}, source.GetEmittedKinds()...),
+				DefinitionOrigin: connectorDefinitionOriginCompiled,
+			},
+			connectorCatalogRuntimeState: connectorCatalogRuntimeState{
+				Status: "available",
+			},
+			connectorCatalogSetupState: connectorCatalogSetupState{
+				ConnectionMethods: connectorConnectionMethods(source.GetId(), stores),
+				ScopeOptions:      a.connectorScopeOptions(source.GetId(), source.GetEmittedKinds()),
+			},
+		}
+		if catalogEntry, ok := definitionsBySourceID[source.GetId()]; ok {
+			applyConnectorCatalogMetadata(&entry, catalogEntry)
+		}
+		if !a.applyConnectorAccess(&entry, tenantID) {
+			continue
 		}
 		if count := counts[source.GetId()]; count.total > 0 {
 			entry.ConfiguredRuntimes = count.total
@@ -367,14 +584,47 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 			}
 		}
 		entries = append(entries, entry)
+		seen[source.GetId()] = struct{}{}
+	}
+	for _, catalogEntry := range definitionCatalog {
+		sourceID := catalogEntry.Definition.SourceID
+		if _, ok := seen[sourceID]; ok {
+			continue
+		}
+		entry := connectorCatalogEntry{
+			connectorCatalogIdentity: connectorCatalogIdentity{
+				SourceID:    sourceID,
+				Name:        catalogEntry.Definition.DisplayName,
+				DisplayName: connectorDisplayName(sourceID, catalogEntry.Definition.DisplayName),
+				Description: catalogEntry.Definition.Description,
+			},
+			connectorCatalogDefinitionState: connectorCatalogDefinitionState{
+				EmittedKinds:     connectorDefinitionEmittedKinds(catalogEntry.Definition),
+				DefinitionOrigin: connectorDefinitionOriginCatalog,
+			},
+			connectorCatalogRuntimeState: connectorCatalogRuntimeState{
+				Status: catalogEntry.Status,
+			},
+			connectorCatalogSetupState: connectorCatalogSetupState{
+				ScopeOptions: connectorScopeOptionsFromDefinition(catalogEntry.Definition),
+			},
+		}
+		applyConnectorCatalogMetadata(&entry, catalogEntry)
+		if !a.applyConnectorAccess(&entry, tenantID) {
+			continue
+		}
+		entries = append(entries, entry)
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
 	return connectorLibraryResponse{
 		Connectors:          entries,
+		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
 		TenantID:            tenantID,
 		RuntimeStore:        runtimeStoreStatus,
+		CatalogVersion:      connectordefinitions.SchemaVersionIntegrationV1,
+		CatalogSourceCommit: buildinfo.Commit,
 		CredentialTransport: transport,
 		CredentialVault:     vaultStatus,
 		CredentialStores:    stores,
@@ -398,10 +648,14 @@ func (a *App) handleGetConnector(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID))
 		return
 	}
-	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
-	if err != nil {
-		writeConnectorError(w, err)
-		return
+	health := emptySourceRuntimeHealthResponse()
+	if a.connectorSourceExists(entry.SourceID) {
+		var err error
+		health, err = a.connectorHealthForSource(r, entry.SourceID, tenantID)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
 	}
 	connections := connectorConnectionsFromHealth(health.Runtimes)
 	activity := connectorActivityFromHealth(health.Runtimes)
@@ -437,10 +691,14 @@ func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request
 		writeConnectorError(w, err)
 		return
 	}
-	health, err := a.connectorHealthForSource(r, entry.SourceID, tenantID)
-	if err != nil {
-		writeConnectorError(w, err)
-		return
+	health := emptySourceRuntimeHealthResponse()
+	if a.connectorSourceExists(entry.SourceID) {
+		var err error
+		health, err = a.connectorHealthForSource(r, entry.SourceID, tenantID)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
 	}
 	activity := connectorActivityFromHealth(health.Runtimes)
 	writeJSON(w, http.StatusOK, connectorActivityResponse{
@@ -459,6 +717,364 @@ func (a *App) handleConnectorCredentialKey(w http.ResponseWriter, _ *http.Reques
 	writeJSON(w, http.StatusOK, a.connectorTransitKey.PublicKey())
 }
 
+func (a *App) handleCreateConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	request := connectorCredentialBrokerRequest{}
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	if sourceID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: runtime_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), request.TenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if tenantID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: tenant_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.authorizeConnectorCredentialRuntime(r.Context(), sourceID, tenantID, runtimeID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	credentialStoreID, err := normalizeConnectorCredentialStoreID(request.CredentialStoreID, connectorAuthMethodEncryptedSubmission)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := a.validateConnectorCredentialStoreAvailable(credentialStoreID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	result, err := broker.StoreEncrypted(r.Context(), connectorcredentials.StoreEncryptedRequest{
+		TenantID:             tenantID,
+		SourceID:             sourceID,
+		RuntimeID:            runtimeID,
+		CredentialStoreID:    credentialStoreID,
+		AuthMethod:           connectorAuthMethodEncryptedSubmission,
+		Actor:                connectorCredentialActor(r),
+		IdempotencyKey:       connectorCredentialIdempotencyKey(r, request.IdempotencyKey),
+		EncryptedCredentials: request.EncryptedCredentials,
+		ValidateFields: func(fields map[string]string) error {
+			return validateConnectorCredentialFields(sourceID, connectorAuthMethodEncryptedSubmission, fields)
+		},
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	status := "stored"
+	httpStatus := http.StatusCreated
+	if !result.Created {
+		status = "existing"
+		httpStatus = http.StatusOK
+	}
+	writeJSON(w, httpStatus, connectorCredentialBrokerResponse{
+		SourceID:  sourceID,
+		TenantID:  tenantID,
+		RuntimeID: runtimeID,
+		Status:    status,
+		Credential: func() connectorCredentialView {
+			return connectorCredentialViewFromRecord(result.Record)
+		}(),
+		CredentialReferences: result.References,
+	})
+}
+
+func (a *App) handleListConnectorCredentials(w http.ResponseWriter, r *http.Request) {
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	if sourceID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if tenantID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: tenant_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	limit, err := connectorQueryInt(r, "limit", 100, 1000)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	records, err := broker.List(r.Context(), ports.ConnectorCredentialFilter{
+		TenantID:  tenantID,
+		SourceID:  sourceID,
+		RuntimeID: r.URL.Query().Get("runtime_id"),
+		Status:    r.URL.Query().Get("status"),
+		Limit:     limit,
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	views := make([]connectorCredentialView, 0, len(records))
+	for _, record := range records {
+		if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		views = append(views, connectorCredentialViewFromRecord(record))
+	}
+	writeJSON(w, http.StatusOK, connectorCredentialListResponse{
+		SourceID:    sourceID,
+		TenantID:    tenantID,
+		RuntimeID:   strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		Credentials: views,
+	})
+}
+
+func (a *App) handleGetConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
+	if sourceID == "" || credentialID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	record, err := broker.Get(r.Context(), credentialID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if strings.TrimSpace(record.SourceID) != sourceID {
+		writeConnectorError(w, ports.ErrConnectorCredentialNotFound)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	events, err := broker.AuditEvents(r.Context(), credentialID, 50)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, connectorCredentialDetailResponse{
+		SourceID:   sourceID,
+		Credential: connectorCredentialViewFromRecord(record),
+		Audit:      connectorCredentialAuditViews(events),
+	})
+}
+
+func (a *App) handleRotateConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	request := connectorCredentialRotateRequest{}
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
+	if sourceID == "" || credentialID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	previous, err := broker.Get(r.Context(), credentialID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if strings.TrimSpace(previous.SourceID) != sourceID {
+		writeConnectorError(w, ports.ErrConnectorCredentialNotFound)
+		return
+	}
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(previous.TenantID)
+	}
+	tenantID, err = effectiveTenantFilter(r.Context(), tenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		runtimeID = strings.TrimSpace(previous.RuntimeID)
+	}
+	if tenantID != strings.TrimSpace(previous.TenantID) || runtimeID != strings.TrimSpace(previous.RuntimeID) {
+		writeConnectorError(w, fmt.Errorf("%w: credential rotation must keep the existing tenant and runtime", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.authorizeConnectorCredentialRuntime(r.Context(), sourceID, tenantID, runtimeID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	credentialStoreID, err := normalizeConnectorCredentialStoreID(firstNonEmpty(request.CredentialStoreID, previous.CredentialStoreID), connectorAuthMethodEncryptedSubmission)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := a.validateConnectorCredentialStoreAvailable(credentialStoreID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	result, err := broker.StoreEncrypted(r.Context(), connectorcredentials.StoreEncryptedRequest{
+		TenantID:             tenantID,
+		SourceID:             sourceID,
+		RuntimeID:            runtimeID,
+		CredentialStoreID:    credentialStoreID,
+		AuthMethod:           connectorAuthMethodEncryptedSubmission,
+		Actor:                connectorCredentialActor(r),
+		IdempotencyKey:       connectorCredentialIdempotencyKey(r, request.IdempotencyKey),
+		PreviousCredentialID: credentialID,
+		EncryptedCredentials: request.EncryptedCredentials,
+		ValidateFields: func(fields map[string]string) error {
+			return validateConnectorCredentialFields(sourceID, connectorAuthMethodEncryptedSubmission, fields)
+		},
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if request.RevokePrevious {
+		if _, err := broker.Revoke(r.Context(), connectorcredentials.RevokeRequest{
+			CredentialID: credentialID,
+			TenantID:     tenantID,
+			SourceID:     sourceID,
+			RuntimeID:    runtimeID,
+			Actor:        connectorCredentialActor(r),
+			Detail:       "rotated",
+		}); err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+	}
+	status := "rotated"
+	httpStatus := http.StatusCreated
+	if !result.Created {
+		status = "existing"
+		httpStatus = http.StatusOK
+	}
+	writeJSON(w, httpStatus, connectorCredentialBrokerResponse{
+		SourceID:             sourceID,
+		TenantID:             tenantID,
+		RuntimeID:            runtimeID,
+		Status:               status,
+		Credential:           connectorCredentialViewFromRecord(result.Record),
+		CredentialReferences: result.References,
+	})
+}
+
+func (a *App) handleRevokeConnectorCredential(w http.ResponseWriter, r *http.Request) {
+	request := connectorCredentialRevokeRequest{}
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
+	credentialID := strings.TrimSpace(r.PathValue("credentialID"))
+	if sourceID == "" || credentialID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: source_id and credential_id are required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if _, err := a.connectorSource(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	record, err := broker.Get(r.Context(), credentialID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if strings.TrimSpace(record.SourceID) != sourceID {
+		writeConnectorError(w, ports.ErrConnectorCredentialNotFound)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	updated, err := broker.Revoke(r.Context(), connectorcredentials.RevokeRequest{
+		CredentialID: credentialID,
+		TenantID:     record.TenantID,
+		SourceID:     sourceID,
+		RuntimeID:    record.RuntimeID,
+		Actor:        connectorCredentialActor(r),
+		Detail:       request.Reason,
+	})
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, connectorCredentialDetailResponse{
+		SourceID:   sourceID,
+		Credential: connectorCredentialViewFromRecord(updated),
+	})
+}
+
 func (a *App) handlePreflightConnectorConnection(w http.ResponseWriter, r *http.Request) {
 	request := connectorConnectionRequest{}
 	if err := readConnectorJSON(r, &request); err != nil {
@@ -468,6 +1084,10 @@ func (a *App) handlePreflightConnectorConnection(w http.ResponseWriter, r *http.
 	sourceID := strings.TrimSpace(r.PathValue("sourceID"))
 	if sourceID == "" {
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
 		return
 	}
 	response, err := a.connectorConnectionPreflight(r.Context(), sourceID, request)
@@ -489,6 +1109,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		writeConnectorError(w, fmt.Errorf("%w: source_id is required", connectorcredentials.ErrInvalidRequest))
 		return
 	}
+	if err := a.requireConnectorSetupAccess(sourceID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	tenantID := strings.TrimSpace(request.TenantID)
 	if runtimeID == "" {
@@ -502,6 +1126,10 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 	authMethod := normalizeConnectorAuthMethod(request.AuthMethod)
 	credentialStoreID, err := normalizeConnectorCredentialStoreID(request.CredentialStoreID, authMethod)
 	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := a.validateConnectorCredentialStoreAvailable(credentialStoreID); err != nil {
 		writeConnectorError(w, err)
 		return
 	}
@@ -528,7 +1156,7 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		}
 		runtimeConfig[resourcescope.ConfigKey] = scopeConfigValue
 	}
-	if err := validateConnectorConnectionShape(sourceID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); err != nil {
+	if err := validateConnectorConnectionShape(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); err != nil {
 		writeConnectorError(w, err)
 		return
 	}
@@ -597,29 +1225,43 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if authMethod == connectorAuthMethodEncryptedSubmission {
-		vault, err := connectorCredentialVault(a.cfg.ConnectorCredentials, a.deps.StateStore)
+		broker, err := connectorCredentialBroker(a.cfg.ConnectorCredentials, a.deps.StateStore, a.connectorTransitKey)
 		if err != nil {
 			writeConnectorError(w, err)
 			return
 		}
-		record, err := vault.Put(r.Context(), connectorcredentials.PlainCredential{
-			TenantID:  tenantID,
-			SourceID:  sourceID,
-			RuntimeID: runtimeID,
-			Fields:    plaintextFields,
+		result, err := broker.StoreEncrypted(r.Context(), connectorcredentials.StoreEncryptedRequest{
+			TenantID:             tenantID,
+			SourceID:             sourceID,
+			RuntimeID:            runtimeID,
+			CredentialStoreID:    credentialStoreID,
+			AuthMethod:           authMethod,
+			Actor:                connectorCredentialActor(r),
+			EncryptedCredentials: request.EncryptedCredentials,
+			ValidateFields: func(fields map[string]string) error {
+				return validateConnectorCredentialFields(sourceID, authMethod, fields)
+			},
 		})
 		if err != nil {
 			writeConnectorError(w, err)
 			return
 		}
-		for _, field := range connectorcredentials.SortedFieldNames(plaintextFields) {
-			runtime.Config[field] = connectorcredentials.Reference(record.ID, field)
+		validated, err := broker.MarkValidated(r.Context(), connectorcredentials.ValidateRequest{
+			CredentialID: result.Record.ID,
+			TenantID:     tenantID,
+			SourceID:     sourceID,
+			RuntimeID:    runtimeID,
+			Actor:        connectorCredentialActor(r),
+		})
+		if err != nil {
+			writeConnectorError(w, err)
+			return
 		}
-		credential.ID = record.ID
-		credential.KeyID = record.KeyID
-		credential.Fields = connectorcredentials.SortedFieldNames(plaintextFields)
-		credential.CreatedAt = connectorcredentials.TimestampOrZero(record.CreatedAt)
-		credential.UpdatedAt = connectorcredentials.TimestampOrZero(record.UpdatedAt)
+		result.Record = validated
+		for field, reference := range result.References {
+			runtime.Config[field] = reference
+		}
+		credential = connectorCredentialViewFromRecord(result.Record)
 	}
 	if scopeConfigValue != "" {
 		runtime.Config[resourcescope.ConfigKey] = scopeConfigValue
@@ -722,7 +1364,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 			NextAction: "choose_ready_store",
 			Blocking:   true,
 		})
-		response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+		response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 		response.finalizePreflight()
 		return response, nil
 	}
@@ -794,7 +1436,23 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		}
 		runtimeConfig[resourcescope.ConfigKey] = scopeConfigValue
 	}
-	if shapeIssue := validateConnectorConnectionShape(sourceID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); shapeIssue != nil {
+	if connectorAuthMethodUsesCredentialReferences(authMethod) && len(request.CredentialReferences) > 0 {
+		if referenceScopeIssue := validateConnectorCredentialReferencesForRuntime(credentialStoreID, sourceID, tenantID, runtimeID, request.CredentialReferences); referenceScopeIssue != nil {
+			response.addPreflightCheck(connectorPreflightCheckView{
+				ID:         "credential_boundary",
+				Label:      "Credential boundary",
+				Status:     "blocked",
+				Severity:   "error",
+				Detail:     connectorPreflightValidationDetail(referenceScopeIssue, "Credential references must stay inside the selected runtime secret namespace."),
+				NextAction: "fix_credential_references",
+				Blocking:   true,
+			})
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, connectorReferenceTemplateFields(sourceID, authMethod, request.CredentialReferences))
+			response.finalizePreflight()
+			return response, nil
+		}
+	}
+	if shapeIssue := validateConnectorConnectionShape(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, runtimeConfig, request.CredentialReferences, request.EncryptedCredentials); shapeIssue != nil {
 		response.addPreflightCheck(connectorPreflightCheckView{
 			ID:         "config_shape",
 			Label:      "Config and secret boundary",
@@ -804,7 +1462,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 			NextAction: "fix_required_fields",
 			Blocking:   true,
 		})
-		response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, sortedStringKeys(request.CredentialReferences))
+		response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, connectorReferenceTemplateFields(sourceID, authMethod, request.CredentialReferences))
 		response.finalizePreflight()
 		return response, nil
 	}
@@ -825,7 +1483,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		return response, err
 	}
 	plaintextFields := map[string]string(nil)
-	fieldNames := sortedStringKeys(request.CredentialReferences)
+	fieldNames := connectorReferenceTemplateFields(sourceID, authMethod, request.CredentialReferences)
 	if authMethod == connectorAuthMethodEncryptedSubmission {
 		if a == nil || a.connectorTransitKey == nil {
 			response.addPreflightCheck(connectorPreflightCheckView{
@@ -837,7 +1495,7 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 				NextAction: "configure_credential_transport",
 				Blocking:   true,
 			})
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 			response.finalizePreflight()
 			return response, nil
 		}
@@ -847,27 +1505,27 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		)
 		if decryptIssue != nil {
 			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(decryptIssue, "Encrypted credential payload could not be opened."), "fix_encrypted_payload"))
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 			response.finalizePreflight()
 			return response, nil
 		}
 		fields, parseIssue := connectorcredentials.ParseCredentialFields(decrypted)
 		if parseIssue != nil {
 			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(parseIssue, "Encrypted credential payload is not a valid credential field map."), "fix_encrypted_payload"))
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, nil)
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, nil)
 			response.finalizePreflight()
 			return response, nil
 		}
 		if credentialIssue := validateConnectorCredentialFields(sourceID, authMethod, fields); credentialIssue != nil {
 			response.addPreflightCheck(connectorPreflightCredentialCheck(connectorPreflightValidationDetail(credentialIssue, "Credential fields do not match the connector contract."), "fix_credential_fields"))
-			response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, connectorcredentials.SortedFieldNames(fields))
+			response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, connectorcredentials.SortedFieldNames(fields))
 			response.finalizePreflight()
 			return response, nil
 		}
 		plaintextFields = fields
 		fieldNames = connectorcredentials.SortedFieldNames(fields)
 	}
-	response.CredentialBoundary = connectorPreflightCredentialBoundary(authMethod, credentialStoreID, fieldNames)
+	response.CredentialBoundary = a.connectorPreflightCredentialBoundary(sourceID, tenantID, runtimeID, authMethod, credentialStoreID, fieldNames)
 	response.addPreflightCheck(connectorPreflightCredentialPassed(authMethod))
 	for _, check := range connectorProviderPreflightChecks(sourceID, authMethod, runtimeConfig, scopePolicy) {
 		response.addPreflightCheck(check)
@@ -921,8 +1579,38 @@ type connectorSchema struct {
 
 var connectorSchemas = map[string]connectorSchema{
 	"anthropic": {
-		ConfigKeys:          stringSet("family"),
-		CredentialKeys:      stringSet("api_key"),
+		ConfigKeys: stringSet(
+			"activity_types",
+			"actor_ids",
+			"api_key_ids",
+			"auth_model",
+			"bucket_width",
+			"context_windows",
+			"created_at_gt",
+			"created_at_gte",
+			"created_at_lt",
+			"created_at_lte",
+			"credential_kind",
+			"credential_scopes",
+			"ending_at",
+			"family",
+			"group_by",
+			"include_archived",
+			"inference_geos",
+			"model",
+			"models",
+			"organization_ids",
+			"periods",
+			"service_tiers",
+			"speeds",
+			"starting_at",
+			"status",
+			"terminal_types",
+			"user_ids",
+			"workspace_id",
+			"workspace_ids",
+		),
+		CredentialKeys:      stringSet("api_key", "token"),
 		RequiredCredentials: []string{"api_key"},
 	},
 	"aws": {
@@ -954,8 +1642,29 @@ var connectorSchemas = map[string]connectorSchema{
 		RequiredCredentials: []string{"token"},
 	},
 	"openai": {
-		ConfigKeys:          stringSet("family"),
-		CredentialKeys:      stringSet("api_key"),
+		ConfigKeys: stringSet(
+			"actor_emails",
+			"actor_ids",
+			"api_key_ids",
+			"batch",
+			"bucket_width",
+			"effective_at_gt",
+			"effective_at_gte",
+			"effective_at_lt",
+			"effective_at_lte",
+			"end_time",
+			"event_types",
+			"family",
+			"group_by",
+			"group_id",
+			"models",
+			"project_id",
+			"project_ids",
+			"start_time",
+			"user_id",
+			"user_ids",
+		),
+		CredentialKeys:      stringSet("api_key", "token"),
 		RequiredCredentials: []string{"api_key"},
 	},
 	"bootstrap_token": {
@@ -963,6 +1672,67 @@ var connectorSchemas = map[string]connectorSchema{
 		CredentialKeys:      stringSet("token"),
 		RequiredCredentials: []string{"token"},
 	},
+}
+
+func connectorSchemaForSource(sourceID string) (connectorSchema, bool) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return connectorSchema{}, false
+	}
+	if schema, ok := connectorSchemas[sourceID]; ok {
+		return schema, true
+	}
+	entry, ok, err := connectorcatalog.BuiltinEntry(sourceID)
+	if err != nil || !ok || !entry.Generateable || entry.Status != connectorcatalog.StatusGenerateable {
+		return connectorSchema{}, false
+	}
+	return connectorSchemaFromDefinition(entry.Definition), true
+}
+
+func connectorSchemaFromDefinition(definition connectordefinitions.Definition) connectorSchema {
+	schema := connectorSchema{
+		ConfigKeys:     stringSet("family", "health_path", "base_url", "token_url", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"),
+		CredentialKeys: map[string]struct{}{},
+	}
+	for _, field := range definition.ConfigFields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		schema.ConfigKeys[key] = struct{}{}
+		if field.Required {
+			schema.RequiredConfig = append(schema.RequiredConfig, key)
+		}
+	}
+	for _, field := range definition.Auth.CredentialFields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		schema.CredentialKeys[key] = struct{}{}
+		schema.RequiredCredentials = append(schema.RequiredCredentials, key)
+	}
+	for _, family := range definition.ResourceFamilies {
+		if family.Pagination == nil {
+			continue
+		}
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.PageParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.PageSizeParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.OffsetParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.LimitParam)
+		addConnectorSchemaConfigKey(schema.ConfigKeys, family.Pagination.CursorParam)
+	}
+	schema.RequiredConfig = sortedUniqueStrings(schema.RequiredConfig)
+	schema.RequiredCredentials = sortedUniqueStrings(schema.RequiredCredentials)
+	return schema
+}
+
+func addConnectorSchemaConfigKey(keys map[string]struct{}, key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	keys[key] = struct{}{}
 }
 
 func connectorRuntimeCounts(runtimes []*cerebrov1.SourceRuntime) map[string]connectorRuntimeCount {
@@ -990,6 +1760,329 @@ func connectorEntryBySourceID(entries []connectorCatalogEntry, sourceID string) 
 		}
 	}
 	return connectorCatalogEntry{}, false
+}
+
+func (a *App) connectorDefinitionCatalog() []connectorcatalog.Entry {
+	if a == nil || a.sources == nil || !a.sources.IncludesBuiltinDefinitionCatalog() {
+		return nil
+	}
+	analysis, err := connectorcatalog.Builtin()
+	if err != nil {
+		return nil
+	}
+	return analysis.Entries
+}
+
+func connectorDefinitionCatalogBySourceID(entries []connectorcatalog.Entry) map[string]connectorcatalog.Entry {
+	out := make(map[string]connectorcatalog.Entry, len(entries))
+	for _, entry := range entries {
+		sourceID := strings.TrimSpace(entry.Definition.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		out[sourceID] = entry
+	}
+	return out
+}
+
+func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry connectorcatalog.Entry) {
+	if entry == nil {
+		return
+	}
+	entry.CatalogStatus = catalogEntry.Status
+	entry.ClassifierOutput = catalogEntry.ClassifierOutput
+	entry.AuthModel = catalogEntry.Definition.Auth.Model
+	entry.RuntimeExecutable = catalogEntry.Generateable
+	entry.CatalogSchemaVersion = catalogEntry.Definition.SchemaVersion
+	entry.CatalogCurrentVersion = catalogEntry.Definition.CurrentVersion
+	entry.CatalogSourcePath = catalogEntry.Path
+	entry.MissingFeatures = append([]string{}, catalogEntry.Report.MissingFeatures...)
+	entry.CatalogCategories = append([]string{}, catalogEntry.Definition.Categories...)
+	entry.VerificationEndpoint = catalogEntry.VerificationPath
+	entry.ResourceFamilies = connectorDefinitionResourceFamilies(catalogEntry.Definition)
+	if entry.Description == "" {
+		entry.Description = catalogEntry.Definition.Description
+	}
+	if entry.Name == "" {
+		entry.Name = catalogEntry.Definition.DisplayName
+	}
+	if entry.DisplayName == "" {
+		entry.DisplayName = connectorDisplayName(catalogEntry.Definition.SourceID, catalogEntry.Definition.DisplayName)
+	}
+	if len(entry.EmittedKinds) == 0 {
+		entry.EmittedKinds = connectorDefinitionEmittedKinds(catalogEntry.Definition)
+	}
+	if len(entry.ScopeOptions) == 0 {
+		entry.ScopeOptions = connectorScopeOptionsFromDefinition(catalogEntry.Definition)
+	}
+}
+
+func (a *App) applyConnectorAccess(entry *connectorCatalogEntry, tenantID string) bool {
+	if entry == nil {
+		return false
+	}
+	sourceID := strings.TrimSpace(entry.SourceID)
+	if sourceID == "" || connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+		return false
+	}
+	hasSetup := len(entry.ConnectionMethods) > 0
+	switch {
+	case connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID):
+		entry.AccessStatus = connectorAccessRestricted
+		entry.AccessReason = firstNonEmpty(a.cfg.ConnectorAccess.RestrictionReason, "Connector setup is restricted by this deployment.")
+		entry.SetupAllowed = false
+		entry.Requestable = true
+		entry.RequestableReason = entry.AccessReason
+		entry.ConnectionMethods = nil
+	case hasSetup:
+		entry.AccessStatus = connectorAccessAvailable
+		entry.SetupAllowed = true
+	case entry.CatalogStatus != "":
+		entry.AccessStatus = connectorAccessCatalogOnly
+		entry.AccessReason = connectorCatalogOnlyReason(entry.CatalogStatus)
+		entry.SetupAllowed = false
+		entry.Requestable = true
+		entry.RequestableReason = entry.AccessReason
+	default:
+		entry.AccessStatus = connectorAccessAvailable
+		entry.SetupAllowed = hasSetup
+	}
+	if entry.Requestable {
+		entry.RequestAccessAction = connectorRequestAccessAction(a.cfg.ConnectorAccess.RequestAccessAction, entry)
+		entry.RequestAccessURL = connectorRequestAccessURL(a.cfg.ConnectorAccess.RequestAccessURL, entry, tenantID)
+	}
+	entry.ReadinessStage = connectorReadinessStage(*entry)
+	entry.IntegrationDepth = connectorIntegrationDepth(*entry)
+	return true
+}
+
+func (a *App) requireConnectorSetupAccess(sourceID string) error {
+	if connectorSourceListed(a.cfg.ConnectorAccess.HiddenSources, sourceID) {
+		return fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, strings.TrimSpace(sourceID))
+	}
+	if connectorSourceListed(a.cfg.ConnectorAccess.RestrictedSources, sourceID) {
+		return fmt.Errorf("%w: %s", errConnectorAccessRestricted, strings.TrimSpace(sourceID))
+	}
+	return nil
+}
+
+func connectorSourceListed(values []string, sourceID string) bool {
+	normalized := strings.TrimSpace(sourceID)
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), normalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func connectorCatalogOnlyReason(status string) string {
+	switch strings.TrimSpace(status) {
+	case connectorcatalog.StatusGenerateable:
+		return "Catalog definition is sourcegen-ready, but setup is not enabled by this API."
+	case connectorcatalog.StatusNeedsAuthExtension:
+		return "Catalog definition needs an auth extension before setup can be enabled."
+	case connectorcatalog.StatusNeedsBespokeRuntime:
+		return "Catalog definition needs a bespoke runtime before setup can be enabled."
+	case connectorcatalog.StatusCatalogReady:
+		return "Catalog definition is available, but setup is not enabled by this API."
+	default:
+		return "Catalog metadata is available, but setup is not enabled by this API."
+	}
+}
+
+func connectorRequestAccessAction(configured string, entry *connectorCatalogEntry) string {
+	if action := strings.TrimSpace(configured); action != "" {
+		return action
+	}
+	if entry != nil && entry.AccessStatus == connectorAccessCatalogOnly {
+		return "Request connector"
+	}
+	return "Request access"
+}
+
+func connectorRequestAccessURL(template string, entry *connectorCatalogEntry, tenantID string) string {
+	template = strings.TrimSpace(template)
+	if template == "" || entry == nil {
+		return ""
+	}
+	replacements := map[string]string{
+		"{source_id}":    url.QueryEscape(strings.TrimSpace(entry.SourceID)),
+		"{tenant_id}":    url.QueryEscape(strings.TrimSpace(tenantID)),
+		"{display_name}": url.QueryEscape(strings.TrimSpace(firstNonEmpty(entry.DisplayName, entry.Name, entry.SourceID))),
+	}
+	out := template
+	for token, value := range replacements {
+		out = strings.ReplaceAll(out, token, value)
+	}
+	return out
+}
+
+func connectorReadinessStage(entry connectorCatalogEntry) string {
+	switch {
+	case entry.SetupAllowed:
+		return connectorReadinessStageSetupEnabled
+	case entry.AccessStatus == connectorAccessRestricted:
+		return connectorReadinessStageAPIRestricted
+	case entry.CatalogStatus == connectorcatalog.StatusGenerateable:
+		return connectorReadinessStageSourcegenReady
+	case entry.CatalogStatus == connectorcatalog.StatusNeedsAuthExtension:
+		return connectorReadinessStageAuthExtensionNeeded
+	case entry.CatalogStatus == connectorcatalog.StatusNeedsBespokeRuntime:
+		return connectorReadinessStageRuntimeNeeded
+	case entry.CatalogStatus == connectorcatalog.StatusCatalogReady:
+		return connectorReadinessStageCatalogReady
+	case entry.RuntimeExecutable:
+		return connectorReadinessStageSourcegenReady
+	default:
+		return connectorReadinessStageRuntimeUnknown
+	}
+}
+
+func connectorIntegrationDepth(entry connectorCatalogEntry) connectorIntegrationDepthView {
+	depth := connectorIntegrationDepthView{
+		AuthModel:          strings.TrimSpace(entry.AuthModel),
+		ResourceFamilies:   len(entry.ResourceFamilies),
+		EmittedKinds:       len(entry.EmittedKinds),
+		ScopeOptions:       len(entry.ScopeOptions),
+		RuntimeExecutable:  entry.RuntimeExecutable,
+		SetupEnabled:       entry.SetupAllowed,
+		CoverageDimensions: 0,
+	}
+	for _, family := range entry.ResourceFamilies {
+		depth.CoverageDimensions += len(family.Coverage)
+		if family.HighValue {
+			depth.HighValueFamilies++
+		}
+		if strings.TrimSpace(family.ProjectionTemplate) != "" {
+			depth.ProjectionTemplates++
+		}
+	}
+	score := 0
+	score += minInt(depth.ResourceFamilies, 4) * 10
+	score += minInt(depth.CoverageDimensions, 8) * 3
+	score += minInt(depth.HighValueFamilies, 4) * 5
+	score += minInt(depth.ProjectionTemplates, 4) * 4
+	if depth.AuthModel != "" {
+		score += 8
+	}
+	if depth.RuntimeExecutable {
+		score += 12
+	}
+	if depth.SetupEnabled {
+		score += 20
+	}
+	if score > 100 {
+		score = 100
+	}
+	depth.Score = score
+	switch {
+	case score >= 80:
+		depth.Level = "deep"
+	case score >= 50:
+		depth.Level = "ready"
+	case score >= 25:
+		depth.Level = "cataloged"
+	default:
+		depth.Level = "basic"
+	}
+	return depth
+}
+
+func minInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func connectorDefinitionEmittedKinds(definition connectordefinitions.Definition) []string {
+	kinds := make([]string, 0, len(definition.ResourceFamilies))
+	for _, family := range definition.ResourceFamilies {
+		kind := strings.TrimSpace(family.Event.Kind)
+		if kind == "" {
+			continue
+		}
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
+}
+
+func connectorDefinitionResourceFamilies(definition connectordefinitions.Definition) []connectorResourceFamilyView {
+	families := make([]connectorResourceFamilyView, 0, len(definition.ResourceFamilies))
+	for _, family := range definition.ResourceFamilies {
+		view := connectorResourceFamilyView{
+			ID:                 family.ID,
+			Label:              firstNonEmpty(family.Label, connectorFieldLabel(family.ID)),
+			Path:               family.Path,
+			EventKind:          family.Event.Kind,
+			SchemaRef:          family.Event.SchemaRef,
+			ProjectionTemplate: connectorProjectionTemplate(family),
+		}
+		for _, dimension := range family.Coverage {
+			if dimension.Type != "" {
+				view.Coverage = append(view.Coverage, dimension.Type)
+			}
+			if dimension.HighValue {
+				view.HighValue = true
+			}
+		}
+		sort.Strings(view.Coverage)
+		families = append(families, view)
+	}
+	sort.Slice(families, func(i, j int) bool { return families[i].ID < families[j].ID })
+	return families
+}
+
+func connectorProjectionTemplate(family connectordefinitions.ResourceFamily) string {
+	if family.Projection == nil {
+		return ""
+	}
+	return strings.TrimSpace(family.Projection.Template)
+}
+
+func connectorScopeOptionsFromDefinition(definition connectordefinitions.Definition) []connectorScopeOptionView {
+	options := make([]connectorScopeOptionView, 0, len(definition.ResourceFamilies))
+	for _, family := range definition.ResourceFamilies {
+		for _, dimension := range family.Coverage {
+			if len(dimension.Families) == 0 {
+				continue
+			}
+			if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
+				continue
+			}
+			label := strings.TrimSpace(dimension.Title)
+			if label == "" {
+				label = firstNonEmpty(family.Label, connectorFieldLabel(family.ID))
+			}
+			options = append(options, connectorScopeOptionView{
+				ID:                     dimension.ID,
+				Label:                  label,
+				Type:                   dimension.Type,
+				Families:               append([]string{}, dimension.Families...),
+				Support:                dimension.Support,
+				HighValue:              dimension.HighValue,
+				KnownUnsupportedFields: append([]string{}, dimension.KnownUnsupportedFields...),
+				Notes:                  append([]string{}, dimension.Notes...),
+			})
+		}
+	}
+	sort.Slice(options, func(i, j int) bool {
+		if options[i].HighValue != options[j].HighValue {
+			return options[i].HighValue
+		}
+		return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label)
+	})
+	return options
+}
+
+func (a *App) connectorSourceExists(sourceID string) bool {
+	if a == nil || a.sources == nil {
+		return false
+	}
+	_, ok := a.sources.Get(strings.TrimSpace(sourceID))
+	return ok
 }
 
 func (a *App) connectorScopeOptions(sourceID string, emittedKinds []string) []connectorScopeOptionView {
@@ -1128,12 +2221,30 @@ func (a *App) connectorPreflightStore(storeID string) (connectorStoreView, bool)
 	if a != nil {
 		vaultStatus = connectorVaultStatus(a.cfg.ConnectorCredentials, a.deps.StateStore)
 	}
-	for _, store := range connectorStoreViews(vaultStatus, transport) {
+	secretStoreConfig := config.ConnectorSecretStoreConfig{}
+	if a != nil {
+		secretStoreConfig = a.cfg.ConnectorSecretStores
+	}
+	for _, store := range connectorStoreViews(vaultStatus, transport, secretStoreConfig) {
 		if store.ID == strings.TrimSpace(storeID) {
 			return store, true
 		}
 	}
 	return connectorStoreView{}, false
+}
+
+func (a *App) validateConnectorCredentialStoreAvailable(storeID string) error {
+	store, ok := a.connectorPreflightStore(storeID)
+	if !ok {
+		return fmt.Errorf("%w: credential store %q is not supported", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(storeID))
+	}
+	if !store.Available {
+		if strings.TrimSpace(storeID) == defaultConnectorCredentialStoreID {
+			return fmt.Errorf("%w: credential store %q is not available in this deployment", connectorcredentials.ErrUnavailable, strings.TrimSpace(storeID))
+		}
+		return fmt.Errorf("%w: credential store %q is not available in this deployment", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(storeID))
+	}
+	return nil
 }
 
 func (a *App) connectorScopePreview(sourceID string, source sourcecdk.Source, policy resourcescope.Policy) connectorScopePreviewView {
@@ -1198,14 +2309,97 @@ func connectorPreflightScopeCheck(preview connectorScopePreviewView) connectorPr
 	}
 }
 
-func connectorPreflightCredentialBoundary(authMethod string, storeID string, fields []string) connectorCredentialBoundaryView {
+func (a *App) connectorPreflightCredentialBoundary(sourceID string, tenantID string, runtimeID string, authMethod string, storeID string, fields []string) connectorCredentialBoundaryView {
 	authMethod = normalizeConnectorAuthMethod(authMethod)
-	return connectorCredentialBoundaryView{
+	storeID = strings.TrimSpace(storeID)
+	boundary := connectorCredentialBoundaryView{
 		Mode:           authMethod,
-		StoreID:        strings.TrimSpace(storeID),
+		StoreID:        storeID,
 		SendsSecrets:   authMethod == connectorAuthMethodEncryptedSubmission,
 		ReferenceOnly:  authMethod != connectorAuthMethodEncryptedSubmission,
 		FieldsAccepted: append([]string{}, fields...),
+	}
+	if store, ok := a.connectorPreflightStore(storeID); ok {
+		boundary.StoreStatus = store.Status
+		boundary.StoreDetail = store.Detail
+		boundary.ReferencePrefixes = append([]string{}, store.ReferencePrefixes...)
+		boundary.NativeResolutionAvailable = store.NativeResolutionAvailable
+	}
+	if boundary.ReferenceOnly {
+		if len(boundary.ReferencePrefixes) == 0 {
+			boundary.ReferencePrefixes = connectorsecretstores.ReferencePrefixes(storeID)
+		}
+		boundary.ReferenceNamespace = a.connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
+		boundary.ReferenceTemplates = a.connectorReferenceTemplates(sourceID, tenantID, runtimeID, storeID, fields)
+	}
+	return boundary
+}
+
+func (a *App) connectorReferenceTemplates(sourceID string, tenantID string, runtimeID string, storeID string, fields []string) []connectorReferenceTemplateView {
+	if len(fields) == 0 {
+		return nil
+	}
+	required := map[string]struct{}{}
+	if schema, ok := connectorSchemaForSource(sourceID); ok {
+		required = stringSet(schema.RequiredCredentials...)
+	}
+	templates := make([]connectorReferenceTemplateView, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		templates = append(templates, connectorReferenceTemplateView{
+			Field:       field,
+			Label:       connectorFieldLabel(field),
+			Required:    setContains(required, field),
+			Reference:   a.connectorReferenceForField(storeID, tenantID, sourceID, runtimeID, field),
+			Description: a.connectorReferenceTemplateDescription(storeID),
+		})
+	}
+	return templates
+}
+
+func (a *App) connectorReferenceForField(storeID string, tenantID string, sourceID string, runtimeID string, field string) string {
+	switch strings.TrimSpace(storeID) {
+	case connectorStoreAWSSecretsManager:
+		if !connectorsecretstores.NativeResolutionAvailable(a.cfg.ConnectorSecretStores, storeID) {
+			return "env:" + connectorSuggestedEnvName(sourceID, field)
+		}
+		namespace := a.connectorReferenceNamespace(storeID, tenantID, sourceID, runtimeID)
+		if namespace == "" {
+			namespace = connectorStoreReferenceNamespaceTemplate(storeID, true)
+		}
+		region := strings.TrimSpace(a.cfg.ConnectorSecretStores.AWSSecretsManager.Region)
+		return "aws-sm:" + region + ":" + namespace + "#" + strings.TrimSpace(field)
+	default:
+		return "env:" + connectorSuggestedEnvName(sourceID, field)
+	}
+}
+
+func (a *App) connectorReferenceNamespace(storeID string, tenantID string, sourceID string, runtimeID string) string {
+	switch strings.TrimSpace(storeID) {
+	case connectorStoreAWSSecretsManager:
+		if connectorsecretstores.NativeResolutionAvailable(a.cfg.ConnectorSecretStores, storeID) {
+			return connectorsecretstores.RuntimeCredentialSecretName(tenantID, sourceID, runtimeID)
+		}
+		return "CEREBRO_SOURCE_" + connectorEnvComponent(sourceID) + "_*"
+	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
+		return "CEREBRO_SOURCE_" + connectorEnvComponent(sourceID) + "_*"
+	default:
+		return ""
+	}
+}
+
+func (a *App) connectorReferenceTemplateDescription(storeID string) string {
+	switch strings.TrimSpace(storeID) {
+	case connectorStoreAWSSecretsManager:
+		if !connectorsecretstores.NativeResolutionAvailable(a.cfg.ConnectorSecretStores, storeID) {
+			return "Environment projection reference resolved inside the Cerebro backend runtime."
+		}
+		return "Scoped to this tenant, source, and runtime; unscoped aws-sm references are rejected before resolution."
+	default:
+		return "Environment projection reference resolved inside the Cerebro backend runtime."
 	}
 }
 
@@ -1272,9 +2466,95 @@ func connectorProviderPreflightChecks(sourceID string, authMethod string, config
 			})
 		}
 		return checks
+	case "anthropic":
+		return anthropicProviderPreflightChecks(config, policy)
 	default:
 		return nil
 	}
+}
+
+func anthropicProviderPreflightChecks(config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
+	family := strings.TrimSpace(config["family"])
+	if family == "" {
+		family = "user"
+	}
+	if policy.ExcludesFamily("anthropic", family) {
+		return nil
+	}
+	authModel := strings.ToLower(strings.TrimSpace(config["auth_model"]))
+	if authModel == "" {
+		authModel = "legacy_token"
+	}
+	credentialKind := normalizedCredentialHint(config["credential_kind"])
+	scopes := connectorTokenSet(config["credential_scopes"])
+	checks := []connectorPreflightCheckView{}
+	switch family {
+	case "service_account", "federation_issuer", "federation_rule":
+		if authModel != "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindOrgAdminOAuth) || !setContains(scopes, "org:admin") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "anthropic_org_admin_oauth",
+				Label:      "Anthropic org admin OAuth",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Service account and workload identity federation families require an org:admin OAuth bearer token; set auth_model=bearer_token and record credential_scopes=org:admin when configuring this runtime.",
+				NextAction: "use_anthropic_org_admin_oauth",
+			})
+		}
+	case "compliance_activity":
+		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindAdminAPIKey && credentialKind != anthropicCredentialKindComplianceAccessKey) || !setContains(scopes, "read:compliance_activities") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "anthropic_compliance_scope",
+				Label:      "Anthropic compliance scope",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Compliance Activity Feed reads use x-api-key and require read:compliance_activities on an Admin API key or Compliance Access Key; record credential_kind and credential_scopes to make that explicit.",
+				NextAction: "confirm_anthropic_compliance_scope",
+			})
+		}
+	case "spend_limit", "spend_limit_increase_request":
+		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindScopedAdminAPIKey) || !setContains(scopes, "read:spend_limits") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "anthropic_spend_limit_scope",
+				Label:      "Anthropic spend-limit scope",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Read-only spend-limit families require an Enterprise scoped Admin API key with read:spend_limits in x-api-key; record credential_kind=scoped_admin_api_key and credential_scopes=read:spend_limits.",
+				NextAction: "confirm_anthropic_spend_limit_scope",
+			})
+		}
+	}
+	return checks
+}
+
+func normalizedCredentialHint(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	replacer := strings.NewReplacer("-", "_", " ", "_")
+	value = replacer.Replace(value)
+	switch value {
+	case "oauth", "oauth_bearer", "org_admin", "org_admin_token":
+		return anthropicCredentialKindOrgAdminOAuth
+	case "admin", "admin_key", "admin_api":
+		return anthropicCredentialKindAdminAPIKey
+	case "compliance", "compliance_key":
+		return anthropicCredentialKindComplianceAccessKey
+	case "spend_limit_admin_key", "spend_limits_admin_key":
+		return anthropicCredentialKindScopedAdminAPIKey
+	default:
+		return value
+	}
+}
+
+func connectorTokenSet(value string) map[string]struct{} {
+	tokens := map[string]struct{}{}
+	for _, token := range strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t'
+	}) {
+		token = strings.ToLower(strings.TrimSpace(token))
+		if token != "" {
+			tokens[token] = struct{}{}
+		}
+	}
+	return tokens
 }
 
 func connectorPreflightErrorDetail(err error) string {
@@ -1684,7 +2964,7 @@ func (a *App) checkConnectorRuntime(ctx context.Context, runtime *cerebrov1.Sour
 		values[key] = value
 	}
 	values = sourceconfig.WithRuntimeContext(values, runtime.GetTenantId(), runtime.GetId())
-	resolved, err := resolveRuntimeSourceConfigWithStore(ctx, a.cfg.ConnectorCredentials, a.deps.StateStore, runtime.GetSourceId(), values)
+	resolved, err := resolveRuntimeSourceConfigWithStore(ctx, a.cfg.ConnectorCredentials, a.cfg.ConnectorSecretStores, a.deps.StateStore, runtime.GetSourceId(), values)
 	if err != nil {
 		return err
 	}
@@ -1747,7 +3027,7 @@ func connectorDisplayName(sourceID string, fallback string) string {
 }
 
 func connectorConfigFields(sourceID string, authMethod string) []connectorFieldView {
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -1781,7 +3061,7 @@ func connectorCredentialFields(sourceID string, authMethod string) []connectorFi
 	if authMethod == connectorAuthMethodAWSSSOProfile {
 		return nil
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -1874,71 +3154,232 @@ func connectorEnvComponent(value string) string {
 	return component
 }
 
-func connectorStoreViews(vaultStatus connectorVaultView, transport connectorTransportView) []connectorStoreView {
+func connectorStoreViews(vaultStatus connectorVaultView, transport connectorTransportView, secretStoreConfig config.ConnectorSecretStoreConfig) []connectorStoreView {
 	available := vaultStatus.Available && transport.Available
 	detail := strings.TrimSpace(vaultStatus.Detail)
+	status := "unavailable"
 	if available {
 		detail = "ready"
+		status = "ready"
 	}
 	return []connectorStoreView{
 		{
-			ID:        defaultConnectorCredentialStoreID,
-			Label:     "Cerebro Vault",
-			Provider:  "Cerebro",
-			Available: available,
-			Default:   true,
-			Mode:      "encrypted_submission",
-			Detail:    detail,
+			ID:          defaultConnectorCredentialStoreID,
+			Label:       "Cerebro Vault",
+			Provider:    "Cerebro",
+			Available:   available,
+			Default:     true,
+			Mode:        "encrypted_submission",
+			Status:      status,
+			Detail:      detail,
+			Description: "Cerebro stores one sealed credential envelope in its state store. The browser submits secrets only after encrypting them to the backend transit key.",
+			SetupSteps:  cerebroVaultStoreSetupSteps(),
+			RequiredConfig: []connectorStoreConfigFieldView{
+				{
+					Env:         "CEREBRO_CONNECTOR_CREDENTIAL_KEY",
+					Label:       "Credential envelope key",
+					Required:    true,
+					Description: "Symmetric key material used to seal connector credentials at rest.",
+				},
+				{
+					Env:         "CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY",
+					Label:       "Browser transit private key",
+					Required:    true,
+					Description: "Private key matching /connectors/credential-key for encrypted browser submissions.",
+				},
+			},
 		},
 		{
-			ID:        connectorStoreEnvironmentManaged,
-			Label:     "Environment managed",
-			Provider:  "Deployment",
-			Available: true,
-			Mode:      "environment_managed",
-			Detail:    "ready",
+			ID:                         connectorStoreEnvironmentManaged,
+			Label:                      "Environment managed",
+			Provider:                   "Deployment",
+			Available:                  true,
+			Mode:                       "environment_managed",
+			Status:                     "ready",
+			Detail:                     "ready",
+			Description:                "Cerebro stores env: references and resolves them inside the backend process. The browser never receives the secret value.",
+			ReferencePrefixes:          []string{"env:"},
+			ReferenceNamespaceTemplate: "CEREBRO_SOURCE_<SOURCE>_*",
+			ReferenceFieldTemplate:     "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>",
+			ReferencePlaceholder:       "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>",
+			SetupSteps: []connectorStoreSetupStepView{
+				{
+					ID:          "project_env",
+					Label:       "Project secrets into the Cerebro runtime",
+					Description: "Set source-scoped CEREBRO_SOURCE_<SOURCE>_<FIELD> variables or allow explicit shared env names with CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST.",
+				},
+			},
+		},
+		connectorExternalStoreView(secretStoreConfig, connectorStoreInfisical, "Infisical", "Infisical"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreGoogleSecretMgr, "Google Secret Manager", "Google Cloud Platform"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreAWSSecretsManager, "AWS Secrets Manager", "Amazon Web Services"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreAzureKeyVault, "Azure Key Vault", "Microsoft Azure"),
+		connectorExternalStoreView(secretStoreConfig, connectorStoreHashiCorpVault, "HashiCorp Vault", "HashiCorp"),
+	}
+}
+
+func connectorExternalStoreView(secretStoreConfig config.ConnectorSecretStoreConfig, id string, label string, provider string) connectorStoreView {
+	enabled := connectorsecretstores.StoreEnabled(secretStoreConfig, id)
+	native := connectorsecretstores.NativeResolutionAvailable(secretStoreConfig, id)
+	status := "needs_configuration"
+	detail := "enable with CEREBRO_CONNECTOR_SECRET_STORES"
+	if enabled {
+		status = "ready"
+		detail = "ready via env projection"
+	}
+	if native {
+		detail = "native resolver ready"
+	}
+	referencePrefixes := connectorsecretstores.ReferencePrefixes(id)
+	if id == connectorStoreAWSSecretsManager && !native {
+		referencePrefixes = []string{"env:"}
+	}
+	return connectorStoreView{
+		ID:                         id,
+		Label:                      label,
+		Provider:                   provider,
+		Available:                  enabled,
+		Mode:                       connectorCredentialStoreModeRefs,
+		Status:                     status,
+		Detail:                     detail,
+		Description:                connectorExternalStoreDescription(id, label),
+		ReferencePrefixes:          referencePrefixes,
+		ReferenceNamespaceTemplate: connectorStoreReferenceNamespaceTemplate(id, native),
+		ReferenceFieldTemplate:     connectorStoreReferenceFieldTemplate(id, native),
+		ReferencePlaceholder:       connectorStoreReferencePlaceholder(id, native),
+		NativeResolutionAvailable:  native,
+		SetupSteps:                 connectorExternalStoreSetupSteps(id, native),
+		RequiredConfig:             connectorExternalStoreRequiredConfig(id),
+	}
+}
+
+func cerebroVaultStoreSetupSteps() []connectorStoreSetupStepView {
+	return []connectorStoreSetupStepView{
+		{
+			ID:          "configure_state_store",
+			Label:       "Use a credential-capable state store",
+			Description: "The configured state store must implement connector credential persistence.",
 		},
 		{
-			ID:        connectorStoreInfisical,
-			Label:     "Infisical",
-			Provider:  "Infisical",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreGoogleSecretMgr,
-			Label:     "Google Secret Manager",
-			Provider:  "Google Cloud Platform",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreAWSSecretsManager,
-			Label:     "AWS Secrets Manager",
-			Provider:  "Amazon Web Services",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreAzureKeyVault,
-			Label:     "Azure Key Vault",
-			Provider:  "Microsoft Azure",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
-		},
-		{
-			ID:        connectorStoreHashiCorpVault,
-			Label:     "HashiCorp Vault",
-			Provider:  "HashiCorp",
-			Available: true,
-			Mode:      connectorCredentialStoreModeRefs,
-			Detail:    "reference-backed",
+			ID:          "publish_transit_key",
+			Label:       "Publish the credential transit key",
+			Description: "/connectors/credential-key must return the public key used by the browser before encrypted submission.",
 		},
 	}
+}
+
+func connectorExternalStoreDescription(id string, label string) string {
+	switch id {
+	case connectorStoreAWSSecretsManager:
+		return "Cerebro can resolve aws-sm: references natively when AWS resolver config is present, or consume env: references projected by deployment automation."
+	default:
+		return label + " references are saved as non-secret pointers. Configure deployment-side projection to env: references until a native backend resolver is enabled for this store."
+	}
+}
+
+func connectorStoreReferencePlaceholder(id string, native bool) string {
+	switch id {
+	case connectorStoreAWSSecretsManager:
+		if !native {
+			return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+		}
+		return "aws-sm:us-east-1:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
+	default:
+		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+	}
+}
+
+func connectorStoreReferenceNamespaceTemplate(id string, native bool) string {
+	switch strings.TrimSpace(id) {
+	case connectorStoreAWSSecretsManager:
+		if !native {
+			return "CEREBRO_SOURCE_<SOURCE>_*"
+		}
+		return "cerebro/<tenant>/<source>/<runtime>/credentials"
+	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
+		return "CEREBRO_SOURCE_<SOURCE>_*"
+	default:
+		return ""
+	}
+}
+
+func connectorStoreReferenceFieldTemplate(id string, native bool) string {
+	switch strings.TrimSpace(id) {
+	case connectorStoreAWSSecretsManager:
+		if !native {
+			return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+		}
+		return "aws-sm:<region>:cerebro/<tenant>/<source>/<runtime>/credentials#<field>"
+	case connectorStoreEnvironmentManaged, connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault:
+		return "env:CEREBRO_SOURCE_<SOURCE>_<FIELD>"
+	default:
+		return ""
+	}
+}
+
+func connectorExternalStoreSetupSteps(id string, native bool) []connectorStoreSetupStepView {
+	steps := []connectorStoreSetupStepView{
+		{
+			ID:          "enable_store",
+			Label:       "Enable the store for connector references",
+			Description: "Add the store id to CEREBRO_CONNECTOR_SECRET_STORES before saving references that target it.",
+			Command:     "CEREBRO_CONNECTOR_SECRET_STORES=" + id,
+		},
+		{
+			ID:          "keep_browser_secretless",
+			Label:       "Submit references, not secret values",
+			Description: "The UI should send credential_references only. Secret material is resolved by the backend or projected into the runtime environment.",
+		},
+	}
+	if id == connectorStoreAWSSecretsManager {
+		description := "Set CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION to enable native aws-sm: resolution with the AWS SDK."
+		if native {
+			description = "Native aws-sm: resolution is enabled for this deployment."
+		}
+		steps = append(steps, connectorStoreSetupStepView{
+			ID:          "configure_native_resolver",
+			Label:       "Configure native AWS resolution",
+			Description: description,
+			Command:     "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION=us-east-1",
+		})
+	}
+	return steps
+}
+
+func connectorExternalStoreRequiredConfig(id string) []connectorStoreConfigFieldView {
+	fields := []connectorStoreConfigFieldView{
+		{
+			Env:         "CEREBRO_CONNECTOR_SECRET_STORES",
+			Label:       "Enabled connector secret stores",
+			Required:    true,
+			Description: "Comma-separated store ids that this deployment accepts for connector credential references.",
+		},
+	}
+	if id == connectorStoreAWSSecretsManager {
+		fields = append(fields,
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION",
+				Label:       "AWS resolver region",
+				Description: "Default region used when aws-sm: references do not include a region.",
+			},
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE",
+				Label:       "AWS shared config profile",
+				Description: "Optional shared AWS config profile used by the backend resolver.",
+			},
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN",
+				Label:       "AWS resolver role",
+				Description: "Optional role the backend assumes before reading secrets.",
+			},
+			connectorStoreConfigFieldView{
+				Env:         "CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID",
+				Label:       "AWS external ID",
+				Description: "Optional external ID used with the resolver role.",
+			},
+		)
+	}
+	return fields
 }
 
 func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []connectorConnectionMethodView {
@@ -2515,16 +3956,35 @@ func connectorExternalReferenceStore(id string) bool {
 }
 
 func connectorCredentialAdditionalData(keyID string, sourceID string, tenantID string, runtimeID string, credentialStoreID string) []byte {
-	parts := []string{
-		"connector-credential",
-		"v1",
-		strings.TrimSpace(keyID),
-		strings.TrimSpace(sourceID),
-		strings.TrimSpace(tenantID),
-		strings.TrimSpace(runtimeID),
-		strings.TrimSpace(credentialStoreID),
+	return connectorcredentials.TransitAdditionalData(keyID, sourceID, tenantID, runtimeID, credentialStoreID)
+}
+
+func (a *App) authorizeConnectorCredentialRuntime(ctx context.Context, sourceID string, tenantID string, runtimeID string) error {
+	if err := authorizeTenantScopeRequired(ctx, tenantID); err != nil {
+		return err
 	}
-	return []byte(strings.Join(parts, "\x00"))
+	store := sourceRuntimeStore(a.deps.StateStore)
+	if store == nil {
+		return nil
+	}
+	existing, err := store.GetSourceRuntime(ctx, runtimeID)
+	switch {
+	case err == nil:
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		return nil
+	default:
+		return err
+	}
+	if strings.TrimSpace(existing.GetTenantId()) != strings.TrimSpace(tenantID) {
+		return errTenantForbidden
+	}
+	if err := authorizeTenantScopeRequired(ctx, existing.GetTenantId()); err != nil {
+		return err
+	}
+	if strings.TrimSpace(existing.GetSourceId()) != strings.TrimSpace(sourceID) {
+		return fmt.Errorf("%w: runtime belongs to a different connector source", connectorcredentials.ErrInvalidRequest)
+	}
+	return nil
 }
 
 func connectorRuntimeConfig(input map[string]string) (map[string]string, error) {
@@ -2555,15 +4015,15 @@ func applyConnectorCredentialReferences(config map[string]string, references map
 		if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
 			return fmt.Errorf("%w: internal config %q cannot be supplied by connector references", connectorcredentials.ErrInvalidRequest, trimmedKey)
 		}
-		if !sourceconfig.IsSecretReference(trimmedValue) {
-			return fmt.Errorf("%w: credential reference %q must use an env reference", connectorcredentials.ErrInvalidRequest, trimmedKey)
+		if !connectorsecretstores.IsReference(trimmedValue) {
+			return fmt.Errorf("%w: credential reference %q must use an env or connector secret-store reference", connectorcredentials.ErrInvalidRequest, trimmedKey)
 		}
 		config[trimmedKey] = trimmedValue
 	}
 	return nil
 }
 
-func validateConnectorConnectionShape(sourceID string, authMethod string, credentialStoreID string, config map[string]string, references map[string]string, encrypted connectorcredentials.EncryptedPayload) error {
+func validateConnectorConnectionShape(sourceID string, tenantID string, runtimeID string, authMethod string, credentialStoreID string, config map[string]string, references map[string]string, encrypted connectorcredentials.EncryptedPayload) error {
 	switch authMethod {
 	case connectorAuthMethodEncryptedSubmission:
 		if credentialStoreID != defaultConnectorCredentialStoreID {
@@ -2601,6 +4061,9 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 		if authMethod == connectorAuthMethodInfisicalCLI && len(references) == 0 {
 			return fmt.Errorf("%w: infisical_cli requires credential references", connectorcredentials.ErrInvalidRequest)
 		}
+		if err := validateConnectorCredentialReferencesForRuntime(connectorStoreEnvironmentManaged, sourceID, tenantID, runtimeID, references); err != nil {
+			return err
+		}
 	case connectorAuthMethodExternalReference:
 		if !connectorExternalReferenceStore(credentialStoreID) {
 			return fmt.Errorf("%w: external_reference requires an external credential store", connectorcredentials.ErrInvalidRequest)
@@ -2611,6 +4074,9 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 		if len(references) == 0 {
 			return fmt.Errorf("%w: external_reference requires credential references", connectorcredentials.ErrInvalidRequest)
 		}
+		if err := validateConnectorCredentialReferencesForRuntime(credentialStoreID, sourceID, tenantID, runtimeID, references); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%w: unsupported auth method", connectorcredentials.ErrInvalidRequest)
 	}
@@ -2620,8 +4086,40 @@ func validateConnectorConnectionShape(sourceID string, authMethod string, creden
 	return nil
 }
 
+func validateConnectorCredentialReferencesForRuntime(storeID string, sourceID string, tenantID string, runtimeID string, references map[string]string) error {
+	for key, value := range references {
+		if err := connectorsecretstores.ValidateReferenceForStore(storeID, value); err != nil {
+			return fmt.Errorf("%w: credential reference %q is not valid for %s", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(key), strings.TrimSpace(storeID))
+		}
+		if err := connectorsecretstores.AuthorizeRuntimeReferences(sourceID, tenantID, runtimeID, map[string]string{key: value}); err != nil {
+			return fmt.Errorf("%w: credential reference %q is not scoped to this runtime: %w", connectorcredentials.ErrInvalidRequest, strings.TrimSpace(key), err)
+		}
+	}
+	return nil
+}
+
+func connectorAuthMethodUsesCredentialReferences(authMethod string) bool {
+	switch normalizeConnectorAuthMethod(authMethod) {
+	case connectorAuthMethodEnvironmentManaged, connectorAuthMethodInfisicalCLI, connectorAuthMethodExternalReference:
+		return true
+	default:
+		return false
+	}
+}
+
+func connectorReferenceTemplateFields(sourceID string, authMethod string, references map[string]string) []string {
+	if normalizeConnectorAuthMethod(authMethod) == connectorAuthMethodEncryptedSubmission {
+		return sortedStringKeys(references)
+	}
+	schema, ok := connectorSchemaForSource(sourceID)
+	if !ok || len(schema.CredentialKeys) == 0 {
+		return sortedStringKeys(references)
+	}
+	return sortedSetKeys(schema.CredentialKeys)
+}
+
 func validateConnectorConfigFields(sourceID string, authMethod string, config map[string]string, references map[string]string) error {
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -2662,7 +4160,7 @@ func validateConnectorCredentialFields(sourceID string, authMethod string, field
 	if authMethod != connectorAuthMethodEncryptedSubmission {
 		return nil
 	}
-	schema, ok := connectorSchemas[strings.TrimSpace(sourceID)]
+	schema, ok := connectorSchemaForSource(sourceID)
 	if !ok {
 		return nil
 	}
@@ -2696,6 +4194,21 @@ func sortedStringKeys(values map[string]string) []string {
 	return keys
 }
 
+func sortedUniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		set[value] = struct{}{}
+	}
+	return sortedSetKeys(set)
+}
+
 func copyStringMap(values map[string]string) map[string]string {
 	cloned := make(map[string]string, len(values))
 	for key, value := range values {
@@ -2724,6 +4237,108 @@ func sortedSetKeys(values map[string]struct{}) []string {
 func setContains(values map[string]struct{}, key string) bool {
 	_, ok := values[key]
 	return ok
+}
+
+func connectorCredentialViewFromRecord(record *ports.ConnectorCredentialRecord) connectorCredentialView {
+	if record == nil {
+		return connectorCredentialView{}
+	}
+	return connectorCredentialView{
+		ID:                   record.ID,
+		TenantID:             record.TenantID,
+		SourceID:             record.SourceID,
+		RuntimeID:            record.RuntimeID,
+		StoreID:              firstNonEmpty(record.CredentialStoreID, defaultConnectorCredentialStoreID),
+		AuthMethod:           firstNonEmpty(record.AuthMethod, connectorAuthMethodEncryptedSubmission),
+		Status:               firstNonEmpty(record.Status, connectorcredentials.StatusValid),
+		KeyID:                record.KeyID,
+		Fields:               append([]string{}, record.Fields...),
+		CreatedBy:            record.CreatedBy,
+		UpdatedBy:            record.UpdatedBy,
+		RevokedBy:            record.RevokedBy,
+		PreviousCredentialID: record.PreviousCredentialID,
+		CreatedAt:            connectorcredentials.TimestampOrZero(record.CreatedAt),
+		UpdatedAt:            connectorcredentials.TimestampOrZero(record.UpdatedAt),
+		RevokedAt:            connectorcredentials.TimestampOrZero(record.RevokedAt),
+		LastUsedAt:           connectorcredentials.TimestampOrZero(record.LastUsedAt),
+		LastValidatedAt:      connectorcredentials.TimestampOrZero(record.LastValidatedAt),
+	}
+}
+
+func connectorCredentialAuditViews(events []*ports.ConnectorCredentialAuditRecord) []connectorCredentialAuditView {
+	views := make([]connectorCredentialAuditView, 0, len(events))
+	for _, event := range events {
+		if event == nil {
+			continue
+		}
+		views = append(views, connectorCredentialAuditView{
+			ID:           event.ID,
+			CredentialID: event.CredentialID,
+			TenantID:     event.TenantID,
+			SourceID:     event.SourceID,
+			RuntimeID:    event.RuntimeID,
+			EventType:    event.EventType,
+			Actor:        event.Actor,
+			Status:       event.Status,
+			Detail:       event.Detail,
+			CreatedAt:    connectorcredentials.TimestampOrZero(event.CreatedAt),
+		})
+	}
+	return views
+}
+
+func connectorCredentialActor(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
+		if name := strings.TrimSpace(auth.principal.Name); name != "" {
+			return name
+		}
+		if clientID := strings.TrimSpace(auth.principal.ClientID); clientID != "" {
+			return clientID
+		}
+		if credentialID := strings.TrimSpace(auth.principal.CredentialID); credentialID != "" {
+			return credentialID
+		}
+	}
+	return ""
+}
+
+func connectorCredentialIdempotencyKey(r *http.Request, bodyValue string) string {
+	if value := strings.TrimSpace(bodyValue); value != "" {
+		return value
+	}
+	if r == nil {
+		return ""
+	}
+	return strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+}
+
+func connectorQueryInt(r *http.Request, key string, defaultValue int, maxValue int) (int, error) {
+	if r == nil || r.URL == nil {
+		return defaultValue, nil
+	}
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("%w: query parameter %q must be a non-negative integer", connectorcredentials.ErrInvalidRequest, key)
+	}
+	if maxValue > 0 && parsed > maxValue {
+		return maxValue, nil
+	}
+	return parsed, nil
+}
+
+func connectorCredentialBroker(credentialConfig config.ConnectorCredentialConfig, store ports.StateStore, transit *connectorcredentials.TransitKey) (*connectorcredentials.Broker, error) {
+	vault, err := connectorCredentialVault(credentialConfig, store)
+	if err != nil {
+		return nil, err
+	}
+	return connectorcredentials.NewBroker(vault, transit), nil
 }
 
 func connectorCredentialVault(credentialConfig config.ConnectorCredentialConfig, store ports.StateStore) (*connectorcredentials.Vault, error) {
@@ -2775,6 +4390,7 @@ func readConnectorJSON(r *http.Request, value any) error {
 func writeConnectorError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ports.ErrConnectorCredentialNotFound),
+		errors.Is(err, ports.ErrConnectorDefinitionNotFound),
 		errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, sourceops.ErrSourceNotFound):
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -2786,7 +4402,8 @@ func writeConnectorError(w http.ResponseWriter, err error) {
 	case errors.Is(err, connectorcredentials.ErrUnavailable),
 		errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
-	case errors.Is(err, errTenantForbidden):
+	case errors.Is(err, errTenantForbidden),
+		errors.Is(err, errConnectorAccessRestricted):
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 	default:
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

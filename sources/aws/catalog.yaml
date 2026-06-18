@@ -6,6 +6,7 @@ emitted_kinds:
   - aws.access_analyzer
   - aws.acm_certificate
   - aws.apprunner_service
+  - aws.appsync_graphql_api
   - asset.data_sensitivity
   - aws.batch_compute_environment
   - aws.batch_job_queue
@@ -13,7 +14,10 @@ emitted_kinds:
   - aws.backup_plan
   - aws.backup_protected_resource
   - aws.backup_recovery_point
+  - aws.bedrock_custom_model
+  - aws.bedrock_provisioned_model_throughput
   - aws.codebuild_project
+  - aws.codebuild_source_credential
   - aws.cloudtrail
   - aws.config_recorder
   - aws.dynamodb_backup
@@ -26,6 +30,7 @@ emitted_kinds:
   - aws.ebs_snapshot
   - aws.ebs_volume
   - aws.ec2_ebs_encryption_by_default
+  - aws.ec2_ami
   - aws.athena_data_catalog
   - aws.athena_workgroup
   - aws.cloudwatch_alarm
@@ -35,15 +40,19 @@ emitted_kinds:
   - aws.subnet
   - aws.security_group
   - aws.route_table
+  - aws.network_acl
   - aws.internet_gateway
   - aws.nat_gateway
+  - aws.vpc_flow_log
   - aws.vpc_endpoint
+  - aws.ecr_public_repository
   - aws.ecr_repository
   - aws.ecs_service
   - aws.ecs_task
   - aws.ecs_task_definition
   - aws.efs_access_point
   - aws.efs_file_system
+  - aws.efs_mount_target
   - aws.eks_cluster
   - aws.eks_nodegroup
   - aws.eks_fargate_profile
@@ -60,6 +69,8 @@ emitted_kinds:
   - aws.elbv2_load_balancer
   - aws.elbv2_listener
   - aws.elbv2_target_group
+  - aws.apigateway_rest_api
+  - aws.apigateway_method
   - aws.apigateway_stage
   - aws.apigateway_route
   - aws.apigateway_integration
@@ -85,9 +96,11 @@ emitted_kinds:
   - aws.iam_credential_report
   - aws.iam_group
   - aws.iam_group_membership
+  - aws.iam_policy
   - aws.iam_role
   - aws.iam_role_assignment
   - aws.iam_role_trust
+  - aws.iam_saml_provider
   - aws.iam_user
   - aws.identity_center_account_assignment
   - aws.identity_center_permission_set
@@ -122,6 +135,11 @@ emitted_kinds:
   - aws.s3_access_point
   - aws.s3_bucket
   - aws.s3_multi_region_access_point
+  - aws.sagemaker_endpoint_configuration
+  - aws.sagemaker_model
+  - aws.sagemaker_model_package_group
+  - aws.sagemaker_notebook_instance
+  - aws.sagemaker_training_job
   - aws.scheduler_schedule
   - aws.scheduler_schedule_group
   - aws.secret
@@ -139,11 +157,13 @@ emitted_kinds:
   - aws.sso_permission_set
   - aws.wafv2_web_acl
   - aws.lambda_function
+  # awscollectorgen:emitted-kinds (insert new kinds above this line)
 runtime_families:
   - access_key
   - access_analyzer
   - acm_certificate
   - apprunner_service
+  - appsync_graphql_api
   - asset_metadata
   - batch_compute_environment
   - batch_job_queue
@@ -151,7 +171,10 @@ runtime_families:
   - backup_plan
   - backup_protected_resource
   - backup_recovery_point
+  - bedrock_custom_model
+  - bedrock_provisioned_model_throughput
   - codebuild_project
+  - codebuild_source_credential
   - cloudtrail
   - config_recorder
   - dynamodb_backup
@@ -164,6 +187,7 @@ runtime_families:
   - ebs_snapshot
   - ebs_volume
   - ec2_ebs_encryption_by_default
+  - ec2_ami
   - athena_data_catalog
   - athena_workgroup
   - cloudwatch_alarm
@@ -173,15 +197,19 @@ runtime_families:
   - subnet
   - security_group
   - route_table
+  - network_acl
   - internet_gateway
   - nat_gateway
+  - vpc_flow_log
   - vpc_endpoint
+  - ecr_public_repository
   - ecr_repository
   - ecs_service
   - ecs_task
   - ecs_task_definition
   - efs_access_point
   - efs_file_system
+  - efs_mount_target
   - eks_cluster
   - eks_nodegroup
   - eks_fargate_profile
@@ -198,6 +226,8 @@ runtime_families:
   - elbv2_load_balancer
   - elbv2_listener
   - elbv2_target_group
+  - apigateway_rest_api
+  - apigateway_method
   - apigateway_stage
   - apigateway_route
   - apigateway_integration
@@ -223,9 +253,11 @@ runtime_families:
   - iam_credential_report
   - iam_group
   - iam_group_membership
+  - iam_policy
   - iam_role
   - iam_role_assignment
   - iam_role_trust
+  - iam_saml_provider
   - iam_user
   - identity_center_account_assignment
   - identity_center_permission_set
@@ -261,6 +293,11 @@ runtime_families:
   - s3_access_point
   - s3_bucket
   - s3_multi_region_access_point
+  - sagemaker_endpoint_configuration
+  - sagemaker_model
+  - sagemaker_model_package_group
+  - sagemaker_notebook_instance
+  - sagemaker_training_job
   - scheduler_schedule
   - scheduler_schedule_group
   - secret
@@ -278,6 +315,7 @@ runtime_families:
   - sso_permission_set
   - wafv2_web_acl
   - lambda_function
+  # awscollectorgen:runtime-families (insert new families above this line)
 coverage_contract:
   owner_domain: cloud
   authority_domain: aws
@@ -300,51 +338,142 @@ coverage_contract:
       families: [acm_certificate]
       support: supported
       high_value: true
+    - id: asset_metadata
+      type: entity_family
+      title: AWS asset metadata and data sensitivity
+      families: [asset_metadata]
+      support: supported
+      high_value: true
+    - id: apigateway_integration
+      type: entity_family
+      title: AWS API Gateway integrations
+      families: [apigateway_integration]
+      support: supported
+      high_value: true
+    - id: apigateway_route
+      type: entity_family
+      title: AWS API Gateway routes
+      families: [apigateway_route]
+      support: supported
+      high_value: true
+    - id: apigateway_stage
+      type: entity_family
+      title: AWS API Gateway stages
+      families: [apigateway_stage]
+      support: supported
+      high_value: true
+    - id: apprunner_service
+      type: entity_family
+      title: AWS App Runner services
+      families: [apprunner_service]
+      support: supported
+      high_value: true
+    - id: athena_data_catalog
+      type: entity_family
+      title: AWS Athena data catalogs
+      families: [athena_data_catalog]
+      support: supported
+      high_value: true
+    - id: athena_workgroup
+      type: entity_family
+      title: AWS Athena workgroups
+      families: [athena_workgroup]
+      support: supported
+      high_value: true
     - id: apigateway_method
       type: entity_family
       title: AWS API Gateway methods
-      families: [asset_metadata]
-      support: partial
+      families: [apigateway_method]
+      support: supported
       high_value: true
-      known_unsupported_fields: [method authorization and integration detail]
     - id: apigateway_rest_api
       type: entity_family
       title: AWS API Gateway REST APIs
-      families: [asset_metadata]
-      support: partial
+      families: [apigateway_rest_api]
+      support: supported
       high_value: true
-      known_unsupported_fields: [REST API policy and stage expansion]
     - id: appsync_graphql_api
       type: entity_family
       title: AWS AppSync GraphQL APIs
-      families: [asset_metadata]
-      support: partial
+      families: [appsync_graphql_api]
+      support: supported
       high_value: true
-      known_unsupported_fields: [authorization mode and resolver detail]
     - id: backup_vault
       type: entity_family
       title: AWS Backup vaults
       families: [backup_vault]
       support: supported
       high_value: true
+    - id: backup_plan
+      type: entity_family
+      title: AWS Backup plans
+      families: [backup_plan]
+      support: supported
+      high_value: true
+    - id: backup_protected_resource
+      type: entity_family
+      title: AWS Backup protected resources
+      families: [backup_protected_resource]
+      support: supported
+      high_value: true
+    - id: backup_recovery_point
+      type: entity_family
+      title: AWS Backup recovery points
+      families: [backup_recovery_point]
+      support: supported
+      high_value: true
+    - id: batch_compute_environment
+      type: entity_family
+      title: AWS Batch compute environments
+      families: [batch_compute_environment]
+      support: supported
+      high_value: true
+    - id: batch_job_queue
+      type: entity_family
+      title: AWS Batch job queues
+      families: [batch_job_queue]
+      support: supported
+      high_value: true
     - id: bedrock_custom_model
       type: entity_family
       title: Amazon Bedrock custom models
-      families: [asset_metadata]
-      support: partial
+      families: [bedrock_custom_model]
+      support: supported
       high_value: true
-      known_unsupported_fields: [model access policy and guardrail detail]
     - id: bedrock_provisioned_model_throughput
       type: entity_family
       title: Amazon Bedrock provisioned model throughput
-      families: [asset_metadata]
-      support: partial
+      families: [bedrock_provisioned_model_throughput]
+      support: supported
       high_value: true
-      known_unsupported_fields: [guardrail association and invocation posture]
     - id: cloudfront_distribution
       type: entity_family
       title: AWS CloudFront distributions
       families: [cloudfront_distribution]
+      support: supported
+      high_value: true
+    - id: cloudfront_key_group
+      type: entity_family
+      title: AWS CloudFront key groups
+      families: [cloudfront_key_group]
+      support: supported
+      high_value: true
+    - id: cloudfront_origin_access_control
+      type: entity_family
+      title: AWS CloudFront origin access controls
+      families: [cloudfront_origin_access_control]
+      support: supported
+      high_value: true
+    - id: cloudfront_public_key
+      type: entity_family
+      title: AWS CloudFront public keys
+      families: [cloudfront_public_key]
+      support: supported
+      high_value: true
+    - id: cloudfront_response_headers_policy
+      type: entity_family
+      title: AWS CloudFront response headers policies
+      families: [cloudfront_response_headers_policy]
       support: supported
       high_value: true
     - id: cloudtrail
@@ -374,10 +503,9 @@ coverage_contract:
     - id: codebuild_source_credential
       type: entity_family
       title: AWS CodeBuild source credentials
-      families: [asset_metadata]
-      support: partial
+      families: [codebuild_source_credential]
+      support: supported
       high_value: true
-      known_unsupported_fields: [credential provider and last-used detail]
     - id: config_recorder
       type: entity_family
       title: AWS Config recorders
@@ -388,13 +516,42 @@ coverage_contract:
       type: entity_family
       title: AWS container vulnerabilities
       families: [inspector2_finding]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-image package fix detail]
+    - id: datasync_location
+      type: entity_family
+      title: AWS DataSync locations
+      families: [datasync_location]
+      support: supported
+      high_value: true
+    - id: datasync_task
+      type: entity_family
+      title: AWS DataSync tasks
+      families: [datasync_task]
+      support: supported
+      high_value: true
     - id: docdb_cluster
       type: entity_family
       title: AWS DocumentDB clusters
       families: [docdb_cluster]
+      support: supported
+      high_value: true
+    - id: docdb_instance
+      type: entity_family
+      title: AWS DocumentDB instances
+      families: [docdb_instance]
+      support: supported
+      high_value: true
+    - id: dynamodb_backup
+      type: entity_family
+      title: AWS DynamoDB backups
+      families: [dynamodb_backup]
+      support: supported
+      high_value: true
+    - id: dynamodb_stream
+      type: entity_family
+      title: AWS DynamoDB streams
+      families: [dynamodb_stream]
       support: supported
       high_value: true
     - id: dynamodb_table
@@ -418,10 +575,9 @@ coverage_contract:
     - id: ec2_ami
       type: entity_family
       title: AWS EC2 AMIs
-      families: [asset_metadata]
-      support: partial
+      families: [ec2_ami]
+      support: supported
       high_value: true
-      known_unsupported_fields: [public launch permission and source image lineage]
     - id: ec2_ebs_encryption_by_default
       type: entity_family
       title: AWS EC2 EBS encryption by default
@@ -437,10 +593,9 @@ coverage_contract:
     - id: ecr_public_repository
       type: entity_family
       title: AWS ECR public repositories
-      families: [asset_metadata]
-      support: partial
+      families: [ecr_public_repository]
+      support: supported
       high_value: true
-      known_unsupported_fields: [public repository mutability and image scan detail]
     - id: ecr_repository
       type: entity_family
       title: AWS ECR repositories
@@ -471,36 +626,64 @@ coverage_contract:
       families: [efs_file_system]
       support: supported
       high_value: true
+    - id: efs_access_point
+      type: entity_family
+      title: AWS EFS access points
+      families: [efs_access_point]
+      support: supported
+      high_value: true
     - id: efs_mount_target
       type: entity_family
       title: AWS EFS mount targets
-      families: [efs_file_system]
-      support: partial
+      families: [efs_mount_target]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dedicated mount target entities and subnet exposure detail]
     - id: eks_cluster
       type: entity_family
       title: AWS EKS clusters
       families: [eks_cluster]
       support: supported
       high_value: true
+    - id: eks_fargate_profile
+      type: entity_family
+      title: AWS EKS Fargate profiles
+      families: [eks_fargate_profile]
+      support: supported
+      high_value: true
     - id: eks_node
       type: entity_family
       title: AWS EKS nodes
-      families: [eks_nodegroup]
-      support: partial
+      families: [ec2_instance, eks_nodegroup]
+      support: supported
       high_value: true
-      known_unsupported_fields: [per-node kubelet and node certificate posture]
     - id: eks_nodegroup
       type: entity_family
       title: AWS EKS node groups
       families: [eks_nodegroup]
       support: supported
       high_value: true
+    - id: eks_pod_identity_association
+      type: relationship
+      title: AWS EKS pod identity associations
+      families: [eks_pod_identity_association]
+      support: supported
+      high_value: true
     - id: elasticache_cluster
       type: entity_family
       title: AWS ElastiCache clusters
       families: [elasticache_cluster]
+      support: supported
+      high_value: true
+    - id: elasticache_replication_group
+      type: entity_family
+      title: AWS ElastiCache replication groups
+      families: [elasticache_replication_group]
+      support: supported
+      high_value: true
+    - id: elasticache_subnet_group
+      type: entity_family
+      title: AWS ElastiCache subnet groups
+      families: [elasticache_subnet_group]
       support: supported
       high_value: true
     - id: elbv2_listener
@@ -524,10 +707,9 @@ coverage_contract:
     - id: fargate_service
       type: entity_family
       title: AWS Fargate services and tasks
-      families: [ecs_service, ecs_task]
-      support: partial
+      families: [ecs_service, ecs_task, ecs_task_definition]
+      support: supported
       high_value: true
-      known_unsupported_fields: [launch type enforcement across all task revisions]
     - id: guardduty_detector
       type: entity_family
       title: AWS GuardDuty detectors
@@ -538,6 +720,90 @@ coverage_contract:
       type: entity_family
       title: AWS GuardDuty findings
       families: [guardduty_finding]
+      support: supported
+      high_value: true
+    - id: eventbridge_archive
+      type: entity_family
+      title: AWS EventBridge archives
+      families: [eventbridge_archive]
+      support: supported
+      high_value: true
+    - id: eventbridge_event_bus
+      type: entity_family
+      title: AWS EventBridge event buses
+      families: [eventbridge_event_bus]
+      support: supported
+      high_value: true
+    - id: eventbridge_pipe
+      type: entity_family
+      title: AWS EventBridge pipes
+      families: [eventbridge_pipe]
+      support: supported
+      high_value: true
+    - id: eventbridge_rule
+      type: entity_family
+      title: AWS EventBridge rules
+      families: [eventbridge_rule]
+      support: supported
+      high_value: true
+    - id: effective_permission
+      type: app_entitlement
+      title: AWS effective IAM permissions
+      families: [effective_permission]
+      support: supported
+      high_value: true
+    - id: firehose_delivery_stream
+      type: entity_family
+      title: AWS Firehose delivery streams
+      families: [firehose_delivery_stream]
+      support: supported
+      high_value: true
+    - id: fsx_file_system
+      type: entity_family
+      title: AWS FSx file systems
+      families: [fsx_file_system]
+      support: supported
+      high_value: true
+    - id: globalaccelerator_accelerator
+      type: entity_family
+      title: AWS Global Accelerator accelerators
+      families: [globalaccelerator_accelerator]
+      support: supported
+      high_value: true
+    - id: globalaccelerator_endpoint_group
+      type: entity_family
+      title: AWS Global Accelerator endpoint groups
+      families: [globalaccelerator_endpoint_group]
+      support: supported
+      high_value: true
+    - id: globalaccelerator_listener
+      type: entity_family
+      title: AWS Global Accelerator listeners
+      families: [globalaccelerator_listener]
+      support: supported
+      high_value: true
+    - id: glue_crawler
+      type: entity_family
+      title: AWS Glue crawlers
+      families: [glue_crawler]
+      support: supported
+      high_value: true
+    - id: glue_database
+      type: entity_family
+      title: AWS Glue databases
+      families: [glue_database]
+      support: supported
+      high_value: true
+    - id: glue_job
+      type: entity_family
+      title: AWS Glue jobs
+      families: [glue_job]
+      support: supported
+      high_value: true
+    - id: glue_table
+      type: entity_family
+      title: AWS Glue tables
+      families: [glue_table]
       support: supported
       high_value: true
     - id: iam_account_password_policy
@@ -573,10 +839,9 @@ coverage_contract:
     - id: iam_policy
       type: app_entitlement
       title: AWS IAM policies
-      families: [asset_metadata]
-      support: partial
+      families: [iam_policy]
+      support: supported
       high_value: true
-      known_unsupported_fields: [policy document action and resource expansion]
     - id: iam_role
       type: entity_family
       title: AWS IAM roles
@@ -598,10 +863,9 @@ coverage_contract:
     - id: iam_saml_provider
       type: entity_family
       title: AWS IAM SAML providers
-      families: [asset_metadata]
-      support: partial
+      families: [iam_saml_provider]
+      support: supported
       high_value: true
-      known_unsupported_fields: [metadata expiration and signing certificate detail]
     - id: iam_user
       type: entity_family
       title: AWS IAM users
@@ -626,10 +890,34 @@ coverage_contract:
       families: [identitystore_user]
       support: supported
       high_value: true
+    - id: identitystore_group
+      type: entity_family
+      title: AWS Identity Store groups
+      families: [identitystore_group]
+      support: supported
+      high_value: true
+    - id: identitystore_group_membership
+      type: relationship
+      title: AWS Identity Store group memberships
+      families: [identitystore_group_membership]
+      support: supported
+      high_value: true
     - id: inspector2_finding
       type: entity_family
       title: AWS Inspector findings
       families: [inspector2_finding]
+      support: supported
+      high_value: true
+    - id: internet_gateway
+      type: entity_family
+      title: AWS internet gateways
+      families: [internet_gateway]
+      support: supported
+      high_value: true
+    - id: kinesis_stream
+      type: entity_family
+      title: AWS Kinesis streams
+      families: [kinesis_stream]
       support: supported
       high_value: true
     - id: kms_key
@@ -638,29 +926,112 @@ coverage_contract:
       families: [kms_key]
       support: supported
       high_value: true
+    - id: lakeformation_lf_tag
+      type: entity_family
+      title: AWS Lake Formation LF-tags
+      families: [lakeformation_lf_tag]
+      support: supported
+      high_value: true
+    - id: lakeformation_permission
+      type: app_entitlement
+      title: AWS Lake Formation permissions
+      families: [lakeformation_permission]
+      support: supported
+      high_value: true
+    - id: lakeformation_resource
+      type: entity_family
+      title: AWS Lake Formation resources
+      families: [lakeformation_resource]
+      support: supported
+      high_value: true
     - id: lambda_function
       type: entity_family
       title: AWS Lambda functions
       families: [lambda_function]
       support: supported
       high_value: true
+    - id: macie2_finding
+      type: entity_family
+      title: AWS Macie findings
+      families: [macie2_finding]
+      support: supported
+      high_value: true
+    - id: msk_cluster
+      type: entity_family
+      title: AWS MSK clusters
+      families: [msk_cluster]
+      support: supported
+      high_value: true
+    - id: nat_gateway
+      type: entity_family
+      title: AWS NAT gateways
+      families: [nat_gateway]
+      support: supported
+      high_value: true
+    - id: neptune_cluster
+      type: entity_family
+      title: AWS Neptune clusters
+      families: [neptune_cluster]
+      support: supported
+      high_value: true
+    - id: neptune_instance
+      type: entity_family
+      title: AWS Neptune instances
+      families: [neptune_instance]
+      support: supported
+      high_value: true
+    - id: network_firewall
+      type: entity_family
+      title: AWS Network Firewall firewalls
+      families: [network_firewall]
+      support: supported
+      high_value: true
     - id: network_acl
       type: entity_family
       title: AWS network ACLs
-      families: [asset_metadata]
-      support: partial
+      families: [network_acl]
+      support: supported
       high_value: true
-      known_unsupported_fields: [rule expansion and subnet associations]
     - id: opensearch_domain
       type: entity_family
       title: AWS OpenSearch domains
       families: [opensearch_domain]
       support: supported
       high_value: true
+    - id: opensearch_serverless_collection
+      type: entity_family
+      title: AWS OpenSearch Serverless collections
+      families: [opensearch_serverless_collection]
+      support: supported
+      high_value: true
+    - id: opensearch_serverless_security_policy
+      type: entity_family
+      title: AWS OpenSearch Serverless security policies
+      families: [opensearch_serverless_security_policy]
+      support: supported
+      high_value: true
     - id: organizations_account
       type: entity_family
       title: AWS Organizations accounts
       families: [organizations_account]
+      support: supported
+      high_value: true
+    - id: organizations_organizational_unit
+      type: entity_family
+      title: AWS Organizations organizational units
+      families: [organizations_organizational_unit]
+      support: supported
+      high_value: true
+    - id: organizations_policy
+      type: entity_family
+      title: AWS Organizations policies
+      families: [organizations_policy]
+      support: supported
+      high_value: true
+    - id: organizations_root
+      type: entity_family
+      title: AWS Organizations roots
+      families: [organizations_root]
       support: supported
       high_value: true
     - id: public_endpoint
@@ -693,6 +1064,18 @@ coverage_contract:
       families: [resource_exposure]
       support: supported
       high_value: true
+    - id: route53_resolver_endpoint
+      type: entity_family
+      title: AWS Route 53 Resolver endpoints
+      families: [route53_resolver_endpoint]
+      support: supported
+      high_value: true
+    - id: route53_resolver_rule
+      type: entity_family
+      title: AWS Route 53 Resolver rules
+      families: [route53_resolver_rule]
+      support: supported
+      high_value: true
     - id: route_table
       type: entity_family
       title: AWS route tables
@@ -705,6 +1088,18 @@ coverage_contract:
       families: [s3_bucket]
       support: supported
       high_value: true
+    - id: s3_access_point
+      type: entity_family
+      title: AWS S3 access points
+      families: [s3_access_point]
+      support: supported
+      high_value: true
+    - id: s3_multi_region_access_point
+      type: entity_family
+      title: AWS S3 Multi-Region Access Points
+      families: [s3_multi_region_access_point]
+      support: supported
+      high_value: true
     - id: s3_object
       type: entity_family
       title: AWS S3 objects
@@ -715,38 +1110,33 @@ coverage_contract:
     - id: sagemaker_endpoint_configuration
       type: entity_family
       title: AWS SageMaker endpoint configurations
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_endpoint_configuration]
+      support: supported
       high_value: true
-      known_unsupported_fields: [encryption and network isolation detail]
     - id: sagemaker_model
       type: entity_family
       title: AWS SageMaker models
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_model]
+      support: supported
       high_value: true
-      known_unsupported_fields: [model artifact and network isolation detail]
     - id: sagemaker_model_package_group
       type: entity_family
       title: AWS SageMaker model package groups
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_model_package_group]
+      support: supported
       high_value: true
-      known_unsupported_fields: [versioning and approval policy detail]
     - id: sagemaker_notebook_instance
       type: entity_family
       title: AWS SageMaker notebook instances
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_notebook_instance]
+      support: supported
       high_value: true
-      known_unsupported_fields: [root access and direct internet settings]
     - id: sagemaker_training_job
       type: entity_family
       title: AWS SageMaker training jobs
-      families: [asset_metadata]
-      support: partial
+      families: [sagemaker_training_job]
+      support: supported
       high_value: true
-      known_unsupported_fields: [VPC and encryption detail]
     - id: secret
       type: entity_family
       title: AWS Secrets Manager secrets
@@ -765,6 +1155,18 @@ coverage_contract:
       families: [securityhub_finding]
       support: supported
       high_value: true
+    - id: scheduler_schedule
+      type: entity_family
+      title: AWS Scheduler schedules
+      families: [scheduler_schedule]
+      support: supported
+      high_value: true
+    - id: scheduler_schedule_group
+      type: entity_family
+      title: AWS Scheduler schedule groups
+      families: [scheduler_schedule_group]
+      support: supported
+      high_value: true
     - id: sns_topic
       type: entity_family
       title: AWS SNS topics
@@ -777,6 +1179,48 @@ coverage_contract:
       families: [sqs_queue]
       support: supported
       high_value: true
+    - id: ssm_association
+      type: entity_family
+      title: AWS Systems Manager associations
+      families: [ssm_association]
+      support: supported
+      high_value: true
+    - id: ssm_document
+      type: entity_family
+      title: AWS Systems Manager documents
+      families: [ssm_document]
+      support: supported
+      high_value: true
+    - id: ssm_managed_instance
+      type: entity_family
+      title: AWS Systems Manager managed instances
+      families: [ssm_managed_instance]
+      support: supported
+      high_value: true
+    - id: ssm_parameter
+      type: entity_family
+      title: AWS Systems Manager parameters
+      families: [ssm_parameter]
+      support: supported
+      high_value: true
+    - id: sso_instance
+      type: entity_family
+      title: AWS IAM Identity Center instances
+      families: [sso_instance]
+      support: supported
+      high_value: true
+    - id: stepfunctions_activity
+      type: entity_family
+      title: AWS Step Functions activities
+      families: [stepfunctions_activity]
+      support: supported
+      high_value: true
+    - id: stepfunctions_state_machine
+      type: entity_family
+      title: AWS Step Functions state machines
+      families: [stepfunctions_state_machine]
+      support: supported
+      high_value: true
     - id: subnet
       type: entity_family
       title: AWS subnets
@@ -787,19 +1231,48 @@ coverage_contract:
       type: entity_family
       title: AWS Support incident management role
       families: [iam_role]
-      support: partial
+      support: supported
       high_value: true
-      known_unsupported_fields: [support access entitlement and break-glass workflow evidence]
     - id: vpc
       type: entity_family
       title: AWS VPCs
       families: [vpc]
       support: supported
       high_value: true
+    - id: vpc_endpoint
+      type: entity_family
+      title: AWS VPC endpoints
+      families: [vpc_endpoint]
+      support: supported
+      high_value: true
     - id: vpc_flow_log
       type: entity_family
       title: AWS VPC Flow Logs
-      families: [vpc]
-      support: partial
+      families: [vpc_flow_log]
+      support: supported
       high_value: true
-      known_unsupported_fields: [dedicated flow log entities and destination encryption detail]
+    - id: vpclattice_listener
+      type: entity_family
+      title: AWS VPC Lattice listeners
+      families: [vpclattice_listener]
+      support: supported
+      high_value: true
+    - id: vpclattice_service
+      type: entity_family
+      title: AWS VPC Lattice services
+      families: [vpclattice_service]
+      support: supported
+      high_value: true
+    - id: vpclattice_target_group
+      type: entity_family
+      title: AWS VPC Lattice target groups
+      families: [vpclattice_target_group]
+      support: supported
+      high_value: true
+    - id: wafv2_web_acl
+      type: entity_family
+      title: AWS WAFv2 web ACLs
+      families: [wafv2_web_acl]
+      support: supported
+      high_value: true
+    # awscollectorgen:coverage-dimensions (insert new dimensions above this line)

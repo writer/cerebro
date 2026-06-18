@@ -65,11 +65,49 @@ func TestFindingLifecycleHTTPRoutesRequireWriteScope(t *testing.T) {
 		{method: http.MethodPut, path: "/findings/finding-1/due"},
 		{method: http.MethodPost, path: "/findings/finding-1/notes"},
 		{method: http.MethodPost, path: "/findings/finding-1/tickets"},
+		{method: http.MethodPost, path: "/findings/finding-1/external-refs"},
 	} {
 		policy := httpRoutePolicyFor(tt.method, tt.path)
 		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {
 			t.Fatalf("%s %s policy = %#v, want findings write scope", tt.method, tt.path, policy)
 		}
+	}
+}
+
+func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
+	policy := httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")
+	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {
+		t.Fatalf("POST /connectors/{sourceID}/credentials policy = %#v, want connector credential write scope", policy)
+	}
+	for _, path := range []string{
+		"/connectors/aws/credentials",
+		"/connectors/aws/credentials/cred_123",
+	} {
+		policy := httpRoutePolicyFor(http.MethodGet, path)
+		if policy.Scope != scopeConnectorCredentialsRead || policy.AdminOnly {
+			t.Fatalf("GET %s policy = %#v, want connector credential read scope", path, policy)
+		}
+	}
+	for _, path := range []string{
+		"/connectors/aws/credentials/cred_123/rotate",
+		"/connectors/aws/credentials/cred_123/revoke",
+	} {
+		policy := httpRoutePolicyFor(http.MethodPost, path)
+		if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {
+			t.Fatalf("POST %s policy = %#v, want connector credential write scope", path, policy)
+		}
+	}
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	if err := authorizePrincipalScope(readOnly, scopeConnectorCredentialsWrite); err == nil {
+		t.Fatal("read-only scoped principal authorized for connector credential write scope")
+	}
+	credentialReader := authPrincipal{Scopes: []string{scopeConnectorCredentialsRead}}
+	if err := authorizePrincipalScope(credentialReader, scopeConnectorCredentialsRead); err != nil {
+		t.Fatalf("connector credential reader rejected: %v", err)
+	}
+	writer := authPrincipal{Scopes: []string{scopeConnectorCredentialsWrite}}
+	if err := authorizePrincipalScope(writer, scopeConnectorCredentialsWrite); err != nil {
+		t.Fatalf("connector credential writer rejected: %v", err)
 	}
 }
 
@@ -81,6 +119,7 @@ func TestFindingLifecycleConnectProceduresRequireWriteScope(t *testing.T) {
 		cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure,
 		cerebrov1connect.BootstrapServiceAddFindingNoteProcedure,
 		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
+		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure,
 	} {
 		policy := connectProcedurePolicyFor(procedure)
 		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {

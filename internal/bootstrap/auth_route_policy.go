@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 )
@@ -17,6 +18,7 @@ type httpAuthRoutePolicy struct {
 	Method    string
 	Exact     string
 	Prefix    string
+	Contains  string
 	Suffix    string
 	Scope     string
 	Static    bool
@@ -24,6 +26,16 @@ type httpAuthRoutePolicy struct {
 }
 
 var httpAuthRoutePolicies = []httpAuthRoutePolicy{
+	{Method: http.MethodPost, Exact: agentplatform.A2AJSONRPCPath, Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/contract", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/capabilities", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/security-control-plane", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: agentplatform.EventSubscriptionContractPath, Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: agentplatform.IdempotencyContractPath, Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/capability-decisions", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/preflight", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/graph/reason", Scope: scopeCosmoSecurityRead, Static: true},
 	{Exact: "/api/v1/mcp", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/metrics", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Prefix: "/reports/", Suffix: "/runs", Static: true, AdminOnly: true},
@@ -35,9 +47,21 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Exact: "/sources", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/sources/", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/connectors", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/connectors/coverage", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/connectors/credential-key", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/connector-definitions", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/connector-definitions", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Exact: "/connector-definitions/validate", Static: true, AdminOnly: true},
+	{Method: http.MethodGet, Prefix: "/connector-definitions/", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPut, Prefix: "/connector-definitions/", Static: true, AdminOnly: true},
+	{Method: http.MethodPost, Prefix: "/connector-definitions/", Suffix: "/promote", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Prefix: "/connectors/", Suffix: "/activity", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Prefix: "/connectors/", Suffix: "/credentials", Scope: scopeConnectorCredentialsRead, Static: true},
+	{Method: http.MethodGet, Prefix: "/connectors/", Contains: "/credentials/", Scope: scopeConnectorCredentialsRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/connectors/", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/credentials", Scope: scopeConnectorCredentialsWrite, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/rotate", Scope: scopeConnectorCredentialsWrite, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/revoke", Scope: scopeConnectorCredentialsWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/preflight", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/connections", Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/reports", Scope: scopeCosmoSecurityRead},
@@ -52,6 +76,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPut, Prefix: "/findings/", Suffix: "/due", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/notes", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/tickets", Scope: scopeFindingLifecycleWrite},
+	{Method: http.MethodPost, Prefix: "/findings/", Suffix: "/external-refs", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodGet, Prefix: "/finding-candidates/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Prefix: "/finding-candidates/", Suffix: "/promote", Scope: scopeFindingCandidatePromote},
 	{Method: http.MethodPost, Prefix: "/finding-candidates/", Suffix: "/reject", Scope: scopeFindingCandidatePromote},
@@ -59,11 +84,15 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Prefix: "/finding-evidence/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/grc/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Exact: "/grc/ask", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/grc/control-packets", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/grc/control-packets/export", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Prefix: "/grc/control-packs", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/resource-scope", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/asset-reports", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPatch, Prefix: "/grc/inventory/asset-reports/", Suffix: "/triage", Scope: scopeGRCInventoryWrite},
 	{Method: http.MethodGet, Exact: "/platform/runtime-freshness", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/neighborhood", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/platform/graph/provenance", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/impact/package", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/impact/asset", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/platform/graph/impact/", Scope: scopeCosmoSecurityRead},
@@ -130,10 +159,13 @@ func routePolicyPathMatches(policy httpAuthRoutePolicy, path string) bool {
 	if policy.Prefix != "" && !strings.HasPrefix(path, policy.Prefix) {
 		return false
 	}
+	if policy.Contains != "" && !strings.Contains(path, policy.Contains) {
+		return false
+	}
 	if policy.Suffix != "" && !strings.HasSuffix(path, policy.Suffix) {
 		return false
 	}
-	return policy.Exact != "" || policy.Prefix != "" || policy.Suffix != ""
+	return policy.Exact != "" || policy.Prefix != "" || policy.Contains != "" || policy.Suffix != ""
 }
 
 func httpRouteStaticAccessPathKnown(path string) bool {

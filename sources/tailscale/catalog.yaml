@@ -9,6 +9,52 @@ emitted_kinds:
   - tailscale.tag
   - tailscale.service
   - tailscale.grant
+coverage_contract:
+  owner_domain: network
+  authority_domain: tailscale
+  dimensions:
+    - id: acl_grants
+      type: app_entitlement
+      title: ACL grants
+      families: [grant]
+      support: supported
+      high_value: true
+    - id: devices
+      type: entity_family
+      title: Devices
+      families: [device]
+      support: supported
+      high_value: true
+    - id: groups
+      type: relationship
+      title: ACL groups
+      families: [group]
+      support: supported
+      high_value: true
+    - id: services
+      type: entity_family
+      title: Services
+      families: [service]
+      support: supported
+      high_value: true
+    - id: tag_owners
+      type: app_entitlement
+      title: Tag owners
+      families: [tag]
+      support: supported
+      high_value: true
+    - id: tailnet
+      type: entity_family
+      title: Tailnet settings
+      families: [tailnet]
+      support: supported
+      high_value: true
+    - id: users
+      type: entity_family
+      title: Users
+      families: [user]
+      support: supported
+      high_value: true
 event_contracts:
   - kind: tailscale.tailnet
     schema_ref: tailscale/tailnet/v1

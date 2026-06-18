@@ -172,6 +172,56 @@ func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.Findi
 	return s.recordAndProjectWorkflowEvent(ctx, event)
 }
 
+func (s *Service) projectFindingExternalRefs(ctx context.Context, finding *ports.FindingRecord) error {
+	if s == nil || finding == nil {
+		return nil
+	}
+	for _, ref := range finding.ExternalRefs {
+		if err := s.projectFindingExternalRef(ctx, finding, ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) projectFindingExternalRef(ctx context.Context, finding *ports.FindingRecord, ref ports.FindingExternalRef) error {
+	if s == nil {
+		return nil
+	}
+	if finding == nil {
+		return errors.New("finding is required")
+	}
+	system := strings.TrimSpace(ref.System)
+	kind := strings.TrimSpace(ref.Kind)
+	externalID := strings.TrimSpace(ref.ExternalID)
+	if system == "" || kind == "" || externalID == "" {
+		return nil
+	}
+	linkedAt := ref.ObservedAt.UTC()
+	if linkedAt.IsZero() {
+		linkedAt = time.Now().UTC()
+	}
+	tenantID, sourceID := findingGraphScope(finding)
+	if !findingWorkflowEventScopeValid(tenantID, sourceID, finding) {
+		return nil
+	}
+	event, err := workflowevents.NewFindingExternalRefLinkedEvent(workflowevents.FindingExternalRefLinked{
+		Finding:              findingWorkflowSnapshot(finding, tenantID, sourceID),
+		System:               system,
+		Kind:                 kind,
+		ExternalID:           externalID,
+		URL:                  strings.TrimSpace(ref.URL),
+		ExternalStatus:       strings.TrimSpace(ref.ExternalStatus),
+		ExternalStatusReason: strings.TrimSpace(ref.ExternalStatusReason),
+		LifecycleOwner:       strings.TrimSpace(ref.LifecycleOwner),
+		LinkedAt:             linkedAt.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return err
+	}
+	return s.recordAndProjectWorkflowEvent(ctx, event)
+}
+
 func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *ports.FindingRecord, statusSource string) error {
 	if s == nil || finding == nil {
 		return nil
@@ -315,6 +365,8 @@ func canonicalFindingWorkflowKind(kind string) string {
 		return securityevents.FindingNoteAdded
 	case workflowevents.EventKindFindingTicketLinked:
 		return securityevents.FindingTicketLinked
+	case workflowevents.EventKindFindingExternalRefLinked:
+		return securityevents.FindingExternalRefLinked
 	default:
 		return ""
 	}

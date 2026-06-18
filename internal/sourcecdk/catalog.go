@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -21,6 +22,7 @@ type catalogFile struct {
 	Description    string                 `yaml:"description"`
 	EmittedKinds   []string               `yaml:"emitted_kinds"`
 	KindLifecycle  []catalogKindLifecycle `yaml:"kind_lifecycle"`
+	Families       []CatalogFamily        `yaml:"families"`
 	EventContracts []EventContract        `yaml:"event_contracts"`
 	Coverage       CoverageContract       `yaml:"coverage_contract"`
 }
@@ -33,8 +35,27 @@ type catalogKindLifecycle struct {
 
 type SourceCatalog struct {
 	Spec             *cerebrov1.SourceSpec
+	Families         []CatalogFamily
 	EventContracts   []EventContract
 	CoverageContract *CoverageContract
+}
+
+// CatalogFamily declares optional per-family source catalog capabilities.
+type CatalogFamily struct {
+	ID             string          `yaml:"id"`
+	Incremental    string          `yaml:"incremental"`
+	FreshnessProbe *FreshnessProbe `yaml:"freshness_probe,omitempty"`
+}
+
+// FreshnessProbe declares whether a family supports a cheap change signal and
+// how authoritative that signal is for short-circuiting reads.
+type FreshnessProbe struct {
+	Supported              bool   `yaml:"supported"`
+	CanaryKind             string `yaml:"canary_kind"`
+	Confidence             string `yaml:"confidence"`
+	ReconciliationInterval string `yaml:"reconciliation_interval"`
+	MaxSkipDuration        string `yaml:"max_skip_duration"`
+	MaxConsecutiveSkips    int    `yaml:"max_consecutive_skips"`
 }
 
 // LoadCatalog parses a source catalog.yaml file into a source spec.
@@ -68,6 +89,10 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	if err := validateCatalogLifecycle(catalog.KindLifecycle); err != nil {
 		return nil, err
 	}
+	families, err := normalizeCatalogFamilies(catalog.Families)
+	if err != nil {
+		return nil, err
+	}
 	eventContracts, err := ValidateEventContracts(catalog.EventContracts)
 	if err != nil {
 		return nil, err
@@ -88,7 +113,7 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 		Name:         catalog.Name,
 		Description:  catalog.Description,
 		EmittedKinds: emittedKinds,
-	}, EventContracts: eventContracts, CoverageContract: coverage}, nil
+	}, Families: families, EventContracts: eventContracts, CoverageContract: coverage}, nil
 }
 
 func registerCatalogEventContracts(sourceID string, contracts []EventContract) {
@@ -184,6 +209,79 @@ func validateCatalogLifecycle(entries []catalogKindLifecycle) error {
 		if replacement != "" && !validEventKind(replacement) {
 			return fmt.Errorf("kind_lifecycle kind %q has invalid replacement %q", kind, replacement)
 		}
+	}
+	return nil
+}
+
+func normalizeCatalogFamilies(families []CatalogFamily) ([]CatalogFamily, error) {
+	if len(families) == 0 {
+		return nil, nil
+	}
+	seen := map[string]struct{}{}
+	normalized := make([]CatalogFamily, 0, len(families))
+	for _, family := range families {
+		family.ID = strings.TrimSpace(family.ID)
+		family.Incremental = strings.TrimSpace(family.Incremental)
+		if family.ID == "" {
+			return nil, fmt.Errorf("families id is required")
+		}
+		if _, ok := seen[family.ID]; ok {
+			return nil, fmt.Errorf("duplicate family %q", family.ID)
+		}
+		seen[family.ID] = struct{}{}
+		probe, err := normalizeFreshnessProbe(family.ID, family.FreshnessProbe)
+		if err != nil {
+			return nil, err
+		}
+		family.FreshnessProbe = probe
+		normalized = append(normalized, family)
+	}
+	return normalized, nil
+}
+
+func normalizeFreshnessProbe(family string, probe *FreshnessProbe) (*FreshnessProbe, error) {
+	if probe == nil {
+		return nil, nil
+	}
+	normalized := *probe
+	normalized.CanaryKind = strings.TrimSpace(normalized.CanaryKind)
+	normalized.Confidence = strings.ToLower(strings.TrimSpace(normalized.Confidence))
+	normalized.ReconciliationInterval = strings.TrimSpace(normalized.ReconciliationInterval)
+	normalized.MaxSkipDuration = strings.TrimSpace(normalized.MaxSkipDuration)
+	if normalized.Supported && normalized.CanaryKind == "" {
+		return nil, fmt.Errorf("family %q freshness_probe canary_kind is required when supported", family)
+	}
+	switch normalized.Confidence {
+	case "":
+		if normalized.Supported {
+			normalized.Confidence = CanaryConfidenceHeuristic
+		}
+	case CanaryConfidenceAuthoritative, CanaryConfidenceHeuristic:
+	default:
+		return nil, fmt.Errorf("family %q freshness_probe confidence must be one of authoritative or heuristic", family)
+	}
+	if normalized.MaxConsecutiveSkips < 0 {
+		return nil, fmt.Errorf("family %q freshness_probe max_consecutive_skips must be non-negative", family)
+	}
+	if err := validateFreshnessProbeDuration(family, "reconciliation_interval", normalized.ReconciliationInterval); err != nil {
+		return nil, err
+	}
+	if err := validateFreshnessProbeDuration(family, "max_skip_duration", normalized.MaxSkipDuration); err != nil {
+		return nil, err
+	}
+	return &normalized, nil
+}
+
+func validateFreshnessProbeDuration(family string, field string, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return fmt.Errorf("family %q freshness_probe %s must be a Go duration: %w", family, field, err)
+	}
+	if duration <= 0 {
+		return fmt.Errorf("family %q freshness_probe %s must be greater than zero", family, field)
 	}
 	return nil
 }

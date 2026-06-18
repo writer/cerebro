@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
+	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -44,6 +45,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	"github.com/aws/aws-sdk-go-v2/service/ecrpublic"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/efs"
@@ -81,6 +83,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
+	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
@@ -98,6 +101,8 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/awsaccount"
+	"github.com/writer/cerebro/sources/internal/awsappsync"
+	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
@@ -119,6 +124,7 @@ const (
 	familyAccessKey                          = "access_key"
 	familyACMCertificate                     = "acm_certificate"
 	familyAppRunnerService                   = "apprunner_service"
+	familyAppSyncGraphQLAPI                  = "appsync_graphql_api"
 	familyAssetMetadata                      = "asset_metadata"
 	familyAthenaDataCatalog                  = "athena_data_catalog"
 	familyAthenaWorkgroup                    = "athena_workgroup"
@@ -128,7 +134,10 @@ const (
 	familyBackupProtected                    = "backup_protected_resource"
 	familyBackupRecoveryPoint                = "backup_recovery_point"
 	familyBackupVault                        = "backup_vault"
+	familyBedrockCustomModel                 = "bedrock_custom_model"
+	familyBedrockProvisionedModelThroughput  = "bedrock_provisioned_model_throughput"
 	familyCodeBuildProject                   = "codebuild_project"
+	familyCodeBuildSourceCredential          = "codebuild_source_credential"
 	familyCloudTrail                         = "cloudtrail"
 	familyCloudWatchAlarm                    = "cloudwatch_alarm"
 	familyCloudWatchLogGroup                 = "cloudwatch_log_group"
@@ -140,20 +149,25 @@ const (
 	familyEBSSnapshot                        = "ebs_snapshot"
 	familyEBSVolume                          = "ebs_volume"
 	familyEC2EBSEncryptionByDefault          = "ec2_ebs_encryption_by_default"
+	familyEC2AMI                             = "ec2_ami"
 	familyEC2Instance                        = "ec2_instance"
 	familyVPC                                = "vpc"
 	familySubnet                             = "subnet"
 	familySecurityGroup                      = "security_group"
 	familyRouteTable                         = "route_table"
+	familyNetworkACL                         = "network_acl"
 	familyInternetGateway                    = "internet_gateway"
 	familyNATGateway                         = "nat_gateway"
+	familyVPCFlowLog                         = "vpc_flow_log"
 	familyVPCEndpoint                        = "vpc_endpoint"
+	familyECRPublicRepository                = "ecr_public_repository"
 	familyECRRepository                      = "ecr_repository"
 	familyECSService                         = "ecs_service"
 	familyECSTask                            = "ecs_task"
 	familyECSTaskDefinition                  = "ecs_task_definition"
 	familyEFSAccessPoint                     = "efs_access_point"
 	familyEFSFileSystem                      = "efs_file_system"
+	familyEFSMountTarget                     = "efs_mount_target"
 	familyEKSCluster                         = "eks_cluster"
 	familyEKSNodegroup                       = "eks_nodegroup"
 	familyEKSFargateProfile                  = "eks_fargate_profile"
@@ -167,6 +181,8 @@ const (
 	familyELBV2LoadBalancer                  = "elbv2_load_balancer"
 	familyELBV2Listener                      = "elbv2_listener"
 	familyELBV2TargetGroup                   = "elbv2_target_group"
+	familyAPIGatewayRestAPI                  = "apigateway_rest_api"
+	familyAPIGatewayMethod                   = "apigateway_method"
 	familyAPIGatewayStage                    = "apigateway_stage"
 	familyAPIGatewayRoute                    = "apigateway_route"
 	familyAPIGatewayInteg                    = "apigateway_integration"
@@ -187,9 +203,11 @@ const (
 	familyGlueTable                          = "glue_table"
 	familyIAMGroup                           = "iam_group"
 	familyIAMMembership                      = "iam_group_membership"
+	familyIAMPolicy                          = "iam_policy"
 	familyIAMRoleTrust                       = "iam_role_trust"
 	familyIAMRoleAssign                      = "iam_role_assignment"
 	familyIAMRole                            = "iam_role"
+	familyIAMSAMLProvider                    = "iam_saml_provider"
 	familyIAMUser                            = "iam_user"
 	familyIdentityCenterAssignment           = "identity_center_account_assignment"
 	familyIdentityCenterPermission           = "identity_center_permission_set"
@@ -215,6 +233,11 @@ const (
 	familyS3AccessPoint                      = "s3_access_point"
 	familyS3Bucket                           = "s3_bucket"
 	familyS3MultiRegionAccessPoint           = "s3_multi_region_access_point"
+	familySageMakerEndpointConfig            = "sagemaker_endpoint_configuration"
+	familySageMakerModel                     = "sagemaker_model"
+	familySageMakerModelPackageGroup         = "sagemaker_model_package_group"
+	familySageMakerNotebookInstance          = "sagemaker_notebook_instance"
+	familySageMakerTrainingJob               = "sagemaker_training_job"
 	familySchedulerSchedule                  = "scheduler_schedule"
 	familySchedulerGroup                     = "scheduler_schedule_group"
 	familySecret                             = "secret"
@@ -241,7 +264,7 @@ const (
 	familyDocDBInstance                      = "docdb_instance"
 	familyNeptuneCluster                     = "neptune_cluster"
 	familyNeptuneInstance                    = "neptune_instance"
-	familyRedshiftCluster                    = "redshift_cluster"
+	familyRedshiftCluster                    = "redshift_cluster" // awscollectorgen:family-const
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -323,6 +346,7 @@ type awsPlatformClients struct {
 	ecs             awsECSAPI
 	eks             awsEKSAPI
 	ecr             awsECRAPI
+	ecrPublic       awsECRPublicAPI
 	apiGateway      awsAPIGatewayAPI
 	apiGatewayV2    awsAPIGatewayV2API
 	lambda          awsLambdaAPI
@@ -356,6 +380,9 @@ type awsRuntimeClients struct {
 	sqs            awsSQSAPI
 	sns            awsSNSAPI
 	appRunner      awsAppRunnerAPI
+	appSync        awsappsync.Client
+	bedrock        awsBedrockAPI
+	sageMaker      awsSageMakerAPI
 	stepFunctions  awsStepFunctionsAPI
 	eventBridge    awsEventBridgeAPI
 	pipes          awsPipesAPI
@@ -368,6 +395,32 @@ type awsRuntimeClients struct {
 type awsCodeBuildAPI interface {
 	ListProjects(context.Context, *codebuild.ListProjectsInput, ...func(*codebuild.Options)) (*codebuild.ListProjectsOutput, error)
 	BatchGetProjects(context.Context, *codebuild.BatchGetProjectsInput, ...func(*codebuild.Options)) (*codebuild.BatchGetProjectsOutput, error)
+	ListSourceCredentials(context.Context, *codebuild.ListSourceCredentialsInput, ...func(*codebuild.Options)) (*codebuild.ListSourceCredentialsOutput, error)
+}
+
+type awsSageMakerAPI interface {
+	ListEndpointConfigs(context.Context, *sagemaker.ListEndpointConfigsInput, ...func(*sagemaker.Options)) (*sagemaker.ListEndpointConfigsOutput, error)
+	DescribeEndpointConfig(context.Context, *sagemaker.DescribeEndpointConfigInput, ...func(*sagemaker.Options)) (*sagemaker.DescribeEndpointConfigOutput, error)
+	ListModelPackageGroups(context.Context, *sagemaker.ListModelPackageGroupsInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelPackageGroupsOutput, error)
+	DescribeModelPackageGroup(context.Context, *sagemaker.DescribeModelPackageGroupInput, ...func(*sagemaker.Options)) (*sagemaker.DescribeModelPackageGroupOutput, error)
+	ListModelPackages(context.Context, *sagemaker.ListModelPackagesInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelPackagesOutput, error)
+	ListModels(context.Context, *sagemaker.ListModelsInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelsOutput, error)
+	DescribeModel(context.Context, *sagemaker.DescribeModelInput, ...func(*sagemaker.Options)) (*sagemaker.DescribeModelOutput, error)
+	ListNotebookInstances(context.Context, *sagemaker.ListNotebookInstancesInput, ...func(*sagemaker.Options)) (*sagemaker.ListNotebookInstancesOutput, error)
+	DescribeNotebookInstance(context.Context, *sagemaker.DescribeNotebookInstanceInput, ...func(*sagemaker.Options)) (*sagemaker.DescribeNotebookInstanceOutput, error)
+	ListTrainingJobs(context.Context, *sagemaker.ListTrainingJobsInput, ...func(*sagemaker.Options)) (*sagemaker.ListTrainingJobsOutput, error)
+	DescribeTrainingJob(context.Context, *sagemaker.DescribeTrainingJobInput, ...func(*sagemaker.Options)) (*sagemaker.DescribeTrainingJobOutput, error)
+	ListTags(context.Context, *sagemaker.ListTagsInput, ...func(*sagemaker.Options)) (*sagemaker.ListTagsOutput, error)
+}
+
+type awsBedrockAPI interface {
+	ListCustomModels(context.Context, *bedrock.ListCustomModelsInput, ...func(*bedrock.Options)) (*bedrock.ListCustomModelsOutput, error)
+	GetCustomModel(context.Context, *bedrock.GetCustomModelInput, ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error)
+	ListProvisionedModelThroughputs(context.Context, *bedrock.ListProvisionedModelThroughputsInput, ...func(*bedrock.Options)) (*bedrock.ListProvisionedModelThroughputsOutput, error)
+	GetProvisionedModelThroughput(context.Context, *bedrock.GetProvisionedModelThroughputInput, ...func(*bedrock.Options)) (*bedrock.GetProvisionedModelThroughputOutput, error)
+	ListEnforcedGuardrailsConfiguration(context.Context, *bedrock.ListEnforcedGuardrailsConfigurationInput, ...func(*bedrock.Options)) (*bedrock.ListEnforcedGuardrailsConfigurationOutput, error)
+	GetResourcePolicy(context.Context, *bedrock.GetResourcePolicyInput, ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error)
+	ListTagsForResource(context.Context, *bedrock.ListTagsForResourceInput, ...func(*bedrock.Options)) (*bedrock.ListTagsForResourceOutput, error)
 }
 
 type awsAnalyticsClients struct {
@@ -400,12 +453,15 @@ type awsIAMAPI interface {
 	ListUserPolicies(context.Context, *iam.ListUserPoliciesInput, ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error)
 	ListGroupPolicies(context.Context, *iam.ListGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error)
 	ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error)
+	ListPolicies(context.Context, *iam.ListPoliciesInput, ...func(*iam.Options)) (*iam.ListPoliciesOutput, error)
 	GetPolicy(context.Context, *iam.GetPolicyInput, ...func(*iam.Options)) (*iam.GetPolicyOutput, error)
 	GetPolicyVersion(context.Context, *iam.GetPolicyVersionInput, ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error)
 	GetUserPolicy(context.Context, *iam.GetUserPolicyInput, ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
 	GetGroupPolicy(context.Context, *iam.GetGroupPolicyInput, ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error)
 	GetRolePolicy(context.Context, *iam.GetRolePolicyInput, ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error)
 	GetInstanceProfile(context.Context, *iam.GetInstanceProfileInput, ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error)
+	ListSAMLProviders(context.Context, *iam.ListSAMLProvidersInput, ...func(*iam.Options)) (*iam.ListSAMLProvidersOutput, error)
+	GetSAMLProvider(context.Context, *iam.GetSAMLProviderInput, ...func(*iam.Options)) (*iam.GetSAMLProviderOutput, error)
 }
 
 type awsCloudTrailAPI interface {
@@ -443,6 +499,7 @@ type awsDynamoDBStreamsAPI interface {
 }
 
 type awsEC2API interface {
+	DescribeImages(context.Context, *ec2.DescribeImagesInput, ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error)
 	DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
 	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
@@ -450,8 +507,10 @@ type awsEC2API interface {
 	DescribeVpcs(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error)
 	DescribeSubnets(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error)
 	DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
+	DescribeNetworkAcls(context.Context, *ec2.DescribeNetworkAclsInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error)
 	DescribeInternetGateways(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)
 	DescribeNatGateways(context.Context, *ec2.DescribeNatGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error)
+	DescribeFlowLogs(context.Context, *ec2.DescribeFlowLogsInput, ...func(*ec2.Options)) (*ec2.DescribeFlowLogsOutput, error)
 	DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpointsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error)
 	DescribeVolumes(context.Context, *ec2.DescribeVolumesInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesOutput, error)
 	DescribeSnapshots(context.Context, *ec2.DescribeSnapshotsInput, ...func(*ec2.Options)) (*ec2.DescribeSnapshotsOutput, error)
@@ -490,6 +549,13 @@ type awsEKSAPI interface {
 type awsECRAPI interface {
 	DescribeRepositories(context.Context, *ecr.DescribeRepositoriesInput, ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error)
 	ListTagsForResource(context.Context, *ecr.ListTagsForResourceInput, ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error)
+}
+
+type awsECRPublicAPI interface {
+	DescribeRepositories(context.Context, *ecrpublic.DescribeRepositoriesInput, ...func(*ecrpublic.Options)) (*ecrpublic.DescribeRepositoriesOutput, error)
+	GetRepositoryCatalogData(context.Context, *ecrpublic.GetRepositoryCatalogDataInput, ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryCatalogDataOutput, error)
+	GetRepositoryPolicy(context.Context, *ecrpublic.GetRepositoryPolicyInput, ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryPolicyOutput, error)
+	ListTagsForResource(context.Context, *ecrpublic.ListTagsForResourceInput, ...func(*ecrpublic.Options)) (*ecrpublic.ListTagsForResourceOutput, error)
 }
 
 type awsRoute53API interface {
@@ -774,13 +840,14 @@ type awsIdentityStoreAPI interface {
 }
 
 type awsFamilyOptions[T any] struct {
-	Name           string
-	Label          string
-	List           func(context.Context, awsClients, settings, string, int) ([]T, string, error)
-	Event          func(settings, T) (*primitives.Event, error)
-	URN            func(settings, T) (string, error)
-	Discover       func(context.Context, awsClients, settings) ([]sourcecdk.URN, error)
-	CursorFallback func(T) string
+	Name               string
+	Label              string
+	List               func(context.Context, awsClients, settings, string, int) ([]T, string, error)
+	ListWithCheckpoint func(context.Context, awsClients, settings, string, int, *cerebrov1.SourceCheckpoint) ([]T, string, error)
+	Event              func(settings, T) (*primitives.Event, error)
+	URN                func(settings, T) (string, error)
+	Discover           func(context.Context, awsClients, settings) ([]sourcecdk.URN, error)
+	CursorFallback     func(T) string
 }
 
 type iamPolicyAssignment struct {
@@ -890,6 +957,11 @@ type iamRoleTrust struct {
 	PrincipalType string
 }
 
+type awsIAMRole struct {
+	Role             iamtypes.Role
+	AttachedPolicies []iamtypes.AttachedPolicy
+}
+
 type iamTrustPrincipal struct {
 	Type  string
 	Value string
@@ -987,6 +1059,11 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 // Read returns one page of normalized AWS events.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
+}
+
+// ReadWithCheckpoint lets AWS families with provider-supported update ordering stop once they reach the durable runtime watermark.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -1152,6 +1229,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(record awsCodeBuildProject) string {
 				return firstNonEmpty(awssdk.ToString(record.Project.Arn), awssdk.ToString(record.Project.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsCodeBuildSourceCredential]{
+			Name:  familyCodeBuildSourceCredential,
+			Label: "aws codebuild source credentials",
+			List:  listCodeBuildSourceCredentials,
+			Event: codeBuildSourceCredentialEvent,
+			URN: func(settings settings, record awsCodeBuildSourceCredential) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_codebuild_source_credential:%s", settings.accountID, codeBuildSourceCredentialIdentity(record.Credential)), nil
+			},
+			CursorFallback: func(record awsCodeBuildSourceCredential) string {
+				return codeBuildSourceCredentialIdentity(record.Credential)
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsBackupVault]{
@@ -1377,6 +1466,90 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return awssdk.ToString(accessPoint.Report.Name)
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBedrockCustomModel]{
+			Name:  familyBedrockCustomModel,
+			Label: "aws bedrock custom models",
+			List:  listBedrockCustomModels,
+			Event: bedrockCustomModelEvent,
+			URN: func(settings settings, model awsBedrockCustomModel) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_bedrock_custom_model:%s", settings.accountID, firstNonEmpty(bedrockCustomModelARN(model), bedrockCustomModelName(model))), nil
+			},
+			CursorFallback: func(model awsBedrockCustomModel) string {
+				return firstNonEmpty(bedrockCustomModelARN(model), bedrockCustomModelName(model))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBedrockProvisionedModelThroughput]{
+			Name:  familyBedrockProvisionedModelThroughput,
+			Label: "aws bedrock provisioned model throughputs",
+			List:  listBedrockProvisionedModelThroughputs,
+			Event: bedrockProvisionedModelThroughputEvent,
+			URN: func(settings settings, throughput awsBedrockProvisionedModelThroughput) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_bedrock_provisioned_model_throughput:%s", settings.accountID, firstNonEmpty(bedrockProvisionedModelThroughputARN(throughput), bedrockProvisionedModelThroughputName(throughput))), nil
+			},
+			CursorFallback: func(throughput awsBedrockProvisionedModelThroughput) string {
+				return firstNonEmpty(bedrockProvisionedModelThroughputARN(throughput), bedrockProvisionedModelThroughputName(throughput))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSageMakerEndpointConfig]{
+			Name:  familySageMakerEndpointConfig,
+			Label: "aws sagemaker endpoint configurations",
+			List:  listSageMakerEndpointConfigs,
+			Event: sageMakerEndpointConfigEvent,
+			URN: func(settings settings, config awsSageMakerEndpointConfig) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sagemaker_endpoint_configuration:%s", settings.accountID, firstNonEmpty(sageMakerEndpointConfigARN(config), sageMakerEndpointConfigName(config))), nil
+			},
+			CursorFallback: func(config awsSageMakerEndpointConfig) string {
+				return firstNonEmpty(sageMakerEndpointConfigARN(config), sageMakerEndpointConfigName(config))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSageMakerModel]{
+			Name:  familySageMakerModel,
+			Label: "aws sagemaker models",
+			List:  listSageMakerModels,
+			Event: sageMakerModelEvent,
+			URN: func(settings settings, model awsSageMakerModel) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sagemaker_model:%s", settings.accountID, firstNonEmpty(sageMakerModelARN(model), sageMakerModelName(model))), nil
+			},
+			CursorFallback: func(model awsSageMakerModel) string {
+				return firstNonEmpty(sageMakerModelARN(model), sageMakerModelName(model))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSageMakerModelPackageGroup]{
+			Name:  familySageMakerModelPackageGroup,
+			Label: "aws sagemaker model package groups",
+			List:  listSageMakerModelPackageGroups,
+			Event: sageMakerModelPackageGroupEvent,
+			URN: func(settings settings, group awsSageMakerModelPackageGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sagemaker_model_package_group:%s", settings.accountID, firstNonEmpty(sageMakerModelPackageGroupARN(group), sageMakerModelPackageGroupName(group))), nil
+			},
+			CursorFallback: func(group awsSageMakerModelPackageGroup) string {
+				return firstNonEmpty(sageMakerModelPackageGroupARN(group), sageMakerModelPackageGroupName(group))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSageMakerNotebookInstance]{
+			Name:  familySageMakerNotebookInstance,
+			Label: "aws sagemaker notebook instances",
+			List:  listSageMakerNotebookInstances,
+			Event: sageMakerNotebookInstanceEvent,
+			URN: func(settings settings, notebook awsSageMakerNotebookInstance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sagemaker_notebook_instance:%s", settings.accountID, firstNonEmpty(sageMakerNotebookInstanceARN(notebook), sageMakerNotebookInstanceName(notebook))), nil
+			},
+			CursorFallback: func(notebook awsSageMakerNotebookInstance) string {
+				return firstNonEmpty(sageMakerNotebookInstanceARN(notebook), sageMakerNotebookInstanceName(notebook))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsSageMakerTrainingJob]{
+			Name:  familySageMakerTrainingJob,
+			Label: "aws sagemaker training jobs",
+			List:  listSageMakerTrainingJobs,
+			Event: sageMakerTrainingJobEvent,
+			URN: func(settings settings, job awsSageMakerTrainingJob) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_sagemaker_training_job:%s", settings.accountID, firstNonEmpty(sageMakerTrainingJobARN(job), sageMakerTrainingJobName(job))), nil
+			},
+			CursorFallback: func(job awsSageMakerTrainingJob) string {
+				return firstNonEmpty(sageMakerTrainingJobARN(job), sageMakerTrainingJobName(job))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[ec2types.Volume]{
 			Name:  familyEBSVolume,
 			Label: "aws ebs volumes",
@@ -1488,6 +1661,18 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsECRPublicRepository]{
+			Name:  familyECRPublicRepository,
+			Label: "aws ecr public repositories",
+			List:  listECRPublicRepositories,
+			Event: ecrPublicRepositoryEvent,
+			URN: func(settings settings, repository awsECRPublicRepository) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ecr_public_repository:%s", settings.accountID, firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))), nil
+			},
+			CursorFallback: func(repository awsECRPublicRepository) string {
+				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsOpenSearchDomain]{
 			Name:  familyOpenSearchDomain,
 			Label: "aws opensearch domains",
@@ -1584,6 +1769,19 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(fileSystem.FileSystem.FileSystemArn), awssdk.ToString(fileSystem.FileSystem.FileSystemId))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEFSMountTarget]{
+			Name:  familyEFSMountTarget,
+			Label: "aws efs mount targets",
+			List:  listEFSMountTargets,
+			Event: efsMountTargetEvent,
+			URN: func(settings settings, mountTarget awsEFSMountTarget) (string, error) {
+				id := awssdk.ToString(mountTarget.MountTarget.MountTargetId)
+				return fmt.Sprintf("urn:cerebro:%s:aws_efs_mount_target:%s", settings.accountID, firstNonEmpty(efsMountTargetARN(settings, id), id)), nil
+			},
+			CursorFallback: func(mountTarget awsEFSMountTarget) string {
+				return awssdk.ToString(mountTarget.MountTarget.MountTargetId)
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsEFSAccessPoint]{
 			Name:  familyEFSAccessPoint,
 			Label: "aws efs access points",
@@ -1628,6 +1826,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(service awsAppRunnerService) string { return firstNonEmpty(service.ARN, service.Name) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsappsync.GraphQLAPI]{Name: familyAppSyncGraphQLAPI, Label: "aws appsync graphql apis", List: func(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsappsync.GraphQLAPI, string, error) {
+			return awsappsync.List(ctx, clients.appSync, cursor, boundedAWSPageSizeInt32(limit, 1, 25))
+		}, Event: func(settings settings, api awsappsync.GraphQLAPI) (*primitives.Event, error) {
+			return awsappsync.Event(awsappsync.Settings{AccountID: settings.accountID, Region: settings.region}, api, time.Now().UTC())
+		}, URN: func(settings settings, api awsappsync.GraphQLAPI) (string, error) {
+			return fmt.Sprintf("urn:cerebro:%s:aws_appsync_graphql_api:%s", settings.accountID, firstNonEmpty(awssdk.ToString(api.Arn), awssdk.ToString(api.ApiId))), nil
+		}, CursorFallback: func(api awsappsync.GraphQLAPI) string {
+			return firstNonEmpty(awssdk.ToString(api.Arn), awssdk.ToString(api.ApiId))
+		}}),
 		awsFamily(s.clients, awsFamilyOptions[awsStepFunctionStateMachine]{
 			Name:  familyStepFunctionStateMachine,
 			Label: "aws step functions state machines",
@@ -1925,6 +2132,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(instance awsEC2Instance) string { return awssdk.ToString(instance.Instance.InstanceId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.Image]{
+			Name:  familyEC2AMI,
+			Label: "aws ec2 amis",
+			List:  listEC2AMIs,
+			Event: ec2AMIEvent,
+			URN: func(settings settings, image ec2types.Image) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ec2_ami:%s", settings.accountID, awssdk.ToString(image.ImageId)), nil
+			},
+			CursorFallback: func(image ec2types.Image) string { return awssdk.ToString(image.ImageId) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[ec2types.Vpc]{
 			Name:  familyVPC,
 			Label: "aws vpcs",
@@ -1965,6 +2182,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(table ec2types.RouteTable) string { return awssdk.ToString(table.RouteTableId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.NetworkAcl]{
+			Name:  familyNetworkACL,
+			Label: "aws network acls",
+			List:  listNetworkACLs,
+			Event: networkACLEvent,
+			URN: func(settings settings, acl ec2types.NetworkAcl) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_network_acl:%s", settings.accountID, awssdk.ToString(acl.NetworkAclId)), nil
+			},
+			CursorFallback: func(acl ec2types.NetworkAcl) string { return awssdk.ToString(acl.NetworkAclId) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[ec2types.InternetGateway]{
 			Name:  familyInternetGateway,
 			Label: "aws internet gateways",
@@ -1984,6 +2211,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_nat_gateway:%s", settings.accountID, awssdk.ToString(gateway.NatGatewayId)), nil
 			},
 			CursorFallback: func(gateway ec2types.NatGateway) string { return awssdk.ToString(gateway.NatGatewayId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ec2types.FlowLog]{
+			Name:  familyVPCFlowLog,
+			Label: "aws vpc flow logs",
+			List:  listVPCFlowLogs,
+			Event: vpcFlowLogEvent,
+			URN: func(settings settings, flowLog ec2types.FlowLog) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpc_flow_log:%s", settings.accountID, awssdk.ToString(flowLog.FlowLogId)), nil
+			},
+			CursorFallback: func(flowLog ec2types.FlowLog) string { return awssdk.ToString(flowLog.FlowLogId) },
 		}),
 		awsFamily(s.clients, awsFamilyOptions[ec2types.VpcEndpoint]{
 			Name:  familyVPCEndpoint,
@@ -2182,6 +2419,25 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(target.TargetGroupArn), awssdk.ToString(target.TargetGroupName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[apigatewaytypes.RestApi]{
+			Name:  familyAPIGatewayRestAPI,
+			Label: "aws api gateway rest apis",
+			List:  listAPIGatewayRestAPIs,
+			Event: apiGatewayRestAPIEvent,
+			URN: func(settings settings, api apigatewaytypes.RestApi) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_rest_api:%s", settings.accountID, awssdk.ToString(api.Id)), nil
+			},
+			CursorFallback: func(api apigatewaytypes.RestApi) string { return awssdk.ToString(api.Id) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsnetwork.APIGatewayMethod]{
+			Name:  familyAPIGatewayMethod,
+			Label: "aws api gateway methods",
+			List:  listAPIGatewayMethods,
+			Event: apiGatewayMethodEvent,
+			URN: func(settings settings, method awsnetwork.APIGatewayMethod) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_apigateway_method:%s", settings.accountID, awsnetwork.APIGatewayMethodRecordID(method)), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAPIGatewayStage]{
 			Name:  familyAPIGatewayStage,
 			Label: "aws api gateway stages",
@@ -2329,6 +2585,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:iam_group_membership:%s:%s", settings.accountID, firstNonEmpty(member.GroupName, settings.groupName), firstNonEmpty(awssdk.ToString(member.User.UserId), awssdk.ToString(member.User.UserName))), nil
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIAMPolicy]{
+			Name:  familyIAMPolicy,
+			Label: "aws iam policies",
+			List:  listIAMPolicies,
+			Event: iamPolicyEvent,
+			URN: func(settings settings, policy awsIAMPolicy) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:iam_policy:%s", settings.accountID, firstNonEmpty(awssdk.ToString(policy.Policy.PolicyId), awssdk.ToString(policy.Policy.Arn), awssdk.ToString(policy.Policy.PolicyName))), nil
+			},
+			CursorFallback: func(policy awsIAMPolicy) string { return awssdk.ToString(policy.Policy.Arn) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
 			Name:  familyIAMRoleAssign,
 			Label: "aws iam policy assignments",
@@ -2348,15 +2614,25 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:iam_role_trust:%s:%s", settings.accountID, roleID, sanitizeEventID(trust.Principal)), nil
 			},
 		}),
-		awsFamily(s.clients, awsFamilyOptions[iamtypes.Role]{
+		awsFamily(s.clients, awsFamilyOptions[awsIAMRole]{
 			Name:  familyIAMRole,
 			Label: "aws iam roles",
-			List:  listIAMRoles,
+			List:  listIAMRoleInventory,
 			Event: iamRoleEvent,
-			URN: func(settings settings, role iamtypes.Role) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:iam_role:%s", settings.accountID, firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.RoleName))), nil
+			URN: func(settings settings, role awsIAMRole) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:iam_role:%s", settings.accountID, firstNonEmpty(awssdk.ToString(role.Role.RoleId), awssdk.ToString(role.Role.RoleName))), nil
 			},
-			CursorFallback: func(role iamtypes.Role) string { return awssdk.ToString(role.RoleName) },
+			CursorFallback: func(role awsIAMRole) string { return awssdk.ToString(role.Role.RoleName) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsIAMSAMLProvider]{
+			Name:  familyIAMSAMLProvider,
+			Label: "aws iam saml providers",
+			List:  listIAMSAMLProviders,
+			Event: iamSAMLProviderEvent,
+			URN: func(settings settings, provider awsIAMSAMLProvider) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:iam_saml_provider:%s", settings.accountID, awssdk.ToString(provider.Summary.Arn)), nil
+			},
+			CursorFallback: func(provider awsIAMSAMLProvider) string { return awssdk.ToString(provider.Summary.Arn) },
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.User]{
 			Name:  familyIAMUser,
@@ -2368,14 +2644,14 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(user iamtypes.User) string { return awssdk.ToString(user.UserName) },
 		}),
-	}
+	} // awscollectorgen:family-register
 	families = append(families, awsSecurityFamilies(s.clients)...)
 	families = append(families, awsaccount.Families(s.clients, func(clients awsClients) any { return clients.iam }, func(settings settings) string { return settings.accountID })...)
 	return sourcecdk.NewFamilyEngineWithSourceID("aws", parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T]) sourcecdk.Family[settings] {
-	return sourcecdk.Family[settings]{
+	family := sourcecdk.Family[settings]{
 		Name: options.Name,
 		Check: func(ctx context.Context, settings settings) error {
 			clients, err := clientFactory(ctx, settings)
@@ -2408,9 +2684,25 @@ func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T
 				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, settings.accountID, err)
 			}
 			build := func(record T) (*primitives.Event, error) { return options.Event(settings, record) }
-			return awsPullFromRecords(records, next, build, options.CursorFallback)
+			return sourcecdk.PullFromRecords(records, next, build, options.CursorFallback)
 		},
 	}
+	if options.ListWithCheckpoint != nil {
+		family.ReadWithCheckpoint = func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+			clients, err := clientFactory(ctx, settings)
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("aws", options.Name, cursor, checkpoint)
+			records, next, err := options.ListWithCheckpoint(ctx, clients, settings, sourcecdk.CursorToken(cursor), settings.perPage, readCheckpoint)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, settings.accountID, err)
+			}
+			build := func(record T) (*primitives.Event, error) { return options.Event(settings, record) }
+			return sourcecdk.IncrementalPullFromRecords("aws", options.Name, records, next, readCheckpoint, build)
+		}
+	}
+	return family
 }
 
 func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
@@ -2440,6 +2732,8 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	}
 	globalAcceleratorConfig := cfg
 	globalAcceleratorConfig.Region = "us-west-2"
+	ecrPublicConfig := cfg
+	ecrPublicConfig.Region = defaultRegion
 	return awsClients{
 		awsPlatformClients: awsPlatformClients{
 			cfg:             cfg,
@@ -2456,6 +2750,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			ecs:             ecs.NewFromConfig(cfg),
 			eks:             eks.NewFromConfig(cfg),
 			ecr:             ecr.NewFromConfig(cfg),
+			ecrPublic:       ecrpublic.NewFromConfig(ecrPublicConfig),
 			apiGateway:      apigateway.NewFromConfig(cfg),
 			apiGatewayV2:    apigatewayv2.NewFromConfig(cfg),
 			lambda:          lambda.NewFromConfig(cfg),
@@ -2476,6 +2771,9 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			sqs:            sqs.NewFromConfig(cfg),
 			sns:            sns.NewFromConfig(cfg),
 			appRunner:      apprunner.NewFromConfig(cfg),
+			appSync:        awsappsync.NewClient(cfg),
+			bedrock:        bedrock.NewFromConfig(cfg),
+			sageMaker:      sagemaker.NewFromConfig(cfg),
 			stepFunctions:  sfn.NewFromConfig(cfg),
 			eventBridge:    eventbridge.NewFromConfig(cfg),
 			pipes:          pipes.NewFromConfig(cfg),
@@ -2580,7 +2878,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyCodeBuildProject, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyInternetGateway, familyNATGateway, familyVPCEndpoint, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster:
+	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAppSyncGraphQLAPI, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyBedrockCustomModel, familyBedrockProvisionedModelThroughput, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySageMakerEndpointConfig, familySageMakerModel, familySageMakerModelPackageGroup, familySageMakerNotebookInstance, familySageMakerTrainingJob, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyEFSMountTarget, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster: // awscollectorgen:normalize-families
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -2684,6 +2982,50 @@ func listIAMRoles(ctx context.Context, clients awsClients, _ settings, cursor st
 		return nil, "", err
 	}
 	return out.Roles, nextMarker(out.IsTruncated, out.Marker), nil
+}
+
+func listIAMRoleInventory(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsIAMRole, string, error) {
+	roles, next, err := listIAMRoles(ctx, clients, settings, cursor, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsIAMRole, 0, len(roles))
+	for _, role := range roles {
+		record := awsIAMRole{Role: role}
+		roleName := awssdk.ToString(role.RoleName)
+		if roleName != "" {
+			policies, err := listAttachedRolePolicies(ctx, clients, roleName)
+			if err != nil {
+				return nil, "", err
+			}
+			record.AttachedPolicies = policies
+		}
+		records = append(records, record)
+	}
+	return records, next, nil
+}
+
+func listAttachedRolePolicies(ctx context.Context, clients awsClients, roleName string) ([]iamtypes.AttachedPolicy, error) {
+	var policies []iamtypes.AttachedPolicy
+	var marker string
+	for {
+		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{
+			RoleName: awssdk.String(roleName),
+			Marker:   stringPtr(marker),
+			MaxItems: awssdk.Int32(1000),
+		})
+		if optionalAWSError(err, "NoSuchEntity") {
+			return policies, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list attached role policies %q: %w", roleName, err)
+		}
+		policies = append(policies, out.AttachedPolicies...)
+		marker = nextMarker(out.IsTruncated, out.Marker)
+		if marker == "" {
+			return policies, nil
+		}
+	}
 }
 
 func listIAMRoleTrusts(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamRoleTrust, string, error) {
@@ -3279,7 +3621,7 @@ func apiGatewayPublicEndpoint(settings settings, domain apigatewaytypes.DomainNa
 		ResourceName: awssdk.ToString(domain.DomainName),
 		ResourceType: "apigateway_domain",
 		EndpointID:   firstNonEmpty(awssdk.ToString(domain.DomainNameArn), awssdk.ToString(domain.DomainName)),
-		EndpointType: firstNonEmpty(apiGatewayEndpointTypes(domain.EndpointConfiguration), "apigateway_domain"),
+		EndpointType: firstNonEmpty(awsnetwork.APIGatewayEndpointTypes(domain.EndpointConfiguration), "apigateway_domain"),
 		Host:         dnsHost(awssdk.ToString(domain.DomainName)),
 		TargetHost:   firstString(targetHosts),
 		TargetHosts:  targetHosts,
@@ -3297,7 +3639,7 @@ func apiGatewayRestAPIPublicEndpoint(settings settings, api apigatewaytypes.Rest
 		ResourceName: firstNonEmpty(awssdk.ToString(api.Name), apiID, host),
 		ResourceType: "apigateway_rest_api",
 		EndpointID:   firstNonEmpty(apiID, host),
-		EndpointType: firstNonEmpty(apiGatewayEndpointTypes(api.EndpointConfiguration), "execute_api"),
+		EndpointType: firstNonEmpty(awsnetwork.APIGatewayEndpointTypes(api.EndpointConfiguration), "execute_api"),
 		Host:         host,
 		Region:       settings.region,
 		Scope:        settings.accountID,
@@ -3869,19 +4211,25 @@ func iamGroupMembershipEvent(settings settings, member iamGroupMember) (*primiti
 	return sourceEvent(settings, id, "aws.iam_group_membership", "aws/iam_group_membership/v1", payload, attributes, firstTime(user.CreateDate))
 }
 
-func iamRoleEvent(settings settings, role iamtypes.Role) (*primitives.Event, error) {
+func iamRoleEvent(settings settings, record awsIAMRole) (*primitives.Event, error) {
+	role := record.Role
+	policyARNs := attachedPolicyARNs(record.AttachedPolicies)
+	policyNames := attachedPolicyNames(record.AttachedPolicies)
 	attributes := map[string]string{
-		"arn":            awssdk.ToString(role.Arn),
-		"domain":         settings.accountID,
-		"family":         familyIAMRole,
-		"principal_type": "role",
-		"user_id":        firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.Arn), awssdk.ToString(role.RoleName)),
-		"login":          awssdk.ToString(role.RoleName),
-		"display_name":   awssdk.ToString(role.RoleName),
-		"is_admin":       boolString(containsAny(strings.ToLower(awssdk.ToString(role.RoleName)), "admin", "power", "owner")),
+		"arn":                       awssdk.ToString(role.Arn),
+		"attached_policy_arns":      strings.Join(policyARNs, ","),
+		"attached_policy_names":     strings.Join(policyNames, ","),
+		"domain":                    settings.accountID,
+		"family":                    familyIAMRole,
+		"has_support_access_policy": boolString(hasSupportAccessPolicy(record.AttachedPolicies)),
+		"principal_type":            "role",
+		"user_id":                   firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.Arn), awssdk.ToString(role.RoleName)),
+		"login":                     awssdk.ToString(role.RoleName),
+		"display_name":              awssdk.ToString(role.RoleName),
+		"is_admin":                  boolString(containsAny(strings.ToLower(awssdk.ToString(role.RoleName)), "admin", "power", "owner")),
 	}
 	addTimeAttribute(attributes, "created_at", role.CreateDate)
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "role": role})
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "role": role, "attached_policies": record.AttachedPolicies})
 	if err != nil {
 		return nil, err
 	}
@@ -4174,38 +4522,6 @@ func sourceEvent(settings settings, id string, kind string, schemaRef string, pa
 	}, nil
 }
 
-func awsPullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (sourcecdk.Pull, error) {
-	if len(records) == 0 {
-		if next != "" {
-			return sourcecdk.Pull{NextCursor: &cerebrov1.SourceCursor{Opaque: next}}, nil
-		}
-		return sourcecdk.Pull{}, nil
-	}
-	events := make([]*primitives.Event, 0, len(records))
-	for _, record := range records {
-		event, err := build(record)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	fallback := events[len(events)-1].GetId()
-	if cursorFallback != nil {
-		fallback = cursorFallback(records[len(records)-1])
-	}
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: firstNonEmpty(next, fallback),
-		},
-	}
-	if next != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-	}
-	return pull, nil
-}
-
 func awsCheck[T any](ctx context.Context, clients awsClients, settings settings, list func(context.Context, awsClients, settings, string, int) ([]T, string, error), label string) error {
 	_, _, err := list(ctx, clients, settings, "", 1)
 	if err != nil {
@@ -4252,22 +4568,15 @@ func int32Ptr(value int) *int32 {
 	if value == 0 {
 		return nil
 	}
-	if value > math.MaxInt32 {
-		value = math.MaxInt32
-	}
-	if value < math.MinInt32 {
-		value = math.MinInt32
-	}
-	parsed := int32(value)
+	parsed := int32(min(max(value, math.MinInt32), math.MaxInt32)) //nolint:gosec // value is clamped to int32 bounds before conversion.
 	return &parsed
 }
 
 func stringPtr(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return &trimmed
 	}
-	return &trimmed
+	return nil
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {
@@ -4373,17 +4682,6 @@ func apiGatewayDomainPrivate(config *apigatewaytypes.EndpointConfiguration) bool
 		}
 	}
 	return true
-}
-
-func apiGatewayEndpointTypes(config *apigatewaytypes.EndpointConfiguration) string {
-	if config == nil {
-		return ""
-	}
-	values := make([]string, 0, len(config.Types))
-	for _, endpointType := range config.Types {
-		values = append(values, string(endpointType))
-	}
-	return strings.Join(cleanStrings(values), ",")
 }
 
 func cleanHosts(values []string) []string {
@@ -4997,21 +5295,43 @@ func addTimeAttribute(attributes map[string]string, key string, value *time.Time
 	attributes[key] = value.UTC().Format(time.RFC3339)
 }
 
+func attachedPolicyARNs(policies []iamtypes.AttachedPolicy) []string {
+	values := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		values = append(values, awssdk.ToString(policy.PolicyArn))
+	}
+	return cleanStrings(values)
+}
+
+func attachedPolicyNames(policies []iamtypes.AttachedPolicy) []string {
+	values := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		values = append(values, awssdk.ToString(policy.PolicyName))
+	}
+	return cleanStrings(values)
+}
+
+func hasSupportAccessPolicy(policies []iamtypes.AttachedPolicy) bool {
+	for _, policy := range policies {
+		if awssdk.ToString(policy.PolicyName) == "AWSSupportAccess" || strings.HasSuffix(awssdk.ToString(policy.PolicyArn), ":policy/AWSSupportAccess") {
+			return true
+		}
+	}
+	return false
+}
+
 func isAdminPolicy(values ...string) bool {
 	joined := strings.ToLower(strings.Join(values, " "))
 	return containsAny(joined, "administratoraccess", "admin", "poweruser", "iamfullaccess")
 }
 
 func emailLike(value string) string {
-	trimmed := strings.TrimSpace(value)
-	return strings.ToLower(strings.TrimSpace(emailPattern.FindString(trimmed)))
+	return strings.ToLower(strings.TrimSpace(emailPattern.FindString(strings.TrimSpace(value))))
 }
 
 func boolString(value bool) string { return strconv.FormatBool(value) }
 
-func firstNonEmpty(values ...string) string {
-	return textutil.FirstNonEmpty(values...)
-}
+func firstNonEmpty(values ...string) string { return textutil.FirstNonEmpty(values...) }
 
 func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
@@ -5033,8 +5353,5 @@ func trimEmptyAttributes(attributes map[string]string) {
 }
 
 func sanitizeEventID(value string) string {
-	value = strings.ReplaceAll(value, " ", "-")
-	value = strings.ReplaceAll(value, "/", "-")
-	value = strings.ReplaceAll(value, ":", "-")
-	return strings.Trim(value, "-")
+	return strings.Trim(strings.NewReplacer(" ", "-", "/", "-", ":", "-").Replace(value), "-")
 }

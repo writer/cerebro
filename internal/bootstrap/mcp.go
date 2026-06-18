@@ -16,8 +16,12 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -353,6 +357,9 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if request.Method == "tools/call" && mcpToolNameFromParams(request.Method, request.Params) == "cerebro.graph.reason" {
+		clearLongRunningWriteDeadline(w)
+	}
 	response := app.handleMCPRequest(r, request)
 	mcpWriteJSONRPC(w, response)
 	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), mcpResponseToolErrorKind(response), time.Since(started), mcpTelemetryDetails{
@@ -536,6 +543,10 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		})
 	case "cerebro.source_runtimes.list":
 		return app.mcpListSourceRuntimes(r, args)
+	case "cerebro.connector_definitions.list":
+		return app.mcpListConnectorDefinitions(r, args)
+	case "cerebro.connector_definitions.validate":
+		return app.mcpValidateConnectorDefinition(r, args)
 	case "cerebro.findings.list":
 		return app.mcpListFindings(r, args)
 	case "cerebro.findings.get":
@@ -564,6 +575,10 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphImpact(r, args)
 	case "cerebro.graph.paths":
 		return app.mcpGraphPaths(r, args)
+	case "cerebro.agent.preflight":
+		return app.mcpAgentPreflight(r, args)
+	case "cerebro.graph.reason":
+		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
 		return app.mcpInvestigationContext(r, args)
 	case "cerebro.findings.action.propose":
@@ -629,6 +644,85 @@ func (app *App) mcpListSourceRuntimes(r *http.Request, args map[string]any) (any
 	return map[string]any{
 		"runtimes": values,
 		"metadata": mcpResponseMetadata(limit, len(values), nil),
+	}, nil
+}
+
+func (app *App) mcpListConnectorDefinitions(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", defaultMCPListLimit, maxMCPListLimit)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := mcpTenantArg(r, args)
+	if tenantID == "" && requiresTenantFilter(r.Context()) {
+		return nil, errTenantForbidden
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		return nil, err
+	}
+	store := connectorDefinitionStore(app.deps.StateStore)
+	if store == nil {
+		return nil, sourceruntime.ErrRuntimeUnavailable
+	}
+	records, err := store.ListConnectorDefinitions(r.Context(), ports.ConnectorDefinitionFilter{
+		TenantID: tenantID,
+		Stage:    mcpStringArg(args, "stage"),
+		Limit:    boundedUint32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	definitions := make([]any, 0, len(records))
+	for _, record := range records {
+		definition, err := connectorDefinitionFromRecord(record)
+		if err != nil {
+			return nil, err
+		}
+		if err := authorizeTenantID(r.Context(), definition.TenantID); err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, definition)
+	}
+	return map[string]any{
+		"definitions": definitions,
+		"metadata":    mcpResponseMetadata(limit, len(definitions), nil),
+	}, nil
+}
+
+func (app *App) mcpValidateConnectorDefinition(r *http.Request, args map[string]any) (any, error) {
+	rawDefinition, ok := args["definition"]
+	if !ok {
+		return nil, fmt.Errorf("%w: definition is required", errInvalidHTTPRequest)
+	}
+	payload, err := json.Marshal(rawDefinition)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid definition", errInvalidHTTPRequest)
+	}
+	definition := connectordefinitions.Definition{}
+	if err := json.Unmarshal(payload, &definition); err != nil {
+		return nil, fmt.Errorf("%w: invalid definition", errInvalidHTTPRequest)
+	}
+	tenantID := mcpTenantArg(r, map[string]any{"tenant_id": definition.TenantID})
+	if tenantID == "" && requiresTenantFilter(r.Context()) {
+		return nil, errTenantForbidden
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		return nil, err
+	}
+	definition.TenantID = tenantID
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
+	support, err := connectordefinitions.Classify(normalized, connectordefinitions.DefaultGrammar())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
+	return map[string]any{
+		"definition": normalized,
+		"validation": normalized.Validation,
+		"promotion":  normalized.Promotion,
+		"support":    support,
+		"metadata":   mcpResponseMetadata(0, 1, nil),
 	}, nil
 }
 
@@ -1348,6 +1442,98 @@ func (app *App) mcpGraphPaths(r *http.Request, args map[string]any) (any, error)
 	return mcpAddResponseMetadata(value, mcpResponseMetadata(limitApplied, mcpMapArrayCount(value, "paths"), nil)), nil
 }
 
+func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
+	request := graphagent.AskRequest{
+		TenantID: mcpStringArg(args, "tenant_id"),
+		Question: mcpStringArg(args, "question"),
+		ScopeURN: mcpStringArg(args, "scope_urn"),
+		Model:    mcpStringArg(args, "model"),
+	}
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	request.TenantID = resolved.TenantID
+	if request.ScopeURN != "" {
+		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
+			return nil, mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
+		}
+	}
+	preflight := agentplatform.PreflightAgentRun(agentplatform.AgentRunPreflightRequest{
+		TenantID:              request.TenantID,
+		ActorID:               resolved.ActorID,
+		CapabilityIDs:         []string{agentplatform.DefaultAgentRunCapabilityID},
+		Question:              request.Question,
+		ScopeURN:              request.ScopeURN,
+		Model:                 request.Model,
+		RequestedScopes:       resolved.RequestedScopes,
+		ScopeUnrestricted:     resolved.ScopeUnrestricted || !resolved.Authenticated,
+		ProvenanceRequirement: "graph-reasoning",
+	})
+	if !preflight.Enabled {
+		return nil, agentPreflightDeniedError(preflight)
+	}
+	request.PlatformContext = &preflight
+	if err := graphagent.ValidateRequest(request); err != nil {
+		return nil, err
+	}
+	service, err := app.newGraphReasoningService()
+	if err != nil {
+		return nil, err
+	}
+	response, err := service.Reason(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	rows := 0
+	if typed, ok := value.(map[string]any); ok {
+		rows = mcpMapArrayCount(typed, "rows")
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, rows, nil)), nil
+	}
+	return value, nil
+}
+
+func (app *App) mcpAgentPreflight(r *http.Request, args map[string]any) (any, error) {
+	request := agentplatform.AgentRunPreflightRequest{
+		TenantID:              mcpStringArg(args, "tenant_id"),
+		ActorID:               mcpStringArg(args, "actor_id"),
+		CapabilityIDs:         mcpStringListArg(args, "capability_ids"),
+		Question:              mcpStringArg(args, "question"),
+		ScopeURN:              mcpStringArg(args, "scope_urn"),
+		Model:                 mcpStringArg(args, "model"),
+		RequestedScopes:       mcpStringListArg(args, "requested_scopes"),
+		ConnectorReadiness:    mcpStringMapArg(args, "connector_readiness"),
+		AllowPreview:          mcpBoolArg(args, "allow_preview"),
+		SelectionReason:       mcpStringArg(args, "selection_reason"),
+		ProvenanceRequirement: mcpStringArg(args, "provenance_requirement"),
+	}
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, request.ActorID, request.RequestedScopes)
+	if err != nil {
+		return nil, err
+	}
+	request.TenantID = resolved.TenantID
+	request.ActorID = resolved.ActorID
+	request.RequestedScopes = resolved.RequestedScopes
+	request.ScopeUnrestricted = resolved.ScopeUnrestricted
+	if request.ScopeURN != "" {
+		if err := authorizeCerebroURNTenant(r.Context(), request.ScopeURN); err != nil {
+			return nil, mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
+		}
+	}
+	value, err := jsonValue(agentplatform.PreflightAgentRun(request))
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, mcpMapArrayCount(typed, "capability_decisions"), nil)), nil
+	}
+	return value, nil
+}
+
 func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (any, error) {
 	findingID := mcpStringArg(args, "finding_id")
 	if findingID == "" {
@@ -1396,12 +1582,9 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 	neighborhoods := []any{}
 	partialErrors := []string{}
 	includeGraph := !mcpBoolArg(args, "skip_graph")
-	resourceURNs := make([]string, 0, assetLimit)
+	resourceURNs := make([]string, 0, len(finding.ResourceURNs))
 	seenResourceURNs := map[string]struct{}{}
 	for _, resourceURN := range finding.ResourceURNs {
-		if len(resourceURNs) >= assetLimit {
-			break
-		}
 		resourceURN = strings.TrimSpace(resourceURN)
 		if resourceURN == "" {
 			continue
@@ -1413,6 +1596,9 @@ func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (a
 		resourceURNs = append(resourceURNs, resourceURN)
 	}
 	for _, result := range app.fetchMCPInvestigationResources(r.Context(), r, resourceURNs, includeGraph) {
+		if len(assets) >= assetLimit {
+			continue
+		}
 		if result.asset != nil {
 			assets = append(assets, *result.asset)
 		} else if result.assetErr != nil {
@@ -1457,7 +1643,8 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 	if err := authorizeFindingIDTenant(r.Context(), findingStore(app.deps.StateStore), findingID); err != nil {
 		return nil, mcpNormalizeIDLookupError(err, ports.ErrFindingNotFound)
 	}
-	if _, err := app.findingService().GetFinding(r.Context(), findingID); err != nil {
+	finding, err := app.findingService().GetFinding(r.Context(), findingID)
+	if err != nil {
 		return nil, err
 	}
 	action := strings.TrimSpace(mcpStringArg(args, "action"))
@@ -1468,6 +1655,9 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 		}
 	case "update_status":
 		if _, err := parseFindingStatus(mcpStringArg(args, "status")); err != nil {
+			return nil, err
+		}
+		if err := findingapi.ValidateOptionalStatus(mcpStringArg(args, "expected_status")); err != nil {
 			return nil, err
 		}
 	case "create_exception":
@@ -1481,18 +1671,52 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 	default:
 		return nil, fmt.Errorf("%w: unsupported action %q", errInvalidHTTPRequest, action)
 	}
-	return map[string]any{
-		"dry_run":           true,
-		"would_mutate":      false,
-		"finding_id":        findingID,
-		"action":            action,
-		"status":            mcpStringArg(args, "status"),
-		"reason":            mcpStringArg(args, "reason"),
-		"ticket_url":        mcpStringArg(args, "ticket_url"),
-		"ticket_id":         mcpStringArg(args, "ticket_id"),
-		"required_scope":    "write",
-		"approval_required": true,
-	}, nil
+	proposal := findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action)
+	mcpApplyExternalLifecycleProposal(proposal, finding, action)
+	return proposal, nil
+}
+
+func mcpApplyExternalLifecycleProposal(proposal findingapi.MCPActionProposalPayload, finding *ports.FindingRecord, action string) {
+	ref, ok := mcpExternalOwnedRef(finding)
+	if !ok {
+		return
+	}
+	proposal["lifecycle_owner"] = "external_owned"
+	proposal["external_system"] = strings.TrimSpace(ref.System)
+	proposal["external_ref_kind"] = strings.TrimSpace(ref.Kind)
+	proposal["external_id"] = strings.TrimSpace(ref.ExternalID)
+	proposal["external_status"] = strings.TrimSpace(ref.ExternalStatus)
+	proposal["external_status_reason"] = strings.TrimSpace(ref.ExternalStatusReason)
+	proposal["external_url"] = strings.TrimSpace(ref.URL)
+	if strings.TrimSpace(action) == "update_status" {
+		proposal["handoff_required"] = true
+		proposal["recommended_action"] = "update_external_ref"
+		proposal["status_source"] = "external_lifecycle:" + strings.TrimSpace(ref.System)
+		proposal["proposal_note"] = "Lifecycle is owned by " + strings.TrimSpace(ref.System) + " " + strings.TrimSpace(ref.Kind) + "; update the external case or source and let Cerebro refresh the finding status."
+	}
+}
+
+func mcpExternalOwnedRef(finding *ports.FindingRecord) (ports.FindingExternalRef, bool) {
+	if finding == nil {
+		return ports.FindingExternalRef{}, false
+	}
+	for _, ref := range finding.ExternalRefs {
+		if strings.EqualFold(strings.TrimSpace(ref.LifecycleOwner), "external_owned") {
+			return ref, true
+		}
+	}
+	if !strings.EqualFold(strings.TrimSpace(finding.Attributes["lifecycle_owner"]), "external_owned") {
+		return ports.FindingExternalRef{}, false
+	}
+	return ports.FindingExternalRef{
+		System:               finding.Attributes["external_ref_system"],
+		Kind:                 finding.Attributes["external_ref_kind"],
+		ExternalID:           finding.Attributes["external_ref_id"],
+		URL:                  finding.Attributes["case_url"],
+		ExternalStatus:       finding.Attributes["external_ref_status"],
+		ExternalStatusReason: finding.Attributes["status_reason"],
+		LifecycleOwner:       "external_owned",
+	}, true
 }
 
 func (app *App) mcpProposeRuntimeRefresh(r *http.Request, args map[string]any) (any, error) {
@@ -1553,6 +1777,36 @@ func mcpTools() []mcpTool {
 			}, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"runtimes": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("List Source Runtimes"),
+		},
+		{
+			Name:        "cerebro.connector_definitions.list",
+			Title:       "List Connector Definitions",
+			Description: "List dynamic connector definitions visible to the authenticated caller.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id": map[string]any{"type": "string"},
+				"stage":     map[string]any{"type": "string", "enum": []string{"draft", "sandbox", "pilot", "approved", "certified"}},
+				"limit":     mcpLimitSchema(maxMCPListLimit, "definitions"),
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"definitions": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("List Connector Definitions"),
+		},
+		{
+			Name:        "cerebro.connector_definitions.validate",
+			Title:       "Validate Connector Definition",
+			Description: "Validate a proposed dynamic connector definition without persisting it or contacting a third party.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"definition": map[string]any{
+					"type":                 "object",
+					"additionalProperties": true,
+				},
+			}, []string{"definition"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"definition": map[string]any{"type": "object"},
+				"validation": map[string]any{"type": "object"},
+				"promotion":  map[string]any{"type": "object"},
+				"support":    map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Validate Connector Definition"),
 		},
 		{
 			Name:        "cerebro.findings.list",
@@ -1771,6 +2025,60 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Graph Attack Paths"),
 		},
 		{
+			Name:        "cerebro.agent.preflight",
+			Title:       "Agent Run Preflight",
+			Description: "Resolve tenant-scoped capability, graph, connector, policy, and write-back preconditions before an agent plans work.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"capability_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"question":       map[string]any{"type": "string"},
+				"scope_urn":      map[string]any{"type": "string"},
+				"model":          map[string]any{"type": "string"},
+				"connector_readiness": map[string]any{
+					"type":                 "object",
+					"additionalProperties": map[string]any{"type": "string"},
+				},
+				"allow_preview":          map[string]any{"type": "boolean"},
+				"selection_reason":       map[string]any{"type": "string"},
+				"provenance_requirement": map[string]any{"type": "string"},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"tenant_id":            map[string]any{"type": "string"},
+				"enabled":              map[string]any{"type": "boolean"},
+				"blockers":             map[string]any{"type": "array"},
+				"capability_decisions": map[string]any{"type": "array"},
+				"graph_context":        map[string]any{"type": "object"},
+				"connector_context":    map[string]any{"type": "array"},
+				"policy":               map[string]any{"type": "object"},
+				"write_back":           map[string]any{"type": "object"},
+				"runtime_events":       map[string]any{"type": "array"},
+				"provenance":           map[string]any{"type": "array"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Agent Run Preflight"),
+		},
+		{
+			Name:        "cerebro.graph.reason",
+			Title:       "Graph Reasoning",
+			Description: "Answer a tenant-scoped graph question with query plan, guarded Cypher, rows, graph evidence, citations, and provenance.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"question":  map[string]any{"type": "string"},
+				"scope_urn": map[string]any{"type": "string"},
+				"model":     map[string]any{"type": "string"},
+			}, []string{"question"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"trace_id":            map[string]any{"type": "string"},
+				"query_plan":          map[string]any{"type": "object"},
+				"cypher":              map[string]any{"type": "object"},
+				"rows":                map[string]any{"type": "array"},
+				"graph":               map[string]any{"type": "object"},
+				"answer_markdown":     map[string]any{"type": "string"},
+				"citations":           map[string]any{"type": "array"},
+				"citation_validation": map[string]any{"type": "object"},
+				"preflight":           map[string]any{"type": "object"},
+				"provenance":          map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Graph Reasoning"),
+		},
+		{
 			Name:        "cerebro.investigation.context",
 			Title:       "Investigation Context",
 			Description: "Bundle finding, evidence, assets, and graph context for one finding so an agent can investigate without many round trips.",
@@ -1785,32 +2093,12 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Investigation Context"),
 		},
 		{
-			Name:        "cerebro.findings.action.propose",
-			Title:       "Propose Finding Action",
-			Description: "Validate and describe a finding workflow action without applying it. Requires dry_run=true and never mutates state.",
-			InputSchema: mcpObjectSchema(map[string]any{
-				"dry_run":    map[string]any{"type": "boolean", "const": true},
-				"finding_id": map[string]any{"type": "string"},
-				"action":     map[string]any{"type": "string", "enum": []string{"add_note", "update_status", "create_exception", "link_ticket"}},
-				"note":       map[string]any{"type": "string"},
-				"status":     map[string]any{"type": "string", "enum": []string{"open", "resolved", "suppressed"}},
-				"reason":     map[string]any{"type": "string"},
-				"ticket_url": map[string]any{"type": "string"},
-				"ticket_id":  map[string]any{"type": "string"},
-			}, []string{"dry_run", "finding_id", "action"}),
-			OutputSchema: mcpOutputSchema(map[string]any{
-				"dry_run":           map[string]any{"type": "boolean", "const": true},
-				"would_mutate":      map[string]any{"type": "boolean", "const": false},
-				"finding_id":        map[string]any{"type": "string"},
-				"action":            map[string]any{"type": "string"},
-				"status":            map[string]any{"type": "string"},
-				"reason":            map[string]any{"type": "string"},
-				"ticket_url":        map[string]any{"type": "string"},
-				"ticket_id":         map[string]any{"type": "string"},
-				"required_scope":    map[string]any{"type": "string"},
-				"approval_required": map[string]any{"type": "boolean"},
-			}),
-			Annotations: mcpReadOnlyAnnotations("Propose Finding Action"),
+			Name:         "cerebro.findings.action.propose",
+			Title:        "Propose Finding Action",
+			Description:  "Validate and describe a finding workflow action without applying it. Requires dry_run=true and never mutates state.",
+			InputSchema:  mcpObjectSchema(findingapi.MCPActionInputProperties(), []string{"dry_run", "finding_id", "action"}),
+			OutputSchema: mcpOutputSchema(findingapi.MCPActionOutputProperties()),
+			Annotations:  mcpReadOnlyAnnotations("Propose Finding Action"),
 		},
 		{
 			Name:        "cerebro.source_runtimes.refresh.propose",
@@ -2342,19 +2630,19 @@ func (app *App) mcpGetPrompt(_ *http.Request, rawParams json.RawMessage) (map[st
 		if findingID == "" {
 			return nil, fmt.Errorf("%w: finding_id is required", errInvalidHTTPRequest)
 		}
-		text = "Investigate Cerebro finding " + findingID + ". First read cerebro://investigation/finding/" + url.PathEscape(findingID) + ", then use cerebro.evidence.list, cerebro.assets.get, cerebro.graph.neighborhood, cerebro.graph.impact, and cerebro.findings.action.propose with dry_run=true for recommended next steps. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+		text = "Investigate Cerebro finding " + findingID + ". First read cerebro://investigation/finding/" + url.PathEscape(findingID) + ", then use cerebro.evidence.list, cerebro.assets.get, cerebro.graph.reason, cerebro.graph.neighborhood, cerebro.graph.impact, and cerebro.findings.action.propose with dry_run=true for recommended next steps. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 	case "investigate_asset":
 		assetURN := mcpStringArg(args, "asset_urn")
 		if assetURN == "" {
 			return nil, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest)
 		}
-		text = "Investigate Cerebro asset " + assetURN + ". Read cerebro://asset/" + url.PathEscape(assetURN) + ", then use cerebro.graph.neighborhood, cerebro.graph.impact, cerebro.findings.search, and cerebro.risk.summary to explain blast radius and related findings. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+		text = "Investigate Cerebro asset " + assetURN + ". Read cerebro://asset/" + url.PathEscape(assetURN) + ", then use cerebro.graph.reason, cerebro.graph.neighborhood, cerebro.graph.impact, cerebro.findings.search, and cerebro.risk.summary to explain blast radius and related findings. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 	case "summarize_tenant_risk":
 		tenantID := mcpStringArg(args, "tenant_id")
 		if tenantID == "" {
-			text = "Summarize tenant risk for the authenticated Cerebro principal using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+			text = "Summarize tenant risk for the authenticated Cerebro principal using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.reason, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 		} else {
-			text = "Summarize Cerebro tenant " + tenantID + " risk using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
+			text = "Summarize Cerebro tenant " + tenantID + " risk using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.reason, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 		}
 	default:
 		return nil, fmt.Errorf("%w: unknown prompt %q", errInvalidHTTPRequest, name)
@@ -3101,6 +3389,57 @@ func mcpRuntimeIDsArg(args map[string]any) []string {
 	return normalizeMCPStringList(values)
 }
 
+func mcpStringListArg(args map[string]any, key string) []string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch typed := raw.(type) {
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, mcpAnyString(item))
+		}
+		return normalizeMCPStringList(values)
+	case []string:
+		return normalizeMCPStringList(typed)
+	case string:
+		return normalizeMCPStringList(splitMCPStringList(typed))
+	default:
+		return normalizeMCPStringList(splitMCPStringList(mcpAnyString(typed)))
+	}
+}
+
+func mcpStringMapArg(args map[string]any, key string) map[string]string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	out := map[string]string{}
+	switch typed := raw.(type) {
+	case map[string]any:
+		for itemKey, itemValue := range typed {
+			itemKey = strings.TrimSpace(itemKey)
+			itemString := strings.TrimSpace(mcpAnyString(itemValue))
+			if itemKey != "" && itemString != "" {
+				out[itemKey] = itemString
+			}
+		}
+	case map[string]string:
+		for itemKey, itemValue := range typed {
+			itemKey = strings.TrimSpace(itemKey)
+			itemValue = strings.TrimSpace(itemValue)
+			if itemKey != "" && itemValue != "" {
+				out[itemKey] = itemValue
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func splitMCPStringList(value string) []string {
 	parts := strings.FieldsFunc(value, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\t'
@@ -3290,6 +3629,7 @@ func safeMCPToolError(err error) string {
 	case errors.Is(err, errTenantForbidden):
 		return "tenant forbidden"
 	case errors.Is(err, errInvalidHTTPRequest),
+		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findingdomain.ErrInvalidRequest):

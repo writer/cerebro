@@ -29,6 +29,13 @@
       "controls": [
         "A.5.1"
       ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AU-2",
+        "AU-12"
+      ]
     }
   ],
   "enabled": true,

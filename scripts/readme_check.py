@@ -10,6 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+CONTROL_INDEX_DOC_FLAGS = {"init-extension", "extension", "profile", "output", "write", "check"}
+CONTROL_INDEX_README_FLAGS = {"init-extension", "extension", "profile", "output", "write"}
 
 
 def read(path: Path) -> str:
@@ -52,6 +54,29 @@ def readme_commands(readme: str) -> list[str]:
     if not match:
         fail("README is missing top-level command sentence")
     return sorted(re.findall(r"`([^`]+)`", match.group(1)))
+
+
+def controlindex_flags() -> set[str]:
+    body = read(ROOT / "tools" / "controlindex" / "main.go")
+    flags = set(re.findall(r'flag\.(?:String|Bool)\("([^"]+)"', body))
+    flags.update(re.findall(r'flag\.Var\([^,\n]+,\s*"([^"]+)"', body))
+    return flags
+
+
+def require_controlindex_docs(readme: str) -> None:
+    flags = controlindex_flags()
+    missing_code_flags = sorted(CONTROL_INDEX_DOC_FLAGS - flags)
+    if missing_code_flags:
+        fail("controlindex lost README-tracked flags: " + ", ".join(f"--{flag}" for flag in missing_code_flags))
+
+    compliance_docs = read(ROOT / "docs" / "COMPLIANCE_CONTROLS.md")
+    missing_doc_flags = sorted(f"--{flag}" for flag in CONTROL_INDEX_DOC_FLAGS if f"--{flag}" not in compliance_docs)
+    if missing_doc_flags:
+        fail("COMPLIANCE_CONTROLS.md missing controlindex flags: " + ", ".join(missing_doc_flags))
+
+    missing_readme_flags = sorted(f"--{flag}" for flag in CONTROL_INDEX_README_FLAGS if f"--{flag}" not in readme)
+    if missing_readme_flags:
+        fail("README missing controlindex workflow flags: " + ", ".join(missing_readme_flags))
 
 
 def repository_env_vars() -> set[str]:
@@ -98,6 +123,8 @@ def main() -> int:
     if missing_env_vars:
         fail("README documents env vars not found in config sources: " + ", ".join(missing_env_vars))
 
+    require_controlindex_docs(readme)
+
     require_contains(
         readme,
         [
@@ -111,6 +138,12 @@ def main() -> int:
             "sdk/typescript/README.md",
             "docs/MCP_DROID_SETUP.md",
             "docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md",
+            "docs/COMPLIANCE_CONTROLS.md",
+            "make control-index-check",
+            "make policy-rule-check",
+            "make detection-catalog-check",
+            "Control extension packs",
+            "make readme-check",
         ],
     )
 

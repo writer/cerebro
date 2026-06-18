@@ -145,7 +145,291 @@ func cloudResourceMetadataProjections(event *cerebrov1.EventEnvelope, profile id
 	addCloudResourceClassificationLinks(entities, links, tenantID, event, resourceURN, attributes, options)
 	addCloudResourcePublicReachability(entities, links, tenantID, event, resourceURN, provider, attributes)
 	addCloudResourceRuntimeIdentityLinks(entities, links, tenantID, event, resourceURN, provider, attributes)
+	addCloudFindingCorrelation(entities, links, tenantID, event, resourceURN, provider, attributes)
 	return identityProjectionResult(entities, links)
+}
+
+func addCloudFindingCorrelation(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, resourceURN string, provider string, attributes map[string]string) {
+	family := cloudFindingFamily(event, provider, attributes)
+	if family == "" {
+		return
+	}
+	findingID := cloudFindingID(event, attributes)
+	findingURN := projectionURN(tenantID, "security_finding", provider, findingID)
+	if findingURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        findingURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "security.finding",
+		Label:      firstNonEmpty(attributes["title"], attributes["resource_name"], attributes["display_name"], attributes["category"], findingID),
+		Attributes: cloudFindingAttributes(event, provider, family, findingID, attributes),
+	})
+	if resourceURN != "" && resourceURN != findingURN {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, findingURN, relationRepresents, cloudFindingLinkAttributes(event, provider, family, "cloud_provider_finding")))
+	}
+
+	affectedIDRaw := firstNonEmpty(attributes["affected_resource_id"], attributes["assessed_resource_id"])
+	if affectedIDRaw == "" {
+		return
+	}
+	affectedType := cloudFindingAffectedResourceType(provider, firstNonEmpty(attributes["affected_resource_type"], attributes["assessed_resource_type"]), affectedIDRaw)
+	affectedID := cloudFindingAffectedResourceID(provider, affectedType, affectedIDRaw, firstNonEmpty(attributes["affected_resource_name"], attributes["assessed_resource_name"]))
+	affectedURN := projectionURN(tenantID, provider+"_"+affectedType, affectedID)
+	if affectedURN == "" || affectedURN == resourceURN {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        affectedURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: provider + "." + strings.ReplaceAll(affectedType, "_", "."),
+		Label:      firstNonEmpty(attributes["affected_resource_name"], attributes["assessed_resource_name"], cloudLastPathSegment(affectedID), affectedID),
+		Attributes: compactAttributes(map[string]string{
+			"resource_id":       affectedID,
+			"resource_provider": provider,
+			"resource_type":     affectedType,
+		}),
+	})
+	linkAttrs := cloudFindingLinkAttributes(event, provider, family, "cloud_finding_affected_resource")
+	addProjectedAttribute(linkAttrs, "finding_id", findingID)
+	addProjectedAttribute(linkAttrs, "resource_id", affectedID)
+	addProjectedAttribute(linkAttrs, "resource_type", affectedType)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), affectedURN, findingURN, relationHasEvidence, linkAttrs))
+	reverseAttrs := cloneStringMap(linkAttrs)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), findingURN, affectedURN, relationObservedOn, reverseAttrs))
+}
+
+func cloudFindingFamily(event *cerebrov1.EventEnvelope, provider string, attributes map[string]string) string {
+	family := normalizeCloudType(firstNonEmpty(attributes["resource_type"], attributes["family"]))
+	if family == "" {
+		if kind := strings.TrimSpace(event.GetKind()); strings.HasPrefix(kind, provider+".") {
+			family = normalizeCloudType(strings.TrimPrefix(kind, provider+"."))
+		}
+	}
+	switch provider + ":" + family {
+	case "aws:guardduty_finding", "aws:securityhub_finding", "aws:inspector2_finding", "aws:macie2_finding",
+		"gcp:security_center_finding",
+		"azure:server_vulnerability":
+		return family
+	default:
+		return ""
+	}
+}
+
+func cloudFindingID(event *cerebrov1.EventEnvelope, attributes map[string]string) string {
+	return firstNonEmpty(
+		attributes["finding_arn"],
+		attributes["finding_name"],
+		attributes["finding_id"],
+		attributes["canonical_name"],
+		attributes["resource_id"],
+		attributes["name"],
+		event.GetId(),
+	)
+}
+
+func cloudFindingAttributes(event *cerebrov1.EventEnvelope, provider string, family string, findingID string, attributes map[string]string) map[string]string {
+	return compactAttributes(map[string]string{
+		"affected_resource_id":   firstNonEmpty(attributes["affected_resource_id"], attributes["assessed_resource_id"]),
+		"affected_resource_type": firstNonEmpty(attributes["affected_resource_type"], attributes["assessed_resource_type"]),
+		"category":               attributes["category"],
+		"event_id":               event.GetId(),
+		"finding_id":             findingID,
+		"finding_type":           firstNonEmpty(attributes["finding_type"], family),
+		"provider":               provider,
+		"record_state":           attributes["record_state"],
+		"resource_id":            attributes["resource_id"],
+		"resource_provider":      provider,
+		"severity":               firstNonEmpty(attributes["severity"], attributes["severity_label"], attributes["severity_normalized"]),
+		"source_provider":        firstNonEmpty(attributes["source_provider"], attributes["product_name"]),
+		"status":                 firstNonEmpty(attributes["status"], attributes["state"], attributes["workflow_status"], attributes["status_code"]),
+	})
+}
+
+func cloudFindingLinkAttributes(event *cerebrov1.EventEnvelope, provider string, family string, matchType string) map[string]string {
+	return compactAttributes(map[string]string{
+		"at":         eventObservedAt(event),
+		"event_id":   event.GetId(),
+		"family":     family,
+		"match_type": matchType,
+		"provider":   provider,
+	})
+}
+
+func cloudFindingAffectedResourceType(provider string, rawType string, resourceID string) string {
+	if provider == "azure" && rawType == "" {
+		rawType = azureResourceTypeFromID(resourceID)
+	}
+	cleanType := strings.ReplaceAll(strings.TrimSpace(rawType), "::", "_")
+	if strings.HasPrefix(strings.ToLower(cleanType), "aws_") {
+		cleanType = cleanType[len("aws_"):]
+	}
+	normalized := normalizeCloudType(cleanType)
+	switch provider + ":" + normalized {
+	case "aws:awss3bucket", "aws:s3bucket":
+		return "s3_bucket"
+	case "aws:awsec2instance", "aws:ec2instance", "aws:instance":
+		return "ec2_instance"
+	case "aws:awsiamrole", "aws:iamrole", "aws:iam_role":
+		return "role"
+	case "aws:awsiamuser", "aws:iamuser", "aws:iam_user":
+		return "user"
+	case "aws:awsiamgroup", "aws:iamgroup", "aws:iam_group":
+		return "group"
+	case "aws:awsiamaccesskey", "aws:iamaccesskey", "aws:iam_access_key", "aws:accesskey", "aws:access_key":
+		return "credential"
+	case "aws:awslambdafunction", "aws:lambdafunction":
+		return "lambda_function"
+	case "aws:awsrdsdbinstance", "aws:rdsdbinstance":
+		return "rds_instance"
+	case "gcp:googlecloudstoragebucket", "gcp:google_cloud_storage_bucket", "gcp:storage_googleapis_com_bucket", "gcp:storage_bucket", "gcp:gcs_bucket":
+		return "gcs_bucket"
+	case "gcp:googlecloudrunservice", "gcp:google_cloud_run_service":
+		return "cloud_run_service"
+	}
+	if provider == "gcp" {
+		if inferred := panopticonGCPResourceTypeFromID(resourceID); inferred != "" {
+			return inferred
+		}
+	}
+	return firstNonEmpty(normalized, "resource")
+}
+
+func cloudFindingAffectedResourceID(provider string, resourceType string, resourceID string, resourceName string) string {
+	resourceID = strings.TrimSpace(resourceID)
+	resourceName = strings.TrimSpace(resourceName)
+	if provider == "gcp" {
+		switch resourceType {
+		case "gcs_bucket":
+			return firstNonEmpty(gcpBucketNameFromResourceID(resourceID), resourceID)
+		case "compute_instance":
+			return firstNonEmpty(gcpNamedResourceSegment(resourceID, "instances"), resourceName, cloudLastPathSegment(resourceID), resourceID)
+		case "cloud_run_service":
+			return firstNonEmpty(gcpServiceRelativeName(resourceID, "run.googleapis.com"), resourceID)
+		case "cloud_sql_instance":
+			return firstNonEmpty(gcpServiceSelfLink(resourceID, "sqladmin.googleapis.com", "sql/v1beta4"), resourceID)
+		case "gke_cluster":
+			return firstNonEmpty(gcpServiceSelfLink(resourceID, "container.googleapis.com", "v1"), resourceID)
+		}
+	}
+	return resourceID
+}
+
+func gcpServiceRelativeName(value string, host string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	path := gcpServicePath(value, host)
+	if path != "" {
+		return path
+	}
+	if strings.HasPrefix(value, "projects/") {
+		return value
+	}
+	return ""
+}
+
+func gcpServiceSelfLink(value string, host string, apiPrefix string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if path := gcpServicePath(value, host); path != "" {
+		return "https://" + strings.ToLower(strings.Trim(host, "/")) + "/" + strings.Trim(apiPrefix, "/") + "/" + path
+	}
+	lower := strings.ToLower(value)
+	normalizedHost := strings.ToLower(strings.Trim(host, "/"))
+	if strings.HasPrefix(lower, "https://"+normalizedHost+"/") || strings.HasPrefix(lower, "http://"+normalizedHost+"/") {
+		return value
+	}
+	return ""
+}
+
+func gcpServicePath(value string, host string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	lower := strings.ToLower(value)
+	normalizedHost := strings.ToLower(strings.Trim(host, "/"))
+	for _, prefix := range []string{"//" + normalizedHost + "/", normalizedHost + "/"} {
+		if strings.HasPrefix(lower, prefix) {
+			path := strings.TrimLeft(value[len(prefix):], "/")
+			if path == "" {
+				return ""
+			}
+			return path
+		}
+	}
+	return ""
+}
+
+func gcpNamedResourceSegment(value string, marker string) string {
+	value = strings.TrimSpace(value)
+	marker = strings.Trim(strings.TrimSpace(marker), "/")
+	if value == "" || marker == "" {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if strings.EqualFold(parts[index], marker) && strings.TrimSpace(parts[index+1]) != "" {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
+}
+
+func gcpBucketNameFromResourceID(value string) string {
+	if strings.HasPrefix(strings.ToLower(value), "gs://") {
+		bucket, _, _ := strings.Cut(value[len("gs://"):], "/")
+		return strings.TrimSpace(bucket)
+	}
+	return gcpNamedResourceSegment(value, "buckets")
+}
+
+func azureResourceTypeFromID(resourceID string) string {
+	lower := strings.ToLower(strings.TrimSpace(resourceID))
+	providerIndex := strings.LastIndex(lower, "/providers/")
+	if providerIndex < 0 {
+		return ""
+	}
+	providerPath := strings.Trim(strings.TrimSpace(resourceID[providerIndex+len("/providers/"):]), "/")
+	segments := strings.Split(providerPath, "/")
+	if len(segments) < 2 {
+		return providerPath
+	}
+	rawType := segments[0] + "/" + segments[1]
+	switch strings.ToLower(rawType) {
+	case "microsoft.compute/virtualmachines":
+		return "virtual_machine"
+	case "microsoft.storage/storageaccounts":
+		return "storage_account"
+	case "microsoft.sql/servers":
+		if len(segments) >= 4 && strings.EqualFold(segments[3], "databases") {
+			return "sql_database"
+		}
+		return "sql_server"
+	default:
+		return rawType
+	}
+}
+
+func cloudLastPathSegment(value string) string {
+	value = strings.Trim(strings.TrimSpace(value), "/")
+	if value == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == ':' })
+	for i := len(parts) - 1; i >= 0; i-- {
+		if part := strings.TrimSpace(parts[i]); part != "" {
+			return part
+		}
+	}
+	return value
 }
 
 func normalizeCloudProvider(value string) string {

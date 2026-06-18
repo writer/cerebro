@@ -262,14 +262,13 @@ jobs:
         with:
           fetch-depth: 1
       - name: Run Droid Auto Review
-        continue-on-error: true
         uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          # Fast deterministic preflight runs first; use Opus for the actual
+          # Fast deterministic preflight runs first; use Sonnet for the actual
           # bug-finding review so Droid does not fall back to stale depth presets.
-          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-opus-4-8' }}
+          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-sonnet-4-6' }}
           security_model: gpt-5.4
           allowed_bots: dependabot

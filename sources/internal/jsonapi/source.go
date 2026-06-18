@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -25,28 +29,34 @@ import (
 )
 
 const (
-	defaultPageSize = 100
-	maxPageSize     = 500
+	defaultPageSize             = 100
+	maxPageSize                 = 500
+	maxConfigTemplateExpansions = 32
 )
 
 // Family describes one JSON API collection exposed by a first-class source.
 type Family struct {
-	Name             string
-	Path             string
-	PathParams       []string
-	CursorParam      string
-	URNKind          string
-	IDKeys           []string
-	TimestampKeys    []string
-	Attributes       map[string]string
-	StaticAttributes map[string]string
-	StaticQuery      map[string]string
-	ConfigQuery      map[string]string
-	PageSizeParams   []string
-	ListKeys         []string
-	MapRecords       map[string]string
-	Singleton        bool
-	RequireID        bool
+	Name                 string
+	Path                 string
+	DetailPath           string
+	PathParams           []string
+	CursorParam          string
+	NextCursorKeys       []string
+	HasMoreKey           string
+	URNKind              string
+	IDKeys               []string
+	TimestampKeys        []string
+	Attributes           map[string]string
+	StaticAttributes     map[string]string
+	StaticQuery          map[string]string
+	ConfigQuery          map[string]string
+	PageSizeParams       []string
+	DisablePageSize      bool
+	ListKeys             []string
+	MapRecords           map[string]string
+	Singleton            bool
+	RequireID            bool
+	IncrementalWatermark bool
 }
 
 // Options configures a JSON API-backed source adapter.
@@ -55,8 +65,14 @@ type Options struct {
 	DefaultBaseURL                    string
 	DefaultFamily                     string
 	RequireTenantID                   bool
+	AuthModel                         string
 	TokenScheme                       string
 	TokenHeader                       string
+	OAuthTokenURL                     string
+	OAuthScopes                       []string
+	OAuthTokenParams                  map[string]string
+	OAuthTokenRequestAuthMethod       string
+	ConfigurableAuthModels            []string
 	StaticHeaders                     map[string]string
 	DiscoverURNScope                  string
 	PrivateEndpointAllowlistConfigKey string
@@ -72,6 +88,8 @@ type Source struct {
 	families             *sourcecdk.FamilyEngine[settings]
 	AllowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
+	oauthTokenMu         sync.Mutex
+	oauthTokens          map[string]cachedOAuthToken
 }
 
 type settings struct {
@@ -79,12 +97,28 @@ type settings struct {
 	family                   string
 	baseURL                  string
 	host                     string
+	authModel                string
 	token                    string
+	username                 string
+	password                 string
+	clientID                 string
+	clientSecret             string
+	refreshToken             string
+	tokenURL                 string
+	oauthScopes              []string
+	oauthTokenParams         map[string]string
+	oauthTokenRequestMethod  string
 	path                     string
 	pathParams               map[string]string
 	query                    url.Values
 	perPage                  int
 	privateEndpointAllowlist []string
+}
+
+type cachedOAuthToken struct {
+	accessToken string
+	tokenType   string
+	expiresAt   time.Time
 }
 
 type record struct {
@@ -106,6 +140,7 @@ func New(spec *cerebrov1.SourceSpec, options Options) (*Source, error) {
 		spec:          spec,
 		options:       options,
 		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
+		oauthTokens:   map[string]cachedOAuthToken{},
 	}
 	families, err := source.newFamilyEngine()
 	if err != nil {
@@ -123,6 +158,24 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.families.Check(ctx, cfg)
 }
 
+// CheckPath validates a specific provider path using the source's configured auth.
+func (s *Source) CheckPath(ctx context.Context, cfg sourcecdk.Config, path string, expectStatuses []int) error {
+	settings, err := s.parseSettings(cfg)
+	if err != nil {
+		return err
+	}
+	path = firstNonEmpty(path, settings.path)
+	path, err = resolveConfigTemplate(s.options.SourceID, path, cfg)
+	if err != nil {
+		return err
+	}
+	normalizedPath, query, err := normalizeRequestPathWithQuery(s.options.SourceID, path)
+	if err != nil {
+		return err
+	}
+	return s.doRequest(ctx, settings, normalizedPath, query, nil, expectStatuses)
+}
+
 // Discover returns URNs for the configured family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.families.Discover(ctx, cfg)
@@ -133,6 +186,12 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
+// ReadWithCheckpoint pages records for the configured family and applies any
+// family-level checkpoint policy.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	families := make([]sourcecdk.Family[settings], 0, len(s.options.Families))
 	for _, family := range s.options.Families {
@@ -141,7 +200,8 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			return nil, fmt.Errorf("family name is required")
 		}
 		families = append(families, sourcecdk.Family[settings]{
-			Name: family.Name,
+			Name:                 family.Name,
+			IncrementalWatermark: family.IncrementalWatermark,
 			Check: func(ctx context.Context, settings settings) error {
 				_, _, err := s.list(ctx, family, settings, "", 1)
 				return err
@@ -154,7 +214,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return urnsFor(settings, family, records)
 			},
 			Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-				records, next, err := s.list(ctx, family, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
+				records, next, err := s.list(ctx, family, settings, sourcecdk.CursorToken(cursor), settings.perPage)
 				if err != nil {
 					return sourcecdk.Pull{}, err
 				}
@@ -162,22 +222,40 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		})
 	}
-	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string { return settings.family }, families...)
+	return sourcecdk.NewFamilyEngineWithSourceID(s.options.SourceID, s.parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if s == nil {
 		return settings{}, fmt.Errorf("jsonapi source is required")
 	}
+	var err error
 	resolved := settings{
-		tenantID: firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
-		family:   strings.TrimSpace(configValue(cfg, "family")),
-		baseURL:  strings.TrimSpace(configValue(cfg, "base_url")),
-		token:    firstNonEmpty(configValue(cfg, "token"), configValue(cfg, "api_token")),
-		perPage:  defaultPageSize,
+		tenantID:                firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
+		family:                  strings.TrimSpace(configValue(cfg, "family")),
+		baseURL:                 strings.TrimSpace(configValue(cfg, "base_url")),
+		authModel:               normalizedAuthModel(s.options.AuthModel),
+		token:                   firstNonEmpty(configValue(cfg, "token"), configValue(cfg, "api_token"), configValue(cfg, "api_key"), configValue(cfg, "access_token"), configValue(cfg, "jwt"), configValue(cfg, "signature")),
+		username:                configValue(cfg, "username"),
+		password:                configValue(cfg, "password"),
+		clientID:                configValue(cfg, "client_id"),
+		clientSecret:            configValue(cfg, "client_secret"),
+		refreshToken:            configValue(cfg, "refresh_token"),
+		tokenURL:                firstNonEmpty(configValue(cfg, "token_url"), s.options.OAuthTokenURL),
+		oauthScopes:             cloneStrings(s.options.OAuthScopes),
+		oauthTokenParams:        cloneStringMap(s.options.OAuthTokenParams),
+		oauthTokenRequestMethod: firstNonEmpty(configValue(cfg, "token_request_auth_method"), s.options.OAuthTokenRequestAuthMethod),
+		perPage:                 defaultPageSize,
 	}
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
+	}
+	if rawAuthModel := strings.TrimSpace(configValue(cfg, "auth_model")); rawAuthModel != "" {
+		authModel := normalizedAuthModel(rawAuthModel)
+		if !authModelAllowed(authModel, s.options.ConfigurableAuthModels) {
+			return resolved, fmt.Errorf("%s auth_model %q is not supported", s.options.SourceID, rawAuthModel)
+		}
+		resolved.authModel = authModel
 	}
 	family, ok := familyByName(s.options, resolved.family)
 	if !ok {
@@ -191,6 +269,28 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	if resolved.baseURL == "" {
 		return resolved, fmt.Errorf("%s base_url is required", s.options.SourceID)
+	}
+	resolved.baseURL, err = resolveConfigTemplate(s.options.SourceID, resolved.baseURL, cfg)
+	if err != nil {
+		return resolved, err
+	}
+	if resolved.tokenURL != "" {
+		resolved.tokenURL, err = resolveConfigTemplate(s.options.SourceID, resolved.tokenURL, cfg)
+		if err != nil {
+			return resolved, err
+		}
+	}
+	for i, scope := range resolved.oauthScopes {
+		resolved.oauthScopes[i], err = resolveConfigTemplate(s.options.SourceID, scope, cfg)
+		if err != nil {
+			return resolved, err
+		}
+	}
+	for key, value := range resolved.oauthTokenParams {
+		resolved.oauthTokenParams[key], err = resolveConfigTemplate(s.options.SourceID, value, cfg)
+		if err != nil {
+			return resolved, err
+		}
 	}
 	if key := strings.TrimSpace(s.options.PrivateEndpointAllowlistConfigKey); key != "" {
 		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, configValue(cfg, key))
@@ -211,9 +311,6 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.tenantID == "" {
 		resolved.tenantID = host
 	}
-	if resolved.token == "" {
-		return resolved, fmt.Errorf("%s token is required", s.options.SourceID)
-	}
 	if rawPerPage := strings.TrimSpace(configValue(cfg, "per_page")); rawPerPage != "" {
 		perPage, err := strconv.Atoi(rawPerPage)
 		if err != nil {
@@ -225,6 +322,10 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		resolved.perPage = perPage
 	}
 	path := firstNonEmpty(configValue(cfg, resolved.family+"_path"), configValue(cfg, "path"), family.Path)
+	path, err = resolveConfigTemplate(s.options.SourceID, path, cfg)
+	if err != nil {
+		return resolved, err
+	}
 	path, pathParams, err := resolvePathParams(s.options.SourceID, path, cfg, family.PathParams)
 	if err != nil {
 		return resolved, err
@@ -250,8 +351,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Add(key, value)
 		}
 	}
-	for _, param := range pageSizeParams(family) {
-		query.Set(param, strconv.Itoa(pageSize))
+	if !family.DisablePageSize {
+		for _, param := range pageSizeParams(family) {
+			query.Set(param, strconv.Itoa(pageSize))
+		}
 	}
 	if cursor := strings.TrimSpace(cursor); cursor != "" {
 		query.Set(cursorParam(family), cursor)
@@ -274,7 +377,47 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			records = append(records, record)
 		}
 	}
+	if strings.TrimSpace(family.DetailPath) != "" {
+		var err error
+		records, err = s.enrichRecords(ctx, family, settings, records)
+		if err != nil {
+			return nil, "", err
+		}
+	}
 	return records, next, nil
+}
+
+func (s *Source) enrichRecords(ctx context.Context, family Family, settings settings, records []record) ([]record, error) {
+	enriched := make([]record, 0, len(records))
+	for _, original := range records {
+		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.pathParams, original.Values)
+		if err != nil {
+			enriched = append(enriched, original)
+			continue
+		}
+		detailSettings := settings
+		detailSettings.path = path
+		var body json.RawMessage
+		if err := s.getJSON(ctx, detailSettings, url.Values{}, &body); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			enriched = append(enriched, original)
+			continue
+		}
+		raw, err := detailRecordRaw(body)
+		if err != nil {
+			enriched = append(enriched, original)
+			continue
+		}
+		next, err := mergedRecord(family, original, raw)
+		if err != nil {
+			enriched = append(enriched, original)
+			continue
+		}
+		enriched = append(enriched, next)
+	}
+	return enriched, nil
 }
 
 func pageSizeParams(family Family) []string {
@@ -309,14 +452,44 @@ func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Va
 			continue
 		}
 		if value := strings.TrimSpace(configValue(cfg, configKey)); value != "" {
-			query.Set(queryKey, value)
+			for _, item := range queryValues(value, strings.HasSuffix(queryKey, "[]")) {
+				query.Add(queryKey, item)
+			}
 		}
 	}
 	return query
 }
 
+func queryValues(value string, split bool) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if !split {
+		return []string{value}
+	}
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			values = append(values, part)
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
 func (s *Source) getJSON(ctx context.Context, settings settings, query url.Values, target any) error {
+	return s.doRequest(ctx, settings, settings.path, query, target, nil)
+}
+
+func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) error {
 	endpoint := settings.baseURL + settings.path
+	if strings.TrimSpace(path) != "" {
+		endpoint = settings.baseURL + path
+	}
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
 	}
@@ -324,28 +497,14 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 	if err != nil {
 		return fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
-	tokenScheme := strings.TrimSpace(s.options.TokenScheme)
-	if tokenScheme == "" {
-		tokenScheme = "Bearer"
-	}
-	tokenHeader := strings.TrimSpace(s.options.TokenHeader)
-	if tokenHeader == "" {
-		tokenHeader = "Authorization"
-	}
 	req.Header.Set("Accept", "application/json")
-	if strings.EqualFold(tokenHeader, "Authorization") {
-		separator := " "
-		if strings.HasSuffix(tokenScheme, "=") {
-			separator = ""
-		}
-		req.Header.Set(tokenHeader, tokenScheme+separator+settings.token)
-	} else {
-		req.Header.Set(tokenHeader, settings.token)
-	}
 	for key, value := range s.options.StaticHeaders {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 			req.Header.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 		}
+	}
+	if err := s.authorizeRequest(ctx, settings, req); err != nil {
+		return err
 	}
 	client := s.client
 	if client == nil {
@@ -360,6 +519,14 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 	if err != nil {
 		return err
 	}
+	if len(expectStatuses) != 0 {
+		for _, status := range expectStatuses {
+			if resp.StatusCode == status {
+				return nil
+			}
+		}
+		return decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
 	}
@@ -370,6 +537,223 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 		return fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
 	}
 	return nil
+}
+
+func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *http.Request) error {
+	authModel := settings.authModel
+	if authModel == "" {
+		authModel = "legacy_token"
+	}
+	switch authModel {
+	case "none":
+		return nil
+	case "legacy_token":
+		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Bearer"), settings.token, s.options.SourceID)
+	case "bearer_token":
+		return setTokenHeader(req, "Authorization", "Bearer", settings.token, s.options.SourceID)
+	case "api_key", "api_token":
+		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Token"), settings.token, s.options.SourceID)
+	case "basic":
+		if settings.username != "" || settings.password != "" {
+			if settings.username == "" || settings.password == "" {
+				return fmt.Errorf("%s username and password are required for basic auth", s.options.SourceID)
+			}
+			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(settings.username+":"+settings.password)))
+			return nil
+		}
+		return setTokenHeader(req, "Authorization", "Basic", settings.token, s.options.SourceID)
+	case "oauth_client_credentials":
+		token := settings.token
+		if token == "" {
+			var err error
+			token, err = s.oauthAccessToken(ctx, settings, "client_credentials")
+			if err != nil {
+				return err
+			}
+		}
+		return setTokenHeader(req, "Authorization", "Bearer", token, s.options.SourceID)
+	case "oauth_authorization_code":
+		token := settings.token
+		if token == "" && settings.refreshToken != "" {
+			var err error
+			token, err = s.oauthAccessToken(ctx, settings, "refresh_token")
+			if err != nil {
+				return err
+			}
+		}
+		return setTokenHeader(req, "Authorization", "Bearer", token, s.options.SourceID)
+	case "jwt":
+		return setTokenHeader(req, "Authorization", "Bearer", settings.token, s.options.SourceID)
+	case "signature":
+		return setTokenHeader(req, "Authorization", firstNonEmpty(s.options.TokenScheme, "Signature"), settings.token, s.options.SourceID)
+	default:
+		return fmt.Errorf("%s auth model %q is not supported by jsonapi", s.options.SourceID, authModel)
+	}
+}
+
+func setTokenHeader(req *http.Request, header string, scheme string, token string, sourceID string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("%s token is required", sourceID)
+	}
+	header = strings.TrimSpace(header)
+	if header == "" {
+		header = "Authorization"
+	}
+	scheme = strings.TrimSpace(scheme)
+	if strings.EqualFold(header, "Authorization") {
+		if scheme == "" {
+			req.Header.Set(header, token)
+			return nil
+		}
+		separator := " "
+		if strings.HasSuffix(scheme, "=") {
+			separator = ""
+		}
+		req.Header.Set(header, scheme+separator+token)
+		return nil
+	}
+	req.Header.Set(header, token)
+	return nil
+}
+
+func (s *Source) oauthAccessToken(ctx context.Context, settings settings, grantType string) (string, error) {
+	cacheKey := oauthCacheKey(settings, grantType)
+	now := time.Now().UTC()
+	s.oauthTokenMu.Lock()
+	if cached, ok := s.oauthTokens[cacheKey]; ok && cached.accessToken != "" && cached.expiresAt.After(now.Add(time.Minute)) {
+		token := cached.accessToken
+		s.oauthTokenMu.Unlock()
+		return token, nil
+	}
+	s.oauthTokenMu.Unlock()
+
+	token, tokenType, expiresAt, err := s.exchangeOAuthToken(ctx, settings, grantType)
+	if err != nil {
+		return "", err
+	}
+	if !strings.EqualFold(tokenType, "bearer") && tokenType != "" {
+		return "", fmt.Errorf("%s OAuth token response returned unsupported token_type %q", s.options.SourceID, tokenType)
+	}
+	s.oauthTokenMu.Lock()
+	s.oauthTokens[cacheKey] = cachedOAuthToken{accessToken: token, tokenType: tokenType, expiresAt: expiresAt}
+	s.oauthTokenMu.Unlock()
+	return token, nil
+}
+
+func (s *Source) exchangeOAuthToken(ctx context.Context, settings settings, grantType string) (string, string, time.Time, error) {
+	tokenURL, err := s.normalizeTokenURL(settings)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	form := url.Values{}
+	form.Set("grant_type", grantType)
+	for key, value := range settings.oauthTokenParams {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			form.Set(strings.TrimSpace(key), strings.TrimSpace(value))
+		}
+	}
+	if len(settings.oauthScopes) != 0 {
+		form.Set("scope", strings.Join(nonEmpty(settings.oauthScopes), " "))
+	}
+	switch grantType {
+	case "client_credentials":
+		if settings.clientID == "" || settings.clientSecret == "" {
+			return "", "", time.Time{}, fmt.Errorf("%s client_id and client_secret are required for OAuth client credentials", s.options.SourceID)
+		}
+	case "refresh_token":
+		if settings.refreshToken == "" {
+			return "", "", time.Time{}, fmt.Errorf("%s refresh_token is required for OAuth refresh", s.options.SourceID)
+		}
+		form.Set("refresh_token", settings.refreshToken)
+	default:
+		return "", "", time.Time{}, fmt.Errorf("%s OAuth grant_type %q is not supported", s.options.SourceID, grantType)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", time.Time{}, fmt.Errorf("build %s OAuth token request: %w", s.options.SourceID, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	switch strings.ToLower(strings.TrimSpace(settings.oauthTokenRequestMethod)) {
+	case "", "client_secret_post":
+		form.Set("client_id", settings.clientID)
+		form.Set("client_secret", settings.clientSecret)
+		setFormRequestBody(req, form.Encode())
+	case "client_secret_basic", "basic":
+		req.SetBasicAuth(settings.clientID, settings.clientSecret)
+		if settings.clientID != "" {
+			form.Set("client_id", settings.clientID)
+			setFormRequestBody(req, form.Encode())
+		}
+	default:
+		return "", "", time.Time{}, fmt.Errorf("%s token_request_auth_method %q is not supported", s.options.SourceID, settings.oauthTokenRequestMethod)
+	}
+	client := s.client
+	if client == nil {
+		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
+			SourceID:                 s.options.SourceID,
+			AllowLoopback:            s.AllowLoopbackBaseURL,
+			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
+			LookupIPAddrs:            lookupIPAddrs(s),
+		})
+	}
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", time.Time{}, decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body, &payload); err != nil {
+		return "", "", time.Time{}, fmt.Errorf("decode %s OAuth token response: %w", s.options.SourceID, err)
+	}
+	token := valueString(payload["access_token"])
+	if token == "" {
+		return "", "", time.Time{}, fmt.Errorf("%s OAuth token response did not include access_token", s.options.SourceID)
+	}
+	tokenType := firstNonEmpty(valueString(payload["token_type"]), "Bearer")
+	expiresAt := time.Now().UTC().Add(time.Hour)
+	if expiresIn, ok := intValue(payload["expires_in"]); ok && expiresIn > 0 {
+		expiresAt = time.Now().UTC().Add(time.Duration(expiresIn) * time.Second)
+	}
+	return token, tokenType, expiresAt, nil
+}
+
+func setFormRequestBody(req *http.Request, encoded string) {
+	req.Body = io.NopCloser(strings.NewReader(encoded))
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader(encoded)), nil }
+	req.ContentLength = int64(len(encoded))
+}
+
+func (s *Source) normalizeTokenURL(settings settings) (string, error) {
+	raw := strings.TrimSpace(settings.tokenURL)
+	if raw == "" {
+		return "", fmt.Errorf("%s token_url is required for OAuth auth", s.options.SourceID)
+	}
+	if strings.HasPrefix(raw, "/") {
+		path, err := sourcehttp.NormalizeRequestPath(s.options.SourceID, raw)
+		if err != nil {
+			return "", err
+		}
+		return settings.baseURL + path, nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse %s token_url: %w", s.options.SourceID, err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("%s token_url must be absolute or start with /", s.options.SourceID)
+	}
+	origin, _, err := sourcehttp.NormalizeBaseURLWithOptions(s.options.SourceID, parsed.Scheme+"://"+parsed.Host, sourcehttp.URLValidationOptions{
+		AllowLoopback:            s.AllowLoopbackBaseURL,
+		PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
+	})
+	if err != nil {
+		return "", err
+	}
+	return origin + parsed.RequestURI(), nil
 }
 
 func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {
@@ -386,12 +770,12 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		if err != nil {
 			return nil, "", err
 		}
-		return []json.RawMessage{item}, responseCursor(object), nil
+		return []json.RawMessage{item}, responseCursor(family, object), nil
 	}
 	for _, key := range responseListKeys(family) {
 		if value, ok := object[key]; ok {
 			if err := json.Unmarshal(value, &items); err == nil {
-				return items, responseCursor(object), nil
+				return items, responseCursor(family, object), nil
 			}
 		}
 	}
@@ -401,7 +785,7 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 			if err != nil {
 				return nil, "", err
 			}
-			return items, responseCursor(object), nil
+			return items, responseCursor(family, object), nil
 		}
 	}
 	return nil, "", fmt.Errorf("response did not contain a record list")
@@ -460,8 +844,11 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 	return json.Marshal(object)
 }
 
-func responseCursor(object map[string]json.RawMessage) string {
-	for _, key := range []string{"nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token"} {
+func responseCursor(family Family, object map[string]json.RawMessage) string {
+	if !responseHasMore(family, object) {
+		return ""
+	}
+	for _, key := range responseCursorKeys(family) {
 		if value := rawString(object[key]); value != "" {
 			return value
 		}
@@ -471,7 +858,7 @@ func responseCursor(object map[string]json.RawMessage) string {
 		if err := json.Unmarshal(object[key], &nested); err != nil {
 			continue
 		}
-		for _, nestedKey := range []string{"nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token"} {
+		for _, nestedKey := range responseCursorKeys(family) {
 			if value := valueString(nested[nestedKey]); value != "" {
 				return value
 			}
@@ -481,6 +868,30 @@ func responseCursor(object map[string]json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+func responseHasMore(family Family, object map[string]json.RawMessage) bool {
+	key := strings.TrimSpace(family.HasMoreKey)
+	if key == "" {
+		return true
+	}
+	value, ok := object[key]
+	if !ok {
+		return false
+	}
+	raw := strings.ToLower(rawString(value))
+	return raw == "true" || raw == "1" || raw == "yes"
+}
+
+func responseCursorKeys(family Family) []string {
+	keys := make([]string, 0, len(family.NextCursorKeys)+8)
+	for _, key := range family.NextCursorKeys {
+		if key = strings.TrimSpace(key); key != "" {
+			keys = append(keys, key)
+		}
+	}
+	keys = append(keys, "nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token", "next_page")
+	return keys
 }
 
 func nextPageCursor(values map[string]any) string {
@@ -543,6 +954,45 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		id = stableID(string(raw))
 	}
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
+}
+
+func detailRecordRaw(raw json.RawMessage) (json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	for _, key := range []string{"result", "data", "item", "record"} {
+		value := object[key]
+		if len(value) == 0 {
+			continue
+		}
+		var nested map[string]any
+		if err := json.Unmarshal(value, &nested); err == nil {
+			return cloneRaw(value), nil
+		}
+	}
+	if _, ok := object["id"]; ok {
+		return cloneRaw(raw), nil
+	}
+	return nil, fmt.Errorf("response did not contain a detail record")
+}
+
+func mergedRecord(family Family, original record, raw json.RawMessage) (record, error) {
+	detailValues := map[string]any{}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&detailValues); err != nil {
+		return record{}, fmt.Errorf("decode detail record: %w", err)
+	}
+	merged := cloneValues(original.Values)
+	for key, value := range detailValues {
+		merged[key] = value
+	}
+	mergedRaw, err := json.Marshal(merged)
+	if err != nil {
+		return record{}, fmt.Errorf("marshal merged detail record: %w", err)
+	}
+	return recordFromRaw(family, mergedRaw)
 }
 
 func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.URN, error) {
@@ -641,6 +1091,13 @@ func parseTime(raw string) (time.Time, bool) {
 	if value == "" {
 		return time.Time{}, false
 	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds > 0 {
+		return time.Unix(seconds, 0).UTC(), true
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
+		whole, fraction := math.Modf(seconds)
+		return time.Unix(int64(whole), int64(fraction*1_000_000_000)).UTC(), true
+	}
 	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
@@ -734,6 +1191,130 @@ func resolvePathParams(sourceID string, path string, cfg sourcecdk.Config, param
 	return resolved, values, nil
 }
 
+func resolveConfigTemplate(sourceID string, value string, cfg sourcecdk.Config) (string, error) {
+	resolved := strings.TrimSpace(value)
+	for expansions := 0; ; expansions++ {
+		start := strings.Index(resolved, "${config.")
+		if start < 0 {
+			return resolved, nil
+		}
+		if expansions >= maxConfigTemplateExpansions {
+			return "", fmt.Errorf("%s config template exceeded %d expansions in %q", sourceID, maxConfigTemplateExpansions, value)
+		}
+		end := strings.Index(resolved[start:], "}")
+		if end < 0 {
+			return "", fmt.Errorf("%s config template is missing closing brace in %q", sourceID, value)
+		}
+		key := strings.TrimSpace(resolved[start+len("${config.") : start+end])
+		if key == "" {
+			return "", fmt.Errorf("%s config template contains an empty key in %q", sourceID, value)
+		}
+		replacement := configValue(cfg, key)
+		if replacement == "" {
+			return "", fmt.Errorf("%s config key %q is required", sourceID, key)
+		}
+		resolved = resolved[:start] + replacement + resolved[start+end+1:]
+	}
+}
+
+func normalizeRequestPathWithQuery(sourceID string, raw string) (string, url.Values, error) {
+	value := strings.TrimSpace(raw)
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", nil, fmt.Errorf("parse %s request path: %w", sourceID, err)
+	}
+	if parsed.IsAbs() || parsed.Host != "" || parsed.User != nil || parsed.Fragment != "" {
+		return "", nil, fmt.Errorf("%s request path must be an absolute path without fragment", sourceID)
+	}
+	path, err := sourcehttp.NormalizeRequestPath(sourceID, parsed.Path)
+	if err != nil {
+		return "", nil, err
+	}
+	return path, parsed.Query(), nil
+}
+
+func normalizedAuthModel(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	switch value {
+	case "", "token":
+		return ""
+	case "legacy", "legacy_token":
+		return "legacy_token"
+	case "bearer", "bearer_token":
+		return "bearer_token"
+	case "api_key", "api_token":
+		return "api_key"
+	case "basic", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none":
+		return value
+	default:
+		return value
+	}
+}
+
+func authModelAllowed(authModel string, allowed []string) bool {
+	for _, candidate := range allowed {
+		if normalizedAuthModel(candidate) == authModel {
+			return true
+		}
+	}
+	return false
+}
+
+func oauthCacheKey(settings settings, grantType string) string {
+	return strings.Join([]string{
+		grantType,
+		settings.tenantID,
+		settings.tokenURL,
+		settings.clientID,
+		stableID(settings.clientSecret),
+		settings.refreshToken,
+		strings.Join(nonEmpty(settings.oauthScopes), " "),
+	}, "\x00")
+}
+
+func cloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	return append([]string(nil), values...)
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func resolveRecordPath(sourceID string, path string, pathParams map[string]string, values map[string]any) (string, error) {
+	resolved := strings.TrimSpace(path)
+	for {
+		start := strings.Index(resolved, "{")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(resolved[start:], "}")
+		if end < 0 {
+			return "", fmt.Errorf("%s path contains unresolved path parameter in %q", sourceID, resolved)
+		}
+		param := strings.TrimSpace(resolved[start+1 : start+end])
+		if param == "" {
+			return "", fmt.Errorf("%s path contains empty path parameter in %q", sourceID, resolved)
+		}
+		value := firstNonEmpty(pathParams[param], firstValueString(values, param))
+		if value == "" {
+			return "", &pathParamError{sourceID: sourceID, param: param}
+		}
+		resolved = resolved[:start] + url.PathEscape(value) + resolved[start+end+1:]
+	}
+	return sourcehttp.NormalizeRequestPath(sourceID, resolved)
+}
+
 func configValue(cfg sourcecdk.Config, key string) string {
 	value, ok := cfg.Lookup(key)
 	if !ok {
@@ -775,6 +1356,14 @@ func attributePaths(path string) []string {
 		}
 	}
 	return paths
+}
+
+func cloneValues(values map[string]any) map[string]any {
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func dedupeRecords(records []record) []record {

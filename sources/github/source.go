@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
 //go:embed catalog.yaml
@@ -60,6 +61,7 @@ type settings struct {
 	auditInclude        string
 	auditPhrase         string
 	auditOrder          string
+	auditLogCanary      bool
 	perPage             int
 }
 
@@ -195,26 +197,37 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 
 // Read pages through the configured live GitHub event family.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.ReadWithCheckpoint(ctx, cfg, cursor, nil)
+}
+
+// ReadWithCheckpoint uses durable checkpoint watermarks to avoid re-emitting
+// unchanged descending GitHub inventory pages.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	client, settings, err := s.newClient(cfg, true)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	if settings.family == familyAudit {
-		return s.readAudit(ctx, client, settings, cursor)
+		return s.readAudit(ctx, client, settings, cursor, checkpoint)
 	}
 	if settings.family == familyDependabot {
-		return s.readDependabotAlerts(ctx, client, settings, cursor)
+		return s.readDependabotAlerts(ctx, client, settings, cursor, checkpoint)
 	}
 	if settings.family == familySecretScanning {
-		return s.readSecretScanningAlerts(ctx, client, settings, cursor)
+		return s.readSecretScanningAlerts(ctx, client, settings, cursor, checkpoint)
 	}
 	if settings.family == familyOrgInventory {
-		return s.readOrgInventory(ctx, client, settings)
+		return s.readOrgInventory(ctx, client, settings, checkpoint, sourcecdk.ConfigHash(cfg.Values()))
 	}
 	if settings.family == familyRepository {
-		return s.readRepositories(ctx, client, settings, cursor)
+		return s.readRepositories(ctx, client, settings, cursor, checkpoint, sourcecdk.ConfigHash(cfg.Values()))
 	}
-	page, err := readPage(cursor)
+	return s.readPullRequests(ctx, client, settings, cursor, checkpoint)
+}
+
+func (s *Source) readPullRequests(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familyPullRequest, cursor, checkpoint)
+	page, err := sourcecdk.CursorPage(cursor)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
@@ -230,87 +243,19 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github repo %s/%s", settings.owner, settings.repo), err)
 	}
-	if len(pulls) == 0 {
-		return sourcecdk.Pull{}, nil
-	}
-	events := make([]*primitives.Event, 0, len(pulls))
-	for _, pullRequest := range pulls {
-		event, err := pullRequestEvent(settings, pullRequest)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	nextPage := page + 1
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: strconv.Itoa(nextPage),
-		},
-	}
+	nextCursor := ""
 	if resp != nil && resp.NextPage > 0 {
-		nextPage = resp.NextPage
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(resp.NextPage)}
-		pull.Checkpoint.CursorOpaque = strconv.Itoa(nextPage)
+		nextCursor = strconv.Itoa(resp.NextPage)
 	}
-	return pull, nil
+	return sourcecdk.IncrementalPullFromRecords("github", familyPullRequest, pulls, nextCursor, readCheckpoint, func(pullRequest *gogithub.PullRequest) (*primitives.Event, error) {
+		return pullRequestEvent(settings, pullRequest)
+	})
 }
 
-func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	page, err := readPage(cursor)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	if settings.repo != "" {
-		if page > 1 {
-			return sourcecdk.Pull{}, nil
-		}
-		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		event, err := repositoryEvent(settings, repo)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		return sourcecdk.Pull{
-			Events: []*primitives.Event{event},
-			Checkpoint: &cerebrov1.SourceCheckpoint{
-				Watermark:    event.OccurredAt,
-				CursorOpaque: "2",
-			},
-		}, nil
-	}
-	repos, resp, err := listReposPage(ctx, client, settings.owner, page, settings.perPage)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	if len(repos) == 0 {
-		return sourcecdk.Pull{}, nil
-	}
-	events := make([]*primitives.Event, 0, len(repos))
-	for _, repo := range repos {
-		event, err := repositoryEvent(settings, repo)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	nextPage := page + 1
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: strconv.Itoa(nextPage),
-		},
-	}
-	if resp != nil && resp.NextPage > 0 {
-		nextPage = resp.NextPage
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(resp.NextPage)}
-		pull.Checkpoint.CursorOpaque = strconv.Itoa(nextPage)
-	}
-	return pull, nil
+func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, configHash string) (sourcecdk.Pull, error) {
+	options := githubcanary.RepositoryReadOptions{Owner: settings.owner, Repo: settings.repo, PerPage: settings.perPage, ConfigHash: configHash, Cursor: cursor, Checkpoint: checkpoint}
+	options.Build = func(repo *gogithub.Repository) (*primitives.Event, error) { return repositoryEvent(settings, repo) }
+	return githubcanary.ReadRepositories(ctx, client, options)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -419,7 +364,7 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 	switch settings.family {
 	case familyAudit, familyDependabot, familyOrgInventory, familyPullRequest, familyRepository, familySecretScanning:
 	default:
-		return settings, fmt.Errorf("github family must be one of %s, %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyRepository, familySecretScanning)
+		return settings, fmt.Errorf("github family must be one of %s, %s, %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyOrgInventory, familyRepository, familySecretScanning)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -430,6 +375,11 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 			return settings, fmt.Errorf("github per_page must be between 1 and %d", maxPageSize)
 		}
 		settings.perPage = perPage
+	}
+	if rawAuditLogCanary := configValue(cfg, "audit_log_canary"); rawAuditLogCanary != "" {
+		if settings.auditLogCanary, err = strconv.ParseBool(rawAuditLogCanary); err != nil {
+			return settings, fmt.Errorf("parse github audit_log_canary: %w", err)
+		}
 	}
 	switch settings.family {
 	case familyPullRequest:
@@ -590,20 +540,6 @@ func repoURN(owner string, repo *gogithub.Repository) (sourcecdk.URN, error) {
 		fullName = owner + "/" + name
 	}
 	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:repo:%s", owner, fullName))
-}
-
-func readPage(cursor *cerebrov1.SourceCursor) (int, error) {
-	if cursor == nil || strings.TrimSpace(cursor.Opaque) == "" {
-		return 1, nil
-	}
-	page, err := strconv.Atoi(strings.TrimSpace(cursor.Opaque))
-	if err != nil {
-		return 0, fmt.Errorf("%w: parse cursor: %w", sourcecdk.ErrInvalidConfig, err)
-	}
-	if page < 1 {
-		return 0, fmt.Errorf("%w: cursor page must be greater than zero", sourcecdk.ErrInvalidConfig)
-	}
-	return page, nil
 }
 
 func pullRequestEvent(settings settings, pullRequest *gogithub.PullRequest) (*primitives.Event, error) {

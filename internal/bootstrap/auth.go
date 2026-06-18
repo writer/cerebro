@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
@@ -226,7 +227,7 @@ func isPublicPath(path string) bool {
 	switch path {
 	case "/health", "/healthz", "/livez", "/openapi.yaml":
 		return true
-	case "/.well-known/device-jwks.json":
+	case "/.well-known/device-jwks.json", agentplatform.A2AAgentCardPath, agentplatform.A2ALegacyAgentCardPath:
 		return true
 	case oauthProtectedResourceMetadataPath, oauthProtectedResourceMetadataMCPPath, oauthAuthorizationServerMetadataPath:
 		return true
@@ -1408,6 +1409,14 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/connectors"
 	case path == "/connectors/credential-key":
 		return prefix + "/connectors/credential-key"
+	case path == "/connector-definitions":
+		return prefix + "/connector-definitions"
+	case path == "/connector-definitions/validate":
+		return prefix + "/connector-definitions/validate"
+	case strings.HasPrefix(path, "/connector-definitions/") && strings.HasSuffix(path, "/promote"):
+		return prefix + "/connector-definitions/{definitionID}/promote"
+	case strings.HasPrefix(path, "/connector-definitions/"):
+		return prefix + "/connector-definitions/{definitionID}"
 	case strings.HasPrefix(path, "/connectors/") && strings.HasSuffix(path, "/activity"):
 		return prefix + "/connectors/{sourceID}/activity"
 	case strings.HasPrefix(path, "/connectors/") && strings.HasSuffix(path, "/preflight"):
@@ -1440,7 +1449,7 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/grc/audit-packets/{packetID}"
 	case strings.HasPrefix(path, "/grc/"):
 		switch path {
-		case "/grc/dashboard", "/grc/ask", "/grc/findings", "/grc/controls", "/grc/evidence":
+		case "/grc/dashboard", "/grc/ask", "/grc/findings", "/grc/controls", "/grc/evidence", "/grc/control-packets":
 			return prefix + path
 		default:
 			return prefix + "/grc/{subresource}"

@@ -63,6 +63,11 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "")
+	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "")
+	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -181,6 +186,18 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "connector-transit-key")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "internal_source")
+	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "aws,auth0")
+	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "limited preview")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "https://access.example.com/request?source={source_id}&tenant={tenant_id}")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "Request in Access Hub")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "aws_secrets_manager,infisical")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "us-east-1")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "cerebro-security")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "arn:aws:iam::123456789012:role/cerebro-secrets")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID", "external-writer")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT", "http://127.0.0.1:4566")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -274,6 +291,31 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.ConnectorCredentials.Key != "connector-vault-key" || cfg.ConnectorCredentials.TransitPrivateKey != "connector-transit-key" {
 		t.Fatalf("ConnectorCredentials = %#v", cfg.ConnectorCredentials)
+	}
+	if got := cfg.ConnectorSecretStores.Enabled; len(got) != 2 || got[0] != "aws_secrets_manager" || got[1] != "infisical" {
+		t.Fatalf("ConnectorSecretStores.Enabled = %#v, want configured stores", got)
+	}
+	if got := cfg.ConnectorAccess.HiddenSources; len(got) != 1 || got[0] != "internal_source" {
+		t.Fatalf("ConnectorAccess.HiddenSources = %#v, want internal_source", got)
+	}
+	if got := cfg.ConnectorAccess.RestrictedSources; len(got) != 2 || got[0] != "auth0" || got[1] != "aws" {
+		t.Fatalf("ConnectorAccess.RestrictedSources = %#v, want auth0/aws", got)
+	}
+	if cfg.ConnectorAccess.RestrictionReason != "limited preview" {
+		t.Fatalf("ConnectorAccess.RestrictionReason = %q, want limited preview", cfg.ConnectorAccess.RestrictionReason)
+	}
+	if cfg.ConnectorAccess.RequestAccessURL != "https://access.example.com/request?source={source_id}&tenant={tenant_id}" {
+		t.Fatalf("ConnectorAccess.RequestAccessURL = %q, want configured request URL template", cfg.ConnectorAccess.RequestAccessURL)
+	}
+	if cfg.ConnectorAccess.RequestAccessAction != "Request in Access Hub" {
+		t.Fatalf("ConnectorAccess.RequestAccessAction = %q, want configured request action", cfg.ConnectorAccess.RequestAccessAction)
+	}
+	if cfg.ConnectorSecretStores.AWSSecretsManager.Region != "us-east-1" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.Profile != "cerebro-security" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.RoleARN == "" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.ExternalID != "external-writer" ||
+		cfg.ConnectorSecretStores.AWSSecretsManager.Endpoint != "http://127.0.0.1:4566" {
+		t.Fatalf("ConnectorSecretStores.AWSSecretsManager = %#v", cfg.ConnectorSecretStores.AWSSecretsManager)
 	}
 }
 
@@ -432,6 +474,18 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY", "")
 	t.Setenv("CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "")
+	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES", "")
+	t.Setenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES", "")
+	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
+	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID", "")
+	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 }

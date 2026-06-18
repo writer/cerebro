@@ -19,12 +19,16 @@ import (
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
+	"github.com/aws/aws-sdk-go-v2/service/appsync"
+	appsynctypes "github.com/aws/aws-sdk-go-v2/service/appsync/types"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	athenatypes "github.com/aws/aws-sdk-go-v2/service/athena/types"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	batchtypes "github.com/aws/aws-sdk-go-v2/service/batch/types"
+	"github.com/aws/aws-sdk-go-v2/service/bedrock"
+	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -47,6 +51,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecrpublic"
+	ecrpublictypes "github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/efs"
@@ -103,6 +109,8 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
 	s3controltypes "github.com/aws/aws-sdk-go-v2/service/s3control/types"
+	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
+	sagemakertypes "github.com/aws/aws-sdk-go-v2/service/sagemaker/types"
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	schedulertypes "github.com/aws/aws-sdk-go-v2/service/scheduler/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -213,9 +221,9 @@ func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 }
 
 func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
-	pull, err := awsPullFromRecords[string](nil, "next-page", nil, nil)
+	pull, err := sourcecdk.PullFromRecords[string](nil, "next-page", nil, nil)
 	if err != nil {
-		t.Fatalf("awsPullFromRecords() error = %v", err)
+		t.Fatalf("PullFromRecords() error = %v", err)
 	}
 	if len(pull.Events) != 0 {
 		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
@@ -474,6 +482,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAccessAnalyzer, kind: "aws.access_analyzer"},
+		{family: familyAppSyncGraphQLAPI, kind: "aws.appsync_graphql_api"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyConfigRecorder, kind: "aws.config_recorder"},
 		{family: familyACMCertificate, kind: "aws.acm_certificate"},
@@ -484,21 +493,32 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBackupPlan, kind: "aws.backup_plan"},
 		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
 		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
+		{family: familyBedrockCustomModel, kind: "aws.bedrock_custom_model"},
+		{family: familyBedrockProvisionedModelThroughput, kind: "aws.bedrock_provisioned_model_throughput"},
 		{family: familyCodeBuildProject, kind: "aws.codebuild_project"},
+		{family: familyCodeBuildSourceCredential, kind: "aws.codebuild_source_credential"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task"},
 		{family: familyDocDBCluster, kind: "aws.docdb_cluster"},
 		{family: familyDocDBInstance, kind: "aws.docdb_instance"},
+		{family: familyDynamoDBBackup, kind: "aws.dynamodb_backup"},
+		{family: familyDynamoDBStream, kind: "aws.dynamodb_stream"},
+		{family: familyDynamoDBTable, kind: "aws.dynamodb_table"},
 		{family: familyEBSSnapshot, kind: "aws.ebs_snapshot"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume"},
 		{family: familyEC2EBSEncryptionByDefault, kind: "aws.ec2_ebs_encryption_by_default"},
+		{family: familyEC2AMI, kind: "aws.ec2_ami"},
 		{family: familyAthenaDataCatalog, kind: "aws.athena_data_catalog"},
 		{family: familyAthenaWorkgroup, kind: "aws.athena_workgroup"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
+		{family: familyECRPublicRepository, kind: "aws.ecr_public_repository"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
 		{family: familyECSTask, kind: "aws.ecs_task"},
 		{family: familyECSTaskDefinition, kind: "aws.ecs_task_definition"},
+		{family: familyEFSAccessPoint, kind: "aws.efs_access_point"},
+		{family: familyEFSFileSystem, kind: "aws.efs_file_system"},
+		{family: familyEFSMountTarget, kind: "aws.efs_mount_target"},
 		{family: familyEKSCluster, kind: "aws.eks_cluster"},
 		{family: familyEKSNodegroup, kind: "aws.eks_nodegroup"},
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
@@ -514,6 +534,8 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyVPCLatticeTG, kind: "aws.vpclattice_target_group"},
 		{family: familyELBV2Listener, kind: "aws.elbv2_listener"},
 		{family: familyELBV2TargetGroup, kind: "aws.elbv2_target_group"},
+		{family: familyAPIGatewayRestAPI, kind: "aws.apigateway_rest_api"},
+		{family: familyAPIGatewayMethod, kind: "aws.apigateway_method"},
 		{family: familyAPIGatewayStage, kind: "aws.apigateway_stage"},
 		{family: familyAPIGatewayRoute, kind: "aws.apigateway_route"},
 		{family: familyAPIGatewayInteg, kind: "aws.apigateway_integration"},
@@ -524,6 +546,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyGuardDutyDetector, kind: "aws.guardduty_detector"},
 		{family: familyGuardDutyFinding, kind: "aws.guardduty_finding"},
+		{family: "iam_account_password_policy", kind: "aws.iam_account_password_policy"},
+		{family: "iam_account_summary", kind: "aws.iam_account_summary"},
+		{family: "iam_credential_report", kind: "aws.iam_credential_report"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyInspector2Finding, kind: "aws.inspector2_finding"},
 		{family: familyFirehoseDelivery, kind: "aws.firehose_delivery_stream"},
@@ -540,6 +565,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyLakeFormationRes, kind: "aws.lakeformation_resource"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyMacie2Finding, kind: "aws.macie2_finding"},
+		{family: familyNetworkACL, kind: "aws.network_acl"},
 		{family: familyNetworkFirewall, kind: "aws.network_firewall"},
 		{family: familyMSKCluster, kind: "aws.msk_cluster"},
 		{family: familyOpenSearchDomain, kind: "aws.opensearch_domain"},
@@ -553,6 +579,11 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyS3AccessPoint, kind: "aws.s3_access_point"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
 		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point"},
+		{family: familySageMakerEndpointConfig, kind: "aws.sagemaker_endpoint_configuration"},
+		{family: familySageMakerModel, kind: "aws.sagemaker_model"},
+		{family: familySageMakerModelPackageGroup, kind: "aws.sagemaker_model_package_group"},
+		{family: familySageMakerNotebookInstance, kind: "aws.sagemaker_notebook_instance"},
+		{family: familySageMakerTrainingJob, kind: "aws.sagemaker_training_job"},
 		{family: familySecret, kind: "aws.secret"},
 		{family: familySecurityHubFinding, kind: "aws.securityhub_finding"},
 		{family: familySNSTopic, kind: "aws.sns_topic"},
@@ -560,7 +591,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyWAFV2WebACL, kind: "aws.wafv2_web_acl"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
+		{family: familyIAMSAMLProvider, kind: "aws.iam_saml_provider"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
+		{family: familyIAMPolicy, kind: "aws.iam_policy"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
 		{family: familyIdentityCenterAssignment, kind: "aws.identity_center_account_assignment"},
@@ -573,6 +606,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy"},
 		{family: familyOrganizationsRoot, kind: "aws.organizations_root"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
+		{family: familyVPCFlowLog, kind: "aws.vpc_flow_log"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
 		{family: familyRoute53ResolverEndpoint, kind: "aws.route53_resolver_endpoint"},
@@ -595,6 +629,70 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+		})
+	}
+}
+
+func TestReadAWSNetworkACLAndFlowLogEvents(t *testing.T) {
+	source := newTestSource(t, fakeAWS{fakeAWSNetwork: fakeAWSNetwork{fakeAWSNetworkExposure: fakeAWSNetworkExposure{
+		networkACLs: []ec2types.NetworkAcl{{
+			NetworkAclId: awssdk.String("acl-123"),
+			VpcId:        awssdk.String("vpc-123"),
+			Associations: []ec2types.NetworkAclAssociation{{SubnetId: awssdk.String("subnet-123")}},
+			Entries: []ec2types.NetworkAclEntry{
+				{
+					CidrBlock:  awssdk.String("0.0.0.0/0"),
+					Egress:     awssdk.Bool(false),
+					PortRange:  &ec2types.PortRange{From: awssdk.Int32(22), To: awssdk.Int32(22)},
+					Protocol:   awssdk.String("6"),
+					RuleAction: ec2types.RuleActionAllow,
+				},
+				{
+					CidrBlock:  awssdk.String("10.0.0.0/8"),
+					Egress:     awssdk.Bool(true),
+					Protocol:   awssdk.String("-1"),
+					RuleAction: ec2types.RuleActionAllow,
+				},
+			},
+		}},
+		flowLogs: []ec2types.FlowLog{{
+			DeliverLogsStatus:      awssdk.String("SUCCESS"),
+			DestinationOptions:     &ec2types.DestinationOptionsResponse{FileFormat: ec2types.DestinationFileFormatPlainText, HiveCompatiblePartitions: awssdk.Bool(true), PerHourPartition: awssdk.Bool(true)},
+			FlowLogId:              awssdk.String("fl-123"),
+			FlowLogStatus:          awssdk.String("ACTIVE"),
+			LogDestination:         awssdk.String("arn:aws:logs:us-east-1:123456789012:log-group:/aws/vpc/flowlogs/prod"),
+			LogDestinationType:     ec2types.LogDestinationTypeCloudWatchLogs,
+			LogGroupName:           awssdk.String("/aws/vpc/flowlogs/prod"),
+			MaxAggregationInterval: awssdk.Int32(60),
+			ResourceId:             awssdk.String("vpc-123"),
+			TrafficType:            ec2types.TrafficTypeAll,
+		}},
+	}}})
+
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyNetworkACL, kind: "aws.network_acl", attr: "allows_admin_ports_from_internet", want: "true"},
+		{family: familyVPCFlowLog, kind: "aws.vpc_flow_log", attr: "log_destination_type", want: string(ec2types.LogDestinationTypeCloudWatchLogs)},
+		{family: familyVPCFlowLog, kind: "aws.vpc_flow_log", attr: "vpc_id", want: "vpc-123"},
+	} {
+		t.Run(tt.family+"/"+tt.attr, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
 	}
@@ -663,6 +761,151 @@ func TestReadAWSIAMUserPreview(t *testing.T) {
 	}
 }
 
+func TestReadAWSIAMSAMLProviderInventoryEvent(t *testing.T) {
+	providerARN := "arn:aws:iam::123456789012:saml-provider/Okta"
+	createDate := time.Now().UTC().Add(-72 * time.Hour)
+	validUntil := time.Now().UTC().Add(-48 * time.Hour)
+	source := newTestSource(t, fakeAWS{
+		samlProviders: []iamtypes.SAMLProviderListEntry{{
+			Arn:        awssdk.String(providerARN),
+			CreateDate: &createDate,
+			ValidUntil: &validUntil,
+		}},
+		samlProviderDetails: map[string]iam.GetSAMLProviderOutput{
+			providerARN: {
+				AssertionEncryptionMode: iamtypes.AssertionEncryptionModeTypeAllowed,
+				CreateDate:              &createDate,
+				SAMLMetadataDocument:    awssdk.String("<EntityDescriptor entityID=\"https://idp.example.com\"/>"),
+				SAMLProviderUUID:        awssdk.String("saml-uuid"),
+				Tags:                    []iamtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("identity@writer.com")}},
+				ValidUntil:              &validUntil,
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMSAMLProvider}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMSAMLProvider, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.iam_saml_provider" {
+		t.Fatalf("kind = %q, want aws.iam_saml_provider", got)
+	}
+	for key, want := range map[string]string{
+		"assertion_encryption_mode": "Allowed",
+		"expired":                   "true",
+		"metadata_document_present": "true",
+		"provider_arn":              providerARN,
+		"provider_name":             "Okta",
+		"provider_uuid":             "saml-uuid",
+		"resource_type":             "iam_saml_provider",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	days, err := strconv.Atoi(event.Attributes["valid_until_days"])
+	if err != nil || days >= 0 {
+		t.Fatalf("valid_until_days = %q, want negative integer", event.Attributes["valid_until_days"])
+	}
+}
+
+func TestReadAWSIAMPolicyInventoryEvent(t *testing.T) {
+	policyARN := "arn:aws:iam::123456789012:policy/AdminStar"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSIAMPolicy: fakeAWSIAMPolicy{
+			policies: []iamtypes.Policy{{
+				Arn:              awssdk.String(policyARN),
+				PolicyId:         awssdk.String("ANPAADMIN"),
+				PolicyName:       awssdk.String("AdminStar"),
+				DefaultVersionId: awssdk.String("v1"),
+			}},
+			policyDetails: map[string]iamtypes.Policy{
+				policyARN: {
+					Arn:              awssdk.String(policyARN),
+					AttachmentCount:  awssdk.Int32(2),
+					DefaultVersionId: awssdk.String("v1"),
+					IsAttachable:     true,
+					Path:             awssdk.String("/"),
+					PolicyId:         awssdk.String("ANPAADMIN"),
+					PolicyName:       awssdk.String("AdminStar"),
+					Tags:             []iamtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("identity@writer.com")}},
+				},
+			},
+			policyVersions: map[string]iamtypes.PolicyVersion{
+				policyARN + "@v1": {
+					Document:         awssdk.String(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}`),
+					IsDefaultVersion: true,
+					VersionId:        awssdk.String("v1"),
+				},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMPolicy}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMPolicy, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.iam_policy" {
+		t.Fatalf("kind = %q, want aws.iam_policy", got)
+	}
+	for key, want := range map[string]string{
+		"actions":              "*",
+		"allows_admin_star":    "true",
+		"policy_arn":           policyARN,
+		"policy_name":          "AdminStar",
+		"policy_resource_type": "aws::iam::policy",
+		"resources":            "*",
+		"resource_type":        "iam_policy",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["policy_document"] == nil {
+		t.Fatal("payload policy_document missing")
+	}
+}
+
+func TestReadAWSIAMPolicySkipsDeletedPolicy(t *testing.T) {
+	staleARN := "arn:aws:iam::123456789012:policy/Stale"
+	activeARN := "arn:aws:iam::123456789012:policy/Active"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSIAMPolicy: fakeAWSIAMPolicy{
+			policies: []iamtypes.Policy{
+				{Arn: awssdk.String(staleARN), PolicyId: awssdk.String("ANPASTALE"), PolicyName: awssdk.String("Stale"), DefaultVersionId: awssdk.String("v1")},
+				{Arn: awssdk.String(activeARN), PolicyId: awssdk.String("ANPAACTIVE"), PolicyName: awssdk.String("Active"), DefaultVersionId: awssdk.String("v1")},
+			},
+			policyErrors: map[string]error{staleARN: fmt.Errorf("NoSuchEntity: policy deleted")},
+			policyDetails: map[string]iamtypes.Policy{
+				activeARN: {Arn: awssdk.String(activeARN), PolicyId: awssdk.String("ANPAACTIVE"), PolicyName: awssdk.String("Active"), DefaultVersionId: awssdk.String("v1")},
+			},
+			policyVersions: map[string]iamtypes.PolicyVersion{
+				activeARN + "@v1": {Document: awssdk.String(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}`), VersionId: awssdk.String("v1")},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMPolicy}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMPolicy, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["policy_name"]; got != "Active" {
+		t.Fatalf("policy_name = %q, want Active", got)
+	}
+}
+
 func TestReadAWSComputeInventoryEvents(t *testing.T) {
 	profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
 	instanceRoleARN := "arn:aws:iam::123456789012:role/WebInstanceRole"
@@ -705,8 +948,13 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				SecurityGroups:   []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-1")}},
 				State:            &ec2types.InstanceState{Name: ec2types.InstanceStateNameRunning},
 				SubnetId:         awssdk.String("subnet-1"),
-				Tags:             []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("prod-web")}},
-				VpcId:            awssdk.String("vpc-1"),
+				Tags: []ec2types.Tag{
+					{Key: awssdk.String("Name"), Value: awssdk.String("prod-web")},
+					{Key: awssdk.String("eks:cluster-name"), Value: awssdk.String(eksClusterName)},
+					{Key: awssdk.String("eks:nodegroup-name"), Value: awssdk.String("managed-linux")},
+					{Key: awssdk.String("eks:nodegroup-type"), Value: awssdk.String("managed")},
+				},
+				VpcId: awssdk.String("vpc-1"),
 			}},
 			instanceProfiles: map[string]iamtypes.InstanceProfile{
 				"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String(instanceRoleARN), RoleName: awssdk.String("WebInstanceRole"), RoleId: awssdk.String("AROWEB")}}},
@@ -725,30 +973,76 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			}},
 			ecsClusters:    []string{clusterARN},
 			ecsServiceARNs: map[string][]string{clusterARN: []string{serviceARN}},
-			ecsServices:    map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), ServiceName: awssdk.String("orders"), Status: awssdk.String("ACTIVE"), TaskDefinition: awssdk.String(taskDefinitionARN), DesiredCount: 2, RunningCount: 2}},
-			ecsTaskARNs:    map[string][]string{clusterARN: []string{taskARN}},
+			ecsServices: map[string]ecstypes.Service{serviceARN: {
+				CapacityProviderStrategy: []ecstypes.CapacityProviderStrategyItem{{CapacityProvider: awssdk.String("FARGATE_SPOT")}},
+				ClusterArn:               awssdk.String(clusterARN),
+				DeploymentConfiguration: &ecstypes.DeploymentConfiguration{
+					DeploymentCircuitBreaker: &ecstypes.DeploymentCircuitBreaker{Enable: true, Rollback: true},
+					MaximumPercent:           awssdk.Int32(200),
+					MinimumHealthyPercent:    awssdk.Int32(100),
+					Strategy:                 ecstypes.DeploymentStrategyRolling,
+				},
+				DeploymentController: &ecstypes.DeploymentController{Type: ecstypes.DeploymentControllerTypeEcs},
+				DesiredCount:         2,
+				EnableECSManagedTags: true,
+				EnableExecuteCommand: true,
+				LoadBalancers: []ecstypes.LoadBalancer{{
+					ContainerName:  awssdk.String("orders"),
+					ContainerPort:  awssdk.Int32(8080),
+					TargetGroupArn: awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/123"),
+				}},
+				NetworkConfiguration: &ecstypes.NetworkConfiguration{AwsvpcConfiguration: &ecstypes.AwsVpcConfiguration{
+					AssignPublicIp: ecstypes.AssignPublicIpEnabled,
+					SecurityGroups: []string{"sg-task"},
+					Subnets:        []string{"subnet-task"},
+				}},
+				PlatformFamily:  awssdk.String("Linux"),
+				PlatformVersion: awssdk.String("1.4.0"),
+				PropagateTags:   ecstypes.PropagateTagsService,
+				RunningCount:    2,
+				ServiceArn:      awssdk.String(serviceARN),
+				ServiceName:     awssdk.String("orders"),
+				ServiceRegistries: []ecstypes.ServiceRegistry{{
+					RegistryArn: awssdk.String("arn:aws:servicediscovery:us-east-1:123456789012:service/srv-orders"),
+				}},
+				Status:         awssdk.String("ACTIVE"),
+				TaskDefinition: awssdk.String(taskDefinitionARN),
+			}},
+			ecsTaskARNs: map[string][]string{clusterARN: []string{taskARN}},
 			ecsTasks: map[string]ecstypes.Task{taskARN: {
 				Attachments: []ecstypes.Attachment{{Details: []ecstypes.KeyValuePair{
 					{Name: awssdk.String("networkInterfaceId"), Value: awssdk.String("eni-task")},
 					{Name: awssdk.String("subnetId"), Value: awssdk.String("subnet-task")},
 					{Name: awssdk.String("privateIPv4Address"), Value: awssdk.String("10.0.2.25")},
 				}}},
-				ClusterArn:        awssdk.String(clusterARN),
-				Group:             awssdk.String("service:orders"),
-				LastStatus:        awssdk.String("RUNNING"),
-				LaunchType:        ecstypes.LaunchTypeFargate,
-				TaskArn:           awssdk.String(taskARN),
-				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
+				CapacityProviderName: awssdk.String("FARGATE_SPOT"),
+				ClusterArn:           awssdk.String(clusterARN),
+				Cpu:                  awssdk.String("512"),
+				EphemeralStorage:     &ecstypes.EphemeralStorage{SizeInGiB: 40},
+				Group:                awssdk.String("service:orders"),
+				LastStatus:           awssdk.String("RUNNING"),
+				LaunchType:           ecstypes.LaunchTypeFargate,
+				Memory:               awssdk.String("1024"),
+				PlatformFamily:       awssdk.String("Linux"),
+				PlatformVersion:      awssdk.String("1.4.0"),
+				TaskArn:              awssdk.String(taskARN),
+				TaskDefinitionArn:    awssdk.String(taskDefinitionARN),
 			}},
 			ecsTaskDefinitionARNs: []string{taskDefinitionARN},
 			ecsTaskDefinitions: map[string]ecstypes.TaskDefinition{taskDefinitionARN: {
 				ContainerDefinitions: []ecstypes.ContainerDefinition{{Name: awssdk.String("orders"), Image: awssdk.String("repo/orders:latest")}},
 				ExecutionRoleArn:     awssdk.String("arn:aws:iam::123456789012:role/ECSExecutionRole"),
+				EphemeralStorage:     &ecstypes.EphemeralStorage{SizeInGiB: 40},
 				Family:               awssdk.String("orders"),
+				NetworkMode:          ecstypes.NetworkModeAwsvpc,
 				RequiresCompatibilities: []ecstypes.Compatibility{
 					ecstypes.CompatibilityFargate,
 				},
-				Revision:          7,
+				Revision: 7,
+				RuntimePlatform: &ecstypes.RuntimePlatform{
+					CpuArchitecture:       ecstypes.CPUArchitectureArm64,
+					OperatingSystemFamily: ecstypes.OSFamilyLinux,
+				},
 				Status:            ecstypes.TaskDefinitionStatusActive,
 				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
 				TaskRoleArn:       awssdk.String("arn:aws:iam::123456789012:role/ECSTaskRole"),
@@ -771,14 +1065,62 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			}},
 			eksNodegroupNames: map[string][]string{eksClusterName: []string{"managed-linux"}},
 			eksNodegroups: map[string]ekstypes.Nodegroup{awsTestEKSChildKey(eksClusterName, "managed-linux"): {
+				AmiType:       ekstypes.AMITypesAl2023X8664Standard,
+				CapacityType:  ekstypes.CapacityTypesOnDemand,
 				ClusterName:   awssdk.String(eksClusterName),
+				DiskSize:      awssdk.Int32(80),
 				InstanceTypes: []string{"m7g.large"},
-				NodegroupArn:  awssdk.String(nodegroupARN),
-				NodegroupName: awssdk.String("managed-linux"),
-				NodeRole:      awssdk.String("arn:aws:iam::123456789012:role/EKSNodeRole"),
-				Status:        ekstypes.NodegroupStatusActive,
-				Subnets:       []string{"subnet-eks"},
-				Version:       awssdk.String("1.30"),
+				Health: &ekstypes.NodegroupHealth{Issues: []ekstypes.Issue{{
+					Code:        ekstypes.NodegroupIssueCodeAsgInstanceLaunchFailures,
+					Message:     awssdk.String("launch capacity constrained"),
+					ResourceIds: []string{"i-eks-node"},
+				}}},
+				Labels: map[string]string{"workload": "payments"},
+				LaunchTemplate: &ekstypes.LaunchTemplateSpecification{
+					Id:      awssdk.String("lt-123"),
+					Version: awssdk.String("7"),
+				},
+				NodeRepairConfig: &ekstypes.NodeRepairConfig{
+					Enabled:                            awssdk.Bool(true),
+					MaxParallelNodesRepairedCount:      awssdk.Int32(1),
+					MaxParallelNodesRepairedPercentage: awssdk.Int32(20),
+				},
+				NodegroupArn:   awssdk.String(nodegroupARN),
+				NodegroupName:  awssdk.String("managed-linux"),
+				NodeRole:       awssdk.String("arn:aws:iam::123456789012:role/EKSNodeRole"),
+				ReleaseVersion: awssdk.String("1.30.1-20260601"),
+				RemoteAccess: &ekstypes.RemoteAccessConfig{
+					Ec2SshKey:            awssdk.String("eks-node-key"),
+					SourceSecurityGroups: []string{"sg-admin"},
+				},
+				Resources: &ekstypes.NodegroupResources{
+					AutoScalingGroups:         []ekstypes.AutoScalingGroup{{Name: awssdk.String("eks-prod-managed-asg")}},
+					RemoteAccessSecurityGroup: awssdk.String("sg-remote"),
+				},
+				ScalingConfig: &ekstypes.NodegroupScalingConfig{
+					DesiredSize: awssdk.Int32(3),
+					MaxSize:     awssdk.Int32(6),
+					MinSize:     awssdk.Int32(2),
+				},
+				Status:  ekstypes.NodegroupStatusActive,
+				Subnets: []string{"subnet-eks"},
+				Taints: []ekstypes.Taint{{
+					Effect: ekstypes.TaintEffectNoSchedule,
+					Key:    awssdk.String("dedicated"),
+					Value:  awssdk.String("payments"),
+				}},
+				UpdateConfig: &ekstypes.NodegroupUpdateConfig{
+					MaxUnavailable:           awssdk.Int32(1),
+					MaxUnavailablePercentage: awssdk.Int32(33),
+					UpdateStrategy:           ekstypes.NodegroupUpdateStrategiesDefault,
+				},
+				Version: awssdk.String("1.30"),
+				WarmPoolConfig: &ekstypes.WarmPoolConfig{
+					Enabled:                  awssdk.Bool(true),
+					MaxGroupPreparedCapacity: awssdk.Int32(8),
+					MinSize:                  awssdk.Int32(1),
+					PoolState:                ekstypes.WarmPoolStateStopped,
+				},
 			}},
 			eksFargateNames: map[string][]string{eksClusterName: []string{"payments"}},
 			eksFargateProfiles: map[string]ekstypes.FargateProfile{awsTestEKSChildKey(eksClusterName, "payments"): {
@@ -816,6 +1158,12 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				if got := event.Attributes["network_interface_ids"]; got != "eni-1" {
 					t.Fatalf("ec2 network_interface_ids = %q, want eni-1", got)
 				}
+				if got := event.Attributes["eks_cluster_name"]; got != eksClusterName {
+					t.Fatalf("ec2 eks_cluster_name = %q, want %q", got, eksClusterName)
+				}
+				if got := event.Attributes["eks_nodegroup_name"]; got != "managed-linux" {
+					t.Fatalf("ec2 eks_nodegroup_name = %q, want managed-linux", got)
+				}
 			},
 		},
 		{
@@ -834,6 +1182,21 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				if got := event.Attributes["task_definition_arn"]; got != taskDefinitionARN {
 					t.Fatalf("ecs service task_definition_arn = %q, want %q", got, taskDefinitionARN)
 				}
+				if got := event.Attributes["fargate_service"]; got != "true" {
+					t.Fatalf("ecs service fargate_service = %q, want true", got)
+				}
+				if got := event.Attributes["launch_type_effective"]; got != "FARGATE" {
+					t.Fatalf("ecs service launch_type_effective = %q, want FARGATE", got)
+				}
+				if got := event.Attributes["assign_public_ip"]; got != "ENABLED" {
+					t.Fatalf("ecs service assign_public_ip = %q, want ENABLED", got)
+				}
+				if got := event.Attributes["deployment_circuit_breaker_rollback"]; got != "true" {
+					t.Fatalf("ecs service deployment_circuit_breaker_rollback = %q, want true", got)
+				}
+				if got := event.Attributes["load_balancer_target_group_arns"]; got != "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/orders/123" {
+					t.Fatalf("ecs service load_balancer_target_group_arns = %q", got)
+				}
 			},
 		},
 		{
@@ -846,6 +1209,15 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				if got := event.Attributes["network_interface_ids"]; got != "eni-task" {
 					t.Fatalf("ecs task network_interface_ids = %q, want eni-task", got)
 				}
+				if got := event.Attributes["fargate_task"]; got != "true" {
+					t.Fatalf("ecs task fargate_task = %q, want true", got)
+				}
+				if got := event.Attributes["capacity_provider_name"]; got != "FARGATE_SPOT" {
+					t.Fatalf("ecs task capacity_provider_name = %q, want FARGATE_SPOT", got)
+				}
+				if got := event.Attributes["ephemeral_storage_size_gib"]; got != "40" {
+					t.Fatalf("ecs task ephemeral_storage_size_gib = %q, want 40", got)
+				}
 			},
 		},
 		{
@@ -854,6 +1226,18 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
 				if got := event.Attributes["task_role_name"]; got != "ECSTaskRole" {
 					t.Fatalf("ecs task task_role_name = %q, want ECSTaskRole", got)
+				}
+				if got := event.Attributes["fargate_compatible"]; got != "true" {
+					t.Fatalf("ecs task definition fargate_compatible = %q, want true", got)
+				}
+				if got := event.Attributes["awsvpc_required"]; got != "true" {
+					t.Fatalf("ecs task definition awsvpc_required = %q, want true", got)
+				}
+				if got := event.Attributes["runtime_cpu_architecture"]; got != "ARM64" {
+					t.Fatalf("ecs task definition runtime_cpu_architecture = %q, want ARM64", got)
+				}
+				if got := event.Attributes["ephemeral_storage_size_gib"]; got != "40" {
+					t.Fatalf("ecs task definition ephemeral_storage_size_gib = %q, want 40", got)
 				}
 			},
 		},
@@ -875,6 +1259,30 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
 				if got := event.Attributes["role_name"]; got != "EKSNodeRole" {
 					t.Fatalf("eks nodegroup role_name = %q, want EKSNodeRole", got)
+				}
+				for key, want := range map[string]string{
+					"autoscaling_groups":                    "eks-prod-managed-asg",
+					"desired_size":                          "3",
+					"disk_size_gib":                         "80",
+					"health_issue_codes":                    "AsgInstanceLaunchFailures",
+					"label_keys":                            "workload",
+					"launch_template_id":                    "lt-123",
+					"max_size":                              "6",
+					"min_size":                              "2",
+					"node_repair_enabled":                   "true",
+					"release_version":                       "1.30.1-20260601",
+					"remote_access_ec2_ssh_key":             "eks-node-key",
+					"security_group_ids":                    "sg-admin,sg-remote",
+					"taint_keys":                            "dedicated",
+					"update_strategy":                       "DEFAULT",
+					"warm_pool_enabled":                     "true",
+					"warm_pool_max_group_prepared_capacity": "8",
+					"warm_pool_min_size":                    "1",
+					"warm_pool_state":                       "STOPPED",
+				} {
+					if got := event.Attributes[key]; got != want {
+						t.Fatalf("eks nodegroup %s = %q, want %q", key, got, want)
+					}
 				}
 			},
 		},
@@ -996,6 +1404,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+	ecrPublicARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
 	s3APARN := "arn:aws:s3:us-east-1:123456789012:accesspoint/prod-data-ap"
 	mrapARN := "arn:aws:s3::123456789012:accesspoint/prod-global"
 	datasyncTaskARN := "arn:aws:datasync:us-east-1:123456789012:task/task-123"
@@ -1061,19 +1470,36 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					"KmsMasterKeyId": kmsARN,
 				}},
 				snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-				ecrRepositories: []ecrtypes.Repository{{
-					RepositoryArn:  awssdk.String(ecrARN),
-					RepositoryName: awssdk.String("orders"),
-					RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-					EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-						EncryptionType: ecrtypes.EncryptionTypeKms,
-						KmsKey:         awssdk.String(kmsARN),
-					},
-					ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-					ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-				}},
-				ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+				fakeAWSECRData: fakeAWSECRData{
+					ecrRepositories: []ecrtypes.Repository{{
+						RepositoryArn:  awssdk.String(ecrARN),
+						RepositoryName: awssdk.String("orders"),
+						RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+						CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+						EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+							EncryptionType: ecrtypes.EncryptionTypeKms,
+							KmsKey:         awssdk.String(kmsARN),
+						},
+						ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+						ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+					}},
+					ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+					ecrPublicRepositories: []ecrpublictypes.Repository{{
+						CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+						RegistryId:     awssdk.String("123456789012"),
+						RepositoryArn:  awssdk.String(ecrPublicARN),
+						RepositoryName: awssdk.String("orders-public"),
+						RepositoryUri:  awssdk.String("public.ecr.aws/example/orders-public"),
+					}},
+					ecrPublicTags: map[string][]ecrpublictypes.Tag{ecrPublicARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+					ecrPublicCatalogData: map[string]ecrpublictypes.RepositoryCatalogData{"orders-public": {
+						Architectures:        []string{"x86-64", "ARM 64"},
+						Description:          awssdk.String("Public orders image"),
+						MarketplaceCertified: awssdk.Bool(true),
+						OperatingSystems:     []string{"Linux"},
+					}},
+					ecrPublicPolicies: map[string]string{"orders-public": `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"ecr-public:BatchCheckLayerAvailability"}]}`},
+				},
 			},
 			fakeAWSRDSData: fakeAWSRDSData{
 				rdsInstances: []rdstypes.DBInstance{{
@@ -1317,6 +1743,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySecret, kind: "aws.secret", attr: "rotation", want: "true"},
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
+		{family: familyECRPublicRepository, kind: "aws.ecr_public_repository", attr: "repository_visibility", want: "PUBLIC"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -1334,6 +1761,679 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadAWSEC2AMIInventoryEvent(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		compute: fakeAWSCompute{
+			images: []ec2types.Image{{
+				Architecture:       ec2types.ArchitectureValuesX8664,
+				CreationDate:       awssdk.String("2026-04-23T00:00:00Z"),
+				Description:        awssdk.String("Golden web AMI"),
+				ImageId:            awssdk.String("ami-123"),
+				ImageType:          ec2types.ImageTypeValuesMachine,
+				Name:               awssdk.String("golden-web"),
+				OwnerId:            awssdk.String("123456789012"),
+				Public:             awssdk.Bool(true),
+				RootDeviceName:     awssdk.String("/dev/xvda"),
+				RootDeviceType:     ec2types.DeviceTypeEbs,
+				SourceImageId:      awssdk.String("ami-base"),
+				SourceImageRegion:  awssdk.String("us-west-2"),
+				SourceInstanceId:   awssdk.String("i-source"),
+				State:              ec2types.ImageStateAvailable,
+				Tags:               []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("golden-web")}},
+				VirtualizationType: ec2types.VirtualizationTypeHvm,
+			}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyEC2AMI}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyEC2AMI, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.ec2_ami" {
+		t.Fatalf("kind = %q, want aws.ec2_ami", got)
+	}
+	for key, want := range map[string]string{
+		"architecture":        "x86_64",
+		"image_id":            "ami-123",
+		"is_public":           "true",
+		"public":              "true",
+		"resource_name":       "golden-web",
+		"resource_type":       "ec2_ami",
+		"root_device_type":    "ebs",
+		"source_image_id":     "ami-base",
+		"source_image_region": "us-west-2",
+		"source_instance_id":  "i-source",
+		"state":               "available",
+		"virtualization_type": "hvm",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSECRPublicRepositoryInventoryEvent(t *testing.T) {
+	repositoryARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSData: fakeAWSData{fakeAWSCoreData: fakeAWSCoreData{
+			fakeAWSECRData: fakeAWSECRData{
+				ecrPublicRepositories: []ecrpublictypes.Repository{{
+					CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+					RegistryId:     awssdk.String("123456789012"),
+					RepositoryArn:  awssdk.String(repositoryARN),
+					RepositoryName: awssdk.String("orders-public"),
+					RepositoryUri:  awssdk.String("public.ecr.aws/example/orders-public"),
+				}},
+				ecrPublicTags: map[string][]ecrpublictypes.Tag{repositoryARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("containers@writer.com")}}},
+				ecrPublicCatalogData: map[string]ecrpublictypes.RepositoryCatalogData{"orders-public": {
+					AboutText:            awssdk.String("Usage overview"),
+					Architectures:        []string{"x86-64"},
+					Description:          awssdk.String("Public orders image"),
+					MarketplaceCertified: awssdk.Bool(true),
+					OperatingSystems:     []string{"Linux"},
+					UsageText:            awssdk.String("docker pull public.ecr.aws/example/orders-public"),
+				}},
+				ecrPublicPolicies: map[string]string{"orders-public": `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"ecr-public:GetRepositoryCatalogData"}]}`},
+			},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyECRPublicRepository}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyECRPublicRepository, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.ecr_public_repository" {
+		t.Fatalf("kind = %q, want aws.ecr_public_repository", got)
+	}
+	for key, want := range map[string]string{
+		"about_text_present":        "true",
+		"architectures":             "x86-64",
+		"internet_exposed":          "true",
+		"marketplace_certified":     "true",
+		"operating_systems":         "Linux",
+		"public":                    "true",
+		"repository_arn":            repositoryARN,
+		"repository_name":           "orders-public",
+		"repository_policy_present": "true",
+		"repository_policy_public":  "true",
+		"repository_uri":            "public.ecr.aws/example/orders-public",
+		"repository_visibility":     "PUBLIC",
+		"resource_type":             "ecr_public_repository",
+		"usage_text_present":        "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSSageMakerEndpointConfigInventoryEvent(t *testing.T) {
+	configARN := "arn:aws:sagemaker:us-east-1:123456789012:endpoint-config/research-endpoint-config"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerEndpointRole"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerEndpointConfigs: []sagemakertypes.EndpointConfigSummary{{
+				CreationTime:       timePtr("2026-04-23T00:00:00Z"),
+				EndpointConfigArn:  awssdk.String(configARN),
+				EndpointConfigName: awssdk.String("research-endpoint-config"),
+			}},
+			sageMakerEndpointDetails: map[string]sagemaker.DescribeEndpointConfigOutput{"research-endpoint-config": {
+				CreationTime:           timePtr("2026-04-23T00:00:00Z"),
+				EnableNetworkIsolation: awssdk.Bool(true),
+				EndpointConfigArn:      awssdk.String(configARN),
+				EndpointConfigName:     awssdk.String("research-endpoint-config"),
+				ExecutionRoleArn:       awssdk.String(roleARN),
+				KmsKeyId:               awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+				ProductionVariants: []sagemakertypes.ProductionVariant{{
+					InitialInstanceCount: awssdk.Int32(2),
+					InstanceType:         sagemakertypes.ProductionVariantInstanceTypeMlM5Large,
+					ModelName:            awssdk.String("research-model"),
+					VariantName:          awssdk.String("blue"),
+				}},
+				DataCaptureConfig: &sagemakertypes.DataCaptureConfig{
+					DestinationS3Uri:          awssdk.String("s3://prod-data/sagemaker-capture/"),
+					EnableCapture:             awssdk.Bool(true),
+					InitialSamplingPercentage: awssdk.Int32(25),
+					KmsKeyId:                  awssdk.String("arn:aws:kms:us-east-1:123456789012:key/capture-key"),
+				},
+				VpcConfig: &sagemakertypes.VpcConfig{
+					SecurityGroupIds: []string{"sg-123", "sg-456"},
+					Subnets:          []string{"subnet-123", "subnet-456"},
+				},
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{configARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerEndpointConfig}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerEndpointConfig, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_endpoint_configuration" {
+		t.Fatalf("kind = %q, want aws.sagemaker_endpoint_configuration", got)
+	}
+	for key, want := range map[string]string{
+		"data_capture_destination_s3_uri":   "s3://prod-data/sagemaker-capture/",
+		"data_capture_enabled":              "true",
+		"data_capture_kms_key_id":           "arn:aws:kms:us-east-1:123456789012:key/capture-key",
+		"data_capture_sampling_percent":     "25",
+		"enable_network_isolation":          "true",
+		"endpoint_config_arn":               configARN,
+		"endpoint_config_name":              "research-endpoint-config",
+		"execution_role_arn":                roleARN,
+		"execution_role_name":               "service-role/SageMakerEndpointRole",
+		"kms_key_id":                        "arn:aws:kms:us-east-1:123456789012:key/key-123",
+		"model_names":                       "research-model",
+		"owner":                             "ml@writer.com",
+		"production_variant_count":          "1",
+		"production_variant_instance_types": "ml.m5.large",
+		"production_variant_names":          "blue",
+		"resource_type":                     "sagemaker_endpoint_configuration",
+		"role_arn":                          roleARN,
+		"role_name":                         "service-role/SageMakerEndpointRole",
+		"security_group_ids":                "sg-123,sg-456",
+		"subnet_ids":                        "subnet-123,subnet-456",
+		"vpc_configured":                    "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSBedrockCustomModelInventoryEvent(t *testing.T) {
+	modelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+	baseModelARN := "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{
+			fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+				bedrockCustomModels: []bedrocktypes.CustomModelSummary{{
+					BaseModelArn:      awssdk.String(baseModelARN),
+					BaseModelName:     awssdk.String("amazon.titan-text-express-v1"),
+					CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+					CustomizationType: bedrocktypes.CustomizationTypeFineTuning,
+					ModelArn:          awssdk.String(modelARN),
+					ModelName:         awssdk.String("research-model"),
+					ModelStatus:       bedrocktypes.ModelStatusActive,
+					OwnerAccountId:    awssdk.String("123456789012"),
+				}},
+				bedrockCustomModelDetails: map[string]bedrock.GetCustomModelOutput{modelARN: {
+					BaseModelArn:      awssdk.String(baseModelARN),
+					CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+					CustomizationType: bedrocktypes.CustomizationTypeFineTuning,
+					HyperParameters:   map[string]string{"SETTING": "do-not-store-this-value"},
+					JobArn:            awssdk.String("arn:aws:bedrock:us-east-1:123456789012:model-customization-job/research-job"),
+					JobName:           awssdk.String("research-job"),
+					ModelArn:          awssdk.String(modelARN),
+					ModelKmsKeyArn:    awssdk.String(kmsARN),
+					ModelName:         awssdk.String("research-model"),
+					ModelStatus:       bedrocktypes.ModelStatusActive,
+					OutputDataConfig:  &bedrocktypes.OutputDataConfig{S3Uri: awssdk.String("s3://private-model-output/research/")},
+					TrainingDataConfig: &bedrocktypes.TrainingDataConfig{
+						S3Uri: awssdk.String("s3://private-training-data/research/train.jsonl"),
+					},
+					ValidationDataConfig: &bedrocktypes.ValidationDataConfig{
+						Validators: []bedrocktypes.Validator{{S3Uri: awssdk.String("s3://private-training-data/research/validation.jsonl")}},
+					},
+				}},
+				bedrockResourcePolicies: map[string]string{modelARN: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"bedrock:InvokeModel"}]}`},
+				bedrockTags:             map[string][]bedrocktypes.Tag{modelARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyBedrockCustomModel}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyBedrockCustomModel, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.bedrock_custom_model" {
+		t.Fatalf("kind = %q, want aws.bedrock_custom_model", got)
+	}
+	for key, want := range map[string]string{
+		"base_model_arn":          baseModelARN,
+		"base_model_name":         "amazon.titan-text-express-v1",
+		"custom_model_arn":        modelARN,
+		"custom_model_name":       "research-model",
+		"customization_type":      "FINE_TUNING",
+		"has_resource_policy":     "true",
+		"job_name":                "research-job",
+		"kms_key_id":              kmsARN,
+		"model_kms_key_arn":       kmsARN,
+		"model_status":            "Active",
+		"output_data_s3_uri":      "s3://private-model-output/research/",
+		"owner":                   "ml@writer.com",
+		"owner_account_id":        "123456789012",
+		"public":                  "true",
+		"resource_policy_public":  "true",
+		"resource_type":           "bedrock_custom_model",
+		"training_data_s3_uri":    "s3://private-training-data/research/train.jsonl",
+		"validation_data_s3_uris": "s3://private-training-data/research/validation.jsonl",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
+		t.Fatal("payload contains custom model hyperparameter value")
+	}
+}
+
+func TestReadAWSBedrockProvisionedModelThroughputInventoryEvent(t *testing.T) {
+	throughputARN := "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/research-throughput"
+	modelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+	foundationModelARN := "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
+	guardrailARN := "arn:aws:bedrock:us-east-1:123456789012:guardrail/gr-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{
+			fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+				bedrockProvisionedThroughputs: []bedrocktypes.ProvisionedModelSummary{{
+					CommitmentDuration:       bedrocktypes.CommitmentDurationOneMonth,
+					CreationTime:             timePtr("2026-04-23T00:00:00Z"),
+					DesiredModelArn:          awssdk.String(modelARN),
+					DesiredModelUnits:        awssdk.Int32(2),
+					FoundationModelArn:       awssdk.String(foundationModelARN),
+					LastModifiedTime:         timePtr("2026-04-24T00:00:00Z"),
+					ModelArn:                 awssdk.String(modelARN),
+					ModelUnits:               awssdk.Int32(2),
+					ProvisionedModelArn:      awssdk.String(throughputARN),
+					ProvisionedModelName:     awssdk.String("research-throughput"),
+					Status:                   bedrocktypes.ProvisionedModelStatusInService,
+					CommitmentExpirationTime: timePtr("2026-05-23T00:00:00Z"),
+				}},
+				bedrockProvisionedThroughputDetails: map[string]bedrock.GetProvisionedModelThroughputOutput{throughputARN: {
+					CommitmentDuration:       bedrocktypes.CommitmentDurationOneMonth,
+					CreationTime:             timePtr("2026-04-23T00:00:00Z"),
+					DesiredModelArn:          awssdk.String(modelARN),
+					DesiredModelUnits:        awssdk.Int32(2),
+					FoundationModelArn:       awssdk.String(foundationModelARN),
+					LastModifiedTime:         timePtr("2026-04-24T00:00:00Z"),
+					ModelArn:                 awssdk.String(modelARN),
+					ModelUnits:               awssdk.Int32(2),
+					ProvisionedModelArn:      awssdk.String(throughputARN),
+					ProvisionedModelName:     awssdk.String("research-throughput"),
+					Status:                   bedrocktypes.ProvisionedModelStatusInService,
+					CommitmentExpirationTime: timePtr("2026-05-23T00:00:00Z"),
+				}},
+				bedrockEnforcedGuardrails: []bedrocktypes.AccountEnforcedGuardrailOutputConfiguration{{
+					GuardrailArn:     awssdk.String(guardrailARN),
+					GuardrailId:      awssdk.String("gr-123"),
+					GuardrailVersion: awssdk.String("1"),
+					ModelEnforcement: &bedrocktypes.ModelEnforcement{IncludedModels: []string{modelARN}},
+					Owner:            bedrocktypes.ConfigurationOwnerAccount,
+				}},
+				bedrockTags: map[string][]bedrocktypes.Tag{throughputARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}}},
+			},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyBedrockProvisionedModelThroughput}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyBedrockProvisionedModelThroughput, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.bedrock_provisioned_model_throughput" {
+		t.Fatalf("kind = %q, want aws.bedrock_provisioned_model_throughput", got)
+	}
+	for key, want := range map[string]string{
+		"account_enforced_guardrail_arns":     guardrailARN,
+		"account_enforced_guardrail_count":    "1",
+		"account_enforced_guardrail_ids":      "gr-123",
+		"commitment_duration":                 "OneMonth",
+		"desired_model_arn":                   modelARN,
+		"desired_model_units":                 "2",
+		"foundation_model_arn":                foundationModelARN,
+		"guardrail_arns":                      guardrailARN,
+		"guardrail_enforcement_state":         "account_enforced",
+		"guardrail_identifier":                guardrailARN,
+		"guardrail_identifiers":               guardrailARN,
+		"guardrail_versions":                  "1",
+		"matched_enforced_guardrail_count":    "1",
+		"model_arn":                           modelARN,
+		"model_units":                         "2",
+		"provisioned_model_arn":               throughputARN,
+		"provisioned_model_name":              "research-throughput",
+		"provisioned_model_throughput_arn":    throughputARN,
+		"provisioned_model_throughput_name":   "research-throughput",
+		"provisioned_model_throughput_status": "InService",
+		"resource_status":                     "InService",
+		"resource_type":                       "bedrock_provisioned_model_throughput",
+		"team":                                "ml",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSSageMakerModelPackageGroupInventoryEvent(t *testing.T) {
+	groupARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
+	packageARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/2"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerModelPackageGroups: []sagemakertypes.ModelPackageGroupSummary{{
+				CreationTime:            timePtr("2026-04-23T00:00:00Z"),
+				ModelPackageGroupArn:    awssdk.String(groupARN),
+				ModelPackageGroupName:   awssdk.String("research-models"),
+				ModelPackageGroupStatus: sagemakertypes.ModelPackageGroupStatusCompleted,
+			}},
+			sageMakerModelPackageGroupDetails: map[string]sagemaker.DescribeModelPackageGroupOutput{"research-models": {
+				CreationTime:                 timePtr("2026-04-23T00:00:00Z"),
+				ModelPackageGroupArn:         awssdk.String(groupARN),
+				ModelPackageGroupDescription: awssdk.String("Research model registry"),
+				ModelPackageGroupName:        awssdk.String("research-models"),
+				ModelPackageGroupStatus:      sagemakertypes.ModelPackageGroupStatusCompleted,
+			}},
+			sageMakerModelPackages: map[string][]sagemakertypes.ModelPackageSummary{"research-models": {
+				{
+					CreationTime:          timePtr("2026-04-24T00:00:00Z"),
+					ModelApprovalStatus:   sagemakertypes.ModelApprovalStatusPendingManualApproval,
+					ModelPackageArn:       awssdk.String(packageARN),
+					ModelPackageGroupName: awssdk.String("research-models"),
+					ModelPackageStatus:    sagemakertypes.ModelPackageStatusCompleted,
+					ModelPackageVersion:   awssdk.Int32(2),
+				},
+				{
+					CreationTime:          timePtr("2026-04-23T00:00:00Z"),
+					ModelApprovalStatus:   sagemakertypes.ModelApprovalStatusApproved,
+					ModelPackageArn:       awssdk.String("arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/1"),
+					ModelPackageGroupName: awssdk.String("research-models"),
+					ModelPackageStatus:    sagemakertypes.ModelPackageStatusCompleted,
+					ModelPackageVersion:   awssdk.Int32(1),
+				},
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{groupARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerModelPackageGroup}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerModelPackageGroup, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_model_package_group" {
+		t.Fatalf("kind = %q, want aws.sagemaker_model_package_group", got)
+	}
+	for key, want := range map[string]string{
+		"model_approval_status":         "PendingManualApproval",
+		"model_approval_statuses":       "PendingManualApproval,Approved",
+		"model_package_arns":            packageARN + ",arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/1",
+		"model_package_count":           "2",
+		"model_package_group_arn":       groupARN,
+		"model_package_group_name":      "research-models",
+		"model_package_group_status":    "Completed",
+		"model_package_status":          "Completed",
+		"model_package_version":         "2",
+		"model_package_versions":        "2,1",
+		"owner":                         "ml@writer.com",
+		"pending_manual_approval_count": "1",
+		"resource_type":                 "sagemaker_model_package_group",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestReadAWSSageMakerModelInventoryEvent(t *testing.T) {
+	modelARN := "arn:aws:sagemaker:us-east-1:123456789012:model/research-model"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerModelRole"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerModels: []sagemakertypes.ModelSummary{{
+				CreationTime: timePtr("2026-04-23T00:00:00Z"),
+				ModelArn:     awssdk.String(modelARN),
+				ModelName:    awssdk.String("research-model"),
+			}},
+			sageMakerModelDetails: map[string]sagemaker.DescribeModelOutput{"research-model": {
+				CreationTime:           timePtr("2026-04-23T00:00:00Z"),
+				EnableNetworkIsolation: awssdk.Bool(true),
+				ExecutionRoleArn:       awssdk.String(roleARN),
+				ModelArn:               awssdk.String(modelARN),
+				ModelName:              awssdk.String("research-model"),
+				PrimaryContainer: &sagemakertypes.ContainerDefinition{
+					Environment:      map[string]string{"SETTING": "do-not-store-this-value"},
+					Image:            awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/research:latest"),
+					ModelDataUrl:     awssdk.String("s3://prod-models/research/model.tar.gz"),
+					ModelPackageName: awssdk.String("research-package"),
+				},
+				VpcConfig: &sagemakertypes.VpcConfig{
+					SecurityGroupIds: []string{"sg-123", "sg-456"},
+					Subnets:          []string{"subnet-123", "subnet-456"},
+				},
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{modelARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerModel}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerModel, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_model" {
+		t.Fatalf("kind = %q, want aws.sagemaker_model", got)
+	}
+	for key, want := range map[string]string{
+		"container_count":                      "1",
+		"container_images":                     "123456789012.dkr.ecr.us-east-1.amazonaws.com/research:latest",
+		"enable_network_isolation":             "true",
+		"execution_role_arn":                   roleARN,
+		"execution_role_name":                  "service-role/SageMakerModelRole",
+		"model_arn":                            modelARN,
+		"model_data_urls":                      "s3://prod-models/research/model.tar.gz",
+		"model_name":                           "research-model",
+		"model_package_names":                  "research-package",
+		"owner":                                "ml@writer.com",
+		"primary_container_image":              "123456789012.dkr.ecr.us-east-1.amazonaws.com/research:latest",
+		"primary_container_model_data_url":     "s3://prod-models/research/model.tar.gz",
+		"primary_container_model_package_name": "research-package",
+		"resource_type":                        "sagemaker_model",
+		"role_arn":                             roleARN,
+		"role_name":                            "service-role/SageMakerModelRole",
+		"security_group_ids":                   "sg-123,sg-456",
+		"subnet_ids":                           "subnet-123,subnet-456",
+		"vpc_configured":                       "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
+		t.Fatal("payload contains container environment value")
+	}
+}
+
+func TestReadAWSSageMakerTrainingJobInventoryEvent(t *testing.T) {
+	jobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerTrainingRole"
+	outputKMSKeyID := "arn:aws:kms:us-east-1:123456789012:key/output-key"
+	volumeKMSKeyID := "arn:aws:kms:us-east-1:123456789012:key/volume-key"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerTrainingJobs: []sagemakertypes.TrainingJobSummary{{
+				CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+				LastModifiedTime:  timePtr("2026-04-24T00:00:00Z"),
+				SecondaryStatus:   sagemakertypes.SecondaryStatusCompleted,
+				TrainingJobArn:    awssdk.String(jobARN),
+				TrainingJobName:   awssdk.String("research-training"),
+				TrainingJobStatus: sagemakertypes.TrainingJobStatusCompleted,
+			}},
+			sageMakerTrainingJobDetails: map[string]sagemaker.DescribeTrainingJobOutput{"research-training": {
+				AlgorithmSpecification: &sagemakertypes.AlgorithmSpecification{
+					AlgorithmName:     awssdk.String("xgboost"),
+					TrainingImage:     awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/training:latest"),
+					TrainingInputMode: sagemakertypes.TrainingInputModeFile,
+				},
+				BillableTimeInSeconds:                 awssdk.Int32(900),
+				CreationTime:                          timePtr("2026-04-23T00:00:00Z"),
+				EnableInterContainerTrafficEncryption: awssdk.Bool(true),
+				EnableManagedSpotTraining:             awssdk.Bool(true),
+				EnableNetworkIsolation:                awssdk.Bool(true),
+				Environment:                           map[string]string{"SETTING": "do-not-store-training-value"},
+				HyperParameters:                       map[string]string{"learning_rate": "do-not-store-hyperparameter-value"},
+				LastModifiedTime:                      timePtr("2026-04-24T00:00:00Z"),
+				ModelArtifacts:                        &sagemakertypes.ModelArtifacts{S3ModelArtifacts: awssdk.String("s3://prod-models/research-training/output/model.tar.gz")},
+				OutputDataConfig:                      &sagemakertypes.OutputDataConfig{KmsKeyId: awssdk.String(outputKMSKeyID), S3OutputPath: awssdk.String("s3://prod-models/research-training/output/")},
+				ResourceConfig:                        &sagemakertypes.ResourceConfig{InstanceCount: awssdk.Int32(2), InstanceType: sagemakertypes.TrainingInstanceTypeMlM5Large, VolumeKmsKeyId: awssdk.String(volumeKMSKeyID), VolumeSizeInGB: awssdk.Int32(50)},
+				RoleArn:                               awssdk.String(roleARN),
+				SecondaryStatus:                       sagemakertypes.SecondaryStatusCompleted,
+				TrainingEndTime:                       timePtr("2026-04-23T01:00:00Z"),
+				TrainingJobArn:                        awssdk.String(jobARN),
+				TrainingJobName:                       awssdk.String("research-training"),
+				TrainingJobStatus:                     sagemakertypes.TrainingJobStatusCompleted,
+				TrainingStartTime:                     timePtr("2026-04-23T00:15:00Z"),
+				TrainingTimeInSeconds:                 awssdk.Int32(2700),
+				VpcConfig:                             &sagemakertypes.VpcConfig{SecurityGroupIds: []string{"sg-123", "sg-456"}, Subnets: []string{"subnet-123", "subnet-456"}},
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{jobARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerTrainingJob}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerTrainingJob, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_training_job" {
+		t.Fatalf("kind = %q, want aws.sagemaker_training_job", got)
+	}
+	for key, want := range map[string]string{
+		"algorithm_name":                            "xgboost",
+		"billable_time_seconds":                     "900",
+		"enable_inter_container_traffic_encryption": "true",
+		"enable_managed_spot_training":              "true",
+		"enable_network_isolation":                  "true",
+		"instance_count":                            "2",
+		"instance_type":                             "ml.m5.large",
+		"model_artifacts_s3_uri":                    "s3://prod-models/research-training/output/model.tar.gz",
+		"output_data_config_kms_key_id":             outputKMSKeyID,
+		"output_kms_key_id":                         outputKMSKeyID,
+		"output_s3_uri":                             "s3://prod-models/research-training/output/",
+		"owner":                                     "ml@writer.com",
+		"resource_kms_key_id":                       volumeKMSKeyID,
+		"resource_type":                             "sagemaker_training_job",
+		"role_arn":                                  roleARN,
+		"role_name":                                 "service-role/SageMakerTrainingRole",
+		"secondary_status":                          "Completed",
+		"security_group_ids":                        "sg-123,sg-456",
+		"subnet_ids":                                "subnet-123,subnet-456",
+		"training_image":                            "123456789012.dkr.ecr.us-east-1.amazonaws.com/training:latest",
+		"training_input_mode":                       "File",
+		"training_job_arn":                          jobARN,
+		"training_job_name":                         "research-training",
+		"training_job_status":                       "Completed",
+		"training_time_seconds":                     "2700",
+		"volume_kms_key_id":                         volumeKMSKeyID,
+		"volume_size_gb":                            "50",
+		"vpc_configured":                            "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-training-value") {
+		t.Fatal("payload contains training environment value")
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-hyperparameter-value") {
+		t.Fatal("payload contains training hyperparameter value")
+	}
+}
+
+func TestReadAWSSageMakerNotebookInstanceInventoryEvent(t *testing.T) {
+	notebookARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerNotebookRole"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSSageMaker: fakeAWSSageMaker{
+			sageMakerNotebookInstances: []sagemakertypes.NotebookInstanceSummary{{
+				CreationTime:           timePtr("2026-04-23T00:00:00Z"),
+				InstanceType:           sagemakertypes.InstanceTypeMlT3Medium,
+				NotebookInstanceArn:    awssdk.String(notebookARN),
+				NotebookInstanceName:   awssdk.String("research-notebook"),
+				NotebookInstanceStatus: sagemakertypes.NotebookInstanceStatusInService,
+			}},
+			sageMakerNotebookDetails: map[string]sagemaker.DescribeNotebookInstanceOutput{"research-notebook": {
+				CreationTime:         timePtr("2026-04-23T00:00:00Z"),
+				DirectInternetAccess: sagemakertypes.DirectInternetAccessEnabled,
+				InstanceMetadataServiceConfiguration: &sagemakertypes.InstanceMetadataServiceConfiguration{
+					MinimumInstanceMetadataServiceVersion: awssdk.String("2"),
+				},
+				InstanceType:           sagemakertypes.InstanceTypeMlT3Medium,
+				IpAddressType:          sagemakertypes.IPAddressTypeIpv4,
+				KmsKeyId:               awssdk.String("arn:aws:kms:us-east-1:123456789012:key/key-123"),
+				LastModifiedTime:       timePtr("2026-04-24T00:00:00Z"),
+				NetworkInterfaceId:     awssdk.String("eni-123"),
+				NotebookInstanceArn:    awssdk.String(notebookARN),
+				NotebookInstanceName:   awssdk.String("research-notebook"),
+				NotebookInstanceStatus: sagemakertypes.NotebookInstanceStatusInService,
+				PlatformIdentifier:     awssdk.String("notebook-al2-v3"),
+				RoleArn:                awssdk.String(roleARN),
+				RootAccess:             sagemakertypes.RootAccessDisabled,
+				SecurityGroups:         []string{"sg-123", "sg-456"},
+				SubnetId:               awssdk.String("subnet-123"),
+				VolumeSizeInGB:         awssdk.Int32(25),
+			}},
+			sageMakerTags: map[string][]sagemakertypes.Tag{notebookARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("ml@writer.com")}}},
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familySageMakerNotebookInstance}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familySageMakerNotebookInstance, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.sagemaker_notebook_instance" {
+		t.Fatalf("kind = %q, want aws.sagemaker_notebook_instance", got)
+	}
+	for key, want := range map[string]string{
+		"direct_internet_access": "Enabled",
+		"instance_type":          "ml.t3.medium",
+		"internet_exposed":       "true",
+		"ip_address_type":        "ipv4",
+		"kms_key_id":             "arn:aws:kms:us-east-1:123456789012:key/key-123",
+		"minimum_instance_metadata_service_version": "2",
+		"network_interface_id":                      "eni-123",
+		"notebook_instance_arn":                     notebookARN,
+		"notebook_instance_name":                    "research-notebook",
+		"notebook_instance_status":                  "InService",
+		"owner":                                     "ml@writer.com",
+		"platform_identifier":                       "notebook-al2-v3",
+		"resource_type":                             "sagemaker_notebook_instance",
+		"role_arn":                                  roleARN,
+		"role_name":                                 "service-role/SageMakerNotebookRole",
+		"root_access":                               "Disabled",
+		"security_group_ids":                        "sg-123,sg-456",
+		"subnet_id":                                 "subnet-123",
+		"volume_size_gb":                            "25",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -1398,6 +2498,40 @@ func TestReadAWSCodeBuildProjectInventoryEvent(t *testing.T) {
 	}
 	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
 		t.Fatal("payload contains environment variable value")
+	}
+}
+
+func TestReadAWSCodeBuildSourceCredentialInventoryEvent(t *testing.T) {
+	arn := "arn:aws:codebuild:us-east-1:123456789012:source/github"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+			codeBuildSourceCredentials: []codebuildtypes.SourceCredentialsInfo{{
+				Arn:        awssdk.String(arn),
+				AuthType:   codebuildtypes.AuthTypeBasicAuth,
+				ServerType: codebuildtypes.ServerTypeGithub,
+			}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCodeBuildSourceCredential}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyCodeBuildSourceCredential, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.codebuild_source_credential" {
+		t.Fatalf("kind = %q, want aws.codebuild_source_credential", got)
+	}
+	for key, want := range map[string]string{
+		"arn":           arn,
+		"auth_type":     "BASIC_AUTH",
+		"resource_type": "codebuild_source_credential",
+		"server_type":   "GITHUB",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -1687,6 +2821,7 @@ func TestReadAWSEFSInventoryEvents(t *testing.T) {
 		want   string
 	}{
 		{family: familyEFSFileSystem, kind: "aws.efs_file_system", attr: "security_group_ids", want: "sg-123,sg-456"},
+		{family: familyEFSMountTarget, kind: "aws.efs_mount_target", attr: "subnet_id", want: "subnet-123"},
 		{family: familyEFSAccessPoint, kind: "aws.efs_access_point", attr: "root_directory_path", want: "/orders"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -2338,6 +3473,161 @@ func TestReadAWSAssetMetadataPreview(t *testing.T) {
 	}
 }
 
+func TestReadAWSAppSyncGraphQLAPIInventoryEvent(t *testing.T) {
+	apiARN := "arn:aws:appsync:us-east-1:123456789012:apis/api-123"
+	dataSourceRoleARN := "arn:aws:iam::123456789012:role/service-role/appsync-data-source"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSRuntime: fakeAWSRuntime{fakeAWSRuntimeApplication: fakeAWSRuntimeApplication{
+			appSyncAPIs: []appsynctypes.GraphqlApi{{
+				AdditionalAuthenticationProviders: []appsynctypes.AdditionalAuthenticationProvider{
+					{
+						AuthenticationType: appsynctypes.AuthenticationTypeAwsIam,
+					},
+					{
+						AuthenticationType:     appsynctypes.AuthenticationTypeAwsLambda,
+						LambdaAuthorizerConfig: &appsynctypes.LambdaAuthorizerConfig{AuthorizerUri: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:appsync-authorizer"), AuthorizerResultTtlInSeconds: 300},
+					},
+				},
+				ApiId:               awssdk.String("api-123"),
+				ApiType:             appsynctypes.GraphQLApiTypeGraphql,
+				Arn:                 awssdk.String(apiARN),
+				AuthenticationType:  appsynctypes.AuthenticationTypeAmazonCognitoUserPools,
+				IntrospectionConfig: appsynctypes.GraphQLApiIntrospectionConfigDisabled,
+				LogConfig: &appsynctypes.LogConfig{
+					CloudWatchLogsRoleArn: awssdk.String("arn:aws:iam::123456789012:role/service-role/appsync-logs"),
+					FieldLogLevel:         appsynctypes.FieldLogLevelError,
+					ExcludeVerboseContent: true,
+				},
+				Name: awssdk.String("orders-api"),
+				OpenIDConnectConfig: &appsynctypes.OpenIDConnectConfig{
+					Issuer: awssdk.String("https://issuer.example.com"),
+				},
+				QueryDepthLimit:    8,
+				ResolverCountLimit: 20,
+				Tags: map[string]string{
+					"Owner": "platform@writer.com",
+					"Team":  "api",
+				},
+				Uris: map[string]string{
+					"GRAPHQL":  "https://api-123.appsync-api.us-east-1.amazonaws.com/graphql",
+					"REALTIME": "wss://api-123.appsync-realtime-api.us-east-1.amazonaws.com/graphql",
+				},
+				UserPoolConfig: &appsynctypes.UserPoolConfig{
+					AwsRegion:     awssdk.String("us-east-1"),
+					DefaultAction: appsynctypes.DefaultActionAllow,
+					UserPoolId:    awssdk.String("us-east-1_pool"),
+				},
+				Visibility:   appsynctypes.GraphQLApiVisibilityPrivate,
+				WafWebAclArn: awssdk.String("arn:aws:wafv2:us-east-1:123456789012:regional/webacl/api/abcd"),
+				XrayEnabled:  true,
+			}},
+			appSyncDataSources: map[string][]appsynctypes.DataSource{"api-123": {
+				{
+					DataSourceArn: awssdk.String(apiARN + "/datasources/ordersTable"),
+					DynamodbConfig: &appsynctypes.DynamodbDataSourceConfig{
+						AwsRegion: awssdk.String("us-east-1"),
+						TableName: awssdk.String("orders"),
+					},
+					Name:           awssdk.String("ordersTable"),
+					ServiceRoleArn: awssdk.String(dataSourceRoleARN),
+					Type:           appsynctypes.DataSourceTypeAmazonDynamodb,
+				},
+				{
+					DataSourceArn: awssdk.String(apiARN + "/datasources/ordersFunction"),
+					LambdaConfig:  &appsynctypes.LambdaDataSourceConfig{LambdaFunctionArn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders")},
+					Name:          awssdk.String("ordersFunction"),
+					Type:          appsynctypes.DataSourceTypeAwsLambda,
+				},
+			}},
+			appSyncResolvers: map[string]map[string][]appsynctypes.Resolver{"api-123": {
+				"Mutation": {{
+					DataSourceName: awssdk.String("ordersFunction"),
+					FieldName:      awssdk.String("createOrder"),
+					Kind:           appsynctypes.ResolverKindUnit,
+					RequestMappingTemplate: awssdk.String(`{
+  "version": "2017-02-28",
+  "operation": "Invoke",
+  "payload": "do-not-store-this-value"
+}`),
+					ResolverArn: awssdk.String(apiARN + "/types/Mutation/resolvers/createOrder"),
+					TypeName:    awssdk.String("Mutation"),
+				}},
+				"Query": {{
+					DataSourceName: awssdk.String("ordersTable"),
+					FieldName:      awssdk.String("getOrder"),
+					Kind:           appsynctypes.ResolverKindUnit,
+					ResolverArn:    awssdk.String(apiARN + "/types/Query/resolvers/getOrder"),
+					TypeName:       awssdk.String("Query"),
+				}},
+			}},
+			appSyncTags: map[string]map[string]string{apiARN: {"Owner": "platform@writer.com", "Team": "api"}},
+			appSyncTypes: map[string][]appsynctypes.Type{"api-123": {
+				{Name: awssdk.String("Mutation")},
+				{Name: awssdk.String("Query")},
+			}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAppSyncGraphQLAPI}), nil)
+	if err != nil {
+		t.Fatalf("Read(appsync_graphql_api) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "aws.appsync_graphql_api" {
+		t.Fatalf("kind = %q, want aws.appsync_graphql_api", event.Kind)
+	}
+	for key, want := range map[string]string{
+		"api_id":                          "api-123",
+		"api_name":                        "orders-api",
+		"api_type":                        "GRAPHQL",
+		"authentication_type":             "AMAZON_COGNITO_USER_POOLS",
+		"additional_authentication_types": "AWS_IAM,AWS_LAMBDA",
+		"authorization_modes":             "AMAZON_COGNITO_USER_POOLS,AWS_IAM,AWS_LAMBDA",
+		"cloudwatch_logs_role_arn":        "arn:aws:iam::123456789012:role/service-role/appsync-logs",
+		"data_source_count":               "2",
+		"data_source_names":               "ordersFunction,ordersTable",
+		"data_source_role_arns":           dataSourceRoleARN,
+		"data_source_types":               "AMAZON_DYNAMODB,AWS_LAMBDA",
+		"exclude_verbose_content":         "true",
+		"field_log_level":                 "ERROR",
+		"graphql_url":                     "https://api-123.appsync-api.us-east-1.amazonaws.com/graphql",
+		"introspection_config":            "DISABLED",
+		"lambda_authorizer_ttl_seconds":   "300",
+		"lambda_authorizer_uri":           "arn:aws:lambda:us-east-1:123456789012:function:appsync-authorizer",
+		"logging_enabled":                 "true",
+		"openid_connect_issuer":           "https://issuer.example.com",
+		"owner":                           "platform@writer.com",
+		"query_depth_limit":               "8",
+		"realtime_url":                    "wss://api-123.appsync-realtime-api.us-east-1.amazonaws.com/graphql",
+		"resolver_count":                  "2",
+		"resolver_count_limit":            "20",
+		"resolver_data_source_names":      "ordersFunction,ordersTable",
+		"resolver_fields":                 "Mutation.createOrder,Query.getOrder",
+		"resolver_kinds":                  "UNIT",
+		"resource_id":                     "arn:aws:appsync:us-east-1:123456789012:apis/api-123",
+		"resource_name":                   "orders-api",
+		"resource_type":                   "appsync_graphql_api",
+		"team":                            "api",
+		"type_count":                      "2",
+		"type_names":                      "Mutation,Query",
+		"user_pool_default_action":        "ALLOW",
+		"user_pool_id":                    "us-east-1_pool",
+		"user_pool_region":                "us-east-1",
+		"visibility":                      "PRIVATE",
+		"waf_enabled":                     "true",
+		"xray_enabled":                    "true",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("attributes[%s] = %q, want %q", key, got, want)
+		}
+	}
+	if strings.Contains(string(event.Payload), "do-not-store-this-value") {
+		t.Fatal("payload contains resolver mapping template value")
+	}
+}
+
 func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	topics := make([]snstypes.Topic, 0, 12)
 	attributes := make(map[string]map[string]string, 12)
@@ -2629,7 +3919,7 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 		RoleId:   awssdk.String("AROADMIN"),
 		RoleName: awssdk.String("AdminRole"),
 	}
-	roleEvent, err := iamRoleEvent(settings{accountID: "123456789012"}, role)
+	roleEvent, err := iamRoleEvent(settings{accountID: "123456789012"}, awsIAMRole{Role: role})
 	if err != nil {
 		t.Fatalf("iamRoleEvent() error = %v", err)
 	}
@@ -2653,6 +3943,37 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 	}
 	if got := trustEvent.Attributes["target_arn"]; got != roleARN {
 		t.Fatalf("trust target_arn = %q, want role ARN preserved", got)
+	}
+}
+
+func TestReadAWSIAMRoleSupportAccessPolicyAttribute(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		roles: []iamtypes.Role{{
+			Arn:        awssdk.String("arn:aws:iam::123456789012:role/SupportRole"),
+			CreateDate: timePtr("2026-04-23T00:00:00Z"),
+			RoleId:     awssdk.String("AROSUPPORT"),
+			RoleName:   awssdk.String("SupportRole"),
+		}},
+		attachedPolicies: []iamtypes.AttachedPolicy{{
+			PolicyArn:  awssdk.String("arn:aws:iam::aws:policy/AWSSupportAccess"),
+			PolicyName: awssdk.String("AWSSupportAccess"),
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMRole}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMRole, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	for key, want := range map[string]string{
+		"attached_policy_arns":      "arn:aws:iam::aws:policy/AWSSupportAccess",
+		"attached_policy_names":     "AWSSupportAccess",
+		"has_support_access_policy": "true",
+	} {
+		if got := pull.Events[0].Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -2784,9 +4105,11 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 
 func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
-		inlinePolicyNames: []string{"InlineAdmin"},
-		inlinePolicyDocuments: map[string]string{
-			"InlineAdmin": url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*","s3:GetObject"],"Resource":"*"},{"Effect":"Deny","Action":"ec2:*","Resource":"*"}]}`),
+		fakeAWSIAMDocuments: fakeAWSIAMDocuments{
+			inlinePolicyNames: []string{"InlineAdmin"},
+			inlinePolicyDocuments: map[string]string{
+				"InlineAdmin": url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*","s3:GetObject"],"Resource":"*"},{"Effect":"Deny","Action":"ec2:*","Resource":"*"}]}`),
+			},
 		},
 	})
 
@@ -2819,10 +4142,12 @@ func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 
 func TestReadAWSEffectivePermissionPaginatesInlinePolicies(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
-		inlinePolicyNames: []string{"InlineOne", "InlineTwo"},
-		inlinePolicyDocuments: map[string]string{
-			"InlineOne": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}`,
-			"InlineTwo": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:ListBucket","Resource":"*"}]}`,
+		fakeAWSIAMDocuments: fakeAWSIAMDocuments{
+			inlinePolicyNames: []string{"InlineOne", "InlineTwo"},
+			inlinePolicyDocuments: map[string]string{
+				"InlineOne": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}`,
+				"InlineTwo": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:ListBucket","Resource":"*"}]}`,
+			},
 		},
 	})
 	cfg := sourcecdk.NewConfig(map[string]string{
@@ -2866,8 +4191,10 @@ func TestReadAWSEffectivePermissionIncludesManagedPolicyActions(t *testing.T) {
 	policyARN := "arn:aws:iam::123456789012:policy/CustomReadOnly"
 	source := newTestSource(t, fakeAWS{
 		attachedPolicies: []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("CustomReadOnly"), PolicyArn: awssdk.String(policyARN)}},
-		managedPolicyDocuments: map[string]string{
-			policyARN: url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":"*"},{"Effect":"Deny","Action":"s3:DeleteObject","Resource":"*"}]}`),
+		fakeAWSIAMDocuments: fakeAWSIAMDocuments{
+			managedPolicyDocuments: map[string]string{
+				policyARN: url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":"*"},{"Effect":"Deny","Action":"s3:DeleteObject","Resource":"*"}]}`),
+			},
 		},
 	})
 
@@ -2897,9 +4224,11 @@ func TestReadAWSEffectivePermissionIncludesManagedPolicyActions(t *testing.T) {
 
 func TestDiscoverAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
-		inlinePolicyNames: []string{"InlineAdmin"},
-		inlinePolicyDocuments: map[string]string{
-			"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`,
+		fakeAWSIAMDocuments: fakeAWSIAMDocuments{
+			inlinePolicyNames: []string{"InlineAdmin"},
+			inlinePolicyDocuments: map[string]string{
+				"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`,
+			},
 		},
 	})
 
@@ -2923,6 +4252,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.users = []iamtypes.User{{UserName: awssdk.String("admin@writer.com"), UserId: awssdk.String("AIDAADMIN")}}
 		fake.groups = []iamtypes.Group{{GroupName: awssdk.String("Security"), GroupId: awssdk.String("AGPSECURITY")}}
 		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
+		fake.policies = []iamtypes.Policy{{Arn: awssdk.String("arn:aws:iam::123456789012:policy/AdminStar"), PolicyId: awssdk.String("ANPAADMIN"), PolicyName: awssdk.String("AdminStar"), DefaultVersionId: awssdk.String("v1")}}
+		fake.policyDetails = map[string]iamtypes.Policy{"arn:aws:iam::123456789012:policy/AdminStar": {Arn: awssdk.String("arn:aws:iam::123456789012:policy/AdminStar"), PolicyId: awssdk.String("ANPAADMIN"), PolicyName: awssdk.String("AdminStar"), DefaultVersionId: awssdk.String("v1")}}
+		fake.policyVersions = map[string]iamtypes.PolicyVersion{"arn:aws:iam::123456789012:policy/AdminStar@v1": {Document: awssdk.String(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}`), VersionId: awssdk.String("v1")}}
+		fake.samlProviders = []iamtypes.SAMLProviderListEntry{{Arn: awssdk.String("arn:aws:iam::123456789012:saml-provider/Okta")}}
+		fake.samlProviderDetails = map[string]iam.GetSAMLProviderOutput{"arn:aws:iam::123456789012:saml-provider/Okta": {SAMLProviderUUID: awssdk.String("saml-uuid")}}
 		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
 		fake.managedPolicyDocuments = map[string]string{"arn:aws:iam::aws:policy/AdministratorAccess": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}`}
 		fake.inlinePolicyNames = []string{"InlineAdmin"}
@@ -3016,6 +4350,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		clusterARN := "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
 		eksClusterName := "prod-eks"
 		eksClusterARN := "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
+		fake.compute.images = []ec2types.Image{{ImageId: awssdk.String("ami-123"), Name: awssdk.String("golden-web"), Public: awssdk.Bool(true)}}
 		fake.compute.instances = []ec2types.Instance{{InstanceId: awssdk.String("i-123"), IamInstanceProfile: &ec2types.IamInstanceProfile{Arn: awssdk.String(profileARN)}}}
 		fake.compute.instanceProfiles = map[string]iamtypes.InstanceProfile{"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String("arn:aws:iam::123456789012:role/WebInstanceRole"), RoleName: awssdk.String("WebInstanceRole")}}}}
 		fake.compute.lambdaFunctions = []lambdatypes.FunctionConfiguration{{FunctionArn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders"), FunctionName: awssdk.String("orders"), Role: awssdk.String("arn:aws:iam::123456789012:role/LambdaOrdersRole")}}
@@ -3039,8 +4374,31 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.subnets = []ec2types.Subnet{{SubnetId: awssdk.String("subnet-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.securityGroups = []ec2types.SecurityGroup{{GroupId: awssdk.String("sg-123"), VpcId: awssdk.String("vpc-123")}}
 		fake.routeTables = []ec2types.RouteTable{{RouteTableId: awssdk.String("rtb-123"), VpcId: awssdk.String("vpc-123")}}
+		fake.networkACLs = []ec2types.NetworkAcl{{
+			NetworkAclId: awssdk.String("acl-123"),
+			VpcId:        awssdk.String("vpc-123"),
+			Associations: []ec2types.NetworkAclAssociation{{SubnetId: awssdk.String("subnet-123")}},
+			Entries: []ec2types.NetworkAclEntry{{
+				CidrBlock:  awssdk.String("0.0.0.0/0"),
+				Egress:     awssdk.Bool(false),
+				PortRange:  &ec2types.PortRange{From: awssdk.Int32(22), To: awssdk.Int32(22)},
+				Protocol:   awssdk.String("6"),
+				RuleAction: ec2types.RuleActionAllow,
+			}},
+		}}
 		fake.internetGateways = []ec2types.InternetGateway{{InternetGatewayId: awssdk.String("igw-123")}}
 		fake.natGateways = []ec2types.NatGateway{{NatGatewayId: awssdk.String("nat-123"), VpcId: awssdk.String("vpc-123"), SubnetId: awssdk.String("subnet-123")}}
+		fake.flowLogs = []ec2types.FlowLog{{
+			FlowLogId:              awssdk.String("fl-123"),
+			FlowLogStatus:          awssdk.String("ACTIVE"),
+			LogDestinationType:     ec2types.LogDestinationTypeCloudWatchLogs,
+			LogGroupName:           awssdk.String("/aws/vpc/flowlogs/prod"),
+			ResourceId:             awssdk.String("vpc-123"),
+			TrafficType:            ec2types.TrafficTypeAll,
+			DeliverLogsStatus:      awssdk.String("SUCCESS"),
+			DestinationOptions:     &ec2types.DestinationOptionsResponse{FileFormat: ec2types.DestinationFileFormatPlainText},
+			MaxAggregationInterval: awssdk.Int32(60),
+		}}
 		fake.vpcEndpoints = []ec2types.VpcEndpoint{{VpcEndpointId: awssdk.String("vpce-123"), VpcId: awssdk.String("vpc-123")}}
 	}
 	cloudAssetData := func(fake *recordingAWS) {
@@ -3048,6 +4406,14 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
 		snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 		ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+		ecrPublicARN := "arn:aws:ecr-public::123456789012:repository/orders-public"
+		endpointConfigARN := "arn:aws:sagemaker:us-east-1:123456789012:endpoint-config/research-endpoint-config"
+		modelARN := "arn:aws:sagemaker:us-east-1:123456789012:model/research-model"
+		modelPackageGroupARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
+		notebookARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
+		trainingJobARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
+		bedrockCustomModelARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+		bedrockProvisionedThroughputARN := "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/research-throughput"
 		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
@@ -3068,12 +4434,57 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.ecrPublicRepositories = []ecrpublictypes.Repository{{RepositoryArn: awssdk.String(ecrPublicARN), RepositoryName: awssdk.String("orders-public")}}
+		fake.ecrPublicTags = map[string][]ecrpublictypes.Tag{ecrPublicARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.ecrPublicCatalogData = map[string]ecrpublictypes.RepositoryCatalogData{"orders-public": {Description: awssdk.String("Public orders image")}}
+		fake.ecrPublicPolicies = map[string]string{"orders-public": `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"ecr-public:GetRepositoryCatalogData"}]}`}
+		fake.sageMakerEndpointConfigs = []sagemakertypes.EndpointConfigSummary{{EndpointConfigArn: awssdk.String(endpointConfigARN), EndpointConfigName: awssdk.String("research-endpoint-config")}}
+		fake.sageMakerEndpointDetails = map[string]sagemaker.DescribeEndpointConfigOutput{"research-endpoint-config": {EndpointConfigArn: awssdk.String(endpointConfigARN), EndpointConfigName: awssdk.String("research-endpoint-config")}}
+		fake.sageMakerModels = []sagemakertypes.ModelSummary{{ModelArn: awssdk.String(modelARN), ModelName: awssdk.String("research-model")}}
+		fake.sageMakerModelDetails = map[string]sagemaker.DescribeModelOutput{"research-model": {ModelArn: awssdk.String(modelARN), ModelName: awssdk.String("research-model")}}
+		fake.sageMakerModelPackageGroups = []sagemakertypes.ModelPackageGroupSummary{{ModelPackageGroupArn: awssdk.String(modelPackageGroupARN), ModelPackageGroupName: awssdk.String("research-models"), ModelPackageGroupStatus: sagemakertypes.ModelPackageGroupStatusCompleted}}
+		fake.sageMakerModelPackageGroupDetails = map[string]sagemaker.DescribeModelPackageGroupOutput{"research-models": {ModelPackageGroupArn: awssdk.String(modelPackageGroupARN), ModelPackageGroupName: awssdk.String("research-models"), ModelPackageGroupStatus: sagemakertypes.ModelPackageGroupStatusCompleted}}
+		fake.sageMakerModelPackages = map[string][]sagemakertypes.ModelPackageSummary{"research-models": {{ModelApprovalStatus: sagemakertypes.ModelApprovalStatusPendingManualApproval, ModelPackageArn: awssdk.String("arn:aws:sagemaker:us-east-1:123456789012:model-package/research-models/1"), ModelPackageStatus: sagemakertypes.ModelPackageStatusCompleted, ModelPackageVersion: awssdk.Int32(1)}}}
+		fake.sageMakerNotebookInstances = []sagemakertypes.NotebookInstanceSummary{{NotebookInstanceArn: awssdk.String(notebookARN), NotebookInstanceName: awssdk.String("research-notebook")}}
+		fake.sageMakerNotebookDetails = map[string]sagemaker.DescribeNotebookInstanceOutput{"research-notebook": {NotebookInstanceArn: awssdk.String(notebookARN), NotebookInstanceName: awssdk.String("research-notebook")}}
+		fake.sageMakerTrainingJobs = []sagemakertypes.TrainingJobSummary{{TrainingJobArn: awssdk.String(trainingJobARN), TrainingJobName: awssdk.String("research-training")}}
+		fake.sageMakerTrainingJobDetails = map[string]sagemaker.DescribeTrainingJobOutput{"research-training": {TrainingJobArn: awssdk.String(trainingJobARN), TrainingJobName: awssdk.String("research-training")}}
+		fake.sageMakerTags = map[string][]sagemakertypes.Tag{
+			endpointConfigARN:    {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			modelARN:             {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			modelPackageGroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			notebookARN:          {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			trainingJobARN:       {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+		}
+		fake.bedrockCustomModels = []bedrocktypes.CustomModelSummary{{
+			BaseModelArn:      awssdk.String("arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"),
+			BaseModelName:     awssdk.String("amazon.titan-text-express-v1"),
+			CreationTime:      timePtr("2026-04-23T00:00:00Z"),
+			CustomizationType: bedrocktypes.CustomizationTypeFineTuning,
+			ModelArn:          awssdk.String(bedrockCustomModelARN),
+			ModelName:         awssdk.String("research-model"),
+			ModelStatus:       bedrocktypes.ModelStatusActive,
+			OwnerAccountId:    awssdk.String("123456789012"),
+		}}
+		fake.bedrockCustomModelDetails = map[string]bedrock.GetCustomModelOutput{bedrockCustomModelARN: {CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelName: awssdk.String("research-model")}}
+		fake.bedrockProvisionedThroughputs = []bedrocktypes.ProvisionedModelSummary{{CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelUnits: awssdk.Int32(1), ProvisionedModelArn: awssdk.String(bedrockProvisionedThroughputARN), ProvisionedModelName: awssdk.String("research-throughput"), Status: bedrocktypes.ProvisionedModelStatusInService}}
+		fake.bedrockProvisionedThroughputDetails = map[string]bedrock.GetProvisionedModelThroughputOutput{bedrockProvisionedThroughputARN: {CreationTime: timePtr("2026-04-23T00:00:00Z"), ModelArn: awssdk.String(bedrockCustomModelARN), ModelUnits: awssdk.Int32(1), ProvisionedModelArn: awssdk.String(bedrockProvisionedThroughputARN), ProvisionedModelName: awssdk.String("research-throughput"), Status: bedrocktypes.ProvisionedModelStatusInService}}
+		fake.bedrockEnforcedGuardrails = []bedrocktypes.AccountEnforcedGuardrailOutputConfiguration{{GuardrailArn: awssdk.String("arn:aws:bedrock:us-east-1:123456789012:guardrail/gr-123"), GuardrailId: awssdk.String("gr-123")}}
+		fake.bedrockTags = map[string][]bedrocktypes.Tag{
+			bedrockCustomModelARN:           {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+			bedrockProvisionedThroughputARN: {{Key: awssdk.String("Team"), Value: awssdk.String("ml")}},
+		}
 		fake.codeBuildProjects = []string{"orders-build"}
 		fake.codeBuildProjectDetail = map[string]codebuildtypes.Project{"orders-build": {
 			Arn:         awssdk.String("arn:aws:codebuild:us-east-1:123456789012:project/orders-build"),
 			Name:        awssdk.String("orders-build"),
 			Source:      &codebuildtypes.ProjectSource{Type: codebuildtypes.SourceTypeGithub},
 			Environment: &codebuildtypes.ProjectEnvironment{Type: codebuildtypes.EnvironmentTypeLinuxContainer},
+		}}
+		fake.codeBuildSourceCredentials = []codebuildtypes.SourceCredentialsInfo{{
+			Arn:        awssdk.String("arn:aws:codebuild:us-east-1:123456789012:source/github"),
+			AuthType:   codebuildtypes.AuthTypeBasicAuth,
+			ServerType: codebuildtypes.ServerTypeGithub,
 		}}
 		openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
 		aossARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
@@ -3115,6 +4526,19 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.datasyncLocations = []datasynctypes.LocationListEntry{{LocationArn: awssdk.String(locationARN), LocationUri: awssdk.String("s3://prod-data/export")}}
 		fake.datasyncLocationS3 = map[string]*datasync.DescribeLocationS3Output{locationARN: {LocationArn: awssdk.String(locationARN), LocationUri: awssdk.String("s3://prod-data/export")}}
 		fake.datasyncTags = map[string][]datasynctypes.TagListEntry{taskARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}, locationARN: {{Key: awssdk.String("Owner"), Value: awssdk.String("storage@writer.com")}}}
+	}
+	appSyncData := func(fake *recordingAWS) {
+		apiARN := "arn:aws:appsync:us-east-1:123456789012:apis/api-123"
+		fake.appSyncAPIs = []appsynctypes.GraphqlApi{{
+			ApiId:              awssdk.String("api-123"),
+			Arn:                awssdk.String(apiARN),
+			AuthenticationType: appsynctypes.AuthenticationTypeAwsIam,
+			Name:               awssdk.String("orders-api"),
+		}}
+		fake.appSyncDataSources = map[string][]appsynctypes.DataSource{"api-123": {{DataSourceArn: awssdk.String(apiARN + "/datasources/ordersTable"), Name: awssdk.String("ordersTable"), Type: appsynctypes.DataSourceTypeAmazonDynamodb}}}
+		fake.appSyncResolvers = map[string]map[string][]appsynctypes.Resolver{"api-123": {"Query": {{DataSourceName: awssdk.String("ordersTable"), FieldName: awssdk.String("getOrder"), Kind: appsynctypes.ResolverKindUnit, ResolverArn: awssdk.String(apiARN + "/types/Query/resolvers/getOrder"), TypeName: awssdk.String("Query")}}}}
+		fake.appSyncTags = map[string]map[string]string{apiARN: {"Team": "api"}}
+		fake.appSyncTypes = map[string][]appsynctypes.Type{"api-123": {{Name: awssdk.String("Query")}}}
 	}
 	backupData := func(fake *recordingAWS) {
 		vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
@@ -3204,6 +4628,16 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"codebuild:BatchGetProjects", "codebuild:ListProjects"},
 		},
 		{
+			family:  familyCodeBuildSourceCredential,
+			seed:    cloudAssetData,
+			wantAPI: []string{"codebuild:ListSourceCredentials"},
+		},
+		{
+			family:  familyAppSyncGraphQLAPI,
+			seed:    appSyncData,
+			wantAPI: []string{"appsync:ListDataSources", "appsync:ListGraphqlApis", "appsync:ListResolvers", "appsync:ListTagsForResource", "appsync:ListTypes"},
+		},
+		{
 			family:  familyBackupVault,
 			seed:    backupData,
 			wantAPI: []string{"backup:ListBackupVaults", "backup:ListTags"},
@@ -3229,6 +4663,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"ec2:DescribeInstances", "iam:GetInstanceProfile"},
 		},
 		{
+			family:  familyEC2AMI,
+			seed:    computeData,
+			wantAPI: []string{"ec2:DescribeImages"},
+		},
+		{
 			family:  familyVPC,
 			seed:    networkSubstrateData,
 			wantAPI: []string{"ec2:DescribeVpcs"},
@@ -3249,6 +4688,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"ec2:DescribeRouteTables"},
 		},
 		{
+			family:  familyNetworkACL,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeNetworkAcls"},
+		},
+		{
 			family:  familyInternetGateway,
 			seed:    networkSubstrateData,
 			wantAPI: []string{"ec2:DescribeInternetGateways"},
@@ -3257,6 +4701,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyNATGateway,
 			seed:    networkSubstrateData,
 			wantAPI: []string{"ec2:DescribeNatGateways"},
+		},
+		{
+			family:  familyVPCFlowLog,
+			seed:    networkSubstrateData,
+			wantAPI: []string{"ec2:DescribeFlowLogs"},
 		},
 		{
 			family:  familyVPCEndpoint,
@@ -3277,6 +4726,41 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyS3MultiRegionAccessPoint,
 			seed:    cloudAssetData,
 			wantAPI: []string{"s3control:GetMultiRegionAccessPoint", "s3control:GetMultiRegionAccessPointPolicyStatus", "s3control:ListMultiRegionAccessPoints", "s3control:ListTagsForResource"},
+		},
+		{
+			family:  familyBedrockCustomModel,
+			seed:    cloudAssetData,
+			wantAPI: []string{"bedrock:GetCustomModel", "bedrock:GetResourcePolicy", "bedrock:ListCustomModels", "bedrock:ListTagsForResource"},
+		},
+		{
+			family:  familyBedrockProvisionedModelThroughput,
+			seed:    cloudAssetData,
+			wantAPI: []string{"bedrock:GetProvisionedModelThroughput", "bedrock:ListEnforcedGuardrailsConfiguration", "bedrock:ListProvisionedModelThroughputs", "bedrock:ListTagsForResource"},
+		},
+		{
+			family:  familySageMakerEndpointConfig,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeEndpointConfig", "sagemaker:ListEndpointConfigs", "sagemaker:ListTags"},
+		},
+		{
+			family:  familySageMakerModel,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeModel", "sagemaker:ListModels", "sagemaker:ListTags"},
+		},
+		{
+			family:  familySageMakerModelPackageGroup,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeModelPackageGroup", "sagemaker:ListModelPackageGroups", "sagemaker:ListModelPackages", "sagemaker:ListTags"},
+		},
+		{
+			family:  familySageMakerNotebookInstance,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeNotebookInstance", "sagemaker:ListNotebookInstances", "sagemaker:ListTags"},
+		},
+		{
+			family:  familySageMakerTrainingJob,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sagemaker:DescribeTrainingJob", "sagemaker:ListTags", "sagemaker:ListTrainingJobs"},
 		},
 		{
 			family:  familyEBSVolume,
@@ -3327,6 +4811,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyECRPublicRepository,
+			seed:    cloudAssetData,
+			wantAPI: []string{"ecr-public:DescribeRepositories", "ecr-public:GetRepositoryCatalogData", "ecr-public:GetRepositoryPolicy", "ecr-public:ListTagsForResource"},
 		},
 		{
 			family:  familyOpenSearchDomain,
@@ -3499,6 +4988,16 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"elasticloadbalancing:DescribeTargetGroups"},
 		},
 		{
+			family:  familyAPIGatewayRestAPI,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetRestApis"},
+		},
+		{
+			family:  familyAPIGatewayMethod,
+			seed:    networkEdgeData,
+			wantAPI: []string{"apigateway:GetResources", "apigateway:GetRestApis"},
+		},
+		{
 			family:  familyAPIGatewayStage,
 			seed:    networkEdgeData,
 			wantAPI: []string{"apigateway:GetRestApis", "apigateway:GetStages", "apigatewayv2:GetApis", "apigatewayv2:GetStages"},
@@ -3548,8 +5047,14 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"iam:GetGroup", "iam:ListGroups"},
 		},
 		{
+			family:  familyIAMPolicy,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetPolicy", "iam:GetPolicyVersion", "iam:ListPolicies"},
+		},
+		{
 			family:  familyIAMRole,
-			wantAPI: []string{"iam:ListRoles"},
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:ListAttachedRolePolicies", "iam:ListRoles"},
 		},
 		{
 			family:  familyIAMRoleAssign,
@@ -3559,6 +5064,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyIAMRoleTrust,
 			wantAPI: []string{"iam:ListRoles"},
+		},
+		{
+			family:  familyIAMSAMLProvider,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetSAMLProvider", "iam:ListSAMLProviders"},
 		},
 		{
 			family:  familyIAMUser,
@@ -3714,6 +5224,64 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	}
 	if got := cloudfrontEvent.Attributes["alternate_hosts"]; got != "app.writer.com" {
 		t.Fatalf("cloudfront alternate_hosts = %q, want app.writer.com", got)
+	}
+}
+
+func TestReadAWSAPIGatewayRestInventoryEvents(t *testing.T) {
+	const restAPIID = "rest123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSNetwork: fakeAWSNetwork{
+			fakeAWSNetworkAPI: fakeAWSNetworkAPI{
+				restAPIs: []apigatewaytypes.RestApi{{
+					Id:                        awssdk.String(restAPIID),
+					Name:                      awssdk.String("orders"),
+					ApiKeySource:              apigatewaytypes.ApiKeySourceTypeHeader,
+					DisableExecuteApiEndpoint: false,
+					EndpointConfiguration:     &apigatewaytypes.EndpointConfiguration{Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional}},
+					Policy:                    awssdk.String(`{"Version":"2012-10-17","Statement":[]}`),
+					RootResourceId:            awssdk.String("root-123"),
+					Tags:                      map[string]string{"Owner": "edge@writer.com"},
+				}},
+				restResources: map[string][]apigatewaytypes.Resource{restAPIID: {{
+					Id:   awssdk.String("res-123"),
+					Path: awssdk.String("/orders"),
+					ResourceMethods: map[string]apigatewaytypes.Method{"GET": {
+						HttpMethod:         awssdk.String("GET"),
+						AuthorizationType:  awssdk.String("AWS_IAM"),
+						ApiKeyRequired:     awssdk.Bool(true),
+						RequestParameters:  map[string]bool{"method.request.querystring.orderId": true},
+						MethodResponses:    map[string]apigatewaytypes.MethodResponse{"200": {}},
+						RequestValidatorId: awssdk.String("validator-123"),
+					}},
+				}}},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyAPIGatewayRestAPI, kind: "aws.apigateway_rest_api", attr: "endpoint_types", want: "REGIONAL"},
+		{family: familyAPIGatewayMethod, kind: "aws.apigateway_method", attr: "authorization_type", want: "AWS_IAM"},
+		{family: familyAPIGatewayMethod, kind: "aws.apigateway_method", attr: "request_parameters", want: "method.request.querystring.orderId"},
+	} {
+		t.Run(tt.family+"/"+tt.attr, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -3934,7 +5502,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
 		return awsClients{
 			awsPlatformClients: awsPlatformClients{
-				iam:          fake,
+				iam:          fakeIAM{fakeAWS: &fake},
 				cloudTrail:   fake,
 				ec2:          fake,
 				route53:      fake,
@@ -3945,6 +5513,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				ecs:          fake,
 				eks:          fakeEKS{compute: fake.compute},
 				ecr:          fakeECR{fake: &fake},
+				ecrPublic:    fakeECRPublic{fake: &fake},
 				apiGateway:   fakeAPIGateway{network: fake.fakeAWSNetwork},
 				apiGatewayV2: fakeAPIGatewayV2{network: fake.fakeAWSNetwork},
 				lambda:       fake,
@@ -3960,6 +5529,9 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 				sqs:            fake,
 				sns:            fakeSNS{fake: &fake},
 				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				appSync:        fakeAppSync{runtime: fake.fakeAWSRuntime},
+				bedrock:        fakeBedrock{runtime: fake.fakeAWSRuntime},
+				sageMaker:      fakeSageMaker{fake: &fake},
 				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
 				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
 				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
@@ -3992,7 +5564,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
 		return awsClients{
 			awsPlatformClients: awsPlatformClients{
-				iam:          fake,
+				iam:          recordingIAM{recordingAWS: fake},
 				cloudTrail:   fake,
 				ec2:          fake,
 				route53:      fake,
@@ -4003,6 +5575,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				ecs:          fake,
 				eks:          recordingEKS{fake: fake},
 				ecr:          recordingECR{fake: fake},
+				ecrPublic:    recordingECRPublic{fake: fake},
 				apiGateway:   recordingAPIGateway{fake: fake},
 				apiGatewayV2: recordingAPIGatewayV2{fake: fake},
 				lambda:       fake,
@@ -4018,6 +5591,9 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 				sqs:            fake,
 				sns:            recordingSNS{fake: fake},
 				appRunner:      fakeAppRunner{runtime: fake.fakeAWSRuntime},
+				appSync:        recordingAppSync{fake: fake},
+				bedrock:        recordingBedrock{fake: fake},
+				sageMaker:      recordingSageMaker{fake: fake},
 				stepFunctions:  fakeStepFunctions{runtime: fake.fakeAWSRuntime},
 				eventBridge:    fakeEventBridge{runtime: fake.fakeAWSRuntime},
 				pipes:          fakePipes{runtime: fake.fakeAWSRuntime},
@@ -4085,27 +5661,58 @@ func sortedUnique(values []string) []string {
 }
 
 type fakeAWS struct {
-	users                  []iamtypes.User
-	groups                 []iamtypes.Group
-	roles                  []iamtypes.Role
-	accessKeys             []iamtypes.AccessKeyMetadata
-	accountSummary         map[string]int32
-	accountPasswordPolicy  *iamtypes.PasswordPolicy
-	credentialReport       fakeCredentialReport
-	attachedPolicies       []iamtypes.AttachedPolicy
-	managedPolicyDocuments map[string]string
-	inlinePolicyNames      []string
-	inlinePolicyDocuments  map[string]string
-	cloudTrailEvents       []cloudtrailtypes.Event
-	cloudTrailLookup       func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
-	compute                fakeAWSCompute
+	users  []iamtypes.User
+	groups []iamtypes.Group
+	roles  []iamtypes.Role
+	fakeAWSIAMPolicy
+	samlProviders         []iamtypes.SAMLProviderListEntry
+	samlProviderDetails   map[string]iam.GetSAMLProviderOutput
+	accessKeys            []iamtypes.AccessKeyMetadata
+	accountSummary        map[string]int32
+	accountPasswordPolicy *iamtypes.PasswordPolicy
+	credentialReport      fakeCredentialReport
+	attachedPolicies      []iamtypes.AttachedPolicy
+	fakeAWSIAMDocuments
+	cloudTrailEvents []cloudtrailtypes.Event
+	cloudTrailLookup func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	compute          fakeAWSCompute
 	fakeAWSNetwork
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
 	fakeAWSRuntime
+	fakeAWSSageMaker
 	fakeAWSAnalytics
 	fakeAWSGovernance
+}
+
+type fakeAWSSageMaker struct {
+	sageMakerEndpointConfigs          []sagemakertypes.EndpointConfigSummary
+	sageMakerEndpointDetails          map[string]sagemaker.DescribeEndpointConfigOutput
+	sageMakerModels                   []sagemakertypes.ModelSummary
+	sageMakerModelDetails             map[string]sagemaker.DescribeModelOutput
+	sageMakerModelPackageGroups       []sagemakertypes.ModelPackageGroupSummary
+	sageMakerModelPackageGroupDetails map[string]sagemaker.DescribeModelPackageGroupOutput
+	sageMakerModelPackages            map[string][]sagemakertypes.ModelPackageSummary
+	sageMakerNotebookInstances        []sagemakertypes.NotebookInstanceSummary
+	sageMakerNotebookDetails          map[string]sagemaker.DescribeNotebookInstanceOutput
+	sageMakerTrainingJobs             []sagemakertypes.TrainingJobSummary
+	sageMakerTrainingJobDetails       map[string]sagemaker.DescribeTrainingJobOutput
+	sageMakerTags                     map[string][]sagemakertypes.Tag
+}
+
+type fakeAWSIAMPolicy struct {
+	policies            []iamtypes.Policy
+	policyDetails       map[string]iamtypes.Policy
+	policyErrors        map[string]error
+	policyVersions      map[string]iamtypes.PolicyVersion
+	policyVersionErrors map[string]error
+}
+
+type fakeAWSIAMDocuments struct {
+	managedPolicyDocuments map[string]string
+	inlinePolicyNames      []string
+	inlinePolicyDocuments  map[string]string
 }
 
 type fakeCredentialReport struct {
@@ -4130,8 +5737,10 @@ type fakeAWSNetworkExposure struct {
 	vpcs              []ec2types.Vpc
 	subnets           []ec2types.Subnet
 	routeTables       []ec2types.RouteTable
+	networkACLs       []ec2types.NetworkAcl
 	internetGateways  []ec2types.InternetGateway
 	natGateways       []ec2types.NatGateway
+	flowLogs          []ec2types.FlowLog
 	vpcEndpoints      []ec2types.VpcEndpoint
 	hostedZones       []route53types.HostedZone
 	recordSets        []route53types.ResourceRecordSet
@@ -4199,8 +5808,16 @@ type fakeAWSCoreData struct {
 	snsTopics            []snstypes.Topic
 	snsAttributes        map[string]map[string]string
 	snsTags              map[string][]snstypes.Tag
-	ecrRepositories      []ecrtypes.Repository
-	ecrTags              map[string][]ecrtypes.Tag
+	fakeAWSECRData
+}
+
+type fakeAWSECRData struct {
+	ecrRepositories       []ecrtypes.Repository
+	ecrTags               map[string][]ecrtypes.Tag
+	ecrPublicRepositories []ecrpublictypes.Repository
+	ecrPublicTags         map[string][]ecrpublictypes.Tag
+	ecrPublicCatalogData  map[string]ecrpublictypes.RepositoryCatalogData
+	ecrPublicPolicies     map[string]string
 }
 
 type fakeAWSRDSData struct {
@@ -4283,15 +5900,28 @@ type fakeAWSRuntime struct {
 }
 
 type fakeAWSRuntimeApplication struct {
-	appRunnerSummaries     []apprunnertypes.ServiceSummary
-	appRunnerServices      map[string]apprunnertypes.Service
-	appRunnerTags          map[string][]apprunnertypes.Tag
-	codeBuildProjects      []string
-	codeBuildProjectDetail map[string]codebuildtypes.Project
-	sfnStateMachines       []sfntypes.StateMachineListItem
-	sfnStateMachineDetails map[string]sfn.DescribeStateMachineOutput
-	sfnActivities          []sfntypes.ActivityListItem
-	sfnTags                map[string][]sfntypes.Tag
+	appRunnerSummaries                  []apprunnertypes.ServiceSummary
+	appRunnerServices                   map[string]apprunnertypes.Service
+	appRunnerTags                       map[string][]apprunnertypes.Tag
+	appSyncAPIs                         []appsynctypes.GraphqlApi
+	appSyncDataSources                  map[string][]appsynctypes.DataSource
+	appSyncResolvers                    map[string]map[string][]appsynctypes.Resolver
+	appSyncTags                         map[string]map[string]string
+	appSyncTypes                        map[string][]appsynctypes.Type
+	bedrockCustomModels                 []bedrocktypes.CustomModelSummary
+	bedrockCustomModelDetails           map[string]bedrock.GetCustomModelOutput
+	bedrockEnforcedGuardrails           []bedrocktypes.AccountEnforcedGuardrailOutputConfiguration
+	bedrockProvisionedThroughputDetails map[string]bedrock.GetProvisionedModelThroughputOutput
+	bedrockProvisionedThroughputs       []bedrocktypes.ProvisionedModelSummary
+	bedrockResourcePolicies             map[string]string
+	bedrockTags                         map[string][]bedrocktypes.Tag
+	codeBuildProjects                   []string
+	codeBuildProjectDetail              map[string]codebuildtypes.Project
+	codeBuildSourceCredentials          []codebuildtypes.SourceCredentialsInfo
+	sfnStateMachines                    []sfntypes.StateMachineListItem
+	sfnStateMachineDetails              map[string]sfn.DescribeStateMachineOutput
+	sfnActivities                       []sfntypes.ActivityListItem
+	sfnTags                             map[string][]sfntypes.Tag
 }
 
 type fakeAWSRuntimeEventing struct {
@@ -4364,6 +5994,7 @@ type fakeAWSGovernance struct {
 }
 
 type fakeAWSCompute struct {
+	images                   []ec2types.Image
 	instances                []ec2types.Instance
 	instanceProfiles         map[string]iamtypes.InstanceProfile
 	lambdaFunctions          []lambdatypes.FunctionConfiguration
@@ -4410,6 +6041,16 @@ func (f *recordingAWS) ListRoles(ctx context.Context, input *iam.ListRolesInput,
 	return f.fakeAWS.ListRoles(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListSAMLProviders(ctx context.Context, input *iam.ListSAMLProvidersInput, options ...func(*iam.Options)) (*iam.ListSAMLProvidersOutput, error) {
+	f.record("iam:ListSAMLProviders")
+	return f.fakeAWS.ListSAMLProviders(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetSAMLProvider(ctx context.Context, input *iam.GetSAMLProviderInput, options ...func(*iam.Options)) (*iam.GetSAMLProviderOutput, error) {
+	f.record("iam:GetSAMLProvider")
+	return f.fakeAWS.GetSAMLProvider(ctx, input, options...)
+}
+
 func (f *recordingAWS) ListAccessKeys(ctx context.Context, input *iam.ListAccessKeysInput, options ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
 	f.record("iam:ListAccessKeys")
 	return f.fakeAWS.ListAccessKeys(ctx, input, options...)
@@ -4448,6 +6089,15 @@ func (f *recordingAWS) ListGroupPolicies(ctx context.Context, input *iam.ListGro
 func (f *recordingAWS) ListRolePolicies(ctx context.Context, input *iam.ListRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
 	f.record("iam:ListRolePolicies")
 	return f.fakeAWS.ListRolePolicies(ctx, input, options...)
+}
+
+type recordingIAM struct {
+	*recordingAWS
+}
+
+func (f recordingIAM) ListPolicies(ctx context.Context, input *iam.ListPoliciesInput, options ...func(*iam.Options)) (*iam.ListPoliciesOutput, error) {
+	f.record("iam:ListPolicies")
+	return fakeIAM{fakeAWS: &f.fakeAWS}.ListPolicies(ctx, input, options...)
 }
 
 func (f *recordingAWS) GetPolicy(ctx context.Context, input *iam.GetPolicyInput, options ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
@@ -4625,6 +6275,11 @@ func (f *recordingAWS) BatchGetProjects(ctx context.Context, input *codebuild.Ba
 	return f.fakeAWS.BatchGetProjects(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListSourceCredentials(ctx context.Context, input *codebuild.ListSourceCredentialsInput, options ...func(*codebuild.Options)) (*codebuild.ListSourceCredentialsOutput, error) {
+	f.record("codebuild:ListSourceCredentials")
+	return f.fakeAWS.ListSourceCredentials(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
 	f.record("ec2:DescribeSecurityGroups")
 	return f.fakeAWS.DescribeSecurityGroups(ctx, input, options...)
@@ -4646,6 +6301,11 @@ func (f *recordingAWS) DescribeRouteTables(ctx context.Context, input *ec2.Descr
 	return f.fakeAWS.DescribeRouteTables(ctx, input, options...)
 }
 
+func (f *recordingAWS) DescribeNetworkAcls(ctx context.Context, input *ec2.DescribeNetworkAclsInput, options ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error) {
+	f.record("ec2:DescribeNetworkAcls")
+	return f.fakeAWS.DescribeNetworkAcls(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeInternetGateways(ctx context.Context, input *ec2.DescribeInternetGatewaysInput, options ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
 	f.record("ec2:DescribeInternetGateways")
 	return f.fakeAWS.DescribeInternetGateways(ctx, input, options...)
@@ -4656,6 +6316,11 @@ func (f *recordingAWS) DescribeNatGateways(ctx context.Context, input *ec2.Descr
 	return f.fakeAWS.DescribeNatGateways(ctx, input, options...)
 }
 
+func (f *recordingAWS) DescribeFlowLogs(ctx context.Context, input *ec2.DescribeFlowLogsInput, options ...func(*ec2.Options)) (*ec2.DescribeFlowLogsOutput, error) {
+	f.record("ec2:DescribeFlowLogs")
+	return f.fakeAWS.DescribeFlowLogs(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeVpcEndpoints(ctx context.Context, input *ec2.DescribeVpcEndpointsInput, options ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error) {
 	f.record("ec2:DescribeVpcEndpoints")
 	return f.fakeAWS.DescribeVpcEndpoints(ctx, input, options...)
@@ -4664,6 +6329,11 @@ func (f *recordingAWS) DescribeVpcEndpoints(ctx context.Context, input *ec2.Desc
 func (f *recordingAWS) DescribeInstances(ctx context.Context, input *ec2.DescribeInstancesInput, options ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	f.record("ec2:DescribeInstances")
 	return f.fakeAWS.DescribeInstances(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeImages(ctx context.Context, input *ec2.DescribeImagesInput, options ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+	f.record("ec2:DescribeImages")
+	return f.fakeAWS.DescribeImages(ctx, input, options...)
 }
 
 func (f *recordingAWS) DescribeAddresses(ctx context.Context, input *ec2.DescribeAddressesInput, options ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
@@ -5387,6 +7057,54 @@ func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForRe
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
+type fakeECRPublic struct {
+	fake *fakeAWS
+}
+
+type recordingECRPublic struct {
+	fake *recordingAWS
+}
+
+func (f recordingECRPublic) DescribeRepositories(ctx context.Context, input *ecrpublic.DescribeRepositoriesInput, options ...func(*ecrpublic.Options)) (*ecrpublic.DescribeRepositoriesOutput, error) {
+	f.fake.record("ecr-public:DescribeRepositories")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.DescribeRepositories(ctx, input, options...)
+}
+
+func (f recordingECRPublic) GetRepositoryCatalogData(ctx context.Context, input *ecrpublic.GetRepositoryCatalogDataInput, options ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryCatalogDataOutput, error) {
+	f.fake.record("ecr-public:GetRepositoryCatalogData")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.GetRepositoryCatalogData(ctx, input, options...)
+}
+
+func (f recordingECRPublic) GetRepositoryPolicy(ctx context.Context, input *ecrpublic.GetRepositoryPolicyInput, options ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryPolicyOutput, error) {
+	f.fake.record("ecr-public:GetRepositoryPolicy")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.GetRepositoryPolicy(ctx, input, options...)
+}
+
+func (f recordingECRPublic) ListTagsForResource(ctx context.Context, input *ecrpublic.ListTagsForResourceInput, options ...func(*ecrpublic.Options)) (*ecrpublic.ListTagsForResourceOutput, error) {
+	f.fake.record("ecr-public:ListTagsForResource")
+	return fakeECRPublic{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeECRPublic) DescribeRepositories(context.Context, *ecrpublic.DescribeRepositoriesInput, ...func(*ecrpublic.Options)) (*ecrpublic.DescribeRepositoriesOutput, error) {
+	return &ecrpublic.DescribeRepositoriesOutput{Repositories: f.fake.ecrPublicRepositories}, nil
+}
+
+func (f fakeECRPublic) GetRepositoryCatalogData(_ context.Context, input *ecrpublic.GetRepositoryCatalogDataInput, _ ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryCatalogDataOutput, error) {
+	if f.fake.ecrPublicCatalogData == nil {
+		return &ecrpublic.GetRepositoryCatalogDataOutput{}, nil
+	}
+	catalog := f.fake.ecrPublicCatalogData[awssdk.ToString(input.RepositoryName)]
+	return &ecrpublic.GetRepositoryCatalogDataOutput{CatalogData: &catalog}, nil
+}
+
+func (f fakeECRPublic) GetRepositoryPolicy(_ context.Context, input *ecrpublic.GetRepositoryPolicyInput, _ ...func(*ecrpublic.Options)) (*ecrpublic.GetRepositoryPolicyOutput, error) {
+	return &ecrpublic.GetRepositoryPolicyOutput{PolicyText: awssdk.String(f.fake.ecrPublicPolicies[awssdk.ToString(input.RepositoryName)])}, nil
+}
+
+func (f fakeECRPublic) ListTagsForResource(_ context.Context, input *ecrpublic.ListTagsForResourceInput, _ ...func(*ecrpublic.Options)) (*ecrpublic.ListTagsForResourceOutput, error) {
+	return &ecrpublic.ListTagsForResourceOutput{Tags: f.fake.ecrPublicTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
 type fakeAppRunner struct {
 	runtime fakeAWSRuntime
 }
@@ -5402,6 +7120,254 @@ func (f fakeAppRunner) DescribeService(_ context.Context, input *apprunner.Descr
 
 func (f fakeAppRunner) ListTagsForResource(_ context.Context, input *apprunner.ListTagsForResourceInput, _ ...func(*apprunner.Options)) (*apprunner.ListTagsForResourceOutput, error) {
 	return &apprunner.ListTagsForResourceOutput{Tags: f.runtime.appRunnerTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeAppSync struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeAppSync) ListGraphqlApis(context.Context, *appsync.ListGraphqlApisInput, ...func(*appsync.Options)) (*appsync.ListGraphqlApisOutput, error) {
+	return &appsync.ListGraphqlApisOutput{GraphqlApis: f.runtime.appSyncAPIs}, nil
+}
+
+func (f fakeAppSync) ListDataSources(_ context.Context, input *appsync.ListDataSourcesInput, _ ...func(*appsync.Options)) (*appsync.ListDataSourcesOutput, error) {
+	return &appsync.ListDataSourcesOutput{DataSources: f.runtime.appSyncDataSources[awssdk.ToString(input.ApiId)]}, nil
+}
+
+func (f fakeAppSync) ListResolvers(_ context.Context, input *appsync.ListResolversInput, _ ...func(*appsync.Options)) (*appsync.ListResolversOutput, error) {
+	byType := f.runtime.appSyncResolvers[awssdk.ToString(input.ApiId)]
+	return &appsync.ListResolversOutput{Resolvers: byType[awssdk.ToString(input.TypeName)]}, nil
+}
+
+func (f fakeAppSync) ListTagsForResource(_ context.Context, input *appsync.ListTagsForResourceInput, _ ...func(*appsync.Options)) (*appsync.ListTagsForResourceOutput, error) {
+	return &appsync.ListTagsForResourceOutput{Tags: f.runtime.appSyncTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+func (f fakeAppSync) ListTypes(_ context.Context, input *appsync.ListTypesInput, _ ...func(*appsync.Options)) (*appsync.ListTypesOutput, error) {
+	return &appsync.ListTypesOutput{Types: f.runtime.appSyncTypes[awssdk.ToString(input.ApiId)]}, nil
+}
+
+type recordingAppSync struct {
+	fake *recordingAWS
+}
+
+func (f recordingAppSync) ListGraphqlApis(ctx context.Context, input *appsync.ListGraphqlApisInput, options ...func(*appsync.Options)) (*appsync.ListGraphqlApisOutput, error) {
+	f.fake.record("appsync:ListGraphqlApis")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListGraphqlApis(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListDataSources(ctx context.Context, input *appsync.ListDataSourcesInput, options ...func(*appsync.Options)) (*appsync.ListDataSourcesOutput, error) {
+	f.fake.record("appsync:ListDataSources")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListDataSources(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListResolvers(ctx context.Context, input *appsync.ListResolversInput, options ...func(*appsync.Options)) (*appsync.ListResolversOutput, error) {
+	f.fake.record("appsync:ListResolvers")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListResolvers(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListTagsForResource(ctx context.Context, input *appsync.ListTagsForResourceInput, options ...func(*appsync.Options)) (*appsync.ListTagsForResourceOutput, error) {
+	f.fake.record("appsync:ListTagsForResource")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f recordingAppSync) ListTypes(ctx context.Context, input *appsync.ListTypesInput, options ...func(*appsync.Options)) (*appsync.ListTypesOutput, error) {
+	f.fake.record("appsync:ListTypes")
+	return fakeAppSync{runtime: f.fake.fakeAWSRuntime}.ListTypes(ctx, input, options...)
+}
+
+type recordingSageMaker struct {
+	fake *recordingAWS
+}
+
+func (f recordingSageMaker) ListEndpointConfigs(ctx context.Context, input *sagemaker.ListEndpointConfigsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListEndpointConfigsOutput, error) {
+	f.fake.record("sagemaker:ListEndpointConfigs")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListEndpointConfigs(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeEndpointConfig(ctx context.Context, input *sagemaker.DescribeEndpointConfigInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeEndpointConfigOutput, error) {
+	f.fake.record("sagemaker:DescribeEndpointConfig")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeEndpointConfig(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListModelPackageGroups(ctx context.Context, input *sagemaker.ListModelPackageGroupsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListModelPackageGroupsOutput, error) {
+	f.fake.record("sagemaker:ListModelPackageGroups")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListModelPackageGroups(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeModelPackageGroup(ctx context.Context, input *sagemaker.DescribeModelPackageGroupInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeModelPackageGroupOutput, error) {
+	f.fake.record("sagemaker:DescribeModelPackageGroup")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeModelPackageGroup(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListModelPackages(ctx context.Context, input *sagemaker.ListModelPackagesInput, options ...func(*sagemaker.Options)) (*sagemaker.ListModelPackagesOutput, error) {
+	f.fake.record("sagemaker:ListModelPackages")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListModelPackages(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListModels(ctx context.Context, input *sagemaker.ListModelsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListModelsOutput, error) {
+	f.fake.record("sagemaker:ListModels")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListModels(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeModel(ctx context.Context, input *sagemaker.DescribeModelInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeModelOutput, error) {
+	f.fake.record("sagemaker:DescribeModel")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeModel(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListNotebookInstances(ctx context.Context, input *sagemaker.ListNotebookInstancesInput, options ...func(*sagemaker.Options)) (*sagemaker.ListNotebookInstancesOutput, error) {
+	f.fake.record("sagemaker:ListNotebookInstances")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListNotebookInstances(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeNotebookInstance(ctx context.Context, input *sagemaker.DescribeNotebookInstanceInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeNotebookInstanceOutput, error) {
+	f.fake.record("sagemaker:DescribeNotebookInstance")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeNotebookInstance(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListTrainingJobs(ctx context.Context, input *sagemaker.ListTrainingJobsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListTrainingJobsOutput, error) {
+	f.fake.record("sagemaker:ListTrainingJobs")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListTrainingJobs(ctx, input, options...)
+}
+
+func (f recordingSageMaker) DescribeTrainingJob(ctx context.Context, input *sagemaker.DescribeTrainingJobInput, options ...func(*sagemaker.Options)) (*sagemaker.DescribeTrainingJobOutput, error) {
+	f.fake.record("sagemaker:DescribeTrainingJob")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.DescribeTrainingJob(ctx, input, options...)
+}
+
+func (f recordingSageMaker) ListTags(ctx context.Context, input *sagemaker.ListTagsInput, options ...func(*sagemaker.Options)) (*sagemaker.ListTagsOutput, error) {
+	f.fake.record("sagemaker:ListTags")
+	return fakeSageMaker{fake: &f.fake.fakeAWS}.ListTags(ctx, input, options...)
+}
+
+type recordingBedrock struct {
+	fake *recordingAWS
+}
+
+func (f recordingBedrock) ListCustomModels(ctx context.Context, input *bedrock.ListCustomModelsInput, options ...func(*bedrock.Options)) (*bedrock.ListCustomModelsOutput, error) {
+	f.fake.record("bedrock:ListCustomModels")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListCustomModels(ctx, input, options...)
+}
+
+func (f recordingBedrock) GetCustomModel(ctx context.Context, input *bedrock.GetCustomModelInput, options ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error) {
+	f.fake.record("bedrock:GetCustomModel")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetCustomModel(ctx, input, options...)
+}
+
+func (f recordingBedrock) ListProvisionedModelThroughputs(ctx context.Context, input *bedrock.ListProvisionedModelThroughputsInput, options ...func(*bedrock.Options)) (*bedrock.ListProvisionedModelThroughputsOutput, error) {
+	f.fake.record("bedrock:ListProvisionedModelThroughputs")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListProvisionedModelThroughputs(ctx, input, options...)
+}
+
+func (f recordingBedrock) GetProvisionedModelThroughput(ctx context.Context, input *bedrock.GetProvisionedModelThroughputInput, options ...func(*bedrock.Options)) (*bedrock.GetProvisionedModelThroughputOutput, error) {
+	f.fake.record("bedrock:GetProvisionedModelThroughput")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetProvisionedModelThroughput(ctx, input, options...)
+}
+
+func (f recordingBedrock) ListEnforcedGuardrailsConfiguration(ctx context.Context, input *bedrock.ListEnforcedGuardrailsConfigurationInput, options ...func(*bedrock.Options)) (*bedrock.ListEnforcedGuardrailsConfigurationOutput, error) {
+	f.fake.record("bedrock:ListEnforcedGuardrailsConfiguration")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListEnforcedGuardrailsConfiguration(ctx, input, options...)
+}
+
+func (f recordingBedrock) GetResourcePolicy(ctx context.Context, input *bedrock.GetResourcePolicyInput, options ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error) {
+	f.fake.record("bedrock:GetResourcePolicy")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.GetResourcePolicy(ctx, input, options...)
+}
+
+func (f recordingBedrock) ListTagsForResource(ctx context.Context, input *bedrock.ListTagsForResourceInput, options ...func(*bedrock.Options)) (*bedrock.ListTagsForResourceOutput, error) {
+	f.fake.record("bedrock:ListTagsForResource")
+	return fakeBedrock{runtime: f.fake.fakeAWSRuntime}.ListTagsForResource(ctx, input, options...)
+}
+
+type fakeBedrock struct {
+	runtime fakeAWSRuntime
+}
+
+func (f fakeBedrock) ListCustomModels(context.Context, *bedrock.ListCustomModelsInput, ...func(*bedrock.Options)) (*bedrock.ListCustomModelsOutput, error) {
+	return &bedrock.ListCustomModelsOutput{ModelSummaries: f.runtime.bedrockCustomModels}, nil
+}
+
+func (f fakeBedrock) GetCustomModel(_ context.Context, input *bedrock.GetCustomModelInput, _ ...func(*bedrock.Options)) (*bedrock.GetCustomModelOutput, error) {
+	detail := f.runtime.bedrockCustomModelDetails[awssdk.ToString(input.ModelIdentifier)]
+	return &detail, nil
+}
+
+func (f fakeBedrock) ListProvisionedModelThroughputs(context.Context, *bedrock.ListProvisionedModelThroughputsInput, ...func(*bedrock.Options)) (*bedrock.ListProvisionedModelThroughputsOutput, error) {
+	return &bedrock.ListProvisionedModelThroughputsOutput{ProvisionedModelSummaries: f.runtime.bedrockProvisionedThroughputs}, nil
+}
+
+func (f fakeBedrock) GetProvisionedModelThroughput(_ context.Context, input *bedrock.GetProvisionedModelThroughputInput, _ ...func(*bedrock.Options)) (*bedrock.GetProvisionedModelThroughputOutput, error) {
+	detail := f.runtime.bedrockProvisionedThroughputDetails[awssdk.ToString(input.ProvisionedModelId)]
+	return &detail, nil
+}
+
+func (f fakeBedrock) ListEnforcedGuardrailsConfiguration(context.Context, *bedrock.ListEnforcedGuardrailsConfigurationInput, ...func(*bedrock.Options)) (*bedrock.ListEnforcedGuardrailsConfigurationOutput, error) {
+	return &bedrock.ListEnforcedGuardrailsConfigurationOutput{GuardrailsConfig: f.runtime.bedrockEnforcedGuardrails}, nil
+}
+
+func (f fakeBedrock) GetResourcePolicy(_ context.Context, input *bedrock.GetResourcePolicyInput, _ ...func(*bedrock.Options)) (*bedrock.GetResourcePolicyOutput, error) {
+	return &bedrock.GetResourcePolicyOutput{ResourcePolicy: awssdk.String(f.runtime.bedrockResourcePolicies[awssdk.ToString(input.ResourceArn)])}, nil
+}
+
+func (f fakeBedrock) ListTagsForResource(_ context.Context, input *bedrock.ListTagsForResourceInput, _ ...func(*bedrock.Options)) (*bedrock.ListTagsForResourceOutput, error) {
+	return &bedrock.ListTagsForResourceOutput{Tags: f.runtime.bedrockTags[awssdk.ToString(input.ResourceARN)]}, nil
+}
+
+type fakeSageMaker struct {
+	fake *fakeAWS
+}
+
+func (f fakeSageMaker) ListEndpointConfigs(context.Context, *sagemaker.ListEndpointConfigsInput, ...func(*sagemaker.Options)) (*sagemaker.ListEndpointConfigsOutput, error) {
+	return &sagemaker.ListEndpointConfigsOutput{EndpointConfigs: f.fake.sageMakerEndpointConfigs}, nil
+}
+
+func (f fakeSageMaker) DescribeEndpointConfig(_ context.Context, input *sagemaker.DescribeEndpointConfigInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeEndpointConfigOutput, error) {
+	detail := f.fake.sageMakerEndpointDetails[awssdk.ToString(input.EndpointConfigName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListModelPackageGroups(context.Context, *sagemaker.ListModelPackageGroupsInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelPackageGroupsOutput, error) {
+	return &sagemaker.ListModelPackageGroupsOutput{ModelPackageGroupSummaryList: f.fake.sageMakerModelPackageGroups}, nil
+}
+
+func (f fakeSageMaker) DescribeModelPackageGroup(_ context.Context, input *sagemaker.DescribeModelPackageGroupInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeModelPackageGroupOutput, error) {
+	detail := f.fake.sageMakerModelPackageGroupDetails[awssdk.ToString(input.ModelPackageGroupName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListModelPackages(_ context.Context, input *sagemaker.ListModelPackagesInput, _ ...func(*sagemaker.Options)) (*sagemaker.ListModelPackagesOutput, error) {
+	return &sagemaker.ListModelPackagesOutput{ModelPackageSummaryList: f.fake.sageMakerModelPackages[awssdk.ToString(input.ModelPackageGroupName)]}, nil
+}
+
+func (f fakeSageMaker) ListModels(context.Context, *sagemaker.ListModelsInput, ...func(*sagemaker.Options)) (*sagemaker.ListModelsOutput, error) {
+	return &sagemaker.ListModelsOutput{Models: f.fake.sageMakerModels}, nil
+}
+
+func (f fakeSageMaker) DescribeModel(_ context.Context, input *sagemaker.DescribeModelInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeModelOutput, error) {
+	detail := f.fake.sageMakerModelDetails[awssdk.ToString(input.ModelName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListNotebookInstances(context.Context, *sagemaker.ListNotebookInstancesInput, ...func(*sagemaker.Options)) (*sagemaker.ListNotebookInstancesOutput, error) {
+	return &sagemaker.ListNotebookInstancesOutput{NotebookInstances: f.fake.sageMakerNotebookInstances}, nil
+}
+
+func (f fakeSageMaker) DescribeNotebookInstance(_ context.Context, input *sagemaker.DescribeNotebookInstanceInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeNotebookInstanceOutput, error) {
+	detail := f.fake.sageMakerNotebookDetails[awssdk.ToString(input.NotebookInstanceName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListTrainingJobs(context.Context, *sagemaker.ListTrainingJobsInput, ...func(*sagemaker.Options)) (*sagemaker.ListTrainingJobsOutput, error) {
+	return &sagemaker.ListTrainingJobsOutput{TrainingJobSummaries: f.fake.sageMakerTrainingJobs}, nil
+}
+
+func (f fakeSageMaker) DescribeTrainingJob(_ context.Context, input *sagemaker.DescribeTrainingJobInput, _ ...func(*sagemaker.Options)) (*sagemaker.DescribeTrainingJobOutput, error) {
+	detail := f.fake.sageMakerTrainingJobDetails[awssdk.ToString(input.TrainingJobName)]
+	return &detail, nil
+}
+
+func (f fakeSageMaker) ListTags(_ context.Context, input *sagemaker.ListTagsInput, _ ...func(*sagemaker.Options)) (*sagemaker.ListTagsOutput, error) {
+	return &sagemaker.ListTagsOutput{Tags: f.fake.sageMakerTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
 type fakeStepFunctions struct {
@@ -6303,6 +8269,19 @@ func (f fakeAWS) ListRoles(context.Context, *iam.ListRolesInput, ...func(*iam.Op
 	return &iam.ListRolesOutput{Roles: f.roles}, nil
 }
 
+func (f fakeAWS) ListSAMLProviders(context.Context, *iam.ListSAMLProvidersInput, ...func(*iam.Options)) (*iam.ListSAMLProvidersOutput, error) {
+	return &iam.ListSAMLProvidersOutput{SAMLProviderList: f.samlProviders}, nil
+}
+
+func (f fakeAWS) GetSAMLProvider(_ context.Context, input *iam.GetSAMLProviderInput, _ ...func(*iam.Options)) (*iam.GetSAMLProviderOutput, error) {
+	if f.samlProviderDetails != nil {
+		if detail, ok := f.samlProviderDetails[awssdk.ToString(input.SAMLProviderArn)]; ok {
+			return &detail, nil
+		}
+	}
+	return &iam.GetSAMLProviderOutput{}, nil
+}
+
 func (f fakeAWS) ListAccessKeys(context.Context, *iam.ListAccessKeysInput, ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
 	return &iam.ListAccessKeysOutput{AccessKeyMetadata: f.accessKeys}, nil
 }
@@ -6338,11 +8317,41 @@ func (f fakeAWS) ListRolePolicies(_ context.Context, input *iam.ListRolePolicies
 	return &iam.ListRolePoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
 }
 
+type fakeIAM struct {
+	*fakeAWS
+}
+
+func (f fakeIAM) ListPolicies(_ context.Context, input *iam.ListPoliciesInput, _ ...func(*iam.Options)) (*iam.ListPoliciesOutput, error) {
+	policies, truncated, marker := paginateIAMPolicies(f.policies, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListPoliciesOutput{Policies: policies, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
+}
+
 func (f fakeAWS) GetPolicy(_ context.Context, input *iam.GetPolicyInput, _ ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
+	if f.policyErrors != nil {
+		if err, ok := f.policyErrors[awssdk.ToString(input.PolicyArn)]; ok {
+			return nil, err
+		}
+	}
+	if f.policyDetails != nil {
+		if policy, ok := f.policyDetails[awssdk.ToString(input.PolicyArn)]; ok {
+			return &iam.GetPolicyOutput{Policy: &policy}, nil
+		}
+	}
 	return &iam.GetPolicyOutput{Policy: &iamtypes.Policy{Arn: input.PolicyArn, DefaultVersionId: awssdk.String("v1")}}, nil
 }
 
 func (f fakeAWS) GetPolicyVersion(_ context.Context, input *iam.GetPolicyVersionInput, _ ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error) {
+	key := awssdk.ToString(input.PolicyArn) + "@" + awssdk.ToString(input.VersionId)
+	if f.policyVersionErrors != nil {
+		if err, ok := f.policyVersionErrors[key]; ok {
+			return nil, err
+		}
+	}
+	if f.policyVersions != nil {
+		if version, ok := f.policyVersions[key]; ok {
+			return &iam.GetPolicyVersionOutput{PolicyVersion: &version}, nil
+		}
+	}
 	return &iam.GetPolicyVersionOutput{PolicyVersion: &iamtypes.PolicyVersion{Document: awssdk.String(f.managedPolicyDocument(awssdk.ToString(input.PolicyArn))), VersionId: input.VersionId}}, nil
 }
 
@@ -6562,7 +8571,37 @@ func paginateStringValues(values []string, marker string, limit int) ([]string, 
 	return values[start : start+limit], true, next
 }
 
+func paginateIAMPolicies(values []iamtypes.Policy, marker string, limit int) ([]iamtypes.Policy, bool, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], false, ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], true, next
+}
+
 func paginateEC2Instances(values []ec2types.Instance, marker string, limit int) ([]ec2types.Instance, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateEC2Images(values []ec2types.Image, marker string, limit int) ([]ec2types.Image, string) {
 	start := 0
 	if marker != "" {
 		parsed, err := strconv.Atoi(marker)
@@ -6758,6 +8797,10 @@ func (f fakeAWS) BatchGetProjects(_ context.Context, input *codebuild.BatchGetPr
 	return &codebuild.BatchGetProjectsOutput{Projects: projects}, nil
 }
 
+func (f fakeAWS) ListSourceCredentials(context.Context, *codebuild.ListSourceCredentialsInput, ...func(*codebuild.Options)) (*codebuild.ListSourceCredentialsOutput, error) {
+	return &codebuild.ListSourceCredentialsOutput{SourceCredentialsInfos: f.codeBuildSourceCredentials}, nil
+}
+
 func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
 	return &ec2.DescribeSecurityGroupsOutput{SecurityGroups: f.securityGroups}, nil
 }
@@ -6774,12 +8817,20 @@ func (f fakeAWS) DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesIn
 	return &ec2.DescribeRouteTablesOutput{RouteTables: f.routeTables}, nil
 }
 
+func (f fakeAWS) DescribeNetworkAcls(context.Context, *ec2.DescribeNetworkAclsInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkAclsOutput, error) {
+	return &ec2.DescribeNetworkAclsOutput{NetworkAcls: f.networkACLs}, nil
+}
+
 func (f fakeAWS) DescribeInternetGateways(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
 	return &ec2.DescribeInternetGatewaysOutput{InternetGateways: f.internetGateways}, nil
 }
 
 func (f fakeAWS) DescribeNatGateways(context.Context, *ec2.DescribeNatGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
 	return &ec2.DescribeNatGatewaysOutput{NatGateways: f.natGateways}, nil
+}
+
+func (f fakeAWS) DescribeFlowLogs(context.Context, *ec2.DescribeFlowLogsInput, ...func(*ec2.Options)) (*ec2.DescribeFlowLogsOutput, error) {
+	return &ec2.DescribeFlowLogsOutput{FlowLogs: f.flowLogs}, nil
 }
 
 func (f fakeAWS) DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpointsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcEndpointsOutput, error) {
@@ -6789,6 +8840,11 @@ func (f fakeAWS) DescribeVpcEndpoints(context.Context, *ec2.DescribeVpcEndpoints
 func (f fakeAWS) DescribeInstances(_ context.Context, input *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	instances, next := paginateEC2Instances(f.compute.instances, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
 	return &ec2.DescribeInstancesOutput{Reservations: []ec2types.Reservation{{Instances: instances}}, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) DescribeImages(_ context.Context, input *ec2.DescribeImagesInput, _ ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+	images, next := paginateEC2Images(f.compute.images, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &ec2.DescribeImagesOutput{Images: images, NextToken: stringPtr(next)}, nil
 }
 
 func (f fakeAWS) DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {

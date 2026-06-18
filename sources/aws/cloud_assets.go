@@ -13,6 +13,8 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecrpublic"
+	ecrpublictypes "github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -81,6 +83,13 @@ type awsSNSTopic struct {
 type awsECRRepository struct {
 	Repository ecrtypes.Repository
 	Tags       map[string]string
+}
+
+type awsECRPublicRepository struct {
+	Repository  ecrpublictypes.Repository
+	CatalogData *ecrpublictypes.RepositoryCatalogData
+	PolicyText  string
+	Tags        map[string]string
 }
 
 func listS3Buckets(ctx context.Context, clients awsClients, settings settings, _ string, _ int) ([]awsS3Bucket, string, error) {
@@ -307,6 +316,54 @@ func listECRRepositories(ctx context.Context, clients awsClients, _ settings, cu
 	return records, awssdk.ToString(out.NextToken), nil
 }
 
+func listECRPublicRepositories(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsECRPublicRepository, string, error) {
+	input := &ecrpublic.DescribeRepositoriesInput{
+		NextToken:  stringPtr(cursor),
+		MaxResults: awssdk.Int32(boundedAWSPageSizeInt32(limit, 1, 1000)),
+	}
+	if settings.accountID != "" {
+		input.RegistryId = awssdk.String(settings.accountID)
+	}
+	out, err := clients.ecrPublic.DescribeRepositories(ctx, input)
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsECRPublicRepository, 0, len(out.Repositories))
+	for _, repository := range out.Repositories {
+		record := awsECRPublicRepository{Repository: repository}
+		arn := awssdk.ToString(repository.RepositoryArn)
+		name := awssdk.ToString(repository.RepositoryName)
+		registryID := firstNonEmpty(awssdk.ToString(repository.RegistryId), settings.accountID)
+		if arn != "" {
+			if tags, err := clients.ecrPublic.ListTagsForResource(ctx, &ecrpublic.ListTagsForResourceInput{ResourceArn: awssdk.String(arn)}); err == nil {
+				record.Tags = ecrPublicTagMap(tags.Tags)
+			} else if !optionalAWSError(err, "RepositoryNotFoundException") {
+				return nil, "", fmt.Errorf("list ecr public repository tags %q: %w", arn, err)
+			}
+		}
+		if name != "" {
+			catalogInput := &ecrpublic.GetRepositoryCatalogDataInput{RepositoryName: awssdk.String(name)}
+			policyInput := &ecrpublic.GetRepositoryPolicyInput{RepositoryName: awssdk.String(name)}
+			if registryID != "" {
+				catalogInput.RegistryId = awssdk.String(registryID)
+				policyInput.RegistryId = awssdk.String(registryID)
+			}
+			if catalog, err := clients.ecrPublic.GetRepositoryCatalogData(ctx, catalogInput); err == nil {
+				record.CatalogData = catalog.CatalogData
+			} else if !optionalAWSError(err, "RepositoryCatalogDataNotFoundException", "RepositoryNotFoundException") {
+				return nil, "", fmt.Errorf("get ecr public repository catalog data %q: %w", name, err)
+			}
+			if policy, err := clients.ecrPublic.GetRepositoryPolicy(ctx, policyInput); err == nil {
+				record.PolicyText = awssdk.ToString(policy.PolicyText)
+			} else if !optionalAWSError(err, "RepositoryPolicyNotFoundException", "RepositoryNotFoundException") {
+				return nil, "", fmt.Errorf("get ecr public repository policy %q: %w", name, err)
+			}
+		}
+		records = append(records, record)
+	}
+	return records, awssdk.ToString(out.NextToken), nil
+}
+
 func s3BucketEvent(settings settings, record awsS3Bucket) (*primitives.Event, error) {
 	public := s3BucketPublic(record)
 	attributes := commonCloudAssetAttributes(settings, record.Region, familyS3Bucket, firstNonEmpty(record.ARN, record.Name), record.Name, "s3_bucket", record.Tags)
@@ -509,6 +566,39 @@ func ecrRepositoryEvent(settings settings, record awsECRRepository) (*primitives
 	return sourceEvent(settings, "aws-ecr-repository-"+firstNonEmpty(arn, name), "aws.ecr_repository", "aws/ecr_repository/v1", payload, attributes, firstTime(repository.CreatedAt))
 }
 
+func ecrPublicRepositoryEvent(settings settings, record awsECRPublicRepository) (*primitives.Event, error) {
+	repository := record.Repository
+	arn := awssdk.ToString(repository.RepositoryArn)
+	name := awssdk.ToString(repository.RepositoryName)
+	registryID := firstNonEmpty(awssdk.ToString(repository.RegistryId), settings.accountID)
+	attributes := commonCloudAssetAttributes(settings, defaultRegion, familyECRPublicRepository, firstNonEmpty(arn, name), name, "ecr_public_repository", record.Tags)
+	attributes["arn"] = arn
+	attributes["repository_arn"] = arn
+	attributes["repository_name"] = name
+	attributes["repository_uri"] = awssdk.ToString(repository.RepositoryUri)
+	attributes["registry_id"] = registryID
+	attributes["repository_visibility"] = "PUBLIC"
+	attributes["public"] = boolString(true)
+	attributes["internet_exposed"] = boolString(true)
+	attributes["repository_policy_present"] = boolString(strings.TrimSpace(record.PolicyText) != "")
+	if record.PolicyText != "" {
+		attributes["repository_policy_public"] = boolString(policyAllowsWildcardPrincipal(record.PolicyText))
+	}
+	if record.CatalogData != nil {
+		attributes["architectures"] = strings.Join(cleanStrings(record.CatalogData.Architectures), ",")
+		attributes["description"] = awssdk.ToString(record.CatalogData.Description)
+		attributes["marketplace_certified"] = boolString(awssdk.ToBool(record.CatalogData.MarketplaceCertified))
+		attributes["operating_systems"] = strings.Join(cleanStrings(record.CatalogData.OperatingSystems), ",")
+		attributes["about_text_present"] = boolString(strings.TrimSpace(awssdk.ToString(record.CatalogData.AboutText)) != "")
+		attributes["usage_text_present"] = boolString(strings.TrimSpace(awssdk.ToString(record.CatalogData.UsageText)) != "")
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": defaultRegion, "repository": repository, "catalog_data": record.CatalogData, "policy_text": record.PolicyText, "tags": record.Tags})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-ecr-public-repository-"+firstNonEmpty(arn, name), "aws.ecr_public_repository", "aws/ecr_public_repository/v1", payload, attributes, firstTime(repository.CreatedAt))
+}
+
 func commonCloudAssetAttributes(settings settings, region string, family string, resourceID string, resourceName string, resourceType string, tags map[string]string) map[string]string {
 	env := tagLookup(tags, "environment", "env", "stage")
 	return map[string]string{
@@ -651,6 +741,16 @@ func snsTagMap(tags []snstypes.Tag) map[string]string {
 }
 
 func ecrTagMap(tags []ecrtypes.Tag) map[string]string {
+	out := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		if key := strings.TrimSpace(awssdk.ToString(tag.Key)); key != "" {
+			out[key] = strings.TrimSpace(awssdk.ToString(tag.Value))
+		}
+	}
+	return out
+}
+
+func ecrPublicTagMap(tags []ecrpublictypes.Tag) map[string]string {
 	out := make(map[string]string, len(tags))
 	for _, tag := range tags {
 		if key := strings.TrimSpace(awssdk.ToString(tag.Key)); key != "" {

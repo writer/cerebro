@@ -332,6 +332,31 @@ func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.Fi
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubFindingStore) LinkFindingExternalRef(_ context.Context, request ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	replaced := false
+	for index, ref := range cloned.ExternalRefs {
+		if externalRefKey(ref) == externalRefKey(request.ExternalRef) {
+			cloned.ExternalRefs[index] = request.ExternalRef
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cloned.ExternalRefs = append(cloned.ExternalRefs, request.ExternalRef)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+func externalRefKey(ref ports.FindingExternalRef) string {
+	return strings.TrimSpace(ref.System) + "|" + strings.TrimSpace(ref.Kind) + "|" + strings.TrimSpace(ref.ExternalID)
+}
+
 type stubGraphStore struct {
 	entities   map[string]*ports.ProjectedEntity
 	links      map[string]*ports.ProjectedLink
@@ -3847,9 +3872,12 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 
 func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 	activeRuleIDs := []string{
+		githubSecretScanningAlertCreatedRuleID,
+		githubCodeSecurityControlsDisabledRuleID,
+	}
+	retiredRuleIDs := []string{
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
-		githubCodeSecurityControlsDisabledRuleID,
 		githubOrgAuthControlModifiedRuleID,
 		githubOrgIPAllowListModifiedRuleID,
 		githubAppIntegrationInstalledRuleID,
@@ -3859,6 +3887,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}
 	ruleIDs := append([]string(nil), activeRuleIDs...)
+	ruleIDs = append(ruleIDs, retiredRuleIDs...)
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -3876,7 +3905,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 				newGitHubAuditSignalEvent("github-audit-push-protection-disabled", map[string]string{"action": "org.secret_scanning_push_protection_disable", "resource_id": "writer", "resource_type": "org"}),
 				newGitHubAuditSignalEvent("github-audit-branch-protection-disabled", map[string]string{"action": "protected_branch.destroy", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
 				newGitHubAuditSignalEvent("github-audit-repo-made-public", map[string]string{"action": "repo.access", "repo": "writer/cerebro", "previous_visibility": "private", "visibility": "public", "resource_type": "repo"}),
-				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert"}),
+				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert", "secret_scanning_alert.state": "open"}),
 				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo", "runner_ephemeral": "false", "runner_id": "777", "runner_registered": "true"}),
 				newGitHubAuditSignalEvent("github-audit-collaborator-added", map[string]string{"action": "repo.add_member", "repo": "writer/cerebro", "resource_type": "repo", "user": "octocat"}),
 				newGitHubAuditSignalEvent("github-audit-owner-added", map[string]string{"action": "org.add_member", "resource_id": "writer", "resource_type": "org", "permission": "admin", "user": "octocat"}),
@@ -3926,8 +3955,16 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 			t.Fatalf("finding %q ResourceURNs missing primary resource %q: %#v", ruleID, primaryResourceURN, findingsByRule[ruleID].ResourceURNs)
 		}
 	}
-	if got := findingsByRule[githubOrganizationOwnerAddedRuleID].Severity; got != "HIGH" {
-		t.Fatalf("organization owner severity = %q, want HIGH", got)
+	for _, ruleID := range retiredRuleIDs {
+		if got := findingCountByRule[ruleID]; got != 0 {
+			t.Fatalf("EvaluateSourceRuntimeRules() emitted %d findings for retired rule %q, want 0", got, ruleID)
+		}
+	}
+	if got := findingsByRule[githubCodeSecurityControlsDisabledRuleID].Severity; got != "CRITICAL" {
+		t.Fatalf("code security controls severity = %q, want CRITICAL", got)
+	}
+	if got := findingsByRule[githubSecretScanningAlertCreatedRuleID].Severity; got != "MEDIUM" {
+		t.Fatalf("secret scanning alert severity = %q, want MEDIUM", got)
 	}
 }
 
@@ -4179,6 +4216,59 @@ func TestResolveFindingUpdatesPersistedWorkflow(t *testing.T) {
 	}
 	if finding.StatusUpdatedAt.IsZero() {
 		t.Fatal("ResolveFinding().StatusUpdatedAt = zero, want non-zero")
+	}
+}
+
+func TestResolveFindingWithOptionsAppliesStatusPreconditions(t *testing.T) {
+	observedAt := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				Status:         "open",
+				LastObservedAt: observedAt,
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.ResolveFindingWithOptions(context.Background(), "finding-1", "panopticon verified false positive", FindingStatusUpdateOptions{
+		ExpectedStatus:     "open",
+		LastObservedBefore: observedAt.Add(time.Minute),
+		Source:             "panopticon",
+	})
+	if err != nil {
+		t.Fatalf("ResolveFindingWithOptions() error = %v", err)
+	}
+	if got := finding.Status; got != "resolved" {
+		t.Fatalf("ResolveFindingWithOptions().Status = %q, want resolved", got)
+	}
+	if got := len(store.updateStatusCalls); got != 1 {
+		t.Fatalf("update status calls = %d, want 1", got)
+	}
+	call := store.updateStatusCalls[0]
+	if got := call.ExpectedStatus; got != "open" {
+		t.Fatalf("ExpectedStatus = %q, want open", got)
+	}
+	if !call.LastObservedBefore.Equal(observedAt.Add(time.Minute)) {
+		t.Fatalf("LastObservedBefore = %v, want %v", call.LastObservedBefore, observedAt.Add(time.Minute))
+	}
+}
+
+func TestResolveFindingWithOptionsReturnsPreconditionFailure(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:     "finding-1",
+				Status: "resolved",
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	_, err := service.ResolveFindingWithOptions(context.Background(), "finding-1", "stale agent decision", FindingStatusUpdateOptions{
+		ExpectedStatus: "open",
+	})
+	if !errors.Is(err, ports.ErrFindingStatusPreconditionFailed) {
+		t.Fatalf("ResolveFindingWithOptions() error = %v, want precondition failure", err)
 	}
 }
 
@@ -5030,6 +5120,86 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	}
 }
 
+func TestLinkFindingExternalRefRefreshesLifecycleReference(t *testing.T) {
+	observedAt := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-panopticon-case",
+				RuleID:       "panopticon-curated-case",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:panopticon_case:case-123"},
+				Attributes:   map[string]string{"primary_resource_urn": "urn:cerebro:writer:panopticon_case:case-123"},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
+	first, err := service.LinkFindingExternalRef(context.Background(), "finding-1", ports.FindingExternalRef{
+		System:         "panopticon",
+		Kind:           "case",
+		ExternalID:     "case-123",
+		URL:            "https://panopticon.example/cases/123",
+		ExternalStatus: "open",
+		LifecycleOwner: "external_owned",
+		ObservedAt:     observedAt,
+	})
+	if err != nil {
+		t.Fatalf("LinkFindingExternalRef(first) error = %v", err)
+	}
+	if got := len(first.ExternalRefs); got != 1 {
+		t.Fatalf("external refs after first link = %d, want 1", got)
+	}
+	externalRefURN := ""
+	for urn, entity := range graphStore.entities {
+		if entity != nil && entity.EntityType == "external_ref" && entity.Attributes["external_id"] == "case-123" {
+			externalRefURN = urn
+			break
+		}
+	}
+	if externalRefURN == "" {
+		t.Fatalf("external ref graph entity missing: %#v", graphStore.entities)
+	}
+	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+externalRefURN]; !ok {
+		t.Fatal("finding external ref link missing")
+	}
+	second, err := service.LinkFindingExternalRef(context.Background(), "finding-1", ports.FindingExternalRef{
+		System:               "panopticon",
+		Kind:                 "case",
+		ExternalID:           "case-123",
+		URL:                  "https://panopticon.example/cases/123",
+		ExternalStatus:       "closed",
+		ExternalStatusReason: "triaged false positive",
+		LifecycleOwner:       "external_owned",
+		ObservedAt:           observedAt.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("LinkFindingExternalRef(second) error = %v", err)
+	}
+	if got := len(second.ExternalRefs); got != 1 {
+		t.Fatalf("external refs after refresh = %d, want 1", got)
+	}
+	ref := second.ExternalRefs[0]
+	if got := ref.ExternalStatus; got != "closed" {
+		t.Fatalf("ExternalStatus = %q, want closed", got)
+	}
+	if got := ref.ExternalStatusReason; got != "triaged false positive" {
+		t.Fatalf("ExternalStatusReason = %q, want triaged false positive", got)
+	}
+	if got := graphStore.entities[externalRefURN].Attributes["external_status"]; got != "closed" {
+		t.Fatalf("projected external_status = %q, want closed", got)
+	}
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != securityevents.FindingExternalRefLinked {
+		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingExternalRefLinked)
+	}
+}
+
 func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
@@ -5464,6 +5634,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(notes, finding.Notes)
 	tickets := make([]ports.FindingTicket, len(finding.Tickets))
 	copy(tickets, finding.Tickets)
+	externalRefs := make([]ports.FindingExternalRef, len(finding.ExternalRefs))
+	copy(externalRefs, finding.ExternalRefs)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -5501,6 +5673,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,
+			ExternalRefs:    externalRefs,
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
@@ -5536,6 +5709,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if len(existing.Tickets) != 0 && len(incoming.Tickets) == 0 {
 		incoming.Tickets = append([]ports.FindingTicket(nil), existing.Tickets...)
+	}
+	if len(existing.ExternalRefs) != 0 && len(incoming.ExternalRefs) == 0 {
+		incoming.ExternalRefs = append([]ports.FindingExternalRef(nil), existing.ExternalRefs...)
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

@@ -64,35 +64,16 @@ func (s *Source) discoverDependabotAlerts(ctx context.Context, client *gogithub.
 	return []sourcecdk.URN{urn}, nil
 }
 
-func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	after := readDependabotCursor(cursor)
+func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familyDependabot, cursor, checkpoint)
+	after := sourcecdk.CursorToken(cursor)
 	alerts, resp, err := client.Dependabot.ListRepoAlerts(ctx, settings.owner, settings.repo, dependabotAlertOptions(settings, after, settings.perPage))
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err)
 	}
-	if len(alerts) == 0 {
-		return sourcecdk.Pull{}, nil
-	}
-	events := make([]*primitives.Event, 0, len(alerts))
-	for _, alert := range alerts {
-		event, err := dependabotAlertEvent(settings, alert)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
-	}
-	nextCursor := nextAuditCursor(resp)
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: checkpointDependabotCursor(alerts, nextCursor),
-		},
-	}
-	if nextCursor != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
-	}
-	return pull, nil
+	return sourcecdk.IncrementalPullFromRecords("github", familyDependabot, alerts, nextAuditCursor(resp), readCheckpoint, func(alert *gogithub.DependabotAlert) (*primitives.Event, error) {
+		return dependabotAlertEvent(settings, alert)
+	})
 }
 
 func dependabotAlertOptions(settings settings, after string, perPage int) *gogithub.ListAlertsOptions {
@@ -105,23 +86,6 @@ func dependabotAlertOptions(settings settings, after string, perPage int) *gogit
 			PerPage: perPage,
 		},
 	}
-}
-
-func readDependabotCursor(cursor *cerebrov1.SourceCursor) string {
-	if cursor == nil {
-		return ""
-	}
-	return strings.TrimSpace(cursor.GetOpaque())
-}
-
-func checkpointDependabotCursor(alerts []*gogithub.DependabotAlert, cursor string) string {
-	if cursor != "" {
-		return cursor
-	}
-	if len(alerts) == 0 {
-		return ""
-	}
-	return strconv.Itoa(alerts[len(alerts)-1].GetNumber())
 }
 
 func dependabotAlertEvent(settings settings, alert *gogithub.DependabotAlert) (*primitives.Event, error) {

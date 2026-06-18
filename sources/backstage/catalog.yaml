@@ -3,6 +3,33 @@ name: Backstage
 description: Backstage catalog source for service ownership and runtime context.
 emitted_kinds:
   - backstage.component
+coverage_contract:
+  owner_domain: engineering
+  authority_domain: backstage
+  dimensions:
+    - id: components
+      type: entity_family
+      title: Backstage components
+      families: [component]
+      support: supported
+      high_value: true
+    - id: ownership_relationships
+      type: relationship
+      title: Component ownership relationships
+      families: [component]
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - non-component catalog ownership entities
+        - transitive group membership expansion
+    - id: runtime_context
+      type: relationship
+      title: Runtime annotations and deployment context
+      families: [component]
+      support: partial
+      high_value: true
+      known_unsupported_fields:
+        - provider-specific runtime inventory expansion
 event_contracts:
   - kind: backstage.component
     schema_ref: backstage/component/v1

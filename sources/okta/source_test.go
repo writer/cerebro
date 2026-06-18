@@ -145,7 +145,10 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 		{family: "application", kind: "okta.application"},
 		{family: "group", kind: "okta.group"},
 		{family: "group_membership", config: map[string]string{"group_id": "grp-security"}, kind: "okta.group_membership"},
+		{family: "identity_provider", kind: "okta.identity_provider"},
+		{family: "network_zone", kind: "okta.network_zone"},
 		{family: "policy_rule", kind: "okta.policy_rule"},
+		{family: "trusted_origin", kind: "okta.trusted_origin"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{
@@ -215,8 +218,11 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(audit first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "cursor-2" {
 		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 	if got := first.Events[0].Kind; got != "okta.audit" {
 		t.Fatalf("first.Events[0].Kind = %q, want okta.audit", got)
@@ -232,9 +238,9 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 		t.Fatalf("audit payload resource_id = %#v, want 00u1", got)
 	}
 
-	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, first.Checkpoint)
 	if err != nil {
-		t.Fatalf("Read(audit second) error = %v", err)
+		t.Fatalf("ReadWithCheckpoint(audit second) error = %v", err)
 	}
 	if len(second.Events) != 1 {
 		t.Fatalf("len(Read(audit second).Events) = %d, want 1", len(second.Events))
@@ -242,8 +248,12 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	if second.NextCursor != nil {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
-	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "evt-2" {
-		t.Fatalf("second.Checkpoint = %#v, want evt-2", second.Checkpoint)
+	if second.Checkpoint == nil || !sourcecdk.ResumableCursorOpaque(second.Checkpoint.GetCursorOpaque()) {
+		t.Fatalf("second.Checkpoint = %#v, want resumable watermark envelope", second.Checkpoint)
+	}
+	auditEnvelope, ok := sourcecdk.DecodeCursorEnvelope(second.Checkpoint.GetCursorOpaque())
+	if !ok || auditEnvelope.Family != familyAudit || auditEnvelope.Token != "" {
+		t.Fatalf("second checkpoint envelope = %#v, want terminal audit watermark", auditEnvelope)
 	}
 }
 
@@ -726,8 +736,11 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(user first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-user-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "cursor-user-2" {
 		t.Fatalf("first.NextCursor = %#v, want cursor-user-2", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 	if got := first.Events[0].Kind; got != "okta.user" {
 		t.Fatalf("first.Events[0].Kind = %q, want okta.user", got)
@@ -745,9 +758,9 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 		t.Fatalf("user payload profile.login = %#v, want alice@writer.com", got)
 	}
 
-	second, err := source.Read(context.Background(), readCfg, first.NextCursor)
+	second, err := source.ReadWithCheckpoint(context.Background(), readCfg, first.NextCursor, first.Checkpoint)
 	if err != nil {
-		t.Fatalf("Read(user second) error = %v", err)
+		t.Fatalf("ReadWithCheckpoint(user second) error = %v", err)
 	}
 	if len(second.Events) != 1 {
 		t.Fatalf("len(Read(user second).Events) = %d, want 1", len(second.Events))
@@ -756,8 +769,12 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
 	assertOktaMFAAttributes(t, second.Events[0].Attributes, "false", "0")
-	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "00u2" {
-		t.Fatalf("second.Checkpoint = %#v, want 00u2", second.Checkpoint)
+	if second.Checkpoint == nil || !sourcecdk.ResumableCursorOpaque(second.Checkpoint.GetCursorOpaque()) {
+		t.Fatalf("second.Checkpoint = %#v, want resumable watermark envelope", second.Checkpoint)
+	}
+	userEnvelope, ok := sourcecdk.DecodeCursorEnvelope(second.Checkpoint.GetCursorOpaque())
+	if !ok || userEnvelope.Family != familyUser || userEnvelope.Token != "" {
+		t.Fatalf("second checkpoint envelope = %#v, want terminal user watermark", userEnvelope)
 	}
 }
 
@@ -908,6 +925,24 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			kind:   "okta.admin_role",
 			attr:   "role_id",
 			want:   "super_admin",
+		},
+		{
+			family: "identity_provider",
+			kind:   "okta.identity_provider",
+			attr:   "issuer",
+			want:   "https://idp.example.com",
+		},
+		{
+			family: "network_zone",
+			kind:   "okta.network_zone",
+			attr:   "gateway_count",
+			want:   "1",
+		},
+		{
+			family: "trusted_origin",
+			kind:   "okta.trusted_origin",
+			attr:   "scope_types",
+			want:   "CORS,REDIRECT",
 		},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -1782,6 +1817,62 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"lastUpdated":    "2026-04-23T00:00:00Z",
 		},
 	}
+	idpRecords := []map[string]any{
+		{
+			"id":          "idp-saml",
+			"type":        "SAML2",
+			"name":        "Partner SAML IdP",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"protocol": map[string]any{
+				"type": "SAML2",
+				"credentials": map[string]any{
+					"trust": map[string]any{
+						"issuer":   "https://idp.example.com",
+						"audience": "https://writer.okta.com/saml2/service-provider/sp",
+						"kid":      "kid-1",
+					},
+				},
+				"endpoints": map[string]any{
+					"sso": map[string]any{
+						"url":     "https://idp.example.com/sso",
+						"binding": "HTTP-POST",
+					},
+				},
+			},
+		},
+	}
+	networkZoneRecords := []map[string]any{
+		{
+			"id":          "zone-corp",
+			"name":        "Corporate VPN",
+			"type":        "IP",
+			"status":      "ACTIVE",
+			"usage":       "POLICY",
+			"system":      false,
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"gateways": []map[string]any{
+				{"type": "CIDR", "value": "203.0.113.0/24"},
+			},
+			"proxies": []map[string]any{},
+		},
+	}
+	trustedOriginRecords := []map[string]any{
+		{
+			"id":          "origin-prod",
+			"name":        "Production Console",
+			"origin":      "https://app.example.com",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"scopes": []map[string]any{
+				{"type": "CORS"},
+				{"type": "REDIRECT"},
+			},
+		},
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1862,6 +1953,18 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		case "/api/v1/users/00u1/roles":
 			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {
 				t.Fatalf("encode admin roles: %v", err)
+			}
+		case "/api/v1/idps":
+			if err := json.NewEncoder(w).Encode(idpRecords); err != nil {
+				t.Fatalf("encode identity providers: %v", err)
+			}
+		case "/api/v1/zones":
+			if err := json.NewEncoder(w).Encode(networkZoneRecords); err != nil {
+				t.Fatalf("encode network zones: %v", err)
+			}
+		case "/api/v1/trustedOrigins":
+			if err := json.NewEncoder(w).Encode(trustedOriginRecords); err != nil {
+				t.Fatalf("encode trusted origins: %v", err)
 			}
 		case "/api/v1/users/00u1/factors":
 			if _, err := w.Write(mustOktaTestdata(t, "factors_enrolled.json")); err != nil {

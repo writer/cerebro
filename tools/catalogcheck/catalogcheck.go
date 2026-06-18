@@ -10,10 +10,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceprojection"
+	"gopkg.in/yaml.v3"
 )
 
 type issue struct {
@@ -21,13 +25,25 @@ type issue struct {
 	message string
 }
 
+type repositoryCheckOptions struct {
+	requireSourcegenReady bool
+}
+
 func main() {
 	root := flag.String("root", ".", "repository root")
+	summary := flag.Bool("summary", true, "print connector definition catalog summary")
+	requireSourcegenReady := flag.Bool("require-sourcegen-ready", false, "fail when any connector definition is not sourcegen-ready")
 	flag.Parse()
-	issues, err := checkRepository(*root)
+	issues, err := checkRepositoryWithOptions(*root, repositoryCheckOptions{requireSourcegenReady: *requireSourcegenReady})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
 		os.Exit(1)
+	}
+	if *summary {
+		if err := printConnectorDefinitionCatalogSummary(*root); err != nil {
+			fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if len(issues) != 0 {
 		for _, issue := range issues {
@@ -38,9 +54,18 @@ func main() {
 }
 
 func checkRepository(root string) ([]issue, error) {
+	return checkRepositoryWithOptions(root, repositoryCheckOptions{})
+}
+
+func checkRepositoryWithOptions(root string, options repositoryCheckOptions) ([]issue, error) {
 	root = filepath.Clean(root)
 	var issues []issue
-	policyIssues, err := checkPolicies(root)
+	controlCatalog, controlCatalogIssues, err := loadComplianceControlCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, controlCatalogIssues...)
+	policyIssues, err := checkPolicies(root, controlCatalog)
 	if err != nil {
 		return nil, err
 	}
@@ -50,13 +75,23 @@ func checkRepository(root string) ([]issue, error) {
 		return nil, err
 	}
 	issues = append(issues, sourceIssues...)
+	connectorIssues, err := checkConnectorDefinitionCatalogWithOptions(root, options)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, connectorIssues...)
 	coverageIssues, err := checkCloudPolicyCoverage(root)
 	if err != nil {
 		return nil, err
 	}
 	issues = append(issues, coverageIssues...)
-	issues = append(issues, checkFindingRuleMetadata()...)
+	findingControlCatalog := controlCatalog
+	if _, err := os.Stat(filepath.Join(root, "internal", "findings")); errors.Is(err, os.ErrNotExist) {
+		findingControlCatalog = nil
+	}
+	issues = append(issues, checkFindingRuleMetadata(findingControlCatalog)...)
 	issues = append(issues, checkCorrelationCatalog()...)
+	issues = append(issues, checkComplianceEvidencePacketContract(controlCatalog)...)
 	sort.Slice(issues, func(i int, j int) bool {
 		if issues[i].path != issues[j].path {
 			return issues[i].path < issues[j].path
@@ -66,8 +101,95 @@ func checkRepository(root string) ([]issue, error) {
 	return issues, nil
 }
 
-func checkFindingRuleMetadata() []issue {
+func loadComplianceControlCatalog(root string) (*compliance.CatalogIndex, []issue, error) {
+	path := filepath.Join(root, filepath.FromSlash(compliance.DefaultControlCatalogPath))
+	rel := slashRel(root, path)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, []issue{{path: rel, message: "compliance control family catalog is required"}}, nil
+		}
+		return nil, nil, fmt.Errorf("read %s: %w", rel, err)
+	}
+	catalog, err := compliance.LoadControlCatalog(content)
+	if err != nil {
+		return nil, []issue{{path: rel, message: "invalid YAML: " + err.Error()}}, nil
+	}
+	index, validationIssues := compliance.BuildCatalogIndex(catalog)
+	issues := make([]issue, 0, len(validationIssues))
+	for _, validationIssue := range validationIssues {
+		issues = append(issues, issue{path: rel, message: validationIssue.Message})
+	}
+	return index, issues, nil
+}
+
+func checkConnectorDefinitionCatalog(root string) ([]issue, error) {
+	return checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{})
+}
+
+func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryCheckOptions) ([]issue, error) {
+	catalogRoot, analysis, err := analyzeConnectorDefinitionCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	issues := make([]issue, 0, len(analysis.Issues))
+	for _, catalogIssue := range analysis.Issues {
+		issues = append(issues, issue{
+			path:    slashRel(root, filepath.Join(catalogRoot, filepath.FromSlash(catalogIssue.Path))),
+			message: catalogIssue.Message,
+		})
+	}
+	if options.requireSourcegenReady {
+		for _, entry := range analysis.Entries {
+			if entry.Generateable {
+				continue
+			}
+			message := fmt.Sprintf("connector definition %q is %s, want %s", entry.Definition.SourceID, entry.Status, connectorcatalog.StatusGenerateable)
+			if entry.SourcegenError != "" {
+				message += ": " + entry.SourcegenError
+			}
+			issues = append(issues, issue{
+				path:    slashRel(root, filepath.Join(catalogRoot, filepath.FromSlash(entry.Path))),
+				message: message,
+			})
+		}
+	}
+	return issues, nil
+}
+
+func printConnectorDefinitionCatalogSummary(root string) error {
+	_, analysis, err := analyzeConnectorDefinitionCatalog(root)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "connector-definition-catalog: total=%d generateable=%d needs_auth_extension=%d needs_bespoke_runtime=%d catalog_ready=%d\n",
+		analysis.Summary.Total,
+		analysis.Summary.Generateable,
+		analysis.Summary.NeedsAuthExtension,
+		analysis.Summary.NeedsBespokeRuntime,
+		analysis.Summary.CatalogReady,
+	)
+	return nil
+}
+
+func analyzeConnectorDefinitionCatalog(root string) (string, connectorcatalog.Analysis, error) {
+	catalogRoot := filepath.Join(root, "internal", "connectorcatalog", "catalog")
+	analysis, err := connectorcatalog.AnalyzeDir(catalogRoot, connectorcatalog.Options{DryRunSourcegen: true})
+	return catalogRoot, analysis, err
+}
+
+func checkFindingRuleMetadata(controlCatalog *compliance.CatalogIndex) []issue {
 	var issues []issue
+	for _, metadata := range findinganalysis.BuiltinRuleMetadata() {
+		for _, ref := range metadata.ControlRefs {
+			if controlCatalog != nil && !controlCatalog.HasControl(ref.FrameworkName, ref.ControlID) {
+				issues = append(issues, issue{
+					path:    "internal/findings",
+					message: fmt.Sprintf("rule %q control ref %s %s is not declared in internal/compliance/control_families.yaml", metadata.ID, ref.FrameworkName, ref.ControlID),
+				})
+			}
+		}
+	}
 	for _, err := range findinganalysis.ValidateRuleMetadataCompleteness(findinganalysis.BuiltinRuleMetadata()) {
 		issues = append(issues, issue{path: "internal/findings", message: err.Error()})
 	}
@@ -85,7 +207,67 @@ func checkCorrelationCatalog() []issue {
 	return nil
 }
 
-func checkPolicies(root string) ([]issue, error) {
+func checkComplianceEvidencePacketContract(controlCatalog *compliance.CatalogIndex) []issue {
+	if controlCatalog == nil {
+		return nil
+	}
+	resolution, validationIssues := compliance.ResolveControlSelection(controlCatalog, compliance.ControlSelection{ID: "catalog-check-all"})
+	issues := make([]issue, 0, len(validationIssues))
+	for _, validationIssue := range validationIssues {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: "control selection: " + validationIssue.Message})
+	}
+	if len(resolution.Controls) == 0 {
+		return append(issues, issue{path: compliance.DefaultControlCatalogPath, message: "control evidence packet contract requires at least one resolved control"})
+	}
+	coverage := compliance.ResolveRuleCoverage(resolution, builtinRuleControlMappings())
+	packet := compliance.BuildControlEvidencePacket(compliance.ControlPostureInput{
+		Selection:    resolution,
+		RuleCoverage: coverage,
+		Now:          time.Unix(0, 0).UTC(),
+	})
+	if packet.Version == "" {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: "control evidence packet version is required"})
+	}
+	if packet.Summary.Total != len(resolution.Controls) {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet summary total = %d, want %d", packet.Summary.Total, len(resolution.Controls))})
+	}
+	if len(packet.Controls) != len(resolution.Controls) {
+		issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet controls = %d, want %d", len(packet.Controls), len(resolution.Controls))})
+	}
+	for idx, control := range packet.Controls {
+		if control.Control.FrameworkName == "" || control.Control.ControlID == "" {
+			issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet controls[%d] is missing framework or control identity", idx)})
+		}
+		if len(control.Evidence.Expectations) == 0 {
+			issues = append(issues, issue{path: compliance.DefaultControlCatalogPath, message: fmt.Sprintf("control evidence packet control %s %s has no evidence expectation posture", control.Control.FrameworkName, control.Control.ControlID)})
+		}
+	}
+	return issues
+}
+
+func builtinRuleControlMappings() []compliance.RuleControlMapping {
+	metadata := findinganalysis.BuiltinRuleMetadata()
+	mappings := make([]compliance.RuleControlMapping, 0, len(metadata))
+	for _, rule := range metadata {
+		if len(rule.ControlRefs) == 0 {
+			continue
+		}
+		controlRefs := make([]compliance.ControlRef, 0, len(rule.ControlRefs))
+		for _, ref := range rule.ControlRefs {
+			controlRefs = append(controlRefs, compliance.ControlRef{
+				FrameworkName: ref.FrameworkName,
+				ControlID:     ref.ControlID,
+			})
+		}
+		mappings = append(mappings, compliance.RuleControlMapping{
+			RuleID:      rule.ID,
+			ControlRefs: controlRefs,
+		})
+	}
+	return mappings
+}
+
+func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issue, error) {
 	policiesRoot := filepath.Join(root, "policies")
 	ids := map[string]string{}
 	var issues []issue
@@ -121,7 +303,7 @@ func checkPolicies(root string) ([]issue, error) {
 		if policyID != "" {
 			ids[policyID] = rel
 		}
-		issues = append(issues, validatePolicy(rel, raw)...)
+		issues = append(issues, validatePolicy(rel, raw, controlCatalog)...)
 		return nil
 	})
 	if err != nil {
@@ -144,7 +326,7 @@ func validateControlMapping(path string, raw map[string]json.RawMessage) []issue
 	return issues
 }
 
-func validatePolicy(path string, raw map[string]json.RawMessage) []issue {
+func validatePolicy(path string, raw map[string]json.RawMessage, controlCatalog *compliance.CatalogIndex) []issue {
 	var issues []issue
 	for _, field := range []string{"id", "name", "description", "severity"} {
 		if stringField(raw, field) == "" {
@@ -168,7 +350,7 @@ func validatePolicy(path string, raw map[string]json.RawMessage) []issue {
 		}
 	}
 	issues = append(issues, validateStringArrayField(path, raw, "tags")...)
-	issues = append(issues, validateFrameworks(path, raw)...)
+	issues = append(issues, validateFrameworks(path, raw, controlCatalog)...)
 	return issues
 }
 
@@ -189,10 +371,10 @@ func validateStringArrayField(path string, raw map[string]json.RawMessage, field
 	return nil
 }
 
-func validateFrameworks(path string, raw map[string]json.RawMessage) []issue {
+func validateFrameworks(path string, raw map[string]json.RawMessage, controlCatalog *compliance.CatalogIndex) []issue {
 	value, ok := raw["frameworks"]
 	if !ok {
-		return nil
+		return []issue{{path: path, message: "frameworks is required"}}
 	}
 	var frameworks []struct {
 		Name     string   `json:"name"`
@@ -203,15 +385,21 @@ func validateFrameworks(path string, raw map[string]json.RawMessage) []issue {
 	}
 	var issues []issue
 	for idx, framework := range frameworks {
-		if strings.TrimSpace(framework.Name) == "" {
+		frameworkName := strings.TrimSpace(framework.Name)
+		if frameworkName == "" {
 			issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].name is required", idx)})
 		}
 		if len(framework.Controls) == 0 {
 			issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls is required", idx)})
 		}
 		for controlIdx, control := range framework.Controls {
-			if strings.TrimSpace(control) == "" {
+			controlID := strings.TrimSpace(control)
+			if controlID == "" {
 				issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls[%d] is required", idx, controlIdx)})
+				continue
+			}
+			if controlCatalog != nil && frameworkName != "" && !controlCatalog.HasControl(frameworkName, controlID) {
+				issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls[%d] %s %s is not declared in internal/compliance/control_families.yaml", idx, controlIdx, frameworkName, controlID)})
 			}
 		}
 	}
@@ -233,6 +421,9 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			return nil
 		}
 		rel := slashRel(root, path)
+		if filepath.Base(filepath.Dir(path)) == "catalogruntime" {
+			return nil
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			issues = append(issues, issue{path: rel, message: "symlinked source catalogs are not allowed"})
 			return nil
@@ -246,7 +437,17 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			issues = append(issues, issue{path: rel, message: err.Error()})
 			return nil
 		}
+		var runtimeCatalog struct {
+			RuntimeFamilies []string `yaml:"runtime_families"`
+		}
+		if err := yaml.Unmarshal(content, &runtimeCatalog); err != nil {
+			issues = append(issues, issue{path: rel, message: "unmarshal runtime families: " + err.Error()})
+			return nil
+		}
 		spec := catalog.Spec
+		if catalog.CoverageContract == nil {
+			issues = append(issues, issue{path: rel, message: "coverage_contract is required for built-in sources"})
+		}
 		if spec.GetId() != "sdk" && len(spec.GetEmittedKinds()) == 0 {
 			issues = append(issues, issue{path: rel, message: "emitted_kinds is required for built-in pull sources"})
 		}
@@ -262,6 +463,7 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 				issues = append(issues, issue{path: rel, message: fmt.Sprintf("event contract kind %q is not an emitted kind", contract.Kind)})
 			}
 		}
+		issues = append(issues, validateRuntimeFamilyFixtures(root, filepath.Dir(path), runtimeCatalog.RuntimeFamilies)...)
 		issues = append(issues, validateFixtureContracts(root, filepath.Dir(path), catalog.EventContracts)...)
 		return nil
 	})
@@ -272,6 +474,51 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 		return nil, err
 	}
 	return issues, nil
+}
+
+func validateRuntimeFamilyFixtures(root string, sourceDir string, runtimeFamilies []string) []issue {
+	if len(runtimeFamilies) == 0 {
+		return nil
+	}
+	var issues []issue
+	for _, family := range runtimeFamilies {
+		family = strings.TrimSpace(family)
+		if family == "" {
+			continue
+		}
+		for _, prefix := range []string{"discover", "read"} {
+			name := fmt.Sprintf("%s_%s.json", prefix, family)
+			path := filepath.Join(sourceDir, "testdata", name)
+			info, err := os.Lstat(path)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					issues = append(issues, issue{path: slashRel(root, filepath.Join(sourceDir, "catalog.yaml")), message: fmt.Sprintf("runtime family fixture %q is required", name)})
+					continue
+				}
+				issues = append(issues, issue{path: slashRel(root, path), message: "stat runtime family fixture: " + err.Error()})
+				continue
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				issues = append(issues, issue{path: slashRel(root, path), message: "symlinked runtime family fixture is not allowed"})
+				continue
+			}
+			if info.IsDir() {
+				issues = append(issues, issue{path: slashRel(root, path), message: "runtime family fixture must be a file"})
+			}
+		}
+	}
+	return issues
+}
+
+func hasSourceDeployManifest(sourceDir string) (bool, error) {
+	info, err := os.Lstat(filepath.Join(sourceDir, "deploy.yaml"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat deploy.yaml: %w", err)
+	}
+	return !info.IsDir(), nil
 }
 
 func validateFixtureContracts(root string, sourceDir string, contracts []sourcecdk.EventContract) []issue {

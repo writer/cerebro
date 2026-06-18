@@ -18,7 +18,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, err
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyPolicyRule, familyUser} {
+	for _, family := range []string{familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyIDP, familyNetworkZone, familyPolicyRule, familyTrustedOrigin, familyUser} {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err

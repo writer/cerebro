@@ -1,0 +1,112 @@
+version: "2026-06-17"
+profiles:
+  - id: soc2-security-core
+    name: SOC 2 Security Core
+    description: Security audit scope covering control environment, communication, risk assessment, monitoring, access, operations, change, and risk mitigation.
+    frameworks:
+      - name: SOC 2
+        families: [CC1, CC2, CC3, CC4, CC5, CC6, CC7, CC8, CC9]
+  - id: soc2-availability
+    name: SOC 2 Availability
+    description: Availability controls for uptime, capacity, continuity, and operational resilience reviews.
+    frameworks:
+      - name: SOC 2
+        families: [A1]
+  - id: iso-technology-controls
+    name: ISO Technology Controls
+    description: Technology implementation controls for access, operations, logging, vulnerability management, and secure configuration evidence.
+    frameworks:
+      - name: "ISO 27001:2022"
+        families: [A.8]
+  - id: cloud-security-benchmarks
+    name: Cloud Security Benchmarks
+    description: Cloud and workload configuration controls for account management, vulnerability management, logging, network defense, and benchmark posture.
+    frameworks:
+      - name: CIS Controls v8
+        families: ["4", "5", "6", "7", "8", "12", "13"]
+      - name: CIS AWS Foundations Benchmark v2.0
+        include_all: true
+      - name: CIS Kubernetes Benchmark
+        include_all: true
+      - name: CIS GKE Benchmark v1.4
+        include_all: true
+      - name: CIS EKS Benchmark v1.3
+        include_all: true
+  - id: pci-operational-security
+    name: PCI Operational Security
+    description: Network, system, identity, logging, testing, and security program controls commonly used for payment-environment evidence review.
+    frameworks:
+      - name: PCI DSS v4.0.1
+        families: ["1", "6", "7", "8", "10", "11", "12"]
+  - id: dora-operational-resilience
+    name: DORA Operational Resilience
+    description: Digital operational resilience scope for ICT governance, risk management, incident reporting, resilience testing, third-party risk, and information sharing.
+    frameworks:
+      - name: DORA
+        include_all: true
+  - id: dora-ict-third-party-risk
+    name: DORA ICT Third-Party Risk
+    description: DORA ICT third-party lifecycle, due diligence, contract clauses, monitoring, and exit planning scope.
+    frameworks:
+      - name: DORA
+        families: [TPRM, TPRM-RTS]
+  - id: fedramp-rev5-core
+    name: FedRAMP Rev. 5 Core
+    description: FedRAMP Rev. 5 baseline control coverage mapped to supported NIST SP 800-53 Rev. 5 policy evidence.
+    frameworks:
+      - name: FedRAMP Rev. 5
+        include_all: true
+  - id: fedramp-rev5-continuous-monitoring
+    name: FedRAMP Rev. 5 Continuous Monitoring
+    description: FedRAMP-oriented assessment, vulnerability, and system integrity monitoring evidence scope.
+    frameworks:
+      - name: FedRAMP Rev. 5
+        families: [CA, RA, SI]
+  - id: nis2-cybersecurity-risk-management
+    name: NIS2 Cybersecurity Risk Management
+    description: NIS2 governance, cybersecurity risk-management, and significant incident reporting obligations.
+    frameworks:
+      - name: NIS2
+        include_all: true
+  - id: cmmc-2-core
+    name: CMMC 2.0 Core
+    description: CMMC 2.0 level and domain coverage for FCI, CUI, and higher-level CUI protection reviews.
+    frameworks:
+      - name: CMMC 2.0
+        include_all: true
+  - id: cmmc-2-level-1
+    name: CMMC 2.0 Level 1
+    description: CMMC Level 1 foundational safeguarding practices for FCI readiness reviews.
+    frameworks:
+      - name: CMMC 2.0
+        families: [L1]
+  - id: cjis-security-policy
+    name: CJIS Security Policy
+    description: FBI CJIS Security Policy area coverage for criminal justice information protection reviews.
+    frameworks:
+      - name: CJIS Security Policy
+        include_all: true
+  - id: nist-csf-20-core
+    name: NIST CSF 2.0 Core
+    description: NIST Cybersecurity Framework 2.0 functions and categories for cybersecurity risk management posture reviews.
+    frameworks:
+      - name: NIST CSF 2.0
+        include_all: true
+  - id: nist-csf-20-supply-chain
+    name: NIST CSF 2.0 Supply Chain
+    description: NIST CSF 2.0 governance and supplier-risk subcategories for third-party cybersecurity risk reviews.
+    frameworks:
+      - name: NIST CSF 2.0
+        controls: [GV.SC, GV.SC-05, GV.SC-07]
+  - id: privacy-ai-governance
+    name: Privacy and AI Governance
+    description: Privacy and AI governance controls for data handling, governance accountability, and AI system oversight reviews.
+    frameworks:
+      - name: GDPR
+        include_all: true
+      - name: CCPA
+        include_all: true
+      - name: "ISO 27701:2025"
+        families: [A.1, A.2, A.3]
+      - name: ISO 42001
+        families: ["6", "7", "8", "9", "10", A.2, A.3, A.4, A.5, A.6, A.7, A.8, A.9, A.10]

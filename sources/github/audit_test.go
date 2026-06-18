@@ -153,15 +153,17 @@ func TestAuditAttributes_ForwardsPostureBooleans(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name   string
-		ruleID string
-		action string
-		raw    map[string]any
+		name         string
+		ruleID       string
+		action       string
+		raw          map[string]any
+		wantFindings int
 	}{
 		{
-			name:   "code security dependabot disabled",
-			ruleID: "github-code-security-controls-disabled",
-			action: "dependabot_alerts.disable",
+			name:         "code security dependabot disabled",
+			ruleID:       "github-code-security-controls-disabled",
+			action:       "dependabot_alerts.disable",
+			wantFindings: 1,
 			raw: map[string]any{
 				"dependabot_alerts_enabled": false,
 				"org":                       "writer",
@@ -171,9 +173,10 @@ func TestAuditAttributes_ForwardsPostureBooleans(t *testing.T) {
 			},
 		},
 		{
-			name:   "org auth two factor disabled",
-			ruleID: "github-org-auth-control-modified",
-			action: "org.disable_two_factor_requirement",
+			name:         "org auth two factor disabled",
+			ruleID:       "github-org-auth-control-modified",
+			action:       "org.disable_two_factor_requirement",
+			wantFindings: 0,
 			raw: map[string]any{
 				"org":                            "writer",
 				"resource_id":                    "writer",
@@ -182,9 +185,10 @@ func TestAuditAttributes_ForwardsPostureBooleans(t *testing.T) {
 			},
 		},
 		{
-			name:   "ip allow list disabled",
-			ruleID: "github-org-ip-allow-list-modified",
-			action: "ip_allow_list.disable",
+			name:         "ip allow list disabled",
+			ruleID:       "github-org-ip-allow-list-modified",
+			action:       "ip_allow_list.disable",
+			wantFindings: 0,
 			raw: map[string]any{
 				"ip_allow_list_enabled": false,
 				"org":                   "writer",
@@ -193,9 +197,10 @@ func TestAuditAttributes_ForwardsPostureBooleans(t *testing.T) {
 			},
 		},
 		{
-			name:   "private repository forking enabled",
-			ruleID: "github-private-repository-forking-enabled",
-			action: "private_repository_forking.enable",
+			name:         "private repository forking enabled",
+			ruleID:       "github-private-repository-forking-enabled",
+			action:       "private_repository_forking.enable",
+			wantFindings: 0,
 			raw: map[string]any{
 				"org":                                "writer",
 				"private_repository_forking_enabled": true,
@@ -218,8 +223,8 @@ func TestAuditAttributes_ForwardsPostureBooleans(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Evaluate(%s) error = %v", tc.ruleID, err)
 			}
-			if len(records) != 1 {
-				t.Fatalf("Evaluate(%s) returned %d findings, want 1; attrs=%v", tc.ruleID, len(records), event.Attributes)
+			if len(records) != tc.wantFindings {
+				t.Fatalf("Evaluate(%s) returned %d findings, want %d; attrs=%v", tc.ruleID, len(records), tc.wantFindings, event.Attributes)
 			}
 		})
 	}
@@ -255,10 +260,6 @@ func TestAuditAttributes_ForwardsWebhookAllowlistKeys(t *testing.T) {
 	}
 
 	rule := mustGitHubFindingRule(t, "github-webhook-modified")
-	counterRule, ok := rule.(findingrules.CounterEventRule)
-	if !ok {
-		t.Fatal("github-webhook-modified does not implement CounterEventRule")
-	}
 	openEvent := auditEventForTest(t, "hook.config_changed", map[string]any{
 		"destination_allowlisted": false,
 		"hook_id":                 99,
@@ -268,18 +269,20 @@ func TestAuditAttributes_ForwardsWebhookAllowlistKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate(source-backed webhook open event) error = %v", err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("Evaluate(source-backed webhook open event) returned %d findings, want 1; attrs=%v", len(records), openEvent.Attributes)
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(source-backed webhook open event) returned %d findings, want 0 for retired audit mirror; attrs=%v", len(records), openEvent.Attributes)
 	}
-	openAnchor := counterRule.OpenAnchor(records[0].Attributes)
 	closeEvent := auditEventForTest(t, "hook.config_changed", map[string]any{
 		"destination_allowlisted": true,
 		"hook_id":                 99,
 		"repo":                    "writer/cerebro",
 	}, nil)
-	closeAnchor, closes := counterRule.CloseOnEvent(closeEvent)
-	if !closes || closeAnchor != openAnchor {
-		t.Fatalf("CloseOnEvent(source-backed webhook allowlisted event) = (%q, %v), want (%q, true); attrs=%v", closeAnchor, closes, openAnchor, closeEvent.Attributes)
+	records, err = rule.Evaluate(context.Background(), githubAuditRuntimeForRuleTest(), closeEvent)
+	if err != nil {
+		t.Fatalf("Evaluate(source-backed webhook allowlisted event) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(source-backed webhook allowlisted event) returned %d findings, want 0 for retired audit mirror; attrs=%v", len(records), closeEvent.Attributes)
 	}
 }
 

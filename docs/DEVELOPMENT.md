@@ -38,9 +38,11 @@ make build          # compile ./bin/cerebro
 make serve-dev      # run local server with acknowledged dev-mode opt-out
 make test           # go test ./...
 make lint           # golangci-lint over app packages
+make changed-check  # changed-path validation for local iteration and hooks
 make proto-lint     # buf lint
 make check          # build, tests, lint, proto lint, structural checks, arch tests
 make verify         # CI-parity validation
+make sourcegen-check # connector definition sourcegen readiness
 make readme-check   # README drift checks
 make docs-drift-check  # generated docs drift checks
 make oss-audit      # public repository hygiene scan
@@ -63,11 +65,25 @@ make graph-rebuild-dryrun
 - Append-log-backed sync and replay use NATS JetStream.
 - Graph projection and query operations use Neo4j/Aura.
 - Runtime finding behavior lives in Go rule packages under `internal/findings/`.
-- JSON policy files under `policies/` are catalog/control metadata, not a runtime Cedar evaluator.
+- JSON policy files under `policies/` are the authoring catalog for generated policy rules. Run `make policy-rule-generate` after policy edits, then `make detection-catalog-generate`.
 
 ## Before Opening A PR
 
-Run the narrowest relevant package tests while developing, then run:
+Run the narrowest relevant package tests while developing, then run changed-path
+validation:
+
+```bash
+make changed-check
+```
+
+`make changed-check` maps touched paths to focused package tests and contract
+checks such as `sourcegen-check`, `catalog-check`, policy-rule checks, OpenAPI
+checks, protobuf checks, script tests, and structural checks. The pre-commit
+hook uses it by default to keep local iteration fast. Set
+`CEREBRO_PRE_COMMIT_FULL_VERIFY=1` when you want the hook to run full
+CI-equivalent validation locally.
+
+Before broad PRs or before handing off a change with high blast radius, run:
 
 ```bash
 make check

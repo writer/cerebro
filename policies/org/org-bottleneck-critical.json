@@ -22,5 +22,14 @@
   "risk_categories": [
     "BOTTLENECK_RISK",
     "RESILIENCE_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Organizational Resilience",
+      "controls": [
+        "ORG-1",
+        "ORG-3"
+      ]
+    }
   ]
 }

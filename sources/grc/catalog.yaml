@@ -7,6 +7,12 @@ emitted_kinds:
   - grc.control_test
   - grc.policy
   - grc.document
+  - grc.contract
+  - grc.regulatory_notification
+  - grc.recovery_objective
+  - grc.authorization_package
+  - grc.poam_item
+  - grc.training_attestation
   - grc.vendor
   - grc.vulnerability
   - grc.vulnerable_asset
@@ -14,3 +20,103 @@ emitted_kinds:
   - grc.person
   - grc.user
   - grc.integration
+coverage_contract:
+  owner_domain: compliance
+  authority_domain: grc
+  dimensions:
+    - id: frameworks
+      type: entity_family
+      title: GRC frameworks
+      families: [framework]
+      support: supported
+      high_value: true
+    - id: controls
+      type: entity_family
+      title: GRC controls
+      families: [control]
+      support: supported
+      high_value: true
+    - id: control_tests
+      type: lifecycle_state
+      title: Control test status
+      families: [control_test]
+      support: supported
+      high_value: true
+    - id: policies
+      type: entity_family
+      title: Policies and documents
+      families: [policy, document]
+      support: supported
+      high_value: true
+    - id: contracts
+      type: entity_family
+      title: Third-party contracts and obligations
+      families: [contract]
+      support: supported
+      high_value: true
+    - id: regulatory_notifications
+      type: lifecycle_state
+      title: Regulatory notification status
+      families: [regulatory_notification]
+      support: supported
+      high_value: true
+    - id: recovery_objectives
+      type: entity_family
+      title: Recovery objectives and BIA records
+      families: [recovery_objective]
+      support: supported
+      high_value: true
+    - id: authorization_packages
+      type: entity_family
+      title: Authorization packages and ATO records
+      families: [authorization_package]
+      support: supported
+      high_value: true
+    - id: poam_items
+      type: lifecycle_state
+      title: POA&M weakness remediation items
+      families: [poam_item]
+      support: supported
+      high_value: true
+    - id: training_attestations
+      type: lifecycle_state
+      title: Security training attestations
+      families: [training_attestation]
+      support: supported
+      high_value: true
+    - id: vendors
+      type: entity_family
+      title: Vendors
+      families: [vendor]
+      support: supported
+      high_value: true
+    - id: vulnerabilities
+      type: entity_family
+      title: Vulnerabilities
+      families: [vulnerability]
+      support: supported
+      high_value: true
+    - id: vulnerable_assets
+      type: relationship
+      title: Vulnerability to asset relationships
+      families: [vulnerable_asset]
+      support: supported
+      high_value: true
+    - id: risk_scenarios
+      type: entity_family
+      title: Risk scenarios
+      families: [risk_scenario]
+      support: supported
+      high_value: true
+    - id: people
+      type: entity_family
+      title: People and users
+      families: [person, user]
+      support: supported
+      high_value: true
+    - id: integrations
+      type: entity_family
+      title: GRC integrations
+      families: [integration]
+      support: supported
+      high_value: true

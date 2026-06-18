@@ -135,6 +135,34 @@ Operational guidance:
 - Watch provider rate limits and partial-page errors.
 - Treat cursor advancement as the sign that sync is healthy.
 
+## Family freshness probes
+
+Some source families can make a cheap metadata call before the expensive read path. Cerebro calls this a family freshness probe. If the provider canary is unchanged, the source returns a `not_modified` short circuit and persists the refreshed probe checkpoint; if it changed, the source continues into the normal read path.
+
+Use `sourcecdk.Family.Probe` or a checkpoint-aware source read for this pattern. Store probe metadata in `sourcecdk.CursorEnvelope.Extra` with:
+
+```text
+canary_kind
+canary_resource_id
+canary_observed_at
+canary_updated_at
+canary_hash
+canary_confidence=authoritative|heuristic
+canary_skip_count
+canary_full_read_at
+canary_reconcile_reason=initial|changed|short_circuit|max_skip_count|max_skip_age
+```
+
+Treat authoritative canaries, such as documented delta tokens, differently from heuristic canaries, such as newest audit-log event probes. Heuristic probes are dirty signals: they are useful for skipping likely unchanged scans, but they still need periodic full reconciliation if the provider does not document complete coverage.
+
+Use `sourcecdk.FamilyFreshnessReadOptions` to make that policy explicit:
+
+- set `MaxSkipCount` and `MaxSkipAge` for heuristic canaries so they cannot skip forever,
+- set `ProbeErrorMode=fail_open` only when a failed metadata call can safely fall through to the normal read path,
+- store opaque canary resource IDs and hashes only; do not persist provider document IDs, actor names, raw filter phrases, tenant names, or other customer-shaped metadata in `CursorEnvelope.Extra`.
+
+Runtime telemetry records bounded freshness labels such as source, family, confidence, skip count, and forced-reconciliation reason. It must not emit canary hashes or provider resource IDs.
+
 ## Bootstrap runtimes from JSON
 
 The CLI can load a list of runtimes from an environment variable:
@@ -218,7 +246,7 @@ POST /source-runtimes/{runtimeID}/finding-rules/evaluate
 POST /source-runtimes/{runtimeID}/findings/evaluate
 ```
 
-The SDK source is useful for application-owned inventory or posture claims. See [`docs/GETTING_STARTED.md`](./GETTING_STARTED.md) for a local claim write.
+The SDK source is useful for application-owned inventory or posture claims. SDK runtimes may declare comma- or newline-separated `inventory_urns` for preview discovery, but durable inventory and posture evidence should still be written as runtime claims. See [`docs/GETTING_STARTED.md`](./GETTING_STARTED.md) for a local claim write.
 
 ## Graph ingest from runtime
 
@@ -272,6 +300,16 @@ Sources may include:
 - `sources/<source-id>/catalog.yaml`, which describes source capabilities,
 - `sources/<source-id>/deploy.yaml`, which declares source-level secret names and canonical runtime config,
 - `sources/<source-id>/source_health_receipt.json`, when a source ships a health receipt.
+
+Catalogs may declare family-level freshness probes under `families[].freshness_probe`.
+Use `confidence: authoritative` only for provider tokens or resource versions that
+prove the scoped collection is unchanged. Use `confidence: heuristic` for cheap
+signals such as newest updated resources or newest audit-log events; these can
+reduce API calls, but runtimes must still force reconciliation after the declared
+skip duration, skip count, reconciliation interval, manifest-version change, or
+runtime config-hash change. GitHub audit-log canaries are a high-confidence broad
+organization dirty signal when credentials can read the audit log, but they are
+still heuristic and do not replace periodic family-specific reconciliation.
 
 The deploy manifest intentionally declares what the source needs, not when or where your platform should schedule it. Deployment cadence and concrete secrets belong in your deployment system.
 

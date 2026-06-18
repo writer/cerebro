@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -364,6 +365,9 @@ func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 		{Name: "github_code_repositories_without_owner_link", Expected: 0},
 		{Name: "aws_public_endpoints_without_instance_link", Expected: 0},
 		{Name: "open_findings_missing_primary_has_finding_edge", Expected: 0},
+		{Name: "github_workflow_job_runners_projected_as_assets", Expected: 0},
+		{Name: "sentinelone_activity_events_projected_as_assets", Expected: 0},
+		{Name: "ephemeral_event_entities_projected_as_inventory", Expected: 0},
 	}
 	queries := []string{
 		"MATCH (src:Entity)-[r:RELATION]->(dst:Entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN count(r)",
@@ -374,6 +378,9 @@ func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 		"MATCH (e:Entity) WHERE e.source_id = 'github' AND e.entity_type = 'github.code.repository' AND coalesce(e.attributes_json, '') CONTAINS '\"owner_login\":\"' AND NOT coalesce(e.attributes_json, '') CONTAINS '\"owner_login\":\"\"' AND NOT EXISTS { MATCH (e)-[:RELATION {relation: 'belongs_to'}]->(:Entity {entity_type: 'github.org'}) } RETURN count(e)",
 		"MATCH (e:Entity) WHERE e.entity_type IN ['aws.elastic.ip', 'aws.network.interface'] AND ((coalesce(e.attributes_json, '') CONTAINS '\"attached_instance_id\":\"' AND NOT coalesce(e.attributes_json, '') CONTAINS '\"attached_instance_id\":\"\"') OR (coalesce(e.attributes_json, '') CONTAINS '\"associated_instance_id\":\"' AND NOT coalesce(e.attributes_json, '') CONTAINS '\"associated_instance_id\":\"\"')) AND NOT EXISTS { MATCH (e)-[:RELATION {relation: 'attached_to'}]->(:Entity {entity_type: 'aws.ec2.instance'}) } AND NOT EXISTS { MATCH (e)-[:RELATION {relation: 'associated_with'}]->(:Entity {entity_type: 'aws.ec2.instance'}) } RETURN count(e)",
 		"MATCH (finding:Entity {entity_type: 'finding'}) WITH finding, coalesce(finding.attributes_json, '') AS attrs WHERE attrs CONTAINS '\"status\":\"open\"' AND attrs CONTAINS '\"primary_resource_urn\":\"' WITH finding, split(split(attrs, '\"primary_resource_urn\":\"')[1], '\"')[0] AS primary_urn WHERE primary_urn <> '' MATCH (resource:Entity {tenant_id: finding.tenant_id, urn: primary_urn}) WHERE NOT EXISTS { MATCH (resource)-[:RELATION {relation: 'has_finding'}]->(finding) } RETURN count(finding)",
+		"MATCH (e:Entity {entity_type: 'github.runner'}) WHERE coalesce(e.attributes_json, '') CONTAINS '\"action\":\"workflows.' RETURN count(e)",
+		"MATCH (e:Entity {entity_type: 'sentinelone.activity'}) RETURN count(e)",
+		"MATCH (e:Entity) WHERE coalesce(e.attributes_json, '') CONTAINS '\"projection_class\":\"ephemeral_event\"' RETURN count(e)",
 	}
 	return checks, queries
 }
@@ -419,6 +426,7 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 		"entity_type": entityType,
 		"label":       label,
 	}
+	incomingAttributes := projectionmeta.ApplyEntityMetadata(entityType, entity.Attributes)
 	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
 		_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 			attributesJSON, version, err := mergeEntityAndLoadAttributes(ctx, tx, params)
@@ -429,7 +437,7 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 			if err != nil {
 				return nil, fmt.Errorf("decode projected entity attributes: %w", err)
 			}
-			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, entity.Attributes))
+			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, incomingAttributes))
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected entity attributes: %w", err)
 			}

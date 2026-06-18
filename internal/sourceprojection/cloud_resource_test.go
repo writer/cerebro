@@ -56,6 +56,251 @@ func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationA
 	}
 }
 
+func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *testing.T) {
+	for _, tt := range []struct {
+		name               string
+		event              *cerebrov1.EventEnvelope
+		providerURN        string
+		securityFindingURN string
+		affectedURN        string
+		affectedType       string
+	}{
+		{
+			name: "aws security hub",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "aws-securityhub-finding-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     "aws.securityhub_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "arn:aws:s3:::prod-data",
+					"affected_resource_name": "prod-data",
+					"affected_resource_type": "AWS::S3::Bucket",
+					"finding_id":             "arn:aws:securityhub:us-east-1:123456789012:finding/1",
+					"resource_id":            "arn:aws:securityhub:us-east-1:123456789012:finding/1",
+					"resource_name":          "Public bucket",
+					"resource_provider":      "aws",
+					"resource_type":          "securityhub_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:aws_securityhub_finding:arn:aws:securityhub:us-east-1:123456789012:finding/1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:aws:arn:aws:securityhub:us-east-1:123456789012:finding/1",
+			affectedURN:        "urn:cerebro:writer:aws_s3_bucket:arn:aws:s3:::prod-data",
+			affectedType:       "aws.s3.bucket",
+		},
+		{
+			name: "aws guardduty ec2 instance",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "aws-guardduty-finding-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     "aws.guardduty_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "i-123",
+					"affected_resource_name": "i-123",
+					"affected_resource_type": "Instance",
+					"finding_arn":            "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+					"resource_id":            "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+					"resource_name":          "Credential exfiltration",
+					"resource_provider":      "aws",
+					"resource_type":          "guardduty_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:aws_guardduty_finding:arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:aws:arn:aws:guardduty:us-east-1:123456789012:detector/detector-1/finding/gd-finding-1",
+			affectedURN:        "urn:cerebro:writer:aws_ec2_instance:i-123",
+			affectedType:       "aws.ec2.instance",
+		},
+		{
+			name: "aws security hub iam role",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "aws-securityhub-role-finding-1",
+				TenantId: "writer",
+				SourceId: "aws",
+				Kind:     "aws.securityhub_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "arn:aws:iam::123456789012:role/AdminRole",
+					"affected_resource_name": "AdminRole",
+					"affected_resource_type": "AWS::IAM::Role",
+					"finding_id":             "arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+					"resource_id":            "arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+					"resource_name":          "Admin role finding",
+					"resource_provider":      "aws",
+					"resource_type":          "securityhub_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:aws_securityhub_finding:arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:aws:arn:aws:securityhub:us-east-1:123456789012:finding/role-1",
+			affectedURN:        "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole",
+			affectedType:       "aws.role",
+		},
+		{
+			name: "gcp security command center",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "gcp-security-center-finding-1",
+				TenantId: "writer",
+				SourceId: "gcp",
+				Kind:     "gcp.security_center_finding",
+				Attributes: map[string]string{
+					"affected_resource_id":   "//storage.googleapis.com/projects/_/buckets/data",
+					"affected_resource_name": "data",
+					"affected_resource_type": "google.cloud.storage.Bucket",
+					"finding_name":           "projects/writer-prod/sources/123/findings/public-bucket",
+					"resource_id":            "projects/writer-prod/sources/123/findings/public-bucket",
+					"resource_name":          "PUBLIC_BUCKET_ACL",
+					"resource_provider":      "gcp",
+					"resource_type":          "security_center_finding",
+					"severity":               "HIGH",
+					"status":                 "ACTIVE",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:gcp_security_center_finding:projects/writer-prod/sources/123/findings/public-bucket",
+			securityFindingURN: "urn:cerebro:writer:security_finding:gcp:projects/writer-prod/sources/123/findings/public-bucket",
+			affectedURN:        "urn:cerebro:writer:gcp_gcs_bucket:data",
+			affectedType:       "gcp.gcs.bucket",
+		},
+		{
+			name: "azure server vulnerability",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "azure-server-vulnerability-1",
+				TenantId: "writer",
+				SourceId: "azure",
+				Kind:     "azure.server_vulnerability",
+				Attributes: map[string]string{
+					"assessed_resource_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1",
+					"display_name":         "Install system updates",
+					"resource_id":          "/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-1",
+					"resource_name":        "Install system updates",
+					"resource_provider":    "azure",
+					"resource_type":        "server_vulnerability",
+					"status_code":          "Unhealthy",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:azure_server_vulnerability:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-1",
+			securityFindingURN: "urn:cerebro:writer:security_finding:azure:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-1",
+			affectedURN:        "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm1",
+			affectedType:       "azure.virtual.machine",
+		},
+		{
+			name: "azure sql database vulnerability",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "azure-sql-database-vulnerability-1",
+				TenantId: "writer",
+				SourceId: "azure",
+				Kind:     "azure.server_vulnerability",
+				Attributes: map[string]string{
+					"assessed_resource_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-prod/databases/appdb",
+					"display_name":         "Database vulnerability",
+					"resource_id":          "/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-2",
+					"resource_name":        "Database vulnerability",
+					"resource_provider":    "azure",
+					"resource_type":        "server_vulnerability",
+					"status_code":          "Unhealthy",
+				},
+			},
+			providerURN:        "urn:cerebro:writer:azure_server_vulnerability:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-2",
+			securityFindingURN: "urn:cerebro:writer:security_finding:azure:/subscriptions/sub-1/providers/Microsoft.Security/assessments/assessment-2",
+			affectedURN:        "urn:cerebro:writer:azure_sql_database:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-prod/databases/appdb",
+			affectedType:       "azure.sql.database",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			if _, err := service.Project(context.Background(), tt.event); err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			if entity := state.entities[tt.securityFindingURN]; entity == nil || entity.EntityType != "security.finding" {
+				t.Fatalf("security finding entity = %#v, want security.finding", entity)
+			}
+			if entity := state.entities[tt.affectedURN]; entity == nil || entity.EntityType != tt.affectedType {
+				t.Fatalf("affected entity = %#v, want type %s", entity, tt.affectedType)
+			}
+			assertProjectedLink(t, state, tt.providerURN, relationRepresents, tt.securityFindingURN)
+			assertProjectedLink(t, state, tt.affectedURN, relationHasEvidence, tt.securityFindingURN)
+			assertProjectedLink(t, state, tt.securityFindingURN, relationObservedOn, tt.affectedURN)
+		})
+	}
+}
+
+func TestCloudFindingAffectedResourceTypeUsesCanonicalGraphNamespaces(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		provider string
+		rawType  string
+		id       string
+		want     string
+	}{
+		{name: "aws iam role", provider: "aws", rawType: "AWS::IAM::Role", id: "arn:aws:iam::123456789012:role/AdminRole", want: "role"},
+		{name: "aws iam user", provider: "aws", rawType: "AWS::IAM::User", id: "arn:aws:iam::123456789012:user/Alice", want: "user"},
+		{name: "aws iam group", provider: "aws", rawType: "AWS::IAM::Group", id: "arn:aws:iam::123456789012:group/Admins", want: "group"},
+		{name: "aws iam access key", provider: "aws", rawType: "AwsIamAccessKey", id: "AKIA123", want: "credential"},
+		{name: "aws guardduty instance", provider: "aws", rawType: "Instance", id: "i-123", want: "ec2_instance"},
+		{name: "gcp cloud run service", provider: "gcp", rawType: "google.cloud.run.Service", id: "//run.googleapis.com/projects/writer-prod/locations/us-central1/services/api", want: "cloud_run_service"},
+		{name: "gcp storage bucket", provider: "gcp", rawType: "google.cloud.storage.Bucket", id: "//storage.googleapis.com/projects/_/buckets/data", want: "gcs_bucket"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cloudFindingAffectedResourceType(tt.provider, tt.rawType, tt.id); got != tt.want {
+				t.Fatalf("cloudFindingAffectedResourceType() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCloudFindingAffectedResourceIDUsesCanonicalGCPKeys(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		resourceType string
+		id           string
+		resourceName string
+		want         string
+	}{
+		{
+			name:         "storage bucket",
+			resourceType: "gcs_bucket",
+			id:           "//storage.googleapis.com/projects/_/buckets/data",
+			want:         "data",
+		},
+		{
+			name:         "compute instance",
+			resourceType: "compute_instance",
+			id:           "//compute.googleapis.com/projects/writer-prod/zones/us-central1-a/instances/123456789",
+			resourceName: "web-1",
+			want:         "123456789",
+		},
+		{
+			name:         "cloud run service",
+			resourceType: "cloud_run_service",
+			id:           "//run.googleapis.com/projects/writer-prod/locations/us-central1/services/api",
+			want:         "projects/writer-prod/locations/us-central1/services/api",
+		},
+		{
+			name:         "cloud sql instance",
+			resourceType: "cloud_sql_instance",
+			id:           "//sqladmin.googleapis.com/projects/writer-prod/instances/prod-sql",
+			want:         "https://sqladmin.googleapis.com/sql/v1beta4/projects/writer-prod/instances/prod-sql",
+		},
+		{
+			name:         "gke cluster",
+			resourceType: "gke_cluster",
+			id:           "//container.googleapis.com/projects/writer-prod/locations/us-central1/clusters/prod",
+			want:         "https://container.googleapis.com/v1/projects/writer-prod/locations/us-central1/clusters/prod",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cloudFindingAffectedResourceID("gcp", tt.resourceType, tt.id, tt.resourceName); got != tt.want {
+				t.Fatalf("cloudFindingAffectedResourceID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -94,6 +339,176 @@ func TestProjectAWSAppRunnerServiceLinksAccountExposureOwnerAndRuntimeRole(t *te
 	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:platform@writer.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
+func TestProjectAWSSageMakerNotebookLinksAccountExposureOwnerAndRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:notebook-instance/research-notebook"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerNotebookRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-notebook-instance-research-notebook",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_notebook_instance",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"internet_exposed":  "true",
+			"owner":             "ml@writer.com",
+			"region":            "us-east-1",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-notebook",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_notebook_instance",
+			"role_arn":          roleARN,
+			"role_name":         "service-role/SageMakerNotebookRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_notebook_instance:" + resourceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.notebook.instance" {
+		t.Fatalf("sagemaker notebook entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationOwnedBy, "urn:cerebro:writer:owner:ml@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, resourceURN)
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
+func TestProjectAWSSageMakerEndpointConfigLinksRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:endpoint-config/research-endpoint-config"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerEndpointRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-endpoint-config-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_endpoint_configuration",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-endpoint-config",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_endpoint_configuration",
+			"role_arn":          roleARN,
+			"role_name":         "service-role/SageMakerEndpointRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_endpoint_configuration:" + resourceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.endpoint.configuration" {
+		t.Fatalf("sagemaker endpoint config entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
+func TestProjectAWSSageMakerModelLinksRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:model/research-model"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerModelRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-model-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_model",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-model",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_model",
+			"role_arn":          roleARN,
+			"role_name":         "service-role/SageMakerModelRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_model:" + resourceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.model" {
+		t.Fatalf("sagemaker model entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
+}
+
+func TestProjectAWSSageMakerModelPackageGroupLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:model-package-group/research-models"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-model-package-group-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_model_package_group",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-models",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_model_package_group",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_model_package_group:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.model.package.group" {
+		t.Fatalf("sagemaker model package group entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
+func TestProjectAWSSageMakerTrainingJobLinksRuntimeRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:sagemaker:us-east-1:123456789012:training-job/research-training"
+	roleARN := "arn:aws:iam::123456789012:role/service-role/SageMakerTrainingRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-sagemaker-training-job-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.sagemaker_training_job",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-training",
+			"resource_provider": "aws",
+			"resource_type":     "sagemaker_training_job",
+			"role_arn":          roleARN,
+			"role_name":         "service-role/SageMakerTrainingRole",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_sagemaker_training_job:" + resourceARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.sagemaker.training.job" {
+		t.Fatalf("sagemaker training job entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, roleURN)
 }
 
@@ -283,6 +698,100 @@ func TestProjectAWSDataResourceLinksNetworkAndElastiCacheContext(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_elasticache_subnet_group:cache-subnets")
 }
 
+func TestProjectAWSBedrockCustomModelLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:bedrock:us-east-1:123456789012:custom-model/research-model/abc123"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-bedrock-custom-model-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.bedrock_custom_model",
+		Attributes: map[string]string{
+			"domain":            "123456789012",
+			"resource_id":       resourceARN,
+			"resource_name":     "research-model",
+			"resource_provider": "aws",
+			"resource_type":     "bedrock_custom_model",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_bedrock_custom_model:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.bedrock.custom.model" {
+		t.Fatalf("bedrock custom model entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
+func TestProjectAWSBedrockProvisionedModelThroughputLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/research-throughput"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-bedrock-provisioned-model-throughput-research",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.bedrock_provisioned_model_throughput",
+		Attributes: map[string]string{
+			"domain":               "123456789012",
+			"guardrail_identifier": "arn:aws:bedrock:us-east-1:123456789012:guardrail/gr-123",
+			"resource_id":          resourceARN,
+			"resource_name":        "research-throughput",
+			"resource_provider":    "aws",
+			"resource_type":        "bedrock_provisioned_model_throughput",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_bedrock_provisioned_model_throughput:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.bedrock.provisioned.model.throughput" {
+		t.Fatalf("bedrock provisioned model throughput entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
+func TestProjectAWSEFSMountTargetLinksNetworkContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	resourceARN := "arn:aws:elasticfilesystem:us-east-1:123456789012:mount-target/fsmt-123"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-efs-mount-target-fsmt-123",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.efs_mount_target",
+		Attributes: map[string]string{
+			"domain":             "123456789012",
+			"resource_id":        resourceARN,
+			"resource_name":      "fsmt-123",
+			"resource_provider":  "aws",
+			"resource_type":      "efs_mount_target",
+			"security_group_ids": "sg-efs",
+			"subnet_id":          "subnet-efs",
+			"vpc_id":             "vpc-efs",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_efs_mount_target:" + resourceARN
+	if entity := state.entities[resourceURN]; entity == nil || entity.EntityType != "aws.efs.mount.target" {
+		t.Fatalf("efs mount target entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-efs")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-efs")
+	assertProjectedLink(t, state, resourceURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-efs")
+}
+
 func TestProjectAWSDatabaseInstanceLinksClusterAndAccount(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -466,6 +975,14 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			entityType:   "aws.ec2.ebs.encryption.by.default",
 		},
 		{
+			name:         "ec2 ami",
+			kind:         "aws.ec2_ami",
+			resourceID:   "ami-123",
+			resourceType: "ec2_ami",
+			entityType:   "aws.ec2.ami",
+			public:       true,
+		},
+		{
 			name:         "guardduty detector",
 			kind:         "aws.guardduty_detector",
 			resourceID:   "arn:aws:guardduty:us-east-1:123456789012:detector/detector-1",
@@ -478,6 +995,13 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			resourceID:   "arn:aws:codebuild:us-east-1:123456789012:project/orders-build",
 			resourceType: "codebuild_project",
 			entityType:   "aws.codebuild.project",
+		},
+		{
+			name:         "codebuild source credential",
+			kind:         "aws.codebuild_source_credential",
+			resourceID:   "arn:aws:codebuild:us-east-1:123456789012:source/github",
+			resourceType: "codebuild_source_credential",
+			entityType:   "aws.codebuild.source.credential",
 		},
 		{
 			name:         "public ebs snapshot",
@@ -494,6 +1018,28 @@ func TestProjectAWSStorageAccessAndDataSyncResources(t *testing.T) {
 			resourceType: "rds_db_snapshot",
 			entityType:   "aws.rds.db.snapshot",
 			public:       true,
+		},
+		{
+			name:         "ecr public repository",
+			kind:         "aws.ecr_public_repository",
+			resourceID:   "arn:aws:ecr-public::123456789012:repository/orders",
+			resourceType: "ecr_public_repository",
+			entityType:   "aws.ecr.public.repository",
+			public:       true,
+		},
+		{
+			name:         "iam saml provider",
+			kind:         "aws.iam_saml_provider",
+			resourceID:   "arn:aws:iam::123456789012:saml-provider/Okta",
+			resourceType: "iam_saml_provider",
+			entityType:   "aws.iam.saml.provider",
+		},
+		{
+			name:         "iam policy",
+			kind:         "aws.iam_policy",
+			resourceID:   "arn:aws:iam::123456789012:policy/AdminStar",
+			resourceType: "iam_policy",
+			entityType:   "aws.iam.policy",
 		},
 		{
 			name:         "datasync task",

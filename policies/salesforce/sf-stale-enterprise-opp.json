@@ -19,5 +19,14 @@
     "revenue",
     "pipeline-hygiene",
     "salesforce"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Revenue Operations",
+      "controls": [
+        "REV-1",
+        "REV-5"
+      ]
+    }
   ]
 }

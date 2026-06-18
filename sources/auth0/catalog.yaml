@@ -1,0 +1,76 @@
+id: auth0
+name: "Auth0"
+description: "Auth0 connector definition catalog entry for high-value security and operations resources."
+emitted_kinds:
+  - auth0.users
+  - auth0.roles
+  - auth0.audit_events
+families:
+  - id: users
+    incremental: watermark
+  - id: roles
+    incremental: watermark
+  - id: audit_events
+    incremental: watermark
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: auth0
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: roles
+      type: entity_family
+      title: "Roles"
+      families: [roles]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: entity_family
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      families: [users, roles, audit_events]
+      support: supported
+      high_value: true
+      notes:
+        - Watermark filtering is applied from durable source checkpoints; provider page continuation cursors are preserved when present.
+event_contracts:
+  - kind: auth0.users
+    schema_ref: auth0/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - user_id
+  - kind: auth0.roles
+    schema_ref: auth0/roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: auth0.audit_events
+    schema_ref: auth0/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - log_id

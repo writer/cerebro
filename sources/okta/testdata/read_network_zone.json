@@ -1,0 +1,30 @@
+[
+  {
+    "id": "okta-network-zone-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.network_zone",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/network_zone/v1",
+    "payload": {
+      "id": "zone-corp",
+      "domain": "writer.okta.com",
+      "name": "Corporate VPN",
+      "type": "IP"
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "family": "network_zone",
+      "gateway_count": "1",
+      "gateway_values": "203.0.113.0/24",
+      "name": "Corporate VPN",
+      "network_zone_id": "zone-corp",
+      "proxy_count": "0",
+      "status": "ACTIVE",
+      "type": "IP",
+      "usage": "POLICY",
+      "zone_id": "zone-corp",
+      "zone_type": "IP"
+    }
+  }
+]

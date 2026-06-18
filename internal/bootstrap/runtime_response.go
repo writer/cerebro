@@ -27,7 +27,7 @@ type runtimeBlocklistListResponse struct {
 }
 
 func (a *App) runtimeResponseService() *runtimeresponse.Service {
-	return runtimeresponse.New(runtimeBlocklistStore(a.deps.StateStore))
+	return newRuntimeResponseFeatureService(newRuntimeResponseFeatureDeps(a.deps))
 }
 
 func (a *App) handleRuntimeResponseCapabilities(w http.ResponseWriter, r *http.Request) {

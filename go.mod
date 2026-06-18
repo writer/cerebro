@@ -17,9 +17,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
 	github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5
+	github.com/aws/aws-sdk-go-v2/service/appsync v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/athena v1.58.3
 	github.com/aws/aws-sdk-go-v2/service/backup v1.57.5
 	github.com/aws/aws-sdk-go-v2/service/batch v1.65.5
+	github.com/aws/aws-sdk-go-v2/service/bedrock v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
@@ -33,6 +35,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.21
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2
+	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.38.11
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/efs v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
@@ -66,6 +69,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.45.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2
 	github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4
+	github.com/aws/aws-sdk-go-v2/service/sagemaker v1.250.2
 	github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/securityhub v1.71.5

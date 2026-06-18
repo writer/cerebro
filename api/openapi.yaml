@@ -63,6 +63,247 @@ paths:
       responses:
         '200':
           description: Embedded OpenAPI YAML.
+  /.well-known/agent-card.json:
+    get:
+      operationId: getA2AAgentCard
+      summary: Get public A2A Agent Card
+      tags:
+        - Platform
+      security: []
+      responses:
+        '200':
+          description: Public Agent2Agent discovery document with supported interfaces, skills, authentication, and capability metadata.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A2AAgentCard'
+  /.well-known/agent.json:
+    get:
+      operationId: getLegacyA2AAgentCard
+      summary: Get legacy A2A Agent Card alias
+      tags:
+        - Platform
+      security: []
+      responses:
+        '200':
+          description: Compatibility alias for clients that still discover A2A metadata from /.well-known/agent.json.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A2AAgentCard'
+  /api/v1/a2a:
+    post:
+      operationId: callA2AJSONRPC
+      summary: Call the authenticated A2A JSON-RPC contract and work endpoint
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/A2AJSONRPCRequest'
+      responses:
+        '200':
+          description: JSON-RPC response. SendMessage returns contract discovery by default and can create durable agent-evidence-packet tasks; GetTask and ListTasks read tenant-scoped A2A task records. Streaming, cancellation, and push methods return A2A UnsupportedOperationError until backed by replayable runtime adapters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A2AJSONRPCResponse'
+        '400':
+          description: Malformed JSON-RPC request body.
+  /api/v1/agent-platform/contract:
+    get:
+      operationId: getAgentPlatformContract
+      summary: Get agent platform contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Cerebro agent platform domains, capabilities, runtime events, connector infrastructure, and provenance requirements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformContract'
+  /api/v1/agent-platform/capabilities:
+    get:
+      operationId: listAgentPlatformCapabilities
+      summary: List governed agent platform capabilities
+      tags:
+        - Platform
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: owner
+          in: query
+          schema:
+            type: string
+        - name: risk
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+        - name: default_on
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Filtered capability registry with operational totals.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformCapabilityRegistry'
+        '400':
+          description: Invalid capability filter.
+  /api/v1/agent-platform/capability-decisions:
+    post:
+      operationId: decideAgentPlatformCapability
+      summary: Decide whether an agent platform capability is selectable
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformCapabilityDecisionRequest'
+      responses:
+        '200':
+          description: Capability selection decision with scopes, eval, connector, runtime event, and provenance gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformCapabilityDecision'
+        '400':
+          description: Invalid capability decision request.
+        '404':
+          description: Capability was not found.
+  /api/v1/agent-platform/preflight:
+    post:
+      operationId: preflightAgentPlatformRun
+      summary: Resolve agent run preconditions
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformPreflightRequest'
+      responses:
+        '200':
+          description: Tenant-scoped capability, graph, connector, policy, and write-back preflight envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformPreflight'
+        '400':
+          description: Invalid preflight request.
+        '403':
+          description: Tenant or graph scope is not allowed.
+  /api/v1/agent-platform/security-control-plane:
+    get:
+      operationId: getAgentPlatformSecurityControlPlane
+      summary: Get security agent control plane
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Security-agent evidence, verifier, role, action, eval, memory, connector, and simulation contracts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+  /api/v1/event-subscriptions/contract:
+    get:
+      operationId: getEventSubscriptionContract
+      summary: Get outbound event subscription contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Supported outbound webhook event types, delivery headers, signing, retry, dead-letter, and idempotency semantics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubscriptionContract'
+  /api/v1/idempotency-contract:
+    get:
+      operationId: getIdempotencyContract
+      summary: Get public idempotency contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Public Idempotency-Key semantics for retry-safe mutating requests and outbound webhook deliveries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdempotencyContract'
+  /api/v1/agent-platform/evidence-packets:
+    post:
+      operationId: buildAgentPlatformEvidencePacket
+      summary: Build a security agent evidence packet
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformEvidencePacketRequest'
+      responses:
+        '200':
+          description: Tenant-scoped evidence packet with preflight, recommended agent profiles, verifier results, action stages, memory, connector gates, and simulation plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformEvidencePacket'
+        '400':
+          description: Invalid evidence packet request.
+        '403':
+          description: Tenant or graph scope is not allowed.
+  /api/v1/agent-platform/graph/reason:
+    post:
+      operationId: reasonOverAgentPlatformGraph
+      summary: Reason over the graph for an agent
+      tags:
+        - Platform
+        - Graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformGraphReasonRequest'
+      responses:
+        '200':
+          description: Structured graph reasoning envelope with query plan, validation, rows, graph context, citations, and provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformGraphReasonResponse'
+        '400':
+          description: Invalid graph reasoning request.
+        '403':
+          description: Tenant or scope is not allowed.
+        '503':
+          description: Graph or LLM runtime unavailable.
   /api/v1/mcp:
     get:
       summary: Reject MCP stateful event-stream transport
@@ -152,7 +393,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog with runtime counts, credential capability state, backend-advertised connection methods, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
+          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Entries include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
@@ -166,7 +407,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Connector catalog entry, runtime health summary, setup guidance, safe connection summaries with typed scope policies, resource scope support notes, and recent activity.
+          description: Connector catalog entry with catalog status and classifier metadata, plus runtime health summary, setup guidance, safe connection summaries with typed scope policies, resource scope support notes, and recent activity for executable sources. Catalog-only definitions return empty runtime health/activity until generated or promoted into a Source Runtime SDK source.
         '404':
           description: Connector source was not found.
   /connectors/{sourceID}/activity:
@@ -191,6 +432,307 @@ paths:
           description: Safe sync and graph activity derived from connector runtime health.
         '404':
           description: Connector source was not found.
+  /connectors/{sourceID}/credentials:
+    get:
+      summary: List connector credential metadata
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: runtime_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - valid
+              - invalid
+              - revoked
+              - rotating
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+      responses:
+        '200':
+          description: Credential metadata for a tenant/source/runtime. Plaintext credentials and sealed blobs are never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - tenant_id
+                  - credentials
+                properties:
+                  source_id:
+                    type: string
+                  tenant_id:
+                    type: string
+                  runtime_id:
+                    type: string
+                  credentials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectorCredential'
+        '400':
+          description: Tenant or query filter was invalid.
+        '403':
+          description: Caller is not allowed to inspect credentials for the requested tenant.
+        '404':
+          description: Connector source was not found.
+        '503':
+          description: Connector credential vault is unavailable.
+    post:
+      summary: Broker connector credentials
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - runtime_id
+                - encrypted_credentials
+              properties:
+                runtime_id:
+                  type: string
+                  description: Runtime namespace the credential references will be bound to.
+                tenant_id:
+                  type: string
+                  description: Tenant namespace for the credential. May be omitted when the caller is already tenant-scoped by auth context.
+                credential_store_id:
+                  type: string
+                  description: Credential store selected for encrypted browser submission.
+                  default: cerebro_vault
+                  enum:
+                    - cerebro_vault
+                idempotency_key:
+                  type: string
+                  description: Optional caller-supplied key used to safely retry one credential submission for the same tenant, source, and runtime.
+                encrypted_credentials:
+                  type: object
+                  description: Browser-encrypted credential fields. The backend unwraps this payload, seals it in the connector vault, and returns only credential references.
+                  required:
+                    - key_id
+                    - algorithm
+                    - wrapped_key
+                    - nonce
+                    - ciphertext
+                  properties:
+                    key_id:
+                      type: string
+                    algorithm:
+                      type: string
+                      enum:
+                        - RSA-OAEP-256+A256GCM
+                    wrapped_key:
+                      type: string
+                    nonce:
+                      type: string
+                    ciphertext:
+                      type: string
+      responses:
+        '201':
+          description: Credential sealed in the connector vault with metadata and non-secret field references. The response never includes plaintext credential values or sealed secret blobs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - tenant_id
+                  - runtime_id
+                  - status
+                  - credential
+                  - credential_references
+                properties:
+                  source_id:
+                    type: string
+                  tenant_id:
+                    type: string
+                  runtime_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - stored
+                      - existing
+                  credential:
+                    $ref: '#/components/schemas/ConnectorCredential'
+                  credential_references:
+                    type: object
+                    description: Field-to-reference map that can be passed as connector credential_references without exposing the underlying secret.
+                    additionalProperties:
+                      type: string
+        '200':
+          description: Existing credential metadata and references returned for a replayed idempotent request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
+        '400':
+          description: Request shape, credential payload context, or credential fields were invalid.
+        '403':
+          description: Caller is not allowed to write credentials for the requested tenant or runtime.
+        '404':
+          description: Connector source was not found.
+        '503':
+          description: Connector credential transport or vault is unavailable.
+  /connectors/{sourceID}/credentials/{credentialID}:
+    get:
+      summary: Get connector credential metadata
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: credentialID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Credential metadata and recent broker audit events. Plaintext credentials and sealed blobs are never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - credential
+                properties:
+                  source_id:
+                    type: string
+                  credential:
+                    $ref: '#/components/schemas/ConnectorCredential'
+                  audit:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectorCredentialAuditEvent'
+        '403':
+          description: Caller is not allowed to inspect credentials for the credential tenant.
+        '404':
+          description: Connector source or credential was not found.
+        '503':
+          description: Connector credential vault is unavailable.
+  /connectors/{sourceID}/credentials/{credentialID}/rotate:
+    post:
+      summary: Rotate connector credential
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: credentialID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - encrypted_credentials
+              properties:
+                tenant_id:
+                  type: string
+                runtime_id:
+                  type: string
+                credential_store_id:
+                  type: string
+                  default: cerebro_vault
+                  enum:
+                    - cerebro_vault
+                idempotency_key:
+                  type: string
+                revoke_previous:
+                  type: boolean
+                  description: When true, revokes the previous credential after the replacement is sealed.
+                encrypted_credentials:
+                  $ref: '#/components/schemas/EncryptedConnectorCredentialPayload'
+      responses:
+        '201':
+          description: Replacement credential sealed and linked to the previous credential.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
+        '200':
+          description: Existing replacement credential returned for a replayed idempotent request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredentialBrokerResponse'
+        '400':
+          description: Request shape, credential payload context, or credential fields were invalid.
+        '403':
+          description: Caller is not allowed to rotate credentials for the credential tenant.
+        '404':
+          description: Connector source or credential was not found.
+        '503':
+          description: Connector credential transport or vault is unavailable.
+  /connectors/{sourceID}/credentials/{credentialID}/revoke:
+    post:
+      summary: Revoke connector credential
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+        - name: credentialID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Credential marked revoked. Runtime resolution rejects future use of this credential reference.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - source_id
+                  - credential
+                properties:
+                  source_id:
+                    type: string
+                  credential:
+                    $ref: '#/components/schemas/ConnectorCredential'
+        '400':
+          description: Request shape was invalid.
+        '403':
+          description: Caller is not allowed to revoke credentials for the credential tenant.
+        '404':
+          description: Connector source or credential was not found.
+        '503':
+          description: Connector credential vault is unavailable.
   /connectors/credential-key:
     get:
       summary: Get connector credential transit key
@@ -199,6 +741,122 @@ paths:
       responses:
         '200':
           description: Public RSA-OAEP key metadata used to encrypt connector credentials before submission.
+  /connector-definitions:
+    get:
+      summary: List dynamic connector definitions
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: stage
+          in: query
+          schema:
+            type: string
+            enum: [draft, sandbox, pilot, approved, certified]
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Tenant-local dynamic connector definitions stored as versioned declarative manifests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionListResponse'
+    post:
+      summary: Create or update a dynamic connector definition
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinition'
+      responses:
+        '200':
+          description: Stored connector definition with validation and promotion gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/validate:
+    post:
+      summary: Validate a dynamic connector definition without persisting it
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinition'
+      responses:
+        '200':
+          description: Definition readiness checks and next promotion gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionValidationResponse'
+  /connector-definitions/{definitionID}:
+    get:
+      summary: Get a dynamic connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      responses:
+        '200':
+          description: Stored connector definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionResponse'
+        '404':
+          description: Connector definition was not found.
+    put:
+      summary: Replace a dynamic connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinition'
+      responses:
+        '200':
+          description: Updated connector definition current version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/{definitionID}/promote:
+    post:
+      summary: Promote a dynamic connector definition lifecycle stage
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_stage:
+                  type: string
+                  enum: [sandbox, pilot, approved, certified]
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Promotion result with the updated definition when gates pass.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionPromotionResponse'
   /connectors/{sourceID}/preflight:
     post:
       summary: Preflight a connector runtime without persisting it
@@ -255,7 +913,7 @@ paths:
                   description: Required only when auth_method is encrypted_submission. The response never returns secret values.
       responses:
         '200':
-          description: Provider-neutral readiness checks, credential-boundary summary, and source-time resource scope preview. Status is ready, warning, or blocked; blocked preflight checks are returned as data without persisting credentials or runtimes.
+          description: Provider-neutral readiness checks, credential-boundary summary, non-secret field-level reference templates, and source-time resource scope preview. Status is ready, warning, or blocked; blocked preflight checks are returned as data without persisting credentials or runtimes.
   /connectors/{sourceID}/connections:
     post:
       summary: Create a credentialed connector runtime
@@ -309,7 +967,7 @@ paths:
                     type: string
                 credential_references:
                   type: object
-                  description: Non-secret credential references for environment-managed or external-reference methods. Values must be server-resolvable references such as env:CEREBRO_SOURCE_<SOURCE>_<FIELD>; secret-store CLIs/controllers are expected to populate those environment values outside the browser.
+                  description: Non-secret credential references for environment-managed or external-reference methods. Values must use prefixes advertised by /connectors credential_stores metadata or generated by preflight credential_boundary.reference_templates, such as env:CEREBRO_SOURCE_<SOURCE>_<FIELD> or scoped AWS Secrets Manager references like aws-sm:us-east-1:cerebro/<tenant>/<source>/<runtime>/credentials#<field>. The browser must never submit plaintext secret values for reference-backed methods.
                   additionalProperties:
                     type: string
                 scope_policy:
@@ -910,6 +1568,16 @@ paths:
       responses:
         '200':
           description: Updated finding.
+  /findings/{findingID}/external-refs:
+    post:
+      summary: Link finding external lifecycle reference
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      responses:
+        '200':
+          description: Updated finding.
   /findings/{findingID}/assign:
     put:
       summary: Assign finding
@@ -1150,6 +1818,130 @@ paths:
       responses:
         '200':
           description: Evidence items with finding context.
+  /grc/control-archetypes:
+    get:
+      summary: Control pack archetypes
+      tags:
+        - GRC
+      responses:
+        '200':
+          description: Reusable auditor-facing control archetypes for custom framework generation.
+  /grc/control-profiles:
+    get:
+      summary: Control profile coverage
+      tags:
+        - GRC
+      parameters:
+        - name: profile
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Built-in control profiles with coverage, readiness, audit plan, and evidence plan metadata.
+  /grc/control-coverage:
+    get:
+      summary: Control coverage index
+      tags:
+        - GRC
+      parameters:
+        - name: profile
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Generated compliance coverage index, optionally filtered to one profile.
+  /grc/control-packs/preview:
+    post:
+      summary: Preview generated control pack
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extension_id:
+                  type: string
+                extension_name:
+                  type: string
+                description:
+                  type: string
+                framework_id:
+                  type: string
+                framework_name:
+                  type: string
+                framework_version:
+                  type: string
+                profile_id:
+                  type: string
+                profile_name:
+                  type: string
+                archetype_ids:
+                  type: array
+                  items:
+                    type: string
+                include_profiles:
+                  type: array
+                  items:
+                    type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Generated extension, controls, profiles, coverage summary, and YAML file payloads.
+        '400':
+          description: Invalid custom framework request or unresolved archetype.
+  /grc/control-packs:
+    post:
+      summary: Generate control pack
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extension_id:
+                  type: string
+                extension_name:
+                  type: string
+                description:
+                  type: string
+                framework_id:
+                  type: string
+                framework_name:
+                  type: string
+                framework_version:
+                  type: string
+                profile_id:
+                  type: string
+                profile_name:
+                  type: string
+                archetype_ids:
+                  type: array
+                  items:
+                    type: string
+                include_profiles:
+                  type: array
+                  items:
+                    type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Generated extension, controls, profiles, coverage summary, and YAML file payloads for a stateless export. No resource is persisted.
+        '400':
+          description: Invalid custom framework request or unresolved archetype.
   /grc/inventory/categories:
     get:
       summary: Inventory categories
@@ -1188,9 +1980,21 @@ paths:
           schema:
             type: string
             enum: [in_scope, out_of_scope, all]
+        - name: review_state
+          in: query
+          description: Derived GRC review disposition for the asset.
+          schema:
+            type: string
+            enum: [baseline, needs_review, reported_issue, out_of_scope, all]
+        - name: accountability_state
+          in: query
+          description: Derived accountability requirement for the asset.
+          schema:
+            type: string
+            enum: [not_required, known, candidate, required_missing, disputed, all]
       responses:
         '200':
-          description: Inventory asset list with risk, ownership, and GRC purview state.
+          description: Inventory asset list with risk, review disposition, accountability, and GRC purview state.
   /grc/inventory/assets/detail:
     get:
       summary: Inventory asset detail
@@ -1252,6 +2056,9 @@ paths:
                   type: string
                 source_id:
                   type: string
+                runtime_id:
+                  type: string
+                  description: Source runtime to update with the concrete resource exclusion. If omitted, matching runtimes for the source may be updated.
                 scope_state:
                   type: string
                   enum: [in_scope, out_of_scope]
@@ -1263,7 +2070,7 @@ paths:
                     type: string
       responses:
         '200':
-          description: Updated GRC purview state for one inventory asset.
+          description: Updated GRC purview state for one inventory asset and propagated any concrete resource exclusion to source-runtime incremental fetch policy.
   /grc/inventory/asset-reports:
     get:
       summary: Inventory asset reports
@@ -1383,6 +2190,151 @@ paths:
       responses:
         '200':
           description: Graph neighborhood and related findings for one entity.
+  /grc/control-packets:
+    get:
+      summary: GRC control evidence packet for a compliance profile
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional control ID filter.
+      responses:
+        '200':
+          description: Profile metadata, posture summary, controls, findings, and evidence expectations.
+    post:
+      summary: GRC control evidence packet for a generated custom control profile
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional generated framework filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional generated control ID filter.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stateless custom control-pack build request.
+      responses:
+        '200':
+          description: Generated YAML preview plus live evidence packet for the generated profile.
+  /grc/control-packets/detail:
+    get:
+      summary: GRC control evidence detail for one control
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Control ID to open.
+      responses:
+        '200':
+          description: Profile metadata and exactly one detailed control evidence packet.
+  /grc/control-packets/export:
+    get:
+      summary: Export a GRC control evidence packet
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional control ID filter.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [markdown, json]
+          description: Export format. Defaults to markdown.
+      responses:
+        '200':
+          description: Markdown or JSON control evidence packet export.
+    post:
+      summary: Export a generated custom GRC control evidence packet
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional generated framework filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional generated control ID filter.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [markdown, json]
+          description: Export format. Defaults to markdown.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stateless custom control-pack build request.
+      responses:
+        '200':
+          description: Markdown or JSON export for the generated control evidence packet.
   /grc/audit-packets/{packetID}:
     get:
       summary: GRC audit packet for one finding
@@ -2442,6 +3394,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeResponseCapabilitiesResponse'
+  /connectors/coverage:
+    get:
+      summary: Report connector coverage and high-value blind spots
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: source_id
+          in: query
+          schema:
+            type: string
+          description: Optional connector/source identifier to scope the report.
+      responses:
+        '200':
+          description: Tenant-scoped connector coverage report with per-dimension state, summaries, and blind spots.
+  /platform/graph/provenance:
+    get:
+      summary: Explain graph entity projection provenance
+      tags:
+        - Platform
+      parameters:
+        - name: urn
+          in: query
+          schema:
+            type: string
+          required: true
+          description: Tenant-bearing Cerebro URN to explain.
+      responses:
+        '200':
+          description: Projection provenance for one graph entity, including projection class, source/runtime identifiers, attributes, and freshness signals.
+  /grc/audit-packets/{packetID}/export:
+    get:
+      operationId: exportGRCAuditPacket
+      summary: Export a GRC audit packet
+      tags:
+        - GRC
+      parameters:
+        - name: packetID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum:
+              - markdown
+              - json
+          description: Optional export format. Defaults to markdown.
+      responses:
+        '200':
+          description: Exported audit packet content.
+          content:
+            text/markdown:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
 
 components:
   securitySchemes:
@@ -2451,6 +3463,12 @@ components:
   parameters:
     sourceID:
       name: sourceID
+      in: path
+      required: true
+      schema:
+        type: string
+    definitionID:
+      name: definitionID
       in: path
       required: true
       schema:
@@ -2525,6 +3543,1948 @@ components:
         type: integer
         minimum: 1
   schemas:
+    A2AAgentCard:
+      type: object
+      required:
+        - name
+        - description
+        - supportedInterfaces
+        - provider
+        - version
+        - capabilities
+        - defaultInputModes
+        - defaultOutputModes
+        - skills
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        supportedInterfaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/A2AAgentInterface'
+        provider:
+          type: object
+          required: [organization]
+          properties:
+            organization:
+              type: string
+            url:
+              type: string
+              format: uri
+        version:
+          type: string
+        documentationUrl:
+          type: string
+          format: uri
+        capabilities:
+          $ref: '#/components/schemas/A2AAgentCapabilities'
+        securitySchemes:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        security:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+        defaultInputModes:
+          type: array
+          items:
+            type: string
+        defaultOutputModes:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/A2AAgentSkill'
+    A2AAgentInterface:
+      type: object
+      required:
+        - url
+        - protocolBinding
+        - protocolVersion
+      properties:
+        url:
+          type: string
+          format: uri
+        protocolBinding:
+          type: string
+        protocolVersion:
+          type: string
+    A2AAgentCapabilities:
+      type: object
+      required:
+        - streaming
+        - pushNotifications
+        - stateTransitionHistory
+        - extendedAgentCard
+      properties:
+        streaming:
+          type: boolean
+        pushNotifications:
+          type: boolean
+        stateTransitionHistory:
+          type: boolean
+        extendedAgentCard:
+          type: boolean
+        extensions:
+          type: array
+          items:
+            type: object
+            required: [uri, description, required]
+            properties:
+              uri:
+                type: string
+                format: uri
+              description:
+                type: string
+              required:
+                type: boolean
+    A2AAgentSkill:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - tags
+        - inputModes
+        - outputModes
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        examples:
+          type: array
+          items:
+            type: string
+        inputModes:
+          type: array
+          items:
+            type: string
+        outputModes:
+          type: array
+          items:
+            type: string
+    A2AJSONRPCRequest:
+      type: object
+      required:
+        - jsonrpc
+        - method
+      properties:
+        jsonrpc:
+          type: string
+          enum: ['2.0']
+        method:
+          type: string
+          enum:
+            - SendMessage
+            - ListTasks
+            - GetTask
+            - SendStreamingMessage
+            - CancelTask
+            - SubscribeToTask
+            - CreateTaskPushNotificationConfig
+            - GetTaskPushNotificationConfig
+            - ListTaskPushNotificationConfigs
+            - DeleteTaskPushNotificationConfig
+            - GetExtendedAgentCard
+        params:
+          type: object
+          additionalProperties: true
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+    A2AJSONRPCResponse:
+      type: object
+      required:
+        - jsonrpc
+      properties:
+        jsonrpc:
+          type: string
+          enum: ['2.0']
+        result:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: '#/components/schemas/A2AJSONRPCError'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+    A2AJSONRPCError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+    A2AProtocolContract:
+      type: object
+      required:
+        - protocol_version
+        - discovery_paths
+        - jsonrpc_path
+        - supported_methods
+        - unsupported_methods
+        - authentication
+        - controls
+      properties:
+        protocol_version:
+          type: string
+        discovery_paths:
+          type: array
+          items:
+            type: string
+        jsonrpc_path:
+          type: string
+        supported_methods:
+          type: array
+          items:
+            type: string
+        unsupported_methods:
+          type: array
+          items:
+            type: string
+        authentication:
+          type: array
+          items:
+            type: string
+        controls:
+          type: array
+          items:
+            type: string
+    EventSubscriptionContract:
+      type: object
+      required:
+        - version
+        - resource
+        - summary
+        - event_types
+        - delivery
+        - signing
+        - retry
+        - idempotency
+        - required_controls
+      properties:
+        version:
+          type: string
+        resource:
+          type: string
+        summary:
+          type: string
+        event_types:
+          type: array
+          items:
+            type: object
+            required: [name, family, description, payload_fields]
+            properties:
+              name:
+                type: string
+              family:
+                type: string
+              description:
+                type: string
+              payload_fields:
+                type: array
+                items:
+                  type: string
+        delivery:
+          type: object
+          additionalProperties: true
+        signing:
+          type: object
+          additionalProperties: true
+        retry:
+          type: object
+          additionalProperties: true
+        idempotency:
+          $ref: '#/components/schemas/IdempotencyContract'
+        required_controls:
+          type: array
+          items:
+            type: string
+    IdempotencyContract:
+      type: object
+      required:
+        - version
+        - header
+        - max_length_bytes
+        - key_scope
+        - conflict_status
+        - replay_headers
+        - semantics
+        - routes
+      properties:
+        version:
+          type: string
+        header:
+          type: string
+          enum:
+            - Idempotency-Key
+        max_length_bytes:
+          type: integer
+          minimum: 1
+        key_scope:
+          type: array
+          items:
+            type: string
+        conflict_status:
+          type: integer
+          enum:
+            - 409
+        replay_headers:
+          type: array
+          items:
+            type: string
+        semantics:
+          type: array
+          items:
+            type: string
+        routes:
+          type: array
+          items:
+            type: object
+            required: [method, path, requirement, scope, replay]
+            properties:
+              method:
+                type: string
+              path:
+                type: string
+              requirement:
+                type: string
+              scope:
+                type: string
+              replay:
+                type: string
+    AgentPlatformContract:
+      type: object
+      required:
+        - version
+        - domains
+        - invariants
+        - capabilities
+        - runtime_events
+        - provenance_requirements
+        - connector_infrastructure
+        - security_control_plane
+        - a2a
+        - event_subscriptions
+        - idempotency
+      properties:
+        version:
+          type: string
+        domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformDomain'
+        invariants:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformInvariant'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapability'
+        runtime_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformRuntimeEvent'
+        provenance_requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformProvenanceRequirement'
+        connector_infrastructure:
+          $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
+        security_control_plane:
+          $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+        a2a:
+          $ref: '#/components/schemas/A2AProtocolContract'
+        event_subscriptions:
+          $ref: '#/components/schemas/EventSubscriptionContract'
+        idempotency:
+          $ref: '#/components/schemas/IdempotencyContract'
+    AgentPlatformCapabilityRegistry:
+      type: object
+      required:
+        - version
+        - filters
+        - capabilities
+        - totals
+      properties:
+        version:
+          type: string
+        filters:
+          $ref: '#/components/schemas/AgentPlatformCapabilityRegistryFilter'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapability'
+        totals:
+          $ref: '#/components/schemas/AgentPlatformCapabilityRegistryTotals'
+    AgentPlatformCapabilityRegistryFilter:
+      type: object
+      properties:
+        domain_id:
+          type: string
+        kind:
+          type: string
+        owner:
+          type: string
+        risk:
+          type: string
+          enum: [low, medium, high]
+        default_on:
+          type: boolean
+    AgentPlatformCapabilityRegistryTotals:
+      type: object
+      required:
+        - capabilities
+        - default_on
+        - default_off
+        - by_domain
+        - by_risk
+      properties:
+        capabilities:
+          type: integer
+        default_on:
+          type: integer
+        default_off:
+          type: integer
+        by_domain:
+          type: object
+          additionalProperties:
+            type: integer
+        by_risk:
+          type: object
+          additionalProperties:
+            type: integer
+    AgentPlatformCapabilityDecisionRequest:
+      type: object
+      required:
+        - capability_id
+      properties:
+        capability_id:
+          type: string
+        connector_readiness:
+          type: object
+          additionalProperties:
+            type: string
+        eval_status_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        allow_preview:
+          type: boolean
+        selection_reason:
+          type: string
+        provenance_requirement:
+          type: string
+    AgentPlatformPreflightRequest:
+      type: object
+      properties:
+        capability_ids:
+          type: array
+          items:
+            type: string
+          description: Defaults to graph-reasoning when omitted.
+        question:
+          type: string
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant to focus graph planning.
+        model:
+          type: string
+        connector_readiness:
+          type: object
+          additionalProperties:
+            type: string
+        eval_status_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        allow_preview:
+          type: boolean
+        selection_reason:
+          type: string
+        provenance_requirement:
+          type: string
+    AgentPlatformPreflight:
+      type: object
+      required:
+        - version
+        - enabled
+        - reason
+        - blockers
+        - selected_capabilities
+        - capability_decisions
+        - graph_context
+        - connector_context
+        - security_control_plane
+        - policy
+        - write_back
+        - runtime_events
+        - provenance
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        question:
+          type: string
+        scope_urn:
+          type: string
+        model:
+          type: string
+        enabled:
+          type: boolean
+        reason:
+          type: string
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecisionBlocker'
+        selected_capabilities:
+          type: array
+          items:
+            type: string
+        capability_decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecision'
+        graph_context:
+          $ref: '#/components/schemas/AgentPlatformGraphPlanningContext'
+        connector_context:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformConnectorGraphNode'
+        coverage_context:
+          $ref: '#/components/schemas/AgentPlatformCoverageContext'
+        security_control_plane:
+          $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+        policy:
+          $ref: '#/components/schemas/AgentPlatformPolicyDecision'
+        write_back:
+          $ref: '#/components/schemas/AgentPlatformWriteBackContract'
+        runtime_events:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: array
+          items:
+            type: string
+    AgentPlatformSecurityControlPlane:
+      type: object
+      required:
+        - version
+        - evidence_packet
+        - agent_profiles
+        - verifier_layer
+        - action_ladder
+        - eval_suite
+        - security_memory
+        - connector_tool_gates
+        - simulation_harness
+        - integration_strategies
+      properties:
+        version:
+          type: string
+        evidence_packet:
+          type: object
+          additionalProperties: true
+        agent_profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        verifier_layer:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        action_ladder:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        eval_suite:
+          type: object
+          additionalProperties: true
+        security_memory:
+          type: object
+          additionalProperties: true
+        connector_tool_gates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        simulation_harness:
+          type: object
+          additionalProperties: true
+        integration_strategies:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AgentPlatformEvidencePacketRequest:
+      type: object
+      properties:
+        question:
+          type: string
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant to focus packet context.
+        model:
+          type: string
+        capability_ids:
+          type: array
+          items:
+            type: string
+        agent_profile_ids:
+          type: array
+          items:
+            type: string
+        connector_readiness:
+          type: object
+          additionalProperties:
+            type: string
+        eval_status_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        allow_preview:
+          type: boolean
+        action:
+          $ref: '#/components/schemas/AgentPlatformEvidencePacketAction'
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        memory_hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformSecurityMemoryHint'
+    AgentPlatformEvidencePacketAction:
+      type: object
+      properties:
+        stage:
+          type: string
+          enum: [observe, explain, recommend, dry_run, approve, execute, verify, close_loop]
+        target_urns:
+          type: array
+          items:
+            type: string
+        human_approved:
+          type: boolean
+    AgentPlatformSecurityMemoryHint:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+        urn:
+          type: string
+        note:
+          type: string
+    AgentPlatformEvidencePacket:
+      type: object
+      required:
+        - version
+        - generated_at
+        - preflight
+        - evidence_refs
+        - recommended_agents
+        - verifier_results
+        - action_ladder
+        - eval_checklist
+        - security_memory
+        - connector_tool_gates
+        - simulation_plan
+        - confidence
+        - required_write_back
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        question:
+          type: string
+        scope_urn:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        preflight:
+          $ref: '#/components/schemas/AgentPlatformPreflight'
+        evidence_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recommended_agents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        verifier_results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        action_ladder:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        eval_checklist:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        security_memory:
+          type: object
+          additionalProperties: true
+        connector_tool_gates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        simulation_plan:
+          type: object
+          additionalProperties: true
+        confidence:
+          type: object
+          additionalProperties: true
+        required_write_back:
+          type: array
+          items:
+            type: string
+    AgentPlatformCapabilityDecision:
+      type: object
+      required:
+        - version
+        - capability_id
+        - capability_version
+        - domain_id
+        - enabled
+        - reason
+        - blockers
+        - required_scopes
+        - runtime_events
+        - provenance
+        - eval
+        - review
+      properties:
+        version:
+          type: string
+        capability_id:
+          type: string
+        capability_version:
+          type: string
+        domain_id:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        enabled:
+          type: boolean
+        reason:
+          type: string
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecisionBlocker'
+        required_scopes:
+          type: array
+          items:
+            type: string
+        missing_scopes:
+          type: array
+          items:
+            type: string
+        required_connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformConnectorDependency'
+        runtime_events:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: array
+          items:
+            type: string
+        eval:
+          $ref: '#/components/schemas/AgentPlatformCapabilityEvalGate'
+        review:
+          $ref: '#/components/schemas/AgentPlatformReviewStatus'
+        connector_infrastructure:
+          $ref: '#/components/schemas/AgentPlatformConnectorInfrastructure'
+    AgentPlatformCapabilityDecisionBlocker:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+    AgentPlatformCapabilityEvalGate:
+      type: object
+      required:
+        - required
+        - status
+        - passing
+        - scenario_sets
+        - rubrics
+      properties:
+        required:
+          type: boolean
+        status:
+          type: string
+        passing:
+          type: boolean
+        scenario_sets:
+          type: array
+          items:
+            type: string
+        rubrics:
+          type: array
+          items:
+            type: string
+    AgentPlatformGraphPlanningContext:
+      type: object
+      required:
+        - reasoning_surface
+        - read_only
+        - citation_required
+        - provenance_required
+        - budget
+        - query_modes
+        - provenance_surfaces
+      properties:
+        tenant_id:
+          type: string
+        scope_urn:
+          type: string
+        scope_tenant_id:
+          type: string
+        reasoning_surface:
+          type: string
+        read_only:
+          type: boolean
+        citation_required:
+          type: boolean
+        provenance_required:
+          type: boolean
+        budget:
+          $ref: '#/components/schemas/AgentPlatformContextBudget'
+        query_modes:
+          type: array
+          items:
+            type: string
+        provenance_surfaces:
+          type: array
+          items:
+            type: string
+    AgentPlatformCoverageContext:
+      type: object
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        total_dimensions:
+          type: integer
+        high_value_dimensions:
+          type: integer
+        blind_spot_count:
+          type: integer
+        unconfigured_count:
+          type: integer
+        stale_count:
+          type: integer
+        failed_count:
+          type: integer
+        unsupported_count:
+          type: integer
+        partial_count:
+          type: integer
+        top_blind_spots:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AgentPlatformContextBudget:
+      type: object
+      required:
+        - max_rows
+        - max_depth
+        - max_children
+      properties:
+        max_rows:
+          type: integer
+        max_depth:
+          type: integer
+        max_children:
+          type: integer
+    AgentPlatformConnectorGraphNode:
+      type: object
+      required:
+        - source_id
+        - node_urn
+        - purpose
+        - auth_models
+        - required_scopes
+        - token_owner
+        - credential_boundary
+        - oauth_surface
+        - mcp_surface
+        - readiness
+        - required
+        - satisfied
+      properties:
+        source_id:
+          type: string
+        node_urn:
+          type: string
+        oauth_node_urn:
+          type: string
+        tenant_id:
+          type: string
+        purpose:
+          type: string
+        auth_models:
+          type: array
+          items:
+            type: string
+        required_scopes:
+          type: array
+          items:
+            type: string
+        token_owner:
+          type: string
+        credential_boundary:
+          type: string
+        oauth_surface:
+          type: string
+        mcp_surface:
+          type: string
+        readiness:
+          type: string
+        required:
+          type: boolean
+        satisfied:
+          type: boolean
+    AgentPlatformPolicyDecision:
+      type: object
+      required:
+        - passing
+        - tenant_forced
+        - checks
+      properties:
+        passing:
+          type: boolean
+        tenant_forced:
+          type: boolean
+        tenant_id:
+          type: string
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformPolicyCheck'
+    AgentPlatformPolicyCheck:
+      type: object
+      required:
+        - id
+        - status
+        - message
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pass, blocked, not_applicable]
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+    AgentPlatformWriteBackContract:
+      type: object
+      required:
+        - required
+        - trace_id_required
+        - required_events
+        - graph_updates
+        - provenance_surfaces
+      properties:
+        required:
+          type: boolean
+        trace_id_required:
+          type: boolean
+        required_events:
+          type: array
+          items:
+            type: string
+        graph_updates:
+          type: array
+          items:
+            type: string
+        provenance_surfaces:
+          type: array
+          items:
+            type: string
+    AgentPlatformGraphReasonResponse:
+      type: object
+      required:
+        - question
+        - tenant_id
+        - model
+        - rows
+        - citations
+        - provenance
+      properties:
+        trace_id:
+          type: string
+        question:
+          type: string
+        tenant_id:
+          type: string
+        scope_urn:
+          type: string
+        model:
+          type: string
+        rationale:
+          type: string
+        probe:
+          type: object
+          additionalProperties: true
+        query_plan:
+          $ref: '#/components/schemas/AgentPlatformGraphQueryPlanEvent'
+        cypher:
+          $ref: '#/components/schemas/AgentPlatformGraphCypherEvent'
+        recovery:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        graph:
+          $ref: '#/components/schemas/GetEntityNeighborhoodResponse'
+        answer_markdown:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformGraphCitation'
+        citation_validation:
+          $ref: '#/components/schemas/AgentPlatformGraphCitationValidation'
+        unsupported_query:
+          type: object
+          additionalProperties: true
+        progress:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformGraphProgressEvent'
+        timings:
+          $ref: '#/components/schemas/AgentPlatformGraphStageTimings'
+        preflight:
+          $ref: '#/components/schemas/AgentPlatformPreflight'
+        provenance:
+          $ref: '#/components/schemas/AgentPlatformGraphReasonProvenance'
+    AgentPlatformGraphReasonRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant to focus graph reasoning.
+        model:
+          type: string
+          default: claude-sonnet-4-6
+        history:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [user, assistant]
+              content:
+                type: string
+    AgentPlatformGraphQueryPlanEvent:
+      type: object
+      required:
+        - plan
+        - source
+        - deterministic
+        - corrected
+      properties:
+        plan:
+          $ref: '#/components/schemas/AgentPlatformGraphQueryPlan'
+        diagnostics:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        source:
+          type: string
+        deterministic:
+          type: boolean
+        corrected:
+          type: boolean
+    AgentPlatformGraphQueryPlan:
+      type: object
+      required:
+        - intent
+      properties:
+        intent:
+          type: string
+        confidence:
+          type: number
+        scope_urn:
+          type: string
+        limit:
+          type: integer
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+        group_by:
+          type: string
+    AgentPlatformGraphCypherEvent:
+      type: object
+      required:
+        - cypher
+        - validator
+      properties:
+        cypher:
+          type: string
+        validator:
+          $ref: '#/components/schemas/AgentPlatformGraphValidatorResult'
+    AgentPlatformGraphValidatorResult:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        code:
+          type: string
+        reason:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+    AgentPlatformGraphCitation:
+      type: object
+      required:
+        - urn
+        - span
+      properties:
+        urn:
+          type: string
+        span:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: integer
+    AgentPlatformGraphCitationValidation:
+      type: object
+      required:
+        - ok
+        - row_urn_count
+        - referenced_urn_count
+      properties:
+        ok:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            type: string
+        row_urn_count:
+          type: integer
+        referenced_urn_count:
+          type: integer
+    AgentPlatformGraphProgressEvent:
+      type: object
+      required:
+        - stage
+        - message
+        - elapsed_ms
+      properties:
+        stage:
+          type: string
+        message:
+          type: string
+        elapsed_ms:
+          type: integer
+    AgentPlatformGraphStageTimings:
+      type: object
+      properties:
+        probe_ms:
+          type: integer
+        draft_ms:
+          type: integer
+        conversion_ms:
+          type: integer
+        validate_ms:
+          type: integer
+        execute_ms:
+          type: integer
+        summarize_ms:
+          type: integer
+        citation_validation_ms:
+          type: integer
+    AgentPlatformGraphReasonProvenance:
+      type: object
+      required:
+        - surface
+        - citation_status
+      properties:
+        surface:
+          type: string
+        trace_id:
+          type: string
+        source_urns:
+          type: array
+          items:
+            type: string
+        scope:
+          type: string
+        citation_status:
+          type: string
+        fallback_reason:
+          type: string
+        capability_ids:
+          type: array
+          items:
+            type: string
+        policy_checks:
+          type: array
+          items:
+            type: string
+        connector_node_urns:
+          type: array
+          items:
+            type: string
+        write_back_events:
+          type: array
+          items:
+            type: string
+    AgentPlatformDomain:
+      type: object
+      required:
+        - id
+        - name
+        - principle
+        - console_surface
+        - owns
+        - must_expose
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        principle:
+          type: string
+        console_surface:
+          type: string
+        owns:
+          type: array
+          items:
+            type: string
+        must_expose:
+          type: array
+          items:
+            type: string
+    AgentPlatformInvariant:
+      type: object
+      required:
+        - id
+        - domain_id
+        - statement
+      properties:
+        id:
+          type: string
+        domain_id:
+          type: string
+        statement:
+          type: string
+    AgentPlatformCapability:
+      type: object
+      required:
+        - id
+        - name
+        - domain_id
+        - kind
+        - version
+        - owner
+        - risk
+        - default_on
+        - summary
+        - console_surfaces
+        - required_scopes
+        - eval
+        - runtime_events
+        - provenance
+        - review
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain_id:
+          type: string
+        kind:
+          type: string
+        version:
+          type: string
+        owner:
+          type: string
+        risk:
+          type: string
+          enum: [low, medium, high]
+        default_on:
+          type: boolean
+        summary:
+          type: string
+        console_surfaces:
+          type: array
+          items:
+            type: string
+        required_scopes:
+          type: array
+          items:
+            type: string
+        connector_dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformConnectorDependency'
+        eval:
+          $ref: '#/components/schemas/AgentPlatformEvalStatus'
+        runtime_events:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: array
+          items:
+            type: string
+        review:
+          $ref: '#/components/schemas/AgentPlatformReviewStatus'
+    AgentPlatformConnectorDependency:
+      type: object
+      required:
+        - source_id
+        - purpose
+        - auth_models
+        - required_scopes
+        - token_owner
+        - credential_store
+        - oauth_surface
+        - mcp_surface
+        - tenant_scoped
+        - readiness
+      properties:
+        source_id:
+          type: string
+        purpose:
+          type: string
+        auth_models:
+          type: array
+          items:
+            type: string
+        required_scopes:
+          type: array
+          items:
+            type: string
+        token_owner:
+          type: string
+        credential_store:
+          type: string
+        oauth_surface:
+          type: string
+        mcp_surface:
+          type: string
+        tenant_scoped:
+          type: boolean
+        readiness:
+          type: string
+    AgentPlatformEvalStatus:
+      type: object
+      required:
+        - required
+        - status
+        - local_commands
+        - scenario_sets
+        - rubrics
+      properties:
+        required:
+          type: boolean
+        status:
+          type: string
+        local_commands:
+          type: array
+          items:
+            type: string
+        scenario_sets:
+          type: array
+          items:
+            type: string
+        rubrics:
+          type: array
+          items:
+            type: string
+    AgentPlatformReviewStatus:
+      type: object
+      required:
+        - state
+        - cadence
+        - required_approvers
+      properties:
+        state:
+          type: string
+        cadence:
+          type: string
+        required_approvers:
+          type: array
+          items:
+            type: string
+    AgentPlatformRuntimeEvent:
+      type: object
+      required:
+        - name
+        - domain_id
+        - stage
+        - sequence_required
+        - terminal
+        - replayable
+        - payload_fields
+        - provenance_fields
+      properties:
+        name:
+          type: string
+        domain_id:
+          type: string
+        stage:
+          type: string
+        sequence_required:
+          type: boolean
+        terminal:
+          type: boolean
+        replayable:
+          type: boolean
+        payload_fields:
+          type: array
+          items:
+            type: string
+        provenance_fields:
+          type: array
+          items:
+            type: string
+    AgentPlatformProvenanceRequirement:
+      type: object
+      required:
+        - surface
+        - domain_id
+        - required_fields
+        - citation_required
+        - budget_required
+        - fallback_required
+      properties:
+        surface:
+          type: string
+        domain_id:
+          type: string
+        required_fields:
+          type: array
+          items:
+            type: string
+        citation_required:
+          type: boolean
+        budget_required:
+          type: boolean
+        fallback_required:
+          type: boolean
+    AgentPlatformConnectorInfrastructure:
+      type: object
+      required:
+        - auth_models
+        - oauth_surfaces
+        - credential_stores
+        - token_boundaries
+        - mcp_surfaces
+        - required_controls
+      properties:
+        auth_models:
+          type: array
+          items:
+            type: string
+        oauth_surfaces:
+          type: array
+          items:
+            type: string
+        credential_stores:
+          type: array
+          items:
+            type: string
+        token_boundaries:
+          type: array
+          items:
+            type: string
+        mcp_surfaces:
+          type: array
+          items:
+            type: string
+        required_controls:
+          type: array
+          items:
+            type: string
+    EncryptedConnectorCredentialPayload:
+      type: object
+      required:
+        - key_id
+        - algorithm
+        - wrapped_key
+        - nonce
+        - ciphertext
+      properties:
+        key_id:
+          type: string
+        algorithm:
+          type: string
+          enum:
+            - RSA-OAEP-256+A256GCM
+        wrapped_key:
+          type: string
+        nonce:
+          type: string
+        ciphertext:
+          type: string
+    ConnectorCredential:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - source_id
+        - runtime_id
+        - credential_store_id
+        - auth_method
+        - status
+        - key_id
+        - fields
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        credential_store_id:
+          type: string
+        auth_method:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - valid
+            - invalid
+            - revoked
+            - rotating
+        key_id:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+        updated_by:
+          type: string
+        revoked_by:
+          type: string
+        previous_credential_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        last_validated_at:
+          type: string
+          format: date-time
+    ConnectorCredentialAuditEvent:
+      type: object
+      required:
+        - id
+        - credential_id
+        - tenant_id
+        - source_id
+        - runtime_id
+        - event_type
+      properties:
+        id:
+          type: string
+        credential_id:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        event_type:
+          type: string
+          enum:
+            - stored
+            - rotated
+            - revoked
+            - used
+            - validated
+        actor:
+          type: string
+        status:
+          type: string
+        detail:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ConnectorCredentialBrokerResponse:
+      type: object
+      required:
+        - source_id
+        - tenant_id
+        - runtime_id
+        - status
+        - credential
+        - credential_references
+      properties:
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - stored
+            - rotated
+            - existing
+        credential:
+          $ref: '#/components/schemas/ConnectorCredential'
+        credential_references:
+          type: object
+          additionalProperties:
+            type: string
+    ConnectorDefinitionListResponse:
+      type: object
+      required:
+        - definitions
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+        runtime_store:
+          type: string
+        definitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinition'
+    ConnectorDefinitionResponse:
+      type: object
+      required:
+        - definition
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+    ConnectorDefinitionValidationResponse:
+      type: object
+      required:
+        - definition
+        - validation
+        - promotion
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        validation:
+          $ref: '#/components/schemas/ConnectorDefinitionValidation'
+        promotion:
+          $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+    ConnectorDefinitionPromotionResponse:
+      type: object
+      required:
+        - result
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        result:
+          type: object
+          required:
+            - definition
+            - promoted
+            - target_stage
+          properties:
+            definition:
+              $ref: '#/components/schemas/ConnectorDefinition'
+            promoted:
+              type: boolean
+            target_stage:
+              type: string
+            next_action:
+              type: string
+    ConnectorDefinition:
+      type: object
+      required:
+        - tenant_id
+        - source_id
+        - display_name
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        runtime:
+          type: string
+          enum: [json_api]
+        stage:
+          type: string
+          enum: [draft, sandbox, pilot, approved, certified]
+        current_version:
+          type: integer
+          minimum: 0
+        config_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinitionField'
+        auth:
+          type: object
+          properties:
+            model:
+              type: string
+              enum: [none, api_key, bearer_token, basic, oauth_client_credentials]
+            credential_fields:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConnectorDefinitionField'
+            supported_store_ids:
+              type: array
+              items:
+                type: string
+            requires_references:
+              type: boolean
+        resource_families:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinitionResourceFamily'
+        scope_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDefinitionScopeOption'
+        validation:
+          $ref: '#/components/schemas/ConnectorDefinitionValidation'
+        promotion:
+          $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ConnectorDefinitionField:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        required:
+          type: boolean
+        secret:
+          type: boolean
+        reference_only:
+          type: boolean
+        help:
+          type: string
+        placeholder:
+          type: string
+    ConnectorDefinitionResourceFamily:
+      type: object
+      required:
+        - id
+        - path
+        - id_field
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        path:
+          type: string
+        method:
+          type: string
+          enum: [GET]
+        list_key:
+          type: string
+        id_field:
+          type: string
+        name_field:
+          type: string
+        updated_at_field:
+          type: string
+        event_kind:
+          type: string
+        default_enabled:
+          type: boolean
+    ConnectorDefinitionScopeOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        families:
+          type: array
+          items:
+            type: string
+        default_enabled:
+          type: boolean
+        permission_note:
+          type: string
+        needs_user_review:
+          type: boolean
+        unsupported_notes:
+          type: array
+          items:
+            type: string
+    ConnectorDefinitionValidation:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ready, warning, blocked]
+        summary:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              status:
+                type: string
+              severity:
+                type: string
+              detail:
+                type: string
+              next_action:
+                type: string
+              blocking:
+                type: boolean
+    ConnectorDefinitionPromotion:
+      type: object
+      properties:
+        eligible_stages:
+          type: array
+          items:
+            type: string
+        required_gates:
+          type: array
+          items:
+            type: string
+        last_target:
+          type: string
+        next_action:
+          type: string
     CreatePlatformJobRequest:
       type: object
       required:
@@ -3795,6 +6755,28 @@ components:
               external_id:
                 type: string
               linked_at:
+                type: string
+                format: date-time
+        external_refs:
+          type: array
+          items:
+            type: object
+            properties:
+              system:
+                type: string
+              kind:
+                type: string
+              external_id:
+                type: string
+              url:
+                type: string
+              external_status:
+                type: string
+              external_status_reason:
+                type: string
+              lifecycle_owner:
+                type: string
+              observed_at:
                 type: string
                 format: date-time
         risk_score:

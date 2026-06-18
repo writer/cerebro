@@ -22,6 +22,16 @@ runtimes:
       family: container
       kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
       per_page: "100"
+  - localId: rbac-role
+    config:
+      family: rbac_role
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: rbac-binding
+    config:
+      family: rbac_binding
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
   - localId: service-account
     config:
       family: service_account

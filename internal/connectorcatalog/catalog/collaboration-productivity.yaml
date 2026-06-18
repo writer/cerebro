@@ -1,0 +1,1571 @@
+# Collaboration, productivity, project, and design connector definitions.
+# Entries are sorted by source_id for deterministic review.
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-airtable
+      tenant_id: builtin_catalog
+      source_id: airtable
+      display_name: Airtable
+      description: "Airtable connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.airtable.com"
+        verification:
+          method: GET
+          path: /v0/meta/bases
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: airtable.users
+            schema_ref: airtable/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: airtable.projects
+            schema_ref: airtable/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: airtable.audit_events
+            schema_ref: airtable/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-asana
+      tenant_id: builtin_catalog
+      source_id: asana
+      display_name: Asana
+      description: "Asana connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - project
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://app.asana.com/api/1.0"
+        verification:
+          method: GET
+          path: /users/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: asana.users
+            schema_ref: asana/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: asana.projects
+            schema_ref: asana/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: asana.audit_events
+            schema_ref: asana/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-box
+      tenant_id: builtin_catalog
+      source_id: box
+      display_name: Box
+      description: "Box connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://api.box.com/oauth/authorize"
+        token_url: "https://api.box.com/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.box.com"
+        verification:
+          method: GET
+          path: /2.0/users/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: box.users
+            schema_ref: box/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: content_assets
+          label: "Content assets"
+          path: /v1/resources
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: box.content_assets
+            schema_ref: box/content_assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: content_assets
+              type: entity_family
+              title: "Shared content assets"
+              families: [content_assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: box.audit_events
+            schema_ref: box/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-clickup
+      tenant_id: builtin_catalog
+      source_id: clickup
+      display_name: ClickUp
+      description: "ClickUp connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - project
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.clickup.com/api"
+        verification:
+          method: GET
+          path: /v2/user
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: clickup.users
+            schema_ref: clickup/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: clickup.projects
+            schema_ref: clickup/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: clickup.audit_events
+            schema_ref: clickup/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-confluence
+      tenant_id: builtin_catalog
+      source_id: confluence
+      display_name: Confluence
+      description: "Confluence connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - knowledge
+      auth:
+        model: basic
+        credential_fields:
+          - key: username
+            reference_only: true
+          - key: password
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.site_url}"
+        verification:
+          method: GET
+          path: /wiki/rest/api/user/current
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: confluence.users
+            schema_ref: confluence/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: confluence.projects
+            schema_ref: confluence/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: confluence.audit_events
+            schema_ref: confluence/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-dropbox_business
+      tenant_id: builtin_catalog
+      source_id: dropbox_business
+      display_name: "Dropbox Business"
+      description: "Dropbox Business connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://api.dropboxapi.com/oauth/authorize"
+        token_url: "https://api.dropboxapi.com/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.dropboxapi.com"
+        verification:
+          method: GET
+          path: /2/team/get_info
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: dropbox_business.users
+            schema_ref: dropbox_business/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: content_assets
+          label: "Content assets"
+          path: /v1/resources
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: dropbox_business.content_assets
+            schema_ref: dropbox_business/content_assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: content_assets
+              type: entity_family
+              title: "Shared content assets"
+              families: [content_assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: dropbox_business.audit_events
+            schema_ref: dropbox_business/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-figma
+      tenant_id: builtin_catalog
+      source_id: figma
+      display_name: Figma
+      description: "Figma connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - design
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.figma.com"
+        verification:
+          method: GET
+          path: /v1/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: figma.users
+            schema_ref: figma/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: figma.projects
+            schema_ref: figma/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: figma.audit_events
+            schema_ref: figma/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-google_drive
+      tenant_id: builtin_catalog
+      source_id: google_drive
+      display_name: "Google Drive"
+      description: "Google Drive connector definition catalog entry for high-value document, shared drive, and audit resources."
+      categories:
+        - document_management
+        - collaboration
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+        token_url: "https://oauth2.googleapis.com/token"
+        scopes:
+          - https://www.googleapis.com/auth/drive.metadata.readonly
+          - https://www.googleapis.com/auth/admin.reports.audit.readonly
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://www.googleapis.com/drive/v3"
+        verification:
+          method: GET
+          path: /about?fields=user
+          expect_status: [200]
+      resource_families:
+        - id: files
+          label: Files
+          path: /files
+          method: GET
+          record_selector: "$.files[*]"
+          id_field: id
+          event:
+            kind: google_drive.files
+            schema_ref: google_drive/files/v1
+          projection:
+            template: asset
+          coverage:
+            - id: files
+              type: entity_family
+              title: Files
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: shared_drives
+          label: Shared drives
+          path: /drives
+          method: GET
+          record_selector: "$.drives[*]"
+          id_field: id
+          event:
+            kind: google_drive.shared_drives
+            schema_ref: google_drive/shared_drives/v1
+          projection:
+            template: asset
+          coverage:
+            - id: shared_drives
+              type: entity_family
+              title: Shared drives
+              families: [assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: changes
+          label: Drive changes
+          path: /changes
+          method: GET
+          record_selector: "$.changes[*]"
+          id_field: fileId
+          event:
+            kind: google_drive.changes
+            schema_ref: google_drive/changes/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: changes
+              type: audit_event
+              title: Drive changes
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-jira
+      tenant_id: builtin_catalog
+      source_id: jira
+      display_name: Jira
+      description: "Jira connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - project
+      auth:
+        model: basic
+        credential_fields:
+          - key: username
+            reference_only: true
+          - key: password
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.site_url}"
+        verification:
+          method: GET
+          path: /rest/api/3/myself
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jira.users
+            schema_ref: jira/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jira.projects
+            schema_ref: jira/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: jira.audit_events
+            schema_ref: jira/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-linear
+      tenant_id: builtin_catalog
+      source_id: linear
+      display_name: Linear
+      description: "Linear connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - project
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.linear.app"
+        verification:
+          method: GET
+          path: /graphql
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: linear.users
+            schema_ref: linear/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: linear.projects
+            schema_ref: linear/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: linear.audit_events
+            schema_ref: linear/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-microsoft_365
+      tenant_id: builtin_catalog
+      source_id: microsoft_365
+      display_name: "Microsoft 365"
+      description: "Microsoft 365 connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - productivity
+      auth:
+        model: oauth_client_credentials
+        token_url: "https://graph.microsoft.com/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://graph.microsoft.com"
+        verification:
+          method: GET
+          path: /v1.0/organization
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: microsoft_365.users
+            schema_ref: microsoft_365/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: content_assets
+          label: "Content assets"
+          path: /v1/resources
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: microsoft_365.content_assets
+            schema_ref: microsoft_365/content_assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: content_assets
+              type: entity_family
+              title: "Shared content assets"
+              families: [content_assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: microsoft_365.audit_events
+            schema_ref: microsoft_365/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-microsoft_teams
+      tenant_id: builtin_catalog
+      source_id: microsoft_teams
+      display_name: "Microsoft Teams"
+      description: "Microsoft Teams connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: oauth_client_credentials
+        token_url: "https://graph.microsoft.com/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://graph.microsoft.com"
+        verification:
+          method: GET
+          path: /v1.0/teams
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: microsoft_teams.users
+            schema_ref: microsoft_teams/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: content_assets
+          label: "Content assets"
+          path: /v1/resources
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: microsoft_teams.content_assets
+            schema_ref: microsoft_teams/content_assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: content_assets
+              type: entity_family
+              title: "Shared content assets"
+              families: [content_assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: microsoft_teams.audit_events
+            schema_ref: microsoft_teams/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-miro
+      tenant_id: builtin_catalog
+      source_id: miro
+      display_name: Miro
+      description: "Miro connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: oauth_authorization_code
+        authorization_url: "https://api.miro.com/oauth/authorize"
+        token_url: "https://api.miro.com/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.miro.com"
+        verification:
+          method: GET
+          path: /v2/users/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: miro.users
+            schema_ref: miro/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: miro.projects
+            schema_ref: miro/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: miro.audit_events
+            schema_ref: miro/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-monday_com
+      tenant_id: builtin_catalog
+      source_id: monday_com
+      display_name: Monday.com
+      description: "Monday.com connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - project
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.monday.com"
+        verification:
+          method: GET
+          path: /v2
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: monday_com.users
+            schema_ref: monday_com/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: monday_com.projects
+            schema_ref: monday_com/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: monday_com.audit_events
+            schema_ref: monday_com/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-notion
+      tenant_id: builtin_catalog
+      source_id: notion
+      display_name: Notion
+      description: "Notion connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.notion.com"
+        verification:
+          method: GET
+          path: /v1/users/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: notion.users
+            schema_ref: notion/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: projects
+          label: Projects
+          path: /v1/projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: notion.projects
+            schema_ref: notion/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: notion.audit_events
+            schema_ref: notion/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-zoom
+      tenant_id: builtin_catalog
+      source_id: zoom
+      display_name: Zoom
+      description: "Zoom connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - saas
+        - collaboration
+      auth:
+        model: oauth_client_credentials
+        token_url: "https://api.zoom.us/oauth/token"
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.zoom.us"
+        verification:
+          method: GET
+          path: /v2/users/me
+          expect_status: [200]
+      resource_families:
+        - id: users
+          label: Users
+          path: /v1/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: zoom.users
+            schema_ref: zoom/users/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: content_assets
+          label: "Content assets"
+          path: /v1/resources
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: zoom.content_assets
+            schema_ref: zoom/content_assets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: content_assets
+              type: entity_family
+              title: "Shared content assets"
+              families: [content_assets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: zoom.audit_events
+            schema_ref: zoom/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100

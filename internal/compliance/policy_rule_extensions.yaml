@@ -1,0 +1,193 @@
+version: "2026-06-17"
+defaults:
+  evidence_type: control_state
+  assessment_methods:
+    - examine
+    - test
+  auditor_guidance: Confirm the evidence timestamp, asset or subject owner, scope, exception status, and mapped control references before relying on the finding for an audit conclusion.
+  risk_statement: The mapped control may not be operating effectively for the assessment period.
+  remediation_intent: Restore the assessed subject to the expected control state, preserve remediation evidence, and document any accepted risk or compensating control.
+  false_positives:
+    - The subject is outside the assessment scope or has a documented exception for the audit period.
+    - Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.
+    - A compensating control satisfies the mapped control objective and is documented for auditor review.
+evidence_modes:
+  cel:
+    evidence_type: resource_state
+    assessment_methods:
+      - examine
+      - test
+    auditor_guidance: Review the normalized resource snapshot and the evaluated policy conditions to confirm the failed configuration state.
+  query:
+    evidence_type: query_result
+    assessment_methods:
+      - examine
+    auditor_guidance: Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence.
+  manual:
+    evidence_type: manual_attestation
+    assessment_methods:
+      - examine
+      - interview
+    auditor_guidance: Confirm the attestation owner, approval trail, review date, and supporting document evidence.
+domains:
+  ai:
+    evidence_type: ai_governance
+    assessment_methods:
+      - examine
+      - interview
+      - test
+    risk_statement: AI governance, oversight, monitoring, or safety controls may not be operating effectively for the model or system.
+    remediation_intent: Update AI inventory, risk assessment, oversight, monitoring, or guardrail evidence and document owner approval.
+  api:
+    evidence_type: application_access_control
+    risk_statement: Unauthenticated or weakly controlled application interfaces may expose data or functionality without sufficient authorization evidence.
+    remediation_intent: Enforce authentication and authorization, validate exposed routes, and retain test evidence for the protected endpoint.
+  aws:
+    evidence_type: cloud_configuration
+    risk_statement: Cloud resource configuration may not satisfy the mapped security or compliance control.
+    remediation_intent: Update the cloud resource configuration, validate the effective state, and retain provider evidence for the changed setting.
+  azure:
+    evidence_type: cloud_configuration
+    risk_statement: Cloud resource configuration may not satisfy the mapped security or compliance control.
+    remediation_intent: Update the Azure resource configuration, validate the effective state, and retain provider evidence for the changed setting.
+  backup:
+    evidence_type: resilience_control
+    risk_statement: Backup, retention, or recovery controls may not provide sufficient operating evidence for resilience requirements.
+    remediation_intent: Enable the required backup or retention setting and preserve restore-test or configuration evidence.
+  certificate:
+    evidence_type: cryptographic_control
+    risk_statement: Certificate lifecycle or cryptographic configuration may not satisfy confidentiality, integrity, or availability expectations.
+    remediation_intent: Renew, rotate, or reconfigure certificates and retain evidence of the effective cryptographic state.
+  cerebro:
+    evidence_type: attack_path_context
+    risk_statement: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.
+    remediation_intent: Remediate the underlying resource state, reduce the correlated attack path, and retain graph/evidence context for review.
+  cicd:
+    evidence_type: delivery_pipeline_control
+    risk_statement: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.
+    remediation_intent: Harden pipeline configuration, protect credentials and runners, and retain pipeline configuration evidence.
+  compliance:
+    evidence_type: control_procedure
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Required governance, review, approval, or procedural evidence may be missing or incomplete.
+    remediation_intent: Complete the required procedure, attach supporting evidence, and record owner approval.
+  container:
+    evidence_type: workload_configuration
+    risk_statement: Container workload posture may not satisfy hardening, vulnerability, or runtime control expectations.
+    remediation_intent: Rebuild or reconfigure the workload, validate runtime posture, and retain deployment evidence.
+  database:
+    evidence_type: data_store_configuration
+    risk_statement: Database configuration may not satisfy encryption, backup, access, or exposure controls.
+    remediation_intent: Update database configuration, validate effective state, and retain provider evidence.
+  dspm:
+    evidence_type: data_security_posture
+    risk_statement: Sensitive data discovery, classification, access, or protection evidence may be incomplete.
+    remediation_intent: Update data classification, access controls, retention, or protection settings and retain evidence.
+  endpoint:
+    evidence_type: endpoint_posture
+    risk_statement: Endpoint posture, protection, or management evidence may not satisfy operational security controls.
+    remediation_intent: Restore endpoint protection, update device posture, and retain agent or MDM evidence.
+  gcp:
+    evidence_type: cloud_configuration
+    risk_statement: Cloud resource configuration may not satisfy the mapped security or compliance control.
+    remediation_intent: Update the Google Cloud resource configuration, validate the effective state, and retain provider evidence for the changed setting.
+  github:
+    evidence_type: source_control_governance
+    risk_statement: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.
+    remediation_intent: Update repository controls, remediate the alert or configuration, and retain repository evidence.
+  hipaa:
+    evidence_type: regulated_data_control
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Regulated data safeguards or administrative evidence may be incomplete for the assessment period.
+    remediation_intent: Restore the safeguard, attach supporting evidence, and document ownership and exception status.
+  hubspot:
+    evidence_type: revenue_process_control
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Customer, renewal, or revenue-process evidence may indicate an unmanaged operational control gap.
+    remediation_intent: Update the customer record, owner workflow, approval, or next action and retain evidence of review.
+  identity:
+    evidence_type: identity_governance
+    risk_statement: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.
+    remediation_intent: Correct the identity or entitlement state, revoke inappropriate access, and retain access-review or system evidence.
+  kubernetes:
+    evidence_type: workload_configuration
+    risk_statement: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.
+    remediation_intent: Update manifests or cluster configuration, validate the effective state, and retain deployment evidence.
+  m365:
+    evidence_type: collaboration_control
+    risk_statement: Collaboration, sharing, DLP, or mailbox controls may not provide sufficient data-protection evidence.
+    remediation_intent: Update tenant policy or sharing state and retain admin-center evidence.
+  network:
+    evidence_type: network_configuration
+    risk_statement: Network exposure, segmentation, or traffic-control evidence may not satisfy security requirements.
+    remediation_intent: Restrict network access, validate effective reachability, and retain configuration evidence.
+  okta:
+    evidence_type: identity_governance
+    risk_statement: Identity policy, authentication, or session controls may not be operating effectively.
+    remediation_intent: Update Okta policy or user state, validate the effective policy assignment, and retain admin evidence.
+  org:
+    evidence_type: organizational_process
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Organizational ownership, dependency, or customer-health controls may lack sufficient operating evidence.
+    remediation_intent: Assign ownership, complete the operational review, and retain approval or workflow evidence.
+  pci:
+    evidence_type: cardholder_data_control
+    risk_statement: Cardholder-data environment safeguards may not have sufficient evidence for the assessment period.
+    remediation_intent: Restore the required safeguard, validate CDE scope, and retain remediation evidence.
+  runtime:
+    evidence_type: runtime_threat_signal
+    risk_statement: Runtime threat evidence may indicate active compromise, malware, abuse, or policy bypass.
+    remediation_intent: Triage the runtime signal, contain affected assets, remediate the root cause, and retain incident evidence.
+  salesforce:
+    evidence_type: revenue_process_control
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Customer or opportunity management evidence may indicate an unmanaged business control gap.
+    remediation_intent: Update the opportunity or account record, confirm owner action, and retain review evidence.
+  secrets:
+    evidence_type: secret_management
+    risk_statement: Secret storage, exposure, or rotation evidence may not satisfy credential-protection controls.
+    remediation_intent: Remove exposed secrets, rotate credentials, update storage controls, and retain rotation evidence.
+  sentinelone:
+    evidence_type: endpoint_detection_response
+    risk_statement: Endpoint detection, protection, or response controls may not be operating effectively.
+    remediation_intent: Triage the threat or agent state, restore protection controls, and retain SentinelOne evidence.
+  stripe:
+    evidence_type: billing_process_control
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Billing, payment, refund, or approval evidence may indicate an unmanaged financial process control gap.
+    remediation_intent: Review the billing record, complete approval or customer action, and retain evidence.
+  telemetry:
+    evidence_type: observability_control
+    risk_statement: Telemetry, logging, or monitoring evidence may be incomplete for detecting control failures.
+    remediation_intent: Restore telemetry collection, validate signal quality, and retain monitoring evidence.
+  vendor:
+    evidence_type: third_party_risk
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Third-party risk review or vendor ownership evidence may be missing or overdue.
+    remediation_intent: Complete the vendor review, update ownership, and retain assessment evidence.
+  vulnerability:
+    evidence_type: vulnerability_management
+    risk_statement: Vulnerability detection, prioritization, or remediation evidence may not satisfy risk-management expectations.
+    remediation_intent: Patch, mitigate, or accept the vulnerability with documented risk approval and retain validation evidence.
+  zendesk:
+    evidence_type: support_process_control
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Support SLA or customer-response evidence may indicate an unmanaged operational control gap.
+    remediation_intent: Update the ticket, complete customer action, and retain SLA review evidence.
+policies: {}

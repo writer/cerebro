@@ -373,53 +373,11 @@ func sentinelOneGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 }
 
 func sentinelOneActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenant, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-
-	activityID := strings.TrimSpace(attrs["activity_id"])
-	if activityID == "" {
-		return nil, nil, nil
-	}
-	activityURN := projectionURN(tenant, "sentinelone_activity", activityID)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        activityURN,
-		TenantID:   tenant,
-		SourceID:   event.GetSourceId(),
-		EntityType: sentinelOneEntityActivity,
-		Label:      firstNonEmpty(attrs["primary_description"], activityID),
-		Attributes: map[string]string{
-			"activity_id":         activityID,
-			"activity_type":       strings.TrimSpace(attrs["activity_type"]),
-			"activity_uuid":       strings.TrimSpace(attrs["activity_uuid"]),
-			"primary_description": strings.TrimSpace(attrs["primary_description"]),
-			"agent_id":            strings.TrimSpace(attrs["agent_id"]),
-			"site_id":             strings.TrimSpace(attrs["site_id"]),
-			"group_id":            strings.TrimSpace(attrs["group_id"]),
-			"threat_id":           strings.TrimSpace(attrs["threat_id"]),
-			"user_id":             strings.TrimSpace(attrs["user_id"]),
-			"os_family":           strings.TrimSpace(attrs["os_family"]),
-			"tenant_host":         strings.TrimSpace(attrs["tenant_host"]),
-			"event_id":            event.GetId(),
-			"at":                  eventObservedAt(event),
-		},
-	})
-
-	if agentID := strings.TrimSpace(attrs["agent_id"]); agentID != "" {
-		agentURN := sentinelOneAgentURN(tenant, agentID)
-		addLink(links, projectedLink(tenant, event.GetSourceId(), activityURN, agentURN, relationObservedOn, map[string]string{"event_id": event.GetId(), "at": eventObservedAt(event)}))
-	}
-	if threatID := strings.TrimSpace(attrs["threat_id"]); threatID != "" {
-		threatURN := sentinelOneThreatURN(tenant, threatID)
-		addLink(links, projectedLink(tenant, event.GetSourceId(), activityURN, threatURN, relationActedOn, map[string]string{"event_id": event.GetId(), "at": eventObservedAt(event)}))
-	}
-
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
-	return projectedEntities, projectedLinks, nil
+	// Activities are audit-event evidence, not durable inventory. Finding rules
+	// read the source event directly when an activity contributes evidence; the
+	// graph should retain current SentinelOne state through agent, threat,
+	// exclusion, site, and group entities.
+	return nil, nil, nil
 }
 
 func sentinelOneExclusionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

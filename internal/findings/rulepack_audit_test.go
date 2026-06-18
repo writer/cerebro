@@ -64,7 +64,7 @@ func TestRulepackAllRulesDeclareLifecycle(t *testing.T) {
 func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	convertRules := rulepackAuditRulesByClass(t, rulepackAuditClassConvert)
-	if got, want := len(convertRules), 26; got != want {
+	if got, want := len(convertRules), 17; got != want {
 		t.Fatalf("CONVERT_TO_CURRENT_STATE rule count = %d, want %d", got, want)
 	}
 	rows := make([]string, 0, len(convertRules))
@@ -85,7 +85,7 @@ func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 func TestCloseoutSelectorCoversAllRetiredAndConvertRules(t *testing.T) {
 	targets := append(rulepackAuditRulesByClass(t, rulepackAuditClassConvert), rulepackAuditRulesByClass(t, rulepackAuditClassRetire)...)
 	sort.Slice(targets, func(i, j int) bool { return targets[i].RuleID < targets[j].RuleID })
-	if got, want := len(targets), 26; got != want {
+	if got, want := len(targets), 28; got != want {
 		t.Fatalf("CONVERT+RETIRE closeout target count = %d, want %d", got, want)
 	}
 	for i, entry := range targets {
@@ -254,17 +254,6 @@ func rulepackConvertReplayFixtures() map[string]rulepackConvertReplayFixture {
 				"source_provider":     "aws",
 			},
 		},
-		githubAppIntegrationInstalledRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":        "integration_installation.create",
-				"github_app_id": "123456",
-				"name":          "ci-deployer",
-				"org":           "writer",
-				"resource_type": "integration_installation",
-			},
-		},
 		githubCodeSecurityControlsDisabledRuleID: {
 			runtime: rulepackConvertRuntime("github", "audit"),
 			kind:    "github.audit",
@@ -274,81 +263,6 @@ func rulepackConvertReplayFixtures() map[string]rulepackConvertReplayFixture {
 				"org":                       "writer",
 				"repo":                      "writer/cerebro",
 				"resource_type":             "dependabot_alerts",
-			},
-		},
-		githubOrgAuthControlModifiedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":                          "oauth_app_policy.disabled",
-				"oauth_app_restrictions_enabled":  "false",
-				"oauth_app_restrictions_enforced": "false",
-				"org":                             "writer",
-				"resource_id":                     "writer",
-				"resource_type":                   "org",
-			},
-		},
-		githubOrgIPAllowListModifiedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":                "ip_allow_list.disable",
-				"ip_allow_list_enabled": "false",
-				"org":                   "writer",
-				"resource_id":           "writer",
-				"resource_type":         "ip_allow_list",
-			},
-		},
-		githubOrganizationOwnerAddedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":     "org.add_member",
-				"org":        "writer",
-				"permission": "admin",
-				"user":       "octocat",
-			},
-		},
-		githubPersonalAccessTokenCreatedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":         "personal_access_token.access_granted",
-				"operation_type": "create",
-				"token_id":       "555",
-				"user":           "octocat",
-				"user_id":        "12345",
-			},
-		},
-		githubPrivateRepositoryForkingEnabledRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":                             "private_repository_forking.enable",
-				"org":                                "writer",
-				"private_repository_forking_enabled": "true",
-				"resource_id":                        "writer",
-				"resource_type":                      "org",
-			},
-		},
-		githubRepositoryCollaboratorAddedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action": "repo.add_member",
-				"repo":   "writer/cerebro",
-				"user":   "octocat",
-			},
-		},
-		githubRepositoryRulesetModifiedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":                        "repository_ruleset.update",
-				"repo":                          "writer/cerebro",
-				"required_status_check_removed": "true",
-				"ruleset_id":                    "42",
-				"ruleset_name":                  "main protections",
 			},
 		},
 		githubSecretScanningAlertCreatedRuleID: {
@@ -361,15 +275,6 @@ func rulepackConvertReplayFixtures() map[string]rulepackConvertReplayFixture {
 				"repo":                        "writer/cerebro",
 				"secret_scanning_alert.state": "open",
 				"secret_type":                 "github_personal_access_token",
-			},
-		},
-		githubWebhookModifiedRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":  "hook.create",
-				"hook_id": "99",
-				"repo":    "writer/cerebro",
 			},
 		},
 		identityAdminPrivilegeGrantedRuleID: {
@@ -1088,21 +993,21 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "cloud-public-resource-exposure", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "data-sensitive-asset-risk", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "asset"},
 		{RuleID: "email-domain-authentication-misconfigured", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "email_domain_health"},
-		{RuleID: "github-app-integration-installed", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
+		{RuleID: "github-app-integration-installed", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
 		{RuleID: "github-code-security-controls-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-dependabot-open-alert", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
-		{RuleID: "github-org-auth-control-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-org-ip-allow-list-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-organization-owner-added", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-personal-access-token-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-private-repository-forking-enabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-repository-collaborator-added", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-repository-ruleset-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
+		{RuleID: "github-org-auth-control-modified", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
+		{RuleID: "github-org-ip-allow-list-modified", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
+		{RuleID: "github-organization-owner-added", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
+		{RuleID: "github-personal-access-token-created", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
+		{RuleID: "github-private-repository-forking-enabled", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
+		{RuleID: "github-repository-collaborator-added", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
+		{RuleID: "github-repository-ruleset-modified", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
 		{RuleID: "github-secret-scanning-alert-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-self-hosted-runner-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
+		{RuleID: "github-self-hosted-runner-review-needed", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
 		{RuleID: "github-org-owner-role-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-programmatic-credential-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
-		{RuleID: "github-webhook-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
+		{RuleID: "github-webhook-modified", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
 		{RuleID: "grc-control-test-needs-attention", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-failing-control-open-operational-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-failing-control-test-unhealthy-integration", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
@@ -1133,8 +1038,10 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "finding-isolated-open-anchor", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "graph-aws-ec2-eni-link-missing", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "graph-orphan-nonfinding-node", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
-		{RuleID: "graph-resource-multiple-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
+		{RuleID: "graph-resource-multiple-open-findings", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "graph"},
+		{RuleID: "panopticon-curated-case", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "panopticon"},
 		{RuleID: "runtime-active-threat-evidence", Classification: "TTL_EVIDENCE_ONLY", BulkCloseoutThreshold: ">24h", Source: "runtime"},
+		{RuleID: "security-reviewer-reported-finding", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_reviewer"},
 		{RuleID: "sentinelone-agent-detect-only-mode", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-not-up-to-date", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-stale", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
@@ -1169,6 +1076,9 @@ func rulepackAuditMetadataByID(t *testing.T) map[string]RuleDefinition {
 	t.Helper()
 	out := map[string]RuleDefinition{}
 	for _, definition := range BuiltinRuleMetadata() {
+		if policyRuleMetadata(definition) {
+			continue
+		}
 		if definition.ID == "" {
 			t.Fatal("BuiltinRuleMetadata returned empty rule ID")
 		}

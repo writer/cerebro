@@ -2,9 +2,9 @@
 
 **Operations data platform for cloud, SaaS, identity, workflow, finding, and graph signals.**
 
-Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
+Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, compliance-control coverage, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
 
-In practical terms, Cerebro ingests source and runtime signals, turns them into claims, findings, reports, workflow events, and graph context, then exposes that substrate through the CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
+In practical terms, Cerebro ingests source and runtime signals, turns them into claims, findings, reports, workflow events, compliance evidence, and graph context, then exposes that substrate through the CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -15,14 +15,14 @@ In practical terms, Cerebro ingests source and runtime signals, turns them into 
 
 - **Bootstrap API service** — `net/http` plus Connect RPC handlers for health, source, runtime, claim, finding, candidate, report, workflow, MCP, device, and graph routes.
 - **Source previews and runtime sync** — built-in sources can be checked, discovered, read, bootstrapped from config, persisted as source runtimes, synced through an append log, and projected into state/graph stores when configured.
-- **Panopticon S3 ingest** — first-class `panopticon` source runtimes read canonical alert, case, and IOC event archives from S3 NDJSON or NDJSON-gzip prefixes and emit validated `panopticon.*` events for projections and findings.
+- **Panopticon security operations ingest** — first-class `panopticon` source runtimes read curated cases by default from the Panopticon API, with explicit alert and IOC families available for evidence and enrichment.
 - **Finding workflows** — built-in finding rules can evaluate source runtime events, produce candidates, persist evidence/evaluation runs, promote or reject candidates, and drive finding lifecycle actions.
 - **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
 - **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
 - **Graph operations** — Neo4j/Aura-backed graph counts, relation counts, neighborhoods, path summaries, impact queries, graph health, source/runtime ingest, ingest run status, repair/cleanup helpers, and isolated dry-run rebuilds.
 - **MCP and graph-agent surfaces** — an authenticated MCP endpoint, optional OAuth 2.1 authorization-server flow for MCP clients, and an optional graph agent LLM adapter.
 - **Device telemetry surface** — optional first-party device enrollment, token, telemetry ingest, and device vulnerability finding routes.
-- **Policy catalog** — JSON policy definitions under `policies/` for cloud, identity, GitHub, Kubernetes, SaaS, runtime, vulnerability, compliance, and business-operation checks.
+- **Policy and compliance catalogs** — JSON policy definitions under `policies/`, generated detection catalogs, compliance control profiles, coverage indexes, evidence/posture packet helpers, and extension packs for custom control frameworks.
 
 Cerebro has historical and forward-looking docs in `docs/`. For current runtime behavior, treat `cmd/cerebro`, `internal/config`, `internal/bootstrap`, `proto/cerebro/v1/bootstrap.proto`, and the Makefile as the source of truth.
 
@@ -124,7 +124,8 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |
 | Use SDK helpers | `sdk/python/README.md`, `sdk/typescript/README.md`, and `sources/sdk` | Maintained helpers target current bootstrap routes; the historical Agent SDK gateway is retired. |
-| Ingest Panopticon exports | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | S3 runtimes read canonical `alerts/`, `cases/`, and `iocs/` event archives; SDK helper writes supported claim payloads only. |
+| Map compliance controls and evidence coverage | `docs/COMPLIANCE_CONTROLS.md`, `make control-index-check`, and `go run ./tools/controlindex --init-extension ...` | Built-in profiles cover SOC 2, ISO, CIS, PCI, DORA, FedRAMP, NIS2, CMMC, CJIS, NIST CSF, privacy, and AI governance scopes. Control extension packs scaffold custom `extension.yaml`, `controls.yaml`, and `profiles.yaml` files, then `--extension`, `--profile`, `--output`, and `--write` generate filtered coverage packets. |
+| Ingest Panopticon cases | `sources/panopticon`, source runtime config, and `sdk/python/examples/panopticon_push_claims.py` | API runtimes read curated `case` events by default; explicit `alert` and `ioc` families are available when raw signal evidence or IOC enrichment is needed. |
 | Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
 | Persist and sync a runtime | `docs/SOURCE_RUNTIME_GUIDE.md` and `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
 | Work on graph behavior | `docs/GRAPH_OPERATIONS.md` and `graph counts/health/ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
@@ -132,8 +133,9 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Consume release artifacts | `docs/RELEASE_CONTRACT.md` | Covers image tags, runtime deploy contracts, source manifests, and artifact verification. |
 | Troubleshoot operations | `docs/TROUBLESHOOTING.md` | Symptom-to-cause recipes for health, auth, source sync, graph, and MCP OAuth. |
 | Integrate MCP clients | `docs/MCP_DROID_SETUP.md` and `/api/v1/mcp` | Covers stateless Streamable HTTP, OAuth discovery, and compatibility checks. |
+| Shape agent-facing platform contracts | `docs/AGENT_PLATFORM_CONTRACT.md` and `internal/agentplatform` | Cerebro-native runtime, eval, capability, execution, replay, connector, and knowledge principles. |
 | Integrate endpoint telemetry | `docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md` | Covers device-authenticated telemetry, trusted endpoint claims, and trust-gate evidence. |
-| Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
+| Author policies, control mappings, or finding rules | `policies/`, `docs/COMPLIANCE_CONTROLS.md`, `internal/compliance`, `internal/findings`, and catalog checks | Run the relevant catalog, policy-rule, control-index, detection-catalog, and finding-rule checks before opening a PR. |
 | Contribute code or docs | `docs/DEVELOPMENT.md`, `docs/NON_GOALS.md`, and the Makefile | Prefer focused `make` targets while iterating; use `make verify` for broad PR preflight. |
 
 ---
@@ -276,29 +278,30 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
-| `anthropic` | Anthropic organization source | users, workspaces, API keys |
+| `anthropic` | Anthropic organization governance source | organization, users, invites, workspaces and members, API keys, service accounts, federation, external keys, usage/cost reports, rate/spend limits, compliance activity |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
+| `auth0` | Auth0 Management API source | users, roles, audit events |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
-| `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records |
+| `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
 | `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
 | `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |
-| `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests |
+| `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests; repository and optional org-inventory audit-log freshness probes |
 | `google_workspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
 | `grc` | Governance/risk/compliance source | configured GRC families |
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
 | `kolide` | Kolide device posture source | configured catalog families |
 | `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
-| `openai` | OpenAI organization source | users, projects, service accounts, API keys, admin API keys |
+| `openai` | OpenAI organization governance source | audit logs, users, invites, groups, roles, projects, project access, service accounts, API keys, usage/costs, retention, spend alerts, certificates, rate limits, model/tool permissions |
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
-| `panopticon` | Panopticon security operations source backed by canonical S3 event archives | alerts, cases, IOCs |
-| `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
+| `panopticon` | Panopticon security operations API source | cases by default; alerts and IOCs explicitly |
+| `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; optional declared inventory URN discovery; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
 | `slack` | Slack workspace source | teams, users, channels, user groups |
@@ -352,6 +355,8 @@ Policy definitions live under `policies/` as JSON files. The catalog includes cl
 
 Useful directories include `policies/aws/`, `policies/azure/`, `policies/gcp/`, `policies/github/`, `policies/identity/`, `policies/kubernetes/`, `policies/okta/`, `policies/runtime/`, and `policies/vulnerability/`.
 
+Compliance control metadata lives under `internal/compliance/`. `internal/compliance/control_families.yaml` is the built-in control catalog, `internal/compliance/control_profiles.yaml` defines reusable audit scopes, and `internal/compliance/control_coverage_index.yaml` is generated by `make control-index-generate`. Use `docs/COMPLIANCE_CONTROLS.md` for custom framework authoring, extension pack scaffolding with `--init-extension`, and filtered coverage generation with `--extension` and `--profile`.
+
 ---
 
 ## Development
@@ -373,7 +378,7 @@ make oss-audit      # public repository hygiene scan
 make clean          # remove bin/
 ```
 
-Focused validation and utility targets include `make openapi-check`, `make openapi-lint`, `make catalog-check`, `make detection-catalog-check`, `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
+Focused validation and utility targets include `make openapi-check`, `make openapi-lint`, `make catalog-check`, `make policy-rule-check`, `make control-index-check`, `make detection-catalog-check`, `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
 
 Public-facing docs, config, or example changes should run:
 
@@ -389,9 +394,14 @@ Choose validators by change type:
 | Go runtime/API change | `make test` plus focused package tests |
 | OpenAPI route or handler change | `make openapi-check openapi-lint` |
 | Proto change | `make proto-lint` and generated contract checks when applicable |
-| Source catalog or policy change | `make catalog-check detection-catalog-check` |
+| Source catalog or policy change | `make catalog-check policy-rule-check detection-catalog-check` |
+| Compliance control/profile/scaffold change | `make catalog-check policy-rule-check control-index-check detection-catalog-check` |
 | Public docs/config/examples | `make docs-drift-check` when generated docs are touched, plus `make oss-audit` |
 | Broad PR preflight | `make verify` |
+
+### README freshness
+
+The README is maintained by `make readme-check`, which is part of CI and local changed-path validation. It compares the built-in source table with `internal/sourceregistry`, top-level CLI commands with `cmd/cerebro`, the documented Go toolchain with `go.mod`, selected config names with `internal/config` and `.env.example`, and README anchors for compliance control extension workflows. When a public capability, source, CLI command, config family, or control-index workflow changes, update the README and extend `scripts/readme_check.py` with the new source-of-truth assertion.
 
 ---
 
@@ -427,7 +437,9 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [Source runtime guide](docs/SOURCE_RUNTIME_GUIDE.md) | source preview, runtime persistence, sync, secrets, health, and scheduling |
 | [Auth and tenancy](docs/AUTH_TENANCY.md) | API keys, structured credentials, tenant scoping, public origin, proxy trust, and rotation |
 | [Graph operations](docs/GRAPH_OPERATIONS.md) | graph health, ingest, rebuild, cleanup, query safety, and troubleshooting |
+| [Compliance controls](docs/COMPLIANCE_CONTROLS.md) | control catalog schema, profiles, extension packs, coverage resolution, posture, and evidence packets |
 | [Release contract](docs/RELEASE_CONTRACT.md) | release artifacts, runtime deploy contract schema, source manifests, and verification |
+| [PR landing](docs/PR_LANDING.md) | merge ordering, Droid review gates, and branch deletion safety |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | symptom-driven cookbook for health, auth, source runtime, graph, MCP, and device-auth issues |
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [DevEx codegen catalog](docs/DEVEX_CODEGEN_AUTOGEN.md) | generated surface map for OpenAPI, proto, and detection catalog checks |
@@ -450,8 +462,8 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | Append log | NATS JetStream |
 | State store | Postgres |
 | Graph store | Neo4j/Aura |
-| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, EvidenceCAS, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, Panopticon, SDK, SentinelOne, Security Tooling Map, Trusted Endpoint, VulnView |
-| Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, OSS audit, custom structural linters, arch tests |
+| Source integrations | Built-in source registry under `sources/`; see the Built-in sources table above for the checked list |
+| Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, policy-rule checks, control-index checks, README drift checks, OSS audit, custom structural linters, arch tests |
 
 ---
 

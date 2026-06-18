@@ -1,3 +1,14 @@
+github-app-integration-installed
+github-org-auth-control-modified
+github-org-ip-allow-list-modified
+github-organization-owner-added
+github-personal-access-token-created
+github-private-repository-forking-enabled
+github-repository-collaborator-added
+github-repository-ruleset-modified
+github-self-hosted-runner-review-needed
+github-webhook-modified
+graph-resource-multiple-open-findings
 identity-api-token-or-oauth-app-created
 identity-privileged-account-without-mfa
 identity-privileged-no-mfa-plus-sensitive-access

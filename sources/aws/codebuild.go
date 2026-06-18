@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +17,26 @@ import (
 type awsCodeBuildProject struct {
 	Project codebuildtypes.Project
 	Tags    map[string]string
+}
+
+type awsCodeBuildSourceCredential struct {
+	Credential codebuildtypes.SourceCredentialsInfo
+}
+
+func listCodeBuildSourceCredentials(ctx context.Context, clients awsClients, _ settings, _ string, _ int) ([]awsCodeBuildSourceCredential, string, error) {
+	out, err := clients.codeBuild.ListSourceCredentials(ctx, &codebuild.ListSourceCredentialsInput{})
+	if err != nil {
+		return nil, "", err
+	}
+	credentials := append([]codebuildtypes.SourceCredentialsInfo(nil), out.SourceCredentialsInfos...)
+	sort.Slice(credentials, func(i, j int) bool {
+		return codeBuildSourceCredentialIdentity(credentials[i]) < codeBuildSourceCredentialIdentity(credentials[j])
+	})
+	records := make([]awsCodeBuildSourceCredential, 0, len(credentials))
+	for _, credential := range credentials {
+		records = append(records, awsCodeBuildSourceCredential{Credential: credential})
+	}
+	return records, "", nil
 }
 
 func listCodeBuildProjects(ctx context.Context, clients awsClients, _ settings, cursor string, _ int) ([]awsCodeBuildProject, string, error) {
@@ -35,6 +56,33 @@ func listCodeBuildProjects(ctx context.Context, clients awsClients, _ settings, 
 		}
 	}
 	return records, awssdk.ToString(out.NextToken), nil
+}
+
+func codeBuildSourceCredentialEvent(settings settings, record awsCodeBuildSourceCredential) (*primitives.Event, error) {
+	credential := record.Credential
+	arn := awssdk.ToString(credential.Arn)
+	resource := awssdk.ToString(credential.Resource)
+	authType := string(credential.AuthType)
+	serverType := string(credential.ServerType)
+	identity := codeBuildSourceCredentialIdentity(credential)
+	name := firstNonEmpty(awsResourceName(arn), strings.ToLower(strings.Join(cleanStrings([]string{serverType, authType}), "-")), awsResourceName(resource), identity)
+	attributes := commonCloudAssetAttributes(settings, settings.region, familyCodeBuildSourceCredential, identity, name, "codebuild_source_credential", nil)
+	attributes["arn"] = arn
+	attributes["auth_type"] = authType
+	attributes["resource"] = resource
+	attributes["server_type"] = serverType
+	payload, err := json.Marshal(map[string]any{
+		"account_id":  settings.accountID,
+		"arn":         arn,
+		"auth_type":   authType,
+		"region":      settings.region,
+		"resource":    resource,
+		"server_type": serverType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-codebuild-source-credential-"+identity, "aws.codebuild_source_credential", "aws/codebuild_source_credential/v1", payload, attributes, firstTime())
 }
 
 func codeBuildProjectEvent(settings settings, record awsCodeBuildProject) (*primitives.Event, error) {
@@ -181,6 +229,10 @@ func codeBuildProjectARN(settings settings, name string) string {
 		return ""
 	}
 	return fmt.Sprintf("arn:aws:codebuild:%s:%s:project/%s", settings.region, settings.accountID, name)
+}
+
+func codeBuildSourceCredentialIdentity(credential codebuildtypes.SourceCredentialsInfo) string {
+	return firstNonEmpty(awssdk.ToString(credential.Arn), strings.Join(cleanStrings([]string{string(credential.ServerType), string(credential.AuthType), awssdk.ToString(credential.Resource)}), ":"), "unknown")
 }
 
 func codeBuildEnvironmentType(environment *codebuildtypes.ProjectEnvironment) string {

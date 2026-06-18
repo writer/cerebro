@@ -1,0 +1,635 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"go/format"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+const defaultOutputPath = "internal/findings/policy_rule_catalog_gen.go"
+const policyRuleExtensionsPath = "internal/compliance/policy_rule_extensions.yaml"
+const controlFamiliesPath = "internal/compliance/control_families.yaml"
+
+type policyFile struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Description      string            `json:"description"`
+	Severity         string            `json:"severity"`
+	Category         string            `json:"category"`
+	Resource         string            `json:"resource"`
+	ResourceType     string            `json:"resource_type"`
+	Conditions       []string          `json:"conditions"`
+	ConditionFormat  string            `json:"condition_format"`
+	Query            string            `json:"query"`
+	Tags             []string          `json:"tags"`
+	Remediation      string            `json:"remediation"`
+	RemediationSteps []string          `json:"remediation_steps"`
+	Frameworks       []policyFramework `json:"frameworks"`
+	Enabled          *bool             `json:"enabled"`
+	relPath          string
+	domain           string
+}
+
+type policyFramework struct {
+	Name     string   `json:"name"`
+	Controls []string `json:"controls"`
+}
+
+type policyRuleExtensions struct {
+	Version       string                         `yaml:"version"`
+	Defaults      policyRuleExtension            `yaml:"defaults"`
+	EvidenceModes map[string]policyRuleExtension `yaml:"evidence_modes"`
+	Domains       map[string]policyRuleExtension `yaml:"domains"`
+	Policies      map[string]policyRuleExtension `yaml:"policies"`
+}
+
+type policyRuleExtension struct {
+	EvidenceType      string   `yaml:"evidence_type"`
+	AssessmentMethods []string `yaml:"assessment_methods"`
+	AuditorGuidance   string   `yaml:"auditor_guidance"`
+	RiskStatement     string   `yaml:"risk_statement"`
+	RemediationIntent string   `yaml:"remediation_intent"`
+	FalsePositives    []string `yaml:"false_positives"`
+}
+
+type complianceControlCatalog struct {
+	Frameworks []complianceControlCatalogFramework `yaml:"frameworks"`
+}
+
+type complianceControlCatalogFramework struct {
+	Name     string                           `yaml:"name"`
+	Families []complianceControlCatalogFamily `yaml:"families"`
+}
+
+type complianceControlCatalogFamily struct {
+	ID       string                            `yaml:"id"`
+	Name     string                            `yaml:"name"`
+	Controls []complianceControlCatalogControl `yaml:"controls"`
+}
+
+type complianceControlCatalogControl struct {
+	ID string `yaml:"id"`
+}
+
+func main() {
+	root := flag.String("root", ".", "repository root")
+	output := flag.String("output", defaultOutputPath, "generated Go output path relative to root")
+	write := flag.Bool("write", false, "write the generated policy rule catalog")
+	check := flag.Bool("check", false, "check that the generated policy rule catalog is fresh")
+	flag.Parse()
+
+	if !*write && !*check {
+		fmt.Fprintln(os.Stderr, "policyrulegen: one of --write or --check is required")
+		os.Exit(2)
+	}
+	content, err := generate(filepath.Clean(*root))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "policyrulegen: %v\n", err)
+		os.Exit(1)
+	}
+	path := filepath.Join(filepath.Clean(*root), filepath.FromSlash(*output))
+	if *write {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "policyrulegen: create output directory: %v\n", err)
+			os.Exit(1)
+		}
+		if err := rejectSymlink(path); err != nil {
+			fmt.Fprintf(os.Stderr, "policyrulegen: write %s: %v\n", *output, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "policyrulegen: write %s: %v\n", *output, err)
+			os.Exit(1)
+		}
+	}
+	if *check {
+		if err := rejectSymlink(path); err != nil {
+			fmt.Fprintf(os.Stderr, "policyrulegen: read %s: %v\n", *output, err)
+			os.Exit(1)
+		}
+		existing, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "policyrulegen: read %s: %v\n", *output, err)
+			os.Exit(1)
+		}
+		if !bytes.Equal(bytes.TrimSpace(existing), bytes.TrimSpace(content)) {
+			fmt.Fprintf(os.Stderr, "policyrulegen: %s is stale; run `make policy-rule-generate`\n", *output)
+			os.Exit(1)
+		}
+	}
+}
+
+func rejectSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("symlinked generated files are not allowed")
+	}
+	return nil
+}
+
+func generate(root string) ([]byte, error) {
+	policies, err := loadPolicies(root)
+	if err != nil {
+		return nil, err
+	}
+	extensions, err := loadPolicyRuleExtensions(root)
+	if err != nil {
+		return nil, err
+	}
+	controlFamilies, err := loadControlFamilyIndex(root)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	buf.WriteString("// Code generated by go run ./tools/policyrulegen --write; DO NOT EDIT.\n")
+	buf.WriteString("package findings\n\n")
+	buf.WriteString("import \"github.com/writer/cerebro/internal/ports\"\n\n")
+	fmt.Fprintf(&buf, "var generatedPolicyRuleCatalog = []policyRuleConfig{\n")
+	for _, policy := range policies {
+		extension := extensions.extensionFor(policy)
+		writePolicyRuleConfig(&buf, policy, extension, controlFamilies.familiesFor(policy.Frameworks))
+	}
+	buf.WriteString("}\n")
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("format generated Go: %w", err)
+	}
+	return formatted, nil
+}
+
+func loadPolicies(root string) ([]policyFile, error) {
+	policiesRoot := filepath.Join(root, "policies")
+	var policies []policyFile
+	err := filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		rel := slashRel(root, path)
+		if rel == "policies/cerebro/control-mapping.json" {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s: symlinked policy files are not allowed", rel)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", rel, err)
+		}
+		var policy policyFile
+		if err := json.Unmarshal(content, &policy); err != nil {
+			return fmt.Errorf("decode %s: %w", rel, err)
+		}
+		policy.relPath = rel
+		policy.domain = policyDomain(rel)
+		policies = append(policies, policy)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(policies, func(i, j int) bool {
+		if policies[i].ID == policies[j].ID {
+			return policies[i].relPath < policies[j].relPath
+		}
+		return policies[i].ID < policies[j].ID
+	})
+	return policies, nil
+}
+
+func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {
+	path := filepath.Join(root, filepath.FromSlash(policyRuleExtensionsPath))
+	if err := rejectSymlink(path); err != nil {
+		return policyRuleExtensions{}, fmt.Errorf("read %s: %w", policyRuleExtensionsPath, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return policyRuleExtensions{}, nil
+		}
+		return policyRuleExtensions{}, fmt.Errorf("read %s: %w", policyRuleExtensionsPath, err)
+	}
+	var extensions policyRuleExtensions
+	if err := yaml.Unmarshal(content, &extensions); err != nil {
+		return policyRuleExtensions{}, fmt.Errorf("decode %s: %w", policyRuleExtensionsPath, err)
+	}
+	return extensions, nil
+}
+
+type controlFamilyIndex map[string]string
+
+func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
+	path := filepath.Join(root, filepath.FromSlash(controlFamiliesPath))
+	if err := rejectSymlink(path); err != nil {
+		return nil, fmt.Errorf("read %s: %w", controlFamiliesPath, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return controlFamilyIndex{}, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", controlFamiliesPath, err)
+	}
+	var catalog complianceControlCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", controlFamiliesPath, err)
+	}
+	index := controlFamilyIndex{}
+	for _, framework := range catalog.Frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		if frameworkName == "" {
+			continue
+		}
+		for _, family := range framework.Families {
+			familyID := strings.TrimSpace(family.ID)
+			familyName := strings.TrimSpace(family.Name)
+			if familyID == "" {
+				continue
+			}
+			label := frameworkName + " " + familyID
+			if familyName != "" {
+				label += " " + familyName
+			}
+			for _, control := range family.Controls {
+				controlID := strings.TrimSpace(control.ID)
+				if controlID == "" {
+					continue
+				}
+				index[frameworkName+"\x00"+controlID] = label
+			}
+		}
+	}
+	return index, nil
+}
+
+func (index controlFamilyIndex) familiesFor(frameworks []policyFramework) []string {
+	seen := map[string]struct{}{}
+	var families []string
+	for _, framework := range frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		for _, control := range framework.Controls {
+			if family := strings.TrimSpace(index[frameworkName+"\x00"+strings.TrimSpace(control)]); family != "" {
+				if _, ok := seen[family]; ok {
+					continue
+				}
+				seen[family] = struct{}{}
+				families = append(families, family)
+			}
+		}
+	}
+	sort.Strings(families)
+	return families
+}
+
+func (extensions policyRuleExtensions) extensionFor(policy policyFile) policyRuleExtension {
+	merged := policyRuleExtension{}
+	merged = mergePolicyRuleExtension(merged, extensions.Defaults)
+	merged = mergePolicyRuleExtension(merged, extensions.EvidenceModes[policyEvidenceMode(policy)])
+	merged = mergePolicyRuleExtension(merged, extensions.Domains[policy.domain])
+	merged = mergePolicyRuleExtension(merged, extensions.Policies[policy.ID])
+	return merged
+}
+
+func mergePolicyRuleExtension(base, next policyRuleExtension) policyRuleExtension {
+	if value := strings.TrimSpace(next.EvidenceType); value != "" {
+		base.EvidenceType = value
+	}
+	if value := strings.TrimSpace(next.AuditorGuidance); value != "" {
+		base.AuditorGuidance = value
+	}
+	if value := strings.TrimSpace(next.RiskStatement); value != "" {
+		base.RiskStatement = value
+	}
+	if value := strings.TrimSpace(next.RemediationIntent); value != "" {
+		base.RemediationIntent = value
+	}
+	if len(trimStrings(next.AssessmentMethods)) != 0 {
+		base.AssessmentMethods = uniqueSorted(next.AssessmentMethods)
+	}
+	base.FalsePositives = uniqueSorted(append(base.FalsePositives, next.FalsePositives...))
+	return base
+}
+
+func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension policyRuleExtension, controlFamilies []string) {
+	evidenceMode := policyEvidenceMode(policy)
+	fmt.Fprintf(buf, "{\n")
+	fmt.Fprintf(buf, "Definition: RuleDefinition{\n")
+	fmt.Fprintf(buf, "ID: %s,\n", quote(policy.ID))
+	fmt.Fprintf(buf, "Name: %s,\n", quote(policy.Name))
+	fmt.Fprintf(buf, "Description: %s,\n", quote(policyDescription(policy, extension)))
+	fmt.Fprintf(buf, "SourceID: policyRuleSourceID,\n")
+	fmt.Fprintf(buf, "EventKinds: []string{policyRuleEvidenceKind, policyRuleResultEventKind},\n")
+	fmt.Fprintf(buf, "OutputKind: policyRuleOutputKind,\n")
+	fmt.Fprintf(buf, "Severity: %s,\n", quote(normalizeSeverity(policy.Severity)))
+	fmt.Fprintf(buf, "Status: %s,\n", quote(policyStatus(policy)))
+	fmt.Fprintf(buf, "Maturity: RuleMaturityCandidate,\n")
+	writeStringSlice(buf, "Tags", policyTags(policy, evidenceMode, extension))
+	writeStringSlice(buf, "FalsePositives", policyFalsePositives(extension))
+	fmt.Fprintf(buf, "Runbook: %s,\n", quote(policyRunbook(policy, extension)))
+	fmt.Fprintf(buf, "FingerprintFields: []string{%s, %s, %s, %s},\n", quote("tenant_id"), quote("policy_id"), quote("resource_urn"), quote("resource_id"))
+	writeControlRefs(buf, policy.Frameworks)
+	fmt.Fprintf(buf, "Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},\n")
+	fmt.Fprintf(buf, "},\n")
+	writeStringSlice(buf, "Conditions", trimStrings(policy.Conditions))
+	fmt.Fprintf(buf, "Query: %s,\n", quote(strings.TrimSpace(policy.Query)))
+	fmt.Fprintf(buf, "Resource: %s,\n", quote(firstNonEmpty(policy.Resource, policy.ResourceType)))
+	fmt.Fprintf(buf, "ResourceType: %s,\n", quote(firstNonEmpty(policy.ResourceType, policy.Resource)))
+	fmt.Fprintf(buf, "Category: %s,\n", quote(firstNonEmpty(policy.Category, policy.domain)))
+	fmt.Fprintf(buf, "EvidenceMode: %s,\n", quote(evidenceMode))
+	fmt.Fprintf(buf, "EvidenceType: %s,\n", quote(extension.EvidenceType))
+	writeStringSlice(buf, "AssessmentMethods", extension.AssessmentMethods)
+	fmt.Fprintf(buf, "AuditorGuidance: %s,\n", quote(extension.AuditorGuidance))
+	fmt.Fprintf(buf, "RiskStatement: %s,\n", quote(policyRiskStatement(policy, extension)))
+	fmt.Fprintf(buf, "RemediationIntent: %s,\n", quote(policyRemediationIntent(extension)))
+	writeStringSlice(buf, "ExceptionGuidance", policyFalsePositives(extension))
+	writeStringSlice(buf, "ControlFamilies", controlFamilies)
+	fmt.Fprintf(buf, "Enabled: %t,\n", policy.Enabled == nil || *policy.Enabled)
+	fmt.Fprintf(buf, "},\n")
+}
+
+func writeStringSlice(buf *bytes.Buffer, field string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "%s: []string{", field)
+	for _, value := range values {
+		fmt.Fprintf(buf, "%s,", quote(value))
+	}
+	fmt.Fprintf(buf, "},\n")
+}
+
+func writeControlRefs(buf *bytes.Buffer, frameworks []policyFramework) {
+	seen := map[string]struct{}{}
+	var refs [][2]string
+	for _, framework := range frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		for _, control := range framework.Controls {
+			controlID := strings.TrimSpace(control)
+			if frameworkName == "" || controlID == "" {
+				continue
+			}
+			key := frameworkName + "\x00" + controlID
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			refs = append(refs, [2]string{frameworkName, controlID})
+		}
+	}
+	if len(refs) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "ControlRefs: []ports.FindingControlRef{\n")
+	for _, ref := range refs {
+		fmt.Fprintf(buf, "{FrameworkName: %s, ControlID: %s},\n", quote(ref[0]), quote(ref[1]))
+	}
+	fmt.Fprintf(buf, "},\n")
+}
+
+func policyEvidenceMode(policy policyFile) string {
+	if strings.TrimSpace(policy.Query) != "" {
+		return "query"
+	}
+	if len(trimStrings(policy.Conditions)) != 0 {
+		return "cel"
+	}
+	return "manual"
+}
+
+func policyStatus(policy policyFile) string {
+	if policy.Enabled != nil && !*policy.Enabled {
+		return "disabled"
+	}
+	return "active"
+}
+
+func policyTags(policy policyFile, evidenceMode string, extension policyRuleExtension) []string {
+	values := append([]string{}, policy.Tags...)
+	values = append(values, "policy", evidenceMode, policy.domain)
+	if evidenceType := strings.TrimSpace(extension.EvidenceType); evidenceType != "" {
+		values = append(values, "evidence:"+evidenceType)
+	}
+	for _, method := range extension.AssessmentMethods {
+		if trimmed := strings.TrimSpace(method); trimmed != "" {
+			values = append(values, "assessment:"+trimmed)
+		}
+	}
+	if category := strings.TrimSpace(policy.Category); category != "" {
+		values = append(values, category)
+	}
+	return uniqueSorted(trimStrings(values))
+}
+
+func policyDescription(policy policyFile, extension policyRuleExtension) string {
+	description := cleanPolicyDescription(policy.Description)
+	name := strings.TrimSpace(policy.Name)
+	subject := policySubject(policy)
+	if description == "" {
+		description = "Checks whether " + subject + " is in the expected policy state."
+	}
+	parts := []string{
+		"Flags failed " + policyEvidenceLabel(policyEvidenceMode(policy)) + " evidence for " + subject + ": " + name + ".",
+		description,
+	}
+	if risk := policyRiskStatement(policy, extension); risk != "" {
+		parts = append(parts, "Audit impact: "+risk)
+	}
+	return joinSentences(parts)
+}
+
+func cleanPolicyDescription(value string) string {
+	description := strings.TrimSpace(value)
+	lower := strings.ToLower(description)
+	switch {
+	case strings.HasPrefix(lower, "ensures "):
+		return "Checks whether " + strings.TrimSpace(description[len("ensures "):])
+	case strings.HasPrefix(lower, "ensure "):
+		return "Checks whether " + strings.TrimSpace(description[len("ensure "):])
+	default:
+		return description
+	}
+}
+
+func policyRunbook(policy policyFile, extension policyRuleExtension) string {
+	parts := []string{
+		"Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls.",
+	}
+	if guidance := strings.TrimSpace(extension.AuditorGuidance); guidance != "" {
+		parts = append(parts, guidance)
+	}
+	if remediation := strings.TrimSpace(policy.Remediation); remediation != "" {
+		parts = append(parts, remediation)
+	} else if steps := trimStrings(policy.RemediationSteps); len(steps) != 0 {
+		parts = append(parts, "Complete these remediation steps: "+strings.Join(steps, "; ")+".")
+	} else if remediationIntent := policyRemediationIntent(extension); remediationIntent != "" {
+		parts = append(parts, remediationIntent)
+	}
+	parts = append(parts, "Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.")
+	return joinSentences(parts)
+}
+
+func policyRiskStatement(policy policyFile, extension policyRuleExtension) string {
+	if value := strings.TrimSpace(extension.RiskStatement); value != "" {
+		return value
+	}
+	subject := policySubject(policy)
+	return "The mapped control may lack sufficient operating evidence because " + subject + " is outside the expected policy state."
+}
+
+func policyRemediationIntent(extension policyRuleExtension) string {
+	if value := strings.TrimSpace(extension.RemediationIntent); value != "" {
+		return value
+	}
+	return "Restore the assessed subject to the expected control state, reduce exposure where applicable, and preserve evidence of the corrective action."
+}
+
+func policyFalsePositives(extension policyRuleExtension) []string {
+	values := append([]string{}, extension.FalsePositives...)
+	if len(values) == 0 {
+		values = []string{
+			"The subject is outside the assessment scope or has a documented exception for the audit period.",
+			"Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+			"A compensating control satisfies the mapped control objective and is documented for auditor review.",
+		}
+	}
+	return uniqueSorted(trimStrings(values))
+}
+
+func policySubject(policy policyFile) string {
+	subject := firstNonEmpty(policy.ResourceType, policy.Resource, policy.Category, policy.domain, "the assessed subject")
+	subject = strings.ReplaceAll(subject, "::", " ")
+	subject = strings.ReplaceAll(subject, "|", " or ")
+	subject = strings.ReplaceAll(subject, "_", " ")
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return "the assessed subject"
+	}
+	return subject
+}
+
+func policyEvidenceLabel(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "query":
+		return "query-result"
+	case "manual":
+		return "manual-attestation"
+	default:
+		return "resource-state"
+	}
+}
+
+func joinSentences(parts []string) string {
+	sentences := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if sentence := ensureSentence(part); sentence != "" {
+			sentences = append(sentences, sentence)
+		}
+	}
+	return strings.Join(sentences, " ")
+}
+
+func ensureSentence(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	switch trimmed[len(trimmed)-1] {
+	case '.', '!', '?':
+		return trimmed
+	default:
+		return trimmed + "."
+	}
+}
+
+func normalizeSeverity(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "critical":
+		return "CRITICAL"
+	case "high":
+		return "HIGH"
+	case "medium", "moderate":
+		return "MEDIUM"
+	case "low":
+		return "LOW"
+	case "info", "informational":
+		return "INFO"
+	default:
+		return "MEDIUM"
+	}
+}
+
+func trimStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func uniqueSorted(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func policyDomain(rel string) string {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) >= 2 && parts[0] == "policies" {
+		return strings.TrimSpace(parts[1])
+	}
+	return "policy"
+}
+
+func quote(value string) string {
+	return strconv.Quote(strings.TrimSpace(value))
+}
+
+func slashRel(root string, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
+}

@@ -1,0 +1,3816 @@
+version: "2026-06-17"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: A1
+        name: Availability
+        controls:
+          - id: A1.1
+          - id: A1.2
+          - id: A1.3
+      - id: C1
+        name: Confidentiality
+        controls:
+          - id: C1.1
+          - id: C1.2
+      - id: CC1
+        name: Control Environment
+        controls:
+          - id: CC1.1
+          - id: CC1.2
+          - id: CC1.3
+          - id: CC1.4
+          - id: CC1.5
+      - id: CC2
+        name: Communication and Information
+        controls:
+          - id: CC2.1
+          - id: CC2.2
+          - id: CC2.3
+      - id: CC3
+        name: Risk Assessment
+        controls:
+          - id: CC3.1
+          - id: CC3.2
+          - id: CC3.3
+          - id: CC3.4
+      - id: CC4
+        name: Monitoring Activities
+        controls:
+          - id: CC4
+          - id: CC4.1
+          - id: CC4.2
+      - id: CC5
+        name: Control Activities
+        controls:
+          - id: CC5.1
+          - id: CC5.2
+          - id: CC5.3
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6
+          - id: CC6.1
+          - id: CC6.2
+          - id: CC6.3
+          - id: CC6.4
+          - id: CC6.5
+          - id: CC6.6
+          - id: CC6.7
+          - id: CC6.8
+      - id: CC7
+        name: System Operations
+        controls:
+          - id: CC7
+          - id: CC7.1
+          - id: CC7.2
+          - id: CC7.3
+          - id: CC7.4
+          - id: CC7.5
+      - id: CC8
+        name: Change Management
+        controls:
+          - id: CC8.1
+      - id: CC9
+        name: Risk Mitigation
+        controls:
+          - id: CC9.1
+          - id: CC9.2
+      - id: P1
+        name: Notice and Communication
+        controls:
+          - id: P1.1
+      - id: P2
+        name: Choice and Consent
+        controls:
+          - id: P2.1
+      - id: P3
+        name: Collection
+        controls:
+          - id: P3.1
+          - id: P3.2
+      - id: P4
+        name: "Use, Retention, and Disposal"
+        controls:
+          - id: P4.1
+          - id: P4.2
+          - id: P4.3
+      - id: P5
+        name: Access
+        controls:
+          - id: P5.1
+          - id: P5.2
+          - id: P5.3
+      - id: P6
+        name: Disclosure and Notification
+        controls:
+          - id: P6.1
+          - id: P6.2
+          - id: P6.3
+          - id: P6.4
+          - id: P6.5
+          - id: P6.6
+          - id: P6.7
+      - id: P7
+        name: Quality
+        controls:
+          - id: P7.1
+      - id: P8
+        name: Monitoring and Enforcement
+        controls:
+          - id: P8.1
+      - id: PI1
+        name: Processing Integrity
+        controls:
+          - id: PI1.1
+          - id: PI1.2
+          - id: PI1.3
+          - id: PI1.4
+          - id: PI1.5
+      - id: SD
+        name: System Description
+        controls:
+          - id: SD - SOC 2
+  - name: "ISO 27001:2022"
+    families:
+      - id: 6
+        name: Planning
+        controls:
+          - id: 6.1.2
+      - id: 8
+        name: Operation
+        controls:
+          - id: 8.2
+      - id: A.5
+        name: Organizational Controls
+        controls:
+          - id: A.5.1
+          - id: A.5.2
+          - id: A.5.3
+          - id: A.5.4
+          - id: A.5.5
+          - id: A.5.6
+          - id: A.5.7
+          - id: A.5.8
+          - id: A.5.9
+          - id: A.5.10
+          - id: A.5.11
+          - id: A.5.12
+          - id: A.5.13
+          - id: A.5.14
+          - id: A.5.15
+          - id: A.5.16
+          - id: A.5.17
+          - id: A.5.18
+          - id: A.5.19
+          - id: A.5.20
+          - id: A.5.21
+          - id: A.5.22
+          - id: A.5.23
+          - id: A.5.24
+          - id: A.5.25
+          - id: A.5.26
+          - id: A.5.27
+          - id: A.5.28
+          - id: A.5.29
+          - id: A.5.30
+          - id: A.5.31
+          - id: A.5.32
+          - id: A.5.33
+          - id: A.5.34
+          - id: A.5.35
+          - id: A.5.36
+          - id: A.5.37
+      - id: A.6
+        name: People Controls
+        controls:
+          - id: A.6.1
+          - id: A.6.2
+          - id: A.6.3
+          - id: A.6.4
+          - id: A.6.5
+          - id: A.6.6
+          - id: A.6.7
+          - id: A.6.8
+      - id: A.7
+        name: Physical Controls
+        controls:
+          - id: A.7.1
+          - id: A.7.2
+          - id: A.7.3
+          - id: A.7.4
+          - id: A.7.5
+          - id: A.7.6
+          - id: A.7.7
+          - id: A.7.8
+          - id: A.7.9
+          - id: A.7.10
+          - id: A.7.11
+          - id: A.7.12
+          - id: A.7.13
+          - id: A.7.14
+      - id: A.8
+        name: Technology Controls
+        controls:
+          - id: A.8.1
+          - id: A.8.2
+          - id: A.8.3
+          - id: A.8.4
+          - id: A.8.5
+          - id: A.8.6
+          - id: A.8.7
+          - id: A.8.8
+          - id: A.8.9
+          - id: A.8.10
+          - id: A.8.11
+          - id: A.8.12
+          - id: A.8.13
+          - id: A.8.14
+          - id: A.8.15
+          - id: A.8.16
+          - id: A.8.17
+          - id: A.8.18
+          - id: A.8.19
+          - id: A.8.20
+          - id: A.8.21
+          - id: A.8.22
+          - id: A.8.23
+          - id: A.8.24
+          - id: A.8.25
+          - id: A.8.26
+          - id: A.8.27
+          - id: A.8.28
+          - id: A.8.29
+          - id: A.8.30
+          - id: A.8.31
+          - id: A.8.32
+          - id: A.8.33
+          - id: A.8.34
+      - id: A.12
+        name: A.12 Controls
+        controls:
+          - id: A.12.6
+      - id: C.4
+        name: Context
+        controls:
+          - id: C.4.1
+          - id: C.4.2
+          - id: C.4.3
+          - id: C.4.4
+      - id: C.5
+        name: Leadership
+        controls:
+          - id: C.5.1
+          - id: C.5.2
+          - id: C.5.3
+      - id: C.6
+        name: Planning
+        controls:
+          - id: C.6.1.1
+          - id: C.6.1.2
+          - id: C.6.1.3
+          - id: C.6.2
+          - id: C.6.3
+      - id: C.7
+        name: Support
+        controls:
+          - id: C.7.1
+          - id: C.7.2
+          - id: C.7.3
+          - id: C.7.4
+          - id: C.7.5.1
+          - id: C.7.5.2
+          - id: C.7.5.3
+      - id: C.8
+        name: Operation
+        controls:
+          - id: C.8.1
+          - id: C.8.2
+          - id: C.8.3
+      - id: C.9
+        name: Performance Evaluation
+        controls:
+          - id: C.9.1
+          - id: C.9.2.1
+          - id: C.9.2.2
+          - id: C.9.3.1
+          - id: C.9.3.2
+          - id: C.9.3.3
+      - id: C.10
+        name: Improvement
+        controls:
+          - id: C.10.1
+          - id: C.10.2
+  - name: ISO 27701
+    families:
+      - id: 5
+        name: PIMS Foundation
+        controls:
+          - id: 5.2.1
+          - id: 5.2.2
+          - id: 5.2.3
+          - id: 5.2.4
+          - id: 5.4.1.2
+          - id: 5.4.1.3
+      - id: 7
+        name: PII Controller Controls
+        controls:
+          - id: 7.2.6
+          - id: 7.2.8
+      - id: 8
+        name: PII Processor Controls
+        controls:
+          - id: 8.2.1
+      - id: A.7
+        name: PII Controller Controls
+        controls:
+          - id: A.7.2.1
+          - id: A.7.2.2
+          - id: A.7.2.3
+          - id: A.7.2.4
+          - id: A.7.2.5
+          - id: A.7.2.6
+          - id: A.7.2.7
+          - id: A.7.2.8
+          - id: A.7.3.1
+          - id: A.7.3.2
+          - id: A.7.3.3
+          - id: A.7.3.4
+          - id: A.7.3.5
+          - id: A.7.3.6
+          - id: A.7.3.7
+          - id: A.7.3.8
+          - id: A.7.3.9
+          - id: A.7.3.10
+          - id: A.7.4.1
+          - id: A.7.4.2
+          - id: A.7.4.3
+          - id: A.7.4.4
+          - id: A.7.4.5
+          - id: A.7.4.6
+          - id: A.7.4.7
+          - id: A.7.4.8
+          - id: A.7.4.9
+          - id: A.7.5.1
+          - id: A.7.5.2
+          - id: A.7.5.3
+          - id: A.7.5.4
+      - id: B.8
+        name: PII Processor Controls
+        controls:
+          - id: B.8.2.1
+          - id: B.8.2.2
+          - id: B.8.2.3
+          - id: B.8.2.4
+          - id: B.8.2.5
+          - id: B.8.2.6
+          - id: B.8.3.1
+          - id: B.8.4.1
+          - id: B.8.4.2
+          - id: B.8.4.3
+          - id: B.8.5.1
+          - id: B.8.5.2
+          - id: B.8.5.3
+          - id: B.8.5.4
+          - id: B.8.5.5
+          - id: B.8.5.6
+          - id: B.8.5.7
+          - id: B.8.5.8
+  - name: "ISO 27701:2025"
+    families:
+      - id: A.1
+        name: A.1 Controls
+        controls:
+          - id: A.1.2.2
+          - id: A.1.2.3
+          - id: A.1.2.4
+          - id: A.1.2.5
+          - id: A.1.2.6
+          - id: A.1.2.7
+          - id: A.1.2.8
+          - id: A.1.2.9
+          - id: A.1.3.2
+          - id: A.1.3.3
+          - id: A.1.3.4
+          - id: A.1.3.5
+          - id: A.1.3.6
+          - id: A.1.3.7
+          - id: A.1.3.8
+          - id: A.1.3.9
+          - id: A.1.3.10
+          - id: A.1.3.11
+          - id: A.1.4.2
+          - id: A.1.4.3
+          - id: A.1.4.4
+          - id: A.1.4.5
+          - id: A.1.4.6
+          - id: A.1.4.7
+          - id: A.1.4.8
+          - id: A.1.4.9
+          - id: A.1.4.10
+          - id: A.1.5.2
+          - id: A.1.5.3
+          - id: A.1.5.4
+          - id: A.1.5.5
+      - id: A.2
+        name: A.2 Controls
+        controls:
+          - id: A.2.2.2
+          - id: A.2.2.3
+          - id: A.2.2.4
+          - id: A.2.2.5
+          - id: A.2.2.6
+          - id: A.2.2.7
+          - id: A.2.3.2
+          - id: A.2.4.2
+          - id: A.2.4.3
+          - id: A.2.4.4
+          - id: A.2.5.2
+          - id: A.2.5.3
+          - id: A.2.5.4
+          - id: A.2.5.5
+          - id: A.2.5.6
+          - id: A.2.5.7
+          - id: A.2.5.8
+          - id: A.2.5.9
+      - id: A.3
+        name: A.3 Controls
+        controls:
+          - id: A.3.3
+          - id: A.3.4
+          - id: A.3.5
+          - id: A.3.6
+          - id: A.3.7
+          - id: A.3.8
+          - id: A.3.9
+          - id: A.3.10
+          - id: A.3.11
+          - id: A.3.12
+          - id: A.3.13
+          - id: A.3.14
+          - id: A.3.15
+          - id: A.3.16
+          - id: A.3.17
+          - id: A.3.18
+          - id: A.3.19
+          - id: A.3.20
+          - id: A.3.21
+          - id: A.3.22
+          - id: A.3.23
+          - id: A.3.24
+          - id: A.3.25
+          - id: A.3.26
+          - id: A.3.27
+          - id: A.3.28
+          - id: A.3.29
+          - id: A.3.30
+          - id: A.3.31
+      - id: C.4
+        name: Context
+        controls:
+          - id: C.4.1
+          - id: C.4.2
+          - id: C.4.3
+          - id: C.4.4
+      - id: C.5
+        name: Leadership
+        controls:
+          - id: C.5.1
+          - id: C.5.2
+          - id: C.5.3
+      - id: C.6
+        name: Planning
+        controls:
+          - id: C.6.1.1
+          - id: C.6.1.2
+          - id: C.6.1.3
+          - id: C.6.2
+          - id: C.6.3
+      - id: C.7
+        name: Support
+        controls:
+          - id: C.7.1
+          - id: C.7.2
+          - id: C.7.3
+          - id: C.7.4
+          - id: C.7.5.1
+          - id: C.7.5.2
+          - id: C.7.5.3
+      - id: C.8
+        name: Operation
+        controls:
+          - id: C.8.1
+          - id: C.8.2
+          - id: C.8.3
+      - id: C.9
+        name: Performance Evaluation
+        controls:
+          - id: C.9.1
+          - id: C.9.2.1
+          - id: C.9.2.2
+          - id: C.9.3.1
+          - id: C.9.3.2
+          - id: C.9.3.3
+      - id: C.10
+        name: Improvement
+        controls:
+          - id: C.10.1
+          - id: C.10.2
+  - name: ISO 42001
+    families:
+      - id: 6
+        name: Planning
+        controls:
+          - id: 6.1
+          - id: 6.2
+      - id: 7
+        name: Support
+        controls:
+          - id: 7.1
+          - id: 7.2
+          - id: 7.3
+      - id: 8
+        name: Operation
+        controls:
+          - id: 8.4
+      - id: 9
+        name: Performance Evaluation
+        controls:
+          - id: 9.1
+          - id: 9.2
+          - id: 9.3
+          - id: 9.4
+      - id: 10
+        name: Improvement
+        controls:
+          - id: 10.1
+          - id: 10.2
+      - id: A.2
+        name: Policies
+        controls:
+          - id: A.2.2
+          - id: A.2.3
+          - id: A.2.4
+      - id: A.3
+        name: Internal Organization
+        controls:
+          - id: A.3.2
+          - id: A.3.3
+      - id: A.4
+        name: Resources
+        controls:
+          - id: A.4.2
+          - id: A.4.3
+          - id: A.4.4
+          - id: A.4.5
+          - id: A.4.6
+      - id: A.5
+        name: Impact Assessment
+        controls:
+          - id: A.5.2
+          - id: A.5.3
+          - id: A.5.4
+          - id: A.5.5
+      - id: A.6
+        name: Lifecycle
+        controls:
+          - id: A.6.1.2
+          - id: A.6.1.3
+          - id: A.6.2.2
+          - id: A.6.2.3
+          - id: A.6.2.4
+          - id: A.6.2.5
+          - id: A.6.2.6
+          - id: A.6.2.7
+          - id: A.6.2.8
+      - id: A.7
+        name: Data
+        controls:
+          - id: A.7.2
+          - id: A.7.3
+          - id: A.7.4
+          - id: A.7.5
+          - id: A.7.6
+      - id: A.8
+        name: Information for Interested Parties
+        controls:
+          - id: A.8.2
+          - id: A.8.3
+          - id: A.8.4
+          - id: A.8.5
+      - id: A.9
+        name: Use of AI Systems
+        controls:
+          - id: A.9.2
+          - id: A.9.3
+          - id: A.9.4
+      - id: A.10
+        name: Third-Party and Customer Relationships
+        controls:
+          - id: A.10.2
+          - id: A.10.3
+          - id: A.10.4
+      - id: C.4
+        name: Context
+        controls:
+          - id: C.4.1
+          - id: C.4.2
+          - id: C.4.3
+          - id: C.4.4
+      - id: C.5
+        name: Leadership
+        controls:
+          - id: C.5.1
+          - id: C.5.2
+          - id: C.5.3
+      - id: C.6
+        name: Planning
+        controls:
+          - id: C.6.1.1
+          - id: C.6.1.2
+          - id: C.6.1.3
+          - id: C.6.1.4
+          - id: C.6.2
+          - id: C.6.3
+      - id: C.7
+        name: Support
+        controls:
+          - id: C.7.1
+          - id: C.7.2
+          - id: C.7.3
+          - id: C.7.4
+          - id: C.7.5.1
+          - id: C.7.5.2
+          - id: C.7.5.3
+      - id: C.8
+        name: Operation
+        controls:
+          - id: C.8.1
+          - id: C.8.2
+          - id: C.8.3
+          - id: C.8.4
+      - id: C.9
+        name: Performance Evaluation
+        controls:
+          - id: C.9.1
+          - id: C.9.2.1
+          - id: C.9.2.2
+          - id: C.9.3.1
+          - id: C.9.3.2
+          - id: C.9.3.3
+      - id: C.10
+        name: Improvement
+        controls:
+          - id: C.10.1
+          - id: C.10.2
+  - name: NIST 800-53 r5
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+          - id: AC-2
+          - id: AC-3
+          - id: AC-4
+          - id: AC-5
+          - id: AC-6
+          - id: AC-7
+          - id: AC-8
+          - id: AC-11
+          - id: AC-12
+          - id: AC-14
+          - id: AC-17
+          - id: AC-18
+          - id: AC-19
+          - id: AC-20
+          - id: AC-21
+          - id: AC-22
+          - id: AC-23
+          - id: AC-24
+          - id: AC-25
+      - id: AT
+        name: Awareness and Training
+        controls:
+          - id: AT-1
+          - id: AT-2
+          - id: AT-3
+          - id: AT-4
+          - id: AT-5
+          - id: AT-6
+      - id: AU
+        name: Audit and Accountability
+        controls:
+          - id: AU-1
+          - id: AU-2
+          - id: AU-3
+          - id: AU-4
+          - id: AU-5
+          - id: AU-6
+          - id: AU-7
+          - id: AU-8
+          - id: AU-9
+          - id: AU-10
+          - id: AU-11
+          - id: AU-12
+          - id: AU-13
+          - id: AU-14
+          - id: AU-16
+      - id: CA
+        name: "Assessment, Authorization, and Monitoring"
+        controls:
+          - id: CA-1
+          - id: CA-2
+          - id: CA-3
+          - id: CA-5
+          - id: CA-6
+          - id: CA-7
+          - id: CA-8
+          - id: CA-9
+      - id: CM
+        name: Configuration Management
+        controls:
+          - id: CM-1
+          - id: CM-2
+          - id: CM-3
+          - id: CM-4
+          - id: CM-5
+          - id: CM-6
+          - id: CM-7
+          - id: CM-8
+          - id: CM-9
+          - id: CM-10
+          - id: CM-11
+          - id: CM-12
+          - id: CM-13
+          - id: CM-14
+      - id: CP
+        name: Contingency Planning
+        controls:
+          - id: CP-1
+          - id: CP-2
+          - id: CP-3
+          - id: CP-4
+          - id: CP-6
+          - id: CP-7
+          - id: CP-8
+          - id: CP-9
+          - id: CP-10
+          - id: CP-11
+          - id: CP-12
+          - id: CP-13
+      - id: IA
+        name: Identification and Authentication
+        controls:
+          - id: IA-1
+          - id: IA-2
+          - id: IA-3
+          - id: IA-4
+          - id: IA-5
+          - id: IA-6
+          - id: IA-7
+          - id: IA-8
+          - id: IA-9
+          - id: IA-10
+          - id: IA-11
+          - id: IA-12
+      - id: IR
+        name: Incident Response
+        controls:
+          - id: IR-1
+          - id: IR-2
+          - id: IR-3
+          - id: IR-4
+          - id: IR-5
+          - id: IR-6
+          - id: IR-7
+          - id: IR-8
+          - id: IR-9
+      - id: MA
+        name: Maintenance
+        controls:
+          - id: MA-1
+          - id: MA-2
+          - id: MA-3
+          - id: MA-4
+          - id: MA-5
+          - id: MA-6
+      - id: MP
+        name: Media Protection
+        controls:
+          - id: MP-1
+          - id: MP-2
+          - id: MP-3
+          - id: MP-4
+          - id: MP-5
+          - id: MP-6
+          - id: MP-7
+          - id: MP-8
+      - id: PE
+        name: Physical and Environmental Protection
+        controls:
+          - id: PE-1
+          - id: PE-2
+          - id: PE-3
+          - id: PE-4
+          - id: PE-5
+          - id: PE-6
+          - id: PE-8
+          - id: PE-9
+          - id: PE-10
+          - id: PE-11
+          - id: PE-12
+          - id: PE-13
+          - id: PE-14
+          - id: PE-15
+          - id: PE-16
+          - id: PE-17
+          - id: PE-18
+          - id: PE-19
+          - id: PE-20
+          - id: PE-21
+          - id: PE-22
+          - id: PE-23
+      - id: PL
+        name: Planning
+        controls:
+          - id: PL-1
+          - id: PL-2
+          - id: PL-4
+          - id: PL-7
+          - id: PL-8
+          - id: PL-9
+          - id: PL-10
+          - id: PL-11
+      - id: PM
+        name: Program Management
+        controls:
+          - id: PM-1
+          - id: PM-2
+          - id: PM-3
+          - id: PM-4
+          - id: PM-5
+          - id: PM-6
+          - id: PM-7
+          - id: PM-8
+          - id: PM-9
+          - id: PM-10
+          - id: PM-11
+          - id: PM-12
+          - id: PM-13
+          - id: PM-14
+          - id: PM-15
+          - id: PM-16
+          - id: PM-17
+          - id: PM-18
+          - id: PM-19
+          - id: PM-20
+          - id: PM-21
+          - id: PM-22
+          - id: PM-23
+          - id: PM-24
+          - id: PM-25
+          - id: PM-26
+          - id: PM-27
+          - id: PM-28
+          - id: PM-29
+          - id: PM-30
+          - id: PM-31
+          - id: PM-32
+      - id: PS
+        name: Personnel Security
+        controls:
+          - id: PS-1
+          - id: PS-2
+          - id: PS-3
+          - id: PS-4
+          - id: PS-5
+          - id: PS-6
+          - id: PS-7
+          - id: PS-8
+          - id: PS-9
+      - id: PT
+        name: PII Processing and Transparency
+        controls:
+          - id: PT-1
+          - id: PT-2
+          - id: PT-3
+          - id: PT-4
+          - id: PT-5
+          - id: PT-6
+          - id: PT-7
+          - id: PT-8
+      - id: RA
+        name: Risk Assessment
+        controls:
+          - id: RA-1
+          - id: RA-2
+          - id: RA-3
+          - id: RA-5
+          - id: RA-7
+          - id: RA-8
+          - id: RA-9
+          - id: RA-10
+      - id: SA
+        name: System and Services Acquisition
+        controls:
+          - id: SA-1
+          - id: SA-2
+          - id: SA-3
+          - id: SA-4
+          - id: SA-5
+          - id: SA-8
+          - id: SA-9
+          - id: SA-10
+          - id: SA-11
+          - id: SA-15
+          - id: SA-16
+          - id: SA-17
+          - id: SA-20
+          - id: SA-21
+          - id: SA-22
+          - id: SA-23
+      - id: SC
+        name: System and Communications Protection
+        controls:
+          - id: SC-1
+          - id: SC-2
+          - id: SC-3
+          - id: SC-4
+          - id: SC-5
+          - id: SC-7
+          - id: SC-8
+          - id: SC-10
+          - id: SC-12
+          - id: SC-13
+          - id: SC-15
+          - id: SC-16
+          - id: SC-17
+          - id: SC-18
+          - id: SC-20
+          - id: SC-21
+          - id: SC-22
+          - id: SC-23
+          - id: SC-24
+          - id: SC-28
+          - id: SC-39
+          - id: SC-40
+          - id: SC-41
+          - id: SC-43
+          - id: SC-44
+          - id: SC-45
+          - id: SC-46
+          - id: SC-47
+          - id: SC-48
+          - id: SC-49
+          - id: SC-50
+          - id: SC-51
+      - id: SI
+        name: System and Information Integrity
+        controls:
+          - id: SI-1
+          - id: SI-2
+          - id: SI-3
+          - id: SI-4
+          - id: SI-5
+          - id: SI-6
+          - id: SI-7
+          - id: SI-8
+          - id: SI-10
+          - id: SI-11
+          - id: SI-12
+          - id: SI-13
+          - id: SI-16
+          - id: SI-17
+          - id: SI-18
+          - id: SI-19
+          - id: SI-20
+          - id: SI-21
+          - id: SI-22
+          - id: SI-23
+      - id: SR
+        name: Supply Chain Risk Management
+        controls:
+          - id: SR-1
+          - id: SR-2
+          - id: SR-3
+          - id: SR-4
+          - id: SR-5
+          - id: SR-6
+          - id: SR-7
+          - id: SR-8
+          - id: SR-9
+          - id: SR-10
+          - id: SR-11
+          - id: SR-12
+  - name: CIS Controls v8
+    families:
+      - id: 1
+        name: Inventory and Control of Enterprise Assets
+        controls:
+          - id: 1
+      - id: 2
+        name: Inventory and Control of Software Assets
+        controls:
+          - id: 2
+      - id: 3
+        name: Data Protection
+        controls:
+          - id: 3
+          - id: 3.6
+      - id: 4
+        name: Secure Configuration of Enterprise Assets and Software
+        controls:
+          - id: 4
+          - id: 4.3
+      - id: 5
+        name: Account Management
+        controls:
+          - id: 5
+          - id: 5.3
+      - id: 6
+        name: Access Control Management
+        controls:
+          - id: 6
+          - id: 6.3
+          - id: 6.4
+      - id: 7
+        name: Continuous Vulnerability Management
+        controls:
+          - id: 7
+      - id: 8
+        name: Audit Log Management
+        controls:
+          - id: 8
+      - id: 9
+        name: Email and Web Browser Protections
+        controls:
+          - id: 9
+      - id: 10
+        name: Malware Defenses
+        controls:
+          - id: 10
+          - id: 10.1
+          - id: 10.2
+          - id: 10.7
+      - id: 11
+        name: Data Recovery
+        controls:
+          - id: 11
+      - id: 12
+        name: Network Infrastructure Management
+        controls:
+          - id: 12
+      - id: 13
+        name: Network Monitoring and Defense
+        controls:
+          - id: 13
+      - id: 14
+        name: Security Awareness and Skills Training
+        controls:
+          - id: 14
+      - id: 15
+        name: Service Provider Management
+        controls:
+          - id: 15
+      - id: 16
+        name: Application Software Security
+        controls:
+          - id: 16
+      - id: 17
+        name: Incident Response Management
+        controls:
+          - id: 17
+      - id: 18
+        name: Penetration Testing
+        controls:
+          - id: 18
+  - name: CIS AWS Foundations Benchmark v2.0
+    families:
+      - id: 1
+        name: Identity and Access Management
+        controls:
+          - id: 1.4
+          - id: 1.5
+          - id: 1.8
+          - id: 1.9
+          - id: 1.10
+          - id: 1.12
+          - id: 1.13
+          - id: 1.14
+          - id: 1.15
+          - id: 1.16
+          - id: 1.19
+          - id: 1.20
+          - id: 1.21
+      - id: 2
+        name: Storage
+        controls:
+          - id: 2.1.1
+          - id: 2.1.2
+          - id: 2.1.5
+          - id: 2.2.1
+          - id: 2.3.1
+          - id: 2.3.2
+          - id: 2.3.3
+          - id: 2.6
+      - id: 3
+        name: Logging
+        controls:
+          - id: 3.1
+          - id: 3.2
+          - id: 3.5
+          - id: 3.6
+          - id: 3.7
+          - id: 3.8
+          - id: 3.9
+          - id: 3.10
+          - id: 3.11
+      - id: 4
+        name: Monitoring
+        controls:
+          - id: 4.1
+          - id: 4.15
+          - id: 4.16
+      - id: 5
+        name: Networking
+        controls:
+          - id: 5.1
+          - id: 5.2
+          - id: 5.3
+          - id: 5.4
+          - id: 5.6
+  - name: CIS Kubernetes Benchmark
+    families:
+      - id: 5
+        name: Policies
+        controls:
+          - id: 5.1.1
+          - id: 5.1.3
+          - id: 5.1.4
+          - id: 5.1.6
+          - id: 5.2.1
+          - id: 5.2.2
+          - id: 5.2.3
+          - id: 5.2.4
+          - id: 5.2.5
+          - id: 5.2.6
+          - id: 5.2.7
+          - id: 5.2.8
+          - id: 5.3.2
+  - name: CIS GKE Benchmark v1.4
+    families:
+      - id: 5
+        name: Policies
+        controls:
+          - id: 5.1.1
+          - id: 5.2.1
+          - id: 5.3.1
+          - id: 5.5.1
+          - id: 5.5.2
+          - id: 5.5.3
+          - id: 5.5.4
+          - id: 5.6.1
+          - id: 5.6.3
+  - name: CIS EKS Benchmark v1.3
+    families:
+      - id: 5
+        name: Policies
+        controls:
+          - id: 5.4.1
+  - name: CIS Benchmarks
+    families:
+      - id: 1
+        name: Identity and Access Management
+        controls:
+          - id: 1.1
+      - id: 4
+        name: Compute Hardening
+        controls:
+          - id: 4.4
+          - id: 4.8
+      - id: 5
+        name: Kubernetes Access Control
+        controls:
+          - id: 5.1.1
+  - name: PCI DSS v4.0.1
+    families:
+      - id: 1
+        name: Network Security Controls
+        controls:
+          - id: 1.1
+          - id: 1.2
+          - id: 1.3
+          - id: 1.3.1
+          - id: 1.4
+          - id: 1.5
+      - id: 2
+        name: Secure Configurations
+        controls:
+          - id: 2.1
+          - id: 2.2
+          - id: 2.3
+      - id: 3
+        name: Account Data Protection
+        controls:
+          - id: 3.1
+          - id: 3.2
+          - id: 3.3
+          - id: 3.4
+          - id: 3.5
+          - id: 3.5.1
+          - id: 3.6
+          - id: 3.7
+      - id: 4
+        name: Transmission Protection
+        controls:
+          - id: 4.1
+          - id: 4.2
+          - id: 4.2.1
+      - id: 5
+        name: Malware Protection
+        controls:
+          - id: 5.1
+          - id: 5.2
+          - id: 5.3
+          - id: 5.4
+      - id: 6
+        name: Secure Systems and Software
+        controls:
+          - id: 6.1
+          - id: 6.2
+          - id: 6.3
+          - id: 6.4
+          - id: 6.5
+      - id: 7
+        name: Need-to-Know Access
+        controls:
+          - id: 7.1
+          - id: 7.2
+          - id: 7.3
+      - id: 8
+        name: Identity and Authentication
+        controls:
+          - id: 8.1
+          - id: 8.1.3
+          - id: 8.2
+          - id: 8.3
+          - id: 8.3.6
+          - id: 8.3.7
+          - id: 8.4
+          - id: 8.4.2
+          - id: 8.5
+          - id: 8.6
+      - id: 9
+        name: Physical Access
+        controls:
+          - id: 9.1
+          - id: 9.2
+          - id: 9.3
+          - id: 9.4
+          - id: 9.5
+      - id: 10
+        name: Logging and Monitoring
+        controls:
+          - id: 10.1
+          - id: 10.2
+          - id: 10.2.1
+          - id: 10.3
+          - id: 10.4
+          - id: 10.5
+          - id: 10.6
+          - id: 10.7
+      - id: 11
+        name: Security Testing
+        controls:
+          - id: 11.1
+          - id: 11.2
+          - id: 11.3
+          - id: 11.4
+          - id: 11.5
+          - id: 11.6
+      - id: 12
+        name: Security Program
+        controls:
+          - id: 12.1
+          - id: 12.2
+          - id: 12.3
+          - id: 12.4
+          - id: 12.5
+          - id: 12.6
+          - id: 12.7
+          - id: 12.8
+          - id: 12.9
+          - id: 12.10
+          - id: 12.10.1
+      - id: Appendix
+        name: Appendix Controls
+        controls:
+          - id: Appendix A2.1
+          - id: Appendix A - 1.1
+          - id: Appendix A - 1.2
+  - name: PCI DSS v4.0
+    families:
+      - id: 1
+        name: Network Security Controls
+        controls:
+          - id: 1.1
+          - id: 1.2
+          - id: 1.3
+          - id: 1.3.1
+          - id: 1.3.2
+          - id: 1.4
+          - id: 1.5
+      - id: 2
+        name: Secure Configurations
+        controls:
+          - id: 2.1
+          - id: 2.2
+          - id: 2.3
+      - id: 3
+        name: Account Data Protection
+        controls:
+          - id: 3.1
+          - id: 3.2
+          - id: 3.3
+          - id: 3.4
+          - id: 3.5
+          - id: 3.6
+          - id: 3.7
+      - id: 4
+        name: Transmission Protection
+        controls:
+          - id: 4.1
+          - id: 4.2
+      - id: 5
+        name: Malware Protection
+        controls:
+          - id: 5.1
+          - id: 5.2
+          - id: 5.3
+          - id: 5.4
+      - id: 6
+        name: Secure Systems and Software
+        controls:
+          - id: 6.1
+          - id: 6.2
+          - id: 6.3
+          - id: 6.3.1
+          - id: 6.4
+          - id: 6.5
+      - id: 7
+        name: Need-to-Know Access
+        controls:
+          - id: 7.1
+          - id: 7.2
+          - id: 7.3
+      - id: 8
+        name: Identity and Authentication
+        controls:
+          - id: 8.1
+          - id: 8.2
+          - id: 8.3
+          - id: 8.4
+          - id: 8.5
+          - id: 8.6
+      - id: 9
+        name: Physical Access
+        controls:
+          - id: 9.1
+          - id: 9.2
+          - id: 9.3
+          - id: 9.4
+          - id: 9.5
+      - id: 10
+        name: Logging and Monitoring
+        controls:
+          - id: 10.1
+          - id: 10.2
+          - id: 10.3
+          - id: 10.4
+          - id: 10.5
+          - id: 10.6
+          - id: 10.7
+      - id: 11
+        name: Security Testing
+        controls:
+          - id: 11.1
+          - id: 11.2
+          - id: 11.3
+          - id: 11.3.1
+          - id: 11.4
+          - id: 11.5
+          - id: 11.6
+      - id: 12
+        name: Security Program
+        controls:
+          - id: 12.1
+          - id: 12.2
+          - id: 12.3
+          - id: 12.4
+          - id: 12.5
+          - id: 12.6
+          - id: 12.7
+          - id: 12.8
+          - id: 12.9
+          - id: 12.10
+      - id: Appendix
+        name: Appendix Controls
+        controls:
+          - id: Appendix A2.1
+          - id: Appendix A - 1.1
+          - id: Appendix A - 1.2
+  - name: PCI SAQ D-SP
+    families:
+      - id: 1
+        name: 1 Controls
+        controls:
+          - id: 1.1.1
+          - id: 1.1.2.a
+          - id: 1.1.2.b
+          - id: 1.1.3.a
+          - id: 1.1.3.b
+          - id: 1.1.4.a
+          - id: 1.1.4.b
+          - id: 1.1.5
+          - id: 1.1.6.a
+          - id: 1.1.6.b
+          - id: 1.1.7.a
+          - id: 1.1.7.b
+          - id: 1.2.1.a
+          - id: 1.2.1.b
+          - id: 1.2.2
+          - id: 1.2.3
+          - id: 1.3.1
+          - id: 1.3.2
+          - id: 1.3.3
+          - id: 1.3.4
+          - id: 1.3.5
+          - id: 1.3.6
+          - id: 1.3.7.a
+          - id: 1.3.7.b
+          - id: 1.4.a
+          - id: 1.4.b
+          - id: 1.5
+      - id: 2
+        name: 2 Controls
+        controls:
+          - id: 2.1.1.a
+          - id: 2.1.1.b
+          - id: 2.1.1.c
+          - id: 2.1.1.d
+          - id: 2.1.1.e
+          - id: 2.1.a
+          - id: 2.1.b
+          - id: 2.2.1.a
+          - id: 2.2.1.b
+          - id: 2.2.2.a
+          - id: 2.2.2.b
+          - id: 2.2.3
+          - id: 2.2.4.a
+          - id: 2.2.4.b
+          - id: 2.2.4.c
+          - id: 2.2.5.a
+          - id: 2.2.5.b
+          - id: 2.2.5.c
+          - id: 2.2.a
+          - id: 2.2.b
+          - id: 2.2.c
+          - id: 2.2.d
+          - id: 2.3.a
+          - id: 2.3.b
+          - id: 2.3.c
+          - id: 2.3.d
+          - id: 2.4.a
+          - id: 2.4.b
+          - id: 2.5
+          - id: 2.6
+      - id: 3
+        name: 3 Controls
+        controls:
+          - id: 3.1.a
+          - id: 3.1.b
+          - id: 3.1.c
+          - id: 3.1.d
+          - id: 3.1.e
+          - id: 3.2.1
+          - id: 3.2.2
+          - id: 3.2.3
+          - id: 3.2.a
+          - id: 3.2.b
+          - id: 3.2.c
+          - id: 3.3
+          - id: 3.4
+          - id: 3.4.1.a
+          - id: 3.4.1.b
+          - id: 3.4.1.c
+          - id: 3.5.1
+          - id: 3.5.2
+          - id: 3.5.3
+          - id: 3.5.4
+          - id: 3.6.1
+          - id: 3.6.2
+          - id: 3.6.3
+          - id: 3.6.4
+          - id: 3.6.5.a
+          - id: 3.6.5.b
+          - id: 3.6.5.c
+          - id: 3.6.6
+          - id: 3.6.7
+          - id: 3.6.8
+          - id: 3.6.a
+          - id: 3.6.b
+          - id: 3.7
+      - id: 4
+        name: 4 Controls
+        controls:
+          - id: 4.1.1
+          - id: 4.1.a
+          - id: 4.1.b
+          - id: 4.1.c
+          - id: 4.1.d
+          - id: 4.1.e
+          - id: 4.2.a
+          - id: 4.2.b
+          - id: 4.3
+      - id: 5
+        name: 5 Controls
+        controls:
+          - id: 5.1
+          - id: 5.1.1
+          - id: 5.1.2
+          - id: 5.2.a
+          - id: 5.2.b
+          - id: 5.2.c
+          - id: 5.3
+          - id: 5.4
+      - id: 6
+        name: 6 Controls
+        controls:
+          - id: 6.1
+          - id: 6.2.a
+          - id: 6.2.b
+          - id: 6.3.1
+          - id: 6.3.2
+          - id: 6.3.a
+          - id: 6.3.b
+          - id: 6.3.c
+          - id: 6.4.1.a
+          - id: 6.4.1.b
+          - id: 6.4.2
+          - id: 6.4.3
+          - id: 6.4.4
+          - id: 6.4.5.1
+          - id: 6.4.5.2
+          - id: 6.4.5.3.a
+          - id: 6.4.5.3.b
+          - id: 6.4.5.4
+          - id: 6.4.5.a
+          - id: 6.4.6
+          - id: 6.5.1
+          - id: 6.5.2
+          - id: 6.5.3
+          - id: 6.5.4
+          - id: 6.5.5
+          - id: 6.5.6
+          - id: 6.5.7
+          - id: 6.5.8
+          - id: 6.5.9
+          - id: 6.5.10
+          - id: 6.5.a
+          - id: 6.5.b
+          - id: 6.6
+          - id: 6.7
+      - id: 7
+        name: 7 Controls
+        controls:
+          - id: 7.1
+          - id: 7.1.1
+          - id: 7.1.2
+          - id: 7.1.3
+          - id: 7.1.4
+          - id: 7.2.1
+          - id: 7.2.2
+          - id: 7.2.3
+          - id: 7.3
+      - id: 8
+        name: 8 Controls
+        controls:
+          - id: 8.1.1
+          - id: 8.1.2
+          - id: 8.1.3
+          - id: 8.1.4
+          - id: 8.1.5.a
+          - id: 8.1.5.b
+          - id: 8.1.6.a
+          - id: 8.1.6.b
+          - id: 8.1.7
+          - id: 8.1.8
+          - id: 8.2
+          - id: 8.2.1.a
+          - id: 8.2.1.b
+          - id: 8.2.2
+          - id: 8.2.3.a
+          - id: 8.2.3.b
+          - id: 8.2.4.a
+          - id: 8.2.4.b
+          - id: 8.2.5.a
+          - id: 8.2.5.b
+          - id: 8.2.6
+          - id: 8.3.1
+          - id: 8.3.2
+          - id: 8.4.a
+          - id: 8.4.b
+          - id: 8.5
+          - id: 8.5.1
+          - id: 8.6
+          - id: 8.7.a
+          - id: 8.7.b
+          - id: 8.7.c
+          - id: 8.8
+      - id: 9
+        name: 9 Controls
+        controls:
+          - id: 9.1
+          - id: 9.1.1.a
+          - id: 9.1.1.b
+          - id: 9.1.1.c
+          - id: 9.1.1.d
+          - id: 9.1.2
+          - id: 9.1.3
+          - id: 9.2.a
+          - id: 9.2.b
+          - id: 9.2.c
+          - id: 9.3
+          - id: 9.4.1
+          - id: 9.4.2.a
+          - id: 9.4.2.b
+          - id: 9.4.3
+          - id: 9.4.4.a
+          - id: 9.4.4.b
+          - id: 9.4.4.c
+          - id: 9.5
+          - id: 9.5.1
+          - id: 9.6.1
+          - id: 9.6.2
+          - id: 9.6.3
+          - id: 9.6.a
+          - id: 9.7
+          - id: 9.7.1.a
+          - id: 9.7.1.b
+          - id: 9.8.1.a
+          - id: 9.8.1.b
+          - id: 9.8.2
+          - id: 9.8.a
+          - id: 9.8.b
+          - id: 9.9.1.a
+          - id: 9.9.1.b
+          - id: 9.9.1.c
+          - id: 9.9.2.a
+          - id: 9.9.2.b
+          - id: 9.9.3.a
+          - id: 9.9.3.b
+          - id: 9.9.a
+          - id: 9.9.b
+          - id: 9.9.c
+          - id: 9.10
+      - id: 10
+        name: 10 Controls
+        controls:
+          - id: 10.1.a
+          - id: 10.1.b
+          - id: 10.2.1
+          - id: 10.2.2
+          - id: 10.2.3
+          - id: 10.2.4
+          - id: 10.2.5
+          - id: 10.2.6
+          - id: 10.2.7
+          - id: 10.3.1
+          - id: 10.3.2
+          - id: 10.3.3
+          - id: 10.3.4
+          - id: 10.3.5
+          - id: 10.3.6
+          - id: 10.4
+          - id: 10.4.1.a
+          - id: 10.4.1.b
+          - id: 10.4.1.c
+          - id: 10.4.2.a
+          - id: 10.4.2.b
+          - id: 10.4.3
+          - id: 10.5.1
+          - id: 10.5.2
+          - id: 10.5.3
+          - id: 10.5.4
+          - id: 10.5.5
+          - id: 10.6.1.a
+          - id: 10.6.1.b
+          - id: 10.6.2.a
+          - id: 10.6.2.b
+          - id: 10.6.3.a
+          - id: 10.6.3.b
+          - id: 10.7.a
+          - id: 10.7.b
+          - id: 10.7.c
+          - id: 10.8.a
+          - id: 10.8.b
+          - id: 10.9
+      - id: 11
+        name: 11 Controls
+        controls:
+          - id: 11.1.1
+          - id: 11.1.2.a
+          - id: 11.1.2.b
+          - id: 11.1.a
+          - id: 11.1.b
+          - id: 11.1.c
+          - id: 11.1.d
+          - id: 11.2.1.a
+          - id: 11.2.1.b
+          - id: 11.2.1.c
+          - id: 11.2.2.a
+          - id: 11.2.2.b
+          - id: 11.2.2.c
+          - id: 11.2.3.a
+          - id: 11.2.3.b
+          - id: 11.2.3.c
+          - id: 11.3
+          - id: 11.3.1.a
+          - id: 11.3.1.b
+          - id: 11.3.2.a
+          - id: 11.3.2.b
+          - id: 11.3.3
+          - id: 11.3.4.1.a
+          - id: 11.3.4.1.b
+          - id: 11.3.4.1.c
+          - id: 11.3.4.1.d
+          - id: 11.3.4.a
+          - id: 11.3.4.b
+          - id: 11.3.4.c
+          - id: 11.4.a
+          - id: 11.4.b
+          - id: 11.4.c
+          - id: 11.5.1
+          - id: 11.5.a
+          - id: 11.5.b
+          - id: 11.6
+      - id: 12
+        name: 12 Controls
+        controls:
+          - id: 12.1
+          - id: 12.1.1
+          - id: 12.2.a
+          - id: 12.2.b
+          - id: 12.3.1
+          - id: 12.3.2
+          - id: 12.3.3
+          - id: 12.3.4
+          - id: 12.3.5
+          - id: 12.3.6
+          - id: 12.3.7
+          - id: 12.3.8
+          - id: 12.3.9
+          - id: 12.3.10.a
+          - id: 12.3.10.b
+          - id: 12.4
+          - id: 12.4.1.a
+          - id: 12.4.1.b
+          - id: 12.5.1
+          - id: 12.5.2
+          - id: 12.5.3
+          - id: 12.5.4
+          - id: 12.5.5
+          - id: 12.5.a
+          - id: 12.6.1.a
+          - id: 12.6.1.b
+          - id: 12.6.1.c
+          - id: 12.6.2
+          - id: 12.6.a
+          - id: 12.7
+          - id: 12.8.1
+          - id: 12.8.2
+          - id: 12.8.3
+          - id: 12.8.4
+          - id: 12.8.5
+          - id: 12.9
+          - id: 12.10.1.a
+          - id: 12.10.1.b.i
+          - id: 12.10.1.b.ii
+          - id: 12.10.1.b.iii
+          - id: 12.10.1.b.iv
+          - id: 12.10.1.b.v
+          - id: 12.10.1.b.vi
+          - id: 12.10.1.b.vii
+          - id: 12.10.2
+          - id: 12.10.3
+          - id: 12.10.4
+          - id: 12.10.5
+          - id: 12.10.6
+          - id: 12.11.a
+          - id: 12.11.b
+      - id: Appendix
+        name: Appendix Controls
+        controls:
+          - id: SD - SAQ D (Service Provider)
+  - name: HIPAA
+    families:
+      - id: 164.4
+        name: Breach Notification
+        controls:
+          - id: 164.404 (2)
+          - id: 164.404(a)
+          - id: 164.404(b)
+          - id: 164.404(c)(1)
+          - id: 164.404(c)(2)
+          - id: 164.404(d)(1)(i)
+          - id: 164.404(d)(1)(ii)
+          - id: 164.404(d)(2)
+          - id: 164.404(d)(2)(i)
+          - id: 164.404(d)(2)(ii)
+          - id: 164.404(d)(3)
+          - id: 164.406(a)
+          - id: 164.406(b)
+          - id: 164.406(c)
+          - id: 164.408(a)
+          - id: 164.408(b)
+          - id: 164.408(c)
+          - id: 164.410(a)(1)
+          - id: 164.410(a)(2)
+          - id: 164.410(b)
+          - id: 164.410(c)(1)
+          - id: 164.410(c)(2)
+          - id: 164.412
+          - id: 164.414
+      - id: 164.308
+        name: Administrative Safeguards
+        controls:
+          - id: 164.308(a)(1)(i)
+          - id: 164.308(a)(1)(ii)(A)
+          - id: 164.308(a)(1)(ii)(B)
+          - id: 164.308(a)(1)(ii)(C)
+          - id: 164.308(a)(1)(ii)(D)
+          - id: 164.308(a)(2)
+          - id: 164.308(a)(3)(i)
+          - id: 164.308(a)(3)(ii)(A)
+          - id: 164.308(a)(3)(ii)(B)
+          - id: 164.308(a)(3)(ii)(C)
+          - id: 164.308(a)(4)(i)
+          - id: 164.308(a)(4)(ii)(A)
+          - id: 164.308(a)(4)(ii)(B)
+          - id: 164.308(a)(4)(ii)(C)
+          - id: 164.308(a)(5)(i)
+          - id: 164.308(a)(5)(ii)(A)
+          - id: 164.308(a)(5)(ii)(B)
+          - id: 164.308(a)(5)(ii)(C)
+          - id: 164.308(a)(5)(ii)(D)
+          - id: 164.308(a)(6)
+          - id: 164.308(a)(6)(i)
+          - id: 164.308(a)(6)(ii)
+          - id: 164.308(a)(7)
+          - id: 164.308(a)(7)(i)
+          - id: 164.308(a)(7)(ii)(A)
+          - id: 164.308(a)(7)(ii)(B)
+          - id: 164.308(a)(7)(ii)(C)
+          - id: 164.308(a)(7)(ii)(D)
+          - id: 164.308(a)(7)(ii)(E)
+          - id: 164.308(a)(8)
+          - id: 164.308(b)(1)
+          - id: 164.308(b)(2)
+          - id: 164.308(b)(3)
+          - id: 164.308(b)(4)
+      - id: 164.310
+        name: Physical Safeguards
+        controls:
+          - id: 164.310(a)(1)
+          - id: 164.310(a)(2)(i)
+          - id: 164.310(a)(2)(ii)
+          - id: 164.310(a)(2)(iii)
+          - id: 164.310(a)(2)(iv)
+          - id: 164.310(b)
+          - id: 164.310(c)
+          - id: 164.310(d)(1)
+          - id: 164.310(d)(2)(i)
+          - id: 164.310(d)(2)(ii)
+          - id: 164.310(d)(2)(iii)
+          - id: 164.310(d)(2)(iv)
+      - id: 164.312
+        name: Technical Safeguards
+        controls:
+          - id: 164.312
+          - id: 164.312(a)(1)
+          - id: 164.312(a)(2)(i)
+          - id: 164.312(a)(2)(ii)
+          - id: 164.312(a)(2)(iii)
+          - id: 164.312(a)(2)(iv)
+          - id: 164.312(b)
+          - id: 164.312(c)(1)
+          - id: 164.312(c)(2)
+          - id: 164.312(d)
+          - id: 164.312(e)(1)
+          - id: 164.312(e)(2)(i)
+          - id: 164.312(e)(2)(ii)
+      - id: 164.314
+        name: Organizational Requirements
+        controls:
+          - id: 164.314(a)(1)
+          - id: 164.314(a)(2)(i)
+          - id: 164.314(a)(2)(ii)
+          - id: 164.314(a)(2)(iii)
+          - id: 164.314(b)(1)
+          - id: 164.314(b)(2)
+          - id: 164.314(b)(2)(i)
+          - id: 164.314(b)(2)(ii)
+          - id: 164.314(b)(2)(iii)
+          - id: 164.314(b)(2)(iv)
+      - id: 164.316
+        name: Policies and Documentation
+        controls:
+          - id: 164.316(a)
+          - id: 164.316(b)(1)(i)
+          - id: 164.316(b)(1)(ii)
+          - id: 164.316(b)(2)(i)
+          - id: 164.316(b)(2)(ii)
+          - id: 164.316(b)(2)(iii)
+  - name: GDPR
+    families:
+      - id: Article
+        name: Articles
+        controls:
+          - id: Art.5
+          - id: Art.30
+          - id: Article 6
+          - id: Article 7
+          - id: Article 12
+          - id: Article 13
+          - id: Article 14
+          - id: Article 15
+          - id: Article 16
+          - id: Article 17
+          - id: Article 18
+          - id: Article 19
+          - id: Article 20
+          - id: Article 21
+          - id: Article 22
+          - id: Article 23
+          - id: Article 24
+          - id: Article 25
+          - id: Article 27
+          - id: Article 28
+          - id: Article 30
+          - id: Article 32
+          - id: Article 33
+          - id: Article 34
+          - id: Article 35
+          - id: Article 37
+          - id: Article 38
+          - id: Article 39
+          - id: Article 44
+          - id: Article 45
+          - id: Article 46
+          - id: Article 48
+          - id: Article 51
+  - name: CCPA
+    families:
+      - id: 1798
+        name: Consumer Privacy Rights
+        controls:
+          - id: 1798.100
+  - name: US Data Privacy
+    families:
+      - id: Privacy
+        name: Privacy Principles
+        controls:
+          - id: Accountability Principle
+          - id: Collection Limitation Principle
+          - id: Data Minimization Principle
+          - id: Data Quality Principle
+          - id: Individual Participation Principle
+          - id: Openness & Transparency Principle
+          - id: Outlier or State Specific Requirements not commonly agreed upon
+          - id: Purpose Specification Principle
+          - id: Security Safeguards Principle
+          - id: Use Limitation Principle
+  - name: EU AI Act
+    families:
+      - id: Art.
+        name: Articles
+        controls:
+          - id: Art.13
+          - id: Art.14
+  - name: HITRUST e1
+    families:
+      - id: HITRUST
+        name: HITRUST Control Domains
+        controls:
+          - id: AC
+          - id: ALM
+          - id: BCDR
+          - id: CM
+          - id: DPP
+          - id: EP
+          - id: ETA
+          - id: IM
+          - id: IPP
+          - id: MDS
+          - id: NP
+          - id: PES
+          - id: PM
+          - id: PMS
+          - id: RM
+          - id: TP
+          - id: TPA
+          - id: VM
+          - id: WS
+  - name: CISA
+    families:
+      - id: CISA
+        name: CISA Requirements
+        controls:
+          - id: 1.1
+  - id: dora
+    name: DORA
+    framework_version: "Regulation (EU) 2022/2554"
+    description: Digital Operational Resilience Act control groupings for ICT risk management, incident reporting, resilience testing, and ICT third-party risk.
+    tags: [regulatory, operational-resilience, financial-services]
+    families:
+      - id: GOV
+        name: Governance and ICT Risk Management
+        controls:
+          - id: Art.5
+            title: Governance and organisation
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC3.1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: Art.6
+            title: ICT risk management framework
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: SOC 2
+                control_id: CC3.1
+          - id: Art.8
+            title: Identification
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: Art.9
+            title: Protection and prevention
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: Art.10
+            title: Detection
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: Art.11
+            title: Response and recovery
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: Art.12
+            title: Backup policies and restoration
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: Art.13
+            title: Learning and evolving
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+      - id: RTS-ICT-RM
+        name: ICT Risk Management RTS
+        controls:
+          - id: CDR-2024-1774-Art.4
+            title: ICT asset management policy
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
+          - id: CDR-2024-1774-Art.6
+            title: Cryptographic controls
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: CDR-2024-1774-Art.10
+            title: Vulnerability and patch management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: CDR-2024-1774-Art.12
+            title: Logging
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: CDR-2024-1774-Art.13
+            title: Network security management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: CDR-2024-1774-Art.24
+            title: Anomalous activity detection
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+      - id: INCIDENT
+        name: ICT-Related Incident Management and Reporting
+        controls:
+          - id: Art.17
+            title: ICT-related incident management process
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: Art.18
+            title: Classification of ICT-related incidents and cyber threats
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: Art.19
+            title: Reporting of major ICT-related incidents
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+      - id: TEST
+        name: Digital Operational Resilience Testing
+        controls:
+          - id: Art.24
+            title: General requirements for digital operational resilience testing
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: Art.25
+            title: Testing of ICT tools and systems
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: Art.26
+            title: Threat-led penetration testing
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+      - id: TPRM
+        name: ICT Third-Party Risk
+        controls:
+          - id: Art.28
+            title: General principles for ICT third-party risk
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: Art.30
+            title: Key contractual provisions
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: Art.31
+            title: Critical ICT third-party service providers
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+      - id: TPRM-RTS
+        name: ICT Third-Party Contract RTS
+        controls:
+          - id: CDR-2024-1773-Art.4
+            title: Contractual arrangement lifecycle
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: CDR-2024-1773-Art.5
+            title: Ex-ante ICT third-party risk assessment
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: CDR-2024-1773-Art.6
+            title: ICT third-party due diligence
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: CDR-2024-1773-Art.8
+            title: Contractual clauses and audit rights
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: CDR-2024-1773-Art.10
+            title: Exit and termination plans
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+      - id: SHARE
+        name: Information Sharing
+        controls:
+          - id: Art.45
+            title: Information-sharing arrangements
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+  - id: fedramp-rev5
+    name: FedRAMP Rev. 5
+    framework_version: "Rev. 5"
+    description: FedRAMP Rev. 5 baseline control support mapped to the corresponding NIST SP 800-53 Rev. 5 controls represented by Cerebro policy rules.
+    tags: [regulatory, federal, cloud]
+    families:
+      - id: AC
+        name: Access Control
+        controls:
+          - id: AC-1
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+          - id: AC-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+          - id: AC-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+          - id: AC-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-4
+          - id: AC-6
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+          - id: AC-11
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-11
+          - id: AC-17
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-17
+      - id: AU
+        name: Audit and Accountability
+        controls:
+          - id: AU-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+          - id: AU-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+          - id: AU-9
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-9
+          - id: AU-12
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+      - id: CA
+        name: Assessment, Authorization, and Monitoring
+        controls:
+          - id: CA-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+      - id: CM
+        name: Configuration Management
+        controls:
+          - id: CM-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+          - id: CM-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-5
+          - id: CM-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+          - id: CM-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+      - id: CP
+        name: Contingency Planning
+        controls:
+          - id: CP-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+          - id: CP-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-4
+          - id: CP-9
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+          - id: CP-10
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+      - id: IA
+        name: Identification and Authentication
+        controls:
+          - id: IA-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: IA-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+      - id: IR
+        name: Incident Response
+        controls:
+          - id: IR-1
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-1
+          - id: IR-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+          - id: IR-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: IR-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+      - id: MP
+        name: Media Protection
+        controls:
+          - id: MP-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+      - id: PS
+        name: Personnel Security
+        controls:
+          - id: PS-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+      - id: RA
+        name: Risk Assessment
+        controls:
+          - id: RA-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
+          - id: RA-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+          - id: RA-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+      - id: SA
+        name: System and Services Acquisition
+        controls:
+          - id: SA-9
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+      - id: SC
+        name: System and Communications Protection
+        controls:
+          - id: SC-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: SC-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: SC-12
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+          - id: SC-13
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+          - id: SC-17
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-17
+          - id: SC-20
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-20
+          - id: SC-21
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-21
+          - id: SC-23
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-23
+          - id: SC-28
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+      - id: SI
+        name: System and Information Integrity
+        controls:
+          - id: SI-2
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: SI-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+          - id: SI-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: SI-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: SI-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-8
+      - id: SR
+        name: Supply Chain Risk Management
+        controls:
+          - id: SR-6
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: SR-11
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+  - id: nis2
+    name: NIS2
+    framework_version: "Directive (EU) 2022/2555"
+    description: NIS2 Directive control groupings for governance, cybersecurity risk-management measures, and significant incident reporting.
+    tags: [regulatory, eu, cybersecurity]
+    families:
+      - id: GOV
+        name: Governance
+        controls:
+          - id: Art.20
+            title: Management body governance and training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC3.1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+      - id: RM
+        name: Cybersecurity Risk-Management Measures
+        controls:
+          - id: Art.21(2)(a)
+            title: Risk analysis and information system security policies
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: Art.21(2)(b)
+            title: Incident handling
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: Art.21(2)(c)
+            title: Business continuity and crisis management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+          - id: Art.21(2)(d)
+            title: Supply chain security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: Art.21(2)(e)
+            title: Security in acquisition, development, and maintenance
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: Art.21(2)(f)
+            title: Policies and procedures to assess effectiveness
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+          - id: Art.21(2)(g)
+            title: Basic cyber hygiene practices and cybersecurity training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: Art.21(2)(h)
+            title: Cryptography and encryption
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: Art.21(2)(i)
+            title: Human resources security, access control, and asset management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+          - id: Art.21(2)(j)
+            title: Multi-factor authentication and secured communications
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-23
+      - id: CIR-2024-2690
+        name: Technical and Methodological Requirements
+        controls:
+          - id: CIR-2024-2690-3
+            title: Incident handling
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+          - id: CIR-2024-2690-4
+            title: Business continuity, backup, and crisis management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: CP-4
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+          - id: CIR-2024-2690-5
+            title: Supply chain security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: CIR-2024-2690-6.4
+            title: Configuration management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+          - id: CIR-2024-2690-6.6
+            title: Security testing
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: CIR-2024-2690-6.7
+            title: Patch and vulnerability management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: CIR-2024-2690-8.2
+            title: Security training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: CIR-2024-2690-10.2
+            title: Verification of background
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+          - id: CIR-2024-2690-11
+            title: Access control and MFA
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: CIR-2024-2690-12
+            title: Asset management and classification
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+      - id: REPORT
+        name: Reporting Obligations
+        controls:
+          - id: Art.23
+            title: Significant incident reporting
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+  - id: cmmc-2
+    name: CMMC 2.0
+    framework_version: "2.0"
+    description: Cybersecurity Maturity Model Certification level and domain control groupings mapped to Cerebro policy evidence.
+    tags: [regulatory, federal, defense]
+    families:
+      - id: L1
+        name: Level 1 Basic Safeguarding of FCI
+        controls:
+          - id: AC.L1
+            title: Access Control Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+          - id: IA.L1
+            title: Identification and Authentication Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: MP.L1
+            title: Media Protection Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+          - id: PE.L1
+            title: Physical Protection Level 1 domain coverage
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: SC.L1
+            title: System and Communications Protection Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: SI.L1
+            title: System and Information Integrity Level 1 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: AC.L1-3.1.1
+            title: Limit system access to authorized users
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+          - id: AC.L1-3.1.2
+            title: Limit system access to authorized transactions and functions
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+          - id: AC.L1-3.1.20
+            title: Verify and control external connections
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-20
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: AC.L1-3.1.22
+            title: Control publicly accessible information
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+          - id: IA.L1-3.5.1
+            title: Identify system users, processes, and devices
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: IA.L1-3.5.2
+            title: Authenticate system users, processes, and devices
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+          - id: MP.L1-3.8.3
+            title: Sanitize or destroy media before disposal or reuse
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+          - id: PE.L1-3.10.1
+            title: Limit physical access to systems and facilities
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: PE.L1-3.10.3
+            title: Escort visitors and monitor visitor activity
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: PE.L1-3.10.4
+            title: Maintain audit logs of physical access
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: PE.L1-3.10.5
+            title: Manage physical access devices
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: SC.L1-3.13.1
+            title: Monitor and control communications at system boundaries
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: SC.L1-3.13.5
+            title: Separate public system components from internal networks
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: SI.L1-3.14.1
+            title: Identify, report, and correct information and system flaws
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: SI.L1-3.14.2
+            title: Provide malicious code protection
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+          - id: SI.L1-3.14.4
+            title: Update malicious code protection mechanisms
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+          - id: SI.L1-3.14.5
+            title: Perform periodic and real-time malicious code scans
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+      - id: L2
+        name: Level 2 Broad Protection of CUI
+        controls:
+          - id: AC.L2
+            title: Access Control Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: AC-17
+          - id: AT.L2
+            title: Awareness and Training Level 2 domain coverage
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: AU.L2
+            title: Audit and Accountability Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+          - id: CA.L2
+            title: Security Assessment Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+          - id: CM.L2
+            title: Configuration Management Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-5
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: IA.L2
+            title: Identification and Authentication Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+          - id: IR.L2
+            title: Incident Response Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+          - id: MA.L2
+            title: Maintenance Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: MP.L2
+            title: Media Protection Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: PE.L2
+            title: Physical Protection Level 2 domain coverage
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6
+              - framework_name: SOC 2
+                control_id: CC6.6
+          - id: PS.L2
+            title: Personnel Security Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+          - id: RA.L2
+            title: Risk Assessment Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: SC.L2
+            title: System and Communications Protection Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: SI.L2
+            title: System and Information Integrity Level 2 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: AC.L2-3.1.3
+            title: Control CUI flow
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-4
+          - id: AC.L2-3.1.5
+            title: Employ least privilege
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+          - id: AU.L2-3.3.1
+            title: Create and retain system audit logs
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+          - id: AU.L2-3.3.2
+            title: Ensure audit logs contain required event detail
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+          - id: CM.L2-3.4.3
+            title: Track, review, approve, and log system changes
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+          - id: CM.L2-3.4.7
+            title: Restrict nonessential programs and services
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+          - id: RA.L2-3.11.2
+            title: Scan for vulnerabilities
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: SC.L2-3.13.8
+            title: Protect CUI confidentiality during transmission
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: SC.L2-3.13.11
+            title: Employ FIPS-validated cryptography where required
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+          - id: SI.L2-3.14.7
+            title: Monitor system security alerts and advisories
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+      - id: L3
+        name: Level 3 Higher-Level Protection of CUI
+        controls:
+          - id: IR.L3
+            title: Incident Response Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: RA.L3
+            title: Risk Assessment Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: SC.L3
+            title: System and Communications Protection Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: SI.L3
+            title: System and Information Integrity Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: SR.L3
+            title: Supply Chain Risk Level 3 domain coverage
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+  - id: cjis-security-policy
+    name: CJIS Security Policy
+    framework_version: "v5.9.5"
+    description: FBI CJIS Security Policy policy-area support for protecting criminal justice information.
+    tags: [regulatory, criminal-justice, federal]
+    families:
+      - id: PA-1
+        name: Information Exchange Agreements
+        controls:
+          - id: PA-1
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: 5.1.1
+            title: Information exchange agreements
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+      - id: PA-2
+        name: Awareness and Training
+        controls:
+          - id: PA-2
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: 5.2.1
+            title: Security awareness training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+      - id: PA-3
+        name: Incident Response
+        controls:
+          - id: PA-3
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+          - id: 5.3.1
+            title: Incident response
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+      - id: PA-4
+        name: Auditing and Accountability
+        controls:
+          - id: PA-4
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+          - id: 5.4.1
+            title: Auditable events and content
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+          - id: 5.4.4
+            title: Audit monitoring and analysis
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: 5.4.6
+            title: Audit record retention and protection
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-9
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+      - id: PA-5
+        name: Access Control
+        controls:
+          - id: PA-5
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+          - id: 5.5.1
+            title: Account management and access enforcement
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+      - id: PA-6
+        name: Identification and Authentication
+        controls:
+          - id: PA-6
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+          - id: 5.6.2.2
+            title: Advanced authentication
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-5
+      - id: PA-7
+        name: Configuration Management
+        controls:
+          - id: PA-7
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+      - id: PA-8
+        name: Media Protection
+        controls:
+          - id: PA-8
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: MP-4
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+      - id: PA-9
+        name: Physical and Environmental Protection
+        controls:
+          - id: PA-9
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC6
+              - framework_name: SOC 2
+                control_id: CC6.6
+      - id: PA-10
+        name: Systems and Communications Protection
+        controls:
+          - id: PA-10
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+          - id: 5.10.1.2
+            title: Encryption
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+      - id: PA-11
+        name: Formal Audits
+        controls:
+          - id: PA-11
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+      - id: PA-12
+        name: Personnel Security
+        controls:
+          - id: PA-12
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+              - framework_name: SOC 2
+                control_id: CC1.4
+          - id: 5.12.1
+            title: Personnel screening
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
+              - framework_name: SOC 2
+                control_id: CC1.4
+      - id: PA-13
+        name: Mobile Devices
+        controls:
+          - id: PA-13
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+          - id: 5.13.6
+            title: Mobile device management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+      - id: PA-14
+        name: System and Services Acquisition
+        controls:
+          - id: PA-14
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+      - id: PA-15
+        name: System and Information Integrity
+        controls:
+          - id: PA-15
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: 5.15.1
+            title: System and information integrity
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+      - id: PA-16
+        name: Maintenance
+        controls:
+          - id: PA-16
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+      - id: PA-17
+        name: Planning
+        controls:
+          - id: PA-17
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: IR-1
+      - id: PA-18
+        name: Contingency Planning
+        controls:
+          - id: PA-18
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+      - id: PA-19
+        name: Risk Assessment
+        controls:
+          - id: PA-19
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+  - id: nist-csf-2.0
+    name: NIST CSF 2.0
+    framework_version: "2.0"
+    description: NIST Cybersecurity Framework 2.0 function and category support mapped to Cerebro policy evidence.
+    tags: [framework, cybersecurity, risk-management]
+    families:
+      - id: GV
+        name: Govern
+        controls:
+          - id: GV.OC
+            title: Organizational Context
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC3.1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: GV.OC-03
+            title: Legal, regulatory, and contractual requirements are understood and managed
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC2.3
+              - framework_name: SOC 2
+                control_id: CC3.1
+          - id: GV.RM
+            title: Risk Management Strategy
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: SOC 2
+                control_id: CC3.2
+          - id: GV.RM-01
+            title: Risk management objectives are established and agreed to
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: SOC 2
+                control_id: CC3.2
+          - id: GV.RR
+            title: Roles, Responsibilities, and Authorities
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC1.4
+          - id: GV.RR-02
+            title: Cybersecurity roles and responsibilities are established and communicated
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.1
+              - framework_name: SOC 2
+                control_id: CC1.4
+          - id: GV.PO
+            title: Policy
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: GV.PO-01
+            title: Cybersecurity policy is established and communicated
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-1
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+          - id: GV.OV
+            title: Oversight
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+          - id: GV.OV-01
+            title: Cybersecurity risk management outcomes are reviewed
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+          - id: GV.SC
+            title: Cybersecurity Supply Chain Risk Management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+          - id: GV.SC-05
+            title: Cybersecurity requirements are included in supplier contracts
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
+          - id: GV.SC-07
+            title: Supplier risks are understood, recorded, and prioritized
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+              - framework_name: NIST 800-53 r5
+                control_id: SR-11
+      - id: ID
+        name: Identify
+        controls:
+          - id: ID.AM
+            title: Asset Management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: ID.AM-01
+            title: Inventories of hardware are maintained
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: ID.AM-02
+            title: Inventories of software, services, and systems are maintained
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+          - id: ID.AM-04
+            title: Inventories of services provided by suppliers are maintained
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+              - framework_name: NIST 800-53 r5
+                control_id: SA-9
+          - id: ID.RA
+            title: Risk Assessment
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: ID.RA-01
+            title: Vulnerabilities in assets are identified and validated
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: ID.RA-05
+            title: Threats, vulnerabilities, likelihoods, and impacts are used to understand risk
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
+          - id: ID.IM
+            title: Improvement
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+          - id: ID.IM-01
+            title: Improvements are identified from assessments and tests
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
+              - framework_name: SOC 2
+                control_id: CC4
+      - id: PR
+        name: Protect
+        controls:
+          - id: PR.AA
+            title: Identity Management, Authentication, and Access Control
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: PR.AA-01
+            title: Identities and credentials are managed
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: IA-2
+          - id: PR.AA-05
+            title: Access permissions and authorizations are managed
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+          - id: PR.AT
+            title: Awareness and Training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: PR.AT-01
+            title: Personnel receive cybersecurity awareness and training
+            maps_to:
+              - framework_name: SOC 2
+                control_id: CC1.4
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.5
+          - id: PR.DS
+            title: Data Security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-12
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: PR.DS-01
+            title: Data-at-rest confidentiality, integrity, and availability are protected
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-28
+          - id: PR.DS-02
+            title: Data-in-transit confidentiality, integrity, and availability are protected
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+          - id: PR.PS
+            title: Platform Security
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-7
+          - id: PR.PS-01
+            title: Configuration management practices are established and applied
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
+              - framework_name: NIST 800-53 r5
+                control_id: CM-7
+          - id: PR.PS-02
+            title: Software is maintained, replaced, and removed commensurate with risk
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: PR.IR
+            title: Technology Infrastructure Resilience
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+              - framework_name: NIST 800-53 r5
+                control_id: SC-7
+          - id: PR.IR-03
+            title: Backups are maintained, tested, and protected
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-4
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+      - id: DE
+        name: Detect
+        controls:
+          - id: DE.CM
+            title: Continuous Monitoring
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: DE.CM-01
+            title: Networks and network services are monitored to find adverse events
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: DE.CM-03
+            title: Personnel activity and technology usage are monitored to find adverse events
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-2
+              - framework_name: NIST 800-53 r5
+                control_id: AU-12
+          - id: DE.CM-09
+            title: Computing hardware, software, services, and systems are monitored
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CM-8
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: DE.AE
+            title: Adverse Event Analysis
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+          - id: DE.AE-02
+            title: Potentially adverse events are analyzed
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+      - id: RS
+        name: Respond
+        controls:
+          - id: RS.MA
+            title: Incident Management
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: RS.MA-01
+            title: The incident response plan is executed in coordination with third parties
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+          - id: RS.MA-02
+            title: Incident reports are triaged and validated
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+          - id: RS.AN
+            title: Incident Analysis
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: AU-3
+              - framework_name: NIST 800-53 r5
+                control_id: IR-5
+          - id: RS.CO
+            title: Incident Response Reporting and Communication
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+          - id: RS.CO-02
+            title: Internal and external stakeholders are notified of incidents
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+              - framework_name: SOC 2
+                control_id: CC7.4
+          - id: RS.MI
+            title: Incident Mitigation
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: SI-2
+          - id: RS.MI-01
+            title: Incidents are contained
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+      - id: RC
+        name: Recover
+        controls:
+          - id: RC.RP
+            title: Incident Recovery Plan Execution
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-9
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+          - id: RC.RP-01
+            title: Recovery plan is executed during or after an incident
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: CP-10
+          - id: RC.CO
+            title: Incident Recovery Communication
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+          - id: RC.CO-03
+            title: Recovery activities and progress are communicated
+            maps_to:
+              - framework_name: NIST 800-53 r5
+                control_id: IR-8
+  - name: Cerebro AI Governance
+    families:
+      - id: AI
+        name: AI Governance Controls
+        controls:
+          - id: AI-1
+            name: AI system inventory
+          - id: AI-2
+            name: AI risk assessment
+          - id: AI-3
+            name: Model supply chain integrity
+          - id: AI-4
+            name: Guardrails and human oversight
+          - id: AI-5
+            name: AI monitoring and incident response
+  - name: Cerebro Financial Controls
+    families:
+      - id: FIN
+        name: Financial Controls
+        controls:
+          - id: FIN-1
+            name: Segregation of duties
+          - id: FIN-2
+            name: Contract and billing integrity
+          - id: FIN-3
+            name: Refund and discount authorization
+  - name: Cerebro Operational Resilience
+    families:
+      - id: OPS
+        name: Operational Resilience Controls
+        controls:
+          - id: OPS-1
+            name: Runtime safety
+          - id: OPS-2
+            name: Service availability and SLA adherence
+          - id: OPS-3
+            name: Operational incident signals
+  - name: Cerebro Organizational Resilience
+    families:
+      - id: ORG
+        name: Organizational Resilience Controls
+        controls:
+          - id: ORG-1
+            name: Knowledge concentration
+          - id: ORG-2
+            name: Relationship coverage
+          - id: ORG-3
+            name: Dependency communication
+          - id: ORG-4
+            name: Workforce continuity
+  - name: Cerebro Revenue Operations
+    families:
+      - id: REV
+        name: Revenue Operations Controls
+        controls:
+          - id: REV-1
+            name: Pipeline hygiene
+          - id: REV-2
+            name: Discount governance
+          - id: REV-3
+            name: Conversion readiness
+          - id: REV-4
+            name: Payment health
+          - id: REV-5
+            name: Churn risk
+          - id: REV-6
+            name: Forecast integrity
+  - name: CIS GitHub Benchmark
+    families:
+      - id: 1
+        name: 1 Controls
+        controls:
+          - id: 1.1.3
+          - id: 1.3.1
+  - name: CIS Google Workspace Benchmark
+    families:
+      - id: 1
+        name: 1 Controls
+        controls:
+          - id: 1.1
+  - name: NIST SP 800-177
+    families:
+      - id: TLS-MAIL
+        name: TLS-MAIL Controls
+        controls:
+          - id: TLS-MAIL

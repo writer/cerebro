@@ -12,15 +12,20 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	gogithub "github.com/google/go-github/v66/github"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/githubaudit"
+	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -150,6 +155,26 @@ func testGitHubAppPrivateKeyPEM(t *testing.T) string {
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	}))
+}
+
+func assertGitHubCheckpointEnvelope(t *testing.T, checkpoint *cerebrov1.SourceCheckpoint, family string) {
+	t.Helper()
+	if checkpoint == nil {
+		t.Fatal("checkpoint = nil, want resumable envelope")
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(checkpoint.GetCursorOpaque())
+	if !ok {
+		t.Fatalf("checkpoint cursor %q is not an envelope", checkpoint.GetCursorOpaque())
+	}
+	if envelope.Source != "github" {
+		t.Fatalf("checkpoint source = %q, want github", envelope.Source)
+	}
+	if envelope.Family != family {
+		t.Fatalf("checkpoint family = %q, want %q", envelope.Family, family)
+	}
+	if !envelope.ResumableCheckpoint {
+		t.Fatalf("checkpoint resumable = false, want true")
+	}
 }
 
 func TestNewFixtureReplaysFixturePages(t *testing.T) {
@@ -299,11 +324,23 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "2" {
 		t.Fatalf("first.NextCursor = %#v, want page 2", first.NextCursor)
 	}
-	if first.Checkpoint == nil || first.Checkpoint.CursorOpaque != "2" {
-		t.Fatalf("first.Checkpoint = %#v, want cursor 2", first.Checkpoint)
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
+	}
+	assertGitHubCheckpointEnvelope(t, first.Checkpoint, familyPullRequest)
+	firstCheckpoint, ok := sourcecdk.DecodeCursorEnvelope(first.Checkpoint.GetCursorOpaque())
+	if !ok || firstCheckpoint.Token != "2" {
+		t.Fatalf("first.Checkpoint = %#v, want resumable envelope with token 2", first.Checkpoint)
+	}
+	resumed, err := source.ReadWithCheckpoint(context.Background(), readCfg, first.NextCursor, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(resumed from continuation cursor) error = %v", err)
+	}
+	if len(resumed.Events) != 1 || resumed.Events[0].GetId() != "github-pr-writer-cerebro-442-1776902400" {
+		t.Fatalf("resumed events = %#v, want second fixture PR", resumed.Events)
 	}
 
 	second, err := source.Read(context.Background(), readCfg, first.NextCursor)
@@ -316,8 +353,9 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if second.NextCursor != nil {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
-	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "3" {
-		t.Fatalf("second.Checkpoint = %#v, want cursor 3", second.Checkpoint)
+	assertGitHubCheckpointEnvelope(t, second.Checkpoint, familyPullRequest)
+	if !sourcecdk.ResumableCursorOpaque(second.Checkpoint.GetCursorOpaque()) {
+		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want resumable envelope", second.Checkpoint.GetCursorOpaque())
 	}
 
 	final, err := source.Read(context.Background(), readCfg, &cerebrov1.SourceCursor{Opaque: "3"})
@@ -326,6 +364,77 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	}
 	if len(final.Events) != 0 {
 		t.Fatalf("len(final.Events) = %d, want 0", len(final.Events))
+	}
+}
+
+func TestReadWithCheckpointShortCircuitsUnchangedPullRequests(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+	watermark := time.Date(2026, 4, 23, 2, 0, 0, 0, time.UTC)
+	checkpoint := sourcecdk.IncrementalWatermarkCheckpoint("github", familyPullRequest, []*cerebrov1.EventEnvelope{{
+		Id:         "github-pr-writer-cerebro-443-1776909600",
+		OccurredAt: timestamppb.New(watermark),
+	}}, sourcecdk.IncrementalWatermarkState{})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil after watermark short-circuit", pull.NextCursor)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+}
+
+func TestReadWithCheckpointKeepsNewEqualTimestampPullRequest(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+	watermark := time.Date(2026, 4, 23, 2, 0, 0, 0, time.UTC)
+	checkpoint := sourcecdk.IncrementalWatermarkCheckpoint("github", familyPullRequest, []*cerebrov1.EventEnvelope{{
+		Id:         "different-boundary-id",
+		OccurredAt: timestamppb.New(watermark),
+	}}, sourcecdk.IncrementalWatermarkState{})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want equal-timestamp new event", len(pull.Events))
+	}
+	if got := pull.Events[0].GetId(); got != "github-pr-writer-cerebro-443-1776909600" {
+		t.Fatalf("event id = %q, want first fixture PR", got)
 	}
 }
 
@@ -375,6 +484,213 @@ func TestReadLiveGitHubRepositoryPreviewIncludesOwnerLogin(t *testing.T) {
 	}
 }
 
+func TestRepositoryMetadataCanaryShortCircuitsUnchangedInventory(t *testing.T) {
+	var canaryRequests int
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") == "1" {
+			canaryRequests++
+		} else {
+			fullRequests++
+		}
+		encodeRepositoryPage(t, w, "2026-04-23T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "10",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("first events = %d, want 1", len(first.Events))
+	}
+	if metadata := sourcecdk.CheckpointFingerprint(first.Checkpoint, "github", familyRepository); metadata[sourcecdk.CanaryHashKey] == "" {
+		t.Fatalf("first checkpoint metadata = %#v, want canary hash", metadata)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second events = %d, want short-circuit", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("second reason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if canaryRequests != 2 || fullRequests != 1 {
+		t.Fatalf("requests canary/full = %d/%d, want 2/1", canaryRequests, fullRequests)
+	}
+}
+
+func TestRepositoryMetadataCanaryFallsThroughWhenChanged(t *testing.T) {
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") != "1" {
+			fullRequests++
+		}
+		encodeRepositoryPage(t, w, "2026-04-24T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "10",
+	})
+	checkpoint := sourcecdk.ReconciledFingerprintCheckpoint(nil, "github", familyRepository, time.Date(2026, 4, 23, 0, 0, 0, 0, time.UTC), map[string]string{
+		sourcecdk.CanaryHashKey:       "old-hash",
+		sourcecdk.CanaryConfidenceKey: sourcecdk.CanaryConfidenceHeuristic,
+		sourcecdk.ManifestVersionKey:  githubcanary.RepositoryManifestVersion,
+		sourcecdk.CanaryConfigHashKey: sourcecdk.ConfigHash(cfg.Values()),
+	}, time.Date(2026, 4, 23, 0, 0, 0, 0, time.UTC))
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want changed canary full read", len(pull.Events))
+	}
+	if pull.ShortCircuitReason != "" {
+		t.Fatalf("ShortCircuitReason = %q, want empty on changed canary", pull.ShortCircuitReason)
+	}
+	if fullRequests != 1 {
+		t.Fatalf("full requests = %d, want 1", fullRequests)
+	}
+}
+
+func TestRepositoryMetadataCanaryForcesReconciliationAfterMaxSkips(t *testing.T) {
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") != "1" {
+			fullRequests++
+		}
+		encodeRepositoryPage(t, w, "2026-04-23T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "10",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	checkpoint := first.Checkpoint
+	for i := 0; i < githubcanary.MaxConsecutiveSkips; i++ {
+		checkpoint = sourcecdk.SkippedFingerprintCheckpoint(checkpoint, "github", familyRepository, sourcecdk.CheckpointFingerprint(checkpoint, "github", familyRepository), time.Now().Add(time.Duration(i)*time.Minute))
+	}
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(forced) error = %v", err)
+	}
+	if pull.ReconciliationReason != sourcecdk.PullReconciliationReasonMaxConsecutiveSkips {
+		t.Fatalf("ReconciliationReason = %q, want max_consecutive_skips", pull.ReconciliationReason)
+	}
+	if fullRequests != 2 {
+		t.Fatalf("full requests = %d, want initial and forced full reads", fullRequests)
+	}
+}
+
+func TestRepositoryMetadataCanaryReturnsProviderError(t *testing.T) {
+	var fullRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("per_page") == "1" {
+			http.Error(w, `{"message":"unavailable"}`, http.StatusInternalServerError)
+			return
+		}
+		fullRequests++
+		encodeRepositoryPage(t, w, "2026-04-23T00:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+	})
+
+	if _, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil); err == nil {
+		t.Fatal("ReadWithCheckpoint() error = nil, want canary provider error")
+	}
+	if fullRequests != 0 {
+		t.Fatalf("full requests = %d, want canary failure before full read", fullRequests)
+	}
+}
+
+func encodeRepositoryPage(t *testing.T, w http.ResponseWriter, updatedAt string) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"id":             1,
+		"name":           "cerebro",
+		"full_name":      "writer/cerebro",
+		"html_url":       "https://github.com/writer/cerebro",
+		"visibility":     "public",
+		"default_branch": "main",
+		"private":        false,
+		"archived":       false,
+		"fork":           false,
+		"created_at":     "2026-04-22T00:00:00Z",
+		"updated_at":     updatedAt,
+		"owner":          map[string]any{"login": "writer"},
+	}}); err != nil {
+		t.Fatalf("encode repos response: %v", err)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()
@@ -413,7 +729,7 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(audit first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "cursor-2" {
 		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
 	}
 	if got := first.Events[0].Kind; got != "github.audit" {
@@ -473,8 +789,527 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if second.Checkpoint == nil {
 		t.Fatalf("second.Checkpoint = nil, want non-nil with empty CursorOpaque")
 	}
-	if second.Checkpoint.CursorOpaque != "" {
-		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want empty cursor on terminal audit page", second.Checkpoint.CursorOpaque)
+	secondEnvelope, ok := sourcecdk.DecodeCursorEnvelope(second.Checkpoint.GetCursorOpaque())
+	if !ok {
+		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want canary envelope", second.Checkpoint.GetCursorOpaque())
+	}
+	if secondEnvelope.Token != "" {
+		t.Fatalf("second checkpoint token = %q, want empty cursor on terminal audit page", secondEnvelope.Token)
+	}
+	if secondEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind] != "audit_log_latest_event" {
+		t.Fatalf("second checkpoint canary kind = %q, want audit_log_latest_event", secondEnvelope.Extra[sourcecdk.FamilyFreshnessExtraKind])
+	}
+}
+
+func TestGitHubAuditFreshnessProbeShortCircuitsUnchangedAuditLog(t *testing.T) {
+	auditQueries := []url.Values{}
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-1",
+		"action":       "org.update_member",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		query := r.URL.Query()
+		auditQueries = append(auditQueries, query)
+		switch query.Get("order") {
+		case "desc":
+			if got := query.Get("per_page"); got != "1" {
+				t.Fatalf("audit canary per_page = %q, want 1", got)
+			}
+			if got := query.Get("after"); got != "" {
+				t.Fatalf("audit canary after = %q, want empty", got)
+			}
+		case "asc":
+		default:
+			t.Fatalf("audit order = %q, want asc scan or desc canary", query.Get("order"))
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if len(auditQueries) != 2 {
+		t.Fatalf("audit requests = %d, want canary plus scan", len(auditQueries))
+	}
+	if auditQueries[0].Get("order") != "desc" || auditQueries[1].Get("order") != "asc" {
+		t.Fatalf("audit request order = %q/%q, want desc canary then asc scan", auditQueries[0].Get("order"), auditQueries[1].Get("order"))
+	}
+	probe, ok := sourcecdk.FamilyFreshnessProbeFromCheckpoint("github", familyAudit, first.Checkpoint)
+	if !ok {
+		t.Fatalf("first checkpoint %q missing freshness probe", first.Checkpoint.GetCursorOpaque())
+	}
+	if probe.Kind != "audit_log_latest_event" || probe.ResourceID != "latest_event" {
+		t.Fatalf("probe = %#v, want audit log latest event canary", probe)
+	}
+
+	auditQueries = nil
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("len(second.Events) = %d, want unchanged short circuit", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("ShortCircuitReason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if len(auditQueries) != 1 || auditQueries[0].Get("order") != "desc" {
+		t.Fatalf("audit requests after unchanged checkpoint = %#v, want one desc canary", auditQueries)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryShortCircuitsWhenAuthorizedUnchanged(t *testing.T) {
+	var auditRequests int
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			auditRequests++
+			if got := r.URL.Query().Get("order"); got != "desc" {
+				t.Fatalf("audit canary order = %q, want desc", got)
+			}
+			encodeAuditCanaryEntry(t, w, "audit-doc-1")
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		case "/api/v3/orgs/writer/outside_collaborators":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode outside collaborators: %v", err)
+			}
+		case "/api/v3/orgs/writer/installations":
+			if err := json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{}}); err != nil {
+				t.Fatalf("encode installations: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) == 0 {
+		t.Fatal("first Events = 0, want org inventory read")
+	}
+	if metadata := sourcecdk.CheckpointFingerprint(first.Checkpoint, "github", familyOrgInventory); metadata[sourcecdk.CanaryKindKey] != githubcanary.AuditLogKind {
+		t.Fatalf("first checkpoint metadata = %#v, want audit-log canary", metadata)
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second Events = %d, want short-circuit", len(second.Events))
+	}
+	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("second ShortCircuitReason = %q, want not_modified", second.ShortCircuitReason)
+	}
+	if auditRequests != 2 || memberRequests != 1 {
+		t.Fatalf("audit/member requests = %d/%d, want 2/1", auditRequests, memberRequests)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryFallsThroughWhenAuthorizedChanged(t *testing.T) {
+	var auditRequests int
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			auditRequests++
+			encodeAuditCanaryEntry(t, w, "audit-doc-"+strconv.Itoa(auditRequests))
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		case "/api/v3/orgs/writer/outside_collaborators":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode outside collaborators: %v", err)
+			}
+		case "/api/v3/orgs/writer/installations":
+			if err := json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{}}); err != nil {
+				t.Fatalf("encode installations: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) == 0 {
+		t.Fatal("second Events = 0, want changed canary full read")
+	}
+	if second.ShortCircuitReason != "" {
+		t.Fatalf("second ShortCircuitReason = %q, want empty changed canary", second.ShortCircuitReason)
+	}
+	if auditRequests != 2 || memberRequests != 2 {
+		t.Fatalf("audit/member requests = %d/%d, want 2/2", auditRequests, memberRequests)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryUnauthorizedFallsBack(t *testing.T) {
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			http.Error(w, `{"message":"Resource not accessible by integration"}`, http.StatusForbidden)
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		case "/api/v3/orgs/writer/outside_collaborators":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode outside collaborators: %v", err)
+			}
+		case "/api/v3/orgs/writer/installations":
+			if err := json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{}}); err != nil {
+				t.Fatalf("encode installations: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) == 0 {
+		t.Fatal("Events = 0, want fallback org inventory read")
+	}
+	if pull.ShortCircuitReason != "" {
+		t.Fatalf("ShortCircuitReason = %q, want empty fallback", pull.ShortCircuitReason)
+	}
+	if memberRequests != 1 {
+		t.Fatalf("member requests = %d, want 1", memberRequests)
+	}
+}
+
+func TestOrgInventoryAuditLogCanaryProviderError(t *testing.T) {
+	var memberRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/audit-log":
+			http.Error(w, `{"message":"unavailable"}`, http.StatusInternalServerError)
+		case "/api/v3/orgs/writer/members":
+			memberRequests++
+			encodeOrgMembers(t, w)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"audit_log_canary": "true",
+		"base_url":         server.URL,
+		"family":           familyOrgInventory,
+		"owner":            "writer",
+		"token":            "test-token",
+	})
+	if _, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil); err == nil {
+		t.Fatal("ReadWithCheckpoint() error = nil, want audit canary provider error")
+	}
+	if memberRequests != 0 {
+		t.Fatalf("member requests = %d, want canary error before fallback read", memberRequests)
+	}
+}
+
+func TestGitHubAuditFreshnessProbeForcesReconcileAfterMaxSkips(t *testing.T) {
+	auditQueries := []url.Values{}
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-1",
+		"action":       "org.update_member",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		auditQueries = append(auditQueries, r.URL.Query())
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	probe, ok := sourcecdk.FamilyFreshnessProbeFromCheckpoint("github", familyAudit, first.Checkpoint)
+	if !ok {
+		t.Fatalf("first checkpoint %q missing freshness probe", first.Checkpoint.GetCursorOpaque())
+	}
+	probe.SkipCount = githubaudit.FreshnessMaxSkipCount
+	probe.FullReadAt = time.Now().UTC()
+	checkpoint := sourcecdk.FamilyFreshnessCheckpoint("github", familyAudit, first.Checkpoint, probe)
+
+	auditQueries = nil
+	forced, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(forced) error = %v", err)
+	}
+	if len(forced.Events) != 1 {
+		t.Fatalf("len(forced.Events) = %d, want full audit scan after max skips", len(forced.Events))
+	}
+	if forced.ShortCircuitReason != "" {
+		t.Fatalf("forced.ShortCircuitReason = %q, want empty after full scan", forced.ShortCircuitReason)
+	}
+	if len(auditQueries) != 2 || auditQueries[0].Get("order") != "desc" || auditQueries[1].Get("order") != "asc" {
+		t.Fatalf("audit requests after max skips = %#v, want desc canary then asc scan", auditQueries)
+	}
+	nextProbe, ok := sourcecdk.FamilyFreshnessProbeFromCheckpoint("github", familyAudit, forced.Checkpoint)
+	if !ok {
+		t.Fatalf("forced checkpoint %q missing freshness probe", forced.Checkpoint.GetCursorOpaque())
+	}
+	if nextProbe.SkipCount != 0 {
+		t.Fatalf("forced skip count = %d, want reset", nextProbe.SkipCount)
+	}
+	if nextProbe.Reason != sourcecdk.FamilyFreshnessReasonMaxSkipCount {
+		t.Fatalf("forced reason = %q, want max_skip_count", nextProbe.Reason)
+	}
+}
+
+func TestGitHubAuditFreshnessProbeFailsOpenToFullRead(t *testing.T) {
+	auditQueries := []url.Values{}
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-1",
+		"action":       "org.update_member",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		query := r.URL.Query()
+		auditQueries = append(auditQueries, query)
+		if query.Get("order") == "desc" {
+			http.Error(w, "metadata probe failed", http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(pull.Events) = %d, want full audit scan after canary error", len(pull.Events))
+	}
+	if len(auditQueries) != 2 || auditQueries[0].Get("order") != "desc" || auditQueries[1].Get("order") != "asc" {
+		t.Fatalf("audit requests after canary error = %#v, want desc canary then asc scan", auditQueries)
+	}
+}
+
+func TestGitHubAuditFreshnessCheckpointDoesNotExposeProviderMetadata(t *testing.T) {
+	auditEntry := map[string]any{
+		"@timestamp":   1776916397852,
+		"_document_id": "audit-doc-sensitive-tenant-123",
+		"action":       "org.update_member",
+		"actor":        "octocat-sensitive",
+		"created_at":   1776916397852,
+		"org":          "writer",
+		"org_id":       1,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.URL.Query().Get("phrase"); got != "actor:octocat-sensitive repo:writer/private" {
+			t.Fatalf("audit phrase = %q, want configured phrase", got)
+		}
+		if err := json.NewEncoder(w).Encode([]map[string]any{auditEntry}); err != nil {
+			t.Fatalf("encode audit response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"phrase":   "actor:octocat-sensitive repo:writer/private",
+		"token":    "test-token",
+	})
+
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	envelope, ok := sourcecdk.DecodeCursorEnvelope(pull.Checkpoint.GetCursorOpaque())
+	if !ok {
+		t.Fatalf("checkpoint cursor %q is not an envelope", pull.Checkpoint.GetCursorOpaque())
+	}
+	for _, forbidden := range []string{
+		"audit-doc-sensitive-tenant-123",
+		"octocat-sensitive",
+		"actor:octocat-sensitive",
+		"repo:writer/private",
+	} {
+		if strings.Contains(pull.Checkpoint.GetCursorOpaque(), forbidden) {
+			t.Fatalf("checkpoint cursor leaked %q: %s", forbidden, pull.Checkpoint.GetCursorOpaque())
+		}
+		for key, value := range envelope.Extra {
+			if strings.Contains(value, forbidden) {
+				t.Fatalf("checkpoint extra %s leaked %q in %q", key, forbidden, value)
+			}
+		}
+	}
+	if got := envelope.Extra[sourcecdk.FamilyFreshnessExtraResourceID]; got != "latest_event" {
+		t.Fatalf("canary resource id = %q, want opaque latest_event", got)
+	}
+}
+
+func encodeAuditCanaryEntry(t *testing.T, w http.ResponseWriter, documentID string) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"@timestamp":   1776916397852,
+		"_document_id": documentID,
+		"action":       "org.update_member",
+		"actor":        "octocat",
+		"created_at":   1776916397852,
+		"org":          "writer",
+	}}); err != nil {
+		t.Fatalf("encode audit canary entry: %v", err)
+	}
+}
+
+func encodeOrgMembers(t *testing.T, w http.ResponseWriter) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"login":    "octocat",
+		"id":       1,
+		"html_url": "https://github.com/octocat",
+	}}); err != nil {
+		t.Fatalf("encode org members: %v", err)
 	}
 }
 
@@ -590,8 +1425,11 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(Read(dependabot_alert first).Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "cursor-2" {
 		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
 	}
 	if got := first.Events[0].Kind; got != "github.dependabot_alert" {
 		t.Fatalf("first.Events[0].Kind = %q, want github.dependabot_alert", got)
@@ -643,6 +1481,138 @@ func TestDependabotAlertEventIncludesDismissedBy(t *testing.T) {
 	}
 	if payload.DismissedBy != "alice" || payload.DismissedByID != 123 {
 		t.Fatalf("dependabot dismissed actor = %q/%d, want alice/123", payload.DismissedBy, payload.DismissedByID)
+	}
+}
+
+func TestSecretScanningUsesUpdatedSortAndCursorPagination(t *testing.T) {
+	queries := []url.Values{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/secret-scanning/alerts" {
+			http.NotFound(w, r)
+			return
+		}
+		query := r.URL.Query()
+		queries = append(queries, query)
+		if query.Get("after") == "" {
+			w.Header().Set("Link", "</api/v3/orgs/writer/secret-scanning/alerts?after=cursor-2>; rel=\"next\"")
+			encodeSecretScanningAlerts(t, w, 1, "2026-04-24T14:00:00Z")
+			return
+		}
+		if query.Get("after") == "cursor-2" {
+			encodeSecretScanningAlerts(t, w, 2, "2026-04-24T13:00:00Z")
+			return
+		}
+		t.Fatalf("unexpected after cursor %q", query.Get("after"))
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familySecretScanning,
+		"owner":    "writer",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if first.NextCursor == nil || sourcecdk.CursorToken(first.NextCursor) != "after:cursor-2" {
+		t.Fatalf("first.NextCursor = %#v, want after cursor", first.NextCursor)
+	}
+	if !sourcecdk.ResumableCursorOpaque(first.NextCursor.GetOpaque()) {
+		t.Fatalf("first.NextCursor.Opaque = %q, want resumable envelope", first.NextCursor.GetOpaque())
+	}
+
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["alert_number"]; got != "2" {
+		t.Fatalf("second alert_number = %q, want 2", got)
+	}
+	if len(queries) != 2 {
+		t.Fatalf("len(queries) = %d, want 2", len(queries))
+	}
+	for i, query := range queries {
+		if got := query.Get("sort"); got != "updated" {
+			t.Fatalf("query %d sort = %q, want updated", i, got)
+		}
+		if got := query.Get("direction"); got != "desc" {
+			t.Fatalf("query %d direction = %q, want desc", i, got)
+		}
+	}
+	if _, ok := queries[0]["after"]; !ok {
+		t.Fatalf("first query missing empty after cursor: %#v", queries[0])
+	}
+	if got := queries[1].Get("after"); got != "cursor-2" {
+		t.Fatalf("second query after = %q, want cursor-2", got)
+	}
+}
+
+func TestSecretScanningShortCircuitsAtUpdatedWatermark(t *testing.T) {
+	watermark := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	checkpoint := &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		requests++
+		w.Header().Set("Link", "</api/v3/orgs/writer/secret-scanning/alerts?after=cursor-2>; rel=\"next\"")
+		encodeSecretScanningAlerts(t, w, 1, "2026-04-24T11:00:00Z")
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familySecretScanning,
+		"owner":    "writer",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil", pull.NextCursor)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want one-page short circuit", requests)
+	}
+}
+
+func encodeSecretScanningAlerts(t *testing.T, w http.ResponseWriter, number int, updatedAt string) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode([]map[string]any{{
+		"number":      number,
+		"state":       "open",
+		"secret_type": "token",
+		"created_at":  "2026-04-01T00:00:00Z",
+		"updated_at":  updatedAt,
+		"repository":  map[string]any{"full_name": "writer/cerebro"},
+	}}); err != nil {
+		t.Fatalf("encode secret scanning alerts: %v", err)
 	}
 }
 
@@ -1053,8 +2023,21 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("encode users response: %v", err)
 			}
 		case "/api/v3/orgs/writer/audit-log":
-			if got := r.URL.Query().Get("order"); got != "asc" {
-				t.Fatalf("audit order = %q, want asc", got)
+			switch got := r.URL.Query().Get("order"); got {
+			case "desc":
+				if got := r.URL.Query().Get("per_page"); got != "1" {
+					t.Fatalf("audit canary per_page = %q, want 1", got)
+				}
+				if got := r.URL.Query().Get("after"); got != "" {
+					t.Fatalf("audit canary after = %q, want empty", got)
+				}
+				if err := json.NewEncoder(w).Encode(auditEntries[:1]); err != nil {
+					t.Fatalf("encode audit canary: %v", err)
+				}
+				return
+			case "asc":
+			default:
+				t.Fatalf("audit order = %q, want asc or desc canary", got)
 			}
 			after := r.URL.Query().Get("after")
 			if after == "" {

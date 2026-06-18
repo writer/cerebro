@@ -42,19 +42,21 @@ var (
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
-	HTTPAddr             string
-	ShutdownTimeout      time.Duration
-	ImageTag             string
-	DevMode              bool
-	AppendLog            AppendLogConfig
-	StateStore           StateStoreConfig
-	GraphStore           GraphStoreConfig
-	GraphAgentLLM        GraphAgentLLMConfig
-	Cache                CacheConfig
-	Auth                 AuthConfig
-	ConnectorCredentials ConnectorCredentialConfig
-	OTEL                 OpenTelemetryConfig
-	RateLimit            RateLimitConfig
+	HTTPAddr              string
+	ShutdownTimeout       time.Duration
+	ImageTag              string
+	DevMode               bool
+	AppendLog             AppendLogConfig
+	StateStore            StateStoreConfig
+	GraphStore            GraphStoreConfig
+	GraphAgentLLM         GraphAgentLLMConfig
+	Cache                 CacheConfig
+	Auth                  AuthConfig
+	ConnectorCredentials  ConnectorCredentialConfig
+	ConnectorSecretStores ConnectorSecretStoreConfig
+	ConnectorAccess       ConnectorAccessConfig
+	OTEL                  OpenTelemetryConfig
+	RateLimit             RateLimitConfig
 }
 
 // RateLimitConfig controls global API rate limiting.
@@ -121,6 +123,30 @@ type GraphAgentLLMConfig struct {
 type ConnectorCredentialConfig struct {
 	Key               string
 	TransitPrivateKey string
+}
+
+// ConnectorSecretStoreConfig controls operator-managed connector secret-store references.
+type ConnectorSecretStoreConfig struct {
+	Enabled           []string
+	AWSSecretsManager AWSSecretsManagerStoreConfig
+}
+
+// ConnectorAccessConfig controls connector catalog visibility and setup gates.
+type ConnectorAccessConfig struct {
+	HiddenSources       []string
+	RestrictedSources   []string
+	RestrictionReason   string
+	RequestAccessURL    string
+	RequestAccessAction string
+}
+
+// AWSSecretsManagerStoreConfig controls AWS Secrets Manager reference resolution.
+type AWSSecretsManagerStoreConfig struct {
+	Region     string
+	Profile    string
+	RoleARN    string
+	ExternalID string
+	Endpoint   string
 }
 
 // OpenTelemetryConfig controls OTLP trace and metric export.
@@ -328,6 +354,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	connectorSecretStoresRaw, err := readConfigValue("CEREBRO_CONNECTOR_SECRET_STORES")
+	if err != nil {
+		return Config{}, err
+	}
 	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
 	if err != nil {
 		return Config{}, err
@@ -376,6 +406,23 @@ func Load() (Config, error) {
 		ConnectorCredentials: ConnectorCredentialConfig{
 			Key:               connectorCredentialKey,
 			TransitPrivateKey: connectorCredentialTransitPrivateKey,
+		},
+		ConnectorSecretStores: ConnectorSecretStoreConfig{
+			Enabled: parseCSV(connectorSecretStoresRaw),
+			AWSSecretsManager: AWSSecretsManagerStoreConfig{
+				Region:     strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION")),
+				Profile:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE")),
+				RoleARN:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN")),
+				ExternalID: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID")),
+				Endpoint:   strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT")),
+			},
+		},
+		ConnectorAccess: ConnectorAccessConfig{
+			HiddenSources:       parseCSV(os.Getenv("CEREBRO_CONNECTOR_HIDDEN_SOURCES")),
+			RestrictedSources:   parseCSV(os.Getenv("CEREBRO_CONNECTOR_RESTRICTED_SOURCES")),
+			RestrictionReason:   strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
+			RequestAccessURL:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
+			RequestAccessAction: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),

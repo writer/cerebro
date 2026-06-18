@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -39,10 +40,7 @@ type secretScanningAlertPayload struct {
 }
 
 func (s *Source) checkSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings) error {
-	_, _, err := client.SecretScanning.ListAlertsForOrg(ctx, settings.owner, &gogithub.SecretScanningAlertListOptions{
-		State:       settings.state,
-		ListOptions: gogithub.ListOptions{PerPage: 1},
-	})
+	_, _, err := listSecretScanningAlertsForOrg(ctx, client, settings, nil, 1)
 	if err != nil {
 		return wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
 	}
@@ -56,40 +54,45 @@ func (s *Source) discoverSecretScanningAlerts(ctx context.Context, client *gogit
 	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:secret_scanning", settings.owner))}, nil
 }
 
-func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	page, err := readPage(cursor)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	alerts, resp, err := client.SecretScanning.ListAlertsForOrg(ctx, settings.owner, &gogithub.SecretScanningAlertListOptions{
-		State:       settings.state,
-		ListOptions: gogithub.ListOptions{Page: page, PerPage: settings.perPage},
-	})
+func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familySecretScanning, cursor, checkpoint)
+	alerts, resp, err := listSecretScanningAlertsForOrg(ctx, client, settings, cursor, settings.perPage)
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
 	}
-	if len(alerts) == 0 {
-		return sourcecdk.Pull{}, nil
+	nextCursor := ""
+	if resp != nil {
+		nextCursor = sourcecdk.NextAfterOrPageCursor(resp.After, resp.NextPageToken, resp.NextPage)
 	}
-	events := make([]*primitives.Event, 0, len(alerts))
-	for _, alert := range alerts {
-		event, err := secretScanningAlertEvent(settings, alert)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		events = append(events, event)
+	return sourcecdk.IncrementalPullFromRecords("github", familySecretScanning, alerts, nextCursor, readCheckpoint, func(alert *gogithub.SecretScanningAlert) (*primitives.Event, error) {
+		return secretScanningAlertEvent(settings, alert)
+	})
+}
+
+func listSecretScanningAlertsForOrg(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, perPage int) ([]*gogithub.SecretScanningAlert, *gogithub.Response, error) {
+	after, page, err := sourcecdk.CursorAfterOrPage(cursor)
+	if err != nil {
+		return nil, nil, err
 	}
-	nextPage := page + 1
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark: events[len(events)-1].OccurredAt,
-		},
+	query := url.Values{
+		"after":     {after},
+		"direction": {"desc"},
+		"per_page":  {strconv.Itoa(perPage)},
+		"sort":      {"updated"},
+		"state":     {settings.state},
 	}
-	if resp != nil && resp.NextPage > 0 {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(nextPage)}
+	if page != "" {
+		query.Del("after")
+		query.Set("page", page)
 	}
-	return pull, nil
+	path := fmt.Sprintf("orgs/%s/secret-scanning/alerts?%s", url.PathEscape(settings.owner), query.Encode())
+	req, err := client.NewRequest("GET", path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var alerts []*gogithub.SecretScanningAlert
+	resp, err := client.Do(ctx, req, &alerts)
+	return alerts, resp, err
 }
 
 func secretScanningAlertEvent(settings settings, alert *gogithub.SecretScanningAlert) (*primitives.Event, error) {

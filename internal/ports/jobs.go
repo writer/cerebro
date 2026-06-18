@@ -91,6 +91,7 @@ type JobStore interface {
 	CreateJob(context.Context, CreateJobRequest) (*Job, bool, error)
 	GetJob(context.Context, string) (*Job, error)
 	ListJobs(context.Context, JobFilter) ([]*Job, error)
+	CountJobs(context.Context, JobFilter) (uint64, error)
 	UpdateJob(context.Context, string, JobUpdate) (*Job, error)
 	AppendJobEvent(context.Context, JobEvent) (*JobEvent, error)
 	ListJobEvents(context.Context, string, uint32) ([]*JobEvent, error)

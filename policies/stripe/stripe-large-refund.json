@@ -17,5 +17,13 @@
     "finance",
     "guardrail",
     "stripe"
+  ],
+  "frameworks": [
+    {
+      "name": "Cerebro Financial Controls",
+      "controls": [
+        "FIN-3"
+      ]
+    }
   ]
 }

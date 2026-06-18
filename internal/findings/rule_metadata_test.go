@@ -90,6 +90,27 @@ func TestValidateRuleMetadataCompletenessRejectsUnknownMaturity(t *testing.T) {
 	}
 }
 
+func TestValidateRuleMetadataCompletenessAllowsPolicyRulesWithoutReferences(t *testing.T) {
+	metadata := RuleDefinition{
+		ID:                "policy-rule",
+		Name:              "Policy Rule",
+		Description:       "Generated policy rule metadata",
+		SourceID:          policyRuleSourceID,
+		OutputKind:        policyRuleOutputKind,
+		Severity:          "LOW",
+		Status:            "active",
+		Maturity:          RuleMaturityCandidate,
+		Tags:              []string{"policy"},
+		FalsePositives:    []string{"Approved exception."},
+		Runbook:           "Review policy evidence.",
+		FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
+		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+	}
+	if errs := ValidateRuleMetadataCompleteness([]RuleDefinition{metadata}); len(errs) != 0 {
+		t.Fatalf("ValidateRuleMetadataCompleteness() errors = %v, want none", errs)
+	}
+}
+
 func TestBuiltinRuleSourceIDsReturnsIsolatedCopies(t *testing.T) {
 	first := BuiltinRuleSourceIDs()
 	if len(first) == 0 {

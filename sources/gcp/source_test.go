@@ -7,9 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
@@ -71,6 +74,8 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyAIEndpoint, kind: "gcp.aiplatform_endpoint"},
 		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image"},
 		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository"},
+		{family: familyBinaryAuthorizationAttestor, kind: "gcp.binary_authorization_attestor"},
+		{family: familyBinaryAuthorizationPolicy, kind: "gcp.binary_authorization_policy"},
 		{family: familyBigQueryDataset, kind: "gcp.bigquery_dataset"},
 		{family: familyBigQueryTable, kind: "gcp.bigquery_table"},
 		{family: familyBigtableInstance, kind: "gcp.bigtable_instance"},
@@ -146,11 +151,14 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
 		{family: familySecret, kind: "gcp.secret_manager_secret"},
 		{family: familySecretVersion, kind: "gcp.secret_manager_version"},
+		{family: familySecurityCenterFinding, kind: "gcp.security_center_finding"},
 		{family: familyAudit, kind: "gcp.audit"},
 		{family: familyServiceUsageService, kind: "gcp.service_usage_service"},
 		{family: familySpannerDatabase, kind: "gcp.spanner_database"},
 		{family: familySpannerInstance, kind: "gcp.spanner_instance"},
 		{family: familyVPCAccessConnector, kind: "gcp.vpc_access_connector"},
+		{family: familyWorkloadIdentityPool, kind: "gcp.workload_identity_pool"},
+		{family: familyWorkloadIdentityProvider, kind: "gcp.workload_identity_provider"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -459,13 +467,29 @@ func TestReadLiveGCSObjectPaginatesWithinBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read(%s) error = %v", familyGCSObject, err)
 	}
-	if len(pull.Events) != 2 {
-		t.Fatalf("len(events) = %d, want 2", len(pull.Events))
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
 	}
 	if got := pull.Events[0].Attributes["object_name"]; got != "first.bin" {
 		t.Fatalf("first object_name = %q, want first.bin", got)
 	}
-	if got := pull.Events[1].Attributes["object_name"]; got != "second.bin" {
+	if pull.NextCursor.GetOpaque() == "" {
+		t.Fatal("NextCursor is empty after first object page")
+	}
+	pull, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyGCSObject,
+		"per_page":   "1",
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), pull.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(%s) second page error = %v", familyGCSObject, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(second page events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["object_name"]; got != "second.bin" {
 		t.Fatalf("second object_name = %q, want second.bin", got)
 	}
 }
@@ -709,8 +733,11 @@ func TestReadLiveGCPDisabledOptionalServicesReturnEmpty(t *testing.T) {
 		{family: familyMonitoringAlertPolicy, path: "/v3/projects/writer-prod/alertPolicies"},
 		{family: familyMonitoringNotificationChannel, path: "/v3/projects/writer-prod/notificationChannels"},
 		{family: familySecret, path: "/v1/projects/writer-prod/secrets"},
+		{family: familySecurityCenterFinding, path: "/v2/projects/writer-prod/sources/-/findings"},
 		{family: familySpannerInstance, path: "/v1/projects/writer-prod/instances"},
 		{family: familyVPCAccessConnector, path: "/v1/projects/writer-prod/locations/-/connectors"},
+		{family: familyWorkloadIdentityPool, path: "/v1/projects/writer-prod/locations/global/workloadIdentityPools"},
+		{family: familyWorkloadIdentityProvider, path: "/v1/projects/writer-prod/locations/global/workloadIdentityPools"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -810,6 +837,212 @@ func TestReadLiveGCPExposureAndImpersonationPreview(t *testing.T) {
 	}
 }
 
+func TestReadLiveGCPSecurityCoveragePreview(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familySecurityCenterFinding, kind: "gcp.security_center_finding", attr: "severity", want: "HIGH"},
+		{family: familyBinaryAuthorizationAttestor, kind: "gcp.binary_authorization_attestor", attr: "public_keys_count", want: "2"},
+		{family: familyBinaryAuthorizationPolicy, kind: "gcp.binary_authorization_policy", attr: "requires_attestation", want: "true"},
+		{family: familyWorkloadIdentityPool, kind: "gcp.workload_identity_pool", attr: "pool_id", want: "github"},
+		{family: familyWorkloadIdentityProvider, kind: "gcp.workload_identity_provider", attr: "provider_type", want: "oidc"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"base_url":   server.URL,
+				"family":     tt.family,
+				"project_id": "writer-prod",
+				"token":      "test-token",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadLiveGCPSecurityCenterFindingsWithCheckpoint(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotOrderBy string
+	var gotFilter string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v2/projects/writer-prod/sources/-/findings" {
+			http.NotFound(w, r)
+			return
+		}
+		gotOrderBy = r.URL.Query().Get("orderBy")
+		gotFilter = r.URL.Query().Get("filter")
+		writeJSON(t, w, map[string]any{"listFindingsResults": []map[string]any{
+			{
+				"finding": map[string]any{
+					"name":         "projects/writer-prod/sources/123/findings/new-finding",
+					"parent":       "projects/writer-prod/sources/123",
+					"resourceName": "//storage.googleapis.com/projects/_/buckets/data-new",
+					"state":        "ACTIVE",
+					"category":     "PUBLIC_BUCKET_ACL",
+					"severity":     "HIGH",
+					"eventTime":    watermark.Add(time.Hour).Format(time.RFC3339Nano),
+					"createTime":   watermark.Add(time.Hour).Format(time.RFC3339Nano),
+				},
+				"resource": map[string]any{
+					"name":          "//storage.googleapis.com/projects/_/buckets/data-new",
+					"displayName":   "data-new",
+					"type":          "google.cloud.storage.Bucket",
+					"service":       "storage.googleapis.com",
+					"location":      "US",
+					"cloudProvider": "GOOGLE_CLOUD_PLATFORM",
+					"projectName":   "//cloudresourcemanager.googleapis.com/projects/writer-prod",
+				},
+			},
+			{
+				"finding": map[string]any{
+					"name":         "projects/writer-prod/sources/123/findings/old-finding",
+					"parent":       "projects/writer-prod/sources/123",
+					"resourceName": "//storage.googleapis.com/projects/_/buckets/data-old",
+					"state":        "ACTIVE",
+					"category":     "PUBLIC_BUCKET_ACL",
+					"severity":     "LOW",
+					"eventTime":    watermark.Add(-time.Hour).Format(time.RFC3339Nano),
+					"createTime":   watermark.Add(-time.Hour).Format(time.RFC3339Nano),
+				},
+				"resource": map[string]any{
+					"name":          "//storage.googleapis.com/projects/_/buckets/data-old",
+					"displayName":   "data-old",
+					"type":          "google.cloud.storage.Bucket",
+					"service":       "storage.googleapis.com",
+					"location":      "US",
+					"cloudProvider": "GOOGLE_CLOUD_PLATFORM",
+					"projectName":   "//cloudresourcemanager.googleapis.com/projects/writer-prod",
+				},
+			},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familySecurityCenterFinding,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(security_center_finding) error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetAttributes()["finding_name"] != "projects/writer-prod/sources/123/findings/new-finding" {
+		t.Fatalf("events = %#v, want only new Security Command Center finding", pull.Events)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	if gotOrderBy != "event_time desc" {
+		t.Fatalf("orderBy = %q, want event_time desc", gotOrderBy)
+	}
+	wantFilter := `event_time >= "` + watermark.Add(-gcpcloud.FindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
+	if gotFilter != wantFilter {
+		t.Fatalf("filter = %q, want %q", gotFilter, wantFilter)
+	}
+	if got := pull.Checkpoint.GetWatermark().AsTime(); !got.Equal(watermark.Add(time.Hour)) {
+		t.Fatalf("checkpoint watermark = %s, want %s", got, watermark.Add(time.Hour))
+	}
+}
+
+func TestReadLiveGCPAuditLogsWithCheckpoint(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v2/entries:list" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		writeJSON(t, w, map[string]any{"entries": []map[string]any{
+			{"insertId": "new-audit", "timestamp": watermark.Add(time.Hour).Format(time.RFC3339Nano), "protoPayload": map[string]any{"methodName": "storage.buckets.update", "serviceName": "storage.googleapis.com", "resourceName": "projects/_/buckets/prod"}},
+			{"insertId": "old-audit", "timestamp": watermark.Add(-time.Hour).Format(time.RFC3339Nano), "protoPayload": map[string]any{"methodName": "storage.buckets.get", "serviceName": "storage.googleapis.com", "resourceName": "projects/_/buckets/prod"}},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyAudit,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(%s) error = %v", familyAudit, err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "gcp-audit-new-audit" {
+		t.Fatalf("events = %#v, want only new audit", pull.Events)
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want watermark_reached", pull.ShortCircuitReason)
+	}
+	if got := gotBody["orderBy"]; got != "timestamp desc" {
+		t.Fatalf("orderBy = %v, want timestamp desc", got)
+	}
+	wantFilter := `timestamp >= "` + watermark.Add(-gcpcloud.FindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
+	if got := gotBody["filter"]; got != wantFilter {
+		t.Fatalf("filter = %v, want %s", got, wantFilter)
+	}
+}
+
+func TestReadLiveGCPWorkloadIdentityProviderPropagatesProviderErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools":
+			writeJSON(t, w, map[string]any{"workloadIdentityPools": []map[string]any{{"name": "projects/writer-prod/locations/global/workloadIdentityPools/github"}}})
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools/github/providers":
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(t, w, map[string]any{"error": map[string]any{"message": "provider backend unavailable"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyWorkloadIdentityProvider,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read(workload_identity_provider) error = nil, want provider fetch error")
+	}
+}
+
 func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
@@ -864,6 +1097,55 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com:getIamPolicy":
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@writer.com"}}}})
+		case "/v1/projects/writer-prod/policy":
+			writeJSON(t, w, map[string]any{
+				"name":                       "projects/writer-prod/policy",
+				"description":                "prod deploy admission policy",
+				"globalPolicyEvaluationMode": "ENABLE",
+				"admissionWhitelistPatterns": []map[string]any{{"namePattern": "gcr.io/google_containers/*"}},
+				"clusterAdmissionRules": map[string]any{
+					"us.demo": map[string]any{
+						"evaluationMode":        "REQUIRE_ATTESTATION",
+						"enforcementMode":       "ENFORCED_BLOCK_AND_AUDIT_LOG",
+						"requireAttestationsBy": []string{"projects/writer-prod/attestors/prod-builder"},
+					},
+				},
+				"defaultAdmissionRule": map[string]any{
+					"evaluationMode":        "REQUIRE_ATTESTATION",
+					"enforcementMode":       "ENFORCED_BLOCK_AND_AUDIT_LOG",
+					"requireAttestationsBy": []string{"projects/writer-prod/attestors/prod-builder"},
+				},
+				"updateTime": "2026-04-24T00:00:00Z",
+				"etag":       "policy-etag",
+			})
+		case "/v1/projects/writer-prod/attestors":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("binary authorization attestors pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"attestors": []map[string]any{{
+				"name":        "projects/writer-prod/attestors/prod-builder",
+				"description": "prod build attestor",
+				"updateTime":  "2026-04-24T00:00:00Z",
+				"etag":        "attestor-etag",
+				"userOwnedGrafeasNote": map[string]any{
+					"noteReference":                 "projects/writer-prod/notes/prod-builder",
+					"delegationServiceAccountEmail": "service-123@gcp-sa-binaryauthorization.iam.gserviceaccount.com",
+					"publicKeys": []map[string]any{
+						{"id": "pgp-key", "comment": "release signing key", "asciiArmoredPgpPublicKey": "-----BEGIN PGP PUBLIC KEY BLOCK-----"},
+						{"id": "prod-builder-pkix", "comment": "kms signing key", "pkixPublicKey": map[string]string{"publicKeyPem": "-----BEGIN PUBLIC KEY-----", "signatureAlgorithm": "ECDSA_P256_SHA256"}},
+					},
+				},
+			}}})
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("workload identity pools pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"workloadIdentityPools": []map[string]any{{"name": "projects/writer-prod/locations/global/workloadIdentityPools/github", "displayName": "GitHub Actions", "description": "GitHub workload identities", "state": "ACTIVE", "disabled": false}}})
+		case "/v1/projects/writer-prod/locations/global/workloadIdentityPools/github/providers":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("workload identity providers pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"workloadIdentityPoolProviders": []map[string]any{{"name": "projects/writer-prod/locations/global/workloadIdentityPools/github/providers/actions", "displayName": "GitHub Actions OIDC", "state": "ACTIVE", "disabled": false, "attributeMapping": map[string]string{"google.subject": "assertion.sub", "attribute.repository": "assertion.repository"}, "attributeCondition": `assertion.repository_owner=="writer"`, "oidc": map[string]any{"issuerUri": "https://oidc.example.com", "allowedAudiences": []string{"https://github.com/writer"}}}}})
 		case "/compute/v1/projects/writer-prod/global/networks":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "net-1", "name": "default", "selfLink": "projects/writer-prod/global/networks/default", "description": "default network", "autoCreateSubnetworks": false, "routingConfig": map[string]string{"routingMode": "REGIONAL"}, "labels": map[string]string{"env": "prod"}}}})
 		case "/compute/v1/projects/writer-prod/global/routes":
@@ -1345,6 +1627,36 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 				t.Fatalf("container analysis filter = %q, want vulnerability filter", got)
 			}
 			writeJSON(t, w, map[string]any{"occurrences": []map[string]any{{"name": "projects/writer-prod/occurrences/vuln-1", "resourceUri": "us-docker.pkg.dev/writer-prod/app/api@sha256:abc", "noteName": "projects/goog-vulnz/notes/CVE-2026-4242", "kind": "VULNERABILITY", "remediation": "Upgrade openssl", "createTime": "2026-04-23T00:00:00Z", "updateTime": "2026-04-24T00:00:00Z", "vulnerability": map[string]any{"effectiveSeverity": "HIGH", "severity": "HIGH", "shortDescription": "openssl issue", "cvssScore": 8.8, "packageIssue": []map[string]any{{"affectedPackage": "openssl", "affectedVersion": map[string]string{"name": "3.0.0"}, "fixedPackage": "openssl", "fixedVersion": map[string]string{"name": "3.0.1"}, "fixAvailable": true, "packageType": "OS"}}}}}})
+		case "/v2/projects/writer-prod/sources/-/findings":
+			if got := r.URL.Query().Get("pageSize"); got != "10" {
+				t.Fatalf("security center findings pageSize = %q, want 10", got)
+			}
+			writeJSON(t, w, map[string]any{"listFindingsResults": []map[string]any{{
+				"finding": map[string]any{
+					"name":         "projects/writer-prod/sources/123/findings/public-bucket",
+					"parent":       "projects/writer-prod/sources/123",
+					"resourceName": "//storage.googleapis.com/projects/_/buckets/data",
+					"state":        "ACTIVE",
+					"category":     "PUBLIC_BUCKET_ACL",
+					"severity":     "HIGH",
+					"mute":         "UNMUTED",
+					"findingClass": "MISCONFIGURATION",
+					"description":  "Bucket grants allUsers read access",
+					"nextSteps":    "Remove public ACL grants",
+					"eventTime":    "2026-04-23T00:00:00Z",
+					"createTime":   "2026-04-23T00:00:00Z",
+				},
+				"resource": map[string]any{
+					"name":               "//storage.googleapis.com/projects/_/buckets/data",
+					"displayName":        "data",
+					"type":               "google.cloud.storage.Bucket",
+					"service":            "storage.googleapis.com",
+					"location":           "US",
+					"cloudProvider":      "GOOGLE_CLOUD_PLATFORM",
+					"projectName":        "//cloudresourcemanager.googleapis.com/projects/writer-prod",
+					"projectDisplayName": "writer-prod",
+				},
+			}}})
 		case "/v2/entries:list":
 			writeJSON(t, w, map[string]any{"entries": []map[string]any{{"insertId": "audit-1", "timestamp": "2026-04-23T00:00:00Z", "protoPayload": map[string]any{"methodName": "SetIamPolicy", "serviceName": "cloudresourcemanager.googleapis.com", "resourceName": "projects/writer-prod", "authenticationInfo": map[string]any{"principalEmail": "admin@writer.com"}}, "resource": map[string]any{"type": "project", "labels": map[string]string{"project_id": "writer-prod"}}}}})
 		default:

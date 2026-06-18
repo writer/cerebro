@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,16 +11,18 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcinventory"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
 	grcRuntimeStatusConfigKey           = "__cerebro_runtime_status"
 	maxGRCInventoryScopeBodyBytes       = 32 << 10
 	maxGRCInventoryAssetReportBodyBytes = 32 << 10
-	grcInventoryScopeStateInScope       = ports.GRCInventoryScopeStateIn
-	grcInventoryScopeStateOutScope      = ports.GRCInventoryScopeStateOut
 )
 
 type grcInventoryCategoriesResponse struct {
@@ -29,7 +32,7 @@ type grcInventoryCategoriesResponse struct {
 
 type grcInventoryAssetsResponse struct {
 	Assets      []graphquery.InventoryAsset `json:"assets"`
-	Summary     grcInventorySummary         `json:"summary"`
+	Summary     grcinventory.Summary        `json:"summary"`
 	GeneratedAt time.Time                   `json:"generated_at"`
 }
 
@@ -45,18 +48,6 @@ type grcInventoryAssetDetailResponse struct {
 	Timeline        []grcInventoryTimelineEvent            `json:"timeline"`
 	Actions         []grcInventoryAction                   `json:"actions"`
 	GeneratedAt     time.Time                              `json:"generated_at"`
-}
-
-type grcInventorySummary struct {
-	TotalAssets         int `json:"total_assets"`
-	InScopeAssets       int `json:"in_scope_assets"`
-	OutOfScopeAssets    int `json:"out_of_scope_assets"`
-	HighRiskAssets      int `json:"high_risk_assets"`
-	UnassignedAssets    int `json:"unassigned_assets"`
-	OrgGroups           int `json:"org_groups"`
-	PublicAssets        int `json:"public_assets"`
-	ScopedCoveragePct   int `json:"scoped_coverage_pct"`
-	AssignedCoveragePct int `json:"assigned_coverage_pct"`
 }
 
 type grcInventoryTimelineEvent struct {
@@ -98,7 +89,7 @@ type grcResourceScopeResponse struct {
 	SourceID    string                      `json:"source_id"`
 	Runtimes    []grcResourceScopeRuntime   `json:"runtimes"`
 	Resources   []graphquery.InventoryAsset `json:"resources"`
-	Summary     grcInventorySummary         `json:"summary"`
+	Summary     grcinventory.Summary        `json:"summary"`
 	GeneratedAt time.Time                   `json:"generated_at"`
 }
 
@@ -106,14 +97,24 @@ type grcInventoryScopeUpdateRequest struct {
 	TenantID   string            `json:"tenant_id,omitempty"`
 	AssetURN   string            `json:"asset_urn"`
 	SourceID   string            `json:"source_id,omitempty"`
+	RuntimeID  string            `json:"runtime_id,omitempty"`
 	ScopeState string            `json:"scope_state"`
 	Reason     string            `json:"reason,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 type grcInventoryScopeUpdateResponse struct {
-	Scope       *ports.GRCInventoryScopeRecord `json:"scope"`
-	GeneratedAt time.Time                      `json:"generated_at"`
+	Scope       *ports.GRCInventoryScopeRecord       `json:"scope"`
+	Propagation []grcInventoryScopePropagationResult `json:"propagation,omitempty"`
+	GeneratedAt time.Time                            `json:"generated_at"`
+}
+
+type grcInventoryScopePropagationResult struct {
+	RuntimeID        string `json:"runtime_id,omitempty"`
+	SourceID         string `json:"source_id,omitempty"`
+	Status           string `json:"status"`
+	ExclusionApplied bool   `json:"exclusion_applied"`
+	Reason           string `json:"reason,omitempty"`
 }
 
 type grcInventoryAssetReportCreateRequest struct {
@@ -192,8 +193,10 @@ func (a *App) handleGRCInventoryAssets(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	summary := summarizeGRCInventoryAssets(assets)
-	assets = filterGRCInventoryAssetsByScope(assets, strings.TrimSpace(r.URL.Query().Get("scope_state")))
+	assets = grcinventory.FilterByScope(assets, strings.TrimSpace(r.URL.Query().Get("scope_state")))
+	assets = grcinventory.FilterByReviewDisposition(assets, strings.TrimSpace(r.URL.Query().Get("review_state")))
+	assets = grcinventory.FilterByAccountability(assets, strings.TrimSpace(r.URL.Query().Get("accountability_state")))
+	summary := grcinventory.Summarize(assets)
 	writeJSON(w, http.StatusOK, grcInventoryAssetsResponse{Assets: assets, Summary: summary, GeneratedAt: time.Now().UTC()})
 }
 
@@ -251,6 +254,7 @@ func (a *App) handleGRCInventoryAssetDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	asset = applyFindingRiskToInventoryAsset(asset, findingItems, tests, vulnerabilities)
+	grcinventory.ApplyReviewPosture(&asset)
 	reports, err := a.listGRCInventoryAssetReportsForAsset(r, scope, asset.URN, scope.Limit)
 	if err != nil {
 		writeGRCError(w, err)
@@ -323,7 +327,7 @@ func (a *App) handleGRCResourceScope(w http.ResponseWriter, r *http.Request) {
 		SourceID:    sourceID,
 		Runtimes:    items,
 		Resources:   resources,
-		Summary:     summarizeGRCInventoryAssets(resources),
+		Summary:     grcinventory.Summarize(resources),
 		GeneratedAt: time.Now().UTC(),
 	})
 }
@@ -354,10 +358,14 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	state := strings.TrimSpace(request.ScopeState)
-	if state != grcInventoryScopeStateInScope && state != grcInventoryScopeStateOutScope {
+	if state != grcinventory.ScopeStateInScope && state != grcinventory.ScopeStateOutScope {
 		writeGRCError(w, fmt.Errorf("%w: scope_state must be in_scope or out_of_scope", errInvalidHTTPRequest))
 		return
 	}
+	request.ScopeState = state
+	request.SourceID = strings.TrimSpace(request.SourceID)
+	request.RuntimeID = strings.TrimSpace(request.RuntimeID)
+	request.Reason = strings.TrimSpace(request.Reason)
 	store := grcInventoryScopeStore(a.deps.StateStore)
 	if store == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
@@ -366,9 +374,9 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 	record, err := store.UpsertGRCInventoryScope(r.Context(), ports.GRCInventoryScopeRecord{
 		TenantID:   tenantID,
 		AssetURN:   request.AssetURN,
-		SourceID:   strings.TrimSpace(request.SourceID),
+		SourceID:   request.SourceID,
 		ScopeState: state,
-		Reason:     strings.TrimSpace(request.Reason),
+		Reason:     request.Reason,
 		UpdatedBy:  grcInventoryUpdatedBy(r),
 		Attributes: request.Attributes,
 	})
@@ -376,8 +384,116 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 		writeGRCError(w, err)
 		return
 	}
+	propagation, err := a.applyGRCInventoryScopeToSourceRuntimes(r.Context(), tenantID, request)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	a.bumpGRCCacheVersions(r.Context(), tenantID, grcCacheScopeInventory)
-	writeJSON(w, http.StatusOK, grcInventoryScopeUpdateResponse{Scope: record, GeneratedAt: time.Now().UTC()})
+	writeJSON(w, http.StatusOK, grcInventoryScopeUpdateResponse{Scope: record, Propagation: propagation, GeneratedAt: time.Now().UTC()})
+}
+
+func (a *App) applyGRCInventoryScopeToSourceRuntimes(ctx context.Context, tenantID string, request grcInventoryScopeUpdateRequest) ([]grcInventoryScopePropagationResult, error) {
+	store := sourceRuntimeStore(a.deps.StateStore)
+	if store == nil {
+		return nil, nil
+	}
+	request.AssetURN = strings.TrimSpace(request.AssetURN)
+	request.SourceID = strings.TrimSpace(request.SourceID)
+	request.RuntimeID = strings.TrimSpace(request.RuntimeID)
+	if request.AssetURN == "" || (request.RuntimeID == "" && request.SourceID == "") {
+		return nil, nil
+	}
+	runtimes, skipped, err := grcInventoryScopeTargetRuntimes(ctx, store, tenantID, request)
+	if err != nil {
+		return nil, err
+	}
+	results := append([]grcInventoryScopePropagationResult{}, skipped...)
+	selector := resourcescope.SelectorFromURN(request.AssetURN, request.Reason)
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		if tenantID != "" && runtime.GetTenantId() != tenantID {
+			return nil, errTenantForbidden
+		}
+		if request.SourceID != "" && runtime.GetSourceId() != request.SourceID {
+			return nil, fmt.Errorf("%w: source_id does not match runtime", errInvalidHTTPRequest)
+		}
+		next := proto.Clone(runtime).(*cerebrov1.SourceRuntime)
+		if next.Config == nil {
+			next.Config = map[string]string{}
+		}
+		policy, err := resourcescope.FromConfig(next.Config)
+		if err != nil {
+			return nil, fmt.Errorf("%w: source runtime resource scope policy", errInvalidHTTPRequest)
+		}
+		switch request.ScopeState {
+		case grcinventory.ScopeStateOutScope:
+			policy, err = resourcescope.AddExcludedResource(policy, selector)
+		case grcinventory.ScopeStateInScope:
+			policy, err = resourcescope.RemoveExcludedResource(policy, selector)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: update source runtime resource scope policy: %w", errInvalidHTTPRequest, err)
+		}
+		value, err := resourcescope.ConfigValue(policy)
+		if err != nil {
+			return nil, fmt.Errorf("%w: encode source runtime resource scope policy: %w", errInvalidHTTPRequest, err)
+		}
+		if value == "" {
+			delete(next.Config, resourcescope.ConfigKey)
+		} else {
+			next.Config[resourcescope.ConfigKey] = value
+		}
+		if err := store.PutSourceRuntime(ctx, next); err != nil {
+			return nil, err
+		}
+		results = append(results, grcInventoryScopePropagationResult{
+			RuntimeID:        next.GetId(),
+			SourceID:         next.GetSourceId(),
+			Status:           "updated",
+			ExclusionApplied: request.ScopeState == grcinventory.ScopeStateOutScope,
+		})
+	}
+	return results, nil
+}
+
+func grcInventoryScopeTargetRuntimes(ctx context.Context, store ports.SourceRuntimeStore, tenantID string, request grcInventoryScopeUpdateRequest) ([]*cerebrov1.SourceRuntime, []grcInventoryScopePropagationResult, error) {
+	if request.RuntimeID != "" {
+		runtime, err := store.GetSourceRuntime(ctx, request.RuntimeID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []*cerebrov1.SourceRuntime{runtime}, nil, nil
+	}
+	if request.SourceID == "" {
+		return nil, nil, nil
+	}
+	listStore, ok := store.(ports.SourceRuntimeListStore)
+	if !ok {
+		return nil, []grcInventoryScopePropagationResult{{
+			SourceID: request.SourceID,
+			Status:   "skipped",
+			Reason:   "source runtime listing is unavailable",
+		}}, nil
+	}
+	runtimes, err := listStore.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{
+		TenantID: tenantID,
+		SourceID: request.SourceID,
+		Limit:    500,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(runtimes) == 0 {
+		return nil, []grcInventoryScopePropagationResult{{
+			SourceID: request.SourceID,
+			Status:   "skipped",
+			Reason:   "no matching source runtimes",
+		}}, nil
+	}
+	return runtimes, nil, nil
 }
 
 func (a *App) handleCreateGRCInventoryAssetReport(w http.ResponseWriter, r *http.Request) {
@@ -674,10 +790,17 @@ func (a *App) enrichGRCInventoryAssets(r *http.Request, scope grcScope, assets [
 			}
 		}
 		for index := range assets {
-			applyGRCInventoryScope(&assets[index], byURN[assets[index].URN])
+			grcinventory.ApplyScope(&assets[index], byURN[assets[index].URN])
 		}
 	}
-	return a.enrichGRCInventoryAssetsWithReports(r, scope, assets)
+	assets, err := a.enrichGRCInventoryAssetsWithReports(r, scope, assets)
+	if err != nil {
+		return nil, err
+	}
+	for index := range assets {
+		grcinventory.ApplyReviewPosture(&assets[index])
+	}
+	return assets, nil
 }
 
 func (a *App) enrichGRCInventoryAsset(r *http.Request, scope grcScope, asset graphquery.InventoryAsset) (graphquery.InventoryAsset, error) {
@@ -714,7 +837,7 @@ func (a *App) enrichGRCInventoryAssetsWithReports(r *http.Request, scope grcScop
 		byURN[summary.AssetURN] = summary
 	}
 	for index := range assets {
-		applyGRCInventoryAssetReportSummary(&assets[index], byURN[assets[index].URN])
+		grcinventory.ApplyAssetReportSummary(&assets[index], byURN[assets[index].URN])
 	}
 	return assets, nil
 }
@@ -730,85 +853,6 @@ func (a *App) listGRCInventoryAssetReportsForAsset(r *http.Request, scope grcSco
 		SourceID:  scope.SourceID,
 		Limit:     limit,
 	})
-}
-
-func applyGRCInventoryScope(asset *graphquery.InventoryAsset, record *ports.GRCInventoryScopeRecord) {
-	if asset == nil {
-		return
-	}
-	if strings.TrimSpace(asset.ScopeState) == "" {
-		asset.ScopeState = grcInventoryScopeStateInScope
-	}
-	if record == nil {
-		return
-	}
-	asset.ScopeState = record.ScopeState
-	asset.ScopeReason = record.Reason
-	if !record.UpdatedAt.IsZero() {
-		asset.ScopeUpdatedAt = record.UpdatedAt.UTC().Format(time.RFC3339)
-	}
-}
-
-func applyGRCInventoryAssetReportSummary(asset *graphquery.InventoryAsset, summary *ports.GRCInventoryAssetReportSummary) {
-	if asset == nil || summary == nil {
-		return
-	}
-	asset.AssetReportCount = summary.ReportCount
-	asset.LatestAssetReportStatus = summary.TriageStatus
-	asset.LatestAssetReportReason = summary.Reason
-	if !summary.UpdatedAt.IsZero() {
-		asset.LatestAssetReportUpdatedAt = summary.UpdatedAt.UTC().Format(time.RFC3339)
-	}
-}
-
-func filterGRCInventoryAssetsByScope(assets []graphquery.InventoryAsset, state string) []graphquery.InventoryAsset {
-	state = strings.TrimSpace(state)
-	if state == "" || state == "all" {
-		return assets
-	}
-	filtered := make([]graphquery.InventoryAsset, 0, len(assets))
-	for _, asset := range assets {
-		assetState := strings.TrimSpace(asset.ScopeState)
-		if assetState == "" {
-			assetState = grcInventoryScopeStateInScope
-		}
-		if assetState == state {
-			filtered = append(filtered, asset)
-		}
-	}
-	return filtered
-}
-
-func summarizeGRCInventoryAssets(assets []graphquery.InventoryAsset) grcInventorySummary {
-	summary := grcInventorySummary{TotalAssets: len(assets)}
-	orgs := map[string]struct{}{}
-	for _, asset := range assets {
-		state := strings.TrimSpace(asset.ScopeState)
-		if state == "" || state == grcInventoryScopeStateInScope {
-			summary.InScopeAssets++
-		}
-		if state == grcInventoryScopeStateOutScope {
-			summary.OutOfScopeAssets++
-		}
-		if asset.RiskScore >= 70 {
-			summary.HighRiskAssets++
-		}
-		if inventoryAssetOwner(asset) == "Unassigned" {
-			summary.UnassignedAssets++
-		}
-		if inventoryAssetPublic(asset) {
-			summary.PublicAssets++
-		}
-		if org := inventoryAssetOrg(asset); org != "" {
-			orgs[org] = struct{}{}
-		}
-	}
-	summary.OrgGroups = len(orgs)
-	if summary.TotalAssets > 0 {
-		summary.ScopedCoveragePct = int(float64(summary.InScopeAssets) / float64(summary.TotalAssets) * 100)
-		summary.AssignedCoveragePct = int(float64(summary.TotalAssets-summary.UnassignedAssets) / float64(summary.TotalAssets) * 100)
-	}
-	return summary
 }
 
 func applyFindingRiskToInventoryAsset(asset graphquery.InventoryAsset, findings []grcFindingItem, tests []grcInventoryTestItem, vulnerabilities []grcInventoryVulnerability) graphquery.InventoryAsset {
@@ -830,12 +874,12 @@ func applyFindingRiskToInventoryAsset(asset graphquery.InventoryAsset, findings 
 		score += 15
 		reasons = append(reasons, "critical or high vulnerabilities")
 	}
-	if asset.ScopeState == grcInventoryScopeStateOutScope {
+	if asset.ScopeState == grcinventory.ScopeStateOutScope {
 		reasons = append(reasons, "out of GRC purview")
 	}
-	asset.RiskScore = clampGRCInventoryRisk(score)
-	asset.RiskLevel = grcInventoryRiskLevel(asset.RiskScore)
-	asset.RiskReasons = uniqueGRCInventoryStrings(reasons)
+	asset.RiskScore = grcinventory.ClampRisk(score)
+	asset.RiskLevel = grcinventory.RiskLevel(asset.RiskScore)
+	asset.RiskReasons = grcinventory.UniqueStrings(reasons)
 	return asset
 }
 
@@ -894,12 +938,13 @@ func grcInventoryTimeline(asset graphquery.InventoryAsset, findings []grcFinding
 }
 
 func grcInventoryActions(asset graphquery.InventoryAsset, findings []grcFindingItem, controls []grcControlItem, tests []grcInventoryTestItem, vulnerabilities []grcInventoryVulnerability) []grcInventoryAction {
+	grcinventory.ApplyReviewPosture(&asset)
 	actions := []grcInventoryAction{}
-	if asset.ScopeState == grcInventoryScopeStateOutScope {
+	if asset.ScopeState == grcinventory.ScopeStateOutScope {
 		actions = append(actions, grcInventoryAction{Title: "Confirm GRC purview", Description: "This asset is scoped out. Scope it back in if it should participate in controls, tests, and evidence review.", Priority: "high"})
 	}
-	if inventoryAssetOwner(asset) == "Unassigned" {
-		actions = append(actions, grcInventoryAction{Title: "Assign an owner", Description: "Add ownership metadata so findings and control evidence route to an accountable team.", Priority: "high"})
+	if asset.Accountability != nil && asset.Accountability.State == grcinventory.AccountabilityRequired {
+		actions = append(actions, grcInventoryAction{Title: "Assign accountable owner", Description: "Add ownership metadata for this GRC-relevant asset so evidence, findings, and remediation work have a responsible team.", Priority: "high"})
 	}
 	if criticalHighGRCInventoryVulnerabilities(vulnerabilities) > 0 {
 		actions = append(actions, grcInventoryAction{Title: "Remediate critical or high vulnerabilities", Description: "Review linked findings and confirm active remediation plans for severe vulnerability exposure.", Priority: "high"})
@@ -911,7 +956,7 @@ func grcInventoryActions(asset graphquery.InventoryAsset, findings []grcFindingI
 		actions = append(actions, grcInventoryAction{Title: "Map framework scope", Description: "Attach affected findings to framework controls to make audit impact explicit.", Priority: "medium"})
 	}
 	if len(actions) == 0 {
-		actions = append(actions, grcInventoryAction{Title: "Keep monitoring", Description: "No immediate scope, ownership, vulnerability, or test gaps were detected for this asset.", Priority: "low"})
+		actions = append(actions, grcInventoryAction{Title: "Keep monitoring", Description: "No immediate scope, accountability, vulnerability, or test gaps were detected for this asset.", Priority: "low"})
 	}
 	return actions
 }
@@ -938,24 +983,6 @@ func criticalHighGRCInventoryVulnerabilities(items []grcInventoryVulnerability) 
 	return count
 }
 
-func inventoryAssetOwner(asset graphquery.InventoryAsset) string {
-	return fallbackString(asset.Attributes["owner"], asset.Attributes["owner_email"], asset.Attributes["assignee"], asset.Attributes["account_manager_email"], asset.Attributes["owner_login"], "Unassigned")
-}
-
-func inventoryAssetOrg(asset graphquery.InventoryAsset) string {
-	return fallbackString(asset.Attributes["org"], asset.Attributes["owner_login"], asset.Attributes["account_id"], asset.Attributes["project_id"], asset.SourceID)
-}
-
-func inventoryAssetPublic(asset graphquery.InventoryAsset) bool {
-	for _, key := range []string{"public", "publicly_accessible", "internet_exposed", "external"} {
-		switch strings.ToLower(strings.TrimSpace(asset.Attributes[key])) {
-		case "1", "t", "true", "yes", "y":
-			return true
-		}
-	}
-	return false
-}
-
 func parseGRCInventoryTime(value string) *time.Time {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -969,48 +996,6 @@ func parseGRCInventoryTime(value string) *time.Time {
 		}
 	}
 	return nil
-}
-
-func clampGRCInventoryRisk(score int) int {
-	if score < 0 {
-		return 0
-	}
-	if score > 100 {
-		return 100
-	}
-	return score
-}
-
-func grcInventoryRiskLevel(score int) string {
-	switch {
-	case score >= 85:
-		return "critical"
-	case score >= 70:
-		return "high"
-	case score >= 40:
-		return "medium"
-	case score > 0:
-		return "low"
-	default:
-		return "unknown"
-	}
-}
-
-func uniqueGRCInventoryStrings(values []string) []string {
-	seen := map[string]struct{}{}
-	result := []string{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
 }
 
 func grcInventoryUpdatedBy(r *http.Request) string {

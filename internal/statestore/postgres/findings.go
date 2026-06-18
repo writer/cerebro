@@ -46,6 +46,7 @@ var ensureFindingStatements = []string{
   control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   notes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   tickets_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  external_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   policy_id TEXT NOT NULL DEFAULT '',
   policy_name TEXT NOT NULL DEFAULT '',
@@ -64,6 +65,7 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS notes_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tickets_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS external_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_id TEXT NOT NULL DEFAULT ''`,
@@ -96,6 +98,7 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
+	`CREATE INDEX IF NOT EXISTS findings_external_refs_gin_idx ON findings USING GIN (external_refs_json)`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned BOOLEAN NOT NULL DEFAULT FALSE`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_at TIMESTAMPTZ`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_by TEXT NOT NULL DEFAULT ''`,
@@ -165,7 +168,7 @@ END $$`,
 const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, external_refs_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at,
   tombstoned, tombstoned_at, tombstoned_by, tombstoned_reason, tombstoned_run_id, prior_status, tombstone_generation`
 
@@ -195,11 +198,11 @@ const upsertFindingStatement = `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json, risk_model_version,
-  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, external_refs_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at, tombstone_generation
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25::jsonb, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -211,7 +214,7 @@ DO UPDATE SET
   status = CASE
     WHEN findings.tombstoned THEN findings.status
     WHEN findings.status = 'suppressed' THEN findings.status
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN EXCLUDED.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $37::boolean) THEN EXCLUDED.status
     WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status
     ELSE EXCLUDED.status
   END,
@@ -236,6 +239,10 @@ DO UPDATE SET
     WHEN jsonb_array_length(EXCLUDED.tickets_json) = 0 THEN findings.tickets_json
     ELSE EXCLUDED.tickets_json
   END,
+  external_refs_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.external_refs_json) = 0 THEN findings.external_refs_json
+    ELSE EXCLUDED.external_refs_json
+  END,
   attributes_json = EXCLUDED.attributes_json,
   policy_id = EXCLUDED.policy_id,
   policy_name = EXCLUDED.policy_name,
@@ -249,19 +256,37 @@ DO UPDATE SET
   status_reason = CASE
     WHEN findings.tombstoned THEN findings.status_reason
     WHEN findings.status = 'suppressed' THEN findings.status_reason
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN findings.status_reason
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $37::boolean) THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
     WHEN findings.tombstoned THEN findings.status_updated_at
     WHEN findings.status = 'suppressed' THEN findings.status_updated_at
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN findings.status_updated_at
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $37::boolean) THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
   last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
   updated_at = NOW()
 WHERE findings.tombstoned = FALSE
+RETURNING ` + findingSelectColumns
+
+const linkFindingExternalRefStatement = `
+UPDATE findings
+SET external_refs_json = CASE
+      WHEN COALESCE(external_refs_json, '[]'::jsonb) @> $3::jsonb THEN (
+        SELECT COALESCE(jsonb_agg(
+          CASE
+            WHEN ref @> ($3::jsonb -> 0) THEN ($2::jsonb -> 0)
+            ELSE ref
+          END
+        ), '[]'::jsonb)
+        FROM jsonb_array_elements(COALESCE(external_refs_json, '[]'::jsonb)) AS existing(ref)
+      )
+      ELSE COALESCE(external_refs_json, '[]'::jsonb) || $2::jsonb
+    END,
+    updated_at = NOW()
+WHERE id = $1
 RETURNING ` + findingSelectColumns
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -335,6 +360,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding tickets: %w", err)
 	}
+	externalRefsJSON, err := findingExternalRefsJSON(finding.ExternalRefs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding external refs: %w", err)
+	}
 	attributesJSON, err := findingAttributesJSON(finding.Attributes)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding attributes: %w", err)
@@ -392,6 +421,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 			controlRefsJSON,
 			notesJSON,
 			ticketsJSON,
+			externalRefsJSON,
 			attributesJSON,
 			policyID,
 			policyName,
@@ -1127,6 +1157,43 @@ RETURNING `+findingSelectColumns,
 			return nil, ports.ErrFindingNotFound
 		}
 		return nil, fmt.Errorf("link ticket to finding %q: %w", findingID, err)
+	}
+	return row.record()
+}
+
+// LinkFindingExternalRef appends or refreshes one external lifecycle reference.
+func (s *Store) LinkFindingExternalRef(ctx context.Context, request ports.FindingExternalRefLink) (*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	externalRefsJSON, err := findingExternalRefsJSON([]ports.FindingExternalRef{request.ExternalRef})
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding external ref: %w", err)
+	}
+	if externalRefsJSON == `[]` {
+		return nil, errors.New("finding external ref system, kind, and external id are required")
+	}
+	dedupeJSON, err := findingExternalRefMatchJSON(request.ExternalRef)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding external ref dedupe: %w", err)
+	}
+	var row findingRow
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, linkFindingExternalRefStatement,
+		findingID,
+		externalRefsJSON,
+		dedupeJSON,
+	), &row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("link external ref to finding %q: %w", findingID, err)
 	}
 	return row.record()
 }
@@ -2116,6 +2183,64 @@ func findingTicketURLMatchJSON(value string) (string, error) {
 	return string(payload), nil
 }
 
+func findingExternalRefsJSON(values []ports.FindingExternalRef) (string, error) {
+	normalized := make([]ports.FindingExternalRef, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		system := strings.TrimSpace(value.System)
+		kind := strings.TrimSpace(value.Kind)
+		externalID := strings.TrimSpace(value.ExternalID)
+		if system == "" || kind == "" || externalID == "" {
+			continue
+		}
+		key := system + "|" + kind + "|" + externalID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		observedAt := value.ObservedAt.UTC()
+		if observedAt.IsZero() {
+			continue
+		}
+		normalized = append(normalized, ports.FindingExternalRef{
+			System:               system,
+			Kind:                 kind,
+			ExternalID:           externalID,
+			URL:                  strings.TrimSpace(value.URL),
+			ExternalStatus:       strings.TrimSpace(value.ExternalStatus),
+			ExternalStatusReason: strings.TrimSpace(value.ExternalStatusReason),
+			LifecycleOwner:       strings.TrimSpace(value.LifecycleOwner),
+			ObservedAt:           observedAt,
+		})
+	}
+	if len(normalized) == 0 {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+func findingExternalRefMatchJSON(value ports.FindingExternalRef) (string, error) {
+	system := strings.TrimSpace(value.System)
+	kind := strings.TrimSpace(value.Kind)
+	externalID := strings.TrimSpace(value.ExternalID)
+	if system == "" || kind == "" || externalID == "" {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal([]map[string]string{{
+		"system":      system,
+		"kind":        kind,
+		"external_id": externalID,
+	}})
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
 func addFindingFilter(clauses *[]string, args *[]any, column string, value string) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -2149,12 +2274,13 @@ func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string
 }
 
 type findingWorkflowRow struct {
-	NotesJSON       string
-	TicketsJSON     string
-	Assignee        string
-	DueAt           sql.NullTime
-	StatusReason    string
-	StatusUpdatedAt sql.NullTime
+	NotesJSON        string
+	TicketsJSON      string
+	ExternalRefsJSON string
+	Assignee         string
+	DueAt            sql.NullTime
+	StatusReason     string
+	StatusUpdatedAt  sql.NullTime
 }
 
 type findingRowScanner interface {
@@ -2253,6 +2379,7 @@ func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 		&row.ControlRefsJSON,
 		&row.NotesJSON,
 		&row.TicketsJSON,
+		&row.ExternalRefsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -2381,6 +2508,12 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.TicketsJSON), &tickets); err != nil {
 		return nil, fmt.Errorf("decode finding tickets: %w", err)
 	}
+	externalRefs := []ports.FindingExternalRef{}
+	if strings.TrimSpace(r.ExternalRefsJSON) != "" {
+		if err := json.Unmarshal([]byte(r.ExternalRefsJSON), &externalRefs); err != nil {
+			return nil, fmt.Errorf("decode finding external refs: %w", err)
+		}
+	}
 	attributes := map[string]string{}
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
@@ -2422,6 +2555,7 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,
+			ExternalRefs:    externalRefs,
 			Assignee:        r.Assignee,
 			DueAt:           findingTimestamp(r.DueAt),
 			StatusReason:    r.StatusReason,

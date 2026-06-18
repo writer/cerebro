@@ -61,8 +61,31 @@ func TestGRCQueryCacheBypassesNoCacheRequest(t *testing.T) {
 	if resp.Header().Get("X-Cerebro-Cache") != "bypass" {
 		t.Fatalf("X-Cerebro-Cache = %q, want bypass", resp.Header().Get("X-Cerebro-Cache"))
 	}
+	if got := resp.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("Cache-Control = %q, want empty on bypass", got)
+	}
 	if calls != 1 {
 		t.Fatalf("handler calls = %d, want 1", calls)
+	}
+}
+
+func TestGRCQueryCacheDoesNotEmitCacheControlForErrorResponse(t *testing.T) {
+	app := &App{
+		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test"})},
+	}
+	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Minute), func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "backend failed", http.StatusInternalServerError)
+	})
+
+	resp := httptest.NewRecorder()
+	handler(resp, httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=writer", nil))
+
+	if resp.Header().Get("X-Cerebro-Cache") != "bypass" {
+		t.Fatalf("X-Cerebro-Cache = %q, want bypass", resp.Header().Get("X-Cerebro-Cache"))
+	}
+	if got := resp.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("Cache-Control = %q, want empty for uncached error response", got)
 	}
 }
 
