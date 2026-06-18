@@ -60,6 +60,7 @@ class NatsContainerDefinitionTest(unittest.TestCase):
     def test_cloudmap_health_check_threshold_is_preserved(self) -> None:
         health_check_args: list[dict] = []
         service_args: list[dict] = []
+        storage_args: list[dict] = []
 
         class FakeOutput:
             def __init__(self, value: str):
@@ -87,6 +88,14 @@ class NatsContainerDefinitionTest(unittest.TestCase):
             service_args.append(kwargs)
             return fake_resource(*args, **kwargs)
 
+        def fake_storage(*args, **kwargs):
+            storage_args.append(kwargs)
+            return {
+                "file_system": SimpleNamespace(id="fs-1", arn="arn:aws:efs:us-east-1:123:file-system/fs-1"),
+                "access_point": SimpleNamespace(id="ap-1"),
+                "mount_targets": [],
+            }
+
         with ExitStack() as stack:
             for patcher in [
                 patch.object(nats.aws.servicediscovery, "PrivateDnsNamespace", side_effect=fake_resource),
@@ -97,11 +106,7 @@ class NatsContainerDefinitionTest(unittest.TestCase):
                 patch.object(nats.aws.ec2, "SecurityGroup", side_effect=fake_resource),
                 patch.object(nats.aws.ec2, "SecurityGroupIngressArgs", side_effect=fake_args),
                 patch.object(nats.aws.ec2, "SecurityGroupEgressArgs", side_effect=fake_args),
-                patch.object(nats.storage, "create_efs_volume", return_value={
-                    "file_system": SimpleNamespace(id="fs-1", arn="arn:aws:efs:us-east-1:123:file-system/fs-1"),
-                    "access_point": SimpleNamespace(id="ap-1"),
-                    "mount_targets": [],
-                }),
+                patch.object(nats.storage, "create_efs_volume", side_effect=fake_storage),
                 patch.object(nats.aws.ecs, "Cluster", side_effect=fake_resource),
                 patch.object(nats.aws.ecs, "ClusterSettingArgs", side_effect=fake_args),
                 patch.object(nats, "_execution_role", return_value=SimpleNamespace(arn="exec-role")),
@@ -128,9 +133,12 @@ class NatsContainerDefinitionTest(unittest.TestCase):
                 subnet_ids=["subnet-1"],
                 app_security_group_id="sg-app",
                 kms_key_arn="kms-key",
+                efs_throughput_mode="elastic",
             )
 
         self.assertEqual(health_check_args, [{"failure_threshold": 1}])
+        self.assertEqual(storage_args[0]["throughput_mode"], "elastic")
+        self.assertIsNone(storage_args[0]["provisioned_throughput_in_mibps"])
         self.assertEqual(service_args[0]["availability_zone_rebalancing"], "DISABLED")
         self.assertEqual(service_args[0]["deployment_maximum_percent"], 100)
         self.assertEqual(service_args[0]["deployment_minimum_healthy_percent"], 0)

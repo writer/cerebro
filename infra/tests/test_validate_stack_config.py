@@ -110,6 +110,7 @@ config:
   cerebro:apiMaxInstances: 2
   cerebro:natsCpu: 2048
   cerebro:natsMemory: 4096
+  cerebro:natsEfsThroughputMode: elastic
   cerebro:postgresDeletionProtection: true
   cerebro:postgresBackupRetentionDays: 14
   cerebro:apiAuthEnabled: true
@@ -962,6 +963,21 @@ class ValidateStackConfigTest(unittest.TestCase):
         messages = self._messages(content)
         self.assertTrue(any("at least 2048 CPU units" in message for message in messages))
         self.assertTrue(any("at least 4096 MiB" in message for message in messages))
+
+    def test_active_environments_require_nats_efs_throughput_headroom(self) -> None:
+        content = BASE_STACK.replace("  cerebro:natsEfsThroughputMode: elastic", "  cerebro:natsEfsThroughputMode: bursting")
+        self.assertTrue(any("elastic or provisioned EFS throughput" in message for message in self._messages(content)))
+
+    def test_provisioned_nats_efs_throughput_requires_value(self) -> None:
+        content = BASE_STACK.replace("  cerebro:natsEfsThroughputMode: elastic", "  cerebro:natsEfsThroughputMode: provisioned")
+        self.assertTrue(any("positive MiB/s value" in message for message in self._messages(content)))
+
+    def test_nats_efs_provisioned_value_requires_provisioned_mode(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:natsEfsThroughputMode: elastic",
+            "  cerebro:natsEfsThroughputMode: elastic\n  cerebro:natsEfsProvisionedThroughputMibps: 128",
+        )
+        self.assertTrue(any("only valid when" in message for message in self._messages(content)))
 
     def test_device_auth_enabled_exempts_api_headroom_rule(self) -> None:
         # When deviceAuthEnabled=true the in-process DPoP replay cache forces

@@ -24,6 +24,8 @@ def create_nats_service(
     subject_prefix: str = "events",
     stream_max_bytes: str = "",
     stream_max_age: str = "",
+    efs_throughput_mode: str | None = None,
+    efs_provisioned_throughput_mibps: int | None = None,
     enable_lag_probe: bool = True,
     lag_probe_interval_seconds: int = 60,
     lag_probe_image: str = "python:3.12-alpine",
@@ -83,6 +85,8 @@ def create_nats_service(
         client_security_group_id=security_group.id,
         kms_key_arn=kms_key_arn,
         access_point_path="/nats",
+        throughput_mode=efs_throughput_mode,
+        provisioned_throughput_in_mibps=efs_provisioned_throughput_mibps,
     )
 
     cluster = aws.ecs.Cluster(

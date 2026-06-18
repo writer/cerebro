@@ -13,6 +13,8 @@ def create_efs_volume(
     client_security_group_id: pulumi.Input[str],
     kms_key_arn: pulumi.Input[str],
     access_point_path: str,
+    throughput_mode: str | None = None,
+    provisioned_throughput_in_mibps: int | None = None,
 ) -> dict:
     """Create an encrypted EFS filesystem and access point for an ECS service."""
     security_group = aws.ec2.SecurityGroup(
@@ -38,17 +40,22 @@ def create_efs_volume(
         tags={"Name": f"{name}-efs-sg"},
     )
 
-    file_system = aws.efs.FileSystem(
-        f"{name}-efs",
-        encrypted=True,
-        kms_key_id=kms_key_arn,
-        lifecycle_policies=[
+    file_system_args = {
+        "encrypted": True,
+        "kms_key_id": kms_key_arn,
+        "lifecycle_policies": [
             aws.efs.FileSystemLifecyclePolicyArgs(
                 transition_to_ia="AFTER_30_DAYS",
             )
         ],
-        tags={"Name": f"{name}-efs"},
-    )
+        "tags": {"Name": f"{name}-efs"},
+    }
+    if throughput_mode:
+        file_system_args["throughput_mode"] = throughput_mode
+    if provisioned_throughput_in_mibps is not None:
+        file_system_args["provisioned_throughput_in_mibps"] = provisioned_throughput_in_mibps
+
+    file_system = aws.efs.FileSystem(f"{name}-efs", **file_system_args)
 
     mount_targets = []
     for index, subnet_id in enumerate(subnet_ids):

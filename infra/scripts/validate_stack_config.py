@@ -1622,6 +1622,37 @@ def validate_stack(path: Path) -> list[Finding]:
     )
     nats_cpu = config.get("natsCpu", 512)
     nats_memory = config.get("natsMemory", 1024)
+    nats_efs_throughput_mode = str(config.get("natsEfsThroughputMode", "bursting")).strip().lower()
+    nats_efs_provisioned_throughput = config.get("natsEfsProvisionedThroughputMibps")
+    valid_nats_efs_throughput_modes = {"bursting", "elastic", "provisioned"}
+    if nats_efs_throughput_mode not in valid_nats_efs_throughput_modes:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:natsEfsThroughputMode",
+                "NATS EFS throughput mode must be one of: bursting, elastic, provisioned",
+            )
+        )
+    if nats_efs_throughput_mode == "provisioned":
+        if not isinstance(nats_efs_provisioned_throughput, int) or nats_efs_provisioned_throughput <= 0:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:natsEfsProvisionedThroughputMibps",
+                    "provisioned NATS EFS throughput requires a positive MiB/s value",
+                )
+            )
+    elif nats_efs_provisioned_throughput not in (None, 0):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:natsEfsProvisionedThroughputMibps",
+                "NATS EFS provisioned throughput is only valid when cerebro:natsEfsThroughputMode is provisioned",
+            )
+        )
     if in_active_env:
         if not isinstance(nats_cpu, int) or nats_cpu < 2048:
             findings.append(
@@ -1639,6 +1670,15 @@ def validate_stack(path: Path) -> list[Finding]:
                     stack,
                     "cerebro:natsMemory",
                     "active Cerebro environments must allocate at least 4096 MiB to NATS JetStream for wide-event headroom",
+                )
+            )
+        if nats_efs_throughput_mode not in {"elastic", "provisioned"}:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:natsEfsThroughputMode",
+                    "active Cerebro environments must use elastic or provisioned EFS throughput for NATS JetStream restore headroom",
                 )
             )
     if in_active_env and not device_auth_enabled and (

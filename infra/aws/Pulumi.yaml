@@ -413,6 +413,14 @@ config:
     type: string
     default: ""
     description: Optional JetStream max age limit passed to the stream bootstrapper
+  cerebro:natsEfsThroughputMode:
+    type: string
+    default: bursting
+    description: EFS throughput mode for the NATS JetStream store; active stacks should use elastic or provisioned
+  cerebro:natsEfsProvisionedThroughputMibps:
+    type: integer
+    default: 0
+    description: Provisioned EFS throughput in MiB/s when cerebro:natsEfsThroughputMode is provisioned
   cerebro:enableJetstreamLagProbe:
     type: boolean
     default: true
