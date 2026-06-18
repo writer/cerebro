@@ -2,6 +2,7 @@ package graphagent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func TestSummarizeRowsRejectsSingleOversizedRow(t *testing.T) {
 		"entity_urn": "urn:cerebro:writer:asset:alpha",
 		"blob":       strings.Repeat("a", 128),
 	}}, nil)
-	if err == nil || !strings.Contains(err.Error(), "exceeds summary byte limit") {
+	if !errors.Is(err, ErrSummaryRowTooLarge) {
 		t.Fatalf("summarizeRows() err = %v, want summary byte limit", err)
 	}
 	if len(llm.SummaryRequests) != 0 {
@@ -35,7 +36,7 @@ func TestSummarizeRowsRejectsOversizedOneShotPayload(t *testing.T) {
 		{"entity_urn": "urn:cerebro:writer:asset:alpha", "label": strings.Repeat("a", 30)},
 		{"entity_urn": "urn:cerebro:writer:asset:beta", "label": strings.Repeat("b", 30)},
 	}, nil)
-	if err == nil || !strings.Contains(err.Error(), "graph rows exceed summary byte limit") {
+	if !errors.Is(err, ErrSummaryPayloadTooLarge) {
 		t.Fatalf("summarizeRows() err = %v, want summary payload byte limit", err)
 	}
 	if len(llm.SummaryRequests) != 0 {

@@ -3,8 +3,14 @@ package graphagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+)
+
+var (
+	ErrSummaryRowTooLarge     = errors.New("graph row exceeds summary byte limit")
+	ErrSummaryPayloadTooLarge = errors.New("graph rows exceed summary byte limit")
 )
 
 func (s *Service) summarizeRows(ctx context.Context, request AskRequest, model string, cypher string, rows []map[string]any, history []HistoryMessage) (string, error) {
@@ -64,7 +70,7 @@ func validateSummaryRows(rows []map[string]any, byteThreshold int, mapReduce boo
 			return fmt.Errorf("marshal graph row %d for summary: %w", i+1, err)
 		}
 		if len(raw) > byteThreshold {
-			return fmt.Errorf("graph row %d exceeds summary byte limit %d", i+1, byteThreshold)
+			return fmt.Errorf("%w: row %d exceeds limit %d", ErrSummaryRowTooLarge, i+1, byteThreshold)
 		}
 	}
 	if mapReduce {
@@ -75,7 +81,7 @@ func validateSummaryRows(rows []map[string]any, byteThreshold int, mapReduce boo
 		return fmt.Errorf("marshal graph rows for summary: %w", err)
 	}
 	if len(raw) > byteThreshold {
-		return fmt.Errorf("graph rows exceed summary byte limit %d", byteThreshold)
+		return fmt.Errorf("%w: limit %d", ErrSummaryPayloadTooLarge, byteThreshold)
 	}
 	return nil
 }
