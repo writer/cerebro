@@ -313,6 +313,20 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertFalse(context["healthy"])
         self.assertEqual(len(context["failed_droid_reviews"]), 1)
 
+    def test_summarize_keeps_droid_review_progress_advisory(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[
+                {"workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success", "url": "https://ci"},
+            ],
+            pull_requests=[{"number": 42, "url": "https://pr"}],
+            droid_reviews=[{"number": 42, "status": "in_progress", "reason": "Droid is still reviewing."}],
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(len(context["pending_droid_reviews"]), 1)
+        self.assertEqual(len(context["failed_droid_reviews"]), 0)
+
     def test_render_markdown_mentions_droid_review_status(self):
         markdown = pm.render_markdown(
             {
@@ -335,6 +349,29 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertIn("Droid Reviews", markdown)
         self.assertIn("PR #42", markdown)
         self.assertIn("Droid has an unsuperseded error comment.", markdown)
+
+    def test_render_markdown_counts_pending_droid_reviews(self):
+        markdown = pm.render_markdown(
+            {
+                "branch": "main",
+                "head_sha": "abc",
+                "healthy": True,
+                "failed_runs": [],
+                "pending_runs": [],
+                "droid_reviews": [
+                    {
+                        "number": 42,
+                        "status": "in_progress",
+                        "reason": "Droid has an unsuperseded in-progress comment.",
+                        "latest_comment_url": "https://comment",
+                    }
+                ],
+                "pending_droid_reviews": [{"number": 42, "status": "in_progress"}],
+                "failed_droid_reviews": [],
+            }
+        )
+        self.assertIn("Droid reviews pending: `1`", markdown)
+        self.assertIn("PR #42", markdown)
 
 
 if __name__ == "__main__":

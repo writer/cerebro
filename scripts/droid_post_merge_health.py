@@ -16,6 +16,7 @@ COMMENT_MARKER = "<!-- droid-post-merge-health -->"
 DROID_BOT_LOGIN = "factory-droid[bot]"
 DROID_FINISHED_MARKERS = ("Droid finished", "Review complete for PR")
 TERMINAL_DROID_STATUSES = {"ok", "skipped"}
+ADVISORY_DROID_STATUSES = {"in_progress"}
 DROID_REVIEW_REQUIRED_EXACT = {"go.mod", "go.sum", "Makefile"}
 DROID_REVIEW_REQUIRED_PREFIXES = (
     ".github/workflows/",
@@ -342,7 +343,13 @@ def summarize(
     ]
     pending = [run for run in relevant if run.get("status") != "completed"]
     reviews = droid_reviews or []
-    failed_reviews = [review for review in reviews if review.get("status") not in TERMINAL_DROID_STATUSES]
+    pending_reviews = [review for review in reviews if review.get("status") in ADVISORY_DROID_STATUSES]
+    failed_reviews = [
+        review
+        for review in reviews
+        if review.get("status") not in TERMINAL_DROID_STATUSES
+        and review.get("status") not in ADVISORY_DROID_STATUSES
+    ]
     return {
         "kind": "droid_post_merge_health",
         "branch": branch,
@@ -352,6 +359,7 @@ def summarize(
         "pending_runs": pending,
         "pull_requests": pull_requests or [],
         "droid_reviews": reviews,
+        "pending_droid_reviews": pending_reviews,
         "failed_droid_reviews": failed_reviews,
         "release_status": release_status or {},
         "healthy": not failures and not failed_reviews and bool(relevant),
@@ -365,6 +373,9 @@ def render_markdown(context: dict[str, object]) -> str:
     failed_droid_reviews = (
         context.get("failed_droid_reviews") if isinstance(context.get("failed_droid_reviews"), list) else []
     )
+    pending_droid_reviews = (
+        context.get("pending_droid_reviews") if isinstance(context.get("pending_droid_reviews"), list) else []
+    )
     release_status = context.get("release_status") if isinstance(context.get("release_status"), dict) else {}
     lines = [
         COMMENT_MARKER,
@@ -377,6 +388,7 @@ def render_markdown(context: dict[str, object]) -> str:
         f"- Healthy: `{context.get('healthy', False)}`",
         f"- Failed runs: `{len(failed)}`",
         f"- Pending runs: `{len(pending)}`",
+        f"- Droid reviews pending: `{len(pending_droid_reviews)}`",
         f"- Droid review issues: `{len(failed_droid_reviews)}`",
         f"- Latest release tag: `{release_status.get('latest_tag', '')}`",
         f"- Latest tag on head: `{release_status.get('latest_tag_on_head', False)}`",
