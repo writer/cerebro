@@ -118,7 +118,15 @@ def create_ecs_cluster(
         [entry["bucket_arn"] for entry in bootstrap_environment_files.values()],
     )
     execution_role_dependencies = [execution_role.policy] if getattr(execution_role, "policy", None) is not None else []
-    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []), bedrock_model_ids)
+    otel_collector_enabled = bool(otel_collector and otel_collector.get("enabled"))
+    task_role = _create_task_role(
+        name,
+        s3_source_iam_configs,
+        efs_file_system_id,
+        _source_runtime_aws_role_arns(source_runtimes or []),
+        bedrock_model_ids,
+        enable_otel_collector=otel_collector_enabled,
+    )
     worker_task_role = None
 
     log_group = aws.cloudwatch.LogGroup(
@@ -128,6 +136,15 @@ def create_ecs_cluster(
         kms_key_id=log_group_kms_key_id,
         tags={"Name": f"{name}-logs"},
     )
+    otel_collector_log_group = None
+    if otel_collector_enabled:
+        otel_collector_log_group = aws.cloudwatch.LogGroup(
+            f"{name}-otel-collector-logs",
+            name=f"/ecs/{name}/otel-collector",
+            retention_in_days=log_retention_days,
+            kms_key_id=log_group_kms_key_id,
+            tags={"Name": f"{name}-otel-collector-logs"},
+        )
 
     api_task_definition = _create_task_definition(
         name=name,
@@ -137,6 +154,7 @@ def create_ecs_cluster(
         execution_role_arn=execution_role.arn,
         task_role_arn=task_role.arn,
         log_group_name=log_group.name,
+        otel_collector_log_group_name=otel_collector_log_group.name if otel_collector_log_group else None,
         environment=runtime_environment,
         secret_keys=secret_keys or [],
         external_secrets_prefix=external_secrets_prefix,
@@ -162,7 +180,14 @@ def create_ecs_cluster(
     orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
-        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []), bedrock_model_ids)
+        worker_task_role = _create_task_role(
+            f"{name}-worker",
+            s3_source_iam_configs,
+            efs_file_system_id,
+            _source_runtime_aws_role_arns(source_runtimes or []),
+            bedrock_model_ids,
+            enable_otel_collector=otel_collector_enabled,
+        )
         schedules = prepared_orchestrator_schedules
         task_definition = _create_task_definition(
             name=f"{name}-orchestrator",
@@ -172,6 +197,7 @@ def create_ecs_cluster(
             execution_role_arn=execution_role.arn,
             task_role_arn=worker_task_role.arn,
             log_group_name=log_group.name,
+            otel_collector_log_group_name=otel_collector_log_group.name if otel_collector_log_group else None,
             environment=runtime_environment,
             secret_keys=secret_keys or [],
             external_secrets_prefix=external_secrets_prefix,
@@ -425,6 +451,7 @@ def create_ecs_cluster(
         "task_role": task_role,
         "worker_task_role": worker_task_role,
         "log_group": log_group,
+        "otel_collector_log_group": otel_collector_log_group,
     }
 
 
@@ -747,6 +774,7 @@ def _create_task_role(
     efs_file_system_id: pulumi.Input[str] = None,
     assume_role_arns: list[str] = None,
     bedrock_model_ids: list[str] = None,
+    enable_otel_collector: bool = False,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         f"{name}-task-role",
@@ -774,6 +802,28 @@ def _create_task_role(
             }],
         }),
     )
+
+    if enable_otel_collector:
+        aws.iam.RolePolicy(
+            f"{name}-task-otel-export",
+            role=role.name,
+            policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": [
+                        "xray:PutTraceSegments",
+                        "xray:PutTelemetryRecords",
+                        "logs:CreateLogGroup",
+                        "logs:CreateLogStream",
+                        "logs:DescribeLogStreams",
+                        "logs:PutLogEvents",
+                        "logs:PutRetentionPolicy",
+                    ],
+                    "Resource": "*",
+                }],
+            }),
+        )
 
     if assume_role_arns:
         aws.iam.RolePolicy(
@@ -981,6 +1031,7 @@ def _create_task_definition(
     environment: dict,
     secret_keys: list[str],
     external_secrets_prefix: str,
+    otel_collector_log_group_name: pulumi.Input[str] = None,
     efs_file_system_id: pulumi.Input[str] = None,
     efs_access_point_id: pulumi.Input[str] = None,
     efs_container_path: str = None,
@@ -1022,8 +1073,9 @@ def _create_task_definition(
 
     def build_container_def(args):
         log_group = args[0]
-        bootstrap_environment_file_arn = str(args[1] or "")
-        resolved_env_values = args[2:]
+        collector_log_group = args[1] or log_group
+        bootstrap_environment_file_arn = str(args[2] or "")
+        resolved_env_values = args[3:]
         env = [
             {"name": key, "value": str(value)}
             for (key, _), value in zip(env_items, resolved_env_values)
@@ -1042,6 +1094,10 @@ def _create_task_definition(
                 "name": "otel-collector",
                 "image": otel_collector_image,
                 "essential": True,
+                "environment": [
+                    {"name": "AWS_REGION", "value": region},
+                    {"name": "AWS_DEFAULT_REGION", "value": region},
+                ],
                 "secrets": [
                     {
                         "name": otel_collector_config_secret["name"],
@@ -1053,7 +1109,18 @@ def _create_task_definition(
                 ],
                 "logConfiguration": {
                     "logDriver": "awslogs",
-                    "options": {**log_options, "awslogs-stream-prefix": "otel-collector"},
+                    "options": {
+                        **log_options,
+                        "awslogs-group": collector_log_group,
+                        "awslogs-stream-prefix": "otel-collector",
+                    },
+                },
+                "healthCheck": {
+                    "command": ["CMD", "/healthcheck"],
+                    "interval": 30,
+                    "timeout": 5,
+                    "retries": 3,
+                    "startPeriod": 30,
                 },
             }
             if otel_collector_cpu > 0:
@@ -1081,7 +1148,7 @@ def _create_task_definition(
                 },
             }
             if collector_container:
-                bootstrap_container["dependsOn"] = [{"containerName": "otel-collector", "condition": "START"}]
+                bootstrap_container["dependsOn"] = [{"containerName": "otel-collector", "condition": "HEALTHY"}]
             if bootstrap_environment_file_arn:
                 bootstrap_container["environmentFiles"] = [
                     {"value": bootstrap_environment_file_arn, "type": "s3"}
@@ -1110,7 +1177,7 @@ def _create_task_definition(
         }
         container_dependencies = []
         if collector_container:
-            container_dependencies.append({"containerName": "otel-collector", "condition": "START"})
+            container_dependencies.append({"containerName": "otel-collector", "condition": "HEALTHY"})
         if bootstrap_containers:
             container_dependencies.extend(
                 {"containerName": bootstrap["name"], "condition": "SUCCESS"}
@@ -1136,6 +1203,7 @@ def _create_task_definition(
 
     container_definitions = pulumi.Output.all(
         log_group_name,
+        otel_collector_log_group_name or log_group_name,
         source_runtime_bootstrap_environment_file_arn or "",
         *env_values,
     ).apply(lambda args: json.dumps(build_container_def(args)))

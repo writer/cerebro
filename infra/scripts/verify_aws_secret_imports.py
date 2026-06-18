@@ -126,6 +126,10 @@ def expected_secret_imports(config: dict[str, Any], stack: str) -> list[SecretIm
         client_secret = str(config.get("mcpOauthUpstreamClientSecretName") or "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET").strip()
         imports.append(_secret_import("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", client_id_secret, infisical_prefix, "runtime-import"))
         imports.append(_secret_import("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", client_secret, infisical_prefix, "runtime-import"))
+    if _bool_value(config.get("otelCollectorEnabled"), False):
+        collector_secret = str(config.get("otelCollectorConfigSecretName") or "CEREBRO_OTEL_COLLECTOR_CONFIG").strip()
+        collector_prefix = str(config.get("otelCollectorConfigSecretPrefix") or infisical_prefix).strip()
+        imports.append(_secret_import("AOT_CONFIG_CONTENT", collector_secret, collector_prefix, "otel-collector"))
     imports.extend(_infisical_source_secret(secret_key, infisical_prefix) for secret_key in (config.get("sourceSecretKeys") or []))
 
     openrouter_secret = str(config.get("openrouterApiKeySecret") or "").strip()

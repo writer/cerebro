@@ -231,6 +231,41 @@ class WorkerTaskRoleTest(unittest.TestCase):
             ],
         )
 
+    def test_task_role_grants_otel_collector_export_permissions(self) -> None:
+        policies: list[dict] = []
+
+        def fake_role(*args, **kwargs):
+            return SimpleNamespace(name=kwargs.get("name", args[0]), id=f"{args[0]}-id", arn=f"arn:aws:iam::123456789012:role/{args[0]}")
+
+        def fake_policy(*args, **kwargs):
+            policies.append(kwargs)
+            return SimpleNamespace(name=args[0])
+
+        with (
+            patch.object(compute.aws.iam, "Role", side_effect=fake_role),
+            patch.object(compute.aws.iam, "RolePolicy", side_effect=fake_policy),
+        ):
+            compute._create_task_role(
+                "cerebro-sec-dev",
+                enable_otel_collector=True,
+            )
+
+        otel_policy = next(policy for policy in policies if policy["policy"].find("xray:PutTraceSegments") >= 0)
+        statement = json.loads(otel_policy["policy"])["Statement"][0]
+        self.assertEqual(
+            statement["Action"],
+            [
+                "xray:PutTraceSegments",
+                "xray:PutTelemetryRecords",
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:DescribeLogStreams",
+                "logs:PutLogEvents",
+                "logs:PutRetentionPolicy",
+            ],
+        )
+        self.assertEqual(statement["Resource"], "*")
+
     def test_orchestrator_schedule_role_trusts_events_and_scheduler(self) -> None:
         role_calls: list[dict] = []
         policy_calls: list[dict] = []
@@ -732,6 +767,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 environment={"CEREBRO_ENVIRONMENT": "sec-dev"},
                 secret_keys=[],
                 external_secrets_prefix="/cerebro/sec-dev",
+                otel_collector_log_group_name="/ecs/cerebro-sec-dev/otel-collector",
                 otel_collector={
                     "enabled": True,
                     "image": "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0",
@@ -764,9 +800,84 @@ class WorkerTaskRoleTest(unittest.TestCase):
             "otel-collector",
         )
         self.assertEqual(
-            cerebro_container["dependsOn"],
-            [{"containerName": "otel-collector", "condition": "START"}],
+            collector_container["logConfiguration"]["options"]["awslogs-group"],
+            "/ecs/cerebro-sec-dev/otel-collector",
         )
+        self.assertEqual(
+            collector_container["environment"],
+            [
+                {"name": "AWS_REGION", "value": "us-east-1"},
+                {"name": "AWS_DEFAULT_REGION", "value": "us-east-1"},
+            ],
+        )
+        self.assertEqual(
+            collector_container["healthCheck"]["command"],
+            ["CMD", "/healthcheck"],
+        )
+        self.assertEqual(
+            cerebro_container["dependsOn"],
+            [{"containerName": "otel-collector", "condition": "HEALTHY"}],
+        )
+
+    def test_cluster_uses_dedicated_otel_collector_log_group(self) -> None:
+        task_definition_calls: list[dict] = []
+        task_role_calls: list[dict] = []
+        log_group_names: list[str] = []
+
+        def fake_named_resource(*args, **kwargs):
+            name = kwargs.get("name") or args[0]
+            if args[0].endswith("-logs"):
+                log_group_names.append(name)
+            return SimpleNamespace(name=name, id=f"{name}-id", arn=f"arn:aws:test::{name}", resource_id=kwargs.get("resource_id", f"{name}-resource"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        def fake_task_role(*args, **kwargs):
+            task_role_calls.append({"name": args[0], **kwargs})
+            return SimpleNamespace(name=f"{args[0]}-task-role", arn=f"arn:aws:iam::123456789012:role/{args[0]}-task-role")
+
+        def fake_task_definition(*args, **kwargs):
+            task_definition_calls.append(kwargs)
+            return SimpleNamespace(arn=f"arn:aws:ecs:us-east-1:123456789012:task-definition/{kwargs['name']}:1")
+
+        with (
+            patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role")),
+            patch.object(compute, "_create_task_role", side_effect=fake_task_role),
+            patch.object(compute, "_create_task_definition", side_effect=fake_task_definition),
+            patch.object(compute.aws.ecs, "Cluster", side_effect=fake_named_resource),
+            patch.object(compute.aws.ecs, "ClusterCapacityProviders", side_effect=fake_named_resource),
+            patch.object(compute.aws.ecs, "ClusterCapacityProvidersDefaultCapacityProviderStrategyArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "Service", side_effect=fake_named_resource),
+            patch.object(compute.aws.ecs, "ServiceCapacityProviderStrategyArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "ServiceNetworkConfigurationArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "ServiceLoadBalancerArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
+            patch.object(compute.aws.cloudwatch, "LogGroup", side_effect=fake_named_resource),
+            patch.object(compute.aws.appautoscaling, "Target", side_effect=fake_named_resource),
+            patch.object(compute.pulumi, "ResourceOptions", side_effect=fake_args),
+        ):
+            result = compute.create_ecs_cluster(
+                name="cerebro-sec-dev",
+                vpc_id="vpc-1",
+                subnet_ids=["subnet-1"],
+                security_group_id="sg-1",
+                kms_key_id="key-1",
+                target_group_arn="tg-1",
+                container_image="image",
+                external_secrets_prefix="/cerebro/sec-dev",
+                otel_collector={
+                    "enabled": True,
+                    "image": "public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0",
+                    "config_secret_name": "CEREBRO_OTEL_COLLECTOR_CONFIG",
+                },
+            )
+
+        self.assertIn("/ecs/cerebro-sec-dev", log_group_names)
+        self.assertIn("/ecs/cerebro-sec-dev/otel-collector", log_group_names)
+        self.assertEqual(result["otel_collector_log_group"].name, "/ecs/cerebro-sec-dev/otel-collector")
+        self.assertEqual(task_definition_calls[0]["otel_collector_log_group_name"], "/ecs/cerebro-sec-dev/otel-collector")
+        self.assertTrue(task_role_calls[0]["enable_otel_collector"])
 
 
 class ServiceAutoscalingTest(unittest.TestCase):

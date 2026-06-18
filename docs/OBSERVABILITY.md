@@ -28,6 +28,8 @@ Cerebro already publishes CloudWatch logs, dashboards, alarms, and `/metrics`. O
 
 Prefer `cerebro:otelCollectorEnabled` for production. In collector mode, the app exporter is pinned to `http://127.0.0.1:4318` with `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE=true`, and backend OTLP endpoints plus auth headers belong in the collector config secret. Do not configure `cerebro:otelExporterOtlpHeadersSecretName` with collector mode.
 
+Collector mode creates a dedicated `/ecs/<service>/otel-collector` log group, adds an `OtelCollectorErrors` CloudWatch metric filter/alarm, and adds CloudWatch dashboard widgets for collector container resources, recent collector logs, and collector exporter errors. The ECS app container waits for the collector health check before starting.
+
 ## Example
 
 ```sh
@@ -44,13 +46,26 @@ Collector sidecar mode:
 
 ```sh
 pulumi config set cerebro:otelCollectorEnabled true
-pulumi config set cerebro:otelCollectorImage public.ecr.aws/aws-observability/aws-otel-collector:<pinned-version>
+pulumi config set cerebro:otelCollectorImage public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
 pulumi config set cerebro:otelCollectorConfigSecretName CEREBRO_OTEL_COLLECTOR_CONFIG
 pulumi config set cerebro:otelTracesSampleRate 0.25
 pulumi config set cerebro:otelMetricsExportInterval 30s
 ```
 
-Provision the referenced secret before `pulumi up`. Do not set a plaintext `otelExporterOtlpHeaders` config value; the stack validator rejects it.
+Provision the referenced secret before `pulumi up`. The standard AWS-native collector config exports traces to X-Ray and metrics to CloudWatch EMF:
+
+```sh
+cd infra
+uv run python scripts/provision_otel_collector_config.py \
+  --stack-file aws/Pulumi.sec-dev.yaml \
+  --profile cerebro-sec-dev
+
+uv run python scripts/provision_otel_collector_config.py \
+  --stack-file aws/Pulumi.go-prod.yaml \
+  --profile writer-sec-prod-us1
+```
+
+Use `--dry-run` to print the rendered config hash without touching AWS. Use `--print-config` to inspect the rendered collector config. Do not set a plaintext `otelExporterOtlpHeaders` config value; the stack validator rejects it.
 
 Remote OTLP endpoints must use `https://` without `cerebro:otelExporterOtlpInsecure=true`. Plain HTTP is accepted only for loopback collector endpoints such as `http://127.0.0.1:4318`.
 
@@ -71,11 +86,37 @@ Run the stack validator before deployment:
 ```sh
 uv run python scripts/validate_stack_config.py aws/Pulumi.sec-dev.yaml
 uv run python scripts/validate_stack_config.py aws/Pulumi.go-prod.yaml
+AWS_PROFILE=cerebro-sec-dev uv run python scripts/verify_aws_secret_imports.py --stack-file aws/Pulumi.sec-dev.yaml
+AWS_PROFILE=writer-sec-prod-us1 uv run python scripts/verify_aws_secret_imports.py --stack-file aws/Pulumi.go-prod.yaml
 ```
 
 After deployment, verify:
 
 - ECS task definition contains `CEREBRO_OTEL_*` env vars and either the `CEREBRO_OTEL_EXPORTER_OTLP_HEADERS` app secret mount or the `otel-collector` sidecar with `AOT_CONFIG_CONTENT`.
+- The current ECS task definition includes an `otel-collector` container, a `HEALTHY` dependency from `cerebro` to `otel-collector`, and collector logs under `/ecs/<service>/otel-collector`.
 - `/health` returns `X-Cerebro-Trace-Id`.
 - CloudWatch API logs contain structured span/event JSON lines with the same `trace_id`.
 - The collector receives `http.server` spans plus child spans for source HTTP, graph, cache, JetStream, and dependency operations.
+- The `<service>-dashboard` CloudWatch dashboard includes `OTEL Collector Container`, `OTEL Collector Errors`, and `OTEL Collector Recent Logs` widgets.
+
+Useful read-only AWS checks:
+
+```sh
+aws ecs describe-services \
+  --profile cerebro-sec-dev \
+  --cluster cerebro-sec-dev-cluster \
+  --services cerebro-sec-dev-api \
+  --query 'services[0].deployments[?status==`PRIMARY`].[taskDefinition,rolloutState,runningCount,desiredCount]'
+
+aws ecs describe-task-definition \
+  --profile cerebro-sec-dev \
+  --task-definition cerebro-sec-dev \
+  --query 'taskDefinition.containerDefinitions[].{name:name,dependsOn:dependsOn,logs:logConfiguration.options}'
+
+aws logs describe-log-streams \
+  --profile cerebro-sec-dev \
+  --log-group-name /ecs/cerebro-sec-dev/otel-collector \
+  --order-by LastEventTime \
+  --descending \
+  --max-items 5
+```

@@ -211,6 +211,60 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("GRCDashboardLatencyMs", body)
         self.assertIn('"stat": "p95"', body)
 
+    def test_dashboard_includes_otel_collector_visibility_when_enabled(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            body = monitoring._dashboard_body(
+                "cerebro-test",
+                "alb",
+                "tg",
+                "cluster",
+                "service",
+                None,
+                "CEREBRO_EVENTS",
+                otel_collector_enabled=True,
+                otel_collector_log_group_name="/ecs/cerebro-test/otel-collector",
+            )
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("OTEL Collector Container", body)
+        self.assertIn("OTEL Collector Errors", body)
+        self.assertIn("OTEL Collector Recent Logs", body)
+        self.assertIn("ECS/ContainerInsights", body)
+        self.assertIn("OtelCollectorErrors", body)
+        self.assertIn("/ecs/cerebro-test/otel-collector", body)
+
+    def test_otel_collector_metric_filters_roll_up_to_single_metric(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            filters = monitoring._create_otel_collector_metric_filters(
+                "cerebro-test",
+                "/ecs/cerebro-test/otel-collector",
+                "Cerebro/cerebro-test",
+            )
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        self.assertEqual(set(filters), {"error", "error-uppercase", "failed", "dropped", "refused"})
+        self.assertTrue(all(call["log_group_name"] == "/ecs/cerebro-test/otel-collector" for call in calls))
+        self.assertTrue(all(call["metric_transformation"].name == "OtelCollectorErrors" for call in calls))
+        self.assertTrue(all(call["metric_transformation"].namespace == "Cerebro/cerebro-test" for call in calls))
+
     def test_telemetry_metric_filters_include_grc_dashboard_latency(self) -> None:
         calls: list[dict] = []
 

@@ -405,6 +405,8 @@ def create_monitoring(
     web_target_group_arn_suffix: pulumi.Output[str] = None,
     web_ecs_service_name: pulumi.Output[str] = None,
     log_group_name: pulumi.Output[str] = None,
+    otel_collector_enabled: bool = False,
+    otel_collector_log_group_name: pulumi.Input[str] = None,
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
@@ -897,6 +899,19 @@ def create_monitoring(
                 tags={"Name": f"{name}-grc-dashboard-latency-p95-alarm"},
             )
 
+    otel_collector_filters = {}
+    if otel_collector_enabled and otel_collector_log_group_name:
+        otel_collector_filters = _create_otel_collector_metric_filters(name, otel_collector_log_group_name, telemetry_namespace)
+        _custom_metric_alarm(
+            resource_name=f"{name}-otel-collector-errors-alarm",
+            alarm_name=f"{name}-otel-collector-errors",
+            namespace=telemetry_namespace,
+            metric_name="OtelCollectorErrors",
+            threshold=0,
+            description="OpenTelemetry collector errors or exporter failures detected",
+            alarm_actions=alarm_actions,
+        )
+
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
             resource_name=f"{name}-jetstream-lag-alarm",
@@ -1036,14 +1051,29 @@ def create_monitoring(
         f"{name}-dashboard",
         dashboard_name=f"{name}-dashboard",
         dashboard_body=pulumi.Output.all(
-            alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name, postgres_identifier
-        ).apply(lambda args: _dashboard_body(name, *args, jetstream_stream_name, source_runtime_observability)),
+            alb_arn_suffix,
+            target_group_arn_suffix,
+            ecs_cluster_name,
+            ecs_service_name,
+            postgres_identifier,
+            otel_collector_log_group_name or "",
+        ).apply(
+            lambda args: _dashboard_body(
+                name,
+                *args[:5],
+                jetstream_stream_name,
+                source_runtime_observability,
+                otel_collector_enabled=otel_collector_enabled,
+                otel_collector_log_group_name=args[5],
+            )
+        ),
     )
 
     return {
         "alarm_topic": alarm_topic,
         "dashboard": dashboard,
         "telemetry_filters": telemetry_filters,
+        "otel_collector_filters": otel_collector_filters,
     }
 
 
@@ -1507,6 +1537,30 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
     return filters
 
 
+def _create_otel_collector_metric_filters(name: str, log_group_name: pulumi.Input[str], namespace: str) -> dict:
+    filters = {}
+    for suffix, pattern in {
+        "error": "error",
+        "error-uppercase": "ERROR",
+        "failed": "failed",
+        "dropped": "dropped",
+        "refused": "refused",
+    }.items():
+        filters[suffix] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-otel-collector-{suffix}-filter",
+            name=f"{name}-otel-collector-{suffix}",
+            log_group_name=log_group_name,
+            pattern=pattern,
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="OtelCollectorErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        )
+    return filters
+
+
 def _graph_ingest_failure_pattern() -> str:
     return '{ $.kind = "span_end" && $.status = "failed" && ($.name = "graph.*" || $.name = "graph.ingest_runtime" || $.name = "orchestrator.graph_ingest") }'
 
@@ -1520,6 +1574,8 @@ def _dashboard_body(
     postgres_identifier: str | None,
     jetstream_stream_name: str,
     source_runtime_observability: list[dict] = None,
+    otel_collector_enabled: bool = False,
+    otel_collector_log_group_name: str | None = None,
 ) -> str:
     import json
     telemetry_namespace = f"Cerebro/{name}"
@@ -1788,17 +1844,118 @@ def _dashboard_body(
                 },
             },
         ])
-    widgets.extend(_source_runtime_observability_widgets(telemetry_namespace, source_runtime_observability))
+    otel_widgets = (
+        _otel_collector_observability_widgets(
+            name,
+            cluster,
+            telemetry_namespace,
+            otel_collector_log_group_name,
+            60,
+        )
+        if otel_collector_enabled and otel_collector_log_group_name
+        else []
+    )
+    widgets.extend(otel_widgets)
+    widgets.extend(
+        _source_runtime_observability_widgets(
+            telemetry_namespace,
+            source_runtime_observability,
+            start_y=72 if otel_widgets else 60,
+        )
+    )
     return json.dumps({"widgets": widgets})
 
 
-def _source_runtime_observability_widgets(telemetry_namespace: str, entries: list[dict] | None) -> list[dict]:
+def _otel_collector_observability_widgets(
+    name: str,
+    cluster: str,
+    telemetry_namespace: str,
+    log_group_name: str,
+    y: int,
+) -> list[dict]:
+    region = aws.get_region().region
+    return [
+        {
+            "type": "metric",
+            "x": 0,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Collector Container",
+                "metrics": [
+                    [
+                        "ECS/ContainerInsights",
+                        "CpuUtilized",
+                        "ClusterName",
+                        cluster,
+                        "TaskDefinitionFamily",
+                        name,
+                        "ContainerName",
+                        "otel-collector",
+                        {"stat": "Average", "label": "CPU utilized"},
+                    ],
+                    [
+                        ".",
+                        "MemoryUtilized",
+                        ".",
+                        ".",
+                        ".",
+                        ".",
+                        ".",
+                        ".",
+                        {"stat": "Average", "label": "Memory utilized", "yAxis": "right"},
+                    ],
+                    [telemetry_namespace, "OtelCollectorErrors", {"stat": "Sum", "label": "Collector errors"}],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Collector Errors",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields @timestamp, @message "
+                    "| filter @message like /(?i)(error|failed|refused|dropped|retry|exporter)/ "
+                    "| sort @timestamp desc | limit 20"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+        {
+            "type": "log",
+            "x": 0,
+            "y": y + 6,
+            "width": 24,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Collector Recent Logs",
+                "query": f"SOURCE '{log_group_name}' | fields @timestamp, @message | sort @timestamp desc | limit 40",
+                "region": region,
+                "view": "table",
+            },
+        },
+    ]
+
+
+def _source_runtime_observability_widgets(
+    telemetry_namespace: str,
+    entries: list[dict] | None,
+    start_y: int = 60,
+) -> list[dict]:
     enabled_entries = _source_runtime_observability_entries(entries, dashboard_enabled=True)
     if not enabled_entries:
         return []
 
     widgets = []
-    y = 60
+    y = start_y
     source_system_priority = {"evidence_cas": 0, "panopticon": 1}
     source_systems = {
         str(entry.get("sourceSystem", "")).strip()

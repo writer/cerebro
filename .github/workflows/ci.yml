@@ -366,12 +366,12 @@ jobs:
             --severity CRITICAL \
             "${ECR_IMAGE}"
 
-  # Main merge: Pull from GHCR and push to sec-prod ECR
+  # Main merge/manual recovery: Pull from GHCR and push to sec-prod ECR.
   publish-sec-prod:
     name: Publish to sec-prod ECR
     needs: [changes]
     runs-on: ubuntu-24.04-arm
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.go_prod == 'true' || needs.changes.outputs.ci_workflow == 'true')
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.go_prod == 'true' || needs.changes.outputs.ci_workflow == 'true'))
     permissions:
       id-token: write
       contents: read

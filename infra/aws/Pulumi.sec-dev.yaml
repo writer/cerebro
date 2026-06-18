@@ -51,6 +51,12 @@ config:
   cerebro:apiLatencyP95AlarmThresholdSeconds: 3
   cerebro:webLatencyP95AlarmThresholdSeconds: 3
   cerebro:dashboardLatencyP95AlarmThresholdMs: 3000
+  cerebro:otelCollectorEnabled: true
+  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
+  cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG
+  cerebro:otelTracesSampleRate: "1"
+  cerebro:otelMetricsExportInterval: 30s
+  cerebro:otelResourceAttributes: service.namespace=cerebro,cloud.provider=aws,cloud.region=us-east-1
   cerebro:postgresInstanceClass: db.t4g.medium
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3

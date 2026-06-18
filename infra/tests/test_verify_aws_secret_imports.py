@@ -49,6 +49,21 @@ class AwsSecretImportsTest(unittest.TestCase):
         self.assertEqual(by_env["CEREBRO_OPENROUTER_API_KEY"].secret_id, "cerebro-sec-dev/OPENROUTER_RUNTIME_TOKEN")
         self.assertEqual(by_env["CEREBRO_OPENROUTER_API_KEY"].category, "runtime-import")
 
+    def test_expected_imports_include_otel_collector_config_secret(self) -> None:
+        imports = verify_aws_secret_imports.expected_secret_imports(
+            {
+                "environment": "go-production",
+                "infisicalSecretsPrefix": "cerebro-go-production/aws-sync",
+                "otelCollectorEnabled": True,
+                "otelCollectorConfigSecretName": "CEREBRO_OTEL_COLLECTOR_CONFIG",
+            },
+            "go-prod",
+        )
+
+        by_env = {item.env_name: item for item in imports}
+        self.assertEqual(by_env["AOT_CONFIG_CONTENT"].secret_id, "cerebro-go-production/aws-sync/CEREBRO_OTEL_COLLECTOR_CONFIG")
+        self.assertEqual(by_env["AOT_CONFIG_CONTENT"].category, "otel-collector")
+
     def test_missing_env_refs_are_reported_without_names(self) -> None:
         imports = [
             verify_aws_secret_imports.SecretImport(

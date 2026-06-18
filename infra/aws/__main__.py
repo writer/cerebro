@@ -1065,6 +1065,8 @@ monitoring_stack = monitoring.create_monitoring(
     web_target_group_arn_suffix=web_alb_stack["target_group"].arn_suffix if web_alb_stack else None,
     web_ecs_service_name=web_stack["service"].name if web_stack else None,
     log_group_name=ecs_stack["log_group"].name,
+    otel_collector_enabled=otel_collector_enabled,
+    otel_collector_log_group_name=ecs_stack["otel_collector_log_group"].name if ecs_stack.get("otel_collector_log_group") else None,
     log_retention_days=log_retention_days,
     jetstream_stream_name=jetstream_stream_name,
     jetstream_lag_alarm_threshold=jetstream_lag_alarm_threshold,
@@ -1179,6 +1181,8 @@ elif pulumi.get_stack() == "go-prod":
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
+if ecs_stack.get("otel_collector_log_group"):
+    pulumi.export("otel_collector_log_group_name", ecs_stack["otel_collector_log_group"].name)
 pulumi.export("task_role_arn", ecs_stack["task_role"].arn)
 if ecs_stack.get("worker_task_role"):
     pulumi.export("worker_task_role_arn", ecs_stack["worker_task_role"].arn)

@@ -422,6 +422,12 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
 
+      - name: Verify AWS secret imports (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_secret_imports.py --stack-file aws/Pulumi.sec-dev.yaml
+
       - name: Import existing query cache (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
