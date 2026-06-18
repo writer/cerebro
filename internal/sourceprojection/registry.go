@@ -571,6 +571,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"vulnview.scan":                                 vulnViewScanProjections,
 	"vulnview.site":                                 vulnViewSiteProjections,
 	"vulnview.vulnerability":                        vulnViewVulnerabilityProjections,
+	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 
 // BuiltinRegistry returns the default source event projector registry.

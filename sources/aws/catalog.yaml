@@ -157,6 +157,7 @@ emitted_kinds:
   - aws.sso_permission_set
   - aws.wafv2_web_acl
   - aws.lambda_function
+  # awscollectorgen:emitted-kinds (insert new kinds above this line)
 runtime_families:
   - access_key
   - access_analyzer
@@ -314,6 +315,7 @@ runtime_families:
   - sso_permission_set
   - wafv2_web_acl
   - lambda_function
+  # awscollectorgen:runtime-families (insert new families above this line)
 coverage_contract:
   owner_domain: cloud
   authority_domain: aws
@@ -1273,3 +1275,4 @@ coverage_contract:
       families: [wafv2_web_acl]
       support: supported
       high_value: true
+    # awscollectorgen:coverage-dimensions (insert new dimensions above this line)
