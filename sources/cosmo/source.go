@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 //go:embed catalog.yaml
@@ -682,7 +683,7 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 }
 
 func recordURN(settings settings, family string, id string) (sourcecdk.URN, error) {
-	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, normalizeID(id)))
+	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(id, "unknown")))
 }
 
 func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
@@ -728,12 +729,7 @@ func eventFromRecord(settings settings, family string, record record) *primitive
 }
 
 func eventID(settings settings, family string, recordID string) string {
-	return strings.Join([]string{
-		sourceID,
-		normalizeID(settings.tenantID),
-		family,
-		normalizeID(recordID),
-	}, "-")
+	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(recordID, "unknown")}, "-")
 }
 
 func attributesFor(family string, values map[string]any) map[string]string {
@@ -747,10 +743,10 @@ func attributesFor(family string, values map[string]any) map[string]string {
 		attrs["status"] = firstValueString(values, "status")
 		attrs["source"] = firstValueString(values, "source")
 	case familyFact:
-		attrs["key"] = firstValueString(values, "key")
-		attrs["category"] = firstValueString(values, "category")
-		attrs["source"] = firstValueString(values, "source")
-		attrs["confidence"] = firstValueString(values, "confidence")
+		attrs["key"], attrs["category"] = firstValueString(values, "key"), firstValueString(values, "category")
+		attrs["source"], attrs["confidence"] = firstValueString(values, "source"), firstValueString(values, "confidence")
+		attrs["risk_reason"] = firstValueString(values, "risk_reason")
+		attrs["risk_severity"] = firstValueString(values, "risk_severity", "severity")
 	case familyMessage:
 		attrs["ticket_id"] = firstValueString(values, "ticket_id")
 		attrs["event_type"] = firstValueString(values, "event_type")
@@ -1153,19 +1149,15 @@ func stableID(parts ...string) string {
 			values = append(values, value)
 		}
 	}
-	if len(values) == 0 {
-		return ""
-	}
 	return strings.Join(values, ":")
 }
 
 func normalizeID(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
+	if value = strings.TrimSpace(value); value == "" {
 		return "unknown"
 	}
 	replacer := strings.NewReplacer(" ", "-", "/", "-", ":", "-", "\n", "-", "\t", "-")
-	return replacer.Replace(normalized)
+	return replacer.Replace(value)
 }
 
 func firstNonEmpty(values ...string) string {

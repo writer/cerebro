@@ -63,6 +63,27 @@ func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
 	}
 }
 
+func TestCosmoRecordIdentityAvoidsDelimiterCollisions(t *testing.T) {
+	settings := settings{tenantID: "writer"}
+	colonURN, err := recordURN(settings, familyFact, "coordination:risk")
+	if err != nil {
+		t.Fatalf("recordURN(colon) error = %v", err)
+	}
+	slashURN, err := recordURN(settings, familyFact, "coordination/risk")
+	if err != nil {
+		t.Fatalf("recordURN(slash) error = %v", err)
+	}
+	if colonURN == slashURN {
+		t.Fatalf("recordURN delimiter collision: %q", colonURN)
+	}
+
+	colonEventID := eventID(settings, familyFact, "coordination:risk")
+	slashEventID := eventID(settings, familyFact, "coordination/risk")
+	if colonEventID == slashEventID {
+		t.Fatalf("eventID delimiter collision: %q", colonEventID)
+	}
+}
+
 func TestParseSettingsMessageRejectsUnscopedOrUnboundedConfig(t *testing.T) {
 	base := map[string]string{
 		"tenant_id":     "writer",
@@ -455,6 +476,33 @@ func TestReadMessagesWithoutSinceUsesStableCompatibilityWindow(t *testing.T) {
 		if !window.since.Equal(first.since) || !window.until.Equal(first.until) {
 			t.Fatalf("window changed across retries: %s..%s then %s..%s", first.since, first.until, window.since, window.until)
 		}
+	}
+}
+
+func TestFactAttributesExposeCoordinationRiskContract(t *testing.T) {
+	attrs := attributesFor(familyFact, map[string]any{
+		"key":         "coordination:risk:thread-1",
+		"category":    "coordination_risk",
+		"source":      "session:thread-1",
+		"risk_reason": "agent coordinated a privileged change across sessions",
+		"severity":    "high",
+	})
+	for _, key := range []string{"key", "category", "source", "risk_reason", "risk_severity"} {
+		if attrs[key] == "" {
+			t.Fatalf("fact attribute %q = empty, want populated coordination-risk contract field", key)
+		}
+	}
+	if got, want := attrs["category"], "coordination_risk"; got != want {
+		t.Fatalf("category = %q, want %q", got, want)
+	}
+	if got, want := attrs["source"], "session:thread-1"; got != want {
+		t.Fatalf("source = %q, want %q so downstream projection/finding can resolve session context", got, want)
+	}
+	if got, want := attrs["risk_reason"], "agent coordinated a privileged change across sessions"; got != want {
+		t.Fatalf("risk_reason = %q, want %q", got, want)
+	}
+	if got, want := attrs["risk_severity"], "high"; got != want {
+		t.Fatalf("risk_severity = %q, want %q", got, want)
 	}
 }
 

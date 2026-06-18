@@ -24,9 +24,10 @@ func TestProjectCosmoSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
+	sessionURN := cosmoTestURN("cosmo_session", "ticket-1")
+	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
 	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:identity:email:alice@example.com", "identity.email")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_session:ticket-1", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedLink(t, links, sessionURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoFact(t *testing.T) {
@@ -45,7 +46,10 @@ func TestProjectCosmoFact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_fact:risk:key", "cosmo.fact")
+	fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "risk:key"), "cosmo.fact")
+	if got := fact.Attributes["key"]; got != "risk:key" {
+		t.Fatalf("fact key attribute = %q, want raw key", got)
+	}
 	if len(links) != 0 {
 		t.Fatalf("len(links) = %d, want 0", len(links))
 	}
@@ -66,9 +70,227 @@ func TestProjectCosmoFactLinksSourceSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_fact:risk:key", "cosmo.fact")
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:slack-C123-1779126269.376359", "cosmo.session")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_fact:risk:key", relationBelongsTo, "urn:cerebro:writer:cosmo_session:slack-C123-1779126269.376359")
+	factURN := cosmoTestURN("cosmo_fact", "risk:key")
+	sessionURN := cosmoTestURN("cosmo_session", "slack-C123-1779126269.376359")
+	assertCosmoProjectedEntity(t, entities, factURN, "cosmo.fact")
+	session := cosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	if got := session.Attributes["ticket_id"]; got != "slack-C123-1779126269.376359" {
+		t.Fatalf("session ticket_id attribute = %q, want raw session id", got)
+	}
+	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
+}
+
+func TestProjectCosmoFactLinksPayloadSourceSession(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-risk-payload-source",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Payload: mustJSON(t, map[string]any{
+			"key":    "risk:key",
+			"source": "session:payload-thread-1",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	factURN := cosmoTestURN("cosmo_fact", "risk:key")
+	sessionURN := cosmoTestURN("cosmo_session", "payload-thread-1")
+	fact := cosmoProjectedEntity(t, entities, factURN, "cosmo.fact")
+	if got := fact.Attributes["source"]; got != "session:payload-thread-1" {
+		t.Fatalf("fact source attribute = %q, want payload source", got)
+	}
+	session := cosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	if got := session.Attributes["ticket_id"]; got != "payload-thread-1" {
+		t.Fatalf("session ticket_id attribute = %q, want raw payload session id", got)
+	}
+	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
+}
+
+func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-coordination-risk",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"record_id": "coordination:risk:thread-1",
+			"key":       "coordination:risk:thread-1",
+			"category":  "coordination_risk",
+			"source":    "session:thread-1",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"key":         "coordination:risk:thread-1",
+			"category":    "coordination_risk",
+			"status":      "active",
+			"risk_reason": "agent coordinated a privileged change across sessions",
+			"severity":    "high",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	factURN := cosmoTestURN("cosmo_fact", "coordination:risk:thread-1")
+	sessionURN := cosmoTestURN("cosmo_session", "thread-1")
+	fact := cosmoProjectedEntity(t, entities, factURN, "cosmo.fact")
+	if got := fact.Attributes["risk_state"]; got != "active" {
+		t.Fatalf("fact risk_state = %q, want active", got)
+	}
+	if got := fact.Attributes["risk_reason"]; got == "" {
+		t.Fatal("fact risk_reason = empty, want reason carried into projection")
+	}
+	if got := fact.Attributes["risk_severity"]; got != "high" {
+		t.Fatalf("fact risk_severity = %q, want high", got)
+	}
+	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
+}
+
+func TestProjectCosmoFactRequiresExplicitCoordinationRiskState(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload map[string]any
+	}{
+		{
+			name: "missing state",
+			payload: map[string]any{
+				"key":      "coordination:risk:thread-1",
+				"category": "coordination_risk",
+			},
+		},
+		{
+			name: "unknown state",
+			payload: map[string]any{
+				"key":      "coordination:risk:thread-1",
+				"category": "coordination_risk",
+				"status":   "needs-review",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+				Id:       "cosmo-writer-fact-coordination-risk-ambiguous",
+				TenantId: "writer",
+				SourceId: "cosmo",
+				Kind:     "cosmo.fact",
+				Payload:  mustJSON(t, tc.payload),
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+			if got := fact.Attributes["risk_state"]; got != "" {
+				t.Fatalf("fact risk_state = %q, want omitted without explicit active/resolved evidence", got)
+			}
+			if got := fact.Attributes["risk_reason"]; got != "" {
+				t.Fatalf("fact risk_reason = %q, want omitted without explicit active/resolved evidence", got)
+			}
+			if got := fact.Attributes["risk_severity"]; got != "" {
+				t.Fatalf("fact risk_severity = %q, want omitted without explicit active/resolved evidence", got)
+			}
+		})
+	}
+}
+
+func TestProjectCosmoFactDoesNotUseGenericPayloadAsRiskReason(t *testing.T) {
+	for _, field := range []string{"reason", "summary"} {
+		t.Run(field, func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+				Id:       "cosmo-writer-fact-generic-" + field,
+				TenantId: "writer",
+				SourceId: "cosmo",
+				Kind:     "cosmo.fact",
+				Payload: mustJSON(t, map[string]any{
+					"key":      "coordination:risk:thread-1",
+					"category": "coordination_risk",
+					"status":   "active",
+					field:      "agent-controlled generic text",
+				}),
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+			if got := fact.Attributes["risk_reason"]; got != "" {
+				t.Fatalf("fact risk_reason = %q, want omitted for generic %s payload", got, field)
+			}
+		})
+	}
+}
+
+func TestProjectCosmoFactResolvedBooleanMatchesFindingState(t *testing.T) {
+	entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-coordination-risk-resolved",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Payload: mustJSON(t, map[string]any{
+			"key":      "coordination:risk:thread-1",
+			"category": "coordination_risk",
+			"resolved": true,
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+	if got := fact.Attributes["risk_state"]; got != "resolved" {
+		t.Fatalf("fact risk_state = %q, want resolved for native JSON boolean resolved=true", got)
+	}
+}
+
+func TestProjectCosmoFactUnknownCoordinationRiskStateStaysUnknown(t *testing.T) {
+	entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-coordination-risk-unknown",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"key":      "coordination:risk:thread-1",
+			"category": "coordination_risk",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+	if got, ok := fact.Attributes["risk_state"]; ok {
+		t.Fatalf("fact risk_state = %q, want omitted for unknown state", got)
+	}
+}
+
+func TestProjectCosmoAvoidsDelimiterCollisionInGraphURNs(t *testing.T) {
+	colonEntities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-colon",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"key": "coordination:risk",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(colon) error = %v", err)
+	}
+	slashEntities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-slash",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"key": "coordination/risk",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(slash) error = %v", err)
+	}
+	colonURN := cosmoTestURN("cosmo_fact", "coordination:risk")
+	slashURN := cosmoTestURN("cosmo_fact", "coordination/risk")
+	if colonURN == slashURN {
+		t.Fatalf("test helper produced colliding URNs: %q", colonURN)
+	}
+	assertCosmoProjectedEntity(t, colonEntities, colonURN, "cosmo.fact")
+	assertCosmoProjectedEntity(t, slashEntities, slashURN, "cosmo.fact")
 }
 
 func TestProjectCosmoMessageLinksSession(t *testing.T) {
@@ -87,9 +309,11 @@ func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-1", "cosmo.message")
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:ticket-1")
+	messageURN := cosmoTestURN("cosmo_message", "msg-1")
+	sessionURN := cosmoTestURN("cosmo_session", "ticket-1")
+	assertCosmoProjectedEntity(t, entities, messageURN, "cosmo.message")
+	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	assertCosmoProjectedLink(t, links, messageURN, relationBelongsTo, sessionURN)
 }
 
 func TestProjectCosmoUserMessageLinksIdentity(t *testing.T) {
@@ -108,9 +332,10 @@ func TestProjectCosmoUserMessageLinksIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-2", "cosmo.message")
+	messageURN := cosmoTestURN("cosmo_message", "msg-2")
+	assertCosmoProjectedEntity(t, entities, messageURN, "cosmo.message")
 	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:identity:email:alice@example.com", "identity.email")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-2", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedLink(t, links, messageURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoMessageLinksPayloadUserIdentity(t *testing.T) {
@@ -124,11 +349,12 @@ func TestProjectCosmoMessageLinksPayloadUserIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	message := cosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-3", "cosmo.message")
+	messageURN := cosmoTestURN("cosmo_message", "msg-3")
+	message := cosmoProjectedEntity(t, entities, messageURN, "cosmo.message")
 	if got := message.Attributes["email"]; got != "alice@example.com" {
 		t.Fatalf("message email = %q, want alice@example.com", got)
 	}
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-3", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedLink(t, links, messageURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoSurveyFeedbackLinksSessionAndUser(t *testing.T) {
@@ -147,10 +373,12 @@ func TestProjectCosmoSurveyFeedbackLinksSessionAndUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_survey_feedback:feedback-1", "cosmo.survey_feedback")
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_survey_feedback:feedback-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:ticket-1")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_survey_feedback:feedback-1", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	feedbackURN := cosmoTestURN("cosmo_survey_feedback", "feedback-1")
+	sessionURN := cosmoTestURN("cosmo_session", "ticket-1")
+	assertCosmoProjectedEntity(t, entities, feedbackURN, "cosmo.survey_feedback")
+	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	assertCosmoProjectedLink(t, links, feedbackURN, relationBelongsTo, sessionURN)
+	assertCosmoProjectedLink(t, links, feedbackURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoSkipsUnidentifiedEvents(t *testing.T) {
@@ -175,6 +403,10 @@ func TestProjectCosmoSkipsUnidentifiedEvents(t *testing.T) {
 func assertCosmoProjectedEntity(t *testing.T, entities []*ports.ProjectedEntity, urn string, entityType string) {
 	t.Helper()
 	_ = cosmoProjectedEntity(t, entities, urn, entityType)
+}
+
+func cosmoTestURN(kind string, id string) string {
+	return projectionURN("writer", kind, cosmoExternalIDKey(id))
 }
 
 func cosmoProjectedEntity(t *testing.T, entities []*ports.ProjectedEntity, urn string, entityType string) *ports.ProjectedEntity {

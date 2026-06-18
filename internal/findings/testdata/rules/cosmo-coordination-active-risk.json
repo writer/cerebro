@@ -1,0 +1,72 @@
+{
+  "rule_id": "cosmo-coordination-active-risk",
+  "runtime": {
+    "id": "writer-cosmo-fact",
+    "source_id": "cosmo",
+    "tenant_id": "writer",
+    "config": {
+      "family": "fact"
+    }
+  },
+  "events": [
+    {
+      "id": "cosmo-fact-resolved",
+      "tenant_id": "writer",
+      "source_id": "cosmo",
+      "kind": "cosmo.fact",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "cosmo/fact/v1",
+      "attributes": {
+        "key": "coordination:risk:thread-3",
+        "category": "coordination_risk",
+        "source": "session:thread-3",
+        "risk_state": "resolved",
+        "risk_reason": "agent coordination guardrail re-enabled",
+        "source_runtime_id": "writer-cosmo-fact"
+      }
+    },
+    {
+      "id": "cosmo-fact-active",
+      "tenant_id": "writer",
+      "source_id": "cosmo",
+      "kind": "cosmo.fact",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "cosmo/fact/v1",
+      "attributes": {
+        "key": "coordination:risk:thread-7",
+        "category": "coordination_risk",
+        "source": "session:thread-7",
+        "risk_state": "active",
+        "risk_reason": "agent coordinated a privileged change across multiple sessions without approval",
+        "risk_severity": "high",
+        "source_runtime_id": "writer-cosmo-fact"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "cosmo-coordination-active-risk",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Cosmo agent memory records active coordination risk",
+      "event_ids": ["cosmo-fact-active"],
+      "attributes": {
+        "cosmo_risk_urn": "urn:cerebro:writer:cosmo_coordination_risk:081433b50564f6901a823d298c60b79fdb574d24b7e8a3e987e9693c5f614971",
+        "fact_key": "coordination:risk:thread-7",
+        "session_id": "thread-7",
+        "category": "coordination_risk",
+        "risk_state": "active",
+        "risk_severity": "high",
+        "source_runtime_id": "writer-cosmo-fact",
+        "primary_resource_urn": "urn:cerebro:writer:cosmo_fact:id-873b69e0e168001720199af9fbf1b7a6",
+        "rule_required_attributes": "key"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "cosmo-fact-resolved",
+      "reason": "agent memory records the coordination-risk fact as resolved so there is no active risk"
+    }
+  ]
+}

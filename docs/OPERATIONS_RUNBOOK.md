@@ -191,6 +191,32 @@ Operational guidance:
 - Investigate failed, stale-running, or zero-projection ingest runs before increasing ingest cadence.
 - Keep graph repair and cleanup commands in dry-run mode until you have reviewed their output.
 
+### Cosmo hashed ID migration
+
+Cosmo source and projection identities use collision-resistant hashed external
+ID keys for `cosmo_session`, `cosmo_fact`, `cosmo_message`, and
+`cosmo_survey_feedback` graph entities. This intentionally replaces the older
+dash-normalized URN and event-ID suffixes that could collide when Cosmo record
+IDs differed only by delimiters such as `:` and `/`.
+
+When upgrading an environment that already ingested Cosmo data with the older
+dash-normalized IDs:
+
+1. Back up Neo4j/Aura and record current counts for tenant-scoped `cosmo_*`
+   entities before rollout.
+2. Deploy the new image and run one full Cosmo source sync plus graph rebuild
+   for each Cosmo runtime. Keep rebuilds in dry-run mode first, then apply after
+   reviewing the preview.
+3. Compare the rebuilt `cosmo_*` entity counts and sample raw `record_id`,
+   `key`, and `ticket_id` attributes against the pre-upgrade snapshot. These raw
+   attributes are the reconciliation keys across the old and new URN shapes.
+4. After the hashed entities are present and linked, run tenant-scoped graph
+   cleanup for the old dash-normalized `cosmo_*` URNs. Review cleanup output in
+   dry-run mode before deleting any legacy entities.
+5. Do not roll back to an image that emits dash-normalized Cosmo IDs after
+   legacy cleanup unless you restore the pre-cleanup graph snapshot or rebuild
+   the graph from append-log history.
+
 ## Rollout
 
 Before rollout:

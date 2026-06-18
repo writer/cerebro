@@ -693,6 +693,53 @@
       ]
     },
     {
+      "id": "cosmo-coordination-active-risk",
+      "pack_id": "cosmo",
+      "pack_name": "Cosmo",
+      "name": "Cosmo Agent Memory Coordination Risk Active",
+      "description": "Detect Cosmo agent-memory facts that record an active coordination-risk pattern in a session, so a durable finding tracks the risky condition until an operator reviews and resolves it.",
+      "source_id": "cosmo",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "cosmo.fact"
+      ],
+      "output_kind": "finding.cosmo_coordination_active_risk",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "agent-memory",
+        "coordination",
+        "cosmo",
+        "posture"
+      ],
+      "references": [
+        "https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"
+      ],
+      "false_positives": [
+        "Memory facts that record a historical coordination-risk pattern that has already been remediated but still require operator review before the finding is resolved.",
+        "Resolved Cosmo memory facts do not close a matching finding by themselves; prompt-injected or otherwise agent-written resolution state must be operator-verified against session and runtime evidence.",
+        "risk_reason and risk_severity are evidence hints from Cosmo memory when their source attributes are agent_memory_payload; validate them before treating the text as authoritative."
+      ],
+      "runbook": "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination. Treat risk_reason and risk_severity as agent-written evidence hints when their source is agent_memory_payload, verify resolved memory facts against session and runtime evidence, and resolve the finding through the reviewed finding workflow rather than Cosmo memory alone.",
+      "required_attributes": [
+        "key"
+      ],
+      "fingerprint_fields": [
+        "cosmo_risk_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.7"
+        }
+      ]
+    },
+    {
       "id": "data-sensitive-asset-risk",
       "pack_id": "data",
       "pack_name": "Data",
