@@ -23,6 +23,7 @@ const DefaultRetryBackoff = 250 * time.Millisecond
 const MaxRetryAfter = 5 * time.Second
 
 var ErrTransportPinningUnsupported = errors.New("source transport must support pinned host dialing")
+var ErrUnsafeHostAddress = errors.New("source host must not target unsafe addresses")
 
 type ClientOptions struct {
 	SourceID                 string
@@ -348,7 +349,7 @@ func SafeResolvedHostAddrsWithOptions(ctx context.Context, sourceID string, host
 	}
 	if ip := net.ParseIP(strings.Trim(normalized, "[]")); ip != nil {
 		if unsafeIP(ip, options.AllowLoopback) {
-			return nil, fmt.Errorf("%s host must not target loopback, private, or link-local addresses", sourceID)
+			return nil, fmt.Errorf("%s host must not target loopback, private, or link-local addresses: %w", sourceID, ErrUnsafeHostAddress)
 		}
 		return nil, nil
 	}
@@ -366,7 +367,7 @@ func SafeResolvedHostAddrsWithOptions(ctx context.Context, sourceID string, host
 	allowPrivate := privateEndpointHostAllowed(normalized, options.PrivateEndpointAllowlist)
 	for _, addr := range addrs {
 		if unsafeResolvedIP(addr.IP, options.AllowLoopback, allowPrivate) {
-			return nil, fmt.Errorf("%s host must not resolve to loopback, private, or link-local addresses", sourceID)
+			return nil, fmt.Errorf("%s host must not resolve to loopback, private, or link-local addresses: %w", sourceID, ErrUnsafeHostAddress)
 		}
 	}
 	return addrs, nil

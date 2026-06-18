@@ -8,11 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/internal/vulndb"
 )
 
+type vulndbFeedOptions struct {
+	allowLoopback bool
+}
+
 // OpenVulnDBFeed fetches a remote vulnerability feed with Cerebro's feed transport policy.
 func OpenVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool) (io.ReadCloser, error) {
+	return openVulnDBFeed(ctx, rawURL, allowInsecureHTTP, vulndbFeedOptions{})
+}
+
+func openVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool, options vulndbFeedOptions) (io.ReadCloser, error) {
 	if err := vulndb.ValidateFeedURL(rawURL, allowInsecureHTTP); err != nil {
 		return nil, err
 	}
@@ -22,7 +31,7 @@ func OpenVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool) 
 	}
 	initialScheme := strings.ToLower(request.URL.Scheme)
 	client := &http.Client{
-		Transport: vulndbFeedTransport(),
+		Transport: vulndbFeedTransport(options),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if initialScheme == "https" && strings.EqualFold(req.URL.Scheme, "http") {
 				return fmt.Errorf("refusing vulnerability feed redirect from https to http")
@@ -41,12 +50,20 @@ func OpenVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool) 
 	return response.Body, nil
 }
 
-func vulndbFeedTransport() http.RoundTripper {
+func vulndbFeedTransport(options vulndbFeedOptions) http.RoundTripper {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
-		return http.DefaultTransport
+		return sourcehttp.SafeRoundTripper{
+			Base:          http.DefaultTransport,
+			SourceID:      "vulndb",
+			AllowLoopback: options.allowLoopback,
+		}
 	}
 	clone := transport.Clone()
 	clone.ResponseHeaderTimeout = 30 * time.Second
-	return clone
+	return sourcehttp.SafeRoundTripper{
+		Base:          clone,
+		SourceID:      "vulndb",
+		AllowLoopback: options.allowLoopback,
+	}
 }
