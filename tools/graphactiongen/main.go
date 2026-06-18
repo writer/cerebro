@@ -2,21 +2,25 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/format"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	defaultCatalogPath = "internal/graphactions/action_catalog.yaml"
-	defaultOutputPath  = "internal/graphactions/registry_gen.go"
+	defaultCatalogPath    = "internal/graphactions/action_catalog.yaml"
+	defaultOutputPath     = "internal/graphactions/registry_gen.go"
+	maxGeneratedFileBytes = 4 << 20
 )
 
 var goIdentifierRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -65,21 +69,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "graphactiongen: create output directory: %v\n", err)
 			os.Exit(1)
 		}
-		if err := rejectSymlink(path); err != nil {
-			fmt.Fprintf(os.Stderr, "graphactiongen: write %s: %v\n", *output, err)
-			os.Exit(1)
-		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
+		if err := writeGeneratedFile(path, content); err != nil {
 			fmt.Fprintf(os.Stderr, "graphactiongen: write %s: %v\n", *output, err)
 			os.Exit(1)
 		}
 	}
 	if *check {
-		if err := rejectSymlink(path); err != nil {
-			fmt.Fprintf(os.Stderr, "graphactiongen: read %s: %v\n", *output, err)
-			os.Exit(1)
-		}
-		existing, err := os.ReadFile(path)
+		existing, err := readGeneratedFile(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "graphactiongen: read %s: %v\n", *output, err)
 			os.Exit(1)
@@ -103,6 +99,58 @@ func rejectSymlink(path string) error {
 		return fmt.Errorf("symlinked generated graph action files are not allowed")
 	}
 	return nil
+}
+
+func writeGeneratedFile(path string, content []byte) error {
+	if err := rejectSymlink(path); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	removeTemp := true
+	defer func() {
+		if removeTemp {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if _, err := temp.Write(content); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Chmod(0o644); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+	removeTemp = false
+	return nil
+}
+
+func readGeneratedFile(path string) ([]byte, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if errors.Is(err, syscall.ELOOP) {
+			return nil, fmt.Errorf("symlinked generated graph action files are not allowed")
+		}
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxGeneratedFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxGeneratedFileBytes {
+		return nil, fmt.Errorf("generated graph action file exceeds %d bytes", maxGeneratedFileBytes)
+	}
+	return content, nil
 }
 
 func generate(root string, catalogPath string) ([]byte, error) {
@@ -130,6 +178,7 @@ func validateCatalog(catalog actionCatalog) error {
 	}
 	ids := map[string]struct{}{}
 	constNames := map[string]struct{}{}
+	targetKindConstValues := map[string]string{}
 	for i, action := range catalog.Actions {
 		if err := validateAction(i, action); err != nil {
 			return err
@@ -142,6 +191,10 @@ func validateCatalog(catalog actionCatalog) error {
 			return fmt.Errorf("duplicate action const_name %q", action.ConstName)
 		}
 		constNames[action.ConstName] = struct{}{}
+		if prior, exists := targetKindConstValues[action.TargetKindConst]; exists && prior != action.TargetKind {
+			return fmt.Errorf("action %q: target_kind_const %q maps to both %q and %q", action.ID, action.TargetKindConst, prior, action.TargetKind)
+		}
+		targetKindConstValues[action.TargetKindConst] = action.TargetKind
 	}
 	for _, action := range catalog.Actions {
 		if action.ReversibleBy != "" {

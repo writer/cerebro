@@ -83,6 +83,37 @@ func TestValidateCatalogRejectsUnknownReversibleAction(t *testing.T) {
 	}
 }
 
+func TestValidateCatalogRejectsConflictingTargetKindConst(t *testing.T) {
+	err := validateCatalog(actionCatalog{
+		Version: "graph-actions.cerebro/v1alpha1",
+		Actions: []actionCatalogEntry{
+			testActionCatalogEntry("identity.okta.suspend_user", "ActionIdentityOktaSuspendUser", "identity.okta.user", "TargetKindOktaUser"),
+			testActionCatalogEntry("identity.okta.disable_user", "ActionIdentityOktaDisableUser", "identity.okta.account", "TargetKindOktaUser"),
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "target_kind_const") {
+		t.Fatalf("validateCatalog() error = %v, want target_kind_const conflict", err)
+	}
+}
+
+func TestGeneratedFileIORejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target.go")
+	if err := os.WriteFile(target, []byte("package p\n"), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	link := filepath.Join(root, "registry_gen.go")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := writeGeneratedFile(link, []byte("package graphactions\n")); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("writeGeneratedFile() error = %v, want symlink rejection", err)
+	}
+	if _, err := readGeneratedFile(link); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("readGeneratedFile() error = %v, want symlink rejection", err)
+	}
+}
+
 func TestGenerateIsStableWithCheckedInCatalog(t *testing.T) {
 	content, err := generate(filepath.Clean("../.."), defaultCatalogPath)
 	if err != nil {
@@ -94,6 +125,22 @@ func TestGenerateIsStableWithCheckedInCatalog(t *testing.T) {
 	}
 	if !bytes.Equal(bytes.TrimSpace(existing), bytes.TrimSpace(content)) {
 		t.Fatalf("checked-in registry is stale; run make graph-action-generate")
+	}
+}
+
+func testActionCatalogEntry(id, constName, targetKind, targetKindConst string) actionCatalogEntry {
+	return actionCatalogEntry{
+		ID:                  id,
+		ConstName:           constName,
+		Provider:            "access-approvals",
+		ProviderConst:       "ProviderAccessApprovals",
+		ProviderAction:      "suspend",
+		ProviderActionConst: "AccessApprovalsActionSuspend",
+		TargetKind:          targetKind,
+		TargetKindConst:     targetKindConst,
+		TargetResolver:      "OktaUserTargetForFinding",
+		EligibilityChecker:  "FindingAllowsAction",
+		Effect:              "deny_access",
 	}
 }
 
