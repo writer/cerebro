@@ -86,6 +86,11 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 		{name: "negated character range includes api", ignored: "[!b-z]pi/**", forbidden: "api/", want: true},
 		{name: "question mark includes api", ignored: "a?i/**", forbidden: "api/", want: true},
 		{name: "prefix wildcard includes api", ignored: "ap*/**", forbidden: "api/", want: true},
+		{name: "plus extglob includes api", ignored: "+(api)/**", forbidden: "api/", want: true},
+		{name: "at extglob includes internal", ignored: "@(internal)/**", forbidden: "internal/", want: true},
+		{name: "multi option extglob includes sources", ignored: "@(api|sources)/**", forbidden: "sources/", want: true},
+		{name: "negated extglob includes internal", ignored: "!(vendor)/**", forbidden: "internal/", want: true},
+		{name: "negated extglob excludes api", ignored: "!(api)/**", forbidden: "api/"},
 		{name: "character class excludes internal", ignored: "[as]pi/**", forbidden: "internal/"},
 		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
 		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
@@ -179,7 +184,13 @@ func deepsecIgnorePathCandidateGlobMatchesSurface(candidate string, surface stri
 	for _, segment := range strings.Split(strings.Trim(candidate, "/"), "/") {
 		segment = strings.TrimSpace(segment)
 		if segment == "" || segment == "*" || segment == "**" || !strings.ContainsAny(segment, "*?[") {
+			if deepsecExtglobSegmentMatchesSurface(segment, surface) {
+				return true
+			}
 			continue
+		}
+		if deepsecExtglobSegmentMatchesSurface(segment, surface) {
+			return true
 		}
 		matched, err := path.Match(deepsecPathMatchSegment(segment), surface)
 		if err == nil && matched {
@@ -199,6 +210,54 @@ func deepsecPathMatchSegment(segment string) string {
 		}
 	}
 	return converted.String()
+}
+
+func deepsecExtglobSegmentMatchesSurface(segment string, surface string) bool {
+	for i := 0; i+1 < len(segment); i++ {
+		if !strings.ContainsRune("@+?!*", rune(segment[i])) || segment[i+1] != '(' {
+			continue
+		}
+		end := deepsecClosingParenIndex(segment, i+1)
+		if end < 0 {
+			continue
+		}
+		prefix := segment[:i]
+		suffix := segment[end+1:]
+		options := deepsecExtglobOptions(segment[i+2 : end])
+		if len(options) == 0 {
+			continue
+		}
+		if segment[i] == '!' {
+			if !deepsecSegmentPatternMatchesSurface(prefix+"*"+suffix, surface) {
+				continue
+			}
+			excluded := false
+			for _, option := range options {
+				if deepsecSegmentPatternMatchesSurface(prefix+option+suffix, surface) {
+					excluded = true
+					break
+				}
+			}
+			if !excluded {
+				return true
+			}
+			continue
+		}
+		for _, option := range options {
+			if deepsecSegmentPatternMatchesSurface(prefix+option+suffix, surface) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func deepsecSegmentPatternMatchesSurface(pattern string, surface string) bool {
+	if pattern == surface {
+		return true
+	}
+	matched, err := path.Match(deepsecPathMatchSegment(pattern), surface)
+	return err == nil && matched
 }
 
 func deepsecIgnorePathCandidates(pattern string) []string {
@@ -273,6 +332,22 @@ func deepsecClosingBraceIndex(pattern string, start int) int {
 	return -1
 }
 
+func deepsecClosingParenIndex(pattern string, start int) int {
+	depth := 0
+	for i := start; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
 func deepsecBraceOptions(group string) []string {
 	options := []string{}
 	depth := 0
@@ -286,6 +361,29 @@ func deepsecBraceOptions(group string) []string {
 				depth--
 			}
 		case ',':
+			if depth == 0 {
+				options = append(options, group[start:i])
+				start = i + 1
+			}
+		}
+	}
+	options = append(options, group[start:])
+	return options
+}
+
+func deepsecExtglobOptions(group string) []string {
+	options := []string{}
+	depth := 0
+	start := 0
+	for i := 0; i < len(group); i++ {
+		switch group[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case '|':
 			if depth == 0 {
 				options = append(options, group[start:i])
 				start = i + 1
