@@ -20,6 +20,82 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestReadComplianceActivityMapsResourceAndActorDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/compliance/activities" {
+			t.Fatalf("request path = %q, want /compliance/activities", got)
+		}
+		if got := r.URL.Query().Get("activity_types[]"); got != "claude_chat_created" {
+			t.Fatalf("activity_types[] = %q, want claude_chat_created", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":                "activity_123",
+				"created_at":        "2026-04-10T08:09:10Z",
+				"organization_id":   "org_123",
+				"organization_uuid": "org-uuid-1",
+				"actor": map[string]any{
+					"type":          "user_actor",
+					"email_address": "alice@example.com",
+					"user_id":       "user_123",
+					"ip_address":    "192.0.2.34",
+					"user_agent":    "Mozilla/5.0",
+				},
+				"type":              "claude_chat_created",
+				"claude_chat_id":    "claude_chat_123",
+				"claude_project_id": "claude_proj_123",
+				"filename":          "brief.pdf",
+			}, {
+				"id":         "activity_456",
+				"created_at": "2026-04-10T08:10:10Z",
+				"actor": map[string]any{
+					"type":             "admin_api_key_actor",
+					"admin_api_key_id": "admin_key_123",
+				},
+				"type": "compliance_api_accessed",
+			}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"activity_types": "claude_chat_created",
+		"api_key":        "fixture-compliance-key",
+		"base_url":       server.URL,
+		"family":         "compliance_activity",
+		"tenant_id":      "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want 2", len(pull.Events))
+	}
+	chatEvent := pull.Events[0]
+	if got := chatEvent.Attributes["activity_type"]; got != "claude_chat_created" {
+		t.Fatalf("activity_type = %q, want claude_chat_created", got)
+	}
+	if got := chatEvent.Attributes["actor_ip_address"]; got != "192.0.2.34" {
+		t.Fatalf("actor_ip_address = %q, want 192.0.2.34", got)
+	}
+	if got := chatEvent.Attributes["claude_chat_id"]; got != "claude_chat_123" {
+		t.Fatalf("claude_chat_id = %q, want claude_chat_123", got)
+	}
+	if got := chatEvent.Attributes["project_id"]; got != "claude_proj_123" {
+		t.Fatalf("project_id = %q, want claude_proj_123", got)
+	}
+	adminKeyEvent := pull.Events[1]
+	if got := adminKeyEvent.Attributes["actor_admin_api_key_id"]; got != "admin_key_123" {
+		t.Fatalf("actor_admin_api_key_id = %q, want admin_key_123", got)
+	}
+}
+
 func TestReadWorkspaceMemberUsesAdminAPIKeyHeadersAndCursor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/organizations/workspaces/wrkspc_123/members" {

@@ -860,7 +860,7 @@ func aiAuditProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile)
 	attrs := event.GetAttributes()
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	actorAPIKeyID := strings.TrimSpace(attrs["actor_api_key_id"])
+	actorAPIKeyID := strings.TrimSpace(firstNonEmpty(attrs["actor_api_key_id"], attrs["actor_admin_api_key_id"]))
 	actorUserID := strings.TrimSpace(attrs["actor_user_id"])
 	actorServiceAccountID := strings.TrimSpace(attrs["actor_service_account_id"])
 	actorEmail := strings.TrimSpace(attrs["actor_email"])
@@ -1218,8 +1218,16 @@ func aiAuditTargetURN(entities map[string]*ports.ProjectedEntity, links map[stri
 		return aiAuditPrincipalURN(entities, links, tenantID, event, profile, attrs["principal_id"], attrs["principal_type"], attrs)
 	case strings.HasPrefix(eventType, "role.") && strings.TrimSpace(attrs["role_id"]) != "":
 		return aiEnsureRole(entities, tenantID, sourceID, profile, attrs, aiAuditRoleScopeKind(attrs))
+	case firstNonEmpty(attrs["claude_chat_id"], attrs["chat_id"]) != "":
+		return aiAuditActivityResourceURN(entities, links, tenantID, event, profile, firstNonEmpty(attrs["claude_chat_id"], attrs["chat_id"]), "claude_chat", attrs)
+	case firstNonEmpty(attrs["claude_file_id"], attrs["file_id"]) != "":
+		return aiAuditActivityResourceURN(entities, links, tenantID, event, profile, firstNonEmpty(attrs["claude_file_id"], attrs["file_id"]), "claude_file", attrs)
 	case strings.HasPrefix(eventType, "project.") && strings.TrimSpace(attrs["project_id"]) != "":
 		return aiEnsureProject(entities, tenantID, sourceID, profile, attrs)
+	case strings.TrimSpace(attrs["claude_project_id"]) != "":
+		projectAttrs := cloneAttributes(attrs)
+		projectAttrs["project_id"] = attrs["claude_project_id"]
+		return aiEnsureProject(entities, tenantID, sourceID, profile, projectAttrs)
 	case strings.TrimSpace(attrs["project_id"]) != "":
 		return aiEnsureProject(entities, tenantID, sourceID, profile, attrs)
 	case strings.TrimSpace(attrs["api_key_id"]) != "":
@@ -1249,6 +1257,32 @@ func aiAuditCredentialOwnerURN(entities map[string]*ports.ProjectedEntity, links
 		return aiEnsureUser(entities, links, tenantID, event, profile, userID, email, "", "")
 	}
 	return ""
+}
+
+func aiAuditActivityResourceURN(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, resourceID string, resourceType string, attrs map[string]string) string {
+	resourceAttrs := cloneAttributes(attrs)
+	resourceAttrs["resource_id"] = resourceID
+	resourceAttrs["resource_type"] = resourceType
+	resourceURN := aiAuditResourceURN(entities, links, tenantID, event, profile, resourceID, resourceType, resourceAttrs)
+	if resourceURN == "" {
+		return ""
+	}
+	projectID := firstNonEmpty(attrs["claude_project_id"], attrs["project_id"])
+	if projectID == "" {
+		return resourceURN
+	}
+	projectAttrs := cloneAttributes(attrs)
+	projectAttrs["project_id"] = projectID
+	projectURN := aiEnsureProject(entities, tenantID, event.GetSourceId(), profile, projectAttrs)
+	if projectURN == "" {
+		return resourceURN
+	}
+	linkAttrs := aiEventLinkAttributes(event, "audit_activity_resource_project")
+	addProjectedAttribute(linkAttrs, "resource_id", resourceID)
+	addProjectedAttribute(linkAttrs, "resource_type", resourceType)
+	addProjectedAttribute(linkAttrs, "project_id", projectID)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, projectURN, relationBelongsTo, linkAttrs))
+	return resourceURN
 }
 
 func aiAuditPrincipalURN(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, principalID string, principalType string, attrs map[string]string) string {
@@ -1306,10 +1340,15 @@ func aiAuditResourceURN(entities map[string]*ports.ProjectedEntity, links map[st
 			EntityType: profile.Provider + ".resource",
 			Label:      firstNonEmpty(attrs["name"], resourceID),
 			Attributes: compactAttributes(map[string]string{
-				"resource_id":   resourceID,
-				"resource_type": resourceType,
-				"family":        attrs["family"],
-				"provider":      attrs["provider"],
+				"activity_type":     attrs["activity_type"],
+				"claude_project_id": attrs["claude_project_id"],
+				"created_at":        attrs["created_at"],
+				"family":            attrs["family"],
+				"filename":          attrs["filename"],
+				"project_id":        attrs["project_id"],
+				"provider":          attrs["provider"],
+				"resource_id":       resourceID,
+				"resource_type":     resourceType,
 			}),
 		})
 		return resourceURN

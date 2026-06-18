@@ -173,6 +173,69 @@ func TestProjectOpenAIAuditDeepAccessEvidence(t *testing.T) {
 	}
 }
 
+func TestProjectAnthropicComplianceActivityResourceEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 18, 12, 7, 0, 0, time.UTC)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "anthropic-compliance-chat",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_activity",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"activity_id":       "activity_chat_123",
+				"activity_type":     "claude_chat_created",
+				"actor_email":       "alice@example.com",
+				"actor_type":        "user_actor",
+				"actor_user_id":     "user_123",
+				"claude_chat_id":    "claude_chat_123",
+				"claude_project_id": "claude_proj_123",
+				"family":            "compliance_activity",
+				"project_id":        "claude_proj_123",
+			},
+		},
+		{
+			Id:         "anthropic-compliance-api-access",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_activity",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"activity_id":            "activity_api_123",
+				"activity_type":          "compliance_api_accessed",
+				"actor_admin_api_key_id": "admin_key_123",
+				"actor_type":             "admin_api_key_actor",
+				"family":                 "compliance_activity",
+				"organization_id":        "org_123",
+				"organization_uuid":      "org-uuid-1",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	userURN := "urn:cerebro:writer:anthropic_user:user_123"
+	identityURN := "urn:cerebro:writer:identity:email:alice@example.com"
+	chatResourceURN := "urn:cerebro:writer:anthropic_resource:claude_chat:claude_chat_123"
+	projectURN := "urn:cerebro:writer:anthropic_project:claude_proj_123"
+	adminKeyURN := "urn:cerebro:writer:anthropic_credential:admin_key_123" // #nosec G101 -- test credential URN fixture, not credential material.
+	orgURN := "urn:cerebro:writer:anthropic_org:org_123"
+
+	if entity := state.entities[chatResourceURN]; entity == nil || entity.EntityType != "anthropic.resource" || entity.Attributes["resource_type"] != "claude_chat" {
+		t.Fatalf("chat resource entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, userURN, relationActedOn, chatResourceURN)
+	assertProjectedLink(t, state, chatResourceURN, relationBelongsTo, projectURN)
+	assertProjectedLink(t, state, adminKeyURN, relationActedOn, orgURN)
+}
+
 func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
