@@ -182,11 +182,6 @@ func slackUserAccountPrivileged(attributes map[string]string) bool {
 		parseBoolAttribute(attributes, "is_primary_owner")
 }
 
-func slackUserMFAEnabled(attributes map[string]string) bool {
-	enabled, _ := slackUserMFAObserved(attributes)
-	return enabled
-}
-
 func slackUserMFAObserved(attributes map[string]string) (bool, bool) {
 	has2FA, observed2FA := parseOptionalBoolAttribute(attributes, "has_2fa")
 	hasMFA, observedMFA := parseOptionalBoolAttribute(attributes, "has_mfa")
