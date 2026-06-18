@@ -240,7 +240,7 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 			telemetry.End(span, "completed", attrs)
 		}
 		req = req.Clone(ctx)
-		if traceparent := telemetry.TraceParent(req.Context()); traceparent != "" && req.Header.Get("Traceparent") == "" {
+		if traceparent := telemetry.TraceParent(ctx); traceparent != "" && req.Header.Get("Traceparent") == "" {
 			req.Header.Set("Traceparent", traceparent)
 		}
 		if req.URL != nil {
@@ -256,7 +256,7 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 					return nil, err
 				}
 			}
-			addrs, err := SafeResolvedHostAddrsWithOptions(req.Context(), rt.SourceID, req.URL.Hostname(), HostResolutionOptions{
+			addrs, err := SafeResolvedHostAddrsWithOptions(ctx, rt.SourceID, req.URL.Hostname(), HostResolutionOptions{
 				AllowLoopback:            rt.AllowLoopback,
 				PrivateEndpointAllowlist: rt.PrivateEndpointAllowlist,
 				LookupIPAddrs:            rt.LookupIPAddrs,
