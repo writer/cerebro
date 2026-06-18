@@ -108,6 +108,52 @@ func TestEvidenceCASUnresolvedLinkageIgnoresResolvedAndBareEvidence(t *testing.T
 	}
 }
 
+func TestEvidenceCASUnresolvedLinkageContextlessFollowupKeepsFindingOpen(t *testing.T) {
+	rule := newEvidenceCASUnresolvedLinkageRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-evidence-cas", SourceId: "evidence_cas", TenantId: "writer"}
+
+	opened, err := rule.Evaluate(context.Background(), runtime, evidenceCASObjectEvent("evidence-open-1", map[string]string{
+		"case_id":                 "case-1",
+		"case_link_status":        "missing",
+		"unresolved_case_context": "true",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)))
+	if err != nil {
+		t.Fatalf("Evaluate(open) error = %v", err)
+	}
+	if len(opened) != 1 || strings.TrimSpace(opened[0].Status) != findingStatusOpen {
+		t.Fatalf("Evaluate(open) = %d findings, want 1 open", len(opened))
+	}
+
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+
+	// A later event sharing the same evidence_id that supplies no case or
+	// resource context at all must not close the finding: the absence of
+	// unresolved markers is not evidence that the linkage was repaired.
+	contextless := evidenceCASObjectEvent("evidence-followup", map[string]string{
+		"case_id":                 "",
+		"case_urn":                "",
+		"case_link_status":        "",
+		"unresolved_case_context": "",
+		"resource_urn":            "",
+		"resource_id":             "",
+		"resource_link_status":    "",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	if anchor, closes := counterRule.CloseOnEvent(contextless); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(contextless) = (%q, %v), want no close", anchor, closes)
+	}
+
+	records, err := rule.Evaluate(context.Background(), runtime, contextless)
+	if err != nil {
+		t.Fatalf("Evaluate(contextless) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(contextless) emitted %d findings, want 0", len(records))
+	}
+}
+
 func TestEvidenceCASUnresolvedLinkageRemediationResolves(t *testing.T) {
 	open := evidenceCASObjectEvent("evidence-open", map[string]string{
 		"case_id":                 "case-1",

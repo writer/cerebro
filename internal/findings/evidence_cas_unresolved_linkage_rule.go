@@ -76,16 +76,18 @@ func (r *evidenceCASUnresolvedLinkageRule) OpenAnchor(attributes map[string]stri
 	return evidenceCASUnresolvedLinkageAnchor(attributes)
 }
 
-// CloseOnEvent resolves an open finding when a later reference for the same
-// evidence object resolves its case and resource linkage, so evidence whose
-// context has since been ingested or repaired does not leave a stale open
-// finding.
+// CloseOnEvent resolves an open finding only when a later reference for the
+// same evidence object supplies case or resource context that explicitly
+// resolves, so evidence whose context has since been ingested or repaired does
+// not leave a stale open finding. A context-less follow-up event that omits
+// case and resource linkage entirely must not close the finding: the absence
+// of unresolved markers is not evidence that the linkage was repaired.
 func (r *evidenceCASUnresolvedLinkageRule) CloseOnEvent(event Event) (string, bool) {
 	if !evidenceCASObjectKindMatcher(event) || !hasRequiredAttributes(event, evidenceCASUnresolvedLinkageDefinition.RequiredAttributes...) {
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if evidenceCASLinkageUnresolved(attributes) {
+	if !evidenceCASLinkageResolved(attributes) {
 		return "", false
 	}
 	evidenceURN := evidenceCASEvidenceURN(event.GetTenantId(), attributes["evidence_id"])
@@ -163,6 +165,19 @@ func evidenceCASUnresolvedLinkageFinding(event *cerebrov1.EventEnvelope, runtime
 // linkage risk so ordinary inventory does not surface as a finding.
 func evidenceCASLinkageUnresolved(attributes map[string]string) bool {
 	return evidenceCASResourceLinkUnresolved(attributes) || evidenceCASCaseLinkUnresolved(attributes)
+}
+
+// evidenceCASLinkageResolved reports whether an Evidence CAS object explicitly
+// supplies case or resource context that resolves. It requires positive
+// evidence of a repaired linkage: at least one declared context must be present
+// and none of the declared contexts may be unresolved. Evidence that declares
+// no case or resource context carries no resolved-linkage signal and therefore
+// does not resolve an open finding.
+func evidenceCASLinkageResolved(attributes map[string]string) bool {
+	if !evidenceCASResourceContextSupplied(attributes) && !evidenceCASCaseContextSupplied(attributes) {
+		return false
+	}
+	return !evidenceCASLinkageUnresolved(attributes)
 }
 
 func evidenceCASResourceLinkUnresolved(attributes map[string]string) bool {
