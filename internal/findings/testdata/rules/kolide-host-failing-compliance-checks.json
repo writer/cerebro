@@ -1,0 +1,87 @@
+{
+  "rule_id": "kolide-host-failing-compliance-checks",
+  "runtime": {
+    "id": "writer-kolide-device",
+    "source_id": "kolide",
+    "tenant_id": "writer",
+    "config": {
+      "family": "device"
+    }
+  },
+  "events": [
+    {
+      "id": "kolide-device-passing",
+      "tenant_id": "writer",
+      "source_id": "kolide",
+      "kind": "kolide.device",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "kolide/device/v1",
+      "attributes": {
+        "family": "device",
+        "device_id": "device-1",
+        "device_name": "compliant-host",
+        "registered": "true",
+        "failure_count": "0",
+        "source_runtime_id": "writer-kolide-device"
+      }
+    },
+    {
+      "id": "kolide-device-failing",
+      "tenant_id": "writer",
+      "source_id": "kolide",
+      "kind": "kolide.device",
+      "occurred_at": "2026-04-23T12:05:00Z",
+      "schema_ref": "kolide/device/v1",
+      "attributes": {
+        "family": "device",
+        "device_id": "device-2",
+        "device_name": "risky-host",
+        "registered": "true",
+        "failure_count": "3",
+        "source_runtime_id": "writer-kolide-device"
+      }
+    },
+    {
+      "id": "kolide-device-offboarded",
+      "tenant_id": "writer",
+      "source_id": "kolide",
+      "kind": "kolide.device",
+      "occurred_at": "2026-04-23T12:10:00Z",
+      "schema_ref": "kolide/device/v1",
+      "attributes": {
+        "family": "device",
+        "device_id": "device-3",
+        "device_name": "offboarded-host",
+        "registered": "false",
+        "failure_count": "5",
+        "source_runtime_id": "writer-kolide-device"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "kolide-host-failing-compliance-checks",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Kolide host risky-host is failing one or more device compliance checks",
+      "event_ids": ["kolide-device-failing"],
+      "attributes": {
+        "kolide_device_urn": "urn:cerebro:writer:kolide_device:device-2",
+        "device_id": "device-2",
+        "failure_count": "3",
+        "primary_resource_urn": "urn:cerebro:writer:kolide_device:device-2",
+        "rule_required_attributes": "device_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "kolide-device-passing",
+      "reason": "registered host with zero failing checks is compliant"
+    },
+    {
+      "event_id": "kolide-device-offboarded",
+      "reason": "deprovisioned host must not open a stale posture finding"
+    }
+  ]
+}
