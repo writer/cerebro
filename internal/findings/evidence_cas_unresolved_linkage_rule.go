@@ -187,7 +187,7 @@ func evidenceCASResourceLinkUnresolved(attributes map[string]string) bool {
 	if parseBoolAttribute(attributes, "unresolved_resource_context") {
 		return true
 	}
-	return strings.EqualFold(strings.TrimSpace(attributes["resource_link_status"]), "missing")
+	return !strings.EqualFold(strings.TrimSpace(attributes["resource_link_status"]), "linked")
 }
 
 func evidenceCASCaseLinkUnresolved(attributes map[string]string) bool {
@@ -197,7 +197,7 @@ func evidenceCASCaseLinkUnresolved(attributes map[string]string) bool {
 	if parseBoolAttribute(attributes, "unresolved_case_context") {
 		return true
 	}
-	return strings.EqualFold(strings.TrimSpace(attributes["case_link_status"]), "missing")
+	return !strings.EqualFold(strings.TrimSpace(attributes["case_link_status"]), "linked")
 }
 
 func evidenceCASResourceContextSupplied(attributes map[string]string) bool {
