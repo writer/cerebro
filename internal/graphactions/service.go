@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -250,9 +251,6 @@ func targetCandidates(finding *ports.FindingRecord) []string {
 	for _, key := range []string{"okta_identity_attributes_json", "okta_attributes_json", "principal_attributes_json"} {
 		candidates = append(candidates, candidatesFromJSON(attrs[key])...)
 	}
-	for _, key := range []string{"identity_labels", "identity_label", "okta_user_label"} {
-		candidates = append(candidates, candidatesFromDelimited(attrs[key])...)
-	}
 	for _, urn := range finding.ResourceURNs {
 		candidates = append(candidates, candidateFromURN(urn))
 	}
@@ -296,7 +294,7 @@ func candidatesFromDelimited(raw string) []string {
 
 func candidateFromURN(raw string) string {
 	raw = strings.TrimSpace(raw)
-	if raw == "" || (!strings.Contains(raw, ":okta.user:") && !strings.Contains(raw, ":identity:email:")) {
+	if raw == "" || (!strings.Contains(raw, ":okta.user:") && !strings.Contains(raw, ":okta_user:") && !strings.Contains(raw, ":identity:email:")) {
 		return ""
 	}
 	index := strings.LastIndex(raw, ":")
@@ -339,6 +337,8 @@ func NormalizeTarget(target string) (string, error) {
 			return "", fmt.Errorf("%w: target email is invalid", ErrInvalidRequest)
 		}
 		target = address.Address
+	} else if strings.IndexFunc(target, unicode.IsSpace) >= 0 || strings.ContainsAny(target, "<>") {
+		return "", fmt.Errorf("%w: target user id is invalid", ErrInvalidRequest)
 	}
 	return target, nil
 }
