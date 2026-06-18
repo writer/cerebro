@@ -130,6 +130,12 @@ the HTTP/Connect boundary. Domain packages still own the underlying GRC,
 finding, evidence, and inventory semantics; bootstrap only translates principal
 claims into route-level permission checks.
 
+Graph action execution is also represented in the bootstrap budget only at the
+transport boundary: route registration, scoped auth policy, request/response
+mapping, tenant-authorized finding lookup, and service dependency wiring. Action
+target selection, provider request shaping, idempotency, and external reference
+mapping stay behind `internal/graphactions` and `internal/graphactionapi`.
+
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
 only public Agent Card serving and authenticated request/response mapping for

@@ -1667,11 +1667,15 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 		if mcpStringArg(args, "ticket_url") == "" && mcpStringArg(args, "ticket_id") == "" {
 			return nil, fmt.Errorf("%w: ticket_url or ticket_id is required for link_ticket", errInvalidHTTPRequest)
 		}
+	case "execute_graph_action":
 	default:
 		return nil, fmt.Errorf("%w: unsupported action %q", errInvalidHTTPRequest, action)
 	}
 	proposal := findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action)
 	mcpApplyExternalLifecycleProposal(proposal, finding, action)
+	if err := findingapi.ApplyMCPGraphActionProposal(proposal, finding, action, findingapi.MCPArguments(args), scopeGraphActionsWrite); err != nil {
+		return nil, err
+	}
 	return proposal, nil
 }
 

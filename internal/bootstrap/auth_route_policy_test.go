@@ -77,6 +77,13 @@ func TestFindingLifecycleHTTPRoutesRequireWriteScope(t *testing.T) {
 	}
 }
 
+func TestGraphActionHTTPRoutesRequireDedicatedScope(t *testing.T) {
+	policy := httpRoutePolicyFor(http.MethodPost, "/platform/graph/actions")
+	if policy.Scope != scopeGraphActionsWrite || policy.AdminOnly {
+		t.Fatalf("POST /platform/graph/actions policy = %#v, want graph action write scope", policy)
+	}
+}
+
 func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
 	policy := httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")
 	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {
@@ -202,6 +209,14 @@ func TestFindingLifecycleConnectProceduresRequireWriteScope(t *testing.T) {
 		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {
 			t.Fatalf("%s policy = %#v, want findings write scope", procedure, policy)
 		}
+	}
+}
+
+func TestGraphActionConnectProceduresRequireDedicatedScope(t *testing.T) {
+	procedure := cerebrov1connect.BootstrapServiceExecuteGraphActionProcedure
+	policy := connectProcedurePolicyFor(procedure)
+	if policy.Scope != scopeGraphActionsWrite || policy.AdminOnly {
+		t.Fatalf("%s policy = %#v, want graph action write scope", procedure, policy)
 	}
 }
 

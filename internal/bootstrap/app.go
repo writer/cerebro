@@ -31,6 +31,8 @@ import (
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findingapi"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphactionapi"
+	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
@@ -90,15 +92,17 @@ type appServices struct {
 	findings       *findings.Service
 	knowledgeOps   *knowledge.Service
 	graphQueries   *graphquery.Service
+	graphActions   *graphactions.Service
 	graphIngestOps *graphingest.Service
 	workflowReplay *workflowprojection.Replayer
 	jobs           *platformjobs.Service
 }
 
 type bootstrapService struct {
-	cfg     config.Config
-	deps    Dependencies
-	sources *sourcecdk.Registry
+	cfg          config.Config
+	deps         Dependencies
+	sources      *sourcecdk.Registry
+	graphActions *graphactions.Service
 }
 
 const (
@@ -220,6 +224,9 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
 	app.services.graphQueries = app.newGraphQueryService()
+	if app.services.graphActions, err = graphactionapi.NewAccessApprovalsServiceIfConfigured(app.cfg.GraphActions.AccessApprovals, app.findingService()); err != nil {
+		return nil, fmt.Errorf("graph actions bootstrap failed: %w", err)
+	}
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()
 	app.services.jobs = app.newJobService()

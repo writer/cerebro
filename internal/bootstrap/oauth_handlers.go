@@ -42,7 +42,7 @@ func (app *App) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *h
 		"resource":                 resource,
 		"authorization_servers":    []string{issuer},
 		"bearer_methods_supported": []string{"header"},
-		"scopes_supported":         []string{scopeCosmoSecurityRead},
+		"scopes_supported":         supportedOAuthScopes(),
 	})
 }
 
@@ -61,13 +61,20 @@ func (app *App) handleOAuthAuthorizationServerMetadata(w http.ResponseWriter, r 
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "client_credentials"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
-		"scopes_supported":                      []string{scopeCosmoSecurityRead},
+		"scopes_supported":                      supportedOAuthScopes(),
 		"resource_indicators_supported":         true,
 	}
 	if cfg.DynamicClientRegistration {
 		metadata["registration_endpoint"] = issuer + oauthRegisterPath
 	}
 	writeOAuthJSON(w, http.StatusOK, metadata)
+}
+
+func supportedOAuthScopes() []string {
+	return []string{
+		scopeCosmoSecurityRead,
+		scopeGraphActionsWrite,
+	}
 }
 
 func (app *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {

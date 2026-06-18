@@ -8,6 +8,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -130,6 +131,11 @@ func NewMCPActionProposal(args MCPArguments, findingID string, action string) MC
 		"external_status":        mcpStringArg(args, "external_status"),
 		"external_status_reason": mcpStringArg(args, "external_status_reason"),
 		"external_url":           mcpStringArg(args, "external_url"),
+		"graph_action":           mcpStringArg(args, "graph_action"),
+		"target":                 mcpStringArg(args, "target"),
+		"email_or_user_id":       mcpStringArg(args, "email_or_user_id"),
+		"idempotency_key":        mcpStringArg(args, "idempotency_key"),
+		"endpoint":               mcpStringArg(args, "endpoint"),
 		"recommended_action":     mcpStringArg(args, "recommended_action"),
 		"handoff_required":       false,
 		"proposal_note":          mcpStringArg(args, "proposal_note"),
@@ -138,12 +144,59 @@ func NewMCPActionProposal(args MCPArguments, findingID string, action string) MC
 	}
 }
 
+func MCPGraphActionTarget(args MCPArguments, finding *ports.FindingRecord) (string, error) {
+	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+	target := strings.TrimSpace(mcpStringArg(args, "target"))
+	if target == "" {
+		target = mcpStringArg(args, "email_or_user_id")
+	}
+	return graphactions.TargetForAction(graphAction, finding, target)
+}
+
+func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *ports.FindingRecord, action string, args MCPArguments, requiredScope string) error {
+	if action != "execute_graph_action" {
+		return nil
+	}
+	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+	target, err := MCPGraphActionTarget(args, finding)
+	if err != nil {
+		return err
+	}
+	findingID, _ := proposal["finding_id"].(string)
+	endpoint := "/platform/graph/actions"
+	clearMCPGraphActionExternalRefProposal(proposal)
+	proposal["graph_action"] = graphAction
+	proposal["target"] = target
+	proposal["endpoint"] = endpoint
+	proposal["idempotency_key"] = graphactions.IdempotencyKey(graphAction, strings.TrimSpace(findingID), target)
+	proposal["recommended_action"] = "POST " + endpoint
+	proposal["required_scope"] = requiredScope
+	proposal["approval_required"] = true
+	proposal["handoff_required"] = true
+	proposal["external_system"] = graphactions.ProviderAccessApprovals
+	proposal["external_ref_kind"] = graphactions.RefKind
+	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
+	return nil
+}
+
+func clearMCPGraphActionExternalRefProposal(proposal MCPActionProposalPayload) {
+	for _, key := range []string{
+		"lifecycle_owner",
+		"external_id",
+		"external_url",
+		"external_status",
+		"external_status_reason",
+	} {
+		proposal[key] = ""
+	}
+}
+
 // MCPActionInputProperties returns the finding action proposal input schema pieces.
 func MCPActionInputProperties() MCPSchemaProperties {
 	return MCPSchemaProperties{
 		"dry_run":                map[string]any{"type": "boolean", "const": true},
 		"finding_id":             map[string]any{"type": "string"},
-		"action":                 map[string]any{"type": "string", "enum": []string{"add_note", "update_status", "create_exception", "link_ticket"}},
+		"action":                 map[string]any{"type": "string", "enum": []string{"add_note", "update_status", "create_exception", "link_ticket", "execute_graph_action"}},
 		"note":                   map[string]any{"type": "string"},
 		"status":                 map[string]any{"type": "string", "enum": []string{"open", "resolved", "suppressed"}},
 		"reason":                 map[string]any{"type": "string"},
@@ -159,6 +212,11 @@ func MCPActionInputProperties() MCPSchemaProperties {
 		"external_status":        map[string]any{"type": "string"},
 		"external_status_reason": map[string]any{"type": "string"},
 		"external_url":           map[string]any{"type": "string"},
+		"graph_action":           map[string]any{"type": "string", "enum": []string{"identity.okta.suspend_user", "identity.okta.unsuspend_user"}},
+		"target":                 map[string]any{"type": "string"},
+		"email_or_user_id":       map[string]any{"type": "string"},
+		"idempotency_key":        map[string]any{"type": "string"},
+		"endpoint":               map[string]any{"type": "string"},
 		"recommended_action":     map[string]any{"type": "string"},
 		"handoff_required":       map[string]any{"type": "boolean"},
 		"proposal_note":          map[string]any{"type": "string"},
@@ -186,6 +244,11 @@ func MCPActionOutputProperties() MCPSchemaProperties {
 		"external_status":        map[string]any{"type": "string"},
 		"external_status_reason": map[string]any{"type": "string"},
 		"external_url":           map[string]any{"type": "string"},
+		"graph_action":           map[string]any{"type": "string"},
+		"target":                 map[string]any{"type": "string"},
+		"email_or_user_id":       map[string]any{"type": "string"},
+		"idempotency_key":        map[string]any{"type": "string"},
+		"endpoint":               map[string]any{"type": "string"},
 		"recommended_action":     map[string]any{"type": "string"},
 		"handoff_required":       map[string]any{"type": "boolean"},
 		"proposal_note":          map[string]any{"type": "string"},

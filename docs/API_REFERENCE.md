@@ -36,6 +36,7 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 - `POST /platform/knowledge/outcomes`
 - `POST /platform/workflow/replay`
 - `GET /platform/graph/neighborhood`
+- `POST /platform/graph/actions`
 - `GET /platform/graph/ingest-health`
 - `GET /platform/graph/ingest-runs`
 - `GET /platform/graph/ingest-runs/{runID}`

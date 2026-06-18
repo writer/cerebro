@@ -41,6 +41,7 @@ service BootstrapService {
   rpc AddFindingNote(AddFindingNoteRequest) returns (AddFindingNoteResponse);
   rpc LinkFindingTicket(LinkFindingTicketRequest) returns (LinkFindingTicketResponse);
   rpc LinkFindingExternalRef(LinkFindingExternalRefRequest) returns (LinkFindingExternalRefResponse);
+  rpc ExecuteGraphAction(ExecuteGraphActionRequest) returns (ExecuteGraphActionResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
@@ -458,6 +459,49 @@ message LinkFindingExternalRefRequest {
 // LinkFindingExternalRefResponse returns the updated finding with external lifecycle references.
 message LinkFindingExternalRefResponse {
   Finding finding = 1;
+}
+
+// ExecuteGraphActionRequest asks Cerebro to execute a supported action against a graph target.
+message ExecuteGraphActionRequest {
+  string action = 1;
+  string finding_id = 2;
+  string target = 3;
+  string reason = 4;
+  string ticket_url = 5;
+  string idempotency_key = 6;
+  map<string, string> parameters = 7;
+}
+
+// GraphAction is the generic action envelope Cerebro returns for provider-backed graph actions.
+message GraphAction {
+  string id = 1;
+  string action = 2;
+  string provider = 3;
+  string status = 4;
+  string target = 5;
+  string external_id = 6;
+  string external_url = 7;
+  string external_status = 8;
+  string external_status_reason = 9;
+  string reason = 10;
+  string source = 11;
+  string ticket_url = 12;
+  string idempotency_key = 13;
+  string actor_type = 14;
+  string actor_subject = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+  google.protobuf.Timestamp completed_at = 18;
+  string last_error = 19;
+  map<string, string> metadata = 20;
+}
+
+// ExecuteGraphActionResponse returns the provider action and, when a finding was supplied, the linked finding state.
+message ExecuteGraphActionResponse {
+  Finding finding = 1;
+  GraphAction action = 2;
+  string target = 3;
+  FindingExternalRef external_ref = 4;
 }
 
 // ListFindingsResponse returns the matched persisted findings.
