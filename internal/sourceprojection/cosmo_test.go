@@ -71,6 +71,43 @@ func TestProjectCosmoFactLinksSourceSession(t *testing.T) {
 	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_fact:risk:key", relationBelongsTo, "urn:cerebro:writer:cosmo_session:slack-C123-1779126269.376359")
 }
 
+func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-coordination-risk",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"record_id": "coordination:risk:thread-1",
+			"key":       "coordination:risk:thread-1",
+			"category":  "coordination_risk",
+			"source":    "session:thread-1",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"key":         "coordination:risk:thread-1",
+			"category":    "coordination_risk",
+			"status":      "active",
+			"risk_reason": "agent coordinated a privileged change across sessions",
+			"severity":    "high",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	fact := cosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-1", "cosmo.fact")
+	if got := fact.Attributes["risk_state"]; got != "active" {
+		t.Fatalf("fact risk_state = %q, want active", got)
+	}
+	if got := fact.Attributes["risk_reason"]; got == "" {
+		t.Fatal("fact risk_reason = empty, want reason carried into projection")
+	}
+	if got := fact.Attributes["risk_severity"]; got != "high" {
+		t.Fatalf("fact risk_severity = %q, want high", got)
+	}
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:thread-1", "cosmo.session")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:thread-1")
+}
+
 func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-message-msg-1",

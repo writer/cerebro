@@ -1,0 +1,69 @@
+{
+  "rule_id": "cosmo-coordination-active-risk",
+  "runtime": {
+    "id": "writer-cosmo-fact",
+    "source_id": "cosmo",
+    "tenant_id": "writer",
+    "config": {
+      "family": "fact"
+    }
+  },
+  "events": [
+    {
+      "id": "cosmo-fact-resolved",
+      "tenant_id": "writer",
+      "source_id": "cosmo",
+      "kind": "cosmo.fact",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "cosmo/fact/v1",
+      "attributes": {
+        "key": "coordination:risk:thread-3",
+        "category": "coordination_risk",
+        "source": "session:thread-3",
+        "risk_state": "resolved",
+        "risk_reason": "agent coordination guardrail re-enabled"
+      }
+    },
+    {
+      "id": "cosmo-fact-active",
+      "tenant_id": "writer",
+      "source_id": "cosmo",
+      "kind": "cosmo.fact",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "cosmo/fact/v1",
+      "attributes": {
+        "key": "coordination:risk:thread-7",
+        "category": "coordination_risk",
+        "source": "session:thread-7",
+        "risk_state": "active",
+        "risk_reason": "agent coordinated a privileged change across multiple sessions without approval",
+        "risk_severity": "high"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "cosmo-coordination-active-risk",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Cosmo agent memory records active coordination risk for fact coordination:risk:thread-7 in session thread-7",
+      "event_ids": ["cosmo-fact-active"],
+      "attributes": {
+        "cosmo_risk_urn": "urn:cerebro:writer:cosmo_coordination_risk:thread-7:coordination:risk:thread-7",
+        "fact_key": "coordination:risk:thread-7",
+        "session_id": "thread-7",
+        "category": "coordination_risk",
+        "risk_state": "active",
+        "risk_severity": "high",
+        "primary_resource_urn": "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-7",
+        "rule_required_attributes": "key"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "cosmo-fact-resolved",
+      "reason": "agent memory records the coordination-risk fact as resolved so there is no active risk"
+    }
+  ]
+}

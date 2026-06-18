@@ -61095,7 +61095,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 929
+        mapped_rules: 930
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62282,7 +62282,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 49
+          rule_count: 50
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-guardduty-c2-traffic
@@ -62295,6 +62295,7 @@ profiles:
             - azure-vm-approved-extensions-only
             - container-eol-writable
             - container-runtime-exec-detected
+            - cosmo-coordination-active-risk
             - finding-isolated-open-anchor
             - gcp-compute-shielded-vm
             - gcp-container-vuln-critical
@@ -63335,6 +63336,10 @@ profiles:
               control_id: CC7.4
             - framework_name: SOC 2
               control_id: CC7.5
+        - rule_id: cosmo-coordination-active-risk
+          controls:
+            - framework_name: SOC 2
+              control_id: CC7.1
         - rule_id: cross-provider-dormant-privileged
           controls:
             - framework_name: SOC 2

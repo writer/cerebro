@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"strconv"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -51,13 +52,19 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	factURN := projectionURN(tenantID, "cosmo_fact", factID)
-	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, map[string]string{
+	factAttributes := map[string]string{
 		"record_id":  attrs["record_id"],
 		"key":        firstNonEmpty(attrs["key"], stringValue(payload, "key")),
-		"category":   attrs["category"],
+		"category":   firstNonEmpty(attrs["category"], stringValue(payload, "category")),
 		"source":     attrs["source"],
 		"confidence": attrs["confidence"],
-	})))
+	}
+	if state := cosmoFactRiskState(attrs, payload); state != "" {
+		factAttributes["risk_state"] = state
+		factAttributes["risk_reason"] = firstNonEmpty(attrs["risk_reason"], stringValue(payload, "risk_reason"), stringValue(payload, "reason"), stringValue(payload, "summary"))
+		factAttributes["risk_severity"] = firstNonEmpty(attrs["risk_severity"], stringValue(payload, "risk_severity"), stringValue(payload, "severity"))
+	}
+	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, factAttributes)))
 	if sessionID := cosmoFactSessionID(attrs["source"]); sessionID != "" {
 		addCosmoSessionLink(entities, links, event, tenantID, factURN, sessionID)
 	}
@@ -183,4 +190,38 @@ func cosmoFactSessionID(source string) string {
 		return strings.TrimSpace(strings.TrimPrefix(source, "session:"))
 	}
 	return ""
+}
+
+// cosmoFactRiskState mirrors the finding-layer derivation so the projected
+// cosmo.fact entity carries the same durable coordination-risk state that the
+// finding rule keys on. It returns an empty string for non-risk facts.
+func cosmoFactRiskState(attrs map[string]string, payload map[string]any) string {
+	category := strings.ToLower(firstNonEmpty(attrs["category"], stringValue(payload, "category")))
+	if !cosmoCoordinationRiskCategory(category) {
+		return ""
+	}
+	switch strings.ToLower(firstNonEmpty(attrs["risk_state"], stringValue(payload, "risk_state"), stringValue(payload, "state"), stringValue(payload, "status"))) {
+	case "resolved", "closed", "mitigated", "inactive", "remediated":
+		return "resolved"
+	case "active", "open", "ongoing", "current":
+		return "active"
+	}
+	if raw := firstNonEmpty(attrs["resolved"], stringValue(payload, "resolved")); raw != "" {
+		if resolved, err := strconv.ParseBool(raw); err == nil {
+			if resolved {
+				return "resolved"
+			}
+			return "active"
+		}
+	}
+	return "active"
+}
+
+func cosmoCoordinationRiskCategory(category string) bool {
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "coordination_risk", "coordination-risk", "security_risk", "security-risk":
+		return true
+	default:
+		return false
+	}
 }

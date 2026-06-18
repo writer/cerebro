@@ -213,6 +213,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "cosmo",
+			Name:        "Cosmo",
+			Description: "Cosmo agent-memory coordination-risk posture findings.",
+			Rules: []Rule{
+				newCosmoCoordinationActiveRiskRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

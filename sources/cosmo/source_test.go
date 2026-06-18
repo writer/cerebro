@@ -458,6 +458,26 @@ func TestReadMessagesWithoutSinceUsesStableCompatibilityWindow(t *testing.T) {
 	}
 }
 
+func TestFactAttributesExposeCoordinationRiskContract(t *testing.T) {
+	attrs := attributesFor(familyFact, map[string]any{
+		"key":         "coordination:risk:thread-1",
+		"category":    "coordination_risk",
+		"source":      "session:thread-1",
+		"risk_reason": "agent coordinated a privileged change across sessions",
+	})
+	for _, key := range []string{"key", "category", "source"} {
+		if attrs[key] == "" {
+			t.Fatalf("fact attribute %q = empty, want populated coordination-risk contract field", key)
+		}
+	}
+	if got, want := attrs["category"], "coordination_risk"; got != want {
+		t.Fatalf("category = %q, want %q", got, want)
+	}
+	if got, want := attrs["source"], "session:thread-1"; got != want {
+		t.Fatalf("source = %q, want %q so downstream projection/finding can resolve session context", got, want)
+	}
+}
+
 func TestMessageAttributesIncludeUserContext(t *testing.T) {
 	attrs := attributesFor(familyMessage, map[string]any{
 		"ticket_id":  "COSMO-1",
