@@ -120,6 +120,48 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	}
 }
 
+func TestReadMergesBareDetailObjectWhenAllowed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/devices":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1", "name": "macbook-1"}}})
+		case "/devices/device-1/detail":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"metadata": map[string]any{"serial": "SERIAL1"},
+			})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:                  "device",
+		Path:                  "/devices",
+		DetailPath:            "/devices/{id}/detail",
+		AllowBareDetailRecord: true,
+		URNKind:               "test_device",
+		IDKeys:                []string{"id"},
+		Attributes: map[string]string{
+			"device_name":   "name",
+			"serial_number": "metadata.serial",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["serial_number"]; got != "SERIAL1" {
+		t.Fatalf("serial_number = %q, want detail value", got)
+	}
+}
+
 func TestReadUsesBasicAuth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))
