@@ -74,6 +74,8 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 		{name: "brace includes api", ignored: "{api,vendor}/**", forbidden: "api/", want: true},
 		{name: "brace includes sources", ignored: "{sources,vendor}/**", forbidden: "sources/", want: true},
 		{name: "brace excludes internal", ignored: "{api,vendor}/**", forbidden: "internal/"},
+		{name: "multiple brace groups includes internal", ignored: "{vendor,code}/{api,internal}/**", forbidden: "internal/", want: true},
+		{name: "multiple brace groups excludes docs", ignored: "{vendor,code}/{api,internal}/**", forbidden: "docs/"},
 		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
 		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
 		{name: "allowed vendor", ignored: "vendor/**", forbidden: "internal/"},
@@ -138,24 +140,42 @@ func deepsecIgnorePathCandidateIsBlanket(candidate string) bool {
 
 func deepsecIgnorePathCandidates(pattern string) []string {
 	pattern = strings.Trim(pattern, "/")
-	start := strings.Index(pattern, "{")
-	if start < 0 {
-		return []string{pattern}
-	}
-	endOffset := strings.Index(pattern[start+1:], "}")
-	if endOffset < 0 {
-		return []string{pattern}
-	}
-	end := start + 1 + endOffset
-	prefix := pattern[:start]
-	suffix := pattern[end+1:]
-	candidates := []string{pattern}
-	for _, option := range strings.Split(pattern[start+1:end], ",") {
-		option = strings.TrimSpace(option)
-		if option == "" {
-			continue
+	candidates := []string{}
+	seen := map[string]struct{}{}
+	var add func(string)
+	add = func(candidate string) {
+		candidate = strings.Trim(candidate, "/")
+		if _, ok := seen[candidate]; ok {
+			return
 		}
-		candidates = append(candidates, strings.Trim(prefix+option+suffix, "/"))
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
 	}
+	var expand func(string)
+	expand = func(candidate string) {
+		candidate = strings.Trim(candidate, "/")
+		start := strings.Index(candidate, "{")
+		if start < 0 {
+			add(candidate)
+			return
+		}
+		endOffset := strings.Index(candidate[start+1:], "}")
+		if endOffset < 0 {
+			add(candidate)
+			return
+		}
+		add(candidate)
+		end := start + 1 + endOffset
+		prefix := candidate[:start]
+		suffix := candidate[end+1:]
+		for _, option := range strings.Split(candidate[start+1:end], ",") {
+			option = strings.TrimSpace(option)
+			if option == "" {
+				continue
+			}
+			expand(prefix + option + suffix)
+		}
+	}
+	expand(pattern)
 	return candidates
 }
