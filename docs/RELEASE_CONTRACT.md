@@ -34,9 +34,9 @@ A release can include:
 - Linux runtime binaries,
 - multi-arch runtime image,
 - image provenance and signatures,
-- `cerebro-runtime-contract.json`,
-- `cerebro-runtime-contract.json.sig`,
-- `cerebro-runtime-contract.json.pem`.
+- environment-specific runtime contracts, such as `cerebro-runtime-contract-sec-dev.json` and `cerebro-runtime-contract-go-prod.json`,
+- matching runtime contract signatures,
+- matching runtime contract certificates.
 
 Runtime image:
 

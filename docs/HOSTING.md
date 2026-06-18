@@ -496,7 +496,7 @@ The public handoff is:
 
 - the container image,
 - the binary behavior,
-- `cerebro-runtime-contract.json` when produced by release tooling,
+- the environment-specific `cerebro-runtime-contract-<environment>.json` when produced by release tooling,
 - API and proto contracts,
 - the documented environment variable surface.
 
