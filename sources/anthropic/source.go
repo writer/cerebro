@@ -72,11 +72,11 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 func anthropicFamilies() []jsonapi.Family {
 	return []jsonapi.Family{
 		anthropicSingletonFamily("organization", "/organizations/me", "anthropic_organization", map[string]string{"organization_id": "id", "name": "name", "type": "type"}),
-		anthropicListFamily("user", "/organizations/users", "anthropic_user", []string{"id"}, []string{"added_at"}, map[string]string{"user_id": "id", "name": "name", "email": "email", "role": "role", "status": "status", "added_at": "added_at"}),
+		anthropicListFamily("user", "/organizations/users", "anthropic_user", []string{"id"}, []string{"added_at"}, map[string]string{"user_id": "id", "name": "name", "email": "email", "role": "role", "status": "status", "added_at": "added_at"}, withRequireID()),
 		anthropicListFamily("invite", "/organizations/invites", "anthropic_invite", []string{"id"}, []string{"created_at", "expires_at"}, map[string]string{"invite_id": "id", "email": "email", "role": "role", "status": "status", "created_at": "created_at", "expires_at": "expires_at"}),
-		anthropicListFamily("workspace", "/organizations/workspaces", "anthropic_workspace", []string{"id"}, []string{"created_at", "archived_at"}, map[string]string{"workspace_id": "id", "name": "name", "display_color": "display_color", "created_at": "created_at", "archived_at": "archived_at"}, withQuery(map[string]string{"include_archived": "include_archived"})),
+		anthropicListFamily("workspace", "/organizations/workspaces", "anthropic_workspace", []string{"id"}, []string{"created_at", "archived_at"}, map[string]string{"workspace_id": "id", "name": "name", "display_color": "display_color", "created_at": "created_at", "archived_at": "archived_at"}, withQuery(map[string]string{"include_archived": "include_archived"}), withRequireID()),
 		anthropicListFamily("workspace_member", "/organizations/workspaces/{workspace_id}/members", "anthropic_workspace_member", []string{"id", "user_id"}, []string{"added_at", "created_at"}, map[string]string{"workspace_id": "workspace_id", "user_id": "id|user_id", "email": "email", "name": "name", "workspace_role": "workspace_role|role", "added_at": "added_at"}, withPathParams("workspace_id")),
-		anthropicListFamily("api_key", "/organizations/api_keys", "anthropic_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "name": "name", "status": "status", "workspace_id": "workspace_id|workspace.id", "owner_user_id": "created_by.id|owner.id|user_id", "created_at": "created_at", "last_used_at": "last_used_at"}, withQuery(map[string]string{"status": "status", "workspace_id": "workspace_id"})),
+		anthropicListFamily("api_key", "/organizations/api_keys", "anthropic_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "name": "name", "status": "status", "workspace_id": "workspace_id|workspace.id", "owner_user_id": "created_by.id|owner.id|user_id", "created_at": "created_at", "last_used_at": "last_used_at"}, withQuery(map[string]string{"status": "status", "workspace_id": "workspace_id"}), withRequireID()),
 		anthropicListFamily("external_key", "/organizations/external_keys", "anthropic_external_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"external_key_id": "id", "name": "name", "status": "status", "provider": "provider", "workspace_id": "workspace_id|workspace.id", "created_at": "created_at", "last_used_at": "last_used_at"}, withPageCursor()),
 		anthropicListFamily("service_account", "/organizations/service_accounts", "anthropic_service_account", []string{"id"}, []string{"created_at"}, map[string]string{"service_account_id": "id", "name": "name", "status": "status", "description": "description", "created_at": "created_at"}),
 		anthropicListFamily("federation_issuer", "/organizations/federation_issuers", "anthropic_federation_issuer", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"federation_issuer_id": "id", "issuer": "issuer", "name": "name", "status": "status", "created_at": "created_at", "updated_at": "updated_at"}),
@@ -244,6 +244,12 @@ func projectCollaboratorAttributes() map[string]string {
 func withPathParams(params ...string) familyOption {
 	return func(f *jsonapi.Family) {
 		f.PathParams = append([]string{}, params...)
+	}
+}
+
+func withRequireID() familyOption {
+	return func(f *jsonapi.Family) {
+		f.RequireID = true
 	}
 }
 

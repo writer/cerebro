@@ -189,6 +189,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "anthropic",
+			Name:        "Anthropic",
+			Description: "Anthropic organization credential and unmanaged-access posture findings.",
+			Rules: []Rule{
+				newAnthropicUnmanagedActiveAPIKeyRule(),
+			},
+		},
+		{
 			ID:          "slack",
 			Name:        "Slack",
 			Description: "Slack workspace identity and privileged-access posture findings.",
