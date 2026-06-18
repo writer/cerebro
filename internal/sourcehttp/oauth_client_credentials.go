@@ -44,7 +44,11 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 	if c == nil {
 		return "", fmt.Errorf("%s oauth token cache is required", sourceID(options.SourceID))
 	}
-	tokenURL, err := renderTemplate(firstNonEmpty(configValue(cfg, "token_url"), options.TokenURLTemplate), cfg, options)
+	configuredTokenURL := configValue(cfg, "token_url")
+	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(options.TokenURLTemplate) != "" && !options.AllowLoopback {
+		return "", fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID))
+	}
+	tokenURL, err := renderTemplate(firstNonEmpty(configuredTokenURL, options.TokenURLTemplate), cfg, options)
 	if err != nil {
 		return "", err
 	}

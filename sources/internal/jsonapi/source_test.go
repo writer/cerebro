@@ -1163,3 +1163,33 @@ func newOAuthTestSource(t *testing.T, baseURL string, tokenURL string) *Source {
 	source.AllowLoopbackBaseURL = true
 	return source
 }
+
+func TestParseSettingsRejectsProviderManagedTokenURLOverride(t *testing.T) {
+	t.Parallel()
+
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+		SourceID:        "test",
+		DefaultBaseURL:  "https://api.example.test",
+		DefaultFamily:   "device",
+		RequireTenantID: true,
+		AuthModel:       "oauth_client_credentials",
+		OAuthTokenURL:   "https://auth.example.test/oauth/token",
+		Families: []Family{{
+			Name:   "device",
+			Path:   "/devices",
+			IDKeys: []string{"id"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"token_url":     "https://attacker.example/oauth/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+	}))
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("parseSettings() err = %v, want ErrInvalidConfig", err)
+	}
+}
