@@ -26,7 +26,7 @@ type httpAuthRoutePolicy struct {
 }
 
 var httpAuthRoutePolicies = []httpAuthRoutePolicy{
-	{Method: http.MethodPost, Exact: agentplatform.A2AJSONRPCPath, Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: agentplatform.A2AJSONRPCPath, Static: true, AdminOnly: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/contract", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/capabilities", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/api/v1/agent-platform/security-control-plane", Scope: scopeCosmoSecurityRead, Static: true},
