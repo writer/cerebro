@@ -182,7 +182,7 @@ func cosmoFactRiskState(event *cerebrov1.EventEnvelope) string {
 			return "active"
 		}
 	}
-	return "active"
+	return ""
 }
 
 func cosmoCoordinationRiskCategory(category string) bool {

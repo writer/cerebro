@@ -112,6 +112,20 @@ func TestCosmoCoordinationActiveRiskDoesNotUseGenericValueAsReason(t *testing.T)
 	}
 }
 
+func TestCosmoCoordinationActiveRiskRequiresPositiveActiveState(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}
+	event := cosmoCoordinationFactEvent("cosmo-unknown-state", map[string]string{"risk_state": ""}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(unknown state) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(unknown state) emitted %d findings, want 0 without positive active state", len(records))
+	}
+}
+
 func TestCosmoCoordinationActiveRiskRemediationResolves(t *testing.T) {
 	open := cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))

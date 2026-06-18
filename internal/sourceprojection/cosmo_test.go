@@ -140,6 +140,26 @@ func TestProjectCosmoFactResolvedBooleanMatchesFindingState(t *testing.T) {
 	}
 }
 
+func TestProjectCosmoFactUnknownCoordinationRiskStateStaysUnknown(t *testing.T) {
+	entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-coordination-risk-unknown",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"key":      "coordination:risk:thread-1",
+			"category": "coordination_risk",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+	if got, ok := fact.Attributes["risk_state"]; ok {
+		t.Fatalf("fact risk_state = %q, want omitted for unknown state", got)
+	}
+}
+
 func TestProjectCosmoAvoidsDelimiterCollisionInGraphURNs(t *testing.T) {
 	colonEntities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-fact-colon",

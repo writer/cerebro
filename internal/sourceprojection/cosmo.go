@@ -219,7 +219,7 @@ func cosmoFactRiskState(attrs map[string]string, payload map[string]any) string 
 			return "active"
 		}
 	}
-	return "active"
+	return ""
 }
 
 func cosmoCoordinationRiskCategory(category string) bool {
