@@ -163,6 +163,61 @@ func TestRunEmitsPlatformJobWideEventWithoutPayloadValues(t *testing.T) {
 	}
 }
 
+func TestRunEmitsSinglePlatformJobFailedEvent(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-failed-telemetry"] = &ports.Job{
+		ID:     "job-failed-telemetry",
+		Kind:   KindReportRun,
+		Status: ports.JobStatusQueued,
+	}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, errors.New("runner failed")
+	})
+
+	stderr := captureJobServiceStderr(t, func() {
+		if err := service.Run(context.Background(), "job-failed-telemetry"); err == nil {
+			t.Fatal("Run() error = nil, want runner failure")
+		}
+	})
+
+	failedEvents := jobTelemetryPayloads(t, stderr, "event", "platform.job.failed")
+	if len(failedEvents) != 1 {
+		t.Fatalf("platform.job.failed events = %d, want 1; stderr=%s", len(failedEvents), stderr)
+	}
+	runPayload := jobTelemetrySpanEndPayload(t, stderr, "platform.job.run")
+	if got := runPayload["job.status.final"]; got != ports.JobStatusFailed {
+		t.Fatalf("job.status.final = %#v, want %q; payload=%#v", got, ports.JobStatusFailed, runPayload)
+	}
+}
+
+func TestRunReportTelemetryFallsBackToSubjectID(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-report-telemetry"] = &ports.Job{
+		ID:          "job-report-telemetry",
+		Kind:        KindReportRun,
+		Status:      ports.JobStatusQueued,
+		SubjectType: "report",
+		SubjectID:   "report-subject-id",
+		Payload:     map[string]any{"report_id": "   "},
+	}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, nil
+	})
+
+	stderr := captureJobServiceStderr(t, func() {
+		if err := service.Run(context.Background(), "job-report-telemetry"); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	})
+
+	payload := jobTelemetrySpanEndPayload(t, stderr, "platform.job.run")
+	if got := payload["report_id"]; got != "report-subject-id" {
+		t.Fatalf("report_id = %#v, want SubjectID fallback; payload=%#v", got, payload)
+	}
+}
+
 func TestStartAsyncDetachesFromRequestAndWaitCancelsJob(t *testing.T) {
 	store := newMemoryJobStore()
 	service := New(store)
@@ -374,6 +429,17 @@ func captureJobServiceStderr(t *testing.T, fn func()) string {
 
 func jobTelemetrySpanEndPayload(t *testing.T, stderr string, name string) map[string]any {
 	t.Helper()
+	payloads := jobTelemetryPayloads(t, stderr, "span_end", name)
+	if len(payloads) > 0 {
+		return payloads[0]
+	}
+	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
+	return nil
+}
+
+func jobTelemetryPayloads(t *testing.T, stderr string, kind string, name string) []map[string]any {
+	t.Helper()
+	payloads := []map[string]any{}
 	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -382,10 +448,9 @@ func jobTelemetrySpanEndPayload(t *testing.T, stderr string, name string) map[st
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
 			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
 		}
-		if payload["kind"] == "span_end" && payload["name"] == name {
-			return payload
+		if payload["kind"] == kind && payload["name"] == name {
+			payloads = append(payloads, payload)
 		}
 	}
-	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
-	return nil
+	return payloads
 }
