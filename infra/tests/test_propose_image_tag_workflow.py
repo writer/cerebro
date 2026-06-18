@@ -83,7 +83,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn("if: steps.latest.outputs.superseded != 'true'", workflow)
         self.assertIn("- name: Report superseded release", workflow)
 
-    def test_public_release_reads_use_unauthenticated_rest_api(self) -> None:
+    def test_release_reads_use_authenticated_github_api(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         for step_name in (
             "Verify release metadata",
@@ -92,12 +92,12 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         ):
             with self.subTest(step_name=step_name):
                 step = workflow.split(f"- name: {step_name}", 1)[1].split("\n      - name:", 1)[0]
-                self.assertNotIn("GH_TOKEN: ${{ github.token }}", step)
+                self.assertIn("GH_TOKEN: ${{ github.token }}", step)
                 self.assertNotIn("gh release", step)
-                self.assertIn("https://api.github.com/repos/writer/cerebro/releases", step)
+                self.assertIn('gh api "repos/writer/cerebro/releases', step)
 
         apply_step = self._apply_step()
-        self.assertIn("https://api.github.com/repos/writer/cerebro/releases?per_page=100", apply_step)
+        self.assertIn('gh api "repos/writer/cerebro/releases?per_page=100"', apply_step)
 
     def test_release_pr_body_surfaces_runtime_contract_evidence(self) -> None:
         apply_step = self._apply_step()
