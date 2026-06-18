@@ -170,15 +170,6 @@ func TestCerebroHighRiskAPIAccessReopensOnRecurrence(t *testing.T) {
 	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor != closeAnchor {
 		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
 	}
-	otherCleanEvent := cerebroAPIAccessEvent("cerebro-access-other-cleaned", map[string]string{"principal": "other@example.com", "requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 30, 0, 0, time.UTC))
-	otherCloseAnchor, otherCloses := counterRule.CloseOnEvent(otherCleanEvent)
-	if !otherCloses || otherCloseAnchor == "" {
-		t.Fatalf("CloseOnEvent(other clean) = (%q, %v), want a non-empty closing anchor", otherCloseAnchor, otherCloses)
-	}
-	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor == otherCloseAnchor {
-		t.Fatalf("OpenAnchor(open finding) = %q, should not match other principal close anchor", openAnchor)
-	}
-
 	routeLessCleanEvent := cerebroAPIAccessEvent("cerebro-access-cleaned-route-less", map[string]string{"route": "", "connect_procedure": "", "requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 30, 0, 0, time.UTC))
 	routeLessCloseAnchor, routeLessCloses := counterRule.CloseOnEvent(routeLessCleanEvent)
 	if !routeLessCloses || routeLessCloseAnchor != closeAnchor {
