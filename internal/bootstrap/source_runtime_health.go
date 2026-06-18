@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecoverage"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -366,23 +367,7 @@ func (a *App) sourceCoverageRecords(runtimes []*cerebrov1.SourceRuntime, filter 
 }
 
 func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeFreshnessRecord {
-	lifecycleState := "active"
-	if strings.ToLower(strings.TrimSpace(record.EnabledState)) == "disabled" {
-		lifecycleState = "disabled"
-	}
-	sourceSyncState := runtimeFreshnessSourceSyncState(record)
-	graphIngestState := sourceRuntimeGraphState(record)
-	findingEvaluationState := runtimeFreshnessFindingEvaluationState(record)
-	scheduleState := "unknown"
-	if record.ScheduleContextConfigured {
-		scheduleState = "configured"
-	}
-	freshnessState, failureClass, failureReason, nextAction := runtimeFreshnessState(record, lifecycleState, sourceSyncState, graphIngestState)
-	backfillEligible, backfillReason := runtimeBackfillEligibility(lifecycleState, sourceSyncState, graphIngestState)
-	workflow := ""
-	if backfillEligible {
-		workflow = "source-runtime-backfill"
-	}
+	state := sourcehealth.Evaluate(sourceHealthRecord(record))
 	return runtimeFreshnessRecord{
 		runtimeFreshnessIdentity: runtimeFreshnessIdentity{
 			RuntimeID: record.RuntimeID,
@@ -391,16 +376,16 @@ func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeF
 			Family:    record.Family,
 		},
 		runtimeFreshnessStates: runtimeFreshnessStates{
-			LifecycleState:            lifecycleState,
-			ScheduleState:             scheduleState,
-			FreshnessState:            freshnessState,
-			SourceSyncState:           sourceSyncState,
-			GraphIngestState:          graphIngestState,
-			FindingEvaluationState:    findingEvaluationState,
-			FailureClass:              failureClass,
-			FailureReason:             failureReason,
-			BackfillEligible:          backfillEligible,
-			BackfillEligibilityReason: backfillReason,
+			LifecycleState:            state.LifecycleState,
+			ScheduleState:             state.ScheduleState,
+			FreshnessState:            state.FreshnessState,
+			SourceSyncState:           state.SourceSyncState,
+			GraphIngestState:          state.GraphIngestState,
+			FindingEvaluationState:    state.FindingEvaluationState,
+			FailureClass:              state.FailureClass,
+			FailureReason:             state.FailureReason,
+			BackfillEligible:          state.BackfillEligible,
+			BackfillEligibilityReason: state.BackfillEligibilityReason,
 		},
 		runtimeFreshnessObservations: runtimeFreshnessObservations{
 			LastSyncedAt:            record.LastSyncedAt,
@@ -415,8 +400,8 @@ func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeF
 			GeneratedAt:             record.GeneratedAt,
 		},
 		runtimeFreshnessActions: runtimeFreshnessActions{
-			NextAction:                nextAction,
-			RecommendedWorkflow:       workflow,
+			NextAction:                state.NextAction,
+			RecommendedWorkflow:       state.RecommendedWorkflow,
 			CursorPending:             record.CursorPending,
 			CheckpointCursorPresent:   record.CheckpointCursorPresent,
 			ScheduleContextConfigured: record.ScheduleContextConfigured,
@@ -424,76 +409,34 @@ func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeF
 	}
 }
 
-func runtimeFreshnessSourceSyncState(record sourceRuntimeHealthRecord) string {
-	if strings.TrimSpace(record.LastFailureCategory) != "" {
-		return "failed"
+func sourceHealthRecord(record sourceRuntimeHealthRecord) sourcehealth.Record {
+	var graphRun *sourcehealth.GraphRun
+	if record.LatestGraphRun != nil {
+		graphRun = &sourcehealth.GraphRun{Status: record.LatestGraphRun.Status}
 	}
-	switch strings.ToLower(strings.TrimSpace(record.Status)) {
-	case "failing":
-		return "failed"
-	case "stale":
-		return "stale"
-	case "healthy":
-		return "current"
-	default:
-		return "unknown"
+	var findingEvaluation *sourcehealth.FindingEvaluation
+	if record.LatestFindingEvaluation != nil {
+		findingEvaluation = &sourcehealth.FindingEvaluation{Status: record.LatestFindingEvaluation.Status}
 	}
-}
-
-func runtimeFreshnessFindingEvaluationState(record sourceRuntimeHealthRecord) string {
-	if record.LatestFindingEvaluation == nil {
-		return "not_observed"
-	}
-	status := strings.ToLower(strings.TrimSpace(record.LatestFindingEvaluation.Status))
-	if strings.Contains(status, "fail") || strings.Contains(status, "error") || strings.Contains(status, "cancel") {
-		return "failed"
-	}
-	if strings.Contains(status, "running") || strings.Contains(status, "pending") {
-		return "running"
-	}
-	return "current"
-}
-
-func runtimeFreshnessState(record sourceRuntimeHealthRecord, lifecycleState string, sourceSyncState string, graphIngestState string) (string, string, string, string) {
-	if lifecycleState != "active" {
-		return "disabled", "disabled", "runtime is disabled", "review_runtime_enablement"
-	}
-	if sourceSyncState == "failed" {
-		failureClass := strings.TrimSpace(record.LastFailureCategory)
-		if failureClass == "" {
-			failureClass = "source_sync_failed"
-		}
-		return "source_failed", failureClass, "source sync is failing", "fix_source_sync"
-	}
-	switch graphIngestState {
-	case "failed":
-		return "graph_failed", "graph_ingest_failed", "latest graph ingest failed", "inspect_graph_ingest"
-	case "not_observed":
-		return "graph_missing", "graph_ingest_missing", "no graph ingest run has been observed", "plan_backfill"
-	case "behind":
-		return "graph_behind", "graph_ingest_behind", "graph ingest is older than the configured freshness window", "plan_backfill"
-	}
-	if sourceSyncState == "stale" {
-		return "source_stale", "source_sync_stale", "source runtime is older than the configured freshness window", "run_source_sync"
-	}
-	if sourceSyncState == "current" && (graphIngestState == "current" || graphIngestState == "running") {
-		return "healthy", "", "", "monitor"
-	}
-	return "unknown", "insufficient_signal", "source or graph freshness signal is unavailable", "inspect_runtime"
-}
-
-func runtimeBackfillEligibility(lifecycleState string, sourceSyncState string, graphIngestState string) (bool, string) {
-	if lifecycleState != "active" {
-		return false, "runtime is disabled"
-	}
-	if sourceSyncState == "failed" {
-		return false, "source sync must succeed before graph backfill"
-	}
-	switch graphIngestState {
-	case "failed", "not_observed", "behind":
-		return true, "graph ingest is missing, failed, or behind"
-	default:
-		return false, "graph ingest backfill is not indicated"
+	return sourcehealth.Record{
+		RuntimeID:                 record.RuntimeID,
+		SourceID:                  record.SourceID,
+		TenantID:                  record.TenantID,
+		Family:                    record.Family,
+		EnabledState:              record.EnabledState,
+		Status:                    record.Status,
+		LastFailureCategory:       record.LastFailureCategory,
+		ContractProbeState:        record.ContractProbeState,
+		CursorPending:             record.CursorPending,
+		CheckpointCursorPresent:   record.CheckpointCursorPresent,
+		ScheduleContextConfigured: record.ScheduleContextConfigured,
+		SyncLagSeconds:            record.SyncLagSeconds,
+		WatermarkLagSeconds:       record.WatermarkLagSeconds,
+		GraphLagSeconds:           record.GraphLagSeconds,
+		ExpectedCadenceSeconds:    record.ExpectedCadenceSeconds,
+		StaleAfterSeconds:         record.StaleAfterSeconds,
+		LatestGraphRun:            graphRun,
+		LatestFindingEvaluation:   findingEvaluation,
 	}
 }
 
@@ -612,20 +555,7 @@ func sourceRuntimeHealthSummaries(records []sourceRuntimeHealthRecord) []sourceR
 }
 
 func sourceRuntimeGraphState(record sourceRuntimeHealthRecord) string {
-	if record.LatestGraphRun == nil {
-		return "not_observed"
-	}
-	status := strings.ToLower(strings.TrimSpace(record.LatestGraphRun.Status))
-	if strings.Contains(status, "fail") || strings.Contains(status, "error") || strings.Contains(status, "cancel") {
-		return "failed"
-	}
-	if strings.Contains(status, "running") || strings.Contains(status, "pending") {
-		return "running"
-	}
-	if record.GraphLagSeconds != nil && record.StaleAfterSeconds != nil && *record.GraphLagSeconds > *record.StaleAfterSeconds {
-		return "behind"
-	}
-	return "current"
+	return sourcehealth.GraphIngestState(sourceHealthRecord(record))
 }
 
 func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.SourceRuntime, generatedAt time.Time) (sourceRuntimeHealthRecord, error) {

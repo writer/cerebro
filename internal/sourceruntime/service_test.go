@@ -1853,10 +1853,14 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 	log := &appendLog{}
 	service := New(registry, store, log, nil)
 
-	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-contract-event"})
-	if err != nil {
-		t.Fatalf("Sync() error = %v", err)
-	}
+	var resp *cerebrov1.SyncSourceRuntimeResponse
+	stderr := captureSourceRuntimeStderr(t, func() {
+		var syncErr error
+		resp, syncErr = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-contract-event"})
+		if syncErr != nil {
+			t.Fatalf("Sync() error = %v", syncErr)
+		}
+	})
 	if len(log.events) != 0 {
 		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
 	}
@@ -1880,6 +1884,52 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 	}
 	if stored.GetLastSyncedAt() == nil {
 		t.Fatal("LastSyncedAt is nil, want terminal rejection to commit sync status")
+	}
+	validationPayload := sourceRuntimeTelemetryEventPayload(t, stderr, "source_runtime.validation")
+	for key, want := range map[string]any{
+		"runtime_id":                    "example-contract-event",
+		"source_id":                     "contract_event",
+		"tenant_id":                     "example",
+		"failure_category":              "missing_required_attribute",
+		"missing_canonical_field_class": "attribute",
+	} {
+		if got := validationPayload[key]; got != want {
+			t.Fatalf("validation telemetry %s = %#v, want %#v; payload=%#v", key, got, want, validationPayload)
+		}
+	}
+	probePayload := sourceRuntimeTelemetryEventPayload(t, stderr, "source_runtime.contract_probe")
+	for key, want := range map[string]any{
+		"runtime_id":            "example-contract-event",
+		"source_id":             "contract_event",
+		"tenant_id":             "example",
+		"contract_probe_state":  "failure",
+		"contract_probe_status": "failure",
+	} {
+		if got := probePayload[key]; got != want {
+			t.Fatalf("contract probe telemetry %s = %#v, want %#v; payload=%#v", key, got, want, probePayload)
+		}
+	}
+}
+
+func TestEmitSourceRuntimeContractProbeMapsPassingState(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "example-contract-event",
+		SourceId: "contract_event",
+		TenantId: "example",
+		Config: map[string]string{
+			runtimeContractProbeStateConfigKey: "passing",
+		},
+	}
+	stderr := captureSourceRuntimeStderr(t, func() {
+		emitSourceRuntimeContractProbe(context.Background(), runtime)
+	})
+
+	payload := sourceRuntimeTelemetryEventPayload(t, stderr, "source_runtime.contract_probe")
+	if got := payload["contract_probe_status"]; got != "success" {
+		t.Fatalf("contract_probe_status = %#v, want success; payload=%#v", got, payload)
+	}
+	if got := payload["contract_probe_state"]; got != "passing" {
+		t.Fatalf("contract_probe_state = %#v, want passing; payload=%#v", got, payload)
 	}
 }
 
