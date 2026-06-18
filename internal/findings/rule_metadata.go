@@ -79,25 +79,26 @@ type PublicDetectionCatalog struct {
 }
 
 type PublicDetection struct {
-	ID                 string                    `json:"id"`
-	PackID             string                    `json:"pack_id"`
-	PackName           string                    `json:"pack_name"`
-	Name               string                    `json:"name"`
-	Description        string                    `json:"description"`
-	SourceID           string                    `json:"source_id"`
-	EvaluationMode     string                    `json:"evaluation_mode"`
-	EventKinds         []string                  `json:"event_kinds,omitempty"`
-	OutputKind         string                    `json:"output_kind"`
-	Severity           string                    `json:"severity"`
-	Status             string                    `json:"status"`
-	Maturity           string                    `json:"maturity"`
-	Tags               []string                  `json:"tags,omitempty"`
-	References         []string                  `json:"references,omitempty"`
-	FalsePositives     []string                  `json:"false_positives,omitempty"`
-	Runbook            string                    `json:"runbook"`
-	RequiredAttributes []string                  `json:"required_attributes,omitempty"`
-	FingerprintFields  []string                  `json:"fingerprint_fields,omitempty"`
-	ControlRefs        []ports.FindingControlRef `json:"control_refs,omitempty"`
+	ID                       string                    `json:"id"`
+	PackID                   string                    `json:"pack_id"`
+	PackName                 string                    `json:"pack_name"`
+	Name                     string                    `json:"name"`
+	Description              string                    `json:"description"`
+	SourceID                 string                    `json:"source_id"`
+	EvaluationMode           string                    `json:"evaluation_mode"`
+	EventKinds               []string                  `json:"event_kinds,omitempty"`
+	OutputKind               string                    `json:"output_kind"`
+	Severity                 string                    `json:"severity"`
+	Status                   string                    `json:"status"`
+	Maturity                 string                    `json:"maturity"`
+	Tags                     []string                  `json:"tags,omitempty"`
+	References               []string                  `json:"references,omitempty"`
+	FalsePositives           []string                  `json:"false_positives,omitempty"`
+	Runbook                  string                    `json:"runbook"`
+	RequiredAttributes       []string                  `json:"required_attributes,omitempty"`
+	RequiredAttributesByKind map[string][]string       `json:"required_attributes_by_kind,omitempty"`
+	FingerprintFields        []string                  `json:"fingerprint_fields,omitempty"`
+	ControlRefs              []ports.FindingControlRef `json:"control_refs,omitempty"`
 }
 
 const (
@@ -368,48 +369,99 @@ func ruleMetadata(rule Rule) (RuleDefinition, bool) {
 
 func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string) PublicDetection {
 	return PublicDetection{
-		ID:                 strings.TrimSpace(metadata.ID),
-		PackID:             strings.TrimSpace(pack.ID),
-		PackName:           strings.TrimSpace(pack.Name),
-		Name:               strings.TrimSpace(metadata.Name),
-		Description:        strings.TrimSpace(metadata.Description),
-		SourceID:           strings.TrimSpace(metadata.SourceID),
-		EvaluationMode:     mode,
-		EventKinds:         uniqueSortedStrings(metadata.EventKinds),
-		OutputKind:         strings.TrimSpace(metadata.OutputKind),
-		Severity:           strings.TrimSpace(metadata.Severity),
-		Status:             strings.TrimSpace(metadata.Status),
-		Maturity:           strings.TrimSpace(metadata.Maturity),
-		Tags:               uniqueSortedStrings(metadata.Tags),
-		References:         uniqueSortedStrings(metadata.References),
-		FalsePositives:     uniqueSortedStrings(metadata.FalsePositives),
-		Runbook:            strings.TrimSpace(metadata.Runbook),
-		RequiredAttributes: uniqueSortedStrings(metadata.RequiredAttributes),
-		FingerprintFields:  uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
-		ControlRefs:        cloneFindingControlRefs(metadata.ControlRefs),
+		ID:                       strings.TrimSpace(metadata.ID),
+		PackID:                   strings.TrimSpace(pack.ID),
+		PackName:                 strings.TrimSpace(pack.Name),
+		Name:                     strings.TrimSpace(metadata.Name),
+		Description:              strings.TrimSpace(metadata.Description),
+		SourceID:                 strings.TrimSpace(metadata.SourceID),
+		EvaluationMode:           mode,
+		EventKinds:               uniqueSortedStrings(metadata.EventKinds),
+		OutputKind:               strings.TrimSpace(metadata.OutputKind),
+		Severity:                 strings.TrimSpace(metadata.Severity),
+		Status:                   strings.TrimSpace(metadata.Status),
+		Maturity:                 strings.TrimSpace(metadata.Maturity),
+		Tags:                     uniqueSortedStrings(metadata.Tags),
+		References:               uniqueSortedStrings(metadata.References),
+		FalsePositives:           uniqueSortedStrings(metadata.FalsePositives),
+		Runbook:                  strings.TrimSpace(metadata.Runbook),
+		RequiredAttributes:       uniqueSortedStrings(metadata.RequiredAttributes),
+		RequiredAttributesByKind: normalizedStringSliceMap(metadata.RequiredAttributesByKind),
+		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
+		ControlRefs:              cloneFindingControlRefs(metadata.ControlRefs),
 	}
 }
 
 func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 	return RuleDefinition{
-		ID:                 strings.TrimSpace(definition.ID),
-		Name:               strings.TrimSpace(definition.Name),
-		Description:        strings.TrimSpace(definition.Description),
-		SourceID:           strings.TrimSpace(definition.SourceID),
-		EventKinds:         cloneStringSlice(definition.EventKinds),
-		OutputKind:         strings.TrimSpace(definition.OutputKind),
-		Severity:           strings.TrimSpace(definition.Severity),
-		Status:             strings.TrimSpace(definition.Status),
-		Maturity:           strings.TrimSpace(definition.Maturity),
-		Tags:               cloneStringSlice(definition.Tags),
-		References:         cloneStringSlice(definition.References),
-		FalsePositives:     cloneStringSlice(definition.FalsePositives),
-		Runbook:            strings.TrimSpace(definition.Runbook),
-		RequiredAttributes: cloneStringSlice(definition.RequiredAttributes),
-		FingerprintFields:  cloneStringSlice(definition.FingerprintFields),
-		ControlRefs:        cloneFindingControlRefs(definition.ControlRefs),
-		Lifecycle:          definition.Lifecycle,
+		ID:                       strings.TrimSpace(definition.ID),
+		Name:                     strings.TrimSpace(definition.Name),
+		Description:              strings.TrimSpace(definition.Description),
+		SourceID:                 strings.TrimSpace(definition.SourceID),
+		EventKinds:               cloneStringSlice(definition.EventKinds),
+		OutputKind:               strings.TrimSpace(definition.OutputKind),
+		Severity:                 strings.TrimSpace(definition.Severity),
+		Status:                   strings.TrimSpace(definition.Status),
+		Maturity:                 strings.TrimSpace(definition.Maturity),
+		Tags:                     cloneStringSlice(definition.Tags),
+		References:               cloneStringSlice(definition.References),
+		FalsePositives:           cloneStringSlice(definition.FalsePositives),
+		Runbook:                  strings.TrimSpace(definition.Runbook),
+		RequiredAttributes:       cloneStringSlice(definition.RequiredAttributes),
+		RequiredAttributesByKind: cloneStringSliceMap(definition.RequiredAttributesByKind),
+		FingerprintFields:        cloneStringSlice(definition.FingerprintFields),
+		ControlRefs:              cloneFindingControlRefs(definition.ControlRefs),
+		Lifecycle:                definition.Lifecycle,
 	}
+}
+
+func cloneStringSliceMap(values map[string][]string) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(values))
+	for key, slice := range values {
+		cloned[key] = cloneStringSlice(slice)
+	}
+	return cloned
+}
+
+func normalizedStringSliceMap(values map[string][]string) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make(map[string][]string, len(values))
+	for key, slice := range values {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		entries := uniqueSortedStrings(slice)
+		if len(entries) != 0 {
+			normalized[key] = entries
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func keyedAttributesAttribute(values map[string][]string) string {
+	normalized := normalizedStringSliceMap(values)
+	if len(normalized) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(normalized))
+	for key := range normalized {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"="+strings.Join(normalized[key], ","))
+	}
+	return strings.Join(parts, ";")
 }
 
 func cloneRuleDefinitions(definitions []RuleDefinition) []RuleDefinition {

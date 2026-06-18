@@ -4,6 +4,7 @@ description: Kolide/osquery endpoint inventory, compliance, software, ownership,
 emitted_kinds:
   - kolide.check
   - kolide.device
+  - kolide.issue
   - kolide.software
   - kolide.user_device
   - kolide.vulnerability
@@ -21,6 +22,12 @@ coverage_contract:
       type: lifecycle_state
       title: Device compliance checks
       families: [check]
+      support: supported
+      high_value: true
+    - id: issues
+      type: lifecycle_state
+      title: Open and resolved device check issues
+      families: [issue]
       support: supported
       high_value: true
     - id: software_inventory

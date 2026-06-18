@@ -387,6 +387,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"cosmo.survey_feedback":                         cosmoSurveyFeedbackProjections,
 	"kolide.check":                                  kolideCheckProjections,
 	"kolide.device":                                 kolideDeviceProjections,
+	"kolide.issue":                                  kolideIssueProjections,
 	"kolide.software":                               kolideSoftwareProjections,
 	"kolide.user_device":                            kolideUserDeviceProjections,
 	"kolide.vulnerability":                          kolideVulnerabilityProjections,

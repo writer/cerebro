@@ -3025,7 +3025,8 @@
       "source_id": "kolide",
       "evaluation_mode": "event",
       "event_kinds": [
-        "kolide.device"
+        "kolide.device",
+        "kolide.issue"
       ],
       "output_kind": "finding.kolide_host_failing_compliance_checks",
       "severity": "MEDIUM",
@@ -3048,7 +3049,17 @@
       "required_attributes": [
         "device_id"
       ],
+      "required_attributes_by_kind": {
+        "kolide.device": [
+          "device_id"
+        ],
+        "kolide.issue": [
+          "device_id",
+          "issue_id"
+        ]
+      },
       "fingerprint_fields": [
+        "kolide_issue_urn",
         "kolide_device_urn"
       ],
       "control_refs": [
