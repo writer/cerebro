@@ -1,0 +1,30 @@
+[
+  {
+    "id": "okta-log-stream-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.log_stream",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/log_stream/v1",
+    "payload": {
+      "id": "logstream-splunk",
+      "domain": "writer.okta.com",
+      "name": "Splunk Cloud"
+    },
+    "attributes": {
+      "created_at": "2026-04-20T00:00:00Z",
+      "domain": "writer.okta.com",
+      "family": "log_stream",
+      "last_updated_at": "2026-04-23T00:00:00Z",
+      "log_stream_id": "logstream-splunk",
+      "name": "Splunk Cloud",
+      "resource_id": "logstream-splunk",
+      "resource_type": "LogStream",
+      "splunk_edition": "aws",
+      "splunk_host": "https://splunk.example.com/services/collector",
+      "splunk_host_host": "splunk.example.com",
+      "status": "ACTIVE",
+      "type": "splunk_cloud_logstreaming"
+    }
+  }
+]

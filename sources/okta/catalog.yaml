@@ -1,15 +1,22 @@
 id: okta
 name: Okta
-description: Okta audit log, identity inventory, group, application, assignment, federation, network zone, trusted origin, and admin role source.
+description: Okta audit log, identity inventory, group, application, assignment, federation, network zone, trusted origin, control-plane asset, and admin role source.
 emitted_kinds:
   - okta.audit
   - okta.admin_role
+  - okta.api_token
   - okta.app_assignment
   - okta.application
+  - okta.authorization_server
   - okta.authenticator
+  - okta.brand
+  - okta.device_assurance
+  - okta.event_hook
   - okta.group
   - okta.group_membership
   - okta.identity_provider
+  - okta.inline_hook
+  - okta.log_stream
   - okta.network_zone
   - okta.policy_rule
   - okta.threat_insight
@@ -35,16 +42,48 @@ coverage_contract:
       high_value: true
       known_unsupported_fields:
         - app-specific fine-grained entitlement payloads
+    - id: api_tokens
+      type: entity_family
+      title: API token metadata
+      families: [api_token]
+      support: supported
+      high_value: true
+      notes:
+        - Token values are never collected; only token metadata, creator user, timestamps, and network conditions are surfaced.
     - id: applications
       type: entity_family
       title: Applications
       families: [application]
       support: supported
       high_value: true
+    - id: authorization_servers
+      type: entity_family
+      title: Authorization servers
+      families: [authorization_server]
+      support: supported
+      high_value: true
     - id: authenticators
       type: entity_family
       title: Authenticators
       families: [authenticator]
+      support: supported
+      high_value: true
+    - id: brands
+      type: entity_family
+      title: Brands
+      families: [brand]
+      support: supported
+      high_value: true
+    - id: device_assurance
+      type: entity_family
+      title: Device assurance policies
+      families: [device_assurance]
+      support: supported
+      high_value: true
+    - id: event_hooks
+      type: entity_family
+      title: Event hooks
+      families: [event_hook]
       support: supported
       high_value: true
     - id: audit_events
@@ -71,6 +110,12 @@ coverage_contract:
       families: [identity_provider]
       support: supported
       high_value: true
+    - id: inline_hooks
+      type: entity_family
+      title: Inline hooks
+      families: [inline_hook]
+      support: supported
+      high_value: true
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -80,6 +125,12 @@ coverage_contract:
       type: entity_family
       title: Network zones
       families: [network_zone]
+      support: supported
+      high_value: true
+    - id: log_streams
+      type: entity_family
+      title: Log streams
+      families: [log_stream]
       support: supported
       high_value: true
     - id: policy_rules

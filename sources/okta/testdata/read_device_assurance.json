@@ -1,0 +1,30 @@
+[
+  {
+    "id": "okta-device-assurance-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.device_assurance",
+    "occurred_at": "2026-06-18T00:00:00Z",
+    "schema_ref": "okta/device_assurance/v1",
+    "payload": {
+      "id": "device-assurance-macos",
+      "domain": "writer.okta.com",
+      "name": "Managed macOS"
+    },
+    "attributes": {
+      "created_at": "2026-04-20T00:00:00Z",
+      "created_by": "00u1",
+      "device_assurance_id": "device-assurance-macos",
+      "domain": "writer.okta.com",
+      "family": "device_assurance",
+      "last_updated_at": "2026-04-23T00:00:00Z",
+      "last_updated_by": "00u1",
+      "name": "Managed macOS",
+      "platform": "MACOS",
+      "resource_id": "device-assurance-macos",
+      "resource_type": "DeviceAssurance",
+      "screen_lock_required": "true",
+      "secure_hardware_present": "true"
+    }
+  }
+]

@@ -871,6 +871,125 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 		wantEntities   uint32
 	}{
 		{
+			name: "api token",
+			kind: "okta.api_token",
+			attributes: map[string]string{
+				"api_token_id":             "tok-admin",
+				"client_name":              "Okta API",
+				"domain":                   "writer.okta.com",
+				"name":                     "Admin automation",
+				"network_connection":       "ZONE",
+				"network_zone_include_ids": "zone-corp",
+				"token_id":                 "tok-admin",
+				"user_id":                  "00u1",
+			},
+			wantURN:        "urn:cerebro:writer:okta_api_token:tok-admin",
+			wantEntityType: "okta.api_token",
+			wantLabel:      "Admin automation",
+			wantEntities:   4,
+			wantAttrs: map[string]string{
+				"api_token_id":             "tok-admin",
+				"client_name":              "Okta API",
+				"name":                     "Admin automation",
+				"network_connection":       "ZONE",
+				"network_zone_include_ids": "zone-corp",
+				"token_id":                 "tok-admin",
+				"user_id":                  "00u1",
+			},
+		},
+		{
+			name: "authorization server",
+			kind: "okta.authorization_server",
+			attributes: map[string]string{
+				"authorization_server_id": "aus-api",
+				"domain":                  "writer.okta.com",
+				"issuer":                  "https://login.example.com/oauth2/aus-api",
+				"issuer_host":             "login.example.com",
+				"name":                    "API Gateway",
+				"status":                  "ACTIVE",
+			},
+			wantURN:        "urn:cerebro:writer:okta_authorization_server:aus-api",
+			wantEntityType: "okta.authorization_server",
+			wantLabel:      "API Gateway",
+			wantEntities:   4,
+			wantAttrs: map[string]string{
+				"authorization_server_id": "aus-api",
+				"issuer":                  "https://login.example.com/oauth2/aus-api",
+				"issuer_host":             "login.example.com",
+				"name":                    "API Gateway",
+				"status":                  "ACTIVE",
+			},
+		},
+		{
+			name: "brand",
+			kind: "okta.brand",
+			attributes: map[string]string{
+				"brand_id":                   "brand-prod",
+				"custom_privacy_policy_host": "privacy.example.com",
+				"custom_privacy_policy_url":  "https://privacy.example.com/policy",
+				"domain":                     "writer.okta.com",
+				"is_default":                 "true",
+				"name":                       "Writer Login",
+			},
+			wantURN:        "urn:cerebro:writer:okta_brand:brand-prod",
+			wantEntityType: "okta.brand",
+			wantLabel:      "Writer Login",
+			wantEntities:   4,
+			wantAttrs: map[string]string{
+				"brand_id":                   "brand-prod",
+				"custom_privacy_policy_host": "privacy.example.com",
+				"custom_privacy_policy_url":  "https://privacy.example.com/policy",
+				"is_default":                 "true",
+				"name":                       "Writer Login",
+			},
+		},
+		{
+			name: "device assurance",
+			kind: "okta.device_assurance",
+			attributes: map[string]string{
+				"device_assurance_id":     "device-assurance-macos",
+				"domain":                  "writer.okta.com",
+				"name":                    "Managed macOS",
+				"platform":                "MACOS",
+				"secure_hardware_present": "true",
+			},
+			wantURN:        "urn:cerebro:writer:okta_device_assurance:device-assurance-macos",
+			wantEntityType: "okta.device_assurance",
+			wantLabel:      "Managed macOS",
+			wantEntities:   2,
+			wantAttrs: map[string]string{
+				"device_assurance_id":     "device-assurance-macos",
+				"name":                    "Managed macOS",
+				"platform":                "MACOS",
+				"secure_hardware_present": "true",
+			},
+		},
+		{
+			name: "event hook",
+			kind: "okta.event_hook",
+			attributes: map[string]string{
+				"domain":              "writer.okta.com",
+				"event_hook_id":       "hook-event-prod",
+				"name":                "Security event egress",
+				"status":              "ACTIVE",
+				"uri":                 "https://hooks.example.com/okta/events",
+				"uri_host":            "hooks.example.com",
+				"verification_status": "VERIFIED",
+			},
+			wantURN:        "urn:cerebro:writer:okta_event_hook:hook-event-prod",
+			wantEntityType: "okta.event_hook",
+			wantLabel:      "Security event egress",
+			wantEntities:   4,
+			wantAttrs: map[string]string{
+				"event_hook_id":       "hook-event-prod",
+				"name":                "Security event egress",
+				"status":              "ACTIVE",
+				"uri":                 "https://hooks.example.com/okta/events",
+				"uri_host":            "hooks.example.com",
+				"verification_status": "VERIFIED",
+			},
+		},
+		{
 			name: "identity provider",
 			kind: "okta.identity_provider",
 			attributes: map[string]string{
@@ -895,6 +1014,56 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 				"protocol_type": "SAML2",
 				"status":        "ACTIVE",
 				"type":          "SAML2",
+			},
+		},
+		{
+			name: "inline hook",
+			kind: "okta.inline_hook",
+			attributes: map[string]string{
+				"domain":         "writer.okta.com",
+				"inline_hook_id": "hook-inline-prod",
+				"name":           "Token transform",
+				"status":         "ACTIVE",
+				"type":           "com.okta.oauth2.tokens.transform",
+				"uri":            "https://token-hooks.example.com/transform",
+				"uri_host":       "token-hooks.example.com",
+			},
+			wantURN:        "urn:cerebro:writer:okta_inline_hook:hook-inline-prod",
+			wantEntityType: "okta.inline_hook",
+			wantLabel:      "Token transform",
+			wantEntities:   4,
+			wantAttrs: map[string]string{
+				"inline_hook_id": "hook-inline-prod",
+				"name":           "Token transform",
+				"status":         "ACTIVE",
+				"type":           "com.okta.oauth2.tokens.transform",
+				"uri":            "https://token-hooks.example.com/transform",
+				"uri_host":       "token-hooks.example.com",
+			},
+		},
+		{
+			name: "log stream",
+			kind: "okta.log_stream",
+			attributes: map[string]string{
+				"domain":           "writer.okta.com",
+				"log_stream_id":    "logstream-splunk",
+				"name":             "Splunk Cloud",
+				"splunk_host":      "https://splunk.example.com/services/collector",
+				"splunk_host_host": "splunk.example.com",
+				"status":           "ACTIVE",
+				"type":             "splunk_cloud_logstreaming",
+			},
+			wantURN:        "urn:cerebro:writer:okta_log_stream:logstream-splunk",
+			wantEntityType: "okta.log_stream",
+			wantLabel:      "Splunk Cloud",
+			wantEntities:   4,
+			wantAttrs: map[string]string{
+				"log_stream_id":    "logstream-splunk",
+				"name":             "Splunk Cloud",
+				"splunk_host":      "https://splunk.example.com/services/collector",
+				"splunk_host_host": "splunk.example.com",
+				"status":           "ACTIVE",
+				"type":             "splunk_cloud_logstreaming",
 			},
 		},
 		{
@@ -990,9 +1159,27 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			}
 			assertProjectedLink(t, state, tt.wantURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 			switch tt.name {
+			case "api token":
+				assertProjectedLink(t, state, "urn:cerebro:writer:okta_user:00u1", relationAssignedTo, tt.wantURN)
+				assertProjectedLink(t, state, tt.wantURN, relationDependsOn, "urn:cerebro:writer:okta_network_zone:zone-corp")
+			case "authorization server":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:login.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:login.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+			case "brand":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:privacy.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:privacy.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+			case "event hook":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:hooks.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:hooks.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
 			case "identity provider":
 				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:idp.example.com")
 				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:idp.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+			case "inline hook":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:token-hooks.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:token-hooks.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+			case "log stream":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:splunk.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:splunk.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
 			case "trusted origin":
 				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:app.example.com")
 				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:app.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")

@@ -1850,6 +1850,171 @@ func oktaThreatInsightProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	return projectedEntities, projectedLinks, nil
 }
 
+type oktaAssetProjectionOptions struct {
+	urnKind         string
+	entityType      string
+	idAttributes    []string
+	labelAttributes []string
+	copyAttributes  []string
+	hostAttributes  []string
+}
+
+func oktaAPITokenProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_api_token", entityType: "okta.api_token",
+		idAttributes:    []string{"api_token_id", "token_id", "resource_id"},
+		labelAttributes: []string{"name", "api_token_id", "token_id"},
+		copyAttributes:  []string{"api_token_id", "client_name", "created_at", "expires_at", "last_updated_at", "name", "network_connection", "network_zone_exclude_ids", "network_zone_include_ids", "token_id", "user_id"},
+	})
+}
+
+func oktaAuthorizationServerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_authorization_server", entityType: "okta.authorization_server",
+		idAttributes:    []string{"authorization_server_id", "resource_id"},
+		labelAttributes: []string{"name", "authorization_server_id"},
+		copyAttributes:  []string{"audience_count", "audiences", "authorization_server_id", "created_at", "description", "issuer", "issuer_host", "issuer_mode", "jwks_uri_host", "kid", "last_updated_at", "name", "next_rotation_at", "rotation_mode", "signing_last_rotated_at", "status"},
+		hostAttributes:  []string{"issuer_host", "jwks_uri_host"},
+	})
+}
+
+func oktaBrandProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_brand", entityType: "okta.brand",
+		idAttributes:    []string{"brand_id", "resource_id"},
+		labelAttributes: []string{"name", "brand_id"},
+		copyAttributes:  []string{"brand_id", "custom_privacy_policy_host", "custom_privacy_policy_url", "email_domain_id", "is_default", "locale", "name", "remove_powered_by_okta"},
+		hostAttributes:  []string{"custom_privacy_policy_host"},
+	})
+}
+
+func oktaDeviceAssuranceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_device_assurance", entityType: "okta.device_assurance",
+		idAttributes:    []string{"device_assurance_id", "resource_id"},
+		labelAttributes: []string{"name", "device_assurance_id"},
+		copyAttributes:  []string{"created_at", "created_by", "device_assurance_id", "display_remediation_mode", "last_updated_at", "last_updated_by", "name", "platform", "screen_lock_required", "secure_hardware_present"},
+	})
+}
+
+func oktaEventHookProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_event_hook", entityType: "okta.event_hook",
+		idAttributes:    []string{"event_hook_id", "resource_id"},
+		labelAttributes: []string{"name", "event_hook_id"},
+		copyAttributes:  []string{"channel_type", "channel_version", "created_at", "created_by", "description", "event_count", "event_hook_id", "event_subscription_type", "last_updated_at", "method", "name", "status", "uri", "uri_host", "verification_status"},
+		hostAttributes:  []string{"uri_host"},
+	})
+}
+
+func oktaInlineHookProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_inline_hook", entityType: "okta.inline_hook",
+		idAttributes:    []string{"inline_hook_id", "resource_id"},
+		labelAttributes: []string{"name", "inline_hook_id"},
+		copyAttributes:  []string{"channel_type", "channel_version", "created_at", "inline_hook_id", "last_updated_at", "method", "name", "status", "type", "uri", "uri_host", "version"},
+		hostAttributes:  []string{"uri_host"},
+	})
+}
+
+func oktaLogStreamProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return oktaAssetProjections(event, oktaAssetProjectionOptions{
+		urnKind: "okta_log_stream", entityType: "okta.log_stream",
+		idAttributes:    []string{"log_stream_id", "resource_id"},
+		labelAttributes: []string{"name", "log_stream_id"},
+		copyAttributes:  []string{"aws_account_id", "aws_event_source_name", "aws_region", "created_at", "last_updated_at", "log_stream_id", "name", "splunk_edition", "splunk_host", "splunk_host_host", "status", "type"},
+		hostAttributes:  []string{"splunk_host_host"},
+	})
+}
+
+func oktaAssetProjections(event *cerebrov1.EventEnvelope, options oktaAssetProjectionOptions) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	domain := strings.TrimSpace(attrs["domain"])
+	assetID := firstNonEmpty(attributeValues(attrs, options.idAttributes)...)
+	if assetID == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "okta.org", Label: domain, Attributes: map[string]string{"domain": domain}})
+	}
+	assetURN := projectionURN(tenantID, options.urnKind, assetID)
+	assetAttrs := map[string]string{}
+	for _, key := range options.copyAttributes {
+		addProjectedAttribute(assetAttrs, key, attrs[key])
+	}
+	addEntity(entities, &ports.ProjectedEntity{URN: assetURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: options.entityType, Label: firstNonEmpty(attributeValues(attrs, options.labelAttributes)...), Attributes: assetAttrs})
+	if orgURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), assetURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	}
+	addOktaAssetHostLinks(entities, links, tenantID, event, assetURN, options.entityType, attrs, options.hostAttributes)
+	addOktaAPITokenOwnerLinks(entities, links, tenantID, event, assetURN, orgURN, attrs)
+	addOktaAPITokenNetworkZoneLinks(entities, links, tenantID, event, assetURN, orgURN, attrs)
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func attributeValues(attrs map[string]string, keys []string) []string {
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, attrs[key])
+	}
+	return values
+}
+
+func addOktaAssetHostLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, assetURN string, entityType string, attrs map[string]string, hostKeys []string) {
+	for _, key := range hostKeys {
+		host := strings.TrimSpace(attrs[key])
+		if host == "" {
+			continue
+		}
+		matchType := strings.ReplaceAll(entityType, ".", "_") + "_" + key
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationHasIdentifier, host, matchType, "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, matchType+"_domain", "0.95")
+	}
+}
+
+func addOktaAPITokenOwnerLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, tokenURN string, orgURN string, attrs map[string]string) {
+	userID := strings.TrimSpace(attrs["user_id"])
+	if strings.TrimSpace(attrs["api_token_id"]) == "" || userID == "" {
+		return
+	}
+	userURN := identityUserURN(tenantID, "okta", userID, "")
+	addEntity(entities, &ports.ProjectedEntity{URN: userURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "okta.user", Label: userID, Attributes: map[string]string{"user_id": userID}})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, tokenURN, relationAssignedTo, map[string]string{"event_id": event.GetId(), "match_type": "okta_api_token_creator"}))
+	addIdentityOrgMembershipLink(links, tenantID, event, userURN, orgURN)
+}
+
+func addOktaAPITokenNetworkZoneLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, tokenURN string, orgURN string, attrs map[string]string) {
+	if strings.TrimSpace(attrs["api_token_id"]) == "" {
+		return
+	}
+	for _, item := range []struct {
+		values string
+		scope  string
+	}{
+		{attrs["network_zone_include_ids"], "include"},
+		{attrs["network_zone_exclude_ids"], "exclude"},
+	} {
+		for _, zoneID := range splitCSV(item.values) {
+			zoneID = durableIdentityConditionReferenceID(zoneID)
+			if zoneID == "" {
+				continue
+			}
+			zoneURN := projectionURN(tenantID, "okta_network_zone", zoneID)
+			addEntity(entities, &ports.ProjectedEntity{URN: zoneURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "okta.network_zone", Label: zoneID, Attributes: map[string]string{"network_zone_id": zoneID, "zone_id": zoneID}})
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), tokenURN, zoneURN, relationDependsOn, map[string]string{"condition_scope": item.scope, "event_id": event.GetId(), "match_type": "okta_api_token_network_zone"}))
+			addIdentityOrgMembershipLink(links, tenantID, event, zoneURN, orgURN)
+		}
+	}
+}
+
 func oktaIdentityProviderProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {

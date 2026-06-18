@@ -1,0 +1,29 @@
+[
+  {
+    "id": "okta-brand-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.brand",
+    "occurred_at": "2026-06-18T00:00:00Z",
+    "schema_ref": "okta/brand/v1",
+    "payload": {
+      "id": "brand-prod",
+      "domain": "writer.okta.com",
+      "name": "Writer Login"
+    },
+    "attributes": {
+      "brand_id": "brand-prod",
+      "custom_privacy_policy_host": "privacy.example.com",
+      "custom_privacy_policy_url": "https://privacy.example.com/policy",
+      "domain": "writer.okta.com",
+      "email_domain_id": "email-domain-1",
+      "family": "brand",
+      "is_default": "true",
+      "locale": "en",
+      "name": "Writer Login",
+      "remove_powered_by_okta": "true",
+      "resource_id": "brand-prod",
+      "resource_type": "Brand"
+    }
+  }
+]

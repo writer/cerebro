@@ -1,0 +1,33 @@
+[
+  {
+    "id": "okta-inline-hook-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.inline_hook",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/inline_hook/v1",
+    "payload": {
+      "id": "hook-inline-prod",
+      "domain": "writer.okta.com",
+      "name": "Token transform"
+    },
+    "attributes": {
+      "channel_type": "HTTP",
+      "channel_version": "1.0.0",
+      "created_at": "2026-04-20T00:00:00Z",
+      "domain": "writer.okta.com",
+      "family": "inline_hook",
+      "inline_hook_id": "hook-inline-prod",
+      "last_updated_at": "2026-04-23T00:00:00Z",
+      "method": "POST",
+      "name": "Token transform",
+      "resource_id": "hook-inline-prod",
+      "resource_type": "InlineHook",
+      "status": "ACTIVE",
+      "type": "com.okta.oauth2.tokens.transform",
+      "uri": "https://token-hooks.example.com/transform",
+      "uri_host": "token-hooks.example.com",
+      "version": "1.0.0"
+    }
+  }
+]
