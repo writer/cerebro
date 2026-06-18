@@ -589,7 +589,7 @@ func aiRolePermissionProjections(event *cerebrov1.EventEnvelope, profile aiAcces
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	roleID := aiRoleID(attrs)
-	permissionID := aiRolePermissionID(attrs, event.GetId())
+	permissionID := aiRolePermissionID(attrs, "")
 	if roleID == "" || permissionID == "" {
 		return identityProjectionResult(entities, links)
 	}
@@ -617,17 +617,15 @@ func aiRolePermissionProjections(event *cerebrov1.EventEnvelope, profile aiAcces
 	aiLinkRoleToScope(links, tenantID, event, roleURN, scopeURN, roleID, "role_permission_scope_access")
 	capabilityID := aiRolePermissionCapabilityID(attrs)
 	capabilityURN := projectionURN(tenantID, "privileged_capability", capabilityID)
-	if capabilityURN != "" {
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        capabilityURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "privileged.capability",
-			Label:      strings.ReplaceAll(capabilityID, "_", " "),
-			Attributes: map[string]string{"capability_id": capabilityID},
-		})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, capabilityURN, relationConfersCapability, aiEventLinkAttributes(event, "role_permission_capability")))
-	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        capabilityURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "privileged.capability",
+		Label:      strings.ReplaceAll(capabilityID, "_", " "),
+		Attributes: map[string]string{"capability_id": capabilityID},
+	})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, capabilityURN, relationConfersCapability, aiEventLinkAttributes(event, "role_permission_capability")))
 	return identityProjectionResult(entities, links)
 }
 
@@ -936,7 +934,7 @@ func aiAuditProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile)
 	actorServiceAccountID := strings.TrimSpace(attrs["actor_service_account_id"])
 	actorEmail := strings.TrimSpace(attrs["actor_email"])
 	actorType := strings.TrimSpace(attrs["actor_type"])
-	actorID := firstNonEmpty(actorUserID, actorServiceAccountID, actorAPIKeyID, attrs["actor_id"])
+	actorID := firstNonEmpty(actorUserID, attrs["actor_id"])
 	if actorAPIKeyID != "" {
 		actorType = "credential"
 		actorID = actorAPIKeyID
@@ -962,13 +960,14 @@ func aiAuditProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile)
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), ownerURN, actorURN, relationAssignedTo, linkAttrs))
 		}
 	}
-	targetURN := aiAuditTargetURN(entities, links, tenantID, event, profile, attrs)
-	if actorURN != "" && targetURN != "" {
-		linkAttrs := aiEventLinkAttributes(event, "audit_activity")
-		addProjectedAttribute(linkAttrs, "event_type", firstNonEmpty(attrs["event_type"], attrs["activity_type"]))
-		addProjectedAttribute(linkAttrs, "activity_type", attrs["activity_type"])
-		addProjectedAttribute(linkAttrs, "actor_type", actorType)
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, targetURN, relationActedOn, linkAttrs))
+	for _, targetURN := range aiAuditTargetURNs(entities, links, tenantID, event, profile, attrs) {
+		if actorURN != "" && targetURN != "" {
+			linkAttrs := aiEventLinkAttributes(event, "audit_activity")
+			addProjectedAttribute(linkAttrs, "event_type", firstNonEmpty(attrs["event_type"], attrs["activity_type"]))
+			addProjectedAttribute(linkAttrs, "activity_type", attrs["activity_type"])
+			addProjectedAttribute(linkAttrs, "actor_type", actorType)
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, targetURN, relationActedOn, linkAttrs))
+		}
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -1122,13 +1121,16 @@ func aiEnsureCredential(entities map[string]*ports.ProjectedEntity, tenantID str
 	if credentialURN == "" {
 		return ""
 	}
-	credentialAttrs := aiPrincipalAttributes(attrs, map[string]string{
-		"credential_id":            strings.TrimSpace(credentialID),
-		"principal_type":           "credential",
-		"api_key_id":               strings.TrimSpace(credentialID),
-		"actor_user_id":            strings.TrimSpace(attrs["actor_user_id"]),
-		"actor_service_account_id": strings.TrimSpace(attrs["actor_service_account_id"]),
-	})
+	baseAttrs := map[string]string{
+		"credential_id":  strings.TrimSpace(credentialID),
+		"principal_type": "credential",
+		"api_key_id":     strings.TrimSpace(credentialID),
+	}
+	if credentialID == strings.TrimSpace(firstNonEmpty(attrs["actor_api_key_id"], attrs["actor_admin_api_key_id"])) {
+		baseAttrs["actor_user_id"] = strings.TrimSpace(attrs["actor_user_id"])
+		baseAttrs["actor_service_account_id"] = strings.TrimSpace(attrs["actor_service_account_id"])
+	}
+	credentialAttrs := aiPrincipalAttributes(attrs, baseAttrs)
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        credentialURN,
 		TenantID:   tenantID,
@@ -1271,6 +1273,28 @@ func aiRoleAssignmentRelation(role string) string {
 	return relationAssignedTo
 }
 
+func aiAuditTargetURNs(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, attrs map[string]string) []string {
+	targetURNs := []string{}
+	appendTarget := func(targetURN string) {
+		if targetURN == "" {
+			return
+		}
+		for _, existing := range targetURNs {
+			if existing == targetURN {
+				return
+			}
+		}
+		targetURNs = append(targetURNs, targetURN)
+	}
+	appendTarget(aiAuditTargetURN(entities, links, tenantID, event, profile, attrs))
+
+	eventType := strings.TrimSpace(firstNonEmpty(attrs["event_type"], attrs["activity_type"]))
+	if strings.HasPrefix(eventType, "role.assignment.") && strings.TrimSpace(attrs["principal_id"]) != "" {
+		appendTarget(aiAuditPrincipalURN(entities, links, tenantID, event, profile, attrs["principal_id"], attrs["principal_type"], attrs))
+	}
+	return targetURNs
+}
+
 func aiAuditTargetURN(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, attrs map[string]string) string {
 	sourceID := event.GetSourceId()
 	eventType := strings.TrimSpace(firstNonEmpty(attrs["event_type"], attrs["activity_type"]))
@@ -1357,19 +1381,22 @@ func aiAuditActivityResourceURN(entities map[string]*ports.ProjectedEntity, link
 }
 
 func aiAuditPrincipalURN(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, principalID string, principalType string, attrs map[string]string) string {
-	switch identityPrincipalType(principalType) {
-	case "group":
+	normalizedType := normalizeIdentifier(principalType)
+	switch {
+	case strings.Contains(normalizedType, "group"):
 		groupAttrs := cloneAttributes(attrs)
 		groupAttrs["group_id"] = principalID
 		return aiEnsureGroup(entities, tenantID, event.GetSourceId(), profile, groupAttrs)
-	case "service_account":
+	case strings.Contains(normalizedType, "service_account") || strings.Contains(normalizedType, "serviceaccount"):
 		return aiEnsureServiceAccount(entities, tenantID, event.GetSourceId(), profile, principalID, attrs["name"], attrs["role"], attrs)
-	case "role":
+	case strings.Contains(normalizedType, "role"):
 		roleAttrs := cloneAttributes(attrs)
 		roleAttrs["role_id"] = principalID
 		return aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, roleAttrs, aiAuditRoleScopeKind(attrs))
-	default:
+	case normalizedType == "" || strings.Contains(normalizedType, "user"):
 		return aiEnsureUser(entities, links, tenantID, event, profile, principalID, attrs["email"], attrs["name"], attrs["role"])
+	default:
+		return aiAuditResourceURN(entities, links, tenantID, event, profile, principalID, principalType, attrs)
 	}
 }
 
@@ -1456,7 +1483,7 @@ func aiInviteAccessState(status string) string {
 
 func aiInviteAccessIntentActive(status string) bool {
 	switch aiInviteAccessState(status) {
-	case "invited":
+	case "invited", "accepted":
 		return true
 	default:
 		return false
@@ -1659,7 +1686,8 @@ func aiGovernanceControlID(family string, attrs map[string]string, fallback stri
 	case "project_data_retention":
 		return firstNonEmpty(joinProjectionIdentity(attrs, "project_id", "retention_type", "object"), fallback)
 	case "data_retention":
-		return firstNonEmpty(joinProjectionIdentity(attrs, "organization_id", "organization_uuid", "retention_type", "object"), joinProjectionIdentity(attrs, "retention_type", "object"), fallback)
+		orgID := firstNonEmpty(attrs["organization_id"], attrs["organization_uuid"])
+		return firstNonEmpty(joinScopedProjectionIdentity(orgID, attrs, "retention_type", "object"), joinProjectionIdentity(attrs, "retention_type", "object"), fallback)
 	case "project_spend_alert":
 		return firstNonEmpty(joinProjectionIdentity(attrs, "project_id", "spend_alert_id", "name"), fallback)
 	case "spend_alert":
@@ -1673,9 +1701,23 @@ func aiGovernanceControlID(family string, attrs map[string]string, fallback stri
 	case "spend_limit_increase_request":
 		return firstNonEmpty(attrs["request_id"], attrs["id"], joinProjectionIdentity(attrs, "user_id", "period", "amount"), fallback)
 	case "compliance_organization_setting":
-		return firstNonEmpty(joinProjectionIdentity(attrs, "organization_uuid", "organization_id", "setting_name", "name"), fallback)
+		orgID := firstNonEmpty(attrs["organization_uuid"], attrs["organization_id"])
+		return firstNonEmpty(joinScopedProjectionIdentity(orgID, attrs, "setting_name", "name"), fallback)
 	}
 	return firstNonEmpty(inventoryEntityID("", family, attrs), fallback)
+}
+
+func joinScopedProjectionIdentity(scopeID string, attrs map[string]string, keys ...string) string {
+	values := []string{}
+	if scopeID = strings.TrimSpace(scopeID); scopeID != "" {
+		values = append(values, scopeID)
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			values = append(values, value)
+		}
+	}
+	return strings.Join(values, "|")
 }
 
 func aiGovernanceControlType(family string) string {

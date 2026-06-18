@@ -605,6 +605,19 @@ func TestReadComplianceProjectCollaboratorsUsesProjectPathAndPageCursor(t *testi
 	if second.NextCursor != nil {
 		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
 	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	secondEvent := second.Events[0]
+	if got := secondEvent.Attributes["role_id"]; got != "project_viewer" {
+		t.Fatalf("second role_id = %q, want project_viewer", got)
+	}
+	if got := secondEvent.Attributes["role"]; got != "project_viewer" {
+		t.Fatalf("second role = %q, want project_viewer", got)
+	}
+	if got := secondEvent.Attributes["role_name"]; got != "project_viewer" {
+		t.Fatalf("second role_name = %q, want project_viewer", got)
+	}
 }
 
 func TestReadComplianceOrganizationSettingsUsesSettingsListKey(t *testing.T) {
