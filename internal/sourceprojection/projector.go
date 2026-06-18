@@ -78,6 +78,7 @@ func NewWithRegistry(state ports.ProjectionStateStore, graph ports.ProjectionGra
 
 // Project applies one source event to the configured state and graph stores.
 func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (result ports.ProjectionResult, err error) {
+	ctx = telemetry.EnsureTraceContext(ctx)
 	started := time.Now()
 	defer func() {
 		sourceID := ""
@@ -90,6 +91,21 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		if err != nil {
 			status = "failed"
 		}
+		attrs := observability.SourceProjectionDiagnosticAttributes(sourceProjectionDiagnosticContext(event)).
+			With(telemetry.Attrs(
+				telemetry.Field{Key: "status", Value: status},
+				telemetry.Field{Key: "source_projection.status", Value: status},
+				telemetry.Field{Key: "source_projection.entities_projected", Value: result.EntitiesProjected},
+				telemetry.Field{Key: "source_projection.links_projected", Value: result.LinksProjected},
+				telemetry.Field{Key: "source_projection.entities_deleted", Value: result.EntitiesDeleted},
+				telemetry.Field{Key: "source_projection.links_deleted", Value: result.LinksDeleted},
+			))
+		if err != nil {
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceProjectionTelemetryErrorKind(err)})
+		}
+		telemetry.Event(ctx, "source_projection.project", attrs)
+		telemetry.AnnotateMain(ctx, attrs)
+		telemetry.AnnotateMainPhase(ctx, "source_projection.project", status, attrs)
 		observability.RecordSourceProjection(ctx, observability.SourceProjectionMetrics{
 			SourceID:          sourceID,
 			EventKind:         eventKind,
@@ -187,6 +203,32 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesDeleted:   entitiesDeleted,
 		LinksDeleted:      cleanupDeleted.LinksDeleted + retractedLinksDeleted,
 	}, nil
+}
+
+func sourceProjectionDiagnosticContext(event *cerebrov1.EventEnvelope) observability.SourceProjectionDiagnosticContext {
+	if event == nil {
+		return observability.SourceProjectionDiagnosticContext{}
+	}
+	return observability.SourceProjectionDiagnosticContext{
+		RuntimeID: strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]),
+		SourceID:  event.GetSourceId(),
+		TenantID:  event.GetTenantId(),
+		EventKind: event.GetKind(),
+	}
+}
+
+func sourceProjectionTelemetryErrorKind(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "event is required"),
+		strings.Contains(message, "tenant_id is required"):
+		return "invalid_event"
+	default:
+		return "projection_failed"
+	}
 }
 
 func projectionRetractionReason(links []*ports.ProjectedLink) string {
