@@ -117,6 +117,73 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	}
 }
 
+func TestHandleExecuteGraphActionSupportsTargetOnlyUnsuspend(t *testing.T) {
+	var gotPath string
+	var gotRequest graphactions.AccessApprovalsUserActionRequest
+	accessApprovals := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&gotRequest); err != nil {
+			t.Fatalf("decode access-approvals request: %v", err)
+		}
+		writeGraphActionTestAction(t, w, graphactions.AccessApprovalsUserAction{
+			ID:             "oja-unsuspend-1",
+			Action:         graphactions.AccessApprovalsActionUnsuspend,
+			Status:         "pending",
+			Target:         gotRequest.EmailOrUserID,
+			OktaUserID:     "00u123",
+			OktaUserStatus: "SUSPENDED",
+			Source:         gotRequest.Source,
+			IdempotencyKey: gotRequest.IdempotencyKey,
+		})
+	}))
+	defer accessApprovals.Close()
+
+	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		GraphActions: config.GraphActionsConfig{
+			AccessApprovals: config.AccessApprovalsActionConfig{
+				BaseURL:     accessApprovals.URL,
+				BearerToken: "graph-action-token",
+				Timeout:     time.Second,
+			},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := `{"action":"identity.okta.unsuspend_user","target":"00u123","idempotency_key":"manual-unsuspend-1"}`
+	response, err := server.Client().Post(server.URL+"/platform/graph/actions", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST graph action: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", response.StatusCode)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if gotPath != "/admin/okta-jail/unsuspend" {
+		t.Fatalf("access-approvals path = %q, want unsuspend path", gotPath)
+	}
+	if gotRequest.EmailOrUserID != "00u123" || gotRequest.IdempotencyKey != "manual-unsuspend-1" {
+		t.Fatalf("access-approvals request = %#v", gotRequest)
+	}
+	if _, ok := payload["finding"]; ok {
+		t.Fatalf("target-only response included finding: %#v", payload["finding"])
+	}
+	if _, ok := payload["externalRef"]; ok {
+		t.Fatalf("target-only response included external ref: %#v", payload["externalRef"])
+	}
+	action, ok := payload["action"].(map[string]any)
+	if !ok || action["action"] != graphactions.ActionIdentityOktaUnsuspendUser || action["target"] != "00u123" {
+		t.Fatalf("response action = %#v", payload["action"])
+	}
+}
+
 func TestGraphActionTargetForFindingUsesExplicitTargetFirst(t *testing.T) {
 	finding := &ports.FindingRecord{
 		Attributes: map[string]string{
