@@ -1992,19 +1992,10 @@ func getBytes(ctx context.Context, source *Source, settings settings, defaultBas
 	if baseURL == "" {
 		baseURL = defaultBaseURL()
 	}
-	var payload []byte
-	if body != nil {
-		var err error
-		payload, err = json.Marshal(body)
-		if err != nil {
-			return nil, false, fmt.Errorf("marshal %s request: %w", requestPath, err)
-		}
-	}
-	req, err := sourcehttp.NewRequest(ctx, "gcp", baseURL, source != nil && source.allowLoopbackBaseURL, method, requestPath, query, payload)
+	req, err := sourcehttp.NewJSONRequest(ctx, "gcp", baseURL, source != nil && source.allowLoopbackBaseURL, method, requestPath, query, body)
 	if err != nil {
 		return nil, false, err
 	}
-	req.Header.Set("Accept", "application/json")
 	if maxBytes > 0 {
 		req.Header.Set("Accept", "*/*")
 		req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", maxBytes-1))
@@ -2014,9 +2005,6 @@ func getBytes(ctx context.Context, source *Source, settings settings, defaultBas
 		return nil, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
 	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: "gcp"})
 	if source != nil && source.client != nil {
 		client = source.client
