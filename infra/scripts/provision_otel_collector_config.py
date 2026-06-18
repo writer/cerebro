@@ -90,9 +90,6 @@ service:
   telemetry:
     logs:
       level: info
-    metrics:
-      level: normal
-      address: 127.0.0.1:8888
   pipelines:
     traces:
       receivers: [otlp]
@@ -163,10 +160,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--print-config", action="store_true")
+    parser.add_argument("--skip-if-disabled", action="store_true")
     args = parser.parse_args(argv)
 
     config = load_stack(args.stack_file)
     if not bool_value(config.get("otelCollectorEnabled")):
+        if args.skip_if_disabled:
+            print("skipped: otelCollectorEnabled is not true")
+            return 0
         raise ValueError("otelCollectorEnabled must be true for the selected stack")
     stack = stack_name(args.stack_file)
     secret_id = collector_secret_id(config, stack)

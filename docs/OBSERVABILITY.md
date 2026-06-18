@@ -65,7 +65,7 @@ uv run python scripts/provision_otel_collector_config.py \
   --profile writer-sec-prod-us1
 ```
 
-Use `--dry-run` to print the rendered config hash without touching AWS. Use `--print-config` to inspect the rendered collector config. Do not set a plaintext `otelExporterOtlpHeaders` config value; the stack validator rejects it.
+Use `--dry-run` to print the rendered config hash without touching AWS. Use `--print-config` to inspect the rendered collector config. Main and manual AWS deploy workflows also run this helper before secret import verification, so stale collector config is repaired before a new ECS task definition is applied. The AWS secret import guard validates the collector secret parses as a collector config with the health check extension, OTLP receivers, and trace/metric pipelines; it also rejects the legacy `service.telemetry.metrics.address` key that ADOT v0.48.0 cannot load. Do not set a plaintext `otelExporterOtlpHeaders` config value; the stack validator rejects it.
 
 Remote OTLP endpoints must use `https://` without `cerebro:otelExporterOtlpInsecure=true`. Plain HTTP is accepted only for loopback collector endpoints such as `http://127.0.0.1:4318`.
 

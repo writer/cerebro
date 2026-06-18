@@ -422,6 +422,12 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
 
+      - name: Provision OTEL collector config (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/provision_otel_collector_config.py --stack-file aws/Pulumi.sec-dev.yaml --region "${AWS_REGION}" --skip-if-disabled
+
       - name: Verify AWS secret imports (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
@@ -627,6 +633,12 @@ jobs:
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
+
+      - name: Provision OTEL collector config (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/provision_otel_collector_config.py --stack-file aws/Pulumi.go-prod.yaml --region "${AWS_REGION}" --skip-if-disabled
 
       - name: Verify AWS secret imports (go-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
@@ -1000,8 +1012,16 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only
 
+      - name: Provision OTEL collector config (AWS)
+        if: github.event.inputs.environment == 'sec-dev' || github.event.inputs.environment == 'go-prod'
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/provision_otel_collector_config.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --region "${AWS_REGION}" --skip-if-disabled
+
       - name: Verify AWS secret imports (AWS)
-        if: github.event.inputs.environment == 'go-prod'
+        if: github.event.inputs.environment == 'sec-dev' || github.event.inputs.environment == 'go-prod'
         shell: bash
         working-directory: infra
         env:

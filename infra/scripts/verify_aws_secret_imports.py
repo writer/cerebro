@@ -9,6 +9,8 @@ import subprocess
 import sys
 from typing import Any
 
+import yaml
+
 try:
     from aws import source_runtime_scope
 except ModuleNotFoundError:  # pragma: no cover - used when executed as scripts/verify_aws_secret_imports.py
@@ -211,6 +213,60 @@ def verify_secret_imports(imports: list[SecretImport], region: str) -> list[Secr
         versions = payload.get("VersionIdsToStages") or {}
         if not any("AWSCURRENT" in stages for stages in versions.values() if isinstance(stages, list)):
             findings.append(SecretFinding(index, item.category, item.fingerprint, "no-current-version"))
+            continue
+        if item.category == "otel-collector":
+            findings.extend(_verify_otel_collector_secret(index, item, region))
+    return findings
+
+
+def _verify_otel_collector_secret(index: int, item: SecretImport, region: str) -> list[SecretFinding]:
+    code, payload, detail = _aws_json(["secretsmanager", "get-secret-value", "--secret-id", item.secret_id], region)
+    if code != 0 or not isinstance(payload, dict):
+        return [SecretFinding(index, item.category, item.fingerprint, "collector-config-read-failed")]
+    if "SecretString" not in payload:
+        return [SecretFinding(index, item.category, item.fingerprint, "collector-config-missing-string")]
+    return _otel_collector_config_findings(index, item, str(payload.get("SecretString") or ""))
+
+
+def _otel_collector_config_findings(index: int, item: SecretImport, content: str) -> list[SecretFinding]:
+    def finding(reason: str) -> SecretFinding:
+        return SecretFinding(index, item.category, item.fingerprint, reason)
+
+    try:
+        config = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return [finding("collector-config-invalid-yaml")]
+    if not isinstance(config, dict):
+        return [finding("collector-config-not-yaml-map")]
+
+    findings: list[SecretFinding] = []
+    extensions = config.get("extensions")
+    if not isinstance(extensions, dict) or "health_check" not in extensions:
+        findings.append(finding("collector-config-missing-health-check-extension"))
+
+    service = config.get("service")
+    if not isinstance(service, dict):
+        return [*findings, finding("collector-config-missing-service")]
+    service_extensions = service.get("extensions")
+    if not isinstance(service_extensions, list) or "health_check" not in service_extensions:
+        findings.append(finding("collector-config-health-check-not-enabled"))
+
+    telemetry = service.get("telemetry")
+    if isinstance(telemetry, dict):
+        metrics = telemetry.get("metrics")
+        if isinstance(metrics, dict) and "address" in metrics:
+            findings.append(finding("collector-config-invalid-telemetry-metrics-address"))
+
+    receivers = config.get("receivers")
+    otlp = receivers.get("otlp") if isinstance(receivers, dict) else None
+    protocols = otlp.get("protocols") if isinstance(otlp, dict) else None
+    if not isinstance(protocols, dict) or not {"grpc", "http"}.issubset(protocols):
+        findings.append(finding("collector-config-missing-otlp-receivers"))
+
+    pipelines = service.get("pipelines")
+    if not isinstance(pipelines, dict) or not {"traces", "metrics"}.issubset(pipelines):
+        findings.append(finding("collector-config-missing-pipelines"))
+
     return findings
 
 

@@ -40,6 +40,7 @@ class ProvisionOtelCollectorConfigTest(unittest.TestCase):
         self.assertIn("awsxray", config["exporters"])
         self.assertEqual(config["exporters"]["awsemf"]["namespace"], "Cerebro/OTEL")
         self.assertEqual(config["exporters"]["awsemf"]["log_group_name"], "/aws/otel/cerebro-sec-dev/metrics")
+        self.assertNotIn("metrics", config["service"]["telemetry"])
         self.assertEqual(config["service"]["pipelines"]["traces"]["exporters"], ["awsxray"])
         self.assertEqual(config["service"]["pipelines"]["metrics"]["exporters"], ["awsemf"])
 
@@ -65,6 +66,25 @@ config:
         self.assertIn("dry-run: collector config ready config_sha256=", output)
         self.assertNotIn("collector_config_secret", output)
         self.assertNotIn("CEREBRO_OTEL_COLLECTOR_CONFIG", output)
+
+    def test_skip_if_disabled_exits_without_calling_aws(self) -> None:
+        with TemporaryDirectory() as tmp:
+            stack = Path(tmp) / "Pulumi.sec-dev.yaml"
+            stack.write_text(
+                """
+config:
+  cerebro:environment: sec-dev
+  cerebro:otelCollectorEnabled: false
+""",
+                encoding="utf-8",
+            )
+
+            with patch.object(provision_otel_collector_config.subprocess, "run") as mocked_run, patch("builtins.print") as mocked_print:
+                exit_code = provision_otel_collector_config.main(["--stack-file", str(stack), "--skip-if-disabled"])
+
+        self.assertEqual(exit_code, 0)
+        mocked_run.assert_not_called()
+        mocked_print.assert_called_once_with("skipped: otelCollectorEnabled is not true")
 
     def test_upsert_updates_existing_secret_from_temp_file(self) -> None:
         commands: list[list[str]] = []

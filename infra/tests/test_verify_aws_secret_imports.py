@@ -115,6 +115,69 @@ class AwsSecretImportsTest(unittest.TestCase):
         self.assertIn("describe-secret", commands[0])
         self.assertNotIn("get-secret-value", commands[0])
 
+    def test_verifier_checks_otel_collector_config_shape(self) -> None:
+        commands: list[list[str]] = []
+
+        def fake_run(command, text, capture_output):
+            commands.append(command)
+            if "describe-secret" in command:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout='{"VersionIdsToStages":{"v1":["AWSCURRENT"]}}',
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"SecretString":"service:\\n  telemetry:\\n    metrics:\\n      address: 127.0.0.1:8888\\n"}',
+                stderr="",
+            )
+
+        with patch.object(verify_aws_secret_imports.subprocess, "run", side_effect=fake_run):
+            findings = verify_aws_secret_imports.verify_secret_imports(
+                [verify_aws_secret_imports.SecretImport("AOT_CONFIG_CONTENT", "SRC", "prefix", "otel-collector")],
+                "us-east-1",
+            )
+
+        reasons = {finding.reason for finding in findings}
+        self.assertIn("collector-config-invalid-telemetry-metrics-address", reasons)
+        self.assertIn("collector-config-missing-health-check-extension", reasons)
+        self.assertTrue(any("get-secret-value" in command for command in commands))
+
+    def test_valid_otel_collector_config_passes_shape_check(self) -> None:
+        item = verify_aws_secret_imports.SecretImport("AOT_CONFIG_CONTENT", "SRC", "prefix", "otel-collector")
+        findings = verify_aws_secret_imports._otel_collector_config_findings(
+            1,
+            item,
+            """
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [awsxray]
+    metrics:
+      receivers: [otlp]
+      exporters: [awsemf]
+""",
+        )
+
+        self.assertEqual(findings, [])
+
     def test_missing_secret_is_reported(self) -> None:
         def fake_run(command, text, capture_output):
             return subprocess.CompletedProcess(
