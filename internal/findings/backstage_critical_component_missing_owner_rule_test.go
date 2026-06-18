@@ -94,6 +94,31 @@ func TestBackstageCriticalComponentMissingOwnerNamespaceQualifiedPlaceholders(t 
 	}
 }
 
+func TestBackstageCriticalComponentEntityRefCanonicalization(t *testing.T) {
+	cases := []struct {
+		name      string
+		entityRef string
+		kind      string
+		namespace string
+		want      string
+	}{
+		{name: "canonical kind namespace name", entityRef: "component:default/payments", want: "component/default/payments"},
+		{name: "kind bare name", entityRef: "component:payments", want: "component/default/payments"},
+		{name: "kind empty namespace", entityRef: "component:/payments", want: "component/default/payments"},
+		{name: "namespace name", entityRef: "default/payments", want: "component/default/payments"},
+		{name: "bare name", entityRef: "payments", want: "component/default/payments"},
+		{name: "explicit attrs fallback", entityRef: "", kind: "Resource", namespace: "prod", want: "resource/prod/payments"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := canonicalBackstageComponentEntityRef(tc.entityRef, tc.kind, tc.namespace, "payments")
+			if got != tc.want {
+				t.Fatalf("canonicalBackstageComponentEntityRef(%q) = %q, want %q", tc.entityRef, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestBackstageCriticalComponentMissingOwnerReopensOnRecurrence(t *testing.T) {
 	rule := newBackstageCriticalComponentMissingOwnerRule()
 	runtime := &cerebrov1.SourceRuntime{

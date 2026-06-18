@@ -262,26 +262,31 @@ func backstageComponentResourceURN(tenantID string, attributes map[string]string
 }
 
 func canonicalBackstageComponentEntityRef(entityRef string, kind string, namespace string, name string) string {
+	defaultKind := strings.ToLower(firstNonEmpty(kind, "Component"))
+	defaultNamespace := strings.ToLower(firstNonEmpty(namespace, "default"))
+	defaultName := strings.ToLower(strings.TrimSpace(name))
 	value := strings.ToLower(strings.TrimSpace(entityRef))
 	if value == "" {
-		return strings.ToLower(firstNonEmpty(kind, "Component")) + "/" + strings.ToLower(firstNonEmpty(namespace, "default")) + "/" + strings.ToLower(strings.TrimSpace(name))
+		return defaultKind + "/" + defaultNamespace + "/" + defaultName
 	}
 	if colon := strings.Index(value, ":"); colon > 0 {
 		refKind := strings.TrimSpace(value[:colon])
 		remainder := strings.TrimSpace(value[colon+1:])
-		if slash := strings.Index(remainder, "/"); slash > 0 {
-			return refKind + "/" + strings.TrimSpace(remainder[:slash]) + "/" + strings.TrimSpace(remainder[slash+1:])
+		if slash := strings.Index(remainder, "/"); slash >= 0 {
+			refNamespace := firstNonEmpty(strings.TrimSpace(remainder[:slash]), defaultNamespace)
+			refName := firstNonEmpty(strings.TrimSpace(remainder[slash+1:]), defaultName)
+			return refKind + "/" + refNamespace + "/" + refName
 		}
 		return refKind + "/default/" + remainder
 	}
 	parts := strings.Split(value, "/")
 	if len(parts) == 3 {
-		return strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1]) + "/" + strings.TrimSpace(parts[2])
+		return strings.TrimSpace(parts[0]) + "/" + firstNonEmpty(strings.TrimSpace(parts[1]), defaultNamespace) + "/" + firstNonEmpty(strings.TrimSpace(parts[2]), defaultName)
 	}
 	if len(parts) == 2 {
-		return strings.ToLower(firstNonEmpty(kind, "Component")) + "/" + strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1])
+		return defaultKind + "/" + firstNonEmpty(strings.TrimSpace(parts[0]), defaultNamespace) + "/" + firstNonEmpty(strings.TrimSpace(parts[1]), defaultName)
 	}
-	return value
+	return defaultKind + "/" + defaultNamespace + "/" + value
 }
 
 func backstageCriticalComponentMissingOwnerAnchor(attributes map[string]string) string {
