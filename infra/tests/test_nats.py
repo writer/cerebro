@@ -37,6 +37,9 @@ class NatsContainerDefinitionTest(unittest.TestCase):
 
         self.assertEqual(by_name["nats"]["user"], "10001")
         self.assertIs(by_name["nats"]["readonlyRootFilesystem"], True)
+        self.assertEqual(by_name["nats"]["healthCheck"]["interval"], 30)
+        self.assertEqual(by_name["nats"]["healthCheck"]["retries"], 10)
+        self.assertEqual(by_name["nats"]["healthCheck"]["startPeriod"], 300)
         self.assertEqual(by_name["jetstream-bootstrap"]["user"], "10001")
         bootstrap_env = {item["name"]: item["value"] for item in by_name["jetstream-bootstrap"]["environment"]}
         self.assertEqual(bootstrap_env["STREAM_MAX_BYTES"], "128849018880")
@@ -45,12 +48,15 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         self.assertIn("stream edit", bootstrap_command)
         self.assertIn("stream add", bootstrap_command)
         self.assertIn("stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits", bootstrap_command)
+        self.assertIn("stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits --defaults", bootstrap_command)
+        self.assertNotIn("stream edit \"$STREAM_NAME\" \"$@\" --defaults", bootstrap_command)
         self.assertNotIn("stream edit \"$STREAM_NAME\" \"$@\" --storage", bootstrap_command)
         self.assertEqual(by_name["jetstream-lag-probe"]["user"], "10001")
         self.assertIs(by_name["jetstream-lag-probe"]["readonlyRootFilesystem"], True)
 
     def test_cloudmap_health_check_threshold_is_preserved(self) -> None:
         health_check_args: list[dict] = []
+        service_args: list[dict] = []
 
         class FakeOutput:
             def __init__(self, value: str):
@@ -73,6 +79,10 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         def fake_health_check_args(**kwargs):
             health_check_args.append(kwargs)
             return fake_args(**kwargs)
+
+        def fake_service(*args, **kwargs):
+            service_args.append(kwargs)
+            return fake_resource(*args, **kwargs)
 
         with ExitStack() as stack:
             for patcher in [
@@ -100,7 +110,7 @@ class NatsContainerDefinitionTest(unittest.TestCase):
                 patch.object(nats.aws.ecs, "TaskDefinitionVolumeArgs", side_effect=fake_args),
                 patch.object(nats.aws.ecs, "TaskDefinitionVolumeEfsVolumeConfigurationArgs", side_effect=fake_args),
                 patch.object(nats.aws.ecs, "TaskDefinitionVolumeEfsVolumeConfigurationAuthorizationConfigArgs", side_effect=fake_args),
-                patch.object(nats.aws.ecs, "Service", side_effect=fake_resource),
+                patch.object(nats.aws.ecs, "Service", side_effect=fake_service),
                 patch.object(nats.aws.ecs, "ServiceNetworkConfigurationArgs", side_effect=fake_args),
                 patch.object(nats.aws.ecs, "ServiceServiceRegistriesArgs", side_effect=fake_args),
                 patch.object(nats.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
@@ -118,6 +128,9 @@ class NatsContainerDefinitionTest(unittest.TestCase):
             )
 
         self.assertEqual(health_check_args, [{"failure_threshold": 1}])
+        self.assertEqual(service_args[0]["availability_zone_rebalancing"], "DISABLED")
+        self.assertEqual(service_args[0]["deployment_maximum_percent"], 100)
+        self.assertEqual(service_args[0]["deployment_minimum_healthy_percent"], 0)
 
 
 if __name__ == "__main__":

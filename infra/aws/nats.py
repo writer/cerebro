@@ -161,6 +161,9 @@ def create_nats_service(
             assign_public_ip=False,
         ),
         service_registries=aws.ecs.ServiceServiceRegistriesArgs(registry_arn=cloudmap_service.arn),
+        availability_zone_rebalancing="DISABLED",
+        deployment_maximum_percent=100,
+        deployment_minimum_healthy_percent=0,
         deployment_circuit_breaker=aws.ecs.ServiceDeploymentCircuitBreakerArgs(enable=True, rollback=True),
         tags={"Name": f"{name}-nats-service"},
         opts=pulumi.ResourceOptions(depends_on=efs["mount_targets"]),
@@ -212,10 +215,10 @@ def _build_container_definitions(
             "mountPoints": [{"sourceVolume": "nats-data", "containerPath": "/data", "readOnly": False}],
             "healthCheck": {
                 "command": ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null || exit 1"],
-                "interval": 10,
+                "interval": 30,
                 "timeout": 5,
-                "retries": 6,
-                "startPeriod": 10,
+                "retries": 10,
+                "startPeriod": 300,
             },
             "logConfiguration": {
                 "logDriver": "awslogs",
@@ -243,7 +246,7 @@ def _build_container_definitions(
                     'if [ -n "$STREAM_MAX_BYTES" ]; then set -- "$@" --max-bytes "$STREAM_MAX_BYTES"; fi; '
                     'if [ -n "$STREAM_MAX_AGE" ]; then set -- "$@" --max-age "$STREAM_MAX_AGE"; fi; '
                     'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
-                    'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --defaults --force; '
+                    'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --force; '
                     'else nats --server "$NATS_URL" stream add "$STREAM_NAME" "$@" '
                     '--storage file --retention limits --defaults; fi'
                 ),
