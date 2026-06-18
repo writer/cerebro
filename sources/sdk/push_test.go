@@ -70,6 +70,46 @@ func TestNormalizePushedTelemetryIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestNormalizePushedTelemetryPostureTransitionProducesDistinctEventIDs(t *testing.T) {
+	atRisk := validPushedTelemetry()
+	atRisk.PostureStatus = "at_risk"
+	secure := validPushedTelemetry()
+	secure.PostureStatus = "secure"
+
+	atRiskEvent, err := NormalizePushedTelemetry(atRisk)
+	if err != nil {
+		t.Fatalf("NormalizePushedTelemetry(at_risk) error = %v", err)
+	}
+	secureEvent, err := NormalizePushedTelemetry(secure)
+	if err != nil {
+		t.Fatalf("NormalizePushedTelemetry(secure) error = %v", err)
+	}
+	if atRiskEvent.GetId() == secureEvent.GetId() {
+		t.Fatalf("at_risk and secure transition share event id %q; the secure transition would be dropped by append-log Msg-Id dedupe and the finding would never resolve", atRiskEvent.GetId())
+	}
+}
+
+func TestNormalizePushedTelemetryIdenticalPostureRetriesShareEventID(t *testing.T) {
+	first := validPushedTelemetry()
+	first.PostureStatus = "at_risk"
+	first.OccurredAt = time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	second := validPushedTelemetry()
+	second.PostureStatus = "at_risk"
+	second.OccurredAt = time.Date(2026, 5, 1, 18, 0, 0, 0, time.UTC)
+
+	firstEvent, err := NormalizePushedTelemetry(first)
+	if err != nil {
+		t.Fatalf("NormalizePushedTelemetry(first) error = %v", err)
+	}
+	secondEvent, err := NormalizePushedTelemetry(second)
+	if err != nil {
+		t.Fatalf("NormalizePushedTelemetry(second) error = %v", err)
+	}
+	if firstEvent.GetId() != secondEvent.GetId() {
+		t.Fatalf("identical posture retries produced event ids %q and %q; idempotent re-reports of the same posture must stay deduplicated", firstEvent.GetId(), secondEvent.GetId())
+	}
+}
+
 func TestNormalizePushedTelemetryRejectsMissingIdentity(t *testing.T) {
 	cases := map[string]func(p *PushedTelemetry){
 		"tenant":       func(p *PushedTelemetry) { p.TenantID = "  " },

@@ -108,7 +108,7 @@ func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope
 	setAttribute(attributes, "source_runtime_id", runtimeID)
 
 	event := &cerebrov1.EventEnvelope{
-		Id:         integrationPostureEventID(tenantID, integration, control, resourceURN),
+		Id:         integrationPostureEventID(tenantID, integration, control, resourceURN, postureStatus),
 		TenantId:   tenantID,
 		SourceId:   "sdk",
 		Kind:       integrationPostureKind,
@@ -167,7 +167,12 @@ func normalizePostureStatus(status string) string {
 	}
 }
 
-func integrationPostureEventID(tenantID string, integration string, control string, resourceURN string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{tenantID, integration, control, resourceURN}, "\x00")))
+// integrationPostureEventID derives a deterministic append-log identity for one
+// posture report. The posture status is part of the identity so a posture
+// transition (for example at_risk to secure) yields a distinct event id and is
+// not dropped by the append-log Msg-Id dedupe, while idempotent re-reports of
+// the same posture keep a stable id and stay deduplicated.
+func integrationPostureEventID(tenantID string, integration string, control string, resourceURN string, postureStatus string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{tenantID, integration, control, resourceURN, postureStatus}, "\x00")))
 	return "sdk-integration-posture-" + hex.EncodeToString(sum[:12])
 }
