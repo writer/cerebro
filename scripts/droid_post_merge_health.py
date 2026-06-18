@@ -13,9 +13,10 @@ import urllib.request
 from pathlib import Path
 
 COMMENT_MARKER = "<!-- droid-post-merge-health -->"
+DROID_POST_MERGE_HEALTH_WORKFLOW = "Droid Post-Merge Health"
 DROID_BOT_LOGIN = "factory-droid[bot]"
 DROID_FINISHED_MARKERS = ("Droid finished", "Review complete for PR")
-TERMINAL_DROID_STATUSES = {"ok", "skipped"}
+DROID_REVIEW_FAILURE_STATUSES = {"error", "missing"}
 DROID_REVIEW_REQUIRED_EXACT = {"go.mod", "go.sum", "Makefile"}
 DROID_REVIEW_REQUIRED_PREFIXES = (
     ".github/workflows/",
@@ -330,10 +331,14 @@ def summarize(
         for run in runs
         if (not head_sha or run.get("head_sha") == head_sha)
         and (not current_run_id or str(run.get("id") or "") != current_run_id)
+        and run.get("workflow_name") != DROID_POST_MERGE_HEALTH_WORKFLOW
     ]
     if not relevant:
         relevant = [
-            run for run in runs[:5] if not current_run_id or str(run.get("id") or "") != current_run_id
+            run
+            for run in runs[:5]
+            if (not current_run_id or str(run.get("id") or "") != current_run_id)
+            and run.get("workflow_name") != DROID_POST_MERGE_HEALTH_WORKFLOW
         ]
     failures = [
         run
@@ -342,7 +347,7 @@ def summarize(
     ]
     pending = [run for run in relevant if run.get("status") != "completed"]
     reviews = droid_reviews or []
-    failed_reviews = [review for review in reviews if review.get("status") not in TERMINAL_DROID_STATUSES]
+    failed_reviews = [review for review in reviews if review.get("status") in DROID_REVIEW_FAILURE_STATUSES]
     return {
         "kind": "droid_post_merge_health",
         "branch": branch,

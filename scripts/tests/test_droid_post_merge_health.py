@@ -29,6 +29,25 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertTrue(context["healthy"])
         self.assertEqual(len(context["pending_runs"]), 0)
 
+    def test_summarize_ignores_prior_post_merge_health_failures(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[
+                {
+                    "id": 1,
+                    "workflow_name": "Droid Post-Merge Health",
+                    "head_sha": "abc",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "url": "https://health",
+                },
+                {"id": 2, "workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success"},
+            ],
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(len(context["failed_runs"]), 0)
+
     def test_summarize_does_not_fail_for_pending_sibling_runs(self):
         context = pm.summarize(
             branch="main",
@@ -312,6 +331,19 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         )
         self.assertFalse(context["healthy"])
         self.assertEqual(len(context["failed_droid_reviews"]), 1)
+
+    def test_summarize_keeps_in_progress_droid_review_non_blocking(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[
+                {"workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success", "url": "https://ci"},
+            ],
+            pull_requests=[{"number": 42, "url": "https://pr"}],
+            droid_reviews=[{"number": 42, "status": "in_progress", "reason": "Droid is still reviewing."}],
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(len(context["failed_droid_reviews"]), 0)
 
     def test_render_markdown_mentions_droid_review_status(self):
         markdown = pm.render_markdown(
