@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.431
+  cerebro:imageTag: v2.1.435
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-9a55d01e675d
@@ -56,7 +56,6 @@ config:
   cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG
   cerebro:otelTracesSampleRate: "1"
   cerebro:otelMetricsExportInterval: 30s
-  cerebro:otelResourceAttributes: service.namespace=cerebro,cloud.provider=aws,cloud.region=us-east-1
   cerebro:postgresInstanceClass: db.t4g.medium
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3

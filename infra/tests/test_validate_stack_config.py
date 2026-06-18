@@ -589,7 +589,7 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_otel_collector_accepts_sidecar_config(self) -> None:
         content = BASE_STACK + (
             "  cerebro:otelCollectorEnabled: true\n"
-            "  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0\n"
+            "  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0\n"
             "  cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG\n"
         )
         self.assertFalse(any("otel" in finding.path and finding.severity == "error" for finding in self._validate(content)))
@@ -597,7 +597,7 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_otel_collector_rejects_app_headers_secret(self) -> None:
         content = BASE_STACK + (
             "  cerebro:otelCollectorEnabled: true\n"
-            "  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0\n"
+            "  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0\n"
             "  cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG\n"
             "  cerebro:otelExporterOtlpHeadersSecretName: CEREBRO_OTEL_EXPORTER_OTLP_HEADERS\n"
         )

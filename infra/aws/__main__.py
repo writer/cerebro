@@ -133,6 +133,7 @@ def _validate_source_secret_refs(secret_keys: list, env_refs: list[str]) -> None
 
 
 environment = _get_environment()
+aws_region = aws.get_region().region
 domain = config.get("domain") or ""
 certificate_domain = config.get("certificateDomain") or ""
 certificate_import_arn = config.get("certificateImportArn") or ""
@@ -796,6 +797,8 @@ app_environment = {
     "CEREBRO_HTTP_ADDR": ":8080",
     "CEREBRO_SHUTDOWN_TIMEOUT": config.get("shutdownTimeout") or "10s",
     "CEREBRO_IMAGE_TAG": image_tag,
+    "CEREBRO_ENVIRONMENT": environment,
+    "CEREBRO_DEPLOYMENT_ENVIRONMENT": environment,
     "CEREBRO_API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "CEREBRO_PUBLIC_ORIGIN": public_origin,
@@ -806,6 +809,8 @@ app_environment = {
     "CEREBRO_JETSTREAM_SUBJECT_PREFIX": jetstream_subject_prefix,
     "CEREBRO_STATE_STORE_DRIVER": "postgres",
     "CEREBRO_GRAPH_STORE_DRIVER": "neo4j",
+    "AWS_REGION": aws_region,
+    "AWS_DEFAULT_REGION": aws_region,
 }
 otel_configured = any([
     otel_enabled,
@@ -823,6 +828,10 @@ if otel_configured:
         attr
         for attr in [
             f"deployment.environment.name={environment}",
+            f"deployment.environment={environment}",
+            "service.namespace=cerebro",
+            "cloud.provider=aws",
+            f"cloud.region={aws_region}",
             otel_resource_attributes,
         ]
         if str(attr).strip()

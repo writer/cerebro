@@ -770,7 +770,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
                 otel_collector_log_group_name="/ecs/cerebro-sec-dev/otel-collector",
                 otel_collector={
                     "enabled": True,
-                    "image": "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0",
+                    "image": "public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0",
                     "config_secret_name": "CEREBRO_OTEL_COLLECTOR_CONFIG",
                     "config_secret_prefix": "/cerebro/sec-dev",
                     "cpu": 128,
@@ -783,7 +783,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
         cerebro_container = next(container for container in containers if container["name"] == "cerebro")
 
         self.assertEqual(containers[0]["name"], "otel-collector")
-        self.assertEqual(collector_container["image"], "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0")
+        self.assertEqual(collector_container["image"], "public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0")
         self.assertEqual(collector_container["cpu"], 128)
         self.assertEqual(collector_container["memoryReservation"], 256)
         self.assertEqual(

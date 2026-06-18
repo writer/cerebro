@@ -898,7 +898,6 @@ def create_monitoring(
                 dimensions={"Dashboard": "grc"},
                 tags={"Name": f"{name}-grc-dashboard-latency-p95-alarm"},
             )
-
     otel_collector_filters = {}
     if otel_collector_enabled and otel_collector_log_group_name:
         otel_collector_filters = _create_otel_collector_metric_filters(name, otel_collector_log_group_name, telemetry_namespace)
@@ -1537,7 +1536,8 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
     return filters
 
 
-def _create_otel_collector_metric_filters(name: str, log_group_name: pulumi.Input[str], namespace: str) -> dict:
+def _create_otel_collector_metric_filters(name: str, log_group_name: pulumi.Input[str], namespace: str | None = None) -> dict:
+    namespace = namespace or f"Cerebro/{name}"
     filters = {}
     for suffix, pattern in {
         "error": "error",
@@ -1716,6 +1716,7 @@ def _dashboard_body(
                         [telemetry_namespace, "SourceRuntimeSyncFailures", {"stat": "Sum"}],
                         [".", "OrchestratorRuntimeFailures", {"stat": "Sum"}],
                         [".", "ReportGenerationFailures", {"stat": "Sum"}],
+                        [".", "OtelCollectorErrors", {"stat": "Sum"}],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,

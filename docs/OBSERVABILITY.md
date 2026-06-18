@@ -22,13 +22,83 @@ Cerebro already publishes CloudWatch logs, dashboards, alarms, and `/metrics`. O
 | `cerebro:otelExporterOtlpInsecure` | `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE` | For loopback collectors only |
 | `cerebro:otelTracesSampleRate` | `CEREBRO_OTEL_TRACES_SAMPLE_RATE` | Number from `0` to `1` |
 | `cerebro:otelMetricsExportInterval` | `CEREBRO_OTEL_METRICS_EXPORT_INTERVAL` | Duration such as `30s` or `1m` |
-| `cerebro:otelResourceAttributes` | `OTEL_RESOURCE_ATTRIBUTES` | Appended after `deployment.environment.name=<env>` |
+| `cerebro:otelResourceAttributes` | `OTEL_RESOURCE_ATTRIBUTES` | Appended after stack-owned deployment/cloud/service attributes |
 
 `cerebro:otelExporterOtlpHeadersSecretName` is mounted through the existing ECS secret environment mechanism from `infisicalSecretsPrefix`/Secrets Manager as `CEREBRO_OTEL_EXPORTER_OTLP_HEADERS`. Use it for vendor tokens, for example a secret value shaped like `api-key=<token>`.
 
 Prefer `cerebro:otelCollectorEnabled` for production. In collector mode, the app exporter is pinned to `http://127.0.0.1:4318` with `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE=true`, and backend OTLP endpoints plus auth headers belong in the collector config secret. Do not configure `cerebro:otelExporterOtlpHeadersSecretName` with collector mode.
 
 Collector mode creates a dedicated `/ecs/<service>/otel-collector` log group, adds an `OtelCollectorErrors` CloudWatch metric filter/alarm, and adds CloudWatch dashboard widgets for collector container resources, recent collector logs, and collector exporter errors. The ECS app container waits for the collector health check before starting.
+
+Every ECS API task also receives stack/runtime metadata that the app copies into
+wide-event attributes:
+
+- `CEREBRO_ENVIRONMENT=<stack environment>`
+- `CEREBRO_DEPLOYMENT_ENVIRONMENT=<stack environment>`
+- `AWS_REGION=<provider region>`
+- `AWS_DEFAULT_REGION=<provider region>`
+- `OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=<env>,deployment.environment=<env>,service.namespace=cerebro,cloud.provider=aws,cloud.region=<region>[,<cerebro:otelResourceAttributes>]`
+
+These attributes keep CloudWatch wide events and exported spans queryable by
+environment, region, service namespace, and cloud provider even when the app
+image is reused across stacks.
+
+The live Cerebro stacks use collector mode:
+
+| Stack | Collector config secret |
+| --- | --- |
+| `go-prod` | `cerebro-go-production/aws-sync/CEREBRO_OTEL_COLLECTOR_CONFIG` |
+| `sec-dev` | `cerebro-sec-dev/CEREBRO_OTEL_COLLECTOR_CONFIG` |
+
+The secret value should be an ADOT collector config that receives app OTLP on
+`127.0.0.1:4318` and exports to Writer's observability aggregator. Keep backend
+headers, certificates, or future vendor auth inside that secret, not in Pulumi
+config.
+
+Current aggregator config:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+processors:
+  batch:
+    send_batch_size: 100
+    timeout: 1s
+exporters:
+  otlphttp/aggregator:
+    endpoint: https://aggregator.observability.writer.com:4321
+    compression: gzip
+    timeout: 2s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/aggregator]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/aggregator]
+```
+
+The collector config is deliberately a secret even when it only contains a
+backend URL. That leaves one safe path for future auth headers, mTLS material, or
+tenant routing headers without moving sensitive values into reviewed stack YAML.
 
 ## Example
 
@@ -39,7 +109,7 @@ pulumi config set cerebro:otelExporterOtlpEndpoint https://otel-collector.exampl
 pulumi config set cerebro:otelExporterOtlpHeadersSecretName CEREBRO_OTEL_EXPORTER_OTLP_HEADERS
 pulumi config set cerebro:otelTracesSampleRate 0.25
 pulumi config set cerebro:otelMetricsExportInterval 30s
-pulumi config set cerebro:otelResourceAttributes service.namespace=cerebro
+pulumi config set cerebro:otelResourceAttributes writer.owner=security
 ```
 
 Collector sidecar mode:
@@ -68,6 +138,52 @@ uv run python scripts/provision_otel_collector_config.py \
 Use `--dry-run` to print the rendered config hash without touching AWS. Use `--print-config` to inspect the rendered collector config. Main and manual AWS deploy workflows also run this helper before secret import verification, so stale collector config is repaired before a new ECS task definition is applied. Static infra validation boots the configured ADOT image with the rendered config in `AOT_CONFIG_CONTENT`, which catches collector schema/runtime drift before deploy. The AWS secret import guard validates the collector secret parses as a collector config with the health check extension, OTLP receivers, and trace/metric pipelines; it also rejects the legacy `service.telemetry.metrics.address` key that ADOT v0.48.0 cannot load. Do not set a plaintext `otelExporterOtlpHeaders` config value; the stack validator rejects it.
 
 Remote OTLP endpoints must use `https://` without `cerebro:otelExporterOtlpInsecure=true`. Plain HTTP is accepted only for loopback collector endpoints such as `http://127.0.0.1:4318`.
+
+## Live Rollout
+
+Use AWS SSO profiles that match the stack accounts:
+
+```sh
+aws sso login --profile cerebro-sec-dev
+aws sso login --profile writer-sec-prod-us1
+```
+
+Provision or update the collector config secrets before preview/apply:
+
+```sh
+aws secretsmanager put-secret-value \
+  --profile cerebro-sec-dev \
+  --region us-east-1 \
+  --secret-id cerebro-sec-dev/CEREBRO_OTEL_COLLECTOR_CONFIG \
+  --secret-string file://cerebro-otel-collector-config.yaml
+
+aws secretsmanager put-secret-value \
+  --profile writer-sec-prod-us1 \
+  --region us-east-1 \
+  --secret-id cerebro-go-production/aws-sync/CEREBRO_OTEL_COLLECTOR_CONFIG \
+  --secret-string file://cerebro-otel-collector-config.yaml
+```
+
+Preview both stacks from `infra/` before merging:
+
+```sh
+AWS_PROFILE=cerebro-sec-dev AWS_SDK_LOAD_CONFIG=1 \
+  uv run pulumi preview --stack sec-dev --diff --non-interactive
+
+AWS_PROFILE=writer-sec-prod-us1 AWS_SDK_LOAD_CONFIG=1 \
+  uv run pulumi preview --stack go-prod --diff --non-interactive
+```
+
+Expected ECS task-definition changes:
+
+- app container has `CEREBRO_OTEL_ENABLED=true`
+- app container exports to `http://127.0.0.1:4318` with `http/protobuf`
+- app container has the runtime metadata env vars listed above
+- app container has `OTEL_RESOURCE_ATTRIBUTES` with deployment/cloud attributes
+- task includes an `otel-collector` sidecar
+- collector has `AOT_CONFIG_CONTENT` mounted from the stack collector secret
+- collector writes logs to `/ecs/<stack>/otel-collector`
+- collector error metric filters and the `OtelCollectorErrors` alarm remain wired to that collector log group
 
 ## Validation
 
@@ -107,19 +223,55 @@ Useful read-only AWS checks:
 ```sh
 aws ecs describe-services \
   --profile cerebro-sec-dev \
+  --region us-east-1 \
   --cluster cerebro-sec-dev-cluster \
   --services cerebro-sec-dev-api \
   --query 'services[0].deployments[?status==`PRIMARY`].[taskDefinition,rolloutState,runningCount,desiredCount]'
 
+aws ecs describe-services \
+  --profile writer-sec-prod-us1 \
+  --region us-east-1 \
+  --cluster cerebro-go-production-cluster \
+  --services cerebro-go-production-api \
+  --query 'services[0].deployments[?status==`PRIMARY`].[taskDefinition,rolloutState,runningCount,desiredCount]'
+```
+
+Use the active task definition ARN from each service to inspect container env,
+dependencies, logs, and secrets:
+
+```sh
 aws ecs describe-task-definition \
-  --profile cerebro-sec-dev \
-  --task-definition cerebro-sec-dev \
+  --profile <profile> \
+  --region us-east-1 \
+  --task-definition <task-definition-arn> \
   --query 'taskDefinition.containerDefinitions[].{name:name,dependsOn:dependsOn,logs:logConfiguration.options}'
 
 aws logs describe-log-streams \
-  --profile cerebro-sec-dev \
-  --log-group-name /ecs/cerebro-sec-dev/otel-collector \
+  --profile <profile> \
+  --region us-east-1 \
+  --log-group-name /ecs/<stack>/otel-collector \
   --order-by LastEventTime \
   --descending \
   --max-items 5
 ```
+
+Useful CloudWatch Logs Insights query for API wide events:
+
+```sql
+fields @timestamp, @logStream, @message
+| filter @message like /"wide_event":true/
+| sort @timestamp desc
+| limit 20
+```
+
+Expected fields on fresh events:
+
+- `deployment.environment.name` is `sec-dev` or `go-production`
+- `deployment.environment` matches the stack environment
+- `cloud.provider` is `aws`
+- `cloud.region` is `us-east-1`
+- `service.namespace` is `cerebro`
+- `service.name` is `cerebro-api`
+
+Collector health is visible in `/ecs/<stack>/otel-collector`. Investigate
+exporter errors there before declaring the rollout complete.

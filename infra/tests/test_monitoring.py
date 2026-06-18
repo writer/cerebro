@@ -291,6 +291,42 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(grc_call["metric_transformation"].value, "$.duration_ms")
         self.assertEqual(grc_call["metric_transformation"].dimensions, {"Dashboard": "$.dashboard"})
 
+    def test_otel_collector_metric_filters_preserve_error_alarm_inputs(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            monitoring._create_otel_collector_metric_filters("cerebro-test", "otel-logs")
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        self.assertEqual(
+            {call["name"] for call in calls},
+            {
+                "cerebro-test-otel-collector-error",
+                "cerebro-test-otel-collector-error-uppercase",
+                "cerebro-test-otel-collector-refused",
+                "cerebro-test-otel-collector-dropped",
+                "cerebro-test-otel-collector-failed",
+            },
+        )
+        self.assertEqual({call["log_group_name"] for call in calls}, {"otel-logs"})
+        for call in calls:
+            self.assertEqual(call["metric_transformation"].name, "OtelCollectorErrors")
+            self.assertEqual(call["metric_transformation"].value, "1")
+            self.assertEqual(call["metric_transformation"].default_value, 0)
+
     def test_source_runtime_observability_filters_use_bounded_runtime_dimensions(self) -> None:
         calls: list[dict] = []
 
