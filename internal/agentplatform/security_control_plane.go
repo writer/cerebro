@@ -499,7 +499,7 @@ func agentModelComparisons() []AgentModelComparison {
 			ID:              "graph-ask-model-routes",
 			CapabilityID:    "grc-ask",
 			ScenarioIDs:     []string{"graph-ask-grounded-regression", "prompt-injection-resistance", "stale-data-refusal"},
-			ModelRoutes:     []string{"claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"},
+			ModelRoutes:     []string{"claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"},
 			RequiredMetrics: []string{"quality_score", "citation_coverage", "safe_refusal_rate", "unsupported_claim_rate", "latency_ms"},
 			PromotionGate:   "default model changes require no groundedness regression and no increase in unsafe action or unsupported-claim failures",
 			FailurePolicy:   "hold rollout and attach the failing trajectory ids to the eval report",
@@ -625,18 +625,28 @@ func selectedSecurityAgentProfiles(request EvidencePacketRequest, preflight Agen
 func recommendedProfileIDs(request EvidencePacketRequest, preflight AgentRunPreflight) map[string]bool {
 	ids := map[string]bool{"coverage-scout": true}
 	text := strings.ToLower(request.Question + " " + request.ScopeURN)
-	switch {
-	case strings.Contains(text, "identity") || strings.Contains(text, "okta") || strings.Contains(text, "entitlement") || strings.Contains(text, "access"):
-		ids["identity-drift-analyst"] = true
-	case strings.Contains(text, "remed") || strings.Contains(text, "fix") || strings.Contains(text, "patch"):
-		ids["remediation-planner"] = true
-	case strings.Contains(text, "alert") || strings.Contains(text, "incident") || strings.Contains(text, "triage"):
-		ids["soc-triage-analyst"] = true
-	case strings.Contains(text, "detect") || strings.Contains(text, "rule"):
-		ids["detection-engineer"] = true
-	case strings.Contains(text, "model") || strings.Contains(text, "openai") || strings.Contains(text, "anthropic") || strings.Contains(text, "bedrock") || strings.Contains(text, "sagemaker") || strings.Contains(text, "azure") || strings.Contains(text, "ai "):
+	matched := false
+	if strings.Contains(text, "model") || strings.Contains(text, "openai") || strings.Contains(text, "anthropic") || strings.Contains(text, "bedrock") || strings.Contains(text, "sagemaker") || strings.Contains(text, "azure") || strings.Contains(text, "ai ") {
 		ids["ai-governance-analyst"] = true
-	default:
+		matched = true
+	}
+	if strings.Contains(text, "identity") || strings.Contains(text, "okta") || strings.Contains(text, "entitlement") || strings.Contains(text, "access") {
+		ids["identity-drift-analyst"] = true
+		matched = true
+	}
+	if strings.Contains(text, "remed") || strings.Contains(text, "fix") || strings.Contains(text, "patch") {
+		ids["remediation-planner"] = true
+		matched = true
+	}
+	if strings.Contains(text, "alert") || strings.Contains(text, "incident") || strings.Contains(text, "triage") {
+		ids["soc-triage-analyst"] = true
+		matched = true
+	}
+	if strings.Contains(text, "detect") || strings.Contains(text, "rule") {
+		ids["detection-engineer"] = true
+		matched = true
+	}
+	if !matched {
 		ids["exposure-analyst"] = true
 	}
 	if preflight.CoverageContext != nil && preflight.CoverageContext.BlindSpotCount > 0 {

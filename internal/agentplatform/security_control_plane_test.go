@@ -298,6 +298,53 @@ func TestBuildEvidencePacketSelectsAIGovernanceAnalyst(t *testing.T) {
 	}
 }
 
+func TestBuildEvidencePacketSelectsAIGovernanceAnalystWhenAccessIsMentioned(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Review OpenAI model access and hosted tool permissions.",
+		ScopeURN:        "urn:cerebro:tenant-1:source:openai",
+		CapabilityIDs:   []string{"ai-provider-governance", "knowledge-provenance"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead},
+		Action:          EvidencePacketAction{Stage: ActionStageRecommend},
+		CoverageContext: &AgentCoverageContext{
+			Version:         ContractVersion,
+			TenantID:        "tenant-1",
+			SourceID:        "openai",
+			TotalDimensions: 4,
+		},
+	})
+
+	if !packetHasRecommendedAgent(packet, "ai-governance-analyst") {
+		t.Fatalf("packet agents = %+v, want ai-governance-analyst", packet.RecommendedAgents)
+	}
+	if !packetHasRecommendedAgent(packet, "identity-drift-analyst") {
+		t.Fatalf("packet agents = %+v, want identity-drift-analyst for access review", packet.RecommendedAgents)
+	}
+	if !packetHasVerifierStatus(packet, "ai-provider-governance", "pass") {
+		t.Fatalf("packet missing AI provider governance pass: %+v", packet.VerifierResults)
+	}
+}
+
+func TestAgentModelComparisonsUseStableRouteIDs(t *testing.T) {
+	snapshot := SecurityControlPlaneSnapshot()
+	for _, comparison := range snapshot.ModelComparisons {
+		if comparison.ID != "graph-ask-model-routes" {
+			continue
+		}
+		for _, required := range []string{"claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"} {
+			if !containsString(comparison.ModelRoutes, required) {
+				t.Fatalf("model routes = %+v, want %q", comparison.ModelRoutes, required)
+			}
+		}
+		if containsString(comparison.ModelRoutes, "claude-haiku-4-5-20251001") {
+			t.Fatalf("model routes = %+v, want route IDs without date suffixes", comparison.ModelRoutes)
+		}
+		return
+	}
+	t.Fatal("graph-ask-model-routes comparison missing")
+}
+
 func TestBuildEvidencePacketKeepsBlockedConfidenceWithoutCoverage(t *testing.T) {
 	packet := BuildEvidencePacket(EvidencePacketRequest{
 		TenantID:        "tenant-1",
