@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -730,12 +729,7 @@ func eventFromRecord(settings settings, family string, record record) *primitive
 }
 
 func eventID(settings settings, family string, recordID string) string {
-	return strings.Join([]string{
-		sourceID,
-		normalizeID(settings.tenantID),
-		family,
-		cosmoExternalIDKey(recordID),
-	}, "-")
+	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, cosmoExternalIDKey(recordID)}, "-")
 }
 
 func attributesFor(family string, values map[string]any) map[string]string {
@@ -1155,9 +1149,6 @@ func stableID(parts ...string) string {
 			values = append(values, value)
 		}
 	}
-	if len(values) == 0 {
-		return ""
-	}
 	return strings.Join(values, ":")
 }
 
@@ -1171,12 +1162,10 @@ func normalizeID(value string) string {
 }
 
 func cosmoExternalIDKey(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
-		return "unknown"
+	if normalized := strings.TrimSpace(value); normalized != "" {
+		return fmt.Sprintf("id-%x", sha256.Sum256([]byte(normalized)))
 	}
-	sum := sha256.Sum256([]byte(normalized))
-	return "id-" + hex.EncodeToString(sum[:16])
+	return "unknown"
 }
 
 func firstNonEmpty(values ...string) string {
