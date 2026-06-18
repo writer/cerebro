@@ -107,6 +107,10 @@ Inventory accountability and source-connector setup remain bootstrap-boundary
 work for now. The budget includes GRC inventory request/response mapping and
 tenant authorization that compose existing inventory data for review workflows;
 durable inventory semantics stay behind the inventory and compliance packages.
+The accountability write endpoints also stay in bootstrap while they are limited
+to tenant-enforced request decoding, persistence-store wiring, and response
+mapping for operator decisions; posture classification and inventory filtering
+remain in `internal/grcinventory`.
 The budget also includes connector setup metadata for source runtime config
 validation, including richer OpenAI and Anthropic family/filter keys. That
 metadata belongs at the connector API boundary until connector setup schemas are
