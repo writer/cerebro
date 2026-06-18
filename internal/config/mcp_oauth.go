@@ -117,6 +117,7 @@ func parseMCPOAuthClients(raw string) ([]MCPOAuthClient, error) {
 		clients[index].TenantID = strings.TrimSpace(clients[index].TenantID)
 		clients[index].AllowedTenants = normalizeStringSlice(clients[index].AllowedTenants)
 		clients[index].Scopes = normalizeStringSlice(clients[index].Scopes)
+		clients[index].Roles = normalizeStringSlice(clients[index].Roles)
 		clients[index].Groups = normalizeStringSlice(clients[index].Groups)
 		if clients[index].ClientID == "" {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires client_id", index)
@@ -165,6 +166,7 @@ func parseMCPOAuthEntitlements(raw string) ([]MCPOAuthEntitlement, error) {
 		entitlements[index].TenantID = strings.TrimSpace(entitlements[index].TenantID)
 		entitlements[index].AllowedTenants = normalizeStringSlice(entitlements[index].AllowedTenants)
 		entitlements[index].Scopes = normalizeStringSlice(entitlements[index].Scopes)
+		entitlements[index].Roles = normalizeStringSlice(entitlements[index].Roles)
 		if entitlements[index].Subject == "" && entitlements[index].Email == "" && entitlements[index].ClientID == "" && len(entitlements[index].Groups) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d] requires subject, email, client_id, or groups", index)
 		}

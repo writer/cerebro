@@ -736,7 +736,8 @@ func TestLoadParsesStructuredAPICredentials(t *testing.T) {
 			"key_sha256": "`+hex.EncodeToString(sum[:])+`",
 			"principal": "cosmo-security",
 			"allowed_tenants": ["writer", "writer"],
-			"scopes": ["cerebro.cosmo.security.read", "cerebro.cosmo.security.read"]
+			"scopes": ["cerebro.cosmo.security.read", "cerebro.cosmo.security.read"],
+			"roles": ["cerebro.viewer", "cerebro.viewer"]
 		}
 	]`)
 
@@ -756,6 +757,9 @@ func TestLoadParsesStructuredAPICredentials(t *testing.T) {
 	}
 	if got := credential.Scopes; len(got) != 1 || got[0] != "cerebro.cosmo.security.read" {
 		t.Fatalf("Scopes = %#v, want [cerebro.cosmo.security.read]", got)
+	}
+	if got := credential.Roles; len(got) != 1 || got[0] != "cerebro.viewer" {
+		t.Fatalf("Roles = %#v, want [cerebro.viewer]", got)
 	}
 }
 
@@ -820,9 +824,9 @@ func TestLoadParsesMCPOAuthM2MClientAndEntitlements(t *testing.T) {
 	setValidMCPOAuthEnv(t)
 	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", `[
 		{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true},
-		{"client_id":"panopticon","client_secret":"secret","grant_types":["client_credentials"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"]}
+		{"client_id":"panopticon","client_secret":"secret","grant_types":["client_credentials"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"],"roles":["cerebro.viewer"]}
 	]`)
-	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", `[{"groups":["secops"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"]}]`)
+	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", `[{"groups":["secops"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"],"roles":["cerebro.viewer"]}]`)
 
 	cfg, err := Load()
 	if err != nil {
@@ -831,8 +835,14 @@ func TestLoadParsesMCPOAuthM2MClientAndEntitlements(t *testing.T) {
 	if got := cfg.Auth.MCPOAuth.Clients[1].GrantTypes; len(got) != 1 || got[0] != "client_credentials" {
 		t.Fatalf("M2M grant types = %#v", got)
 	}
+	if got := cfg.Auth.MCPOAuth.Clients[1].Roles; len(got) != 1 || got[0] != "cerebro.viewer" {
+		t.Fatalf("M2M roles = %#v", got)
+	}
 	if len(cfg.Auth.MCPOAuth.Entitlements) != 1 || cfg.Auth.MCPOAuth.Entitlements[0].Groups[0] != "secops" {
 		t.Fatalf("Entitlements = %#v", cfg.Auth.MCPOAuth.Entitlements)
+	}
+	if got := cfg.Auth.MCPOAuth.Entitlements[0].Roles; len(got) != 1 || got[0] != "cerebro.viewer" {
+		t.Fatalf("Entitlement roles = %#v", got)
 	}
 }
 
@@ -944,6 +954,16 @@ func TestLoadRejectsScopedCredentialWithoutTenant(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[{"key":"token","scopes":["cerebro.cosmo.security.read"]}]`)
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsRoleCredentialWithoutTenant(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[{"key":"token","roles":["cerebro.viewer"]}]`)
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")

@@ -49,6 +49,7 @@ type authPrincipal struct {
 	TokenResource  string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 	Groups         []string
 	Capability     bool
 	DeviceID       string
@@ -268,6 +269,7 @@ func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVe
 				AuthMode:       "api_credential",
 				AllowedTenants: credential.AllowedTenants,
 				Scopes:         credential.Scopes,
+				Roles:          credential.Roles,
 			}, "", token, true
 		}
 	}
@@ -386,9 +388,10 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 		return authPrincipal{}, false
 	}
 	scopes := normalizeAuthList(claims.Scopes)
+	roles := normalizeAuthList(claims.Roles)
 	allowedTenants := normalizeAuthList(claims.AllowedTenants)
 	tenantID := strings.TrimSpace(claims.TenantID)
-	if len(scopes) == 0 {
+	if len(scopes) == 0 && len(roles) == 0 {
 		return authPrincipal{}, false
 	}
 	if tenantID == "" && len(allowedTenants) == 0 {
@@ -403,6 +406,7 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 		TokenResource:  strings.TrimSpace(claims.Resource),
 		AllowedTenants: allowedTenants,
 		Scopes:         scopes,
+		Roles:          roles,
 		Groups:         normalizeAuthList(claims.Groups),
 		Capability:     true,
 	}, true
@@ -419,6 +423,7 @@ type capabilityClaims struct {
 	TenantID       string   `json:"tenant_id,omitempty"`
 	AllowedTenants []string `json:"allowed_tenants,omitempty"`
 	Scopes         []string `json:"scopes,omitempty"`
+	Roles          []string `json:"roles,omitempty"`
 	Groups         []string `json:"groups,omitempty"`
 	JWTID          string   `json:"jti,omitempty"`
 }
@@ -591,8 +596,7 @@ func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 	if !principalScopeRestricted(auth.principal) || isConnectProcedurePath(r.URL.Path) {
 		return nil
 	}
-	scope := scopeForHTTPRequest(r)
-	return authorizePrincipalScope(auth.principal, scope)
+	return authorizePrincipalHTTPPolicy(auth.principal, httpRoutePolicyForRequest(r))
 }
 
 func authorizeTokenResource(cfg config.AuthConfig, principal authPrincipal, r *http.Request) error {
@@ -610,11 +614,35 @@ func authorizeConnectProcedureScope(ctx context.Context, procedure string) error
 	if !ok || !principalScopeRestricted(auth.principal) {
 		return nil
 	}
-	return authorizePrincipalScope(auth.principal, scopeForConnectProcedure(procedure))
+	return authorizePrincipalConnectPolicy(auth.principal, connectProcedurePolicyFor(procedure))
+}
+
+func authorizePrincipalHTTPPolicy(principal authPrincipal, policy httpAuthRoutePolicy) error {
+	if policy.AdminOnly {
+		if !principalHasAdminRole(principal) {
+			return errScopeForbidden
+		}
+		if policy.Scope == "" {
+			return nil
+		}
+	}
+	return authorizePrincipalScope(principal, policy.Scope)
+}
+
+func authorizePrincipalConnectPolicy(principal authPrincipal, policy connectProcedureAuthPolicy) error {
+	if policy.AdminOnly {
+		if !principalHasAdminRole(principal) {
+			return errScopeForbidden
+		}
+		if policy.Scope == "" {
+			return nil
+		}
+	}
+	return authorizePrincipalScope(principal, policy.Scope)
 }
 
 func authorizePrincipalScope(principal authPrincipal, required string) error {
-	if required == "" || !containsAuthValue(principal.Scopes, required) {
+	if required == "" || !containsAuthValue(expandedPrincipalScopes(principal), required) {
 		return errScopeForbidden
 	}
 	if required == scopeCosmoSecurityRead && principal.Capability && !containsAuthValue(principal.Groups, "security") {
@@ -623,16 +651,23 @@ func authorizePrincipalScope(principal authPrincipal, required string) error {
 	return nil
 }
 
+func principalHasAdminRole(principal authPrincipal) bool {
+	roles := normalizeAuthList(principal.Roles)
+	return containsAuthValue(roles, roleCerebroAdmin) ||
+		containsAuthValue(roles, "admin") ||
+		containsAuthValue(roles, "owner")
+}
+
 func hasRuntimeResponseTrustedScope(ctx context.Context) bool {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
 	if !ok || !principalScopeRestricted(auth.principal) {
 		return true
 	}
-	return containsAuthValue(auth.principal.Scopes, scopeRuntimeResponseWrite)
+	return containsAuthValue(expandedPrincipalScopes(auth.principal), scopeRuntimeResponseWrite)
 }
 
 func principalScopeRestricted(principal authPrincipal) bool {
-	return len(principal.Scopes) > 0
+	return len(principal.Scopes) > 0 || principalHasRBACRole(principal)
 }
 
 func isConnectProcedurePath(path string) bool {
@@ -1225,6 +1260,8 @@ func accessAuditCredentialTier(principal authPrincipal) string {
 	switch {
 	case principal.AuthMode == "device_jwt":
 		return "device"
+	case principalHasRBACRole(principal):
+		return "rbac"
 	case principalScopeRestricted(principal):
 		return "scoped"
 	case strings.TrimSpace(principal.AuthMode) != "":

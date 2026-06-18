@@ -24,6 +24,7 @@ type AccessGrant struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 	Groups         []string
 }
 
@@ -331,6 +332,7 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 		TenantID:       entitlement.TenantID,
 		AllowedTenants: cloneStrings(entitlement.AllowedTenants),
 		Scopes:         cloneStrings(entitlement.Scopes),
+		Roles:          cloneStrings(entitlement.Roles),
 		Groups:         []string{"security"},
 		CodeChallenge:  login.CodeChallenge,
 		CreatedAt:      now,
@@ -483,6 +485,7 @@ func (s *Service) exchangeClientCredentials(ctx context.Context, client config.M
 		TenantID:       strings.TrimSpace(client.TenantID),
 		AllowedTenants: cloneStrings(client.AllowedTenants),
 		Scopes:         scopes,
+		Roles:          cloneStrings(client.Roles),
 		Groups:         []string{"security"},
 	}
 	if len(client.Groups) > 0 {
@@ -513,6 +516,7 @@ func (s *Service) issueTokenPair(ctx context.Context, grant RefreshToken, genera
 		TenantID:       grant.TenantID,
 		AllowedTenants: cloneStrings(grant.AllowedTenants),
 		Scopes:         cloneStrings(grant.Scopes),
+		Roles:          cloneStrings(grant.Roles),
 		Groups:         cloneStrings(grant.Groups),
 	}, s.cfg.AccessTTL, now)
 	if err != nil {
@@ -538,6 +542,7 @@ func (s *Service) issueTokenPair(ctx context.Context, grant RefreshToken, genera
 		TenantID:       grant.TenantID,
 		AllowedTenants: cloneStrings(grant.AllowedTenants),
 		Scopes:         cloneStrings(grant.Scopes),
+		Roles:          cloneStrings(grant.Roles),
 		Groups:         cloneStrings(grant.Groups),
 		FamilyID:       familyID,
 		Generation:     generation,
@@ -564,6 +569,7 @@ func refreshGrantFromCode(code AuthorizationCode, familyID string) RefreshToken 
 		TenantID:       code.TenantID,
 		AllowedTenants: cloneStrings(code.AllowedTenants),
 		Scopes:         cloneStrings(code.Scopes),
+		Roles:          cloneStrings(code.Roles),
 		Groups:         cloneStrings(code.Groups),
 		FamilyID:       familyID,
 	}
@@ -578,6 +584,7 @@ func refreshGrantFromRefresh(token RefreshToken) RefreshToken {
 		TenantID:       token.TenantID,
 		AllowedTenants: cloneStrings(token.AllowedTenants),
 		Scopes:         cloneStrings(token.Scopes),
+		Roles:          cloneStrings(token.Roles),
 		Groups:         cloneStrings(token.Groups),
 		FamilyID:       token.FamilyID,
 		ExpiresAt:      token.ExpiresAt,
@@ -641,6 +648,7 @@ type grantEntitlement struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 }
 
 func (s *Service) entitlementForIdentity(identity Identity, clientID string, requestedScopes []string) (grantEntitlement, error) {
@@ -666,6 +674,7 @@ func (s *Service) entitlementForIdentity(identity Identity, clientID string, req
 			TenantID:       strings.TrimSpace(entitlement.TenantID),
 			AllowedTenants: cloneStrings(entitlement.AllowedTenants),
 			Scopes:         cloneStrings(requestedScopes),
+			Roles:          cloneStrings(entitlement.Roles),
 		}, nil
 	}
 	return grantEntitlement{}, oauthError("access_denied", "authenticated user has no Cerebro tenant entitlement", statusForbidden)

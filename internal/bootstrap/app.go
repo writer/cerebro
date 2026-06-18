@@ -203,6 +203,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 				TenantID:       grant.TenantID,
 				AllowedTenants: grant.AllowedTenants,
 				Scopes:         grant.Scopes,
+				Roles:          grant.Roles,
 				Groups:         grant.Groups,
 			}, ttl, now)
 		}, mcpoauth.WithOIDCProvider(newMCPOAuthOIDCClient(cfg.Auth.MCPOAuth.Upstream)))
