@@ -41698,14 +41698,26 @@ profiles:
       name: ISO Technology Controls
       description: Technology implementation controls for access, operations, logging, vulnerability management, and secure configuration evidence.
       summary:
-        selected_controls: 34
-        mapped_controls: 14
+        selected_controls: 35
+        mapped_controls: 15
         unmapped_controls: 20
-        mapped_rules: 108
+        mapped_rules: 110
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
-        placeholder_controls: 34
+        placeholder_controls: 35
       controls:
+        - framework_name: ISO 27001:2022
+          family_id: A.5
+          family_name: Organizational Controls
+          control_id: A.5.36
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 2
+          mapped_rules:
+            - grc-control-missing-evidence-coverage
+            - sdk-integration-active-risk
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -42323,6 +42335,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.9
+        - rule_id: grc-control-missing-evidence-coverage
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.5.36
         - rule_id: grc-failing-control-test-unhealthy-integration
           controls:
             - framework_name: ISO 27001:2022
@@ -42503,6 +42519,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.2
+        - rule_id: sdk-integration-active-risk
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.5.36
         - rule_id: security-reviewer-reported-finding
           controls:
             - framework_name: ISO 27001:2022
