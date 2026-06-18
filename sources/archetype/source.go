@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,7 +75,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 		return err
 	}
 	var scans []scanRecord
-	return s.get(ctx, st, "/scans", nil, &scans)
+	return s.get(ctx, st, "/scans", &scans)
 }
 func (s *Source) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
@@ -90,7 +89,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.Pull{}, err
 	}
 	var scans []scanRecord
-	if err := s.get(ctx, st, "/scans", nil, &scans); err != nil {
+	if err := s.get(ctx, st, "/scans", &scans); err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	sort.Slice(scans, func(i, j int) bool { return scans[i].ID < scans[j].ID })
@@ -109,7 +108,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 			continue
 		}
 		var vulns []vulnerabilityRecord
-		if err := s.get(ctx, st, fmt.Sprintf("/scans/%d/vulnerabilities", scan.ID), nil, &vulns); err != nil {
+		if err := s.get(ctx, st, fmt.Sprintf("/scans/%d/vulnerabilities", scan.ID), &vulns); err != nil {
 			return sourcecdk.Pull{}, err
 		}
 		for _, vuln := range vulns {
@@ -138,8 +137,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	return st, nil
 }
-func (s *Source) get(ctx context.Context, st settings, path string, query url.Values, out any) error {
-	req, err := sourcehttp.NewRequest(ctx, sourceID, st.baseURL, s.allowLoopbackBaseURL, http.MethodGet, st.apiPrefix+path, query, nil)
+func (s *Source) get(ctx context.Context, st settings, path string, out any) error {
+	req, err := sourcehttp.NewRequest(ctx, sourceID, st.baseURL, s.allowLoopbackBaseURL, http.MethodGet, st.apiPrefix+path, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -158,7 +157,7 @@ func (s *Source) get(ctx context.Context, st settings, path string, query url.Va
 }
 func (s *Source) repositories(ctx context.Context, st settings) map[int]repositoryRecord {
 	var repos []repositoryRecord
-	if err := s.get(ctx, st, "/repositories", nil, &repos); err != nil {
+	if err := s.get(ctx, st, "/repositories", &repos); err != nil {
 		return nil
 	}
 	out := map[int]repositoryRecord{}
