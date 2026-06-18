@@ -29,7 +29,7 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	}
 
 	integrationURN := projectionURN(tenantID, "sdk_integration", integration)
-	postureURN := projectionURN(tenantID, "sdk_integration_posture", integration, control, sdkPostureResourceKey(tenantID, resourceURN))
+	postureURN := projectionURN(tenantID, "sdk_integration_posture", integration, control, sdkPostureResourceKey(resourceURN))
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -83,7 +83,7 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return projectedEntities, projectedLinks, nil
 }
 
-func sdkPostureResourceKey(_ string, resourceURN string) string {
+func sdkPostureResourceKey(resourceURN string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(resourceURN)))
 	return "resource-" + hex.EncodeToString(sum[:16])
 }

@@ -56,6 +56,35 @@ func TestNormalizePushedTelemetryAcceptsValidPosture(t *testing.T) {
 	}
 }
 
+func TestNormalizePushedTelemetryTypedFieldsOverrideAttributes(t *testing.T) {
+	payload := validPushedTelemetry()
+	payload.RuntimeID = ""
+	payload.ResourceType = ""
+	payload.ResourceLabel = ""
+	payload.RiskReason = ""
+	payload.Attributes = map[string]string{
+		"owner":             "Security",
+		"resource_type":     "attacker-type",
+		"resource_label":    "attacker-label",
+		"risk_reason":       "attacker-risk",
+		"source_runtime_id": "attacker-runtime",
+	}
+
+	event, err := NormalizePushedTelemetry(payload)
+	if err != nil {
+		t.Fatalf("NormalizePushedTelemetry() error = %v", err)
+	}
+	attrs := event.GetAttributes()
+	for _, key := range []string{"resource_type", "resource_label", "risk_reason", "source_runtime_id"} {
+		if attrs[key] != "" {
+			t.Fatalf("attribute %q = %q, want omitted when typed field is empty", key, attrs[key])
+		}
+	}
+	if attrs["owner"] != "Security" {
+		t.Fatalf("owner passthrough = %q, want Security", attrs["owner"])
+	}
+}
+
 func TestNormalizePushedTelemetryIsDeterministic(t *testing.T) {
 	first, err := NormalizePushedTelemetry(validPushedTelemetry())
 	if err != nil {

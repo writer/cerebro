@@ -111,16 +111,16 @@ func TestProjectSDKIntegrationPostureRejectsCrossTenantResourceURN(t *testing.T)
 }
 
 func TestSDKPostureResourceKeyKeepsUnscopedResourceDistinct(t *testing.T) {
-	scoped := sdkPostureResourceKey("writer", "urn:cerebro:writer:foo:bar")
-	unscoped := sdkPostureResourceKey("writer", "urn:cerebro:foo:bar")
+	scoped := sdkPostureResourceKey("urn:cerebro:writer:foo:bar")
+	unscoped := sdkPostureResourceKey("urn:cerebro:foo:bar")
 	if scoped == unscoped {
 		t.Fatalf("tenant-scoped and unscoped resource keys collided at %q", scoped)
 	}
 }
 
 func TestSDKPostureResourceKeyAvoidsSlashColonCollision(t *testing.T) {
-	slashSegment := sdkPostureResourceKey("writer", "urn:cerebro:writer:github_code_repository:writer/cerebro")
-	colonSegment := sdkPostureResourceKey("writer", "urn:cerebro:writer:github_code_repository:writer:cerebro")
+	slashSegment := sdkPostureResourceKey("urn:cerebro:writer:github_code_repository:writer/cerebro")
+	colonSegment := sdkPostureResourceKey("urn:cerebro:writer:github_code_repository:writer:cerebro")
 	if slashSegment == colonSegment {
 		t.Fatalf("slash and colon resource keys collided at %q", slashSegment)
 	}

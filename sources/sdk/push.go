@@ -156,6 +156,7 @@ func hasUnsafeCharacters(value string) bool {
 
 func setAttribute(attributes map[string]string, key string, value string) {
 	if strings.TrimSpace(value) == "" {
+		delete(attributes, key)
 		return
 	}
 	attributes[key] = value
@@ -163,8 +164,6 @@ func setAttribute(attributes map[string]string, key string, value string) {
 
 func normalizePostureStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "":
-		return ""
 	case postureStatusAtRisk, "atrisk", "risk", "at-risk", "insecure", "failing", "fail", "failed", "noncompliant", "non_compliant", "non-compliant", "violation", "open", "high_risk", "high-risk":
 		return postureStatusAtRisk
 	case postureStatusSecure, "ok", "pass", "passing", "passed", "compliant", "resolved", "healthy", "remediated", "closed":
