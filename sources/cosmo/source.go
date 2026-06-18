@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 //go:embed catalog.yaml
@@ -682,7 +683,7 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 }
 
 func recordURN(settings settings, family string, id string) (sourcecdk.URN, error) {
-	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, normalizeID(id)))
+	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(id, "unknown")))
 }
 
 func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
@@ -732,7 +733,7 @@ func eventID(settings settings, family string, recordID string) string {
 		sourceID,
 		normalizeID(settings.tenantID),
 		family,
-		normalizeID(recordID),
+		sourceidentity.HashedExternalIDKey(recordID, "unknown"),
 	}, "-")
 }
 
@@ -1160,11 +1161,11 @@ func stableID(parts ...string) string {
 }
 
 func normalizeID(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
+	if value = strings.TrimSpace(value); value == "" {
 		return "unknown"
 	}
-	return url.PathEscape(normalized)
+	replacer := strings.NewReplacer(" ", "-", "/", "-", ":", "-", "\n", "-", "\t", "-")
+	return replacer.Replace(value)
 }
 
 func firstNonEmpty(values ...string) string {
