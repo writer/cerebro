@@ -169,6 +169,22 @@ func TestIncrementalCheckpointForCursorAllowsEmptyCursor(t *testing.T) {
 	}
 }
 
+func TestIncrementalCursorTokenIgnoresLegacyTokenWhenCheckpointed(t *testing.T) {
+	checkpoint := &cerebrov1.SourceCheckpoint{
+		Watermark: timestamppb.New(time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)),
+	}
+	if got := IncrementalCursorToken("gcp", "audit", &cerebrov1.SourceCursor{Opaque: "legacy-page-token"}, checkpoint); got != "" {
+		t.Fatalf("IncrementalCursorToken(legacy) = %q, want empty", got)
+	}
+	if got := IncrementalCursorToken("gcp", "audit", &cerebrov1.SourceCursor{Opaque: "legacy-page-token"}, nil); got != "legacy-page-token" {
+		t.Fatalf("IncrementalCursorToken(no checkpoint) = %q, want legacy token", got)
+	}
+	cursor := &cerebrov1.SourceCursor{Opaque: IncrementalCursor("gcp", "audit", "fresh-page-token", checkpoint)}
+	if got := IncrementalCursorToken("gcp", "audit", cursor, checkpoint); got != "fresh-page-token" {
+		t.Fatalf("IncrementalCursorToken(incremental) = %q, want fresh-page-token", got)
+	}
+}
+
 func watermarkTestEvent(id string, occurredAt time.Time) *primitives.Event {
 	return &primitives.Event{
 		Id:         id,

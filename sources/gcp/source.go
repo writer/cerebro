@@ -34,6 +34,7 @@ var catalogFS embed.FS
 const (
 	defaultFamily                                                                                                                                                                                        = familyAudit
 	defaultPageSize                                                                                                                                                                                      = 10
+	gcpComputeInventoryMaxBodyBytes                                                                                                                                                                      = 64 << 20
 	gcsObjectContentSampleBytes                                                                                                                                                                          = 64 << 10
 	maxPageSize                                                                                                                                                                                          = 200
 	familyAssetMetadata                                                                                                                                                                                  = "asset_metadata"
@@ -677,7 +678,7 @@ func gcpFamily[T any](source *Source, options gcpFamilyOptions[T]) sourcecdk.Fam
 	if options.ListWithCheckpoint != nil {
 		family.ReadWithCheckpoint = func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 			readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("gcp", options.Name, cursor, checkpoint)
-			token := sourcecdk.CursorToken(cursor)
+			token := sourcecdk.IncrementalCursorToken("gcp", options.Name, cursor, checkpoint)
 			records, next, err := options.ListWithCheckpoint(ctx, source, settings, token, settings.perPage, readCheckpoint)
 			if err != nil {
 				return sourcecdk.Pull{}, fmt.Errorf("lookup %s for %s: %w", options.Label, tenantID(settings), err)
@@ -1130,7 +1131,7 @@ func listComputeInstances(ctx context.Context, source *Source, settings settings
 	gcpcloud.AddPageToken(query, pageToken)
 	var response computeAggregatedListResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/instances"
-	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
 	rawRecords := make([]json.RawMessage, 0)
@@ -1170,7 +1171,7 @@ func computeGlobalLister[T any](collection, label string, extraQuery url.Values)
 		gcpcloud.AddPageToken(query, pageToken)
 		var response pageResponse
 		path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/" + collection
-		if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
 			return nil, "", err
 		}
 		records, err := gcpcloud.DecodeRecords(response.Items, label, gcpcloud.SaveRawField[T])
@@ -1202,7 +1203,7 @@ func listComputeAggregatedRecords[T any](ctx context.Context, source *Source, se
 	gcpcloud.AddPageToken(query, pageToken)
 	var response computeAggregatedListResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/aggregated/" + collection
-	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
 	records, err := gcpcloud.DecodeRecords(gcpcloud.ComputeAggregatedRawRecords(response.Items, selectRecords, scopeField), label, gcpcloud.SaveRawField[T])
@@ -1797,7 +1798,7 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 	gcpcloud.AddPageToken(query, pageToken)
 	var response pageResponse
 	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/firewalls"
-	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := getComputeJSON(ctx, source, settings, path, query, nil, &response); err != nil {
 		return nil, "", err
 	}
 	firewalls, err := gcpcloud.DecodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.Raw = append(json.RawMessage(nil), raw...) })
@@ -1975,7 +1976,15 @@ func sourceEvent(settings settings, id string, kind string, schemaRef string, pa
 }
 
 func getJSON(ctx context.Context, source *Source, settings settings, defaultBaseURL func() string, method string, requestPath string, query url.Values, body any, target any) error {
-	content, _, err := getBytes(ctx, source, settings, defaultBaseURL, method, requestPath, query, body, 0)
+	return getJSONWithMaxBytes(ctx, source, settings, defaultBaseURL, method, requestPath, query, body, target, 0)
+}
+
+func getComputeJSON(ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, body any, target any) error {
+	return getJSONWithMaxBytes(ctx, source, settings, computeBaseURL, http.MethodGet, requestPath, query, body, target, gcpComputeInventoryMaxBodyBytes)
+}
+
+func getJSONWithMaxBytes(ctx context.Context, source *Source, settings settings, defaultBaseURL func() string, method string, requestPath string, query url.Values, body any, target any, maxBytes int) error {
+	content, _, err := getBytes(ctx, source, settings, defaultBaseURL, method, requestPath, query, body, maxBytes)
 	if err != nil {
 		return err
 	}
