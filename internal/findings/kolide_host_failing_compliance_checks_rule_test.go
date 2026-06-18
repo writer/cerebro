@@ -33,8 +33,97 @@ func kolideDeviceEvent(id string, attrs map[string]string, occurredAt time.Time)
 	}
 }
 
+func kolideIssueEvent(id string, attrs map[string]string, occurredAt time.Time) *cerebrov1.EventEnvelope {
+	base := map[string]string{
+		"family":            "issue",
+		"issue_id":          "issue-1",
+		"check_id":          "disk-encryption",
+		"title":             "Disk encryption disabled",
+		"device_id":         "device-1",
+		"source_runtime_id": "writer-kolide-issue",
+	}
+	for key, value := range attrs {
+		base[key] = value
+	}
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "kolide",
+		Kind:       "kolide.issue",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "kolide/issue/v1",
+		Attributes: base,
+	}
+}
+
 func TestKolideHostFailingComplianceChecksFixture(t *testing.T) {
 	assertRuleFixture(t, newKolideHostFailingComplianceChecksRule(), "testdata/rules/kolide-host-failing-compliance-checks.json")
+}
+
+func TestKolideHostFailingComplianceChecksRequiredAttributesByKind(t *testing.T) {
+	metadata := newKolideHostFailingComplianceChecksRule().(MetadataRule).RuleMetadata()
+	if got := strings.Join(metadata.RequiredAttributesByKind[kolideIssueEventKind], ","); got != "device_id,issue_id" {
+		t.Fatalf("kolide.issue required attrs = %q, want device_id,issue_id", got)
+	}
+	if got := strings.Join(metadata.RequiredAttributesByKind[kolideDeviceEventKind], ","); got != "device_id" {
+		t.Fatalf("kolide.device required attrs = %q, want device_id", got)
+	}
+}
+
+func TestKolideIssueOpenFinding(t *testing.T) {
+	rule := newKolideHostFailingComplianceChecksRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-kolide-issue",
+		SourceId: "kolide",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "issue"},
+	}
+	event := kolideIssueEvent("kolide-issue-open", map[string]string{
+		"issue_key":   "volume",
+		"issue_value": "Macintosh HD",
+		"exempted":    "false",
+	}, time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC))
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate() emitted %d findings, want 1", len(records))
+	}
+	finding := records[0]
+	if got := finding.Attributes["kolide_issue_urn"]; got != "urn:cerebro:writer:kolide_issue:issue-1" {
+		t.Fatalf("kolide_issue_urn = %q, want issue URN", got)
+	}
+	if got := finding.Attributes["kolide_device_urn"]; got != "urn:cerebro:writer:kolide_device:device-1" {
+		t.Fatalf("kolide_device_urn = %q, want device URN", got)
+	}
+	if got := finding.CheckID; got != "disk-encryption" {
+		t.Fatalf("CheckID = %q, want disk-encryption", got)
+	}
+}
+
+func TestKolideIssueResolutionClosesSameIssue(t *testing.T) {
+	open := kolideIssueEvent("kolide-issue-open", map[string]string{"exempted": "false"}, time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC))
+	resolved := kolideIssueEvent("kolide-issue-resolved", map[string]string{"resolved_at": "2026-04-23T13:00:00Z"}, time.Date(2026, 4, 23, 13, 0, 0, 0, time.UTC))
+	assertIdentityRuleRemediationTrajectory(t, newKolideHostFailingComplianceChecksRule(), open, resolved, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestKolideIssueExemptedDoesNotOpen(t *testing.T) {
+	rule := newKolideHostFailingComplianceChecksRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-kolide-issue",
+		SourceId: "kolide",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "issue"},
+	}
+	event := kolideIssueEvent("kolide-issue-exempted", map[string]string{"exempted": "true"}, time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC))
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate() emitted %d findings, want 0 for exempted issue", len(records))
+	}
 }
 
 func TestKolideHostFailingComplianceChecksRemediationResolves(t *testing.T) {
