@@ -89,6 +89,31 @@ func TestCerebroHighRiskAPIAccessDeniedDoesNotOpen(t *testing.T) {
 	}
 }
 
+func TestCerebroHighRiskAPIAccessOpensOnHighRiskScore(t *testing.T) {
+	rule := newCerebroHighRiskAPIAccessRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-cerebro-access",
+		SourceId: "cerebro",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "access"},
+	}
+	event := cerebroAPIAccessEvent("cerebro-access-high-score", map[string]string{"risk_score": "80"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(high risk score) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(high risk score) emitted %d findings, want 1", len(records))
+	}
+	if got := records[0].Attributes["risk_reason"]; got != "high_risk_score" {
+		t.Fatalf("risk_reason = %q, want high_risk_score", got)
+	}
+	if got := records[0].Attributes["risk_score"]; got != "80" {
+		t.Fatalf("risk_score = %q, want 80", got)
+	}
+}
+
 func TestCerebroHighRiskAPIAccessResolvesOnCleanAccess(t *testing.T) {
 	open := cerebroAPIAccessEvent("cerebro-access-open", map[string]string{"requested_tenant_id": "tenant-b", "tenant_mismatch": "true"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	clean := cerebroAPIAccessEvent("cerebro-access-clean", map[string]string{"connect_procedure": "", "requested_tenant_id": "writer", "route": ""}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
