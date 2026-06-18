@@ -189,6 +189,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "pagerduty",
+			Name:        "PagerDuty",
+			Description: "PagerDuty responder topology and incident-response coverage findings.",
+			Rules: []Rule{
+				newPagerDutyServiceWithoutEscalationRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
