@@ -146,21 +146,27 @@ func TestPanopticonCuratedCaseFindingCorrelatesEvidenceCASAndReopens(t *testing.
 	if firstFingerprint == "" {
 		t.Fatal("open finding has empty fingerprint")
 	}
-	if got := finding.Attributes["evidence_cas_object_ids"]; got != "evidence-1,evidencecas://cases/case-555/evidence/timeline.json" {
+	wantObjectIDs := "evidence-1,evidencecas://cases/case-555/evidence/timeline.json,evidencecas://cases/case-555/evidence/triage.tar"
+	if got := finding.Attributes["evidence_cas_object_ids"]; got != wantObjectIDs {
 		t.Fatalf("evidence_cas_object_ids = %q, want the promoted correlation ids", got)
 	}
 
-	evidenceObjectURN := "urn:cerebro:writer:runtime_evidence:evidence-1"
-	var foundEvidencePath bool
+	expectedEvidenceURNs := map[string]bool{
+		"urn:cerebro:writer:runtime_evidence:evidence-1":                                          false,
+		"urn:cerebro:writer:runtime_evidence:evidencecas://cases/case-555/evidence/triage.tar":    false,
+		"urn:cerebro:writer:runtime_evidence:evidencecas://cases/case-555/evidence/timeline.json": false,
+	}
 	for _, row := range finding.GraphEvidenceRows {
 		for _, path := range row.GetPaths() {
-			if path.GetToUrn() == evidenceObjectURN && path.GetRelation() == "has_evidence" {
-				foundEvidencePath = true
+			if _, ok := expectedEvidenceURNs[path.GetToUrn()]; ok && path.GetRelation() == "has_evidence" {
+				expectedEvidenceURNs[path.GetToUrn()] = true
 			}
 		}
 	}
-	if !foundEvidencePath {
-		t.Fatalf("expected a has_evidence graph path to %q for Evidence CAS correlation", evidenceObjectURN)
+	for urn, found := range expectedEvidenceURNs {
+		if !found {
+			t.Fatalf("expected a has_evidence graph path to %q for Evidence CAS correlation", urn)
+		}
 	}
 
 	closed := panopticonCaseEventWithEvidence("panopticon-case-evidence-closed", "case-555", "closed", "evidence-1,evidencecas://cases/case-555/evidence/timeline.json")

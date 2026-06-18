@@ -8,6 +8,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -141,6 +142,39 @@ func NewMCPActionProposal(args MCPArguments, findingID string, action string) MC
 		"required_scope":         "write",
 		"approval_required":      true,
 	}
+}
+
+func MCPGraphActionTarget(args MCPArguments, finding *ports.FindingRecord) (string, error) {
+	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+	target := strings.TrimSpace(mcpStringArg(args, "target"))
+	if target == "" {
+		target = mcpStringArg(args, "email_or_user_id")
+	}
+	return graphactions.TargetForAction(graphAction, finding, target)
+}
+
+func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *ports.FindingRecord, action string, args MCPArguments, requiredScope string) {
+	if action != "execute_graph_action" {
+		return
+	}
+	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+	target, err := MCPGraphActionTarget(args, finding)
+	if err != nil {
+		return
+	}
+	findingID, _ := proposal["finding_id"].(string)
+	endpoint := "/platform/graph/actions"
+	proposal["graph_action"] = graphAction
+	proposal["target"] = target
+	proposal["endpoint"] = endpoint
+	proposal["idempotency_key"] = graphactions.IdempotencyKey(graphAction, strings.TrimSpace(findingID), target)
+	proposal["recommended_action"] = "POST " + endpoint
+	proposal["required_scope"] = requiredScope
+	proposal["approval_required"] = true
+	proposal["handoff_required"] = true
+	proposal["external_system"] = graphactions.ProviderAccessApprovals
+	proposal["external_ref_kind"] = graphactions.RefKind
+	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
 }
 
 // MCPActionInputProperties returns the finding action proposal input schema pieces.

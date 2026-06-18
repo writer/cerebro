@@ -736,7 +736,7 @@ func (a *App) handleGetReportRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := authorizeReportRunTenant(r.Context(), response.GetRun()); err != nil {
-		writeReportError(w, err)
+		writeReportError(w, normalizeIDLookupError(err, ports.ErrReportRunNotFound))
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
@@ -1220,7 +1220,7 @@ func (a *App) handleGetGraphIngestRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := authorizeTenantID(r.Context(), run.TenantID); err != nil {
-		writeGraphIngestError(w, err)
+		writeGraphIngestError(w, normalizeIDLookupError(err, graphingest.ErrRunNotFound))
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetGraphIngestRunResponse{
@@ -1945,7 +1945,7 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 		return nil, reportConnectError(err)
 	}
 	if err := authorizeReportRunTenant(ctx, response.GetRun()); err != nil {
-		return nil, reportConnectError(err)
+		return nil, reportConnectError(normalizeIDLookupError(err, ports.ErrReportRunNotFound))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -2566,7 +2566,7 @@ func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.R
 		return nil, graphIngestConnectError(err)
 	}
 	if err := authorizeTenantID(ctx, run.TenantID); err != nil {
-		return nil, graphIngestConnectError(err)
+		return nil, graphIngestConnectError(normalizeIDLookupError(err, graphingest.ErrRunNotFound))
 	}
 	return connect.NewResponse(&cerebrov1.GetGraphIngestRunResponse{
 		Run: graphIngestRunMessage(run),

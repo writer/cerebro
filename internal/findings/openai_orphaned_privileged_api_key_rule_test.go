@@ -41,7 +41,7 @@ func TestOpenAIOrphanedPrivilegedAPIKeyFixture(t *testing.T) {
 
 func TestOpenAIOrphanedPrivilegedAPIKeyOwnershipResolves(t *testing.T) {
 	open := openAIAdminKeyEvent("openai-open", map[string]string{}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
-	owned := openAIAdminKeyEvent("openai-owned", map[string]string{"owner_user_id": "user_123", "owner_type": "user"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	owned := openAIAdminKeyEvent("openai-owned", map[string]string{"owner_id": "user_123", "owner_type": "user"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	assertIdentityRuleRemediationTrajectory(t, newOpenAIOrphanedPrivilegedAPIKeyRule(), open, owned, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
@@ -85,7 +85,7 @@ func TestOpenAIOrphanedPrivilegedAPIKeyReopensOnRecurrence(t *testing.T) {
 	if !ok {
 		t.Fatal("rule does not implement CounterEventRule")
 	}
-	ownedEvent := openAIAdminKeyEvent("openai-owned", map[string]string{"owner_user_id": "user_123"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	ownedEvent := openAIAdminKeyEvent("openai-owned", map[string]string{"owner_id": "user_123", "owner_type": "user"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	closeAnchor, closes := counterRule.CloseOnEvent(ownedEvent)
 	if !closes || closeAnchor == "" {
 		t.Fatalf("CloseOnEvent(owned) = (%q, %v), want a non-empty closing anchor", closeAnchor, closes)

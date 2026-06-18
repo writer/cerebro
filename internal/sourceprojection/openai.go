@@ -34,7 +34,7 @@ func enrichOpenAICredentialPosture(entities []*ports.ProjectedEntity, event *cer
 		return
 	}
 	privileged := openAICredentialPrivileged(event.GetKind(), attrs)
-	hasOwner := strings.TrimSpace(attrs["owner_user_id"]) != "" || strings.TrimSpace(attrs["owner_service_account_id"]) != ""
+	hasOwner := strings.TrimSpace(attrs["owner_user_id"]) != "" || strings.TrimSpace(attrs["owner_service_account_id"]) != "" || strings.TrimSpace(attrs["owner_id"]) != ""
 	for _, entity := range entities {
 		if entity == nil || entity.URN != credentialURN {
 			continue

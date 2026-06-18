@@ -75,10 +75,10 @@ func (r *trustedEndpointActiveTrustGateFailureRule) OpenAnchor(attributes map[st
 	return trustedEndpointActiveTrustGateFailureAnchor(attributes)
 }
 
-// CloseOnEvent resolves an open finding only when a later trust-gate decision
-// for the same agent/action allows the action. Endpoint-reported lifecycle
-// fields are retained as context but are not authoritative enough to close or
-// suppress a current trust-gate failure.
+// CloseOnEvent resolves an open finding when a later trust-gate decision for
+// the same agent/action allows the action. Endpoint-reported lifecycle fields
+// are retained as context but are not authoritative enough to close or suppress
+// a current trust-gate failure.
 func (r *trustedEndpointActiveTrustGateFailureRule) CloseOnEvent(event Event) (string, bool) {
 	if !trustedEndpointTrustGateKindMatcher(event) || !hasRequiredAttributes(event, trustedEndpointActiveTrustGateFailureDefinition.RequiredAttributes...) {
 		return "", false
@@ -96,7 +96,8 @@ func matchesTrustedEndpointActiveTrustGateFailure(event *cerebrov1.EventEnvelope
 	if !trustedEndpointTrustGateKindMatcher(event) || !hasRequiredAttributes(event, trustedEndpointActiveTrustGateFailureDefinition.RequiredAttributes...) {
 		return false
 	}
-	return trustedEndpointGateDenied(eventAttributes(event))
+	attributes := eventAttributes(event)
+	return trustedEndpointGateDenied(attributes)
 }
 
 func trustedEndpointActiveTrustGateFailureFinding(event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {
@@ -118,6 +119,8 @@ func trustedEndpointActiveTrustGateFailureFinding(event *cerebrov1.EventEnvelope
 		"agent_id":                   agentID,
 		"action":                     action,
 		"decision":                   decision,
+		"agent_status":               strings.TrimSpace(attrs["agent_status"]),
+		"managed":                    strings.TrimSpace(attrs["managed"]),
 		"reason":                     strings.TrimSpace(attrs["reason"]),
 		"hostname":                   strings.TrimSpace(attrs["hostname"]),
 		"severity":                   severity,
