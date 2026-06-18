@@ -165,6 +165,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "duo",
+			Name:        "Duo",
+			Description: "Duo identity and MFA posture findings.",
+			Rules: []Rule{
+				newDuoActiveUserMFANotEnforcedRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

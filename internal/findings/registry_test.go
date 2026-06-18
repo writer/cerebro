@@ -88,8 +88,8 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 17 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 17", got)
+	if got := len(packs); got != 18 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 18", got)
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {

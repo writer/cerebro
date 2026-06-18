@@ -33,18 +33,19 @@ func New() (*Source, error) {
 		RequireTenantID: true,
 		TokenScheme:     "Basic",
 		Families: []jsonapi.Family{
-			{Name: "user", Path: "/users", URNKind: "duo_user", IDKeys: []string{"user_id"}, TimestampKeys: []string{"created", "last_login"}, Attributes: map[string]string{"user_id": "user_id", "username": "username", "email": "email", "realname": "realname", "status": "status", "last_login_at": "last_login", "is_enrolled": "is_enrolled"}, StaticAttributes: map[string]string{"source_product": "duo"}},
-			{Name: "group", Path: "/groups", URNKind: "duo_group", IDKeys: []string{"group_id"}, TimestampKeys: []string{"created"}, Attributes: map[string]string{"group_id": "group_id", "name": "name", "description": "desc|description"}, StaticAttributes: map[string]string{"source_product": "duo"}},
-			{Name: "endpoint", Path: "/endpoints", URNKind: "duo_endpoint", IDKeys: []string{"endpoint_id"}, TimestampKeys: []string{"last_seen", "created"}, Attributes: map[string]string{"endpoint_id": "endpoint_id", "hostname": "hostname", "os": "os", "os_version": "os_version", "browser": "browser", "last_seen_at": "last_seen"}, StaticAttributes: map[string]string{"source_product": "duo"}},
-			{Name: "phone", Path: "/phones", URNKind: "duo_phone", IDKeys: []string{"phone_id"}, TimestampKeys: []string{"last_seen", "created"}, Attributes: map[string]string{"phone_id": "phone_id", "name": "name", "number": "number", "platform": "platform", "activated": "activated", "last_seen_at": "last_seen"}, StaticAttributes: map[string]string{"source_product": "duo"}},
-			{Name: "token", Path: "/tokens", URNKind: "duo_token", IDKeys: []string{"token_id"}, TimestampKeys: []string{"last_seen", "created"}, Attributes: map[string]string{"token_id": "token_id", "serial": "serial", "type": "type", "last_seen_at": "last_seen"}, StaticAttributes: map[string]string{"source_product": "duo"}},
+			{Name: "user", Path: "/users", URNKind: "duo_user", IDKeys: []string{"user_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"created", "last_login"}, Attributes: map[string]string{"user_id": "user_id", "username": "username", "email": "email", "realname": "realname", "status": "status", "last_login_at": "last_login", "is_enrolled": "is_enrolled", "lockout_reason": "lockout_reason", "last_directory_sync": "last_directory_sync"}, StaticAttributes: map[string]string{"source_product": "duo"}},
+			{Name: "group", Path: "/groups", URNKind: "duo_group", IDKeys: []string{"group_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"created"}, Attributes: map[string]string{"group_id": "group_id", "name": "name", "description": "desc|description", "status": "status"}, StaticAttributes: map[string]string{"source_product": "duo"}},
+			{Name: "endpoint", Path: "/endpoints", URNKind: "duo_endpoint", IDKeys: []string{"endpoint_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"last_seen", "created"}, Attributes: map[string]string{"endpoint_id": "endpoint_id", "hostname": "hostname", "os": "os", "os_version": "os_version", "browser": "browser", "disk_encryption_status": "disk_encryption_status", "last_seen_at": "last_seen"}, StaticAttributes: map[string]string{"source_product": "duo"}},
+			{Name: "phone", Path: "/phones", URNKind: "duo_phone", IDKeys: []string{"phone_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"last_seen", "created"}, Attributes: map[string]string{"phone_id": "phone_id", "name": "name", "number": "number", "platform": "platform", "model": "model", "capabilities": "capabilities", "activated": "activated", "encrypted": "encrypted", "screenlock": "screenlock", "tampered": "tampered", "last_seen_at": "last_seen"}, StaticAttributes: map[string]string{"source_product": "duo"}},
+			{Name: "token", Path: "/tokens", URNKind: "duo_token", IDKeys: []string{"token_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"last_seen", "created"}, Attributes: map[string]string{"token_id": "token_id", "serial": "serial", "type": "type", "totp_step": "totp_step", "last_seen_at": "last_seen"}, StaticAttributes: map[string]string{"source_product": "duo"}},
 			{
 				Name:          "web_authn_credential", // #nosec G101 - Duo uses credential as an inventory object name, not a secret.
 				Path:          "/webauthncredentials",
 				URNKind:       "duo_web_authn_credential",
 				IDKeys:        []string{"credential_id"},
+				ListKeys:      []string{"response"},
 				TimestampKeys: []string{"created", "last_used"},
-				Attributes:    map[string]string{"credential_id": "credential_id", "label": "label", "user_id": "user_id", "last_used_at": "last_used"}, // #nosec G101 - field names, not credentials.
+				Attributes:    map[string]string{"credential_id": "credential_id", "label": "label", "credential_name": "credential_name", "user_id": "user_id", "last_used_at": "last_used"}, // #nosec G101 - field names, not credentials.
 				StaticAttributes: map[string]string{
 					"source_product": "duo",
 				},
