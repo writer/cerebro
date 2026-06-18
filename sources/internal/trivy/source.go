@@ -348,6 +348,9 @@ func imageDigest(report report) string {
 	if idx := strings.LastIndex(report.ArtifactName, "@sha256:"); idx >= 0 {
 		return report.ArtifactName[idx+1:]
 	}
+	if imageID := strings.TrimSpace(report.Metadata.ImageID); imageID != "" {
+		return imageID
+	}
 	return ""
 }
 

@@ -2747,9 +2747,12 @@ paths:
       description: |
         Consumes a single-use bootstrap token and provisions a device
         identity. The bootstrap token is delivered out-of-band by MDM and
-        is bound to the device's hardware_uuid. Returns a short-lived
-        access token (EdDSA JWT) and a long-lived refresh token. Replay
-        of an already-consumed bootstrap token returns 401.
+        is bound to the device's hardware_uuid. Enrollment must bind a
+        DPoP key through verified attestation, an agent-supplied
+        `device_key`, or an existing active device binding before the
+        service returns a short-lived access token (EdDSA JWT) and
+        single-use refresh token. Replay of an already-consumed bootstrap
+        token returns 401.
       tags:
         - Devices
       security: []
@@ -2781,24 +2784,24 @@ paths:
         consumed refresh token revokes the entire token family per RFC 6819
         §5.2.2.3.
 
-        When the device was enrolled with a hardware-bound key (App Attest
-        or TPM 2.0), the request MUST carry an RFC 9449 DPoP proof JWT in
-        the `DPoP` header signed by the bound key, with `htm` matching the
+        The request MUST carry an RFC 9449 DPoP proof JWT in the `DPoP`
+        header signed by the device's bound key, with `htm` matching the
         request method, `htu` matching the canonical request URL, a unique
         `jti`, and a fresh `iat`. The proof's JWK SHA-256 thumbprint
-        (RFC 7638) must equal the device's stored `dpop_jkt`.
+        (RFC 7638) must equal the device's stored `dpop_jkt`; devices
+        without a stored binding are rejected and must re-enroll.
       tags:
         - Devices
       security: []
       parameters:
         - in: header
           name: DPoP
-          required: false
+          required: true
           schema:
             type: string
           description: |
-            RFC 9449 DPoP proof JWT. Required when the device was enrolled
-            with a hardware-bound key. Algorithms: ES256, ES384, EdDSA.
+            RFC 9449 DPoP proof JWT signed by the enrolled device key.
+            Algorithms: ES256, ES384, EdDSA.
       requestBody:
         required: true
         content:
@@ -5788,6 +5791,15 @@ components:
             present and verified, the server binds a DPoP key (RFC 9449) to
             subsequent refresh-token rotations and the response includes
             assurance_level=hardware.
+        device_key:
+          type: object
+          additionalProperties: true
+          description: |
+            Agent-supplied public JWK used to bind the device's access and
+            refresh tokens to RFC 9449 DPoP proofs when attestation does not
+            provide a public key. Required unless verified attestation or an
+            existing active device record supplies the binding. Allowed keys:
+            EC P-256, EC P-384, or OKP Ed25519. RSA is rejected.
     DeviceTokenRequest:
       type: object
       required: [grant_type, refresh_token]

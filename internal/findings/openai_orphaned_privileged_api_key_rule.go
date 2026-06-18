@@ -127,6 +127,7 @@ func openAIOrphanedPrivilegedAPIKeyFinding(event *cerebrov1.EventEnvelope, runti
 		"name":                  strings.TrimSpace(attrs["name"]),
 		"key_class":             firstNonEmpty(strings.TrimSpace(attrs["key_class"]), "admin"),
 		"privileged":            "true",
+		"owner_id":              strings.TrimSpace(attrs["owner_id"]),
 		"owner_type":            strings.TrimSpace(attrs["owner_type"]),
 		"created_at":            strings.TrimSpace(attrs["created_at"]),
 		"last_used_at":          strings.TrimSpace(attrs["last_used_at"]),
@@ -165,7 +166,7 @@ func openAIOrphanedPrivilegedAPIKeyFinding(event *cerebrov1.EventEnvelope, runti
 }
 
 func openAIPrivilegedKeyHasOwner(attributes map[string]string) bool {
-	return strings.TrimSpace(attributes["owner_user_id"]) != "" || strings.TrimSpace(attributes["owner_service_account_id"]) != ""
+	return strings.TrimSpace(attributes["owner_user_id"]) != "" || strings.TrimSpace(attributes["owner_service_account_id"]) != "" || strings.TrimSpace(attributes["owner_id"]) != ""
 }
 
 func openAIPrivilegedKeyRevoked(attributes map[string]string) bool {

@@ -701,6 +701,49 @@ func TestConnectorCredentialBrokerRejectsCrossTenantRequest(t *testing.T) {
 	}
 }
 
+func TestConnectorCredentialDetailNormalizesForeignTenantLookup(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{},
+		credentials: map[string]*ports.ConnectorCredentialRecord{
+			"credential-other": {
+				ID:                "credential-other",
+				TenantID:          "tenant-b",
+				SourceID:          "bootstrap_token",
+				RuntimeID:         "runtime-b",
+				CredentialStoreID: defaultConnectorCredentialStoreID,
+				AuthMethod:        "encrypted_submission",
+				Status:            connectorcredentials.StatusValid,
+				Fields:            []string{"token"},
+			},
+		},
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+
+	req := httptest.NewRequest(http.MethodGet, "/connectors/bootstrap_token/credentials/credential-other", nil)
+	req.SetPathValue("sourceID", "bootstrap_token")
+	req.SetPathValue("credentialID", "credential-other")
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "tenant-a"},
+	}))
+	recorder := httptest.NewRecorder()
+	app.handleGetConnectorCredential(recorder, req)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("GET credential detail status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}
+
 func TestConnectorCredentialBrokerRejectsExistingRuntimeTenantMismatch(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)

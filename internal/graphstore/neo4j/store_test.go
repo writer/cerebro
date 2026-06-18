@@ -36,6 +36,39 @@ func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing
 	}
 }
 
+func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
+	store := &Store{}
+	err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
+		URN:        "urn:cerebro:victim:github_user:alice",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.user",
+	})
+	if err == nil {
+		t.Fatal("UpsertProjectedEntity() error = nil, want cross-tenant Cerebro URN error")
+	}
+	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_user:alice") || !strings.Contains(got, "not projection tenant") {
+		t.Fatalf("UpsertProjectedEntity() error = %q", got)
+	}
+}
+
+func TestUpsertProjectedLinkRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
+	store := &Store{}
+	err := store.UpsertProjectedLink(context.Background(), &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "github",
+		FromURN:  "urn:cerebro:writer:github_user:alice",
+		ToURN:    "urn:cerebro:victim:github_code_repository:writer/cerebro",
+		Relation: "owns",
+	})
+	if err == nil {
+		t.Fatal("UpsertProjectedLink() error = nil, want cross-tenant Cerebro URN error")
+	}
+	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_code_repository:writer/cerebro") || !strings.Contains(got, "not projection tenant") {
+		t.Fatalf("UpsertProjectedLink() error = %q", got)
+	}
+}
+
 func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 	_, conditions, err := endpointOwnerIDLinkCleanupParams(ports.ProjectionLinkCleanupRequest{
 		TenantID: "writer",

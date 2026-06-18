@@ -2,9 +2,14 @@ package duo
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -99,6 +104,7 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 				if got := r.URL.EscapedPath(); got != tt.path {
 					t.Fatalf("request path = %q, want %s", got, tt.path)
 				}
+				assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
 				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
 			defer server.Close()
@@ -108,7 +114,7 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "token": "duo-token"}
+			config := map[string]string{"base_url": server.URL, "client_id": "DIXXXXXXXXXXXXXXXXXX", "client_secret": "deadbeefsecret", "family": tt.family, "tenant_id": "writer"}
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
@@ -126,5 +132,40 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func assertDuoHMACAuth(t *testing.T, r *http.Request, integrationKey string, secretKey string) {
+	t.Helper()
+	date := r.Header.Get("Date")
+	if date == "" {
+		t.Fatal("Date header is empty; Duo HMAC auth requires it")
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Basic ") {
+		t.Fatalf("Authorization = %q, want Basic auth", auth)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(auth, "Basic "))
+	if err != nil {
+		t.Fatalf("decode Authorization: %v", err)
+	}
+	username, signature, ok := strings.Cut(string(decoded), ":")
+	if !ok {
+		t.Fatalf("Authorization payload = %q, want username:signature", decoded)
+	}
+	if username != integrationKey {
+		t.Fatalf("Duo integration key = %q, want %q", username, integrationKey)
+	}
+	canonical := strings.Join([]string{
+		date,
+		r.Method,
+		r.Host,
+		r.URL.EscapedPath(),
+		r.URL.Query().Encode(),
+	}, "\n")
+	mac := hmac.New(sha1.New, []byte(secretKey))
+	_, _ = mac.Write([]byte(canonical))
+	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
+		t.Fatalf("Duo HMAC signature = %q, want %q", signature, want)
 	}
 }

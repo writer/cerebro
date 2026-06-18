@@ -69,13 +69,14 @@ Expected propagated dimensions include:
 - Cross-cutting rollups: `dependency.*`, `phase.*`
 - Domain outcomes: `source_projection.*`, `finding_candidate.*`, `finding_evaluation.*`
 
-Core runtime operations emit structured spans:
+Core runtime operations emit structured spans and diagnostic events:
 
 | Span | Coverage |
 | --- | --- |
 | `source.http.request` | Hardened source HTTP transport, DNS safety checks, host pinning, retries, upstream status |
 | `source.check`, `source.discover`, `source.read` | Source CDK operations |
 | `source_runtime.sync`, `source_runtime.sync_with_lease` | Runtime sync and lease lifecycle |
+| `source_projection.project` | Per-event projection attempt, status, projected/deleted counts, and tenant/source/runtime drill-down fields |
 | `graph.ingest_runtime` | Graph ingestion runs |
 | `graphagent.http.request` | Graph-agent LLM/upstream HTTP calls |
 | `graphagent.llm.draft`, `graphagent.llm.summarize`, `graphagent.llm.probe` | Graph-agent LLM operations, model/provider metadata, counts, sizes, and safe outcomes only |
@@ -108,6 +109,13 @@ Metric attributes deliberately exclude `tenant_id`, `runtime_id`, `resource_urn`
 `evidence_id`, `request_id`, and `trace_id`. Those identifiers remain available
 in spans and wide events for drill-down, while metrics stay safe for aggregation
 and alerting.
+
+For source runtime and projection incidents, use the low-cardinality metrics to
+find the failing `source_id`, `event_kind`, `status`, or `error_kind`, then pivot
+to structured telemetry on `name="source_runtime.sync"` or
+`name="source_projection.project"`. Those diagnostic events carry `tenant_id`,
+`runtime_id`, and namespaced `source_runtime.*` / `source_projection.*` fields
+for per-tenant triage without turning tenant IDs into metric dimensions.
 
 ## Error Contract
 
@@ -180,6 +188,17 @@ stats count(*) as events,
   sum(source_runtime.invalid_event.count) as invalid_events
 by phase.last_name, phase.last_status, source_id, runtime_id, error_kind
 | sort events desc
+```
+
+Drill into tenant-level source runtime and projection failures:
+
+```sql
+fields @timestamp, name, trace_id, tenant_id, source_id, runtime_id, event_kind,
+  status, error_kind
+| filter (name = "source_runtime.sync" or name = "source_projection.project")
+  and status = "failed"
+| sort @timestamp desc
+| limit 100
 ```
 
 ## Local Verification

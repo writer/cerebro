@@ -270,9 +270,18 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		spanAttributes = spanAttributes.
 			WithField(telemetry.Field{Key: "source_runtime.sync.contract_configured", Value: contractConfigured}).
 			WithField(telemetry.Field{Key: "source_runtime.sync.runtime_loaded", Value: runtimeLoadedForRun})
+		if runtime != nil {
+			spanAttributes = spanAttributes.With(observability.SourceRuntimeDiagnosticAttributes(observability.SourceRuntimeDiagnosticContext{
+				RuntimeID: runtime.GetId(),
+				SourceID:  runtime.GetSourceId(),
+				TenantID:  runtime.GetTenantId(),
+			}))
+		} else if runtimeID != "" {
+			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "runtime_id", Value: runtimeID}).
+				WithField(telemetry.Field{Key: "source_runtime.id", Value: runtimeID})
+		}
 		telemetry.AnnotateMain(ctx, spanAttributes.With(telemetry.Attrs(
 			telemetry.Field{Key: "source_runtime.sync.status", Value: status},
-			telemetry.Field{Key: "source_runtime.id", Value: runtimeID},
 		)))
 		telemetry.AnnotateMainPhase(ctx, "source_runtime.sync", status, spanAttributes)
 		sourceID := ""
@@ -308,6 +317,13 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		return nil, err
 	}
 	runtimeLoadedForRun = true
+	runtimeContext := observability.SourceRuntimeDiagnosticContext{
+		RuntimeID: runtime.GetId(),
+		SourceID:  runtime.GetSourceId(),
+		TenantID:  runtime.GetTenantId(),
+	}
+	spanAttributes = spanAttributes.With(observability.SourceRuntimeDiagnosticAttributes(runtimeContext))
+	telemetry.AnnotateMain(ctx, observability.SourceRuntimeDiagnosticAttributes(runtimeContext))
 	source, err := s.lookupSource(runtime.GetSourceId())
 	if err != nil {
 		return nil, err
@@ -316,13 +332,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
-	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()})
-	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()})
-	telemetry.AnnotateMain(ctx, telemetry.Attrs(
-		telemetry.Field{Key: "source_runtime.id", Value: runtime.GetId()},
-		telemetry.Field{Key: "source_runtime.source_id", Value: runtime.GetSourceId()},
-		telemetry.Field{Key: "source_runtime.tenant_id", Value: runtime.GetTenantId()},
-	))
 	refreshRuntimeProgressConfig(runtime, runtimeConfig)
 	pageLimit, err := normalizePageLimit(req.GetPageLimit())
 	if err != nil {

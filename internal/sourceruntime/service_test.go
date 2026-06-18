@@ -1264,6 +1264,46 @@ func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeTelemetryKeepsTenantContextOnEarlyFailure(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-missing-source": {
+				Id:       "writer-missing-source",
+				SourceId: "missing_source",
+				TenantId: "writer",
+			},
+		},
+	}
+	service := New(registry, store, &appendLog{}, nil)
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-missing-source"})
+		if err == nil {
+			t.Fatal("Sync() error = nil, want missing source error")
+		}
+	})
+
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync")
+	for key, want := range map[string]any{
+		"runtime_id":                         "writer-missing-source",
+		"source_id":                          "missing_source",
+		"tenant_id":                          "writer",
+		"source_runtime.id":                  "writer-missing-source",
+		"source_runtime.source_id":           "missing_source",
+		"source_runtime.tenant_id":           "writer",
+		"source_runtime.sync.status":         "failed",
+		"source_runtime.sync.runtime_loaded": true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
 func TestSyncRuntimeTelemetryIncludesBoundedFreshnessMetadata(t *testing.T) {
 	checkpoint := sourcecdk.FamilyFreshnessCheckpoint("github", "audit", nil, sourcecdk.FamilyFreshnessProbe{
 		Kind:       "audit_log_latest_event",
