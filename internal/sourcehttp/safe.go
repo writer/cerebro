@@ -3,6 +3,7 @@ package sourcehttp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -56,6 +57,8 @@ type ResponseBody struct {
 	Header     http.Header
 	Body       []byte
 }
+
+type JSONBody interface{}
 
 func NewClient(options ClientOptions) *http.Client {
 	return HardenClient(nil, options)
@@ -176,6 +179,26 @@ func NewRequest(ctx context.Context, sourceID string, baseURL string, allowLoopb
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build request %s: %w", requestPath, err)
+	}
+	return req, nil
+}
+
+func NewJSONRequest(ctx context.Context, sourceID string, baseURL string, allowLoopback bool, method string, requestPath string, query url.Values, body JSONBody) (*http.Request, error) {
+	var payload []byte
+	if body != nil {
+		var err error
+		payload, err = json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshal %s request: %w", requestPath, err)
+		}
+	}
+	req, err := NewRequest(ctx, sourceID, baseURL, allowLoopback, method, requestPath, query, payload)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	return req, nil
 }

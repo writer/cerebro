@@ -262,6 +262,30 @@ func IncrementalCheckpointForCursor(source string, family string, cursor *cerebr
 	return readCheckpoint
 }
 
+// IncrementalCursorToken returns a provider continuation token for an
+// incremental scan. Legacy bare provider tokens are ignored once a durable
+// watermark exists because provider-side watermark filters usually change the
+// token contract for the remote API.
+func IncrementalCursorToken(source string, family string, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) string {
+	if cursor == nil {
+		return ""
+	}
+	opaque := strings.TrimSpace(cursor.GetOpaque())
+	if opaque == "" {
+		return ""
+	}
+	if envelope, ok := DecodeCursorEnvelope(opaque); ok {
+		if !incrementalCursorMatches(envelope, source, family) {
+			return ""
+		}
+		return strings.TrimSpace(envelope.Token)
+	}
+	if checkpointHasWatermark(checkpoint) {
+		return ""
+	}
+	return opaque
+}
+
 // IncrementalCursor wraps a provider token with the comparison watermark and
 // boundary IDs used for this incremental scan.
 func IncrementalCursor(source string, family string, token string, checkpoint *cerebrov1.SourceCheckpoint) string {
@@ -288,6 +312,10 @@ func IncrementalCursor(source string, family string, token string, checkpoint *c
 		return token
 	}
 	return opaque
+}
+
+func checkpointHasWatermark(checkpoint *cerebrov1.SourceCheckpoint) bool {
+	return checkpoint != nil && checkpoint.GetWatermark() != nil && !checkpoint.GetWatermark().AsTime().IsZero()
 }
 
 func incrementalCursorMatches(envelope CursorEnvelope, source string, family string) bool {
