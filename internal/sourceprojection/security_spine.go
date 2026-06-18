@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securitytooling"
 )
 
 const relationDependsOn = "depends_on"
@@ -189,6 +190,7 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 	}
 	toolURN := projectionURN(tenantID, "security_tool", toolID)
 	controlURN := projectionURN(tenantID, "control", firstNonEmpty(attrs["framework"], "security"), controlID)
+	coverageStatus := firstNonEmpty(attrs["coverage_status"], securitytooling.CoverageStatus(attrs["coverage"]))
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	addEntity(entities, &ports.ProjectedEntity{URN: toolURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "security.tool", Label: toolID, Attributes: map[string]string{"tool_id": toolID}})
@@ -199,17 +201,20 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 		EntityType: "control",
 		Label:      firstNonEmpty(attrs["control_name"], controlID),
 		Attributes: compactAttributes(map[string]string{
-			"control_id":   controlID,
-			"control_name": attrs["control_name"],
-			"framework":    attrs["framework"],
-			"coverage":     attrs["coverage"],
+			"control_id":      controlID,
+			"control_name":    attrs["control_name"],
+			"framework":       attrs["framework"],
+			"coverage":        attrs["coverage"],
+			"coverage_status": coverageStatus,
+			"control_status":  attrs["control_status"],
 		}),
 	})
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), toolURN, controlURN, relationSupports, map[string]string{
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), toolURN, controlURN, relationSupports, compactAttributes(map[string]string{
 		"event_id":         event.GetId(),
 		"coverage":         attrs["coverage"],
+		"coverage_status":  coverageStatus,
 		"evidence_surface": attrs["evidence_surface"],
-	}))
+	})))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }

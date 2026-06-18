@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,6 +106,7 @@ func encodePEMPrivate(t *testing.T, priv ed25519.PrivateKey) string {
 func TestDeviceAuthEndToEnd(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
+	deviceKey := newTestDeviceDPoPKey(t)
 
 	// Issue bootstrap token as an operator using the API key.
 	bootstrapBody := bytes.NewBufferString(`{"hardware_uuid":"hw-1","tenant_id":"writer","ttl_seconds":3600}`)
@@ -128,7 +130,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 
 	// Enroll the device (no auth header; route is public).
-	enrollBody := []byte(`{"bootstrap_token":"` + bootstrap.Token + `","hardware_uuid":"hw-1","hostname":"laptop-1","os_type":"darwin"}`)
+	enrollBody := []byte(`{"bootstrap_token":"` + bootstrap.Token + `","hardware_uuid":"hw-1","hostname":"laptop-1","os_type":"darwin","device_key":` + deviceKey.jwkJSON + `}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewReader(enrollBody))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
@@ -158,6 +160,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+enroll.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "abc-123")
+	setDPoPHeader(t, req, deviceKey, "ingest-1", enroll.AccessToken)
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusAccepted {
@@ -170,6 +173,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+enroll.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "abc-123")
+	setDPoPHeader(t, req, deviceKey, "ingest-2", enroll.AccessToken)
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusAccepted {
 		t.Fatalf("idempotent ingest status = %d", resp.Code)
@@ -188,6 +192,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+enroll.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "abc-123")
+	setDPoPHeader(t, req, deviceKey, "ingest-3", enroll.AccessToken)
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("conflicting ingest status = %d, body=%s", resp.Code, resp.Body.String())
@@ -197,6 +202,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	rotateBody := []byte(`{"grant_type":"refresh_token","refresh_token":"` + enroll.RefreshToken + `"}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
 	req.Header.Set("Content-Type", "application/json")
+	setDPoPHeader(t, req, deviceKey, "token-1", "")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -207,6 +213,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	resp = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
 	req.Header.Set("Content-Type", "application/json")
+	setDPoPHeader(t, req, deviceKey, "token-2", "")
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusUnauthorized {
 		t.Fatalf("replay status = %d, want 401", resp.Code)
@@ -220,6 +227,7 @@ func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 	ctx := context.Background()
+	deviceKey := newTestDeviceDPoPKey(t)
 
 	bootstrap, err := app.deviceService.IssueBootstrapToken(ctx, deviceauth.IssueBootstrapTokenRequest{
 		HardwareUUID: "hw-security",
@@ -231,6 +239,7 @@ func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
 	enroll, err := app.deviceService.Enroll(ctx, deviceauth.EnrollRequest{
 		BootstrapToken: bootstrap.Token,
 		HardwareUUID:   "hw-security",
+		DeviceJWK:      json.RawMessage(deviceKey.jwkJSON),
 	})
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
@@ -489,6 +498,7 @@ func TestAuthMiddlewarePreservesDPoPErrorCodes(t *testing.T) {
 func TestTelemetryIngestRejectsMalformedBodies(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
+	deviceKey := newTestDeviceDPoPKey(t)
 	bootstrap, err := app.deviceService.IssueBootstrapToken(context.Background(), deviceauth.IssueBootstrapTokenRequest{
 		HardwareUUID: "hw-json",
 		TenantID:     "writer",
@@ -499,16 +509,18 @@ func TestTelemetryIngestRejectsMalformedBodies(t *testing.T) {
 	enroll, err := app.deviceService.Enroll(context.Background(), deviceauth.EnrollRequest{
 		BootstrapToken: bootstrap.Token,
 		HardwareUUID:   "hw-json",
+		DeviceJWK:      json.RawMessage(deviceKey.jwkJSON),
 	})
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
 
-	for _, body := range []string{"", "not-json", "[]", "null"} {
+	for i, body := range []string{"", "not-json", "[]", "null"} {
 		req := httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+enroll.AccessToken)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Idempotency-Key", "telemetry-json-"+body)
+		setDPoPHeader(t, req, deviceKey, fmt.Sprintf("telemetry-json-%d", i), enroll.AccessToken)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)
 		if resp.Code != http.StatusBadRequest {
@@ -547,6 +559,7 @@ func TestRemoteIPForRateLimitIgnoresSpoofedLeftmostForwardedFor(t *testing.T) {
 func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
+	deviceKey := newTestDeviceDPoPKey(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bytes.NewBufferString(`{"hardware_uuid":"hw-1","tenant_id":"writer","ttl_seconds":3600}`))
 	req.Header.Set("Authorization", "Bearer operator-key")
@@ -563,7 +576,7 @@ func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
 		t.Fatalf("decode bootstrap response: %v", err)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-1"}`))
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-1","device_key":`+deviceKey.jwkJSON+`}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
@@ -585,6 +598,7 @@ func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
 	rotateBody := []byte(`{"grant_type":"refresh_token","refresh_token":"` + enroll.RefreshToken + `"}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
 	req.Header.Set("Content-Type", "application/json")
+	setDPoPHeader(t, req, deviceKey, "limit-token-1", "")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -599,6 +613,7 @@ func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
 	rotateBody = []byte(`{"grant_type":"refresh_token","refresh_token":"` + rotated.RefreshToken + `"}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
 	req.Header.Set("Content-Type", "application/json")
+	setDPoPHeader(t, req, deviceKey, "limit-token-2", "")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusTooManyRequests {
@@ -683,6 +698,7 @@ func containsString(values []string, target string) bool {
 func TestDeviceAuthEnrollAndTokenSetNoStoreHeaders(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
+	deviceKey := newTestDeviceDPoPKey(t)
 
 	bootstrapBody := bytes.NewBufferString(`{"hardware_uuid":"hw-no-store","tenant_id":"writer","ttl_seconds":3600}`)
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bootstrapBody)
@@ -701,7 +717,7 @@ func TestDeviceAuthEnrollAndTokenSetNoStoreHeaders(t *testing.T) {
 		t.Fatalf("decode bootstrap response: %v", err)
 	}
 
-	enrollBody := []byte(`{"bootstrap_token":"` + bootstrap.Token + `","hardware_uuid":"hw-no-store","os_type":"darwin"}`)
+	enrollBody := []byte(`{"bootstrap_token":"` + bootstrap.Token + `","hardware_uuid":"hw-no-store","os_type":"darwin","device_key":` + deviceKey.jwkJSON + `}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewReader(enrollBody))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
@@ -720,6 +736,7 @@ func TestDeviceAuthEnrollAndTokenSetNoStoreHeaders(t *testing.T) {
 	rotateBody := []byte(`{"grant_type":"refresh_token","refresh_token":"` + enroll.RefreshToken + `"}`)
 	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
 	req.Header.Set("Content-Type", "application/json")
+	setDPoPHeader(t, req, deviceKey, "no-store-token", "")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -740,8 +757,8 @@ func assertNoStoreHeaders(t *testing.T, where string, h http.Header) {
 
 // TestDeviceAuthEnrollAcceptsAgentDeviceKey verifies that an agent that
 // supplies a device_key in the enrollment body gets a sender-constrained
-// access token whose cnf.jkt matches the supplied key. Without device_key
-// the access token has no DPoP binding (software-bearer mode).
+// access token whose cnf.jkt matches the supplied key, while malformed
+// device_key input is rejected without consuming the bootstrap token.
 func TestDeviceAuthEnrollAcceptsAgentDeviceKey(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
@@ -832,6 +849,80 @@ func TestDeviceAuthEnrollAcceptsAgentDeviceKey(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("retry enroll status = %d, want 200 (bootstrap should not have been consumed); body=%s", resp.Code, resp.Body.String())
 	}
+}
+
+type testDeviceDPoPKey struct {
+	jwkJSON string
+	jwk     map[string]string
+	private ed25519.PrivateKey
+}
+
+func newTestDeviceDPoPKey(t *testing.T) testDeviceDPoPKey {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	jwk := map[string]string{
+		"crv": "Ed25519",
+		"kty": "OKP",
+		"x":   base64Raw(pub),
+	}
+	raw, err := json.Marshal(jwk)
+	if err != nil {
+		t.Fatalf("marshal jwk: %v", err)
+	}
+	return testDeviceDPoPKey{jwkJSON: string(raw), jwk: jwk, private: priv}
+}
+
+func setDPoPHeader(t *testing.T, req *http.Request, key testDeviceDPoPKey, jti string, accessToken string) {
+	t.Helper()
+	req.Header.Set("DPoP", makeTestDPoPProof(t, key, req.Method, testRequestHTU(req), jti, accessToken))
+}
+
+func testRequestHTU(req *http.Request) string {
+	if req.URL.IsAbs() {
+		return req.URL.String()
+	}
+	scheme := "http"
+	if req.TLS != nil {
+		scheme = "https"
+	}
+	host := req.Host
+	if host == "" {
+		host = req.URL.Host
+	}
+	return scheme + "://" + host + req.URL.RequestURI()
+}
+
+func makeTestDPoPProof(t *testing.T, key testDeviceDPoPKey, method string, htu string, jti string, accessToken string) string {
+	t.Helper()
+	header := map[string]any{
+		"typ": "dpop+jwt",
+		"alg": "EdDSA",
+		"jwk": key.jwk,
+	}
+	payload := map[string]any{
+		"htm": method,
+		"htu": htu,
+		"iat": time.Now().UTC().Unix(),
+		"jti": jti,
+	}
+	if accessToken != "" {
+		sum := sha256.Sum256([]byte(accessToken))
+		payload["ath"] = base64.RawURLEncoding.EncodeToString(sum[:])
+	}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		t.Fatalf("marshal DPoP header: %v", err)
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal DPoP payload: %v", err)
+	}
+	signingInput := base64Raw(headerJSON) + "." + base64Raw(payloadJSON)
+	signature := ed25519.Sign(key.private, []byte(signingInput))
+	return signingInput + "." + base64Raw(signature)
 }
 
 func base64Raw(b []byte) string {

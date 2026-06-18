@@ -1169,20 +1169,40 @@ func aiEnsureRole(entities map[string]*ports.ProjectedEntity, tenantID string, s
 }
 
 func aiCredentialOwnerURN(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, attrs map[string]string) string {
-	if ownerServiceAccountID := strings.TrimSpace(attrs["owner_service_account_id"]); ownerServiceAccountID != "" {
+	if ownerServiceAccountID := firstNonEmpty(attrs["owner_service_account_id"], aiTypedOwnerID(attrs, "service_account")); ownerServiceAccountID != "" {
 		ownerURN := identityPrincipalURN(tenantID, profile.Provider, "service_account", ownerServiceAccountID, "")
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        ownerURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.Provider + ".service_account",
-			Label:      ownerServiceAccountID,
-			Attributes: map[string]string{"service_account_id": ownerServiceAccountID, "principal_type": "service_account"},
+			Label:      firstNonEmpty(attrs["owner_name"], ownerServiceAccountID),
+			Attributes: map[string]string{"service_account_id": ownerServiceAccountID, "name": strings.TrimSpace(attrs["owner_name"]), "principal_type": "service_account", "role": strings.TrimSpace(attrs["owner_role"])},
 		})
 		return ownerURN
 	}
-	if ownerUserID := firstNonEmpty(attrs["owner_user_id"], attrs["user_id"]); ownerUserID != "" || strings.TrimSpace(attrs["email"]) != "" {
-		return aiEnsureUser(entities, links, tenantID, event, profile, ownerUserID, attrs["email"], attrs["name"], "")
+	if ownerUserID := firstNonEmpty(attrs["owner_user_id"], attrs["user_id"], aiTypedOwnerID(attrs, "user")); ownerUserID != "" || strings.TrimSpace(attrs["email"]) != "" {
+		return aiEnsureUser(entities, links, tenantID, event, profile, ownerUserID, attrs["email"], firstNonEmpty(attrs["owner_name"], attrs["name"]), "")
+	}
+	return ""
+}
+
+func aiTypedOwnerID(attrs map[string]string, wantType string) string {
+	ownerID := strings.TrimSpace(attrs["owner_id"])
+	if ownerID == "" {
+		return ""
+	}
+	ownerType := strings.ToLower(strings.TrimSpace(attrs["owner_type"]))
+	ownerObject := strings.ToLower(strings.TrimSpace(attrs["owner_object"]))
+	switch wantType {
+	case "service_account":
+		if ownerType == "service_account" || strings.Contains(ownerObject, "service_account") {
+			return ownerID
+		}
+	case "user":
+		if ownerType == "user" || strings.Contains(ownerObject, ".user") {
+			return ownerID
+		}
 	}
 	return ""
 }

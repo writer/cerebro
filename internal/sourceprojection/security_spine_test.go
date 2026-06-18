@@ -221,3 +221,110 @@ func TestProjectSecurityToolingMapControlMapping(t *testing.T) {
 	}
 	assertProjectedLink(t, state, "urn:cerebro:writer:security_tool:agent-gateway", relationSupports, "urn:cerebro:writer:control:SOC2:CC6.1")
 }
+
+func TestRegistryRoutesSecurityToolingMapDeclaredKinds(t *testing.T) {
+	cases := []struct {
+		kind       string
+		attrs      map[string]string
+		entityType string
+	}{
+		{"security_tooling_map.tool", map[string]string{"tool_id": "agent-gateway", "name": "agent-gateway"}, "security.tool"},
+		{"security_tooling_map.control_mapping", map[string]string{"tool_id": "agent-gateway", "control_id": "CC6.1", "framework": "SOC2", "coverage": "partial"}, "control"},
+	}
+	registered := make(map[string]struct{})
+	for _, kind := range BuiltinRegistry().Kinds() {
+		registered[kind] = struct{}{}
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind, func(t *testing.T) {
+			if _, ok := registered[tc.kind]; !ok {
+				t.Fatalf("declared security tooling map kind %q is not routed in the projection registry", tc.kind)
+			}
+			event := &cerebrov1.EventEnvelope{
+				Id:         "evt-" + tc.kind,
+				TenantId:   "writer",
+				SourceId:   "security_tooling_map",
+				Kind:       tc.kind,
+				OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+				Attributes: tc.attrs,
+			}
+			entities, _, err := BuiltinRegistry().Project(event)
+			if err != nil {
+				t.Fatalf("Project(%s) error = %v", tc.kind, err)
+			}
+			found := false
+			for _, entity := range entities {
+				if entity.EntityType == tc.entityType {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("kind %q did not route to projector producing %q; entities=%#v", tc.kind, tc.entityType, entities)
+			}
+		})
+	}
+}
+
+func TestProjectSecurityToolingMapControlMappingAnnotatesCoverageGap(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evt-coverage-gap",
+		TenantId:   "writer",
+		SourceId:   "security_tooling_map",
+		Kind:       "security_tooling_map.control_mapping",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"tool_id":         "agent-gateway",
+			"control_id":      "CC6.1",
+			"control_name":    "Logical access",
+			"framework":       "SOC2",
+			"coverage":        "partial",
+			"coverage_status": "gap",
+		},
+		Payload: mustJSON(t, map[string]any{"tool_id": "agent-gateway", "control_id": "CC6.1"}),
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	toolURN := "urn:cerebro:writer:security_tool:agent-gateway"
+	controlURN := "urn:cerebro:writer:control:SOC2:CC6.1"
+	control := state.entities[controlURN]
+	if control == nil || control.Attributes["coverage_status"] != "gap" {
+		t.Fatalf("control entity = %#v, want coverage_status gap", control)
+	}
+	supportLink := state.links[toolURN+"|"+relationSupports+"|"+controlURN]
+	if supportLink == nil || supportLink.Attributes["coverage_status"] != "gap" {
+		t.Fatalf("support link = %#v, want coverage_status gap", supportLink)
+	}
+}
+
+func TestProjectSecurityToolingMapControlMappingDerivesCoverageStatus(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evt-coverage-derived",
+		TenantId:   "writer",
+		SourceId:   "security_tooling_map",
+		Kind:       "security_tooling_map.control_mapping",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"tool_id":    "agent-gateway",
+			"control_id": "CC7.2",
+			"framework":  "SOC2",
+			"coverage":   "full",
+		},
+		Payload: mustJSON(t, map[string]any{"tool_id": "agent-gateway", "control_id": "CC7.2"}),
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	controlURN := "urn:cerebro:writer:control:SOC2:CC7.2"
+	control := state.entities[controlURN]
+	if control == nil || control.Attributes["coverage_status"] != "covered" {
+		t.Fatalf("control entity = %#v, want derived coverage_status covered", control)
+	}
+}

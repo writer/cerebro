@@ -887,7 +887,7 @@ func (a *App) handleGetConnectorCredential(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
-		writeConnectorError(w, err)
+		writeConnectorError(w, normalizeIDLookupError(err, ports.ErrConnectorCredentialNotFound))
 		return
 	}
 	events, err := broker.AuditEvents(r.Context(), credentialID, 50)

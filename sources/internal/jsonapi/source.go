@@ -3,6 +3,8 @@ package jsonapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -36,27 +38,28 @@ const (
 
 // Family describes one JSON API collection exposed by a first-class source.
 type Family struct {
-	Name                 string
-	Path                 string
-	DetailPath           string
-	PathParams           []string
-	CursorParam          string
-	NextCursorKeys       []string
-	HasMoreKey           string
-	URNKind              string
-	IDKeys               []string
-	TimestampKeys        []string
-	Attributes           map[string]string
-	StaticAttributes     map[string]string
-	StaticQuery          map[string]string
-	ConfigQuery          map[string]string
-	PageSizeParams       []string
-	DisablePageSize      bool
-	ListKeys             []string
-	MapRecords           map[string]string
-	Singleton            bool
-	RequireID            bool
-	IncrementalWatermark bool
+	Name                  string
+	Path                  string
+	DetailPath            string
+	AllowBareDetailRecord bool
+	PathParams            []string
+	CursorParam           string
+	NextCursorKeys        []string
+	HasMoreKey            string
+	URNKind               string
+	IDKeys                []string
+	TimestampKeys         []string
+	Attributes            map[string]string
+	StaticAttributes      map[string]string
+	StaticQuery           map[string]string
+	ConfigQuery           map[string]string
+	PageSizeParams        []string
+	DisablePageSize       bool
+	ListKeys              []string
+	MapRecords            map[string]string
+	Singleton             bool
+	RequireID             bool
+	IncrementalWatermark  bool
 }
 
 // Options configures a JSON API-backed source adapter.
@@ -405,7 +408,7 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 			enriched = append(enriched, original)
 			continue
 		}
-		raw, err := detailRecordRaw(body)
+		raw, err := detailRecordRaw(body, family.AllowBareDetailRecord)
 		if err != nil {
 			enriched = append(enriched, original)
 			continue
@@ -562,6 +565,8 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 			return nil
 		}
 		return setTokenHeader(req, "Authorization", "Basic", settings.token, s.options.SourceID)
+	case "duo_hmac":
+		return setDuoHMACAuth(req, settings, s.options.SourceID)
 	case "oauth_client_credentials":
 		token := settings.token
 		if token == "" {
@@ -589,6 +594,28 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 	default:
 		return fmt.Errorf("%s auth model %q is not supported by jsonapi", s.options.SourceID, authModel)
 	}
+}
+
+func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error {
+	integrationKey := firstNonEmpty(settings.clientID, settings.username)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.password)
+	if integrationKey == "" || secretKey == "" {
+		return fmt.Errorf("%s client_id and client_secret are required for Duo HMAC auth", sourceID)
+	}
+	date := time.Now().UTC().Format(time.RFC1123Z)
+	req.Header.Set("Date", date)
+	canonical := strings.Join([]string{
+		date,
+		strings.ToUpper(req.Method),
+		strings.ToLower(req.URL.Host),
+		req.URL.EscapedPath(),
+		req.URL.Query().Encode(),
+	}, "\n")
+	mac := hmac.New(sha1.New, []byte(secretKey))
+	_, _ = mac.Write([]byte(canonical))
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.SetBasicAuth(integrationKey, signature)
+	return nil
 }
 
 func setTokenHeader(req *http.Request, header string, scheme string, token string, sourceID string) error {
@@ -956,7 +983,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
 }
 
-func detailRecordRaw(raw json.RawMessage) (json.RawMessage, error) {
+func detailRecordRaw(raw json.RawMessage, allowBareObject bool) (json.RawMessage, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, err
@@ -972,6 +999,9 @@ func detailRecordRaw(raw json.RawMessage) (json.RawMessage, error) {
 		}
 	}
 	if _, ok := object["id"]; ok {
+		return cloneRaw(raw), nil
+	}
+	if allowBareObject && len(object) != 0 {
 		return cloneRaw(raw), nil
 	}
 	return nil, fmt.Errorf("response did not contain a detail record")
@@ -1245,7 +1275,7 @@ func normalizedAuthModel(value string) string {
 		return "bearer_token"
 	case "api_key", "api_token":
 		return "api_key"
-	case "basic", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none":
+	case "basic", "duo_hmac", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none":
 		return value
 	default:
 		return value

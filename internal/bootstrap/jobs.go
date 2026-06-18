@@ -137,7 +137,7 @@ func (a *App) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := authorizeTenantID(r.Context(), job.TenantID); err != nil {
-		writeJobError(w, err)
+		writeJobError(w, normalizeIDLookupError(err, ports.ErrJobNotFound))
 		return
 	}
 	writeJSON(w, http.StatusOK, jobResponse{Job: job})
@@ -150,7 +150,7 @@ func (a *App) handleListJobEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := authorizeTenantID(r.Context(), job.TenantID); err != nil {
-		writeJobError(w, err)
+		writeJobError(w, normalizeIDLookupError(err, ports.ErrJobNotFound))
 		return
 	}
 	limit, err := uint32QueryParam(r, "limit")
@@ -173,7 +173,7 @@ func (a *App) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := authorizeTenantID(r.Context(), existing.TenantID); err != nil {
-		writeJobError(w, err)
+		writeJobError(w, normalizeIDLookupError(err, ports.ErrJobNotFound))
 		return
 	}
 	job, err := a.jobService().Cancel(r.Context(), existing.ID)

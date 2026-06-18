@@ -32,11 +32,14 @@ func TestProjectTrustedEndpointTrustGateDecision(t *testing.T) {
 	service := New(state, nil)
 
 	event := trustedEndpointEvent("te-trust-gate", "trusted_endpoint.trust_gate_decision", map[string]string{
-		"agent_id": "dev_123",
-		"hostname": "workstation",
-		"action":   "git_push",
-		"decision": "deny",
-		"severity": "high",
+		"agent_id":     "dev_123",
+		"hostname":     "workstation",
+		"action":       "git_push",
+		"decision":     "deny",
+		"severity":     "high",
+		"reason":       "posture_failed",
+		"agent_status": "deprovisioned",
+		"managed":      "false",
 	})
 	if _, err := service.Project(context.Background(), event); err != nil {
 		t.Fatalf("Project() error = %v", err)
@@ -47,6 +50,14 @@ func TestProjectTrustedEndpointTrustGateDecision(t *testing.T) {
 	if agent == nil || agent.EntityType != "trusted_endpoint.agent" {
 		t.Fatalf("trusted_endpoint.agent entity missing or wrong: %#v", agent)
 	}
+	for key, want := range map[string]string{
+		"agent_status": "deprovisioned",
+		"managed":      "false",
+	} {
+		if got := agent.Attributes[key]; got != want {
+			t.Fatalf("agent attribute %q = %q, want %q", key, got, want)
+		}
+	}
 
 	gate := findProjectedEntityByType(state, "trusted_endpoint.trust_gate_decision")
 	if gate == nil {
@@ -54,6 +65,9 @@ func TestProjectTrustedEndpointTrustGateDecision(t *testing.T) {
 	}
 	for key, want := range map[string]string{
 		"decision":            "deny",
+		"agent_status":        "deprovisioned",
+		"managed":             "false",
+		"reason":              "posture_failed",
 		"severity_normalized": "HIGH",
 		"status_normalized":   "failing",
 	} {

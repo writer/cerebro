@@ -825,7 +825,7 @@ func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingI
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 51; got != want {
+	if got, want := len(keepRules), 52; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1063,6 +1063,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "pagerduty-service-without-escalation-policy", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "pagerduty"},
 		{RuleID: "trusted-endpoint-active-trust-gate-failure", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "trusted_endpoint"},
 		{RuleID: "sdk-integration-active-risk", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sdk"},
+		{RuleID: "security-tooling-map-control-coverage-gap", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_tooling_map"},
 		{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
 		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "vulnview"},
 	}
