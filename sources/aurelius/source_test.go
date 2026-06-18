@@ -486,6 +486,118 @@ func TestReadReturnsCursorWhenS3PageIsTruncated(t *testing.T) {
 	}
 }
 
+func TestReadReplayFromCheckpointIsIdempotent(t *testing.T) {
+	newSource := func() *Source {
+		src, err := New()
+		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+		return src
+	}
+	fixed := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	firstArchive := "findings/batch-001.ndjson"
+	secondArchive := "findings/batch-002.ndjson"
+	objects := []fakeObject{
+		{
+			key: firstArchive,
+			records: []aureliusRecord{{
+				EventID:    "01HX-finding-a",
+				OccurredAt: fixed,
+				Attributes: map[string]string{"image_digest": "sha256:aaa", "severity": "high"},
+				Payload:    map[string]interface{}{"image_digest": "sha256:aaa", "cve_id": "CVE-2026-1111", "severity": "high", "package": "openssl"},
+			}},
+		},
+		{
+			key: secondArchive,
+			records: []aureliusRecord{{
+				EventID:    "01HX-finding-b",
+				OccurredAt: fixed.Add(time.Hour),
+				Attributes: map[string]string{"image_digest": "sha256:bbb", "severity": "critical"},
+				Payload:    map[string]interface{}{"image_digest": "sha256:bbb", "cve_id": "CVE-2026-2222", "severity": "critical", "package": "zlib"},
+			}},
+		},
+	}
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"family":    familyFinding,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "findings/",
+		"tenant_id": "writer",
+	})
+
+	eventIDs := func(pull sourcecdk.Pull) []string {
+		ids := make([]string, 0, len(pull.Events))
+		for _, ev := range pull.Events {
+			ids = append(ids, ev.GetId())
+		}
+		return ids
+	}
+
+	srcA := newSource()
+	clientA := newFakeS3(objects)
+	srcA.newClient = func(context.Context, settings) (s3API, error) { return clientA, nil }
+	first, err := srcA.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor != nil {
+		t.Fatalf("first NextCursor = %#v, want nil after final page", first.NextCursor)
+	}
+	if first.Checkpoint == nil {
+		t.Fatal("first Checkpoint = nil, want checkpoint after full read")
+	}
+	firstIDs := eventIDs(first)
+	if len(firstIDs) != 2 {
+		t.Fatalf("first events = %v, want 2 emissions", firstIDs)
+	}
+
+	// Replaying the same starting cursor (nil) is deterministic: identical
+	// emissions in identical order and an identical resulting checkpoint.
+	srcB := newSource()
+	clientB := newFakeS3(objects)
+	srcB.newClient = func(context.Context, settings) (s3API, error) { return clientB, nil }
+	replay, err := srcB.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(replay) error = %v", err)
+	}
+	if got, want := eventIDs(replay), firstIDs; !equalStringSlices(got, want) {
+		t.Fatalf("replay emissions = %v, want identical %v", got, want)
+	}
+	if got, want := first.Checkpoint.GetCursorOpaque(), replay.Checkpoint.GetCursorOpaque(); got != want {
+		t.Fatalf("replay checkpoint = %q, want identical %q", got, want)
+	}
+
+	// Resuming from the emitted checkpoint must not duplicate already-emitted
+	// records and must not regress the cursor watermark/last_key.
+	resumeCursor := &cerebrov1.SourceCursor{Opaque: first.Checkpoint.GetCursorOpaque()}
+	resume, err := srcA.Read(context.Background(), cfg, resumeCursor)
+	if err != nil {
+		t.Fatalf("Read(resume) error = %v", err)
+	}
+	if len(resume.Events) != 0 {
+		t.Fatalf("resume emissions = %v, want no duplicates after checkpoint", eventIDs(resume))
+	}
+	priorKey := mustDecodeAureliusCursor(t, first.Checkpoint.GetCursorOpaque()).LastKey
+	if resume.Checkpoint != nil {
+		resumeKey := mustDecodeAureliusCursor(t, resume.Checkpoint.GetCursorOpaque()).LastKey
+		if resumeKey < priorKey {
+			t.Fatalf("resume checkpoint last_key = %q regressed below %q", resumeKey, priorKey)
+		}
+	}
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestReadResumesFromCursor(t *testing.T) {
 	src, err := New()
 	if err != nil {

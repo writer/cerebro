@@ -139,6 +139,120 @@ func TestProjectAureliusReadsMetadataFromPayload(t *testing.T) {
 	}
 }
 
+func TestProjectAureliusFindingRecordsPromotedRiskEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-finding-promoted",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.finding",
+		Attributes: map[string]string{
+			"exception_status": "active",
+			"promoted":         "true",
+			"track":            "prod",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":       "CVE-2026-1111",
+			"image_digest": "sha256:c6b86af5b3d40000",
+			"image_uri":    "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000",
+			"package":      "openssl",
+			"severity":     "high",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
+	link := state.links[imageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
+	if link == nil {
+		t.Fatalf("affected_by link missing; links=%v", state.links)
+	}
+	for key, want := range map[string]string{
+		"promoted":         "true",
+		"promoted_track":   "prod",
+		"exception_status": "active",
+	} {
+		if got := link.Attributes[key]; got != want {
+			t.Fatalf("affected_by link attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestProjectAureliusFindingRecordsPayloadPromotedTrack(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-finding-promoted-track-payload",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.finding",
+		Attributes: map[string]string{
+			"exception_status": "none",
+			"promoted":         "true",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":         "CVE-2026-1111",
+			"image_digest":   "sha256:c6b86af5b3d40000",
+			"image_uri":      "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000",
+			"package":        "openssl",
+			"promoted_track": "prod",
+			"severity":       "high",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
+	link := state.links[imageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
+	if link == nil {
+		t.Fatalf("affected_by link missing; links=%v", state.links)
+	}
+	if got := link.Attributes["promoted_track"]; got != "prod" {
+		t.Fatalf("promoted_track = %q, want prod from payload fallback", got)
+	}
+}
+
+func TestProjectAureliusVerdictSupersededReplacementIsDeterministic(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	verdictEvent := func(id string, verdict string) *cerebrov1.EventEnvelope {
+		return &cerebrov1.EventEnvelope{
+			Id:       id,
+			TenantId: "writer",
+			SourceId: "aurelius",
+			Kind:     "aurelius.verdict",
+			Attributes: map[string]string{
+				"image_digest": "sha256:superseded",
+				"verdict":      verdict,
+			},
+		}
+	}
+
+	if _, err := service.Project(context.Background(), verdictEvent("aurelius-verdict-warn", "warn")); err != nil {
+		t.Fatalf("Project(warn) error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), verdictEvent("aurelius-verdict-block", "block")); err != nil {
+		t.Fatalf("Project(block) error = %v", err)
+	}
+
+	verdictURN := "urn:cerebro:writer:aurelius_verdict:sha256:superseded"
+	entity := state.entities[verdictURN]
+	if entity == nil {
+		t.Fatalf("verdict entity %q missing; superseded verdict must reuse the same canonical anchor", verdictURN)
+	}
+	if got := entity.Attributes["verdict"]; got != "block" {
+		t.Fatalf("verdict = %q, want superseding value block (deterministic replacement on stable identity)", got)
+	}
+}
+
 func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

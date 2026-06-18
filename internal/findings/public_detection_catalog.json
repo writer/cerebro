@@ -48,6 +48,56 @@
       ]
     },
     {
+      "id": "aurelius-promoted-vulnerability-active",
+      "pack_id": "aurelius",
+      "pack_name": "Aurelius",
+      "name": "Aurelius Promoted Image Unresolved High Vulnerability",
+      "description": "Detect catalog-promoted container images carrying an active, unresolved high or critical Aurelius vulnerability that is not covered by an active policy exception, so promoted production risk does not silently persist.",
+      "source_id": "aurelius",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "aurelius.finding"
+      ],
+      "output_kind": "finding.aurelius_promoted_vulnerability_active",
+      "severity": "dynamic",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.initial-access",
+        "aurelius",
+        "container",
+        "image",
+        "promotion",
+        "vulnerability"
+      ],
+      "references": [
+        "https://kubernetes.io/docs/concepts/security/supply-chain-security/"
+      ],
+      "false_positives": [
+        "Vulnerability covered by an active, approved Aurelius policy exception, already downgraded below high severity, or remediated by a newer promoted image build."
+      ],
+      "runbook": "Confirm the promoted image still carries the unresolved vulnerability; rebuild and re-promote a fixed image or grant an approved policy exception, then re-scan to clear the finding.",
+      "required_attributes": [
+        "cve_id",
+        "image_digest",
+        "package",
+        "severity"
+      ],
+      "fingerprint_fields": [
+        "aurelius_vulnerability_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        }
+      ]
+    },
+    {
       "id": "backstage-critical-component-missing-owner",
       "pack_id": "backstage",
       "pack_name": "Backstage",

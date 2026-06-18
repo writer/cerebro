@@ -253,6 +253,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "aurelius",
+			Name:        "Aurelius",
+			Description: "Aurelius image attestation and promoted-image vulnerability posture findings.",
+			Rules: []Rule{
+				newAureliusPromotedVulnerabilityActiveRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
