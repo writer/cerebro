@@ -22,6 +22,7 @@
       "issuer": "https://login.example.com/oauth2/aus-api",
       "issuer_host": "login.example.com",
       "issuer_mode": "CUSTOM_URL",
+      "jwks_uri_host": "login.example.com",
       "kid": "kid-1",
       "last_updated_at": "2026-04-23T00:00:00Z",
       "name": "API Gateway",

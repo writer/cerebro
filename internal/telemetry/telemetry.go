@@ -136,18 +136,18 @@ func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 		"unknown",
 	)
 	cloudRegion := firstNonEmpty(
-		resourceAttributes["cloud.region"],
 		metadata.CloudRegion,
+		resourceAttributes["cloud.region"],
 	)
 	cloudProvider := firstNonEmpty(
-		resourceAttributes["cloud.provider"],
 		metadata.CloudProvider,
-		inferredCloudProvider(metadata, cloudRegion),
+		inferredCloudProvider(metadata),
+		resourceAttributes["cloud.provider"],
 		"unknown",
 	)
 	containerID := firstNonEmpty(
-		resourceAttributes["container.id"],
 		metadata.ContainerID,
+		resourceAttributes["container.id"],
 		hostname,
 	)
 	attributes := resourceAttributesToTelemetry(resourceAttributes)
@@ -262,8 +262,8 @@ func resourceAttributesToTelemetry(values map[string]string) Attributes {
 	return attributes
 }
 
-func inferredCloudProvider(metadata RuntimeMetadata, region string) string {
-	if strings.TrimSpace(region) != "" || strings.TrimSpace(metadata.ECSContainerMetadataURI) != "" || strings.Contains(strings.ToLower(strings.TrimSpace(metadata.AWSExecutionEnvironment)), "aws") {
+func inferredCloudProvider(metadata RuntimeMetadata) string {
+	if strings.TrimSpace(metadata.CloudRegion) != "" || strings.TrimSpace(metadata.ECSContainerMetadataURI) != "" || strings.Contains(strings.ToLower(strings.TrimSpace(metadata.AWSExecutionEnvironment)), "aws") {
 		return "aws"
 	}
 	return ""
