@@ -36,12 +36,17 @@ class ProvisionOtelCollectorConfigTest(unittest.TestCase):
         config = yaml.safe_load(rendered)
 
         self.assertEqual(config["extensions"]["health_check"]["endpoint"], "127.0.0.1:13133")
+        self.assertEqual(
+            config["receivers"]["prometheus/internal"]["config"]["scrape_configs"][0]["static_configs"][0]["targets"],
+            ["127.0.0.1:8888"],
+        )
         self.assertEqual(config["receivers"]["otlp"]["protocols"]["http"]["endpoint"], "127.0.0.1:4318")
         self.assertIn("awsxray", config["exporters"])
         self.assertEqual(config["exporters"]["awsemf"]["namespace"], "Cerebro/OTEL")
         self.assertEqual(config["exporters"]["awsemf"]["log_group_name"], "/aws/otel/cerebro-sec-dev/metrics")
-        self.assertNotIn("metrics", config["service"]["telemetry"])
+        self.assertEqual(config["service"]["telemetry"]["metrics"]["level"], "detailed")
         self.assertEqual(config["service"]["pipelines"]["traces"]["exporters"], ["awsxray"])
+        self.assertEqual(config["service"]["pipelines"]["metrics"]["receivers"], ["otlp", "prometheus/internal"])
         self.assertEqual(config["service"]["pipelines"]["metrics"]["exporters"], ["awsemf"])
 
     def test_dry_run_prints_config_hash_without_calling_aws(self) -> None:

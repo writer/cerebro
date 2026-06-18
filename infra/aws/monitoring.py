@@ -910,6 +910,20 @@ def create_monitoring(
             description="OpenTelemetry collector errors or exporter failures detected",
             alarm_actions=alarm_actions,
         )
+        for metric_name, description in {
+            "OtelCollectorDropped": "OpenTelemetry collector logs report dropped telemetry.",
+            "OtelCollectorRefused": "OpenTelemetry collector logs report refused telemetry.",
+            "OtelCollectorFailures": "OpenTelemetry collector logs report failed sends or pipeline failures.",
+        }.items():
+            _custom_metric_alarm(
+                resource_name=f"{name}-{_safe_resource_suffix(metric_name)}-alarm",
+                alarm_name=f"{name}-{_safe_resource_suffix(metric_name)}",
+                namespace=telemetry_namespace,
+                metric_name=metric_name,
+                threshold=0,
+                description=description,
+                alarm_actions=alarm_actions,
+            )
 
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
@@ -1558,6 +1572,23 @@ def _create_otel_collector_metric_filters(name: str, log_group_name: pulumi.Inpu
                 default_value=0,
             ),
         )
+    for suffix, metric_name, pattern in [
+        ("failed-detail", "OtelCollectorFailures", "failed"),
+        ("dropped-detail", "OtelCollectorDropped", "dropped"),
+        ("refused-detail", "OtelCollectorRefused", "refused"),
+    ]:
+        filters[suffix] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-otel-collector-{suffix}-filter",
+            name=f"{name}-otel-collector-{suffix}",
+            log_group_name=log_group_name,
+            pattern=pattern,
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name=metric_name,
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        )
     return filters
 
 
@@ -1861,7 +1892,7 @@ def _dashboard_body(
         _source_runtime_observability_widgets(
             telemetry_namespace,
             source_runtime_observability,
-            start_y=72 if otel_widgets else 60,
+            start_y=78 if otel_widgets else 60,
         )
     )
     return json.dumps({"widgets": widgets})
@@ -1933,7 +1964,7 @@ def _otel_collector_observability_widgets(
         {
             "type": "log",
             "x": 0,
-            "y": y + 6,
+            "y": y + 12,
             "width": 24,
             "height": 6,
             "properties": {
@@ -1941,6 +1972,91 @@ def _otel_collector_observability_widgets(
                 "query": f"SOURCE '{log_group_name}' | fields @timestamp, @message | sort @timestamp desc | limit 40",
                 "region": region,
                 "view": "table",
+            },
+        },
+        {
+            "type": "metric",
+            "x": 0,
+            "y": y + 6,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Collector Queue",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_exporter_queue_size\"', 'Average', 60)",
+                            "label": "Exporter queue size",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_exporter_queue_capacity\"', 'Average', 60)",
+                            "label": "Exporter queue capacity",
+                            "id": "e2",
+                            "yAxis": "right",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 12,
+            "y": y + 6,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Collector Refused / Failed",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_exporter_send_failed_spans\"', 'Sum', 60)",
+                            "label": "Failed spans",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_exporter_send_failed_metric_points\"', 'Sum', 60)",
+                            "label": "Failed metric points",
+                            "id": "e2",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_exporter_enqueue_failed_spans\"', 'Sum', 60)",
+                            "label": "Enqueue failed spans",
+                            "id": "e3",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_exporter_enqueue_failed_metric_points\"', 'Sum', 60)",
+                            "label": "Enqueue failed metric points",
+                            "id": "e4",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_receiver_refused_spans\"', 'Sum', 60)",
+                            "label": "Receiver refused spans",
+                            "id": "e5",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_receiver_refused_metric_points\"', 'Sum', 60)",
+                            "label": "Receiver refused metric points",
+                            "id": "e6",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
             },
         },
     ]

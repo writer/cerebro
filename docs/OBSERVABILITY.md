@@ -28,7 +28,7 @@ Cerebro already publishes CloudWatch logs, dashboards, alarms, and `/metrics`. O
 
 Prefer `cerebro:otelCollectorEnabled` for production. In collector mode, the app exporter is pinned to `http://127.0.0.1:4318` with `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE=true`, and backend OTLP endpoints plus auth headers belong in the collector config secret. Do not configure `cerebro:otelExporterOtlpHeadersSecretName` with collector mode.
 
-Collector mode creates a dedicated `/ecs/<service>/otel-collector` log group, adds an `OtelCollectorErrors` CloudWatch metric filter/alarm, and adds CloudWatch dashboard widgets for collector container resources, recent collector logs, and collector exporter errors. The ECS app container waits for the collector health check before starting.
+Collector mode creates a dedicated `/ecs/<service>/otel-collector` log group, adds CloudWatch metric filters/alarms for collector errors, dropped telemetry, refused telemetry, and failed sends, and adds dashboard widgets for collector container resources, `otelcol_*` self-metrics, recent collector logs, and collector exporter errors. The ECS app container waits for the collector health check before starting.
 
 Every ECS API task also receives stack/runtime metadata that the app copies into
 wide-event attributes:
@@ -51,49 +51,68 @@ The live Cerebro stacks use collector mode:
 | `sec-dev` | `cerebro-sec-dev/CEREBRO_OTEL_COLLECTOR_CONFIG` |
 
 The secret value should be an ADOT collector config that receives app OTLP on
-`127.0.0.1:4318` and exports to Writer's observability aggregator. Keep backend
-headers, certificates, or future vendor auth inside that secret, not in Pulumi
-config.
+`127.0.0.1:4318`, scrapes the collector's own `otelcol_*` internal metrics on
+`127.0.0.1:8888`, exports traces to AWS X-Ray, and exports metrics to
+CloudWatch EMF under `Cerebro/OTEL`. Keep backend headers, certificates, or
+future vendor auth inside that secret, not in Pulumi config.
 
-Current aggregator config:
+Generated AWS-native config shape:
 
 ```yaml
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
 receivers:
+  prometheus/internal:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 30s
+          static_configs:
+            - targets: [127.0.0.1:8888]
   otlp:
     protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
       http:
         endpoint: 127.0.0.1:4318
 processors:
-  batch:
-    send_batch_size: 100
-    timeout: 1s
-exporters:
-  otlphttp/aggregator:
-    endpoint: https://aggregator.observability.writer.com:4321
-    compression: gzip
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 64
+  resourcedetection:
+    detectors: [env, ecs]
     timeout: 2s
-    retry_on_failure:
-      enabled: true
-      initial_interval: 1s
-      max_interval: 30s
-      max_elapsed_time: 300s
-    sending_queue:
-      enabled: true
-      num_consumers: 2
-      queue_size: 512
+    override: false
+  batch/traces:
+    timeout: 5s
+    send_batch_size: 512
+  batch/metrics:
+    timeout: 30s
+    send_batch_size: 512
+exporters:
+  awsxray: {}
+  awsemf:
+    namespace: Cerebro/OTEL
+    log_group_name: /aws/otel/<service>/metrics
+    dimension_rollup_option: NoDimensionRollup
 service:
+  extensions: [health_check]
   telemetry:
     logs:
       level: info
+    metrics:
+      level: detailed
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp/aggregator]
+      processors: [memory_limiter, resourcedetection, batch/traces]
+      exporters: [awsxray]
     metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp/aggregator]
+      receivers: [otlp, prometheus/internal]
+      processors: [memory_limiter, resourcedetection, batch/metrics]
+      exporters: [awsemf]
 ```
 
 The collector config is deliberately a secret even when it only contains a

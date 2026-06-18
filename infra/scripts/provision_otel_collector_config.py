@@ -55,6 +55,13 @@ def render_collector_config(service: str) -> str:
     endpoint: 127.0.0.1:13133
 
 receivers:
+  prometheus/internal:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 30s
+          static_configs:
+            - targets: [127.0.0.1:8888]
   otlp:
     protocols:
       grpc:
@@ -90,13 +97,15 @@ service:
   telemetry:
     logs:
       level: info
+    metrics:
+      level: detailed
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch/traces]
       exporters: [awsxray]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus/internal]
       processors: [memory_limiter, resourcedetection, batch/metrics]
       exporters: [awsemf]
 """

@@ -231,9 +231,13 @@ class MonitoringRuntimeTest(unittest.TestCase):
 
         self.assertIn("OTEL Collector Container", body)
         self.assertIn("OTEL Collector Errors", body)
+        self.assertIn("OTEL Collector Queue", body)
+        self.assertIn("OTEL Collector Refused / Failed", body)
         self.assertIn("OTEL Collector Recent Logs", body)
         self.assertIn("ECS/ContainerInsights", body)
         self.assertIn("OtelCollectorErrors", body)
+        self.assertIn("otelcol_exporter_queue_size", body)
+        self.assertIn("otelcol_exporter_send_failed_spans", body)
         self.assertIn("/ecs/cerebro-test/otel-collector", body)
 
     def test_otel_collector_metric_filters_roll_up_to_single_metric(self) -> None:
@@ -260,10 +264,26 @@ class MonitoringRuntimeTest(unittest.TestCase):
             monitoring.aws.cloudwatch.LogMetricFilter = original_filter
             monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
 
-        self.assertEqual(set(filters), {"error", "error-uppercase", "failed", "dropped", "refused"})
+        self.assertEqual(
+            set(filters),
+            {
+                "error",
+                "error-uppercase",
+                "failed",
+                "dropped",
+                "refused",
+                "failed-detail",
+                "dropped-detail",
+                "refused-detail",
+            },
+        )
         self.assertTrue(all(call["log_group_name"] == "/ecs/cerebro-test/otel-collector" for call in calls))
-        self.assertTrue(all(call["metric_transformation"].name == "OtelCollectorErrors" for call in calls))
         self.assertTrue(all(call["metric_transformation"].namespace == "Cerebro/cerebro-test" for call in calls))
+        metric_names = {call["metric_transformation"].name for call in calls}
+        self.assertIn("OtelCollectorErrors", metric_names)
+        self.assertIn("OtelCollectorDropped", metric_names)
+        self.assertIn("OtelCollectorRefused", metric_names)
+        self.assertIn("OtelCollectorFailures", metric_names)
 
     def test_telemetry_metric_filters_include_grc_dashboard_latency(self) -> None:
         calls: list[dict] = []
@@ -319,13 +339,20 @@ class MonitoringRuntimeTest(unittest.TestCase):
                 "cerebro-test-otel-collector-refused",
                 "cerebro-test-otel-collector-dropped",
                 "cerebro-test-otel-collector-failed",
+                "cerebro-test-otel-collector-refused-detail",
+                "cerebro-test-otel-collector-dropped-detail",
+                "cerebro-test-otel-collector-failed-detail",
             },
         )
         self.assertEqual({call["log_group_name"] for call in calls}, {"otel-logs"})
         for call in calls:
-            self.assertEqual(call["metric_transformation"].name, "OtelCollectorErrors")
             self.assertEqual(call["metric_transformation"].value, "1")
             self.assertEqual(call["metric_transformation"].default_value, 0)
+        by_name = {call["name"]: call["metric_transformation"].name for call in calls}
+        self.assertEqual(by_name["cerebro-test-otel-collector-error"], "OtelCollectorErrors")
+        self.assertEqual(by_name["cerebro-test-otel-collector-dropped-detail"], "OtelCollectorDropped")
+        self.assertEqual(by_name["cerebro-test-otel-collector-refused-detail"], "OtelCollectorRefused")
+        self.assertEqual(by_name["cerebro-test-otel-collector-failed-detail"], "OtelCollectorFailures")
 
     def test_source_runtime_observability_filters_use_bounded_runtime_dimensions(self) -> None:
         calls: list[dict] = []
