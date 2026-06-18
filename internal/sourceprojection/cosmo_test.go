@@ -165,6 +165,32 @@ func TestProjectCosmoFactRequiresExplicitCoordinationRiskState(t *testing.T) {
 	}
 }
 
+func TestProjectCosmoFactDoesNotUseGenericPayloadAsRiskReason(t *testing.T) {
+	for _, field := range []string{"reason", "summary"} {
+		t.Run(field, func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+				Id:       "cosmo-writer-fact-generic-" + field,
+				TenantId: "writer",
+				SourceId: "cosmo",
+				Kind:     "cosmo.fact",
+				Payload: mustJSON(t, map[string]any{
+					"key":      "coordination:risk:thread-1",
+					"category": "coordination_risk",
+					"status":   "active",
+					field:      "agent-controlled generic text",
+				}),
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+			if got := fact.Attributes["risk_reason"]; got != "" {
+				t.Fatalf("fact risk_reason = %q, want omitted for generic %s payload", got, field)
+			}
+		})
+	}
+}
+
 func TestProjectCosmoFactResolvedBooleanMatchesFindingState(t *testing.T) {
 	entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-fact-coordination-risk-resolved",

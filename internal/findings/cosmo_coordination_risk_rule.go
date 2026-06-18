@@ -123,7 +123,7 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 		"session_id":           sessionID,
 		"category":             cosmoFactCategory(event),
 		"risk_state":           "active",
-		"risk_reason":          firstNonEmpty(strings.TrimSpace(attrs["risk_reason"]), cosmoFactPayloadString(event, "risk_reason", "reason", "summary")),
+		"risk_reason":          firstNonEmpty(strings.TrimSpace(attrs["risk_reason"]), cosmoFactPayloadString(event, "risk_reason")),
 		"risk_severity":        firstNonEmpty(strings.TrimSpace(attrs["risk_severity"]), cosmoFactPayloadString(event, "risk_severity", "severity")),
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"source_runtime_id":    sourceRuntimeID,
@@ -254,11 +254,11 @@ func cosmoCoordinationRiskURN(tenantID string, runtimeID string, sessionID strin
 	if tenantID == "" || runtimeID == "" || factKey == "" {
 		return ""
 	}
-	session := strings.TrimSpace(sessionID)
-	if session == "" {
-		session = "memory"
+	sessionScope := "session:" + strings.TrimSpace(sessionID)
+	if strings.TrimSpace(sessionID) == "" {
+		sessionScope = "sessionless"
 	}
-	key := hashFindingFingerprint("cosmo_coordination_risk", tenantID, runtimeID, session, factKey)
+	key := hashFindingFingerprint("cosmo_coordination_risk", tenantID, runtimeID, sessionScope, factKey)
 	return fmt.Sprintf("urn:cerebro:%s:cosmo_coordination_risk:%s", tenantID, key)
 }
 

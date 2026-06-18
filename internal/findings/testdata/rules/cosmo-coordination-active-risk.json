@@ -51,7 +51,7 @@
       "summary": "Cosmo agent memory records active coordination risk",
       "event_ids": ["cosmo-fact-active"],
       "attributes": {
-        "cosmo_risk_urn": "urn:cerebro:writer:cosmo_coordination_risk:f0d02223cee7f854f41a2083eee9907e8d1f3672e6bee4bc2b86d17a8a2e4016",
+        "cosmo_risk_urn": "urn:cerebro:writer:cosmo_coordination_risk:081433b50564f6901a823d298c60b79fdb574d24b7e8a3e987e9693c5f614971",
         "fact_key": "coordination:risk:thread-7",
         "session_id": "thread-7",
         "category": "coordination_risk",
