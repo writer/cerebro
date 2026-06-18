@@ -68,6 +68,10 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 	}{
 		{name: "direct internal", ignored: "internal/**", forbidden: "internal/", want: true},
 		{name: "glob-prefixed internal", ignored: "**/internal/**", forbidden: "internal/", want: true},
+		{name: "blanket recursive wildcard", ignored: "**", forbidden: "api/", want: true},
+		{name: "blanket recursive files", ignored: "**/*", forbidden: "internal/", want: true},
+		{name: "brace includes api", ignored: "{api,vendor}/**", forbidden: "api/", want: true},
+		{name: "brace excludes internal", ignored: "{api,vendor}/**", forbidden: "internal/"},
 		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
 		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
 		{name: "allowed vendor", ignored: "vendor/**", forbidden: "internal/"},
@@ -100,8 +104,40 @@ func deepsecIgnorePathTouchesSurface(ignored string, forbidden string) bool {
 	if normalized == "" || surface == "" {
 		return false
 	}
-	if normalized == surface || strings.HasPrefix(normalized, surface+"/") {
-		return true
+	for _, candidate := range deepsecIgnorePathCandidates(normalized) {
+		if candidate == "*" || candidate == "**" || candidate == "**/*" {
+			return true
+		}
+		if candidate == surface || strings.HasPrefix(candidate, surface+"/") {
+			return true
+		}
+		if strings.Contains(candidate, "/"+surface+"/") || strings.HasSuffix(candidate, "/"+surface) {
+			return true
+		}
 	}
-	return strings.Contains(normalized, "/"+surface+"/") || strings.HasSuffix(normalized, "/"+surface)
+	return false
+}
+
+func deepsecIgnorePathCandidates(pattern string) []string {
+	pattern = strings.Trim(pattern, "/")
+	start := strings.Index(pattern, "{")
+	if start < 0 {
+		return []string{pattern}
+	}
+	endOffset := strings.Index(pattern[start+1:], "}")
+	if endOffset < 0 {
+		return []string{pattern}
+	}
+	end := start + 1 + endOffset
+	prefix := pattern[:start]
+	suffix := pattern[end+1:]
+	candidates := []string{pattern}
+	for _, option := range strings.Split(pattern[start+1:end], ",") {
+		option = strings.TrimSpace(option)
+		if option == "" {
+			continue
+		}
+		candidates = append(candidates, strings.Trim(prefix+option+suffix, "/"))
+	}
+	return candidates
 }
