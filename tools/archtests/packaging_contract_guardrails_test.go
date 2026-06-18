@@ -91,10 +91,18 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 		"target_environment: go-prod",
 		"apply_mode: pull_request",
 		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
+		"RUNTIME_CONTRACT_BASE: cerebro-runtime-contract-${{ matrix.target_environment }}",
+		`target_environment: [sec-dev, go-prod]`,
+		`-env "${TARGET_ENVIRONMENT}"`,
+		"cerebro-runtime-contract-sec-dev.json",
+		"cerebro-runtime-contract-go-prod.json",
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
 		}
+	}
+	if strings.Contains(release, "-env sec-dev") {
+		t.Fatal("runtime deploy contract must not be pinned to sec-dev when release dispatches multiple environments")
 	}
 	latestIndex := strings.Index(release, `docker buildx imagetools create -t "${IMAGE_BASE}:latest"`)
 	stableGuardIndex := strings.Index(release, `if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`)
