@@ -80,6 +80,30 @@ func TestProjectCosmoFactLinksSourceSession(t *testing.T) {
 	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
 }
 
+func TestProjectCosmoFactLinksPayloadSourceSession(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-risk-payload-source",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Payload: mustJSON(t, map[string]any{
+			"key":    "risk:key",
+			"source": "session:payload-thread-1",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	factURN := cosmoTestURN("cosmo_fact", "risk:key")
+	sessionURN := cosmoTestURN("cosmo_session", "payload-thread-1")
+	assertCosmoProjectedEntity(t, entities, factURN, "cosmo.fact")
+	session := cosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	if got := session.Attributes["ticket_id"]; got != "payload-thread-1" {
+		t.Fatalf("session ticket_id attribute = %q, want raw payload session id", got)
+	}
+	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
+}
+
 func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-fact-coordination-risk",

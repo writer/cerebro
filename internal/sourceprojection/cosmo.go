@@ -66,7 +66,7 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		factAttributes["risk_severity"] = firstNonEmpty(attrs["risk_severity"], stringValue(payload, "risk_severity"), stringValue(payload, "severity"))
 	}
 	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, factAttributes)))
-	if sessionID := cosmoFactSessionID(attrs["source"]); sessionID != "" {
+	if sessionID := cosmoFactSessionID(firstNonEmpty(attrs["source"], stringValue(payload, "source"))); sessionID != "" {
 		addCosmoSessionLink(entities, links, event, tenantID, factURN, sessionID)
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
