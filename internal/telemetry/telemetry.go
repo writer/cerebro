@@ -54,7 +54,23 @@ type Field struct {
 	Value any
 }
 
+type RuntimeMetadata struct {
+	ResourceAttributes      string
+	ServiceName             string
+	DeploymentEnvironment   string
+	CloudRegion             string
+	CloudProvider           string
+	ContainerID             string
+	ECSContainerMetadataURI string
+	AWSExecutionEnvironment string
+}
+
 const maxAttributeStringLength = 1024
+
+var (
+	runtimeMetadataMu sync.RWMutex
+	runtimeMetadata   RuntimeMetadata
+)
 
 func Attrs(fields ...Field) Attributes {
 	attributes := Attributes{values: map[string]any{}}
@@ -88,14 +104,60 @@ func (a Attributes) with(key string, value any) Attributes {
 	return a
 }
 
+func ConfigureRuntimeMetadata(metadata RuntimeMetadata) {
+	runtimeMetadataMu.Lock()
+	defer runtimeMetadataMu.Unlock()
+	runtimeMetadata = metadata
+}
+
+func configuredRuntimeMetadata() RuntimeMetadata {
+	runtimeMetadataMu.RLock()
+	defer runtimeMetadataMu.RUnlock()
+	return runtimeMetadata
+}
+
 func RuntimeAttributes() Attributes {
+	return RuntimeAttributesFor(configuredRuntimeMetadata())
+}
+
+func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 	hostname, _ := os.Hostname()
-	return Attrs(
-		Field{Key: "service.name", Value: buildinfo.ServiceName},
+	resourceAttributes := parseResourceAttributes(metadata.ResourceAttributes)
+	serviceName := firstNonEmpty(
+		metadata.ServiceName,
+		resourceAttributes["service.name"],
+		buildinfo.ServiceName,
+	)
+	deploymentEnvironment := firstNonEmpty(
+		metadata.DeploymentEnvironment,
+		resourceAttributes["deployment.environment.name"],
+		resourceAttributes["deployment.environment"],
+		resourceAttributes["environment"],
+		"unknown",
+	)
+	cloudRegion := firstNonEmpty(
+		resourceAttributes["cloud.region"],
+		metadata.CloudRegion,
+	)
+	cloudProvider := firstNonEmpty(
+		resourceAttributes["cloud.provider"],
+		metadata.CloudProvider,
+		inferredCloudProvider(metadata, cloudRegion),
+		"unknown",
+	)
+	containerID := firstNonEmpty(
+		resourceAttributes["container.id"],
+		metadata.ContainerID,
+		hostname,
+	)
+	attributes := resourceAttributesToTelemetry(resourceAttributes)
+	return attributes.With(Attrs(
+		Field{Key: "service.name", Value: serviceName},
 		Field{Key: "service.version", Value: buildinfo.Version},
 		Field{Key: "service.commit", Value: buildinfo.Commit},
 		Field{Key: "service.build_date", Value: buildinfo.BuildDate},
-		Field{Key: "deployment.environment.name", Value: "unknown"},
+		Field{Key: "deployment.environment", Value: deploymentEnvironment},
+		Field{Key: "deployment.environment.name", Value: deploymentEnvironment},
 		Field{Key: "host.name", Value: hostname},
 		Field{Key: "os.type", Value: runtime.GOOS},
 		Field{Key: "os.arch", Value: runtime.GOARCH},
@@ -104,10 +166,107 @@ func RuntimeAttributes() Attributes {
 		Field{Key: "process.runtime.version", Value: runtime.Version()},
 		Field{Key: "process.cpu.count", Value: runtime.NumCPU()},
 		Field{Key: "go.goroutine.count", Value: runtime.NumGoroutine()},
-		Field{Key: "cloud.provider", Value: "unknown"},
-		Field{Key: "cloud.region", Value: ""},
-		Field{Key: "container.id", Value: hostname},
-	)
+		Field{Key: "cloud.provider", Value: cloudProvider},
+		Field{Key: "cloud.region", Value: cloudRegion},
+		Field{Key: "container.id", Value: containerID},
+	))
+}
+
+func parseResourceAttributes(raw string) map[string]string {
+	attributes := map[string]string{}
+	for _, item := range splitResourceAttributePairs(raw) {
+		key, value, ok := cutResourceAttributePair(strings.TrimSpace(item))
+		key = strings.TrimSpace(unescapeResourceAttribute(key))
+		value = strings.TrimSpace(unescapeResourceAttribute(value))
+		if !ok || key == "" || value == "" {
+			continue
+		}
+		attributes[key] = strings.Trim(value, `"`)
+	}
+	return attributes
+}
+
+func splitResourceAttributePairs(raw string) []string {
+	var pairs []string
+	var current strings.Builder
+	escaped := false
+	for _, char := range raw {
+		if escaped {
+			current.WriteRune('\\')
+			current.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			escaped = true
+			continue
+		}
+		if char == ',' {
+			pairs = append(pairs, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(char)
+	}
+	if escaped {
+		current.WriteRune('\\')
+	}
+	pairs = append(pairs, current.String())
+	return pairs
+}
+
+func cutResourceAttributePair(raw string) (string, string, bool) {
+	escaped := false
+	for index, char := range raw {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			escaped = true
+			continue
+		}
+		if char == '=' {
+			return raw[:index], raw[index+1:], true
+		}
+	}
+	return raw, "", false
+}
+
+func unescapeResourceAttribute(raw string) string {
+	var value strings.Builder
+	escaped := false
+	for _, char := range raw {
+		if escaped {
+			value.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			escaped = true
+			continue
+		}
+		value.WriteRune(char)
+	}
+	if escaped {
+		value.WriteRune('\\')
+	}
+	return value.String()
+}
+
+func resourceAttributesToTelemetry(values map[string]string) Attributes {
+	attributes := Attrs()
+	for key, value := range values {
+		attributes = attributes.WithField(Field{Key: key, Value: value})
+	}
+	return attributes
+}
+
+func inferredCloudProvider(metadata RuntimeMetadata, region string) string {
+	if strings.TrimSpace(region) != "" || strings.TrimSpace(metadata.ECSContainerMetadataURI) != "" || strings.Contains(strings.ToLower(strings.TrimSpace(metadata.AWSExecutionEnvironment)), "aws") {
+		return "aws"
+	}
+	return ""
 }
 
 func Start(ctx context.Context, name string, attributes Attributes) (context.Context, *Span) {

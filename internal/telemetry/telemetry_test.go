@@ -200,6 +200,54 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	}
 }
 
+func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
+	previous := configuredRuntimeMetadata()
+	ConfigureRuntimeMetadata(RuntimeMetadata{
+		ServiceName:           "cerebro-api",
+		DeploymentEnvironment: "sec-dev",
+		CloudRegion:           "us-east-1",
+		ContainerID:           "task-hostname",
+		ResourceAttributes:    "service.namespace=cerebro,cloud.availability_zone=us-east-1a,deployment.environment.name=ignored-by-cerebro-env",
+	})
+	t.Cleanup(func() {
+		ConfigureRuntimeMetadata(previous)
+	})
+
+	_, stderr := captureOutput(t, func() {
+		_, span := StartMain(context.Background(), "test.runtime", Attrs())
+		End(span, "completed", Attrs())
+	})
+	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.runtime")
+	for key, want := range map[string]any{
+		"service.name":                "cerebro-api",
+		"service.namespace":           "cerebro",
+		"deployment.environment":      "sec-dev",
+		"deployment.environment.name": "sec-dev",
+		"cloud.provider":              "aws",
+		"cloud.region":                "us-east-1",
+		"cloud.availability_zone":     "us-east-1a",
+		"container.id":                "task-hostname",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func TestParseResourceAttributesHandlesEscapedSeparators(t *testing.T) {
+	got := parseResourceAttributes(`service.namespace=cerebro,custom.note=hello\,world,custom.expression=a\=b,custom.path=c:\\tmp`)
+	for key, want := range map[string]string{
+		"service.namespace": "cerebro",
+		"custom.note":       "hello,world",
+		"custom.expression": "a=b",
+		"custom.path":       `c:\tmp`,
+	} {
+		if got[key] != want {
+			t.Fatalf("%s = %q, want %q; attrs=%#v", key, got[key], want, got)
+		}
+	}
+}
+
 func TestEndMapsErrorStatusesToOpenTelemetryErrors(t *testing.T) {
 	for _, status := range []string{"failed", "error"} {
 		t.Run(status, func(t *testing.T) {

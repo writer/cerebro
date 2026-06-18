@@ -104,6 +104,14 @@ Cerebro enables OTEL export when `CEREBRO_OTEL_ENABLED=true` or when an OTLP end
 | `CEREBRO_OTEL_TRACES_SAMPLE_RATE` | Float from `0` to `1` |
 | `CEREBRO_OTEL_METRICS_EXPORT_INTERVAL` | Duration such as `30s` or `1m` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment.name=sec-dev` |
+| `CEREBRO_ENVIRONMENT` / `CEREBRO_DEPLOYMENT_ENVIRONMENT` | Environment value used by structured wide events |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | AWS region used by structured wide events when running on ECS |
+
+Structured wide events also read `OTEL_RESOURCE_ATTRIBUTES` so CloudWatch JSON
+logs and exported OTEL spans share the same `service.namespace`,
+`deployment.environment.name`, `cloud.provider`, and `cloud.region` dimensions.
+The deployment-specific env vars take precedence over generic resource
+attributes when both are present.
 
 ## Local Verification
 
