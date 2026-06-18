@@ -2,13 +2,11 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"connectrpc.com/connect"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
@@ -21,14 +19,7 @@ func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
 		writeGraphActionError(w, err)
 		return
 	}
-	result, err := a.executeGraphAction(r.Context(), graphactions.Input{
-		FindingID:      request.GetFindingId(),
-		Action:         request.GetAction(),
-		Target:         request.GetTarget(),
-		Reason:         request.GetReason(),
-		TicketURL:      request.GetTicketUrl(),
-		IdempotencyKey: request.GetIdempotencyKey(),
-	})
+	result, err := a.executeGraphAction(r.Context(), graphactionapi.InputFromRequest(request))
 	if err != nil {
 		writeGraphActionError(w, err)
 		return
@@ -38,14 +29,7 @@ func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
 
 func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.Request[cerebrov1.ExecuteGraphActionRequest]) (*connect.Response[cerebrov1.ExecuteGraphActionResponse], error) {
 	app := &App{cfg: s.cfg, deps: s.deps, sources: s.sources}
-	result, err := app.executeGraphAction(ctx, graphactions.Input{
-		FindingID:      req.Msg.GetFindingId(),
-		Action:         req.Msg.GetAction(),
-		Target:         req.Msg.GetTarget(),
-		Reason:         req.Msg.GetReason(),
-		TicketURL:      req.Msg.GetTicketUrl(),
-		IdempotencyKey: req.Msg.GetIdempotencyKey(),
-	})
+	result, err := app.executeGraphAction(ctx, graphactionapi.InputFromRequest(req.Msg))
 	if err != nil {
 		return nil, graphActionConnectError(err)
 	}
@@ -81,35 +65,18 @@ func graphActionResponseProto(result *graphactions.Result) *cerebrov1.ExecuteGra
 }
 
 func writeGraphActionError(w http.ResponseWriter, err error) {
-	status := http.StatusInternalServerError
-	switch {
-	case errors.Is(err, graphactions.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		status = http.StatusBadRequest
-	case errors.Is(err, graphactions.ErrNotConfigured), errors.Is(err, findings.ErrRuntimeUnavailable):
-		status = http.StatusServiceUnavailable
-	case errors.Is(err, ports.ErrFindingNotFound):
-		status = http.StatusNotFound
-	case errors.Is(err, errTenantForbidden), errors.Is(err, errScopeForbidden):
-		status = http.StatusForbidden
-	case errors.Is(err, graphactions.ErrRemote):
-		status = http.StatusBadGateway
-	}
+	status := graphactionapi.HTTPStatus(err, graphActionErrorSentinels())
 	writeJSON(w, status, map[string]string{"error": safeHTTPErrorMessage(status, err)})
 }
 
 func graphActionConnectError(err error) error {
-	switch {
-	case errors.Is(err, graphactions.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, graphactions.ErrNotConfigured), errors.Is(err, findings.ErrRuntimeUnavailable):
-		return connect.NewError(connect.CodeUnavailable, nil)
-	case errors.Is(err, ports.ErrFindingNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, errTenantForbidden), errors.Is(err, errScopeForbidden):
-		return connect.NewError(connect.CodePermissionDenied, nil)
-	case errors.Is(err, graphactions.ErrRemote):
-		return connect.NewError(connect.CodeUnavailable, nil)
-	default:
-		return connect.NewError(connect.CodeInternal, nil)
+	return graphactionapi.ConnectError(err, graphActionErrorSentinels())
+}
+
+func graphActionErrorSentinels() graphactionapi.ErrorSentinels {
+	return graphactionapi.ErrorSentinels{
+		InvalidHTTPRequest: errInvalidHTTPRequest,
+		TenantForbidden:    errTenantForbidden,
+		ScopeForbidden:     errScopeForbidden,
 	}
 }

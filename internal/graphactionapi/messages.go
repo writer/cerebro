@@ -11,6 +11,20 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+func InputFromRequest(request *cerebrov1.ExecuteGraphActionRequest) graphactions.Input {
+	if request == nil {
+		return graphactions.Input{}
+	}
+	return graphactions.Input{
+		FindingID:      request.GetFindingId(),
+		Action:         request.GetAction(),
+		Target:         request.GetTarget(),
+		Reason:         request.GetReason(),
+		TicketURL:      request.GetTicketUrl(),
+		IdempotencyKey: request.GetIdempotencyKey(),
+	}
+}
+
 // ResponseMessage converts a graph action result into the public proto response.
 func ResponseMessage(result *graphactions.Result, finding *cerebrov1.Finding) *cerebrov1.ExecuteGraphActionResponse {
 	if result == nil {
