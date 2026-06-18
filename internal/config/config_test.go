@@ -105,6 +105,15 @@ func TestLoadDefaults(t *testing.T) {
 	if !cfg.RateLimit.Enabled {
 		t.Fatal("RateLimit.Enabled = false, want true safe default")
 	}
+	wantExemptPaths := []string{"/healthz", "/livez", "/metrics", "/.well-known/"}
+	if len(cfg.RateLimit.ExemptPaths) != len(wantExemptPaths) {
+		t.Fatalf("RateLimit.ExemptPaths = %#v, want %#v", cfg.RateLimit.ExemptPaths, wantExemptPaths)
+	}
+	for i, want := range wantExemptPaths {
+		if cfg.RateLimit.ExemptPaths[i] != want {
+			t.Fatalf("RateLimit.ExemptPaths = %#v, want %#v", cfg.RateLimit.ExemptPaths, wantExemptPaths)
+		}
+	}
 	if cfg.StateStore.PostgresMaxOpenConns != defaultPostgresMaxOpenConns || cfg.StateStore.PostgresMaxIdleConns != defaultPostgresMaxIdleConns || cfg.StateStore.PostgresConnMaxLifetime != defaultPostgresConnMaxLifetime || cfg.StateStore.PostgresConnMaxIdleTime != defaultPostgresConnMaxIdleTime {
 		t.Fatalf("StateStore Postgres pool defaults = %#v", cfg.StateStore)
 	}
