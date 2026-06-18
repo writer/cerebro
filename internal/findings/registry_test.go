@@ -88,8 +88,18 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 24 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 24", got)
+	seenPackIDs := make(map[string]struct{}, len(packs))
+	for _, pack := range packs {
+		if pack.ID == "" {
+			t.Fatal("builtinRulePacks() contains pack with empty ID")
+		}
+		if _, ok := seenPackIDs[pack.ID]; ok {
+			t.Fatalf("builtinRulePacks() contains duplicate pack ID %q", pack.ID)
+		}
+		seenPackIDs[pack.ID] = struct{}{}
+		if len(pack.Rules) == 0 {
+			t.Fatalf("builtinRulePacks() pack %q has no rules", pack.ID)
+		}
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {
