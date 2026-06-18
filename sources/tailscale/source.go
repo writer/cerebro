@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -52,7 +53,11 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	return s.inner.Discover(ctx, cfg)
 }
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	return s.inner.Read(ctx, cfg, cursor)
+	pull, err := s.inner.Read(ctx, cfg, cursor)
+	if err != nil {
+		return pull, err
+	}
+	return enrichTailnetSettingsIdentity(pull, cfg), nil
 }
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	specBytes, err := catalogFS.ReadFile("catalog.yaml")
@@ -64,4 +69,41 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
+}
+
+func enrichTailnetSettingsIdentity(pull sourcecdk.Pull, cfg sourcecdk.Config) sourcecdk.Pull {
+	tailnet := tailscaleTailnetConfigIdentity(cfg)
+	if tailnet == "" {
+		return pull
+	}
+	for _, event := range pull.Events {
+		if event == nil || event.Kind != "tailscale.tailnet" {
+			continue
+		}
+		if event.Attributes == nil {
+			event.Attributes = map[string]string{}
+		}
+		if tailscaleTailnetPlaceholder(event.Attributes["tailnet"]) {
+			event.Attributes["tailnet"] = tailnet
+		}
+		if tailscaleTailnetPlaceholder(event.Attributes["external_id"]) {
+			event.Attributes["external_id"] = tailnet
+		}
+	}
+	return pull
+}
+
+func tailscaleTailnetConfigIdentity(cfg sourcecdk.Config) string {
+	for _, key := range []string{"tailnet", "organization", "tenant_id"} {
+		value, _ := cfg.Lookup(key)
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func tailscaleTailnetPlaceholder(value string) bool {
+	value = strings.TrimSpace(value)
+	return value == "" || value == "tailnet"
 }

@@ -113,6 +113,37 @@ func TestOpenRouterLLMClient_MapsAnthropicAliasToOpenRouterModel(t *testing.T) {
 	assertOpenRouterRequestModel(t, doer.lastBody, "anthropic/claude-sonnet-4.6")
 }
 
+func TestOpenRouterLLMClient_RejectsUnsupportedRequestedModel(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{
+				"content": `{"rationale":"ok","cypher":"MATCH (n) RETURN n","refusal":""}`,
+			},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+		Model:    "openrouter/private-model",
+	})
+	if err == nil {
+		t.Fatal("DraftCypher() error = nil, want unsupported model error")
+	}
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("DraftCypher() error = %v, want ErrInvalidRequest", err)
+	}
+	if len(doer.lastBody) != 0 {
+		t.Fatalf("OpenRouter request body was sent for unsupported model: %s", string(doer.lastBody))
+	}
+}
+
 func TestOpenRouterLLMClient_Summarize(t *testing.T) {
 	respBody, _ := json.Marshal(map[string]any{
 		"choices": []map[string]any{{

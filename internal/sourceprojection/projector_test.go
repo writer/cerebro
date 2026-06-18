@@ -5871,6 +5871,53 @@ func assertProjectedLinkMissing(t *testing.T, recorder *projectionRecorder, from
 	}
 }
 
+func TestProjectTelemetryIncludesTenantRuntimeDrilldownContext(t *testing.T) {
+	service := New(nil, nil)
+	stderr := captureSourceProjectionStderr(t, func() {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "sensitive-event-id",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.user",
+			Attributes: map[string]string{
+				"source_runtime_id": "writer-okta-user",
+				"resource_urn":      "urn:cerebro:writer:okta_user:00u-sensitive",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project() error = %v", err)
+		}
+	})
+
+	payload := sourceProjectionTelemetryEventPayload(t, stderr, "source_projection.project")
+	for key, want := range map[string]any{
+		"tenant_id":                            "writer",
+		"source_id":                            "okta",
+		"runtime_id":                           "writer-okta-user",
+		"event_kind":                           "okta.user",
+		"source_projection.tenant_id":          "writer",
+		"source_projection.source_id":          "okta",
+		"source_projection.runtime_id":         "writer-okta-user",
+		"source_projection.event_kind":         "okta.user",
+		"status":                               "completed",
+		"source_projection.status":             "completed",
+		"source_projection.entities_projected": float64(0),
+		"source_projection.links_projected":    float64(0),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if payload["trace_id"] == "" || payload["span_id"] == "" {
+		t.Fatalf("projection telemetry missing trace/span ids: %#v", payload)
+	}
+	for _, prohibited := range []string{"sensitive-event-id", "00u-sensitive", "resource_urn"} {
+		if strings.Contains(stderr, prohibited) {
+			t.Fatalf("projection telemetry leaked high-cardinality value %q: %s", prohibited, stderr)
+		}
+	}
+}
+
 func captureSourceProjectionStderr(t *testing.T, fn func()) string {
 	t.Helper()
 	oldStderr := os.Stderr
@@ -5895,7 +5942,11 @@ func captureSourceProjectionStderr(t *testing.T, fn func()) string {
 
 func sourceProjectionTelemetryPayload(t *testing.T, stderr string) map[string]any {
 	t.Helper()
-	const name = "source_projection.runtime_evidence"
+	return sourceProjectionTelemetryEventPayload(t, stderr, "source_projection.runtime_evidence")
+}
+
+func sourceProjectionTelemetryEventPayload(t *testing.T, stderr string, name string) map[string]any {
+	t.Helper()
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		if strings.TrimSpace(lines[i]) == "" {

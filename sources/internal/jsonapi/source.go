@@ -36,27 +36,28 @@ const (
 
 // Family describes one JSON API collection exposed by a first-class source.
 type Family struct {
-	Name                 string
-	Path                 string
-	DetailPath           string
-	PathParams           []string
-	CursorParam          string
-	NextCursorKeys       []string
-	HasMoreKey           string
-	URNKind              string
-	IDKeys               []string
-	TimestampKeys        []string
-	Attributes           map[string]string
-	StaticAttributes     map[string]string
-	StaticQuery          map[string]string
-	ConfigQuery          map[string]string
-	PageSizeParams       []string
-	DisablePageSize      bool
-	ListKeys             []string
-	MapRecords           map[string]string
-	Singleton            bool
-	RequireID            bool
-	IncrementalWatermark bool
+	Name                  string
+	Path                  string
+	DetailPath            string
+	AllowBareDetailRecord bool
+	PathParams            []string
+	CursorParam           string
+	NextCursorKeys        []string
+	HasMoreKey            string
+	URNKind               string
+	IDKeys                []string
+	TimestampKeys         []string
+	Attributes            map[string]string
+	StaticAttributes      map[string]string
+	StaticQuery           map[string]string
+	ConfigQuery           map[string]string
+	PageSizeParams        []string
+	DisablePageSize       bool
+	ListKeys              []string
+	MapRecords            map[string]string
+	Singleton             bool
+	RequireID             bool
+	IncrementalWatermark  bool
 }
 
 // Options configures a JSON API-backed source adapter.
@@ -405,7 +406,7 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 			enriched = append(enriched, original)
 			continue
 		}
-		raw, err := detailRecordRaw(body)
+		raw, err := detailRecordRaw(body, family.AllowBareDetailRecord)
 		if err != nil {
 			enriched = append(enriched, original)
 			continue
@@ -956,7 +957,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
 }
 
-func detailRecordRaw(raw json.RawMessage) (json.RawMessage, error) {
+func detailRecordRaw(raw json.RawMessage, allowBareObject bool) (json.RawMessage, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, err
@@ -972,6 +973,9 @@ func detailRecordRaw(raw json.RawMessage) (json.RawMessage, error) {
 		}
 	}
 	if _, ok := object["id"]; ok {
+		return cloneRaw(raw), nil
+	}
+	if allowBareObject && len(object) != 0 {
 		return cloneRaw(raw), nil
 	}
 	return nil, fmt.Errorf("response did not contain a detail record")

@@ -219,7 +219,6 @@ func TestReadObjectRefsEmitsCanonicalCaseURNCorrelation(t *testing.T) {
 						"case_id":          "case-789",
 						"case_urn":         "urn:cerebro:tenant-789:case:case-789",
 						"case_link_status": "linked",
-						"resource_urn":     "urn:cerebro:tenant-789:case:case-789",
 					},
 				},
 			},
@@ -245,6 +244,12 @@ func TestReadObjectRefsEmitsCanonicalCaseURNCorrelation(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["case_urn"]; got != "urn:cerebro:tenant-789:case:case-789" {
 		t.Fatalf("case_urn = %q, want urn:cerebro:tenant-789:case:case-789", got)
+	}
+	if got := pull.Events[0].Attributes["resource_urn"]; got != "" {
+		t.Fatalf("resource_urn = %q, want empty for case-only correlation", got)
+	}
+	if got := pull.Events[0].Attributes["resource_id"]; got != "" {
+		t.Fatalf("resource_id = %q, want empty for case-only correlation", got)
 	}
 }
 

@@ -822,9 +822,23 @@ func TestProjectPanopticonEvidencePointerCorrelatesWithEvidenceCASObject(t *test
 	}); err != nil {
 		t.Fatalf("Project(evidence_cas.object) error = %v", err)
 	}
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "evidence-cas-object-event-uri",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"evidence_id":         "evidencecas://cases/case-corr/evidence/triage.tar",
+			"evidence_cas_uri":    "evidencecas://cases/case-corr/evidence/triage.tar",
+			"evidence_cas_digest": "sha256:abc",
+		},
+	}); err != nil {
+		t.Fatalf("Project(uri identity evidence_cas.object) error = %v", err)
+	}
 
 	pointerURN := "urn:cerebro:writer:evidence_cas_pointer:evidence-1"
 	evidenceObjectURN := "urn:cerebro:writer:runtime_evidence:evidence-1"
+	uriEvidenceObjectURN := "urn:cerebro:writer:runtime_evidence:evidencecas://cases/case-corr/evidence/triage.tar"
 
 	pointer := state.entities[pointerURN]
 	if pointer == nil || pointer.EntityType != "evidence.cas.pointer" {
@@ -833,10 +847,17 @@ func TestProjectPanopticonEvidencePointerCorrelatesWithEvidenceCASObject(t *test
 	if got := pointer.Attributes["evidence_cas_object_urn"]; got != evidenceObjectURN {
 		t.Fatalf("evidence_cas_object_urn = %q, want %q", got, evidenceObjectURN)
 	}
+	if got, want := pointer.Attributes["evidence_cas_object_urns"], evidenceObjectURN+","+uriEvidenceObjectURN; got != want {
+		t.Fatalf("evidence_cas_object_urns = %q, want %q", got, want)
+	}
 	if state.entities[evidenceObjectURN] == nil {
 		t.Fatalf("Evidence CAS object projection %q missing for correlation join", evidenceObjectURN)
 	}
+	if state.entities[uriEvidenceObjectURN] == nil {
+		t.Fatalf("Evidence CAS URI object projection %q missing for correlation join", uriEvidenceObjectURN)
+	}
 	assertProjectedLink(t, state, pointerURN, relationRepresents, evidenceObjectURN)
+	assertProjectedLink(t, state, pointerURN, relationRepresents, uriEvidenceObjectURN)
 
 	// Cross-tenant Evidence CAS objects must not be joined by the writer pointer.
 	assertProjectedLinkMissing(t, state, pointerURN, relationRepresents, "urn:cerebro:other:runtime_evidence:evidence-1")

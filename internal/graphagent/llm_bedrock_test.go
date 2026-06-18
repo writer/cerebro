@@ -91,6 +91,32 @@ func TestBedrockLLMClient_DraftCypherUsesInferenceProfile(t *testing.T) {
 	}
 }
 
+func TestBedrockLLMClient_RejectsUnsupportedRequestedModel(t *testing.T) {
+	runtime := &stubBedrockRuntime{text: `{"rationale":"ok","cypher":"MATCH (n) RETURN n LIMIT 5","refusal":""}`}
+	client, err := NewBedrockLLMClient(context.Background(), BedrockConfig{
+		DefaultModel: "us.anthropic.claude-sonnet-4-6",
+		Runtime:      runtime,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show risky assets",
+		Model:    "arn:aws:bedrock:us-east-1:123456789012:inference-profile/private-model",
+	})
+	if err == nil {
+		t.Fatal("DraftCypher() error = nil, want unsupported model error")
+	}
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("DraftCypher() error = %v, want ErrInvalidRequest", err)
+	}
+	if runtime.lastInput != nil {
+		t.Fatalf("Bedrock Converse was called for unsupported model: %q", aws.ToString(runtime.lastInput.ModelId))
+	}
+}
+
 func TestBedrockLLMClient_Probe(t *testing.T) {
 	runtime := &stubBedrockRuntime{text: "OK"}
 	client, err := NewBedrockLLMClient(context.Background(), BedrockConfig{DefaultModel: "us.anthropic.claude-sonnet-4-6", Runtime: runtime})

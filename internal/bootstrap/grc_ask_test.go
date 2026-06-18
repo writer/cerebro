@@ -183,6 +183,25 @@ func TestGRCAskMissingTenantReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func TestGRCAskRejectsUnsupportedModelBeforeLLM(t *testing.T) {
+	llm := &graphagent.StubLLMClient{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: &stubGraphStore{}, GraphAgentLLM: llm}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"hello","model":"attacker-selected-provider-model"}`))
+	if err != nil {
+		t.Fatalf("POST /grc/ask error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("draft requests = %#v, want unsupported model rejected before LLM", llm.DraftRequests)
+	}
+}
+
 func TestGRCAskMissingStartupLLMReturnsUnavailable(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: &stubGraphStore{}}, nil)
 	server := httptest.NewServer(app.Handler())
