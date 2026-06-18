@@ -50,6 +50,13 @@ func newServiceForTest(t *testing.T) (*Service, *MemStore, time.Time) {
 func TestServiceEnrollAndIssueToken(t *testing.T) {
 	ctx := context.Background()
 	service, _, now := newServiceForTest(t)
+	service.cfg.DPoP = NewDPoPVerifier(time.Minute, time.Minute)
+	service.cfg.DPoP.SetClock(service.cfg.Now)
+	signer := newDPoPSignerEd25519(t)
+	deviceJWK, err := json.Marshal(signer.jwk())
+	if err != nil {
+		t.Fatalf("marshal device JWK: %v", err)
+	}
 
 	bootstrapResp, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
 		HardwareUUID: "hw-1",
@@ -70,6 +77,7 @@ func TestServiceEnrollAndIssueToken(t *testing.T) {
 		Hostname:       "laptop-1",
 		OSType:         "darwin",
 		AgentVersion:   "1.0.0",
+		DeviceJWK:      deviceJWK,
 	})
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
@@ -92,6 +100,9 @@ func TestServiceEnrollAndIssueToken(t *testing.T) {
 	rotated, err := service.IssueToken(ctx, TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: enroll.RefreshToken,
+		DPoPProof:    makeDPoPProof(t, signer, "POST", "https://cerebro.test/platform/devices/token", now, "jti-refresh-1"),
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
 	})
 	if err != nil {
 		t.Fatalf("IssueToken: %v", err)
@@ -103,16 +114,113 @@ func TestServiceEnrollAndIssueToken(t *testing.T) {
 	if _, err := service.IssueToken(ctx, TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: enroll.RefreshToken,
+		DPoPProof:    makeDPoPProof(t, signer, "POST", "https://cerebro.test/platform/devices/token", now, "jti-refresh-2"),
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
 	}); !errors.Is(err, ErrRefreshReplay) {
 		t.Fatalf("replay err = %v, want ErrRefreshReplay", err)
 	}
 	if _, err := service.IssueToken(ctx, TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: rotated.RefreshToken,
+		DPoPProof:    makeDPoPProof(t, signer, "POST", "https://cerebro.test/platform/devices/token", now, "jti-refresh-3"),
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
 	}); !errors.Is(err, ErrRefreshReplay) {
 		t.Fatalf("post-replay rotated err = %v, want ErrRefreshReplay", err)
 	}
 	_ = now
+}
+
+func TestServiceEnrollRejectsUnboundRefreshTokenMinting(t *testing.T) {
+	ctx := context.Background()
+	service, store, _ := newServiceForTest(t)
+
+	bootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-unbound",
+		TenantID:     "writer",
+		TTL:          time.Hour,
+		IssuedBy:     "operator",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-unbound",
+		OSType:         "darwin",
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Enroll without DPoP binding err = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := store.LookupDeviceByHardware(ctx, "writer", "hw-unbound"); !errors.Is(err, ErrDeviceNotFound) {
+		t.Fatalf("LookupDeviceByHardware after rejected unbound enroll err = %v, want ErrDeviceNotFound", err)
+	}
+
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	boundBootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-unbound",
+		TenantID:     "writer",
+		TTL:          time.Hour,
+		IssuedBy:     "operator",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken(bound): %v", err)
+	}
+	deviceJWK, _ := makeEd25519JWK(t, pub)
+	enroll, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: boundBootstrap.Token,
+		HardwareUUID:   "hw-unbound",
+		OSType:         "darwin",
+		DeviceJWK:      deviceJWK,
+	})
+	if err != nil {
+		t.Fatalf("Enroll after rejected unbound attempt: %v", err)
+	}
+	if enroll.AccessToken == "" || enroll.RefreshToken == "" {
+		t.Fatal("bound enrollment returned empty tokens")
+	}
+}
+
+func TestServiceIssueTokenRejectsLegacyUnboundDeviceRefresh(t *testing.T) {
+	ctx := context.Background()
+	service, store, now := newServiceForTest(t)
+	device := DeviceRecord{
+		DeviceID:     "dev-legacy",
+		HardwareUUID: "hw-legacy",
+		TenantID:     "writer",
+		Status:       "active",
+		EnrolledAt:   now,
+		LastSeenAt:   now,
+		Metadata: map[string]string{
+			"assurance_level": "software",
+		},
+	}
+	if _, err := store.EnrollDevice(ctx, device); err != nil {
+		t.Fatalf("EnrollDevice legacy row: %v", err)
+	}
+	refresh, _, err := service.mintRefresh(ctx, device.DeviceID, DefaultDeviceScopes, "", 0, now)
+	if err != nil {
+		t.Fatalf("mintRefresh legacy row: %v", err)
+	}
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: refresh,
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+	}); !errors.Is(err, ErrDPoPMissing) {
+		t.Fatalf("IssueToken legacy unbound err = %v, want ErrDPoPMissing", err)
+	}
+	row, err := store.LookupRefreshToken(ctx, HashToken(refresh), now)
+	if err != nil {
+		t.Fatalf("LookupRefreshToken after rejected legacy refresh: %v", err)
+	}
+	if !row.ConsumedAt.IsZero() {
+		t.Fatal("legacy unbound refresh was consumed before DPoP rejection")
+	}
 }
 
 func TestServiceEnrollRequiresMatchingHardware(t *testing.T) {
@@ -171,7 +279,15 @@ func (v *checkingAttestationVerifier) Verify(_ context.Context, in attestation.I
 func TestServiceEnrollAttestationClientHashBindsHardwareUUID(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
-	verifier := &checkingAttestationVerifier{wantHardwareUUID: "hw-1"}
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	verifier := &checkingAttestationVerifier{wantHardwareUUID: "hw-1", publicKey: pubDER}
 	service.cfg.Attestations = attestation.NewRegistry(true, verifier)
 
 	bootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
@@ -256,8 +372,9 @@ func TestServiceIssueTokenRejectsBoundDeviceWhenDPoPVerifierUnavailable(t *testi
 func TestServiceRevokeBlocksRefresh(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
 	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 	if err := service.Revoke(ctx, enroll.DeviceID, "test"); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
@@ -269,16 +386,17 @@ func TestServiceRevokeBlocksRefresh(t *testing.T) {
 func TestServiceEnrollRejectsRevokedHardware(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
 	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
 	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: firstBootstrap.Token, HardwareUUID: "hw-1"})
+	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: firstBootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 	if err != nil {
 		t.Fatalf("Enroll(first): %v", err)
 	}
 	if err := service.Revoke(ctx, enroll.DeviceID, "lost"); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	if _, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1"}); !errors.Is(err, ErrDeviceInactive) {
+	if _, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK}); !errors.Is(err, ErrDeviceInactive) {
 		t.Fatalf("Enroll(second) err = %v, want ErrDeviceInactive", err)
 	}
 }
@@ -286,20 +404,34 @@ func TestServiceEnrollRejectsRevokedHardware(t *testing.T) {
 func TestServiceReenrollActiveHardwarePreservesRefreshLineage(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	service.cfg.DPoP = NewDPoPVerifier(time.Minute, time.Minute)
+	service.cfg.DPoP.SetClock(service.cfg.Now)
+	signer := newDPoPSignerEd25519(t)
+	deviceJWK, err := json.Marshal(signer.jwk())
+	if err != nil {
+		t.Fatalf("marshal device JWK: %v", err)
+	}
+	now := service.cfg.Now()
 	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
 	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	first, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: firstBootstrap.Token, HardwareUUID: "hw-1"})
+	first, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: firstBootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 	if err != nil {
 		t.Fatalf("Enroll(first): %v", err)
 	}
-	second, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1"})
+	second, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 	if err != nil {
 		t.Fatalf("Enroll(second): %v", err)
 	}
 	if second.DeviceID != first.DeviceID {
 		t.Fatalf("second device_id = %q, want existing %q", second.DeviceID, first.DeviceID)
 	}
-	if _, err := service.IssueToken(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: first.RefreshToken}); err != nil {
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: first.RefreshToken,
+		DPoPProof:    makeDPoPProof(t, signer, "POST", "https://cerebro.test/platform/devices/token", now, "jti-lineage"),
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+	}); err != nil {
 		t.Fatalf("IssueToken with first refresh after re-enroll: %v", err)
 	}
 }
@@ -342,7 +474,12 @@ func TestServiceReenrollActiveHardwarePreservesDPoPBinding(t *testing.T) {
 
 	service.cfg.Attestations = attestation.NewRegistry(false)
 	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	second, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1"})
+	matchingJWK, _ := makeEd25519JWK(t, pub)
+	second, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: secondBootstrap.Token,
+		HardwareUUID:   "hw-1",
+		DeviceJWK:      json.RawMessage(matchingJWK),
+	})
 	if err != nil {
 		t.Fatalf("second Enroll: %v", err)
 	}
@@ -452,9 +589,11 @@ func TestServiceReenrollPreservesHardwareAssuranceToBlockTwoStepDowngrade(t *tes
 
 	service.cfg.Attestations = attestation.NewRegistry(false)
 	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	matchingJWK, _ := makeEd25519JWK(t, pub)
 	second, err := service.Enroll(ctx, EnrollRequest{
 		BootstrapToken: secondBootstrap.Token,
 		HardwareUUID:   "hw-two-step",
+		DeviceJWK:      json.RawMessage(matchingJWK),
 	})
 	if err != nil {
 		t.Fatalf("second Enroll: %v", err)
@@ -497,12 +636,26 @@ func TestServiceReenrollPreservesHardwareAssuranceToBlockTwoStepDowngrade(t *tes
 func TestRefreshTokenRateLimitKeyRejectsConsumedTokens(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	service.cfg.DPoP = NewDPoPVerifier(time.Minute, time.Minute)
+	service.cfg.DPoP.SetClock(service.cfg.Now)
+	signer := newDPoPSignerEd25519(t)
+	deviceJWK, err := json.Marshal(signer.jwk())
+	if err != nil {
+		t.Fatalf("marshal device JWK: %v", err)
+	}
+	now := service.cfg.Now()
 	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
-	rotated, err := service.IssueToken(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: enroll.RefreshToken})
+	rotated, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: enroll.RefreshToken,
+		DPoPProof:    makeDPoPProof(t, signer, "POST", "https://cerebro.test/platform/devices/token", now, "jti-rate-limit"),
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+	})
 	if err != nil {
 		t.Fatalf("IssueToken: %v", err)
 	}
@@ -517,8 +670,9 @@ func TestRefreshTokenRateLimitKeyRejectsConsumedTokens(t *testing.T) {
 func TestServiceIngestTelemetryRequiresIdempotencyKey(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
 	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, Body: []byte(`{"events":[]}`)}); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("IngestTelemetry without key err = %v, want ErrInvalidRequest", err)
 	}
@@ -527,8 +681,9 @@ func TestServiceIngestTelemetryRequiresIdempotencyKey(t *testing.T) {
 func TestServiceIngestTelemetryIdempotent(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
 	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 
 	body := []byte(`{"events":[{"type":"login"}]}`)
 	first, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "abc-123", Body: body})
@@ -558,8 +713,9 @@ func TestServiceIngestTelemetryIdempotent(t *testing.T) {
 func TestServiceIngestTelemetryIdempotencyPreservesBodyWhitespace(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
 	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
 
 	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "raw-body", Body: []byte(`{}`)}); err != nil {
 		t.Fatalf("first IngestTelemetry: %v", err)
@@ -647,7 +803,7 @@ func TestEnrollFiltersLegacyBootstrapAdminScopes(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateBootstrapToken: %v", err)
 	}
-	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: plaintext, HardwareUUID: "hw-1"})
+	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: plaintext, HardwareUUID: "hw-1", DeviceJWK: newEnrollDeviceJWK(t)})
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
@@ -709,6 +865,16 @@ func makeEd25519JWK(t *testing.T, pub ed25519.PublicKey) ([]byte, string) {
 	jwk := []byte(`{"crv":"Ed25519","kty":"OKP","x":"` + x + `"}`)
 	sum := sha256.Sum256(jwk)
 	return jwk, base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func newEnrollDeviceJWK(t *testing.T) json.RawMessage {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	jwk, _ := makeEd25519JWK(t, pub)
+	return json.RawMessage(jwk)
 }
 
 func TestServiceEnrollAcceptsAgentSuppliedJWKAndPinsCnfJKT(t *testing.T) {

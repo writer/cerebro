@@ -393,8 +393,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	// Pin dpop_jkt in priority order: attestation-bound key (hardware
 	// proven), then an existing hardware-bound key, then agent-supplied
 	// key (software assurance), then prior non-hardware enrollment key.
-	// Empty result means the device is in pure-Bearer mode -- audit logs
-	// will mark it as such.
+	// Enrollment must produce a binding before any refresh token is minted.
 	switch {
 	case attestationJKT != "":
 		metadata["dpop_jkt"] = attestationJKT
@@ -408,6 +407,9 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		metadata["dpop_jkt"] = agentJKT
 	case priorJKT != "":
 		metadata["dpop_jkt"] = priorJKT
+	}
+	if strings.TrimSpace(metadata["dpop_jkt"]) == "" {
+		return EnrollResponse{}, fmt.Errorf("%w: device_key or attestation is required to bind refresh tokens", ErrInvalidRequest)
 	}
 	if attResult.KeyID != "" {
 		metadata["attestation_keyid"] = attResult.KeyID
@@ -578,7 +580,7 @@ func (s *Service) RefreshTokenRateLimitKey(ctx context.Context, refreshToken str
 func (s *Service) verifyDPoPForRefresh(device DeviceRecord, request TokenRequest) error {
 	jkt := strings.TrimSpace(device.Metadata["dpop_jkt"])
 	if jkt == "" {
-		return nil
+		return fmt.Errorf("%w: device has no DPoP binding", ErrDPoPMissing)
 	}
 	if s.cfg.DPoP == nil {
 		return ErrDPoPVerifierUnavailable
@@ -854,9 +856,8 @@ func (s *Service) mintAccess(device DeviceRecord, scopes []string) (string, time
 // and returns its RFC 7638 SHA-256 thumbprint. The function reuses the
 // package-internal parseJWK helper, so the same kty / curve allowlist that
 // applies to DPoP proofs (EC P-256, EC P-384, OKP Ed25519; **no RSA**)
-// applies here too. An empty input returns ("", nil) so callers can treat
-// "no key supplied" as a non-error condition (software assurance, no DPoP
-// binding requested).
+// applies here too. An empty input returns ("", nil); Enroll rejects that
+// unless attestation or an existing device record supplies a DPoP binding.
 func parseEnrollDeviceJWK(raw json.RawMessage) (string, error) {
 	if len(raw) == 0 {
 		return "", nil
@@ -926,8 +927,8 @@ func subtleByteEqual(a, b []byte) bool {
 // computeJKTFromPublicKeyDER returns the RFC 7638 JWK SHA-256 thumbprint of
 // the supplied SubjectPublicKeyInfo. Only EC (P-256, P-384) and Ed25519
 // keys are supported; other types fall through with an empty result so the
-// caller can decide whether attestation succeeded without binding a DPoP
-// key (e.g. a software-only attestation result).
+// caller can bind an agent-supplied key or reject enrollment before issuing
+// refresh tokens.
 func computeJKTFromPublicKeyDER(pubDER []byte) (string, error) {
 	if len(pubDER) == 0 {
 		return "", nil
