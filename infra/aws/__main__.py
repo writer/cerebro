@@ -151,6 +151,18 @@ otel_exporter_otlp_insecure = _config_bool("otelExporterOtlpInsecure", False)
 otel_traces_sample_rate = config.get_float("otelTracesSampleRate")
 otel_metrics_export_interval = config.get("otelMetricsExportInterval") or ""
 otel_resource_attributes = config.get("otelResourceAttributes") or ""
+otel_collector_enabled = _config_bool("otelCollectorEnabled", False)
+otel_collector_image = config.get("otelCollectorImage") or ""
+otel_collector_config_secret_name = config.get("otelCollectorConfigSecretName") or ""
+otel_collector_config_secret_prefix = config.get("otelCollectorConfigSecretPrefix") or ""
+otel_collector_cpu = _config_int("otelCollectorCpu", 128)
+otel_collector_memory = _config_int("otelCollectorMemory", 256)
+
+if otel_collector_enabled:
+    if not otel_collector_image:
+        raise ValueError("cerebro:otelCollectorImage is required when cerebro:otelCollectorEnabled is true")
+    if not otel_collector_config_secret_name:
+        raise ValueError("cerebro:otelCollectorConfigSecretName is required when cerebro:otelCollectorEnabled is true")
 
 web_enabled = _config_bool("webEnabled", False)
 web_ecr_base_uri = config.get("webEcrBaseUri") or ecr_base_uri
@@ -248,6 +260,8 @@ infisical_principal_arn = config.get("infisicalAssumeRolePrincipalArn")
 infisical_external_id = config.get("infisicalExternalId")
 external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{environment}"
 infisical_secrets_prefix = config.get("infisicalSecretsPrefix") or external_secrets_prefix
+if not otel_collector_config_secret_prefix:
+    otel_collector_config_secret_prefix = infisical_secrets_prefix
 
 # Tailscale subnet router for internal access.
 enable_tailscale = _config_bool("enableTailscale", False)
@@ -763,9 +777,20 @@ if mcp_oauth_enabled:
     secret_keys.append(_infisical_secret("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", mcp_oauth_upstream_client_secret_name))
 if cache_stack:
     secret_keys.append("CEREBRO_CACHE_URL")
-if otel_exporter_otlp_headers_secret_name:
+if otel_exporter_otlp_headers_secret_name and not otel_collector_enabled:
     secret_keys.append(_infisical_secret("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", otel_exporter_otlp_headers_secret_name))
 secret_keys.extend(_infisical_source_secret(secret_key) for secret_key in source_secret_keys)
+
+otel_collector_config = None
+if otel_collector_enabled:
+    otel_collector_config = {
+        "enabled": True,
+        "image": otel_collector_image,
+        "config_secret_name": otel_collector_config_secret_name,
+        "config_secret_prefix": otel_collector_config_secret_prefix,
+        "cpu": otel_collector_cpu,
+        "memory": otel_collector_memory,
+    }
 
 app_environment = {
     "CEREBRO_HTTP_ADDR": ":8080",
@@ -784,33 +809,39 @@ app_environment = {
 }
 otel_configured = any([
     otel_enabled,
+    otel_collector_enabled,
     otel_exporter_otlp_endpoint,
     otel_exporter_otlp_traces_endpoint,
     otel_exporter_otlp_metrics_endpoint,
     otel_exporter_otlp_headers_secret_name,
 ])
 if otel_configured:
-    if otel_enabled:
+    if otel_enabled or otel_collector_enabled:
         app_environment["CEREBRO_OTEL_ENABLED"] = "true"
     app_environment["CEREBRO_OTEL_SERVICE_NAME"] = otel_service_name
     app_environment["OTEL_RESOURCE_ATTRIBUTES"] = ",".join(
         attr
         for attr in [
-            f"deployment.environment={environment}",
+            f"deployment.environment.name={environment}",
             otel_resource_attributes,
         ]
         if str(attr).strip()
     )
-    if otel_exporter_otlp_protocol:
-        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL"] = otel_exporter_otlp_protocol
-    if otel_exporter_otlp_endpoint:
-        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT"] = otel_exporter_otlp_endpoint
-    if otel_exporter_otlp_traces_endpoint:
-        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = otel_exporter_otlp_traces_endpoint
-    if otel_exporter_otlp_metrics_endpoint:
-        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"] = otel_exporter_otlp_metrics_endpoint
-    if otel_exporter_otlp_insecure:
+    if otel_collector_enabled:
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://127.0.0.1:4318"
         app_environment["CEREBRO_OTEL_EXPORTER_OTLP_INSECURE"] = "true"
+    else:
+        if otel_exporter_otlp_protocol:
+            app_environment["CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL"] = otel_exporter_otlp_protocol
+        if otel_exporter_otlp_endpoint:
+            app_environment["CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT"] = otel_exporter_otlp_endpoint
+        if otel_exporter_otlp_traces_endpoint:
+            app_environment["CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = otel_exporter_otlp_traces_endpoint
+        if otel_exporter_otlp_metrics_endpoint:
+            app_environment["CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"] = otel_exporter_otlp_metrics_endpoint
+        if otel_exporter_otlp_insecure:
+            app_environment["CEREBRO_OTEL_EXPORTER_OTLP_INSECURE"] = "true"
     if otel_traces_sample_rate is not None:
         app_environment["CEREBRO_OTEL_TRACES_SAMPLE_RATE"] = str(otel_traces_sample_rate)
     if otel_metrics_export_interval:
@@ -953,6 +984,7 @@ ecs_stack = compute.create_ecs_cluster(
     orchestrator_schedules=orchestrator_schedules,
     source_runtimes=source_runtimes,
     source_runtime_service_bootstrap_ids=source_runtime_service_bootstrap_ids,
+    otel_collector=otel_collector_config,
 )
 
 step_functions_stack = resilience.create_orchestrator_step_function(

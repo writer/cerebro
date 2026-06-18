@@ -700,6 +700,74 @@ class WorkerTaskRoleTest(unittest.TestCase):
         bootstrap_env = {entry["name"]: entry["value"] for entry in bootstrap_container["environment"]}
         self.assertNotIn("CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", bootstrap_env)
 
+    def test_task_definition_includes_otel_collector_sidecar(self) -> None:
+        task_definition_calls: list[dict] = []
+
+        class FakeOutputAll:
+            def __init__(self, values: tuple):
+                self.values = values
+
+            def apply(self, callback):
+                return callback(self.values)
+
+        def fake_task_definition(*args, **kwargs):
+            task_definition_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(arn=f"arn:aws:ecs:us-east-1:123456789012:task-definition/{kwargs['family']}:1")
+
+        with (
+            patch.object(compute.aws, "get_region", return_value=SimpleNamespace(region="us-east-1")),
+            patch.object(compute.aws, "get_caller_identity", return_value=SimpleNamespace(account_id="123456789012")),
+            patch.object(compute.aws.ecs, "TaskDefinition", side_effect=fake_task_definition),
+            patch.object(compute.aws.ecs, "TaskDefinitionRuntimePlatformArgs", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)),
+            patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: FakeOutputAll(values)),
+        ):
+            compute._create_task_definition(
+                name="cerebro-sec-dev",
+                container_image="image",
+                cpu=1024,
+                memory=2048,
+                execution_role_arn="exec-role",
+                task_role_arn="task-role",
+                log_group_name="/ecs/cerebro-sec-dev",
+                environment={"CEREBRO_ENVIRONMENT": "sec-dev"},
+                secret_keys=[],
+                external_secrets_prefix="/cerebro/sec-dev",
+                otel_collector={
+                    "enabled": True,
+                    "image": "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0",
+                    "config_secret_name": "CEREBRO_OTEL_COLLECTOR_CONFIG",
+                    "config_secret_prefix": "/cerebro/sec-dev",
+                    "cpu": 128,
+                    "memory": 256,
+                },
+            )
+
+        containers = json.loads(task_definition_calls[0]["container_definitions"])
+        collector_container = next(container for container in containers if container["name"] == "otel-collector")
+        cerebro_container = next(container for container in containers if container["name"] == "cerebro")
+
+        self.assertEqual(containers[0]["name"], "otel-collector")
+        self.assertEqual(collector_container["image"], "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0")
+        self.assertEqual(collector_container["cpu"], 128)
+        self.assertEqual(collector_container["memoryReservation"], 256)
+        self.assertEqual(
+            collector_container["secrets"],
+            [
+                {
+                    "name": "AOT_CONFIG_CONTENT",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:/cerebro/sec-dev/CEREBRO_OTEL_COLLECTOR_CONFIG",
+                }
+            ],
+        )
+        self.assertEqual(
+            collector_container["logConfiguration"]["options"]["awslogs-stream-prefix"],
+            "otel-collector",
+        )
+        self.assertEqual(
+            cerebro_container["dependsOn"],
+            [{"containerName": "otel-collector", "condition": "START"}],
+        )
+
 
 class ServiceAutoscalingTest(unittest.TestCase):
     def test_api_autoscaling_tracks_cpu_and_memory(self) -> None:

@@ -49,6 +49,7 @@ def create_ecs_cluster(
     orchestrator_schedules: list[dict] = None,
     source_runtimes: list[dict] = None,
     source_runtime_service_bootstrap_ids: list[str] = None,
+    otel_collector: dict = None,
 ) -> dict:
     """Create ECS cluster with an API service."""
     runtime_environment = _source_runtime_environment(environment or {}, source_runtimes or [])
@@ -84,7 +85,11 @@ def create_ecs_cluster(
     if not bootstrap_payloads and orchestrator_enabled and source_runtimes:
         bootstrap_payloads["retained"] = json.dumps({"runtimes": []}, sort_keys=True, separators=(",", ":"))
     bootstrap_environment_files = _create_source_runtime_bootstrap_environment_files(name, kms_key_id, bootstrap_payloads)
-    secret_prefixes = _secret_prefixes(secret_keys or [], external_secrets_prefix)
+    execution_secret_keys = list(secret_keys or [])
+    otel_collector_config_secret = _otel_collector_config_secret_key(otel_collector, external_secrets_prefix)
+    if otel_collector_config_secret:
+        execution_secret_keys.append(otel_collector_config_secret)
+    secret_prefixes = _secret_prefixes(execution_secret_keys, external_secrets_prefix)
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
         name=f"{name}-cluster",
@@ -139,6 +144,7 @@ def create_ecs_cluster(
         efs_access_point_id=efs_access_point_id,
         efs_container_path=efs_container_path,
         source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("service") or {}).get("environment_file_arn"),
+        otel_collector=otel_collector,
         depends_on=[
             *((bootstrap_environment_files.get("service") or {}).get("resources") or []),
             *execution_role_dependencies,
@@ -178,6 +184,7 @@ def create_ecs_cluster(
             log_stream_prefix="orchestrator",
             source_runtime_bootstrap_environment_file_arn=(bootstrap_environment_files.get("orchestrator") or {}).get("environment_file_arn"),
             enable_source_runtime_bootstrap=bool(source_runtimes or []),
+            otel_collector=otel_collector,
             depends_on=[
                 *((bootstrap_environment_files.get("orchestrator") or {}).get("resources") or []),
                 *execution_role_dependencies,
@@ -427,6 +434,19 @@ def _source_runtime_environment(environment: dict, source_runtimes: list[dict]) 
     if role_entries and not merged.get("CEREBRO_AWS_ASSUME_ROLE_ARNS"):
         merged["CEREBRO_AWS_ASSUME_ROLE_ARNS"] = ",".join(role_entries)
     return merged
+
+
+def _otel_collector_config_secret_key(otel_collector: dict | None, default_prefix: str) -> dict | None:
+    if not otel_collector or not otel_collector.get("enabled"):
+        return None
+    source = str(otel_collector.get("config_secret_name") or "").strip()
+    if not source:
+        return None
+    return {
+        "name": "AOT_CONFIG_CONTENT",
+        "source": source,
+        "prefix": str(otel_collector.get("config_secret_prefix") or default_prefix).strip(),
+    }
 
 
 def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
@@ -971,6 +991,7 @@ def _create_task_definition(
     source_runtimes: list[dict] = None,
     source_runtime_bootstrap_environment_file_arn: pulumi.Input[str] = None,
     enable_source_runtime_bootstrap: bool = False,
+    otel_collector: dict = None,
     depends_on: list[pulumi.Resource] = None,
 ) -> aws.ecs.TaskDefinition:
     if not external_secrets_prefix:
@@ -984,6 +1005,17 @@ def _create_task_definition(
             secret_specs.append((secret_key["name"], secret_key["source"], secret_key.get("prefix") or external_secrets_prefix))
         else:
             secret_specs.append((secret_key, secret_key, external_secrets_prefix))
+    otel_collector = otel_collector or {}
+    otel_collector_enabled = bool(otel_collector.get("enabled"))
+    otel_collector_image = str(otel_collector.get("image") or "").strip()
+    otel_collector_config_secret = _otel_collector_config_secret_key(otel_collector, external_secrets_prefix)
+    otel_collector_cpu = int(otel_collector.get("cpu") or 0)
+    otel_collector_memory = int(otel_collector.get("memory") or 0)
+    if otel_collector_enabled:
+        if not otel_collector_image:
+            raise ValueError("otel collector image is required when the collector is enabled")
+        if not otel_collector_config_secret:
+            raise ValueError("otel collector config secret is required when the collector is enabled")
     source_runtime_bootstrap_payload = _source_runtime_bootstrap_payload(source_runtimes or [])
     env_items = sorted(environment.items())
     env_values = [value for _, value in env_items]
@@ -1004,6 +1036,30 @@ def _create_task_definition(
             "awslogs-group": log_group,
             "awslogs-region": region,
         }
+        collector_container = None
+        if otel_collector_enabled:
+            collector_container = {
+                "name": "otel-collector",
+                "image": otel_collector_image,
+                "essential": True,
+                "secrets": [
+                    {
+                        "name": otel_collector_config_secret["name"],
+                        "valueFrom": (
+                            f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:"
+                            f"{otel_collector_config_secret['prefix']}/{otel_collector_config_secret['source']}"
+                        ),
+                    }
+                ],
+                "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {**log_options, "awslogs-stream-prefix": "otel-collector"},
+                },
+            }
+            if otel_collector_cpu > 0:
+                collector_container["cpu"] = otel_collector_cpu
+            if otel_collector_memory > 0:
+                collector_container["memoryReservation"] = otel_collector_memory
         bootstrap_containers = []
         if source_runtime_bootstrap_payload or bootstrap_environment_file_arn or enable_source_runtime_bootstrap:
             bootstrap_container = {
@@ -1024,6 +1080,8 @@ def _create_task_definition(
                     "options": {**log_options, "awslogs-stream-prefix": "source-runtime-bootstrap"},
                 },
             }
+            if collector_container:
+                bootstrap_container["dependsOn"] = [{"containerName": "otel-collector", "condition": "START"}]
             if bootstrap_environment_file_arn:
                 bootstrap_container["environmentFiles"] = [
                     {"value": bootstrap_environment_file_arn, "type": "s3"}
@@ -1050,11 +1108,16 @@ def _create_task_definition(
             "environment": env,
             "secrets": secret_env,
         }
+        container_dependencies = []
+        if collector_container:
+            container_dependencies.append({"containerName": "otel-collector", "condition": "START"})
         if bootstrap_containers:
-            container["dependsOn"] = [
+            container_dependencies.extend(
                 {"containerName": bootstrap["name"], "condition": "SUCCESS"}
                 for bootstrap in bootstrap_containers
-            ]
+            )
+        if container_dependencies:
+            container["dependsOn"] = container_dependencies
         if container_command:
             container["command"] = container_command
         if expose_http:
@@ -1069,7 +1132,7 @@ def _create_task_definition(
             }
         if efs_container_path:
             container["mountPoints"] = [{"sourceVolume": "cerebro-data", "containerPath": efs_container_path, "readOnly": False}]
-        return [*bootstrap_containers, container]
+        return [*([collector_container] if collector_container else []), *bootstrap_containers, container]
 
     container_definitions = pulumi.Output.all(
         log_group_name,

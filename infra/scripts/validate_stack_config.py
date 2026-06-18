@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+import ipaddress
 import math
 import re
 import sys
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -1388,6 +1390,21 @@ def _validate_mcp_oauth_contract(stack: str, config: dict[str, Any], findings: l
         )
 
 
+def _otel_endpoint_parts(raw: str) -> tuple[str, str]:
+    parsed = urlparse(raw.strip())
+    return parsed.scheme.lower(), (parsed.hostname or "").lower()
+
+
+def _otel_endpoint_is_loopback(raw: str) -> bool:
+    _, host = _otel_endpoint_parts(raw)
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _validate_otel_config(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
     protocol = str(config.get("otelExporterOtlpProtocol") or "").strip()
     if protocol and protocol not in OTEL_EXPORTER_PROTOCOLS:
@@ -1400,12 +1417,14 @@ def _validate_otel_config(stack: str, config: dict[str, Any], findings: list[Fin
             )
         )
 
+    collector_enabled = config.get("otelCollectorEnabled") is True
     endpoints = [
-        str(config.get("otelExporterOtlpEndpoint") or "").strip(),
-        str(config.get("otelExporterOtlpTracesEndpoint") or "").strip(),
-        str(config.get("otelExporterOtlpMetricsEndpoint") or "").strip(),
+        ("cerebro:otelExporterOtlpEndpoint", str(config.get("otelExporterOtlpEndpoint") or "").strip()),
+        ("cerebro:otelExporterOtlpTracesEndpoint", str(config.get("otelExporterOtlpTracesEndpoint") or "").strip()),
+        ("cerebro:otelExporterOtlpMetricsEndpoint", str(config.get("otelExporterOtlpMetricsEndpoint") or "").strip()),
     ]
-    if config.get("otelEnabled") is True and not any(endpoints):
+    configured_endpoints = [endpoint for _, endpoint in endpoints if endpoint]
+    if config.get("otelEnabled") is True and not configured_endpoints and not collector_enabled:
         findings.append(
             _finding(
                 "error",
@@ -1414,6 +1433,60 @@ def _validate_otel_config(stack: str, config: dict[str, Any], findings: list[Fin
                 "otelEnabled requires an OTLP endpoint, traces endpoint, or metrics endpoint",
             )
         )
+
+    insecure = config.get("otelExporterOtlpInsecure") is True
+    for path, endpoint in endpoints:
+        if not endpoint:
+            continue
+        scheme, host = _otel_endpoint_parts(endpoint)
+        if not scheme or not host:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    path,
+                    "OTLP endpoint must be an absolute http(s) URL",
+                )
+            )
+            continue
+        if scheme not in {"http", "https"}:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    path,
+                    "OTLP endpoint scheme must be http or https",
+                )
+            )
+            continue
+        loopback = _otel_endpoint_is_loopback(endpoint)
+        if scheme == "http" and (not insecure or not loopback):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    path,
+                    "plain HTTP OTLP endpoints are only allowed for loopback collectors with otelExporterOtlpInsecure=true",
+                )
+            )
+        if collector_enabled and not loopback:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    path,
+                    "otelCollectorEnabled requires app OTLP endpoints to stay on loopback; put backend export in otelCollectorConfigSecretName",
+                )
+            )
+        if insecure and not (scheme == "http" and loopback):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:otelExporterOtlpInsecure",
+                    "otelExporterOtlpInsecure is only allowed with loopback HTTP OTLP endpoints",
+                )
+            )
 
     sample_rate = config.get("otelTracesSampleRate")
     parsed_sample_rate: float | None = None
@@ -1459,6 +1532,46 @@ def _validate_otel_config(stack: str, config: dict[str, Any], findings: list[Fin
                 stack,
                 "cerebro:otelExporterOtlpHeaders",
                 "plain OTLP header config is forbidden; use cerebro:otelExporterOtlpHeadersSecretName",
+            )
+        )
+
+    collector_image = str(config.get("otelCollectorImage") or "").strip()
+    collector_config_secret_name = str(config.get("otelCollectorConfigSecretName") or "").strip()
+    if collector_enabled:
+        if not collector_image:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:otelCollectorImage",
+                    "otelCollectorImage is required when otelCollectorEnabled is true",
+                )
+            )
+        if not collector_config_secret_name:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:otelCollectorConfigSecretName",
+                    "otelCollectorConfigSecretName is required when otelCollectorEnabled is true",
+                )
+            )
+        if headers_secret_name:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:otelExporterOtlpHeadersSecretName",
+                    "otelExporterOtlpHeadersSecretName is ignored when otelCollectorEnabled is true; put exporter auth in otelCollectorConfigSecretName",
+                )
+            )
+    if collector_config_secret_name and ("=" in collector_config_secret_name or "," in collector_config_secret_name):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:otelCollectorConfigSecretName",
+                "OTEL collector config must be provided by secret name, not inline config material",
             )
         )
 
