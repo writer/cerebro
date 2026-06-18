@@ -51,6 +51,15 @@ func TestBackstageCriticalComponentMissingOwnerOwnershipResolves(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newBackstageCriticalComponentMissingOwnerRule(), open, owned, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestBackstageCriticalComponentMissingOwnerCanonicalEntityRefResolves(t *testing.T) {
+	open := backstageComponentEvent("backstage-open-fallback-ref", map[string]string{"owner": ""}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	owned := backstageComponentEvent("backstage-owned-canonical-ref", map[string]string{
+		"owner":      "group:platform/payments",
+		"entity_ref": "component:default/payments",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	assertIdentityRuleRemediationTrajectory(t, newBackstageCriticalComponentMissingOwnerRule(), open, owned, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestBackstageCriticalComponentMissingOwnerDowngradeResolves(t *testing.T) {
 	open := backstageComponentEvent("backstage-open", map[string]string{"owner": ""}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	downgraded := backstageComponentEvent("backstage-downgraded", map[string]string{"owner": "", "criticality": "low"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
