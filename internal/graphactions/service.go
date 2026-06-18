@@ -287,7 +287,7 @@ func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, 
 		return nil, err
 	}
 	if strings.TrimSpace(spec.Provider) != strings.TrimSpace(externalRef.System) {
-		return nil, fmt.Errorf("%w: provider action %q does not match linked provider %q", ErrRemote, graphAction.Action, externalRef.System)
+		return nil, fmt.Errorf("%w: action %q is registered with provider %q, but the finding link belongs to provider %q", ErrRemote, graphAction.Action, spec.Provider, externalRef.System)
 	}
 	if err := normalizeProviderGraphAction(spec, graphAction, ""); err != nil {
 		return nil, err

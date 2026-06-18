@@ -114,6 +114,21 @@ func TestGeneratedFileIORejectsSymlink(t *testing.T) {
 	}
 }
 
+func TestGenerateRejectsOversizedCatalog(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, defaultCatalogPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir catalog dir: %v", err)
+	}
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), maxGeneratedFileBytes+1), 0o644); err != nil {
+		t.Fatalf("write oversized catalog: %v", err)
+	}
+	_, err := generate(root, defaultCatalogPath)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("generate() error = %v, want oversized catalog rejection", err)
+	}
+}
+
 func TestGenerateIsStableWithCheckedInCatalog(t *testing.T) {
 	content, err := generate(filepath.Clean("../.."), defaultCatalogPath)
 	if err != nil {

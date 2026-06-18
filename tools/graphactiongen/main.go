@@ -153,9 +153,25 @@ func readGeneratedFile(path string) ([]byte, error) {
 	return content, nil
 }
 
+func readBoundedFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxGeneratedFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxGeneratedFileBytes {
+		return nil, fmt.Errorf("file exceeds %d bytes", maxGeneratedFileBytes)
+	}
+	return content, nil
+}
+
 func generate(root string, catalogPath string) ([]byte, error) {
 	path := filepath.Join(root, catalogPath)
-	content, err := os.ReadFile(path)
+	content, err := readBoundedFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read catalog %s: %w", catalogPath, err)
 	}
