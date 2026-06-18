@@ -17,6 +17,7 @@ func TestClientCredentialsCacheSeparatesResolvedOAuthRequest(t *testing.T) {
 	var mu sync.Mutex
 	calls := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -102,6 +103,7 @@ func TestClientCredentialsCacheSeparatesRenderedTokenParams(t *testing.T) {
 	var mu sync.Mutex
 	calls := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
