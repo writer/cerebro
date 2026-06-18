@@ -71,6 +71,95 @@ func TestReadMemberUsesAccountPathParamAndResultList(t *testing.T) {
 	}
 }
 
+func TestReadCloudflareCoreInventoryKinds(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		family  string
+		kind    string
+		path    string
+		detail  string
+		config  map[string]string
+		payload map[string]any
+		want    map[string]string
+	}{
+		{
+			name:    "account",
+			family:  "account",
+			kind:    "cloudflare.account",
+			path:    "/accounts",
+			payload: map[string]any{"id": "acct-1", "name": "Writer", "type": "enterprise"},
+			want:    map[string]string{"account_id": "acct-1", "name": "Writer", "type": "enterprise"},
+		},
+		{
+			name:    "role",
+			family:  "role",
+			kind:    "cloudflare.role",
+			path:    "/accounts/acct-1/roles",
+			detail:  "/accounts/acct-1/roles/role-1",
+			config:  map[string]string{"account_id": "acct-1"},
+			payload: map[string]any{"id": "role-1", "name": "Administrator"},
+			want:    map[string]string{"role_id": "role-1", "account_id": "acct-1", "name": "Administrator"},
+		},
+		{
+			name:    "zone",
+			family:  "zone",
+			kind:    "cloudflare.zone",
+			path:    "/zones",
+			payload: map[string]any{"id": "zone-1", "name": "example.com", "status": "active", "type": "full", "paused": false, "account": map[string]any{"id": "acct-1"}},
+			want:    map[string]string{"zone_id": "zone-1", "account_id": "acct-1", "name": "example.com", "status": "active", "paused": "false"},
+		},
+		{
+			name:    "dns_record",
+			family:  "dns_record",
+			kind:    "cloudflare.dns_record",
+			path:    "/zones/zone-1/dns_records",
+			config:  map[string]string{"zone_id": "zone-1"},
+			payload: map[string]any{"id": "dns-1", "name": "www.example.com", "type": "A", "content": "203.0.113.10", "proxied": true},
+			want:    map[string]string{"record_id": "dns-1", "zone_id": "zone-1", "name": "www.example.com", "type": "A", "content": "203.0.113.10", "proxied": "true"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch got := r.URL.EscapedPath(); got {
+				case tt.path:
+					_ = json.NewEncoder(w).Encode(map[string]any{"result": []map[string]any{tt.payload}})
+				case tt.detail:
+					_ = json.NewEncoder(w).Encode(map[string]any{"result": tt.payload})
+				default:
+					t.Fatalf("request path = %q, want %s", got, tt.path)
+				}
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.inner.AllowLoopbackBaseURL = true
+			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "token": "token-1"}
+			for key, value := range tt.config {
+				config[key] = value
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tt.kind {
+				t.Fatalf("Kind = %q, want %q", event.Kind, tt.kind)
+			}
+			for key, value := range tt.want {
+				if got := event.Attributes[key]; got != value {
+					t.Fatalf("attribute %q = %q, want %q", key, got, value)
+				}
+			}
+		})
+	}
+}
+
 func TestReadCloudflareCoverageAttributes(t *testing.T) {
 	for _, tt := range []struct {
 		name     string

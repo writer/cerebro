@@ -125,6 +125,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "cloudflare",
+			Name:        "Cloudflare",
+			Description: "Cloudflare edge, zone, and DNS posture findings.",
+			Rules: []Rule{
+				newCloudflareZoneProtectionPausedRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

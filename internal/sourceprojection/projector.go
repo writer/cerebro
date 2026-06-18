@@ -434,6 +434,11 @@ func (s *Service) ProjectRetractions(event *cerebrov1.EventEnvelope) ([]*ports.P
 	if err != nil {
 		return nil, err
 	}
+	dnsRecordRetractions, err := cloudflareDNSRecordRetractions(event)
+	if err != nil {
+		return nil, err
+	}
+	links = append(links, dnsRecordRetractions...)
 	stampProjectionRuntime(event, nil, links)
 	return links, nil
 }

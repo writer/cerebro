@@ -1,0 +1,70 @@
+{
+  "rule_id": "cloudflare-zone-protection-paused",
+  "runtime": {
+    "id": "writer-cloudflare-zone",
+    "source_id": "cloudflare",
+    "tenant_id": "writer",
+    "config": {
+      "family": "zone"
+    }
+  },
+  "events": [
+    {
+      "id": "cloudflare-zone-active",
+      "tenant_id": "writer",
+      "source_id": "cloudflare",
+      "kind": "cloudflare.zone",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "cloudflare/zone/v1",
+      "attributes": {
+        "family": "zone",
+        "zone_id": "zone-1",
+        "account_id": "acct-1",
+        "name": "example.com",
+        "status": "active",
+        "paused": "false",
+        "source_runtime_id": "writer-cloudflare-zone"
+      }
+    },
+    {
+      "id": "cloudflare-zone-paused",
+      "tenant_id": "writer",
+      "source_id": "cloudflare",
+      "kind": "cloudflare.zone",
+      "occurred_at": "2026-04-23T12:05:00Z",
+      "schema_ref": "cloudflare/zone/v1",
+      "attributes": {
+        "family": "zone",
+        "zone_id": "zone-1",
+        "account_id": "acct-1",
+        "name": "example.com",
+        "status": "active",
+        "paused": "true",
+        "source_runtime_id": "writer-cloudflare-zone"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "cloudflare-zone-protection-paused",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Cloudflare zone example.com has edge protection paused",
+      "event_ids": ["cloudflare-zone-paused"],
+      "attributes": {
+        "cloudflare_zone_urn": "urn:cerebro:writer:cloudflare_zone:zone-1",
+        "zone_id": "zone-1",
+        "account_id": "acct-1",
+        "paused": "true",
+        "primary_resource_urn": "urn:cerebro:writer:cloudflare_zone:zone-1",
+        "rule_required_attributes": "zone_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "cloudflare-zone-active",
+      "reason": "zone with active edge protection is healthy"
+    }
+  ]
+}
