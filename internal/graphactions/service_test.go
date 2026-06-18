@@ -48,7 +48,7 @@ func TestServiceExecuteRejectsExplicitTargetOutsideFinding(t *testing.T) {
 		t.Fatalf("Execute() error = %v, want ErrInvalidRequest", err)
 	}
 	if client.called {
-		t.Fatalf("cross-tenant explicit target reached access-approvals client")
+		t.Fatalf("cross-finding explicit target reached access-approvals client")
 	}
 }
 

@@ -161,7 +161,7 @@ func TestGraphActionTargetForFindingAllowsMatchingExplicitTarget(t *testing.T) {
 			"okta_user_urn": "urn:cerebro:writer:okta.user:alice@writer.com",
 		},
 	}
-	target, err := graphactions.OktaUserTargetForFinding(finding, "Alice <alice@writer.com>")
+	target, err := graphactions.OktaUserTargetForFinding(finding, "Alice Example <alice@writer.com>")
 	if err != nil {
 		t.Fatalf("OktaUserTargetForFinding() error = %v", err)
 	}
