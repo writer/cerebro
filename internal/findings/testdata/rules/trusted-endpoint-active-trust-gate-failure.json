@@ -81,6 +81,7 @@
         "agent_id": "dev-offboarded",
         "action": "git_push",
         "decision": "deny",
+        "agent_status": "offboarded",
         "primary_resource_urn": "urn:cerebro:writer:trusted_endpoint_agent:dev-offboarded",
         "rule_required_attributes": "agent_id,action,decision"
       }
