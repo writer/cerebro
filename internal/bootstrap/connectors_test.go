@@ -1296,6 +1296,102 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	if got := strings.Join(jenkinsSchema.RequiredCredentials, ","); got != "password,username" {
 		t.Fatalf("jenkins required credentials = %q, want password,username", got)
 	}
+	anthropicSchema, ok := connectorSchemaForSource("anthropic")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(anthropic) = false, want builtin schema")
+	}
+	for _, key := range []string{"credential_kind", "credential_scopes"} {
+		if _, ok := anthropicSchema.ConfigKeys[key]; !ok {
+			t.Fatalf("anthropic config keys missing %q: %#v", key, sortedSetKeys(anthropicSchema.ConfigKeys))
+		}
+	}
+	err = validateConnectorConfigFields("anthropic", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"api_key":           "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
+		"credential_kind":   anthropicCredentialKindScopedAdminAPIKey,
+		"credential_scopes": "read:spend_limits",
+		"family":            "spend_limit",
+	}, map[string]string{
+		"api_key": "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(anthropic credential hints) error = %v", err)
+	}
+}
+
+func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     map[string]string
+		wantCheck  string
+		wantAction string
+	}{
+		{
+			name:       "service account needs org admin OAuth",
+			config:     map[string]string{"family": "service_account"},
+			wantCheck:  "anthropic_org_admin_oauth",
+			wantAction: "use_anthropic_org_admin_oauth",
+		},
+		{
+			name:       "compliance activity needs read compliance scope",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "compliance_activity"},
+			wantCheck:  "anthropic_compliance_scope",
+			wantAction: "confirm_anthropic_compliance_scope",
+		},
+		{
+			name:       "spend limits need scoped admin key",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:usage"},
+			wantCheck:  "anthropic_spend_limit_scope",
+			wantAction: "confirm_anthropic_spend_limit_scope",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			checks := connectorProviderPreflightChecks("anthropic", connectorAuthMethodExternalReference, test.config, resourcescope.Policy{})
+			check := findConnectorPreflightCheck(checks, test.wantCheck)
+			if check == nil {
+				t.Fatalf("check %q missing from %#v", test.wantCheck, checks)
+			}
+			if check.Status != "warning" || check.NextAction != test.wantAction {
+				t.Fatalf("check = %#v, want warning action %q", check, test.wantAction)
+			}
+		})
+	}
+}
+
+func TestAnthropicProviderPreflightChecksPassWithCredentialHints(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]string
+	}{
+		{
+			name:   "service account org admin oauth",
+			config: map[string]string{"auth_model": "bearer_token", "credential_kind": anthropicCredentialKindOrgAdminOAuth, "credential_scopes": "org:admin", "family": "service_account"},
+		},
+		{
+			name:   "compliance activity scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_activities", "family": "compliance_activity"},
+		},
+		{
+			name:   "spend limit scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindScopedAdminAPIKey, "credential_scopes": "read:spend_limits", "family": "spend_limit"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if checks := connectorProviderPreflightChecks("anthropic", connectorAuthMethodExternalReference, test.config, resourcescope.Policy{}); len(checks) != 0 {
+				t.Fatalf("checks = %#v, want none", checks)
+			}
+		})
+	}
+}
+
+func findConnectorPreflightCheck(checks []connectorPreflightCheckView, id string) *connectorPreflightCheckView {
+	for i := range checks {
+		if checks[i].ID == id {
+			return &checks[i]
+		}
+	}
+	return nil
 }
 
 func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {

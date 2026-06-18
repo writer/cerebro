@@ -66,6 +66,13 @@ const (
 	connectorReadinessStageRuntimeUnknown      = "runtime_unknown"
 )
 
+const (
+	anthropicCredentialKindAdminAPIKey         = "admin_api_key"
+	anthropicCredentialKindComplianceAccessKey = "compliance_access_key"
+	anthropicCredentialKindOrgAdminOAuth       = "org_admin_oauth"      // #nosec G101 -- credential kind label, not credential material.
+	anthropicCredentialKindScopedAdminAPIKey   = "scoped_admin_api_key" // #nosec G101 -- credential kind label, not credential material.
+)
+
 var errConnectorAccessRestricted = errors.New("connector access restricted")
 
 type connectorCatalogEntry struct {
@@ -1583,6 +1590,8 @@ var connectorSchemas = map[string]connectorSchema{
 			"created_at_gte",
 			"created_at_lt",
 			"created_at_lte",
+			"credential_kind",
+			"credential_scopes",
 			"ending_at",
 			"family",
 			"group_by",
@@ -2457,9 +2466,95 @@ func connectorProviderPreflightChecks(sourceID string, authMethod string, config
 			})
 		}
 		return checks
+	case "anthropic":
+		return anthropicProviderPreflightChecks(config, policy)
 	default:
 		return nil
 	}
+}
+
+func anthropicProviderPreflightChecks(config map[string]string, policy resourcescope.Policy) []connectorPreflightCheckView {
+	family := strings.TrimSpace(config["family"])
+	if family == "" {
+		family = "user"
+	}
+	if policy.ExcludesFamily("anthropic", family) {
+		return nil
+	}
+	authModel := strings.ToLower(strings.TrimSpace(config["auth_model"]))
+	if authModel == "" {
+		authModel = "legacy_token"
+	}
+	credentialKind := normalizedCredentialHint(config["credential_kind"])
+	scopes := connectorTokenSet(config["credential_scopes"])
+	checks := []connectorPreflightCheckView{}
+	switch family {
+	case "service_account", "federation_issuer", "federation_rule":
+		if authModel != "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindOrgAdminOAuth) || !setContains(scopes, "org:admin") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "anthropic_org_admin_oauth",
+				Label:      "Anthropic org admin OAuth",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Service account and workload identity federation families require an org:admin OAuth bearer token; set auth_model=bearer_token and record credential_scopes=org:admin when configuring this runtime.",
+				NextAction: "use_anthropic_org_admin_oauth",
+			})
+		}
+	case "compliance_activity":
+		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindAdminAPIKey && credentialKind != anthropicCredentialKindComplianceAccessKey) || !setContains(scopes, "read:compliance_activities") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "anthropic_compliance_scope",
+				Label:      "Anthropic compliance scope",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Compliance Activity Feed reads use x-api-key and require read:compliance_activities on an Admin API key or Compliance Access Key; record credential_kind and credential_scopes to make that explicit.",
+				NextAction: "confirm_anthropic_compliance_scope",
+			})
+		}
+	case "spend_limit", "spend_limit_increase_request":
+		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindScopedAdminAPIKey) || !setContains(scopes, "read:spend_limits") {
+			checks = append(checks, connectorPreflightCheckView{
+				ID:         "anthropic_spend_limit_scope",
+				Label:      "Anthropic spend-limit scope",
+				Status:     "warning",
+				Severity:   "warning",
+				Detail:     "Read-only spend-limit families require an Enterprise scoped Admin API key with read:spend_limits in x-api-key; record credential_kind=scoped_admin_api_key and credential_scopes=read:spend_limits.",
+				NextAction: "confirm_anthropic_spend_limit_scope",
+			})
+		}
+	}
+	return checks
+}
+
+func normalizedCredentialHint(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	replacer := strings.NewReplacer("-", "_", " ", "_")
+	value = replacer.Replace(value)
+	switch value {
+	case "oauth", "oauth_bearer", "org_admin", "org_admin_token":
+		return anthropicCredentialKindOrgAdminOAuth
+	case "admin", "admin_key", "admin_api":
+		return anthropicCredentialKindAdminAPIKey
+	case "compliance", "compliance_key":
+		return anthropicCredentialKindComplianceAccessKey
+	case "spend_limit_admin_key", "spend_limits_admin_key":
+		return anthropicCredentialKindScopedAdminAPIKey
+	default:
+		return value
+	}
+}
+
+func connectorTokenSet(value string) map[string]struct{} {
+	tokens := map[string]struct{}{}
+	for _, token := range strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t'
+	}) {
+		token = strings.ToLower(strings.TrimSpace(token))
+		if token != "" {
+			tokens[token] = struct{}{}
+		}
+	}
+	return tokens
 }
 
 func connectorPreflightErrorDetail(err error) string {
