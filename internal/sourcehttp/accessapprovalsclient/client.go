@@ -108,7 +108,7 @@ func (c *Client) createAction(ctx context.Context, action string, request grapha
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", graphactions.ErrRemote, err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, remoteStatusError(response)
 	}

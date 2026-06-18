@@ -79,7 +79,7 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST graph action: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("status = %d, want 202", response.StatusCode)
@@ -158,7 +158,7 @@ func TestHandleExecuteGraphActionSupportsTargetOnlyUnsuspend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST graph action: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("status = %d, want 202", response.StatusCode)
 	}
@@ -216,7 +216,7 @@ func TestGraphActionNotConfiguredReturnsServiceUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST graph action: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", response.StatusCode)
 	}
