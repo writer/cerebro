@@ -339,6 +339,7 @@ jobs:
   deploy-sec-dev-main:
     name: Deploy sec-dev
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [changes, static-validation]
     if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true' }}"
     concurrency:
@@ -550,6 +551,7 @@ jobs:
   deploy-go-prod:
     name: Deploy go-prod
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [changes, static-validation]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_go_prod == 'true'
     environment: production
