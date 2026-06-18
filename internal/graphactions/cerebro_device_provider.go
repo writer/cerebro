@@ -41,7 +41,7 @@ func (p CerebroDeviceProvider) ExecuteGraphAction(ctx context.Context, spec Acti
 		if errors.Is(err, deviceauth.ErrDeviceNotFound) {
 			return nil, fmt.Errorf("%w: target device was not found", ErrInvalidRequest)
 		}
-		return nil, fmt.Errorf("%w: revoke device: %v", ErrRemote, err)
+		return nil, fmt.Errorf("%w: revoke device: %w", ErrRemote, err)
 	}
 	device.Status = "revoked"
 	device.RevokedAt = p.now()
@@ -61,7 +61,7 @@ func (p CerebroDeviceProvider) GetGraphAction(ctx context.Context, externalID st
 		if errors.Is(err, deviceauth.ErrDeviceNotFound) {
 			return nil, fmt.Errorf("%w: target device was not found", ErrInvalidRequest)
 		}
-		return nil, fmt.Errorf("%w: lookup device: %v", ErrRemote, err)
+		return nil, fmt.Errorf("%w: lookup device: %w", ErrRemote, err)
 	}
 	status := "needs_attention"
 	reason := "device is not revoked"
@@ -78,7 +78,7 @@ func (p CerebroDeviceProvider) lookupTenantDevice(ctx context.Context, deviceID 
 		if errors.Is(err, deviceauth.ErrDeviceNotFound) {
 			return deviceauth.DeviceRecord{}, fmt.Errorf("%w: target device was not found", ErrInvalidRequest)
 		}
-		return deviceauth.DeviceRecord{}, fmt.Errorf("%w: lookup device: %v", ErrRemote, err)
+		return deviceauth.DeviceRecord{}, fmt.Errorf("%w: lookup device: %w", ErrRemote, err)
 	}
 	if tenantID = strings.TrimSpace(tenantID); tenantID != "" && strings.TrimSpace(device.TenantID) != tenantID {
 		return deviceauth.DeviceRecord{}, fmt.Errorf("%w: target device does not belong to finding tenant", ErrInvalidRequest)
