@@ -2,8 +2,6 @@ package findings
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -12,6 +10,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 const (
@@ -142,7 +141,7 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
 		TenantID:        tenantID,
-		RuntimeID:       strings.TrimSpace(runtimeID),
+		RuntimeID:       sourceRuntimeID,
 		RuleID:          cosmoCoordinationActiveRiskRuleID,
 		Title:           cosmoCoordinationActiveRiskTitle,
 		Severity:        cosmoCoordinationActiveRiskSeverity,
@@ -281,12 +280,7 @@ func cosmoSessionResourceURN(tenantID string, sessionID string) string {
 }
 
 func cosmoExternalIDKey(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(normalized))
-	return "id-" + hex.EncodeToString(sum[:16])
+	return sourceidentity.HashedExternalIDKey(value, "")
 }
 
 func cosmoCoordinationActiveRiskAnchor(attributes map[string]string) string {

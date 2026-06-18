@@ -10,6 +10,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 func cosmoCoordinationFactEvent(id string, attrs map[string]string, occurredAt time.Time) *cerebrov1.EventEnvelope {
@@ -216,8 +217,9 @@ func TestCosmoCoordinationActiveRiskRequiresPositiveActiveState(t *testing.T) {
 }
 
 func TestCosmoCoordinationActiveRiskRemediationResolves(t *testing.T) {
-	open := cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
-	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	runtimeID := "example-cosmo-fact"
+	open := cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active", ports.EventAttributeSourceRuntimeID: runtimeID}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved", ports.EventAttributeSourceRuntimeID: runtimeID}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	assertIdentityRuleRemediationTrajectory(t, newCosmoCoordinationActiveRiskRule(), open, resolved, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
@@ -258,6 +260,25 @@ func TestCosmoCoordinationActiveRiskCloseRequiresRuntimeAnchor(t *testing.T) {
 	delete(missingRuntime.Attributes, ports.EventAttributeSourceRuntimeID)
 	if anchor, closes := counterRule.CloseOnEvent(missingRuntime); closes || anchor != "" {
 		t.Fatalf("CloseOnEvent(missing runtime) = (%q, %v), want no close", anchor, closes)
+	}
+}
+
+func TestCosmoCoordinationActiveRiskFindingUsesEventRuntimeID(t *testing.T) {
+	event := cosmoCoordinationFactEvent("cosmo-event-runtime", map[string]string{
+		ports.EventAttributeSourceRuntimeID: "event-runtime",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	record, err := cosmoCoordinationActiveRiskFinding(event, "caller-runtime")
+	if err != nil {
+		t.Fatalf("cosmoCoordinationActiveRiskFinding() error = %v", err)
+	}
+	if record == nil {
+		t.Fatal("cosmoCoordinationActiveRiskFinding() = nil, want finding")
+	}
+	if got := record.RuntimeID; got != "event-runtime" {
+		t.Fatalf("RuntimeID = %q, want event-runtime", got)
+	}
+	if got := record.Attributes["source_runtime_id"]; got != "event-runtime" {
+		t.Fatalf("source_runtime_id attribute = %q, want event-runtime", got)
 	}
 }
 
@@ -315,6 +336,9 @@ func TestCosmoCoordinationActiveRiskResourceURNsUseGraphKeys(t *testing.T) {
 	}
 	if colonURN == slashURN {
 		t.Fatalf("fact URNs collided at %q", colonURN)
+	}
+	if got, want := cosmoExternalIDKey("coordination:risk"), sourceidentity.HashedExternalIDKey("coordination:risk", ""); got != want {
+		t.Fatalf("cosmoExternalIDKey() = %q, want shared source identity key %q", got, want)
 	}
 }
 
