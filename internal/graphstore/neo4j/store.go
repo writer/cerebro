@@ -406,6 +406,9 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if entityType == "" {
 		return errors.New("projected entity type is required")
 	}
+	if err := ports.ValidateProjectedEntityTenantScope(entity); err != nil {
+		return err
+	}
 	if err := s.requireConfigured(); err != nil {
 		return err
 	}
@@ -1497,6 +1500,9 @@ func validateProjectedLink(link *ports.ProjectedLink) (fromURN string, toURN str
 	sourceID = strings.TrimSpace(link.SourceID)
 	if sourceID == "" {
 		return "", "", "", "", "", errors.New("projected link source id is required")
+	}
+	if err := ports.ValidateProjectedLinkTenantScope(link); err != nil {
+		return "", "", "", "", "", err
 	}
 	return fromURN, toURN, relation, tenantID, sourceID, nil
 }

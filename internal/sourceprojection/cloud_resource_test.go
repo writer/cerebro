@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -53,6 +54,34 @@ func TestProjectGCPCloudResourceMetadataLinksAccountExposureOwnerClassificationA
 	assertProjectedLink(t, state, resourceURN, relationRunsAs, serviceAccountURN)
 	if link := state.links[resourceURN+"|"+relationRunsAs+"|"+serviceAccountURN]; link == nil || link.Attributes["match_type"] != "gcp_runtime_service_account" {
 		t.Fatalf("runs_as link = %#v, want gcp runtime service account match", link)
+	}
+}
+
+func TestProjectCloudResourceRejectsCrossTenantCerebroResourceURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aws-cross-tenant-resource",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.s3_bucket",
+		Attributes: map[string]string{
+			"account_id":        "123456789012",
+			"resource_id":       "bucket-1",
+			"resource_name":     "bucket-1",
+			"resource_provider": "aws",
+			"resource_type":     "s3_bucket",
+			"resource_urn":      "urn:cerebro:victim:aws_s3_bucket:bucket-1",
+		},
+	})
+	if err == nil {
+		t.Fatal("Project() error = nil, want cross-tenant Cerebro URN error")
+	}
+	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:aws_s3_bucket:bucket-1") || !strings.Contains(got, "not projection tenant") {
+		t.Fatalf("Project() error = %q", got)
+	}
+	if len(state.entities) != 0 || len(state.links) != 0 {
+		t.Fatalf("Project() wrote entities=%d links=%d despite cross-tenant resource_urn", len(state.entities), len(state.links))
 	}
 }
 

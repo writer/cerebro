@@ -41701,7 +41701,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 107
+        mapped_rules: 108
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41859,8 +41859,9 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 10
+          rule_count: 11
           mapped_rules:
+            - anthropic-unmanaged-active-api-key
             - github-org-owner-role-review-needed
             - identity-okta-admin-plus-app-owner
             - identity-okta-admin-privilege-grant-events-30d
@@ -42138,6 +42139,10 @@ profiles:
             - kolide-host-failing-compliance-checks
             - sentinelone-risky-exclusion
       rules:
+        - rule_id: anthropic-unmanaged-active-api-key
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
         - rule_id: aws-cloudtrail-kms-encryption
           controls:
             - framework_name: ISO 27001:2022
@@ -61136,7 +61141,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 931
+        mapped_rules: 932
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61686,10 +61691,11 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 433
+          rule_count: 434
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
+            - anthropic-unmanaged-active-api-key
             - aws-cloudtrail-kms-encryption
             - aws-cloudtrail-log-integrity
             - aws-default-sg-no-rules
@@ -62580,6 +62586,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC3.2
+        - rule_id: anthropic-unmanaged-active-api-key
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: aws-alb-http-to-https
           controls:
             - framework_name: SOC 2
