@@ -1,0 +1,116 @@
+{
+  "rule_id": "backstage-critical-component-missing-owner",
+  "runtime": {
+    "id": "writer-backstage-component",
+    "source_id": "backstage",
+    "tenant_id": "writer",
+    "config": {
+      "family": "component"
+    }
+  },
+  "events": [
+    {
+      "id": "backstage-component-owned",
+      "tenant_id": "writer",
+      "source_id": "backstage",
+      "kind": "backstage.component",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "backstage/component/v1",
+      "attributes": {
+        "family": "component",
+        "name": "billing",
+        "namespace": "default",
+        "kind": "Component",
+        "type": "service",
+        "lifecycle": "production",
+        "criticality": "tier0",
+        "owner": "group:platform/billing",
+        "source_runtime_id": "writer-backstage-component"
+      }
+    },
+    {
+      "id": "backstage-component-unowned",
+      "tenant_id": "writer",
+      "source_id": "backstage",
+      "kind": "backstage.component",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "backstage/component/v1",
+      "attributes": {
+        "family": "component",
+        "name": "payments",
+        "namespace": "default",
+        "kind": "Component",
+        "type": "service",
+        "lifecycle": "production",
+        "criticality": "tier0",
+        "source_runtime_id": "writer-backstage-component"
+      }
+    },
+    {
+      "id": "backstage-component-noncritical",
+      "tenant_id": "writer",
+      "source_id": "backstage",
+      "kind": "backstage.component",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "backstage/component/v1",
+      "attributes": {
+        "family": "component",
+        "name": "docs-site",
+        "namespace": "default",
+        "kind": "Component",
+        "type": "website",
+        "lifecycle": "production",
+        "criticality": "low",
+        "source_runtime_id": "writer-backstage-component"
+      }
+    },
+    {
+      "id": "backstage-component-deprecated",
+      "tenant_id": "writer",
+      "source_id": "backstage",
+      "kind": "backstage.component",
+      "occurred_at": "2026-05-01T12:15:00Z",
+      "schema_ref": "backstage/component/v1",
+      "attributes": {
+        "family": "component",
+        "name": "legacy-gateway",
+        "namespace": "default",
+        "kind": "Component",
+        "type": "service",
+        "lifecycle": "deprecated",
+        "criticality": "tier0",
+        "source_runtime_id": "writer-backstage-component"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "backstage-critical-component-missing-owner",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Backstage critical component payments has no accountable owner",
+      "event_ids": ["backstage-component-unowned"],
+      "attributes": {
+        "backstage_component_urn": "urn:cerebro:writer:service:component/default/payments",
+        "name": "payments",
+        "criticality": "tier0",
+        "primary_resource_urn": "urn:cerebro:writer:service:component/default/payments",
+        "rule_required_attributes": "name"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "backstage-component-owned",
+      "reason": "critical component with an accountable owner is governed"
+    },
+    {
+      "event_id": "backstage-component-noncritical",
+      "reason": "non-critical component without owner is not durable risk"
+    },
+    {
+      "event_id": "backstage-component-deprecated",
+      "reason": "decommissioned component is no longer an active accountability gap"
+    }
+  ]
+}

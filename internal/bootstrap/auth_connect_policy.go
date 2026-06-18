@@ -10,15 +10,19 @@ const (
 	scopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
 	scopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
 	scopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
+	scopeReportsRun                = "cerebro.reports.run"
+	scopeKnowledgeWrite            = "cerebro.knowledge.write"
+	scopeWorkflowReplay            = "cerebro.workflow.replay"
+	scopeSourcesPreview            = "cerebro.sources.preview"
+	scopeConnectorDefinitionsWrite = "cerebro.connector_definitions.write"
+	scopeConnectorsWrite           = "cerebro.connectors.write"
+	scopeJobsWrite                 = "cerebro.jobs.write"
+	scopeSourceRuntimesWrite       = "cerebro.source_runtimes.write"
 )
 
 type connectProcedureAuthPolicy struct {
 	Scope     string
 	AdminOnly bool
-}
-
-func scopeForConnectProcedure(procedure string) string {
-	return connectProcedurePolicyFor(procedure).Scope
 }
 
 func connectProcedurePolicyKnown(procedure string) bool {
@@ -60,22 +64,26 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
 		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeFindingLifecycleWrite}
-	case cerebrov1connect.BootstrapServiceRunReportProcedure,
-		cerebrov1connect.BootstrapServiceCheckSourceProcedure,
+	case cerebrov1connect.BootstrapServiceRunReportProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeReportsRun}
+	case cerebrov1connect.BootstrapServiceCheckSourceProcedure,
 		cerebrov1connect.BootstrapServiceDiscoverSourceProcedure,
-		cerebrov1connect.BootstrapServiceReadSourceProcedure,
-		cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure,
+		cerebrov1connect.BootstrapServiceReadSourceProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeSourcesPreview}
+	case cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure,
 		cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure,
 		cerebrov1connect.BootstrapServiceWriteClaimsProcedure,
 		cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingCandidatesProcedure,
 		cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure,
 		cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
-		cerebrov1connect.BootstrapServiceWriteDecisionProcedure,
-		cerebrov1connect.BootstrapServiceWriteActionProcedure,
-		cerebrov1connect.BootstrapServiceWriteOutcomeProcedure,
-		cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure,
 		cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure:
-		return connectProcedureAuthPolicy{AdminOnly: true}
+		return connectProcedureAuthPolicy{Scope: scopeSourceRuntimesWrite}
+	case cerebrov1connect.BootstrapServiceWriteDecisionProcedure,
+		cerebrov1connect.BootstrapServiceWriteActionProcedure,
+		cerebrov1connect.BootstrapServiceWriteOutcomeProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeKnowledgeWrite}
+	case cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeWorkflowReplay}
 	default:
 		return connectProcedureAuthPolicy{}
 	}

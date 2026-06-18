@@ -231,7 +231,7 @@ func resolveAgentPlatformRequestContext(ctx context.Context, requestedTenantID s
 	resolved.TenantID = tenantID
 	resolved.ActorID = agentPlatformPrincipalActorID(auth.principal, resolved.ActorID)
 	if principalScopeRestricted(auth.principal) {
-		resolved.RequestedScopes = append([]string(nil), auth.principal.Scopes...)
+		resolved.RequestedScopes = expandedPrincipalScopes(auth.principal)
 		resolved.ScopeUnrestricted = false
 	} else {
 		resolved.RequestedScopes = nil
