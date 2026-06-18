@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,10 +99,31 @@ func TestClientConfigurationAndRemoteErrors(t *testing.T) {
 	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: ":", BearerToken: "token"}); !errors.Is(err, graphactions.ErrInvalidRequest) {
 		t.Fatalf("New(invalid URL) error = %v, want ErrInvalidRequest", err)
 	}
+	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: "http://access-approvals.example.com", BearerToken: "token"}); !errors.Is(err, graphactions.ErrInvalidRequest) {
+		t.Fatalf("New(plaintext non-loopback URL) error = %v, want ErrInvalidRequest", err)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		if _, err := w.Write([]byte(`{"error":"missing required scopes"}`)); err != nil {
 			t.Fatalf("write response: %v", err)
+		}
+	}))
+	defer server.Close()
+	client, err := New(config.AccessApprovalsActionConfig{BaseURL: server.URL, BearerToken: "token"}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = client.SuspendOktaUser(context.Background(), graphactions.AccessApprovalsUserActionRequest{EmailOrUserID: "alice@writer.com"})
+	if !errors.Is(err, graphactions.ErrRemote) {
+		t.Fatalf("Suspend() error = %v, want ErrRemote", err)
+	}
+}
+
+func TestClientLimitsSuccessResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"id":"` + strings.Repeat("a", int(defaultMaxActionResponseBodyBytes)+1) + `","action":"suspend"}`)); err != nil {
+			t.Fatalf("write oversized response: %v", err)
 		}
 	}))
 	defer server.Close()

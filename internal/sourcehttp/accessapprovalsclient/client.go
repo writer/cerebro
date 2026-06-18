@@ -13,9 +13,11 @@ import (
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphactions"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 const defaultMaxErrorBodyBytes int64 = 4096
+const defaultMaxActionResponseBodyBytes int64 = 1024 * 1024
 
 type Client struct {
 	baseURL    *url.URL
@@ -42,6 +44,9 @@ func New(cfg config.AccessApprovalsActionConfig, opts ...Option) (*Client, error
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("%w: base URL is invalid", graphactions.ErrInvalidRequest)
+	}
+	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !sourcehttp.IsLoopbackHost(parsed.Hostname())) {
+		return nil, fmt.Errorf("%w: base URL must use https unless it targets loopback", graphactions.ErrInvalidRequest)
 	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
@@ -113,7 +118,7 @@ func (c *Client) createAction(ctx context.Context, action string, request grapha
 		return nil, remoteStatusError(response)
 	}
 	var actionResponse graphactions.AccessApprovalsUserAction
-	if err := json.NewDecoder(response.Body).Decode(&actionResponse); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, defaultMaxActionResponseBodyBytes)).Decode(&actionResponse); err != nil {
 		return nil, fmt.Errorf("%w: decode response: %w", graphactions.ErrRemote, err)
 	}
 	if strings.TrimSpace(actionResponse.ID) == "" {
