@@ -241,7 +241,7 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 	go func() {
 		defer close(done)
 		_, hasPreparer := stateStore.(grcReadModelPreparer)
-		ctx, span := telemetry.Start(ctx, "grc.read_model_warmup", telemetry.Attrs(
+		ctx, span := telemetry.StartMain(ctx, "grc.read_model_warmup", telemetry.Attrs(
 			telemetry.Field{Key: "preparer_present", Value: hasPreparer},
 		))
 		status := "completed"
@@ -266,7 +266,7 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {
 	done := make(chan struct{})
 	if backfiller == nil {
-		_, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+		_, span := telemetry.StartMain(ctx, "finding.risk_backfill", telemetry.Attrs(
 			telemetry.Field{Key: "backfiller_present", Value: false},
 		))
 		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: false}))
@@ -275,7 +275,7 @@ func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfil
 	}
 	go func() {
 		defer close(done)
-		ctx, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+		ctx, span := telemetry.StartMain(ctx, "finding.risk_backfill", telemetry.Attrs(
 			telemetry.Field{Key: "backfiller_present", Value: true},
 		))
 		status := "completed"

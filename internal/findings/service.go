@@ -2126,7 +2126,7 @@ func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.Findi
 	if run == nil {
 		return
 	}
-	telemetry.Event(ctx, "finding_evaluation.run", telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "run_id", Value: strings.TrimSpace(run.GetId())},
 		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(run.GetRuntimeId())},
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(run.GetRuleId())},
@@ -2137,6 +2137,22 @@ func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.Findi
 		telemetry.Field{Key: "findings_emitted", Value: run.GetFindingsEmitted()},
 		telemetry.Field{Key: "graph_rule", Value: run.GetGraphRule()},
 		telemetry.Field{Key: "graph_rows_read", Value: run.GetGraphRowsRead()},
+	)
+	telemetry.Event(ctx, "finding_evaluation.run", attrs)
+	telemetry.IncrementMain(ctx, "finding_evaluation.run.count", 1)
+	if !strings.EqualFold(strings.TrimSpace(run.GetStatus()), "completed") {
+		telemetry.IncrementMain(ctx, "finding_evaluation.run.non_completed.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "finding_evaluation.runtime_id", Value: strings.TrimSpace(run.GetRuntimeId())},
+		telemetry.Field{Key: "finding_evaluation.rule_id", Value: strings.TrimSpace(run.GetRuleId())},
+		telemetry.Field{Key: "finding_evaluation.status", Value: strings.TrimSpace(run.GetStatus())},
+		telemetry.Field{Key: "finding_evaluation.event_limit", Value: run.GetEventLimit()},
+		telemetry.Field{Key: "finding_evaluation.events_processed", Value: run.GetEventsProcessed()},
+		telemetry.Field{Key: "finding_evaluation.events_matched", Value: run.GetEventsMatched()},
+		telemetry.Field{Key: "finding_evaluation.findings_emitted", Value: run.GetFindingsEmitted()},
+		telemetry.Field{Key: "finding_evaluation.graph_rule", Value: run.GetGraphRule()},
+		telemetry.Field{Key: "finding_evaluation.graph_rows_read", Value: run.GetGraphRowsRead()},
 	))
 }
 

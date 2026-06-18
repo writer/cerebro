@@ -82,7 +82,10 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 				errorKind = syncWithLeaseTelemetryErrorKind(err)
 			}
 			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: errorKind})
+			telemetry.IncrementMain(ctx, "source_runtime.lease.error.count", 1)
 		}
+		telemetry.IncrementMain(ctx, "source_runtime.lease.count", 1)
+		telemetry.AnnotateMain(ctx, attrs.WithField(telemetry.Field{Key: "source_runtime.lease.status", Value: status}))
 		telemetry.End(span, status, attrs)
 	}()
 	if s == nil {

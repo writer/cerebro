@@ -92,6 +92,7 @@ func (s *Store) Ping(ctx context.Context) error {
 		postgresTelemetryError(ctx, span, "ping", err)
 		return err
 	}
+	postgresAnnotateMain(ctx, "ping", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
@@ -125,17 +126,30 @@ func (s *Store) ensureStatements(ctx context.Context, ready *bool, label string,
 		return err
 	}
 	*ready = true
+	postgresAnnotateMain(ctx, "ensure_statements", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
 
 func postgresTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+	postgresAnnotateMain(ctx, operation, "failed")
 	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 	telemetry.CaptureError(ctx, "postgres.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "statestore.postgres"},
 		telemetry.Field{Key: "operation", Value: operation},
 	))
 	telemetry.End(span, "failed", attrs)
+}
+
+func postgresAnnotateMain(ctx context.Context, operation string, status string) {
+	telemetry.IncrementMain(ctx, "db.postgres.operation.count", 1)
+	if status == "failed" {
+		telemetry.IncrementMain(ctx, "db.postgres.error.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "db.postgres.last_operation", Value: strings.TrimSpace(operation)},
+		telemetry.Field{Key: "db.postgres.last_status", Value: strings.TrimSpace(status)},
+	))
 }
 
 const schemaMigrationsDDL = `

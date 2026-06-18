@@ -311,6 +311,27 @@ func (app *App) emitOAuthAuditEvent(r *http.Request, operation string, status in
 		attrs = attrs.WithField(field)
 	}
 	telemetry.Event(r.Context(), "cerebro.oauth.mcp", attrs)
+	telemetry.IncrementMain(r.Context(), "oauth.mcp.count", 1)
+	if strings.TrimSpace(outcome) != "success" {
+		telemetry.IncrementMain(r.Context(), "oauth.mcp.error.count", 1)
+	}
+	mainAttrs := telemetry.Attrs(
+		telemetry.Field{Key: "oauth.operation", Value: strings.TrimSpace(operation)},
+		telemetry.Field{Key: "oauth.outcome", Value: strings.TrimSpace(outcome)},
+		telemetry.Field{Key: "oauth.status_code", Value: status},
+		telemetry.Field{Key: "oauth.duration_ms", Value: time.Since(started).Milliseconds()},
+		telemetry.Field{Key: "oauth.client.present", Value: strings.TrimSpace(clientID) != ""},
+	)
+	if reason = strings.TrimSpace(reason); reason != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "oauth.reason", Value: reason})
+	}
+	for _, field := range app.oauthAuditRequestFields(r) {
+		mainAttrs = mainAttrs.WithField(field)
+	}
+	for _, field := range extraFields {
+		mainAttrs = mainAttrs.WithField(field)
+	}
+	telemetry.AnnotateMain(r.Context(), mainAttrs)
 }
 
 func (app *App) oauthAuditRequestFields(r *http.Request) []telemetry.Field {

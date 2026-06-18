@@ -8,15 +8,46 @@ Cerebro emits three layers of operational signal:
 
 The structured JSON and OTEL spans share the same trace context where possible. HTTP responses include `X-Cerebro-Trace-Id` so operators can pivot from the web UI or API response to logs and traces.
 
-## Trace Contract
+## Wide Event Contract
 
-Inbound HTTP requests create an OTEL `http.server` span with bounded attributes:
+Cerebro follows a wide-event model for request and job debugging. Each top-level
+unit of work emits one canonical span/event with:
 
-- `http.request.method`
-- `http.route`
-- `http.response.status_code`
+- `main=true`
+- `wide_event=true`
+- service, deployment, runtime, host, cloud, and container metadata
+- request/job shape
+- auth/customer posture
+- downstream cache, database, queue, graph, source, LLM, MCP, and domain counts
+- final status, duration, and bounded error kind
 
-The route label is normalized before emission. Unknown or dynamic paths are collapsed to route families such as `/platform/jobs/{jobID}/events` or `/{unmatched}`.
+Use `main=true` as the primary query predicate when asking "what happened to
+this request/job?" Child spans remain available for drill-down, but shared
+service methods annotate the active main span so the first query has the full
+shape.
+
+Inbound HTTP requests create a main OTEL `http.server` span. The route label is
+normalized before emission. Unknown or dynamic paths are collapsed to route
+families such as `/platform/jobs/{jobID}/events` or `/{unmatched}`. Query values,
+authorization headers, cookies, request bodies, response bodies, DSNs, and raw
+errors are not emitted.
+
+Expected HTTP dimensions include:
+
+- `http.request.method`, `http.route`, `url.path_depth`, `url.query.param_count`, `url.query.keys`
+- `url.scheme`, `server.address`, `server.port`, `network.protocol.version`
+- `http.request.body.size`, selected safe request header values, header-presence booleans
+- `user_agent.family`, `client.address_hash`
+- `http.response.status_code`, `http.response.body.size`, selected safe response header values
+
+Expected propagated dimensions include:
+
+- Auth: `tenant_id`, `auth.outcome`, `auth.mode`, `auth.credential_tier`, `auth.risk_level`, `auth.denial_reason`
+- MCP/OAuth: `mcp.method`, `mcp.tool`, `mcp.tool_family`, `mcp.outcome`, `oauth.operation`, `oauth.grant_type`
+- GRC/LLM: `grc.ask.llm.provider`, `grc.ask.query_plan.intent`, `grc.ask.row_count`, stage timing fields
+- Stores: `cache.redis.*.count`, `db.postgres.*.count`, `db.neo4j.*.count`
+- Messaging/source/graph: `messaging.jetstream.*.count`, `source_runtime.*`, `source.operation.*`, `graph.ingest.*`
+- Domain outcomes: `source_projection.*`, `finding_candidate.*`, `finding_evaluation.*`
 
 Core runtime operations emit structured spans:
 
@@ -69,7 +100,7 @@ Cerebro enables OTEL export when `CEREBRO_OTEL_ENABLED=true` or when an OTLP end
 Run focused tests for the observability surface:
 
 ```sh
-go test ./internal/telemetry ./internal/observability ./internal/sourcehttp ./internal/bootstrap ./internal/querycache ./internal/statestore/postgres ./internal/graphstore/neo4j ./internal/appendlog/jetstream
+go test ./internal/telemetry ./internal/observability ./internal/sourcehttp ./internal/bootstrap ./internal/querycache ./internal/statestore/postgres ./internal/graphstore/neo4j ./internal/appendlog/jetstream ./internal/sourceops ./internal/sourceruntime ./internal/sourceprojection ./internal/graphingest ./internal/findings ./cmd/cerebro
 ```
 
 Run the full suite before release:
@@ -92,4 +123,5 @@ Then hit `/health` and one API route. Confirm:
 
 - the response includes `X-Cerebro-Trace-Id`;
 - stderr contains parseable JSON span/event lines;
+- the top-level request/job span has `main=true` and `wide_event=true`;
 - the collector receives `http.server` plus downstream child spans for any work performed.

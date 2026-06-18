@@ -2256,6 +2256,71 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		}
 	}
 	telemetry.Event(r.Context(), "cerebro.mcp.request", attrs)
+	telemetry.IncrementMain(r.Context(), "mcp.request.count", 1)
+	if mcpTelemetryOutcomeFailed(outcome) {
+		telemetry.IncrementMain(r.Context(), "mcp.request.error.count", 1)
+	}
+	mainAttrs := telemetry.Attrs(
+		telemetry.Field{Key: "mcp.status_code", Value: statusCode},
+		telemetry.Field{Key: "mcp.request_kind", Value: requestKind},
+		telemetry.Field{Key: "mcp.method", Value: method},
+		telemetry.Field{Key: "mcp.outcome", Value: outcome},
+		telemetry.Field{Key: "mcp.protocol_version", Value: mcpSanitizeTelemetryValue(r.Header.Get("MCP-Protocol-Version"), 32)},
+		telemetry.Field{Key: "mcp.transport", Value: "stateless_http"},
+		telemetry.Field{Key: "mcp.stateless", Value: true},
+		telemetry.Field{Key: "mcp.accepts_json", Value: mcpHeaderAccepts(r.Header.Get("Accept"), "application/json")},
+		telemetry.Field{Key: "mcp.accepts_sse", Value: mcpHeaderAccepts(r.Header.Get("Accept"), "text/event-stream")},
+		telemetry.Field{Key: "mcp.session_header_present", Value: strings.TrimSpace(r.Header.Get("Mcp-Session-Id")) != ""},
+		telemetry.Field{Key: "mcp.jsonrpc_id_present", Value: detail.JSONRPCIDPresent},
+		telemetry.Field{Key: "mcp.params_present", Value: detail.ParamsPresent},
+		telemetry.Field{Key: "mcp.duration_ms", Value: duration.Milliseconds()},
+	)
+	if contentType := mcpMediaType(r.Header.Get("Content-Type")); contentType != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.content_type", Value: contentType})
+	}
+	for _, field := range mcpResponseTelemetryFields(detail.Response) {
+		mainAttrs = mainAttrs.WithField(field)
+	}
+	if tool != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool", Value: tool})
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_known", Value: mcpKnownTool(tool)})
+		if family := mcpToolFamily(tool); family != "" {
+			mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_family", Value: family})
+		}
+	}
+	if jsonRPCErrorCode != 0 {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.jsonrpc_error_code", Value: jsonRPCErrorCode})
+	}
+	if outcome == "tool_error" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_error", Value: true})
+	}
+	if toolErrorKind != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "mcp.tool_error_kind", Value: toolErrorKind})
+	}
+	if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
+		if tenantID := strings.TrimSpace(auth.principal.TenantID); tenantID != "" {
+			mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "tenant_id", Value: mcpSanitizeTelemetryValue(tenantID, 128)})
+		}
+		if authMode := strings.TrimSpace(auth.principal.AuthMode); authMode != "" {
+			mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.mode", Value: mcpSanitizeTelemetryValue(authMode, 64)})
+		}
+		if tier := accessAuditCredentialTier(auth.principal); tier != "" {
+			mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.credential_tier", Value: tier})
+		}
+		mainAttrs = mainAttrs.
+			WithField(telemetry.Field{Key: "auth.principal.present", Value: strings.TrimSpace(auth.principal.Name) != ""}).
+			WithField(telemetry.Field{Key: "auth.client.present", Value: strings.TrimSpace(auth.principal.ClientID) != ""})
+	}
+	telemetry.AnnotateMain(r.Context(), mainAttrs)
+}
+
+func mcpTelemetryOutcomeFailed(outcome string) bool {
+	switch strings.TrimSpace(outcome) {
+	case "ok", "notification", "client_message":
+		return false
+	default:
+		return true
+	}
 }
 
 func mcpTelemetryHTTPRoute(r *http.Request) string {

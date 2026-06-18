@@ -7611,9 +7611,23 @@ func decodeBootstrapTelemetryPayload(t *testing.T, stderr string) map[string]any
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		t.Fatal("telemetry stderr is empty")
 	}
-	payload := map[string]any{}
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &payload); err != nil {
-		t.Fatalf("unmarshal telemetry payload %q: %v", lines[len(lines)-1], err)
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
+		}
+		if payload["name"] == "http.server" {
+			continue
+		}
+		if payload["kind"] == "span_start" {
+			continue
+		}
+		return payload
 	}
-	return payload
+	t.Fatalf("non-http telemetry payload not found in stderr: %s", stderr)
+	return nil
 }

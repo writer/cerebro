@@ -59,6 +59,7 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 			status = "failed"
 			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceOperationTelemetryErrorKind(err)})
 		}
+		annotateMainSourceOperation(ctx, "check", status, attrs)
 		telemetry.End(span, status, attrs)
 	}()
 	source, err := s.lookup(req.GetSourceId())
@@ -88,6 +89,7 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 			status = "failed"
 			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceOperationTelemetryErrorKind(err)})
 		}
+		annotateMainSourceOperation(ctx, "discover", status, attrs)
 		telemetry.End(span, status, attrs)
 	}()
 	source, err := s.lookup(req.GetSourceId())
@@ -123,6 +125,7 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (_
 			status = "failed"
 			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceOperationTelemetryErrorKind(err)})
 		}
+		annotateMainSourceOperation(ctx, "read", status, attrs)
 		telemetry.End(span, status, attrs)
 	}()
 	source, err := s.lookup(req.GetSourceId())
@@ -216,6 +219,17 @@ func previewEvents(events []*cerebrov1.EventEnvelope) ([]*cerebrov1.SourcePrevie
 
 func sourceOperationTelemetryAttrs(sourceID string) telemetry.Attributes {
 	return telemetry.Attrs(telemetry.Field{Key: "source_id", Value: strings.TrimSpace(sourceID)})
+}
+
+func annotateMainSourceOperation(ctx context.Context, operation string, status string, attrs telemetry.Attributes) {
+	telemetry.IncrementMain(ctx, "source.operation.count", 1)
+	if status == "failed" {
+		telemetry.IncrementMain(ctx, "source.operation.error.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "source.operation", Value: operation},
+		telemetry.Field{Key: "source.operation.status", Value: status},
+	)))
 }
 
 func sourceOperationTelemetryErrorKind(err error) string {

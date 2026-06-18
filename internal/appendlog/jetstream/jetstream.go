@@ -170,6 +170,7 @@ func (l *Log) Ping(ctx context.Context) error {
 			return err
 		}
 	}
+	jetstreamAnnotateMain(ctx, "ping", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
@@ -221,6 +222,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		jetstreamTelemetryError(ctx, span, "append", err)
 		return err
 	}
+	jetstreamAnnotateMain(ctx, "append", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "payload_bytes", Value: len(payload)}))
 	return nil
 }
@@ -317,6 +319,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	}
 	candidates := make([]replayCandidate, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
+		jetstreamAnnotateMain(ctx, "replay", "completed")
 		telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "events_returned", Value: 0}))
 		return nil, nil
 	}
@@ -364,6 +367,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	for _, candidate := range candidates {
 		events = append(events, candidate.event)
 	}
+	jetstreamAnnotateMain(ctx, "replay", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "events_returned", Value: len(events)}))
 	return events, nil
 }
@@ -377,12 +381,24 @@ func jetstreamTelemetryAttrs(operation string) telemetry.Attributes {
 }
 
 func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+	jetstreamAnnotateMain(ctx, operation, "failed")
 	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 	telemetry.CaptureError(ctx, "jetstream.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "appendlog.jetstream"},
 		telemetry.Field{Key: "operation", Value: operation},
 	))
 	telemetry.End(span, "failed", attrs)
+}
+
+func jetstreamAnnotateMain(ctx context.Context, operation string, status string) {
+	telemetry.IncrementMain(ctx, "messaging.jetstream.operation.count", 1)
+	if status == "failed" {
+		telemetry.IncrementMain(ctx, "messaging.jetstream.error.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.last_operation", Value: strings.TrimSpace(operation)},
+		telemetry.Field{Key: "messaging.jetstream.last_status", Value: strings.TrimSpace(status)},
+	))
 }
 
 func countAtLeastUint32(count int, limit uint32) bool {

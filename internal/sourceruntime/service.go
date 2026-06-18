@@ -252,10 +252,16 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if err != nil {
 			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
+			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
 			if runtimeLoadedForRun {
 				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
 			}
 		}
+		telemetry.IncrementMain(ctx, "source_runtime.sync.count", 1)
+		telemetry.AnnotateMain(ctx, spanAttributes.With(telemetry.Attrs(
+			telemetry.Field{Key: "source_runtime.sync.status", Value: status},
+			telemetry.Field{Key: "source_runtime.id", Value: runtimeID},
+		)))
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.store == nil || s.appendLog == nil {
@@ -276,6 +282,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()})
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "source_runtime.id", Value: runtime.GetId()},
+		telemetry.Field{Key: "source_runtime.source_id", Value: runtime.GetSourceId()},
+		telemetry.Field{Key: "source_runtime.tenant_id", Value: runtime.GetTenantId()},
+	))
 	refreshRuntimeProgressConfig(runtime, runtimeConfig)
 	pageLimit, err := normalizePageLimit(req.GetPageLimit())
 	if err != nil {

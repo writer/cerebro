@@ -166,12 +166,21 @@ type grcAuditPacketResponse struct {
 
 func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, span := telemetry.Start(r.Context(), "grc.dashboard", grcDashboardTelemetryAttrs())
+	dashboardCtx := ctx
 	r = r.WithContext(ctx)
 	status := "completed"
 	statusCode := http.StatusOK
 	endAttrs := grcDashboardTelemetryAttrs()
 	defer func() {
 		endAttrs = endAttrs.WithField(telemetry.Field{Key: "status_code", Value: statusCode})
+		telemetry.IncrementMain(dashboardCtx, "grc.dashboard.count", 1)
+		if status != "completed" {
+			telemetry.IncrementMain(dashboardCtx, "grc.dashboard.error.count", 1)
+		}
+		telemetry.AnnotateMain(dashboardCtx, endAttrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "grc.dashboard.status", Value: status},
+			telemetry.Field{Key: "grc.dashboard.status_code", Value: statusCode},
+		)))
 		telemetry.End(span, status, endAttrs)
 	}()
 	scope, err := grcScopeFromRequest(r)

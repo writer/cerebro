@@ -71,6 +71,14 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+The budget includes request-boundary wide-event annotations for auth, OAuth,
+MCP, GRC dashboard, and GRC ask handlers. These annotations stay in bootstrap
+because they combine HTTP status, response-writer timing, route shape, and
+authenticated principal posture before control enters a domain package. Domain
+operation counts still live behind their owning source, graph, cache, store,
+and findings packages and only annotate the active main span through the shared
+telemetry helper.
+
 The budget also includes the A2A gateway adapter that maps authenticated tenant
 context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
