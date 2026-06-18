@@ -27,12 +27,14 @@ var ensureMCPOAuthStatements = []string{
   client_state TEXT NOT NULL DEFAULT '',
   resource TEXT NOT NULL,
   scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  scopes_explicit BOOLEAN NOT NULL DEFAULT FALSE,
   code_challenge TEXT NOT NULL,
   nonce TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   consumed_at TIMESTAMPTZ
 )`,
+	`ALTER TABLE mcp_oauth_login_states ADD COLUMN IF NOT EXISTS scopes_explicit BOOLEAN NOT NULL DEFAULT FALSE`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_login_states_expires_idx ON mcp_oauth_login_states (expires_at)`,
 	`CREATE TABLE IF NOT EXISTS mcp_oauth_authorization_codes (
   code_hash BYTEA PRIMARY KEY,
@@ -44,12 +46,14 @@ var ensureMCPOAuthStatements = []string{
   tenant_id TEXT NOT NULL DEFAULT '',
   allowed_tenants_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  roles_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   groups_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   code_challenge TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   consumed_at TIMESTAMPTZ
 )`,
+	`ALTER TABLE mcp_oauth_authorization_codes ADD COLUMN IF NOT EXISTS roles_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_authorization_codes_client_idx ON mcp_oauth_authorization_codes (client_id)`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_authorization_codes_expires_idx ON mcp_oauth_authorization_codes (expires_at)`,
 	`CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (
@@ -61,6 +65,7 @@ var ensureMCPOAuthStatements = []string{
   tenant_id TEXT NOT NULL DEFAULT '',
   allowed_tenants_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  roles_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   groups_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   family_id TEXT NOT NULL,
   generation INTEGER NOT NULL,
@@ -69,6 +74,7 @@ var ensureMCPOAuthStatements = []string{
   consumed_at TIMESTAMPTZ,
   family_revoked BOOLEAN NOT NULL DEFAULT FALSE
 )`,
+	`ALTER TABLE mcp_oauth_refresh_tokens ADD COLUMN IF NOT EXISTS roles_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_refresh_tokens_client_idx ON mcp_oauth_refresh_tokens (client_id)`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_refresh_tokens_family_idx ON mcp_oauth_refresh_tokens (family_id)`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_refresh_tokens_expires_idx ON mcp_oauth_refresh_tokens (expires_at)`,
@@ -175,15 +181,16 @@ func (s *Store) SaveLoginState(ctx context.Context, state mcpoauth.LoginState) e
 	}
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO mcp_oauth_login_states (
-  state_hash, client_id, redirect_uri, client_state, resource, scopes_json,
+  state_hash, client_id, redirect_uri, client_state, resource, scopes_json, scopes_explicit,
   code_challenge, nonce, created_at, expires_at
-) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`,
+) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)`,
 		state.StateHash[:],
 		strings.TrimSpace(state.ClientID),
 		strings.TrimSpace(state.RedirectURI),
 		strings.TrimSpace(state.ClientState),
 		strings.TrimSpace(state.Resource),
 		scopes,
+		state.ScopesExplicit,
 		strings.TrimSpace(state.CodeChallenge),
 		strings.TrimSpace(state.Nonce),
 		nullableUTC(state.CreatedAt),
@@ -202,14 +209,14 @@ func (s *Store) ConsumeLoginState(ctx context.Context, stateHash [32]byte, now t
 	var result mcpoauth.LoginState
 	err := s.runInTx(ctx, func(tx *sql.Tx) error {
 		row := tx.QueryRowContext(ctx, `
-SELECT client_id, redirect_uri, client_state, resource, scopes_json::text,
+SELECT client_id, redirect_uri, client_state, resource, scopes_json::text, scopes_explicit,
        code_challenge, nonce, created_at, expires_at, consumed_at
 FROM mcp_oauth_login_states
 WHERE state_hash = $1
 FOR UPDATE`, stateHash[:])
 		var scopesJSON string
 		var consumedAt sql.NullTime
-		if err := row.Scan(&result.ClientID, &result.RedirectURI, &result.ClientState, &result.Resource, &scopesJSON, &result.CodeChallenge, &result.Nonce, &result.CreatedAt, &result.ExpiresAt, &consumedAt); err != nil {
+		if err := row.Scan(&result.ClientID, &result.RedirectURI, &result.ClientState, &result.Resource, &scopesJSON, &result.ScopesExplicit, &result.CodeChallenge, &result.Nonce, &result.CreatedAt, &result.ExpiresAt, &consumedAt); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return mcpoauth.ErrNotFound
 			}
@@ -247,6 +254,10 @@ func (s *Store) SaveAuthorizationCode(ctx context.Context, code mcpoauth.Authori
 	if err != nil {
 		return fmt.Errorf("marshal scopes: %w", err)
 	}
+	roles, err := stringSliceJSON(code.Roles)
+	if err != nil {
+		return fmt.Errorf("marshal roles: %w", err)
+	}
 	groups, err := stringSliceJSON(code.Groups)
 	if err != nil {
 		return fmt.Errorf("marshal groups: %w", err)
@@ -254,8 +265,8 @@ func (s *Store) SaveAuthorizationCode(ctx context.Context, code mcpoauth.Authori
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO mcp_oauth_authorization_codes (
   code_hash, client_id, redirect_uri, resource, subject, email, tenant_id,
-  allowed_tenants_json, scopes_json, groups_json, code_challenge, created_at, expires_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13)`,
+  allowed_tenants_json, scopes_json, roles_json, groups_json, code_challenge, created_at, expires_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14)`,
 		code.CodeHash[:],
 		strings.TrimSpace(code.ClientID),
 		strings.TrimSpace(code.RedirectURI),
@@ -265,6 +276,7 @@ INSERT INTO mcp_oauth_authorization_codes (
 		strings.TrimSpace(code.TenantID),
 		allowedTenants,
 		scopes,
+		roles,
 		groups,
 		strings.TrimSpace(code.CodeChallenge),
 		nullableUTC(code.CreatedAt),
@@ -284,13 +296,13 @@ func (s *Store) ConsumeAuthorizationCode(ctx context.Context, codeHash [32]byte,
 	err := s.runInTx(ctx, func(tx *sql.Tx) error {
 		row := tx.QueryRowContext(ctx, `
 SELECT client_id, redirect_uri, resource, subject, email, tenant_id, allowed_tenants_json::text,
-       scopes_json::text, groups_json::text, code_challenge, created_at, expires_at, consumed_at
+       scopes_json::text, roles_json::text, groups_json::text, code_challenge, created_at, expires_at, consumed_at
 FROM mcp_oauth_authorization_codes
 WHERE code_hash = $1
 FOR UPDATE`, codeHash[:])
-		var allowedJSON, scopesJSON, groupsJSON string
+		var allowedJSON, scopesJSON, rolesJSON, groupsJSON string
 		var consumedAt sql.NullTime
-		if err := row.Scan(&result.ClientID, &result.RedirectURI, &result.Resource, &result.Subject, &result.Email, &result.TenantID, &allowedJSON, &scopesJSON, &groupsJSON, &result.CodeChallenge, &result.CreatedAt, &result.ExpiresAt, &consumedAt); err != nil {
+		if err := row.Scan(&result.ClientID, &result.RedirectURI, &result.Resource, &result.Subject, &result.Email, &result.TenantID, &allowedJSON, &scopesJSON, &rolesJSON, &groupsJSON, &result.CodeChallenge, &result.CreatedAt, &result.ExpiresAt, &consumedAt); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return mcpoauth.ErrNotFound
 			}
@@ -307,6 +319,9 @@ FOR UPDATE`, codeHash[:])
 			return err
 		}
 		if result.Scopes, err = stringSliceFromJSON(scopesJSON); err != nil {
+			return err
+		}
+		if result.Roles, err = stringSliceFromJSON(rolesJSON); err != nil {
 			return err
 		}
 		if result.Groups, err = stringSliceFromJSON(groupsJSON); err != nil {
@@ -333,6 +348,10 @@ func (s *Store) SaveOAuthRefreshToken(ctx context.Context, token mcpoauth.Refres
 	if err != nil {
 		return fmt.Errorf("marshal scopes: %w", err)
 	}
+	roles, err := stringSliceJSON(token.Roles)
+	if err != nil {
+		return fmt.Errorf("marshal roles: %w", err)
+	}
 	groups, err := stringSliceJSON(token.Groups)
 	if err != nil {
 		return fmt.Errorf("marshal groups: %w", err)
@@ -340,9 +359,9 @@ func (s *Store) SaveOAuthRefreshToken(ctx context.Context, token mcpoauth.Refres
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO mcp_oauth_refresh_tokens (
   token_hash, client_id, resource, subject, email, tenant_id, allowed_tenants_json,
-  scopes_json, groups_json, family_id, generation, created_at, expires_at, family_revoked
-) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11,$12,$13,
-  EXISTS (SELECT 1 FROM mcp_oauth_refresh_tokens WHERE family_id = $10 AND family_revoked)
+  scopes_json, roles_json, groups_json, family_id, generation, created_at, expires_at, family_revoked
+) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14,
+  EXISTS (SELECT 1 FROM mcp_oauth_refresh_tokens WHERE family_id = $11 AND family_revoked)
 )`,
 		token.TokenHash[:],
 		strings.TrimSpace(token.ClientID),
@@ -352,6 +371,7 @@ INSERT INTO mcp_oauth_refresh_tokens (
 		strings.TrimSpace(token.TenantID),
 		allowedTenants,
 		scopes,
+		roles,
 		groups,
 		strings.TrimSpace(token.FamilyID),
 		token.Generation,
@@ -373,14 +393,14 @@ func (s *Store) ConsumeOAuthRefreshToken(ctx context.Context, tokenHash [32]byte
 	err := s.runInTx(ctx, func(tx *sql.Tx) error {
 		row := tx.QueryRowContext(ctx, `
 SELECT client_id, resource, subject, email, tenant_id, allowed_tenants_json::text,
-       scopes_json::text, groups_json::text, family_id, generation, created_at,
+       scopes_json::text, roles_json::text, groups_json::text, family_id, generation, created_at,
        expires_at, consumed_at, family_revoked
 FROM mcp_oauth_refresh_tokens
 WHERE token_hash = $1
 FOR UPDATE`, tokenHash[:])
-		var allowedJSON, scopesJSON, groupsJSON string
+		var allowedJSON, scopesJSON, rolesJSON, groupsJSON string
 		var consumedAt sql.NullTime
-		if err := row.Scan(&result.ClientID, &result.Resource, &result.Subject, &result.Email, &result.TenantID, &allowedJSON, &scopesJSON, &groupsJSON, &result.FamilyID, &result.Generation, &result.CreatedAt, &result.ExpiresAt, &consumedAt, &result.FamilyRevoked); err != nil {
+		if err := row.Scan(&result.ClientID, &result.Resource, &result.Subject, &result.Email, &result.TenantID, &allowedJSON, &scopesJSON, &rolesJSON, &groupsJSON, &result.FamilyID, &result.Generation, &result.CreatedAt, &result.ExpiresAt, &consumedAt, &result.FamilyRevoked); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return mcpoauth.ErrNotFound
 			}
@@ -405,6 +425,9 @@ FOR UPDATE`, tokenHash[:])
 			return err
 		}
 		if result.Scopes, err = stringSliceFromJSON(scopesJSON); err != nil {
+			return err
+		}
+		if result.Roles, err = stringSliceFromJSON(rolesJSON); err != nil {
 			return err
 		}
 		if result.Groups, err = stringSliceFromJSON(groupsJSON); err != nil {

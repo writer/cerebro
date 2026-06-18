@@ -117,6 +117,7 @@ func parseMCPOAuthClients(raw string) ([]MCPOAuthClient, error) {
 		clients[index].TenantID = strings.TrimSpace(clients[index].TenantID)
 		clients[index].AllowedTenants = normalizeStringSlice(clients[index].AllowedTenants)
 		clients[index].Scopes = normalizeStringSlice(clients[index].Scopes)
+		clients[index].Roles = normalizeStringSlice(clients[index].Roles)
 		clients[index].Groups = normalizeStringSlice(clients[index].Groups)
 		if clients[index].ClientID == "" {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires client_id", index)
@@ -132,6 +133,9 @@ func parseMCPOAuthClients(raw string) ([]MCPOAuthClient, error) {
 		}
 		if clients[index].ClientSecretSHA256 != "" && !validSHA256Hex(clients[index].ClientSecretSHA256) {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] client_secret_sha256 must be a SHA-256 hex digest", index)
+		}
+		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d].roles", index), clients[index].Roles); err != nil {
+			return nil, err
 		}
 		if containsString(clients[index].GrantTypes, "client_credentials") && clients[index].TenantID == "" && len(clients[index].AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires tenant_id or allowed_tenants for client_credentials", index)
@@ -165,11 +169,15 @@ func parseMCPOAuthEntitlements(raw string) ([]MCPOAuthEntitlement, error) {
 		entitlements[index].TenantID = strings.TrimSpace(entitlements[index].TenantID)
 		entitlements[index].AllowedTenants = normalizeStringSlice(entitlements[index].AllowedTenants)
 		entitlements[index].Scopes = normalizeStringSlice(entitlements[index].Scopes)
+		entitlements[index].Roles = normalizeStringSlice(entitlements[index].Roles)
 		if entitlements[index].Subject == "" && entitlements[index].Email == "" && entitlements[index].ClientID == "" && len(entitlements[index].Groups) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d] requires subject, email, client_id, or groups", index)
 		}
 		if entitlements[index].TenantID == "" && len(entitlements[index].AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d] requires tenant_id or allowed_tenants", index)
+		}
+		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d].roles", index), entitlements[index].Roles); err != nil {
+			return nil, err
 		}
 	}
 	return entitlements, nil

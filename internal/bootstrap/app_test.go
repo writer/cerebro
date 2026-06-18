@@ -2567,7 +2567,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 
 func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
-	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
+	if got := httpRoutePolicyForRequest(req).Scope; got != scopeCosmoSecurityRead {
 		t.Fatalf("scopeForHTTPRequest(POST /grc/ask) = %q, want %q", got, scopeCosmoSecurityRead)
 	}
 }
@@ -2601,7 +2601,7 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/finding-candidates/candidate-1/reject", want: scopeFindingCandidatePromote},
 	} {
 		req := httptest.NewRequest(tt.method, tt.path, nil)
-		if got := scopeForHTTPRequest(req); got != tt.want {
+		if got := httpRoutePolicyForRequest(req).Scope; got != tt.want {
 			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tt.method, tt.path, got, tt.want)
 		}
 	}
@@ -2614,8 +2614,8 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 	} {
-		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
-			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		if got := connectProcedurePolicyFor(tt.procedure).Scope; got != tt.want {
+			t.Fatalf("connectProcedurePolicyFor(%s).Scope = %q, want %q", tt.procedure, got, tt.want)
 		}
 	}
 }

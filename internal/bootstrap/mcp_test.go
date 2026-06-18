@@ -2228,7 +2228,7 @@ func TestMCPOriginProtocolAndNotificationHandling(t *testing.T) {
 
 func TestMCPRouteUsesReadScope(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, mcpEndpointPath, nil)
-	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
+	if got := httpRoutePolicyForRequest(req).Scope; got != scopeCosmoSecurityRead {
 		t.Fatalf("scopeForHTTPRequest(POST %s) = %q, want %q", mcpEndpointPath, got, scopeCosmoSecurityRead)
 	}
 }
