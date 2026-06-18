@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,6 +116,7 @@ func TestNormalizePushedTelemetryRejectsMissingIdentity(t *testing.T) {
 		"tenant":       func(p *PushedTelemetry) { p.TenantID = "  " },
 		"integration":  func(p *PushedTelemetry) { p.Integration = "" },
 		"control":      func(p *PushedTelemetry) { p.Control = "" },
+		"posture":      func(p *PushedTelemetry) { p.PostureStatus = "" },
 		"resource_urn": func(p *PushedTelemetry) { p.ResourceURN = "" },
 	}
 	for name, mutate := range cases {
@@ -124,6 +126,9 @@ func TestNormalizePushedTelemetryRejectsMissingIdentity(t *testing.T) {
 			_, err := NormalizePushedTelemetry(payload)
 			if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
 				t.Fatalf("NormalizePushedTelemetry() error = %v, want ErrInvalidConfig", err)
+			}
+			if name == "posture" && !strings.Contains(err.Error(), "posture status is required") {
+				t.Fatalf("NormalizePushedTelemetry() posture error = %v, want required-field message", err)
 			}
 		})
 	}

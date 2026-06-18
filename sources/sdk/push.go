@@ -68,7 +68,11 @@ func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope
 	if hasUnsafeCharacters(resourceURN) {
 		return nil, fmt.Errorf("%w: sdk telemetry resource urn contains unsafe characters", sourcecdk.ErrInvalidConfig)
 	}
-	postureStatus := normalizePostureStatus(payload.PostureStatus)
+	rawPostureStatus := strings.TrimSpace(payload.PostureStatus)
+	if rawPostureStatus == "" {
+		return nil, fmt.Errorf("%w: sdk telemetry posture status is required", sourcecdk.ErrInvalidConfig)
+	}
+	postureStatus := normalizePostureStatus(rawPostureStatus)
 	if postureStatus == "" {
 		return nil, fmt.Errorf("%w: sdk telemetry posture status %q is not recognized", sourcecdk.ErrInvalidConfig, payload.PostureStatus)
 	}
