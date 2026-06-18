@@ -268,6 +268,37 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertEqual(review["status"], "in_progress")
         self.assertEqual(review["active_progress_count"], 1)
 
+    def test_classify_droid_review_accepts_active_check_without_comment(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "head_repository": "writer/cerebro",
+                "base_repository": "writer/cerebro",
+                "changed_files": ["sources/archetype/source.go"],
+                "check_runs": [{"name": "droid-review", "status": "in_progress", "url": "https://run"}],
+            },
+            [],
+        )
+        self.assertEqual(review["status"], "in_progress")
+        self.assertIn("check is still in progress", review["reason"])
+
+    def test_classify_droid_review_keeps_missing_after_completed_check_without_comment(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "head_repository": "writer/cerebro",
+                "base_repository": "writer/cerebro",
+                "changed_files": ["sources/archetype/source.go"],
+                "check_runs": [{"name": "droid-review", "status": "completed", "conclusion": "success"}],
+            },
+            [],
+        )
+        self.assertEqual(review["status"], "missing")
+
     def test_classify_droid_review_skips_cross_repository_pr_without_comment(self):
         review = pm.classify_droid_review(
             {

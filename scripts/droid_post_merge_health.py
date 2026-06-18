@@ -90,6 +90,7 @@ def collect_pull_requests_for_commit(head_sha: str, token: str, repository: str)
                 "state": item.get("state") or "",
                 "merged_at": item.get("merged_at") or "",
                 "author": user.get("login") or "",
+                "head_sha": head.get("sha") or "",
                 "head_repository": head_repo.get("full_name") or "",
                 "base_repository": base_repo.get("full_name") or repository,
                 "head_label": head.get("label") or "",
@@ -97,6 +98,30 @@ def collect_pull_requests_for_commit(head_sha: str, token: str, repository: str)
             }
         )
     return pull_requests
+
+
+def collect_check_runs_for_commit(head_sha: object, token: str, repository: str) -> list[dict[str, object]]:
+    if not head_sha:
+        return []
+    raw = request_json(f"/commits/{head_sha}/check-runs?per_page=100", token, repository)
+    runs = raw.get("check_runs") if isinstance(raw, dict) else []
+    results = []
+    if not isinstance(runs, list):
+        return results
+    for item in runs:
+        if not isinstance(item, dict):
+            continue
+        app = item.get("app") if isinstance(item.get("app"), dict) else {}
+        results.append(
+            {
+                "name": item.get("name") or "",
+                "status": item.get("status") or "",
+                "conclusion": item.get("conclusion") or "",
+                "url": item.get("html_url") or "",
+                "app_slug": app.get("slug") or "",
+            }
+        )
+    return results
 
 
 def collect_pull_request_files(pr_number: object, token: str, repository: str) -> list[str]:
@@ -172,6 +197,20 @@ def has_no_review_required_changes(pr: dict[str, object]) -> bool:
     return not any(requires_droid_review(str(file)) for file in files)
 
 
+def has_active_droid_check(pr: dict[str, object]) -> bool:
+    runs = pr.get("check_runs")
+    if not isinstance(runs, list):
+        return False
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        name = str(run.get("name") or "")
+        status = str(run.get("status") or "")
+        if name in {"droid-review", "droid-review-preflight"} and status and status != "completed":
+            return True
+    return False
+
+
 def is_cross_repository_pr(pr: dict[str, object]) -> bool:
     head_repository = str(pr.get("head_repository") or "").lower()
     base_repository = str(pr.get("base_repository") or "").lower()
@@ -218,6 +257,9 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
     elif active_progress:
         status = "in_progress"
         reason = "Droid has an unsuperseded in-progress comment."
+    elif has_active_droid_check(pr):
+        status = "in_progress"
+        reason = "Droid review check is still in progress."
     elif post_merge_checkout_errors and finished:
         status = "ok"
         reason = "Droid finished before a post-merge branch checkout error."
@@ -459,6 +501,7 @@ def main() -> int:
             pull_requests = collect_pull_requests_for_commit(args.head, token, repository)
             for pr in pull_requests:
                 pr["changed_files"] = collect_pull_request_files(pr.get("number"), token, repository)
+                pr["check_runs"] = collect_check_runs_for_commit(pr.get("head_sha"), token, repository)
             droid_reviews = [
                 classify_droid_review(pr, collect_issue_comments(pr.get("number"), token, repository))
                 for pr in pull_requests
