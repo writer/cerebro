@@ -2706,6 +2706,9 @@ func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T
 }
 
 func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
+	if err := validateAWSCredentialSource(settings); err != nil {
+		return awsClients{}, err
+	}
 	options := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(settings.region)}
 	if settings.profile != "" {
 		options = append(options, awsconfig.WithSharedConfigProfile(settings.profile))
@@ -2814,6 +2817,23 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 			openSearchServerless: opensearchserverless.NewFromConfig(cfg),
 		},
 	}, nil
+}
+
+func validateAWSCredentialSource(settings settings) error {
+	if strings.TrimSpace(settings.profile) != "" {
+		return fmt.Errorf("aws profile is not supported for source runtimes")
+	}
+	hasRuntimeCredential := strings.TrimSpace(settings.accessKeyID) != "" || strings.TrimSpace(settings.secretAccessKey) != "" || strings.TrimSpace(settings.sessionToken) != ""
+	if hasRuntimeCredential {
+		if strings.TrimSpace(settings.accessKeyID) == "" || strings.TrimSpace(settings.secretAccessKey) == "" {
+			return fmt.Errorf("aws access_key_id and secret_access_key must be provided together")
+		}
+		return nil
+	}
+	if strings.TrimSpace(settings.roleARN) != "" {
+		return nil
+	}
+	return fmt.Errorf("aws access_key_id and secret_access_key or allowlisted role_arn is required")
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {

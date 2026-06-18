@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
 
@@ -43,6 +44,68 @@ func TestCheckRequiresProjectAndAuth(t *testing.T) {
 	}
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod", "wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com"})); err == nil {
 		t.Fatal("Check() error = nil, want missing WIF audience error")
+	}
+}
+
+func TestParseSettingsRejectsUntrustedWIFRuntime(t *testing.T) {
+	audience := "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"
+	serviceAccount := "scanner@writer-iam.iam.gserviceaccount.com"
+	for _, tt := range []struct {
+		name   string
+		config map[string]string
+	}{
+		{
+			name: "missing runtime tenant",
+			config: map[string]string{
+				"project_id":                    "writer-prod",
+				"wif_audience":                  audience,
+				"wif_service_account_email":     serviceAccount,
+				sourceconfig.GCPWIFAllowlistKey: "writer=" + audience + "|" + serviceAccount,
+			},
+		},
+		{
+			name: "missing trusted binding",
+			config: map[string]string{
+				"project_id":                    "writer-prod",
+				"wif_audience":                  audience,
+				"wif_service_account_email":     serviceAccount,
+				sourceconfig.RuntimeTenantIDKey: "writer",
+			},
+		},
+		{
+			name: "service account mismatch",
+			config: map[string]string{
+				"project_id":                    "writer-prod",
+				"wif_audience":                  audience,
+				"wif_service_account_email":     serviceAccount,
+				sourceconfig.RuntimeTenantIDKey: "writer",
+				sourceconfig.GCPWIFAllowlistKey: "writer=" + audience + "|other@writer-iam.iam.gserviceaccount.com",
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseSettings(sourcecdk.NewConfig(tt.config)); err == nil {
+				t.Fatal("parseSettings() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestParseSettingsAllowsTrustedWIFRuntime(t *testing.T) {
+	audience := "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"
+	serviceAccount := "scanner@writer-iam.iam.gserviceaccount.com"
+	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"project_id":                    "writer-prod",
+		"wif_audience":                  audience,
+		"wif_service_account_email":     serviceAccount,
+		sourceconfig.RuntimeTenantIDKey: "writer",
+		sourceconfig.GCPWIFAllowlistKey: "writer=" + audience + "|" + serviceAccount,
+	}))
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if settings.wifAudience != audience || settings.wifServiceAccount != serviceAccount {
+		t.Fatalf("wif settings = %q, %q", settings.wifAudience, settings.wifServiceAccount)
 	}
 }
 
@@ -232,12 +295,14 @@ func TestReadLiveGCPUsesWIFTokenSource(t *testing.T) {
 		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), nil
 	}
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"base_url":                  server.URL,
-		"family":                    familyServiceAcct,
-		"project_id":                "writer-prod",
-		"wif_audience":              "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
-		"wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com",
-		"wif_aws_region":            "us-east-1",
+		"base_url":                      server.URL,
+		"family":                        familyServiceAcct,
+		"project_id":                    "writer-prod",
+		"wif_audience":                  "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
+		"wif_service_account_email":     "scanner@writer-iam.iam.gserviceaccount.com",
+		"wif_aws_region":                "us-east-1",
+		sourceconfig.RuntimeTenantIDKey: "writer",
+		sourceconfig.GCPWIFAllowlistKey: "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com",
 	})
 	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {

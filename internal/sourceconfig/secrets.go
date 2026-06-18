@@ -9,6 +9,7 @@ const (
 	envPrefix                 = "env:"
 	credentialPrefix          = "credential:" // #nosec G101 -- runtime reference prefix, not secret material.
 	AWSAssumeRoleAllowlistKey = "__cerebro_aws_assume_role_arns"
+	GCPWIFAllowlistKey        = "__cerebro_gcp_wif_bindings"
 	RuntimeIDKey              = "__cerebro_runtime_id"
 	RuntimeTenantIDKey        = "__cerebro_runtime_tenant_id"
 )
