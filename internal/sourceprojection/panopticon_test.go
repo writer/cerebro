@@ -780,6 +780,68 @@ func TestProjectPanopticonSkipsSensitivePayloadContext(t *testing.T) {
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:internet_ip:203.0.113.55")
 }
 
+func TestProjectPanopticonEvidencePointerCorrelatesWithEvidenceCASObject(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-evidence-correlation",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-corr",
+			"status":  "investigating",
+			"title":   "Evidence correlation",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-corr",
+			"status":  "investigating",
+			"title":   "Evidence correlation",
+			"evidence": []map[string]any{{
+				"evidence_id":  "evidence-1",
+				"evidence_cas": "evidencecas://cases/case-corr/evidence/triage.tar",
+				"sha256":       "sha256:abc",
+			}},
+		}),
+	}); err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	// The Evidence CAS source independently projects the same evidence object.
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "evidence-cas-object-event-1",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"evidence_id":         "evidence-1",
+			"evidence_cas_uri":    "evidencecas://cases/case-corr/evidence/triage.tar",
+			"evidence_cas_digest": "sha256:abc",
+		},
+	}); err != nil {
+		t.Fatalf("Project(evidence_cas.object) error = %v", err)
+	}
+
+	pointerURN := "urn:cerebro:writer:evidence_cas_pointer:evidence-1"
+	evidenceObjectURN := "urn:cerebro:writer:runtime_evidence:evidence-1"
+
+	pointer := state.entities[pointerURN]
+	if pointer == nil || pointer.EntityType != "evidence.cas.pointer" {
+		t.Fatalf("panopticon evidence pointer missing or wrong type: %#v", pointer)
+	}
+	if got := pointer.Attributes["evidence_cas_object_urn"]; got != evidenceObjectURN {
+		t.Fatalf("evidence_cas_object_urn = %q, want %q", got, evidenceObjectURN)
+	}
+	if state.entities[evidenceObjectURN] == nil {
+		t.Fatalf("Evidence CAS object projection %q missing for correlation join", evidenceObjectURN)
+	}
+	assertProjectedLink(t, state, pointerURN, relationRepresents, evidenceObjectURN)
+
+	// Cross-tenant Evidence CAS objects must not be joined by the writer pointer.
+	assertProjectedLinkMissing(t, state, pointerURN, relationRepresents, "urn:cerebro:other:runtime_evidence:evidence-1")
+}
+
 func assertProjectedEntityType(t *testing.T, recorder *projectionRecorder, urn string, entityType string) {
 	t.Helper()
 	entity := recorder.entities[urn]

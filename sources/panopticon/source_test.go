@@ -290,6 +290,51 @@ func TestReadAPIRejectsInvalidNativeRecordsAndHTTPError(t *testing.T) {
 	}
 }
 
+func TestReadCasesPreservesEvidenceReferencesForCorrelation(t *testing.T) {
+	fixed := fixedTime()
+	caseItem := validNativeCase("88", fixed)
+	caseItem["evidence"] = []map[string]interface{}{
+		{
+			"evidence_id":  "evidence-1",
+			"evidence_cas": "evidencecas://cases/88/evidence/triage.tar",
+			"sha256":       "sha256:abc",
+		},
+		{
+			"uri":    "evidencecas://cases/88/evidence/timeline.json",
+			"digest": "sha256:def",
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/cases" {
+			http.NotFound(w, r)
+			return
+		}
+		writePage(w, []map[string]interface{}{caseItem}, 1, 0)
+	}))
+	defer server.Close()
+
+	src := newTestSource(t)
+	pull, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyCase}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1 case event", len(pull.Events))
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(pull.Events[0].GetPayload(), &payload); err != nil {
+		t.Fatalf("decode case payload: %v", err)
+	}
+	evidence, ok := payload["evidence"].([]interface{})
+	if !ok || len(evidence) != 2 {
+		t.Fatalf("case payload evidence = %#v, want 2 preserved references", payload["evidence"])
+	}
+	first, ok := evidence[0].(map[string]interface{})
+	if !ok || first["evidence_id"] != "evidence-1" || first["evidence_cas"] != "evidencecas://cases/88/evidence/triage.tar" {
+		t.Fatalf("first evidence reference = %#v, want Evidence CAS correlation identifiers preserved", evidence[0])
+	}
+}
+
 func newTestSource(t *testing.T) *Source {
 	t.Helper()
 	src, err := New()

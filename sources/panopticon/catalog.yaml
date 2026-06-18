@@ -1,6 +1,6 @@
 id: panopticon
 name: Panopticon
-description: Panopticon security operations source. Reads curated cases by default, with explicit alert and IOC families available for evidence and enrichment.
+description: Panopticon security operations source. Reads curated cases by default, with explicit alert and IOC families available for evidence and enrichment. Case payloads preserve Evidence CAS object references (evidence_id, CAS URI, digest) so projection and findings can correlate deterministically with Evidence CAS object projections.
 emitted_kinds:
   - panopticon.alert
   - panopticon.case

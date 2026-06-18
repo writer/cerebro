@@ -129,6 +129,96 @@ func TestPanopticonCuratedCaseFindingRule(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, rule, open, closed, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestPanopticonCuratedCaseFindingCorrelatesEvidenceCASAndReopens(t *testing.T) {
+	rule := newPanopticonCuratedCaseRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-panopticon-case", SourceId: "panopticon", TenantId: "writer", Config: map[string]string{"family": "case"}}
+
+	open := panopticonCaseEventWithEvidence("panopticon-case-evidence-open", "case-555", "investigating", "evidence-1,evidencecas://cases/case-555/evidence/timeline.json")
+	findings, err := rule.Evaluate(context.Background(), runtime, open)
+	if err != nil {
+		t.Fatalf("Evaluate(open) error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("Evaluate(open) returned %d findings, want 1", len(findings))
+	}
+	finding := findings[0]
+	firstFingerprint := finding.Fingerprint
+	if firstFingerprint == "" {
+		t.Fatal("open finding has empty fingerprint")
+	}
+	if got := finding.Attributes["evidence_cas_object_ids"]; got != "evidence-1,evidencecas://cases/case-555/evidence/timeline.json" {
+		t.Fatalf("evidence_cas_object_ids = %q, want the promoted correlation ids", got)
+	}
+
+	evidenceObjectURN := "urn:cerebro:writer:runtime_evidence:evidence-1"
+	var foundEvidencePath bool
+	for _, row := range finding.GraphEvidenceRows {
+		for _, path := range row.GetPaths() {
+			if path.GetToUrn() == evidenceObjectURN && path.GetRelation() == "has_evidence" {
+				foundEvidencePath = true
+			}
+		}
+	}
+	if !foundEvidencePath {
+		t.Fatalf("expected a has_evidence graph path to %q for Evidence CAS correlation", evidenceObjectURN)
+	}
+
+	closed := panopticonCaseEventWithEvidence("panopticon-case-evidence-closed", "case-555", "closed", "evidence-1,evidencecas://cases/case-555/evidence/timeline.json")
+	findings, err = rule.Evaluate(context.Background(), runtime, closed)
+	if err != nil {
+		t.Fatalf("Evaluate(closed) error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("Evaluate(closed) returned %d findings, want 0", len(findings))
+	}
+
+	reopened := panopticonCaseEventWithEvidence("panopticon-case-evidence-reopen", "case-555", "investigating", "evidence-1,evidencecas://cases/case-555/evidence/timeline.json")
+	findings, err = rule.Evaluate(context.Background(), runtime, reopened)
+	if err != nil {
+		t.Fatalf("Evaluate(reopen) error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("Evaluate(reopen) returned %d findings, want 1", len(findings))
+	}
+	if findings[0].Fingerprint != firstFingerprint {
+		t.Fatalf("reopen fingerprint = %q, want stable %q", findings[0].Fingerprint, firstFingerprint)
+	}
+}
+
+func panopticonCaseEventWithEvidence(id string, caseID string, status string, _ string) *cerebrov1.EventEnvelope {
+	payload, _ := json.Marshal(map[string]interface{}{
+		"case_id": caseID,
+		"status":  status,
+		"title":   "Evidence correlated case",
+		"evidence": []map[string]interface{}{
+			{
+				"evidence_id":  "evidence-1",
+				"evidence_cas": "evidencecas://cases/" + caseID + "/evidence/triage.tar",
+				"sha256":       "sha256:abc",
+			},
+			{
+				"uri":    "evidencecas://cases/" + caseID + "/evidence/timeline.json",
+				"digest": "sha256:def",
+			},
+		},
+	})
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "panopticon",
+		Kind:       "panopticon.case",
+		SchemaRef:  "panopticon/case/v1",
+		OccurredAt: timestamppb.New(identityTrajectoryBaseTime),
+		Payload:    payload,
+		Attributes: map[string]string{
+			"case_id":    caseID,
+			"status":     status,
+			"title":      "Evidence correlated case",
+			"runtime_id": "writer-panopticon-case",
+		},
+	}
+}
+
 func TestPanopticonCaseStatusMap(t *testing.T) {
 	closedStatuses := []string{"closed", "Resolved", "false positive", "risk-accepted", "duplicate", "cancelled", "ignored"}
 	for _, status := range closedStatuses {
