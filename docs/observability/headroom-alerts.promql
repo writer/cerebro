@@ -1,0 +1,135 @@
+# Cerebro headroom alert query templates.
+#
+# These are starting points for Prometheus-compatible backends. Adapt label
+# names to the deployed scrape pipeline, collector, and platform exporter.
+# Cerebro's built-in /metrics endpoint currently emits:
+#
+#   cerebro_http_requests_total{method,route,status_code}
+#   cerebro_http_request_duration_seconds_sum{method,route,status_code}
+#   cerebro_http_request_duration_seconds_count{method,route,status_code}
+#
+# Tail latency needs OTEL histogram export from:
+#
+#   cerebro.http.server.request.duration
+#
+# Resource and dependency metrics usually come from the platform exporter
+# or managed-service integrations, not directly from this public runtime repo.
+
+# Sustained HTTP 5xx rate above 1%, with a low-traffic floor.
+(
+  sum(rate(cerebro_http_requests_total{status_code=~"5.."}[5m]))
+  /
+  clamp_min(sum(rate(cerebro_http_requests_total[5m])), 1)
+) > 0.01
+and
+sum(rate(cerebro_http_requests_total[5m])) > 0.05
+
+# Route-specific 5xx rate above 1%.
+(
+  sum by (route) (rate(cerebro_http_requests_total{status_code=~"5.."}[5m]))
+  /
+  clamp_min(sum by (route) (rate(cerebro_http_requests_total[5m])), 1)
+) > 0.01
+and
+sum by (route) (rate(cerebro_http_requests_total[5m])) > 0.02
+
+# Average latency above 500ms from built-in /metrics.
+# Use this as a warning. Page on p95/p99 from OTEL histograms when available.
+(
+  sum(rate(cerebro_http_request_duration_seconds_sum[5m]))
+  /
+  clamp_min(sum(rate(cerebro_http_request_duration_seconds_count[5m])), 1)
+) > 0.5
+
+# Route-specific average latency above 750ms.
+(
+  sum by (route) (rate(cerebro_http_request_duration_seconds_sum[5m]))
+  /
+  clamp_min(sum by (route) (rate(cerebro_http_request_duration_seconds_count[5m])), 1)
+) > 0.75
+and
+sum by (route) (rate(cerebro_http_request_duration_seconds_count[5m])) > 0.02
+
+# OTEL p95 latency when the collector exports histogram buckets.
+# Rename the metric to match the collector's Prometheus mapping.
+histogram_quantile(
+  0.95,
+  sum by (le, route) (rate(cerebro_http_server_request_duration_seconds_bucket[5m]))
+) > 0.75
+
+# OTEL p99 latency when the collector exports histogram buckets.
+histogram_quantile(
+  0.99,
+  sum by (le, route) (rate(cerebro_http_server_request_duration_seconds_bucket[5m]))
+) > 1.5
+
+# Readiness degradation from a blackbox probe or load balancer health metric.
+# Replace probe_success labels with the deployed probe labels.
+avg_over_time(probe_success{job="cerebro-health"}[5m]) < 1
+
+# ECS/Container Insights-style CPU saturation.
+# Replace metric and label names to match the environment exporter.
+(
+  avg by (service) (aws_ecs_containerinsights_cpu_utilized{service=~"cerebro.*"})
+  /
+  clamp_min(avg by (service) (aws_ecs_containerinsights_cpu_reserved{service=~"cerebro.*"}), 1)
+) > 0.85
+
+# ECS/Container Insights-style memory saturation.
+(
+  avg by (service) (aws_ecs_containerinsights_memory_utilized{service=~"cerebro.*"})
+  /
+  clamp_min(avg by (service) (aws_ecs_containerinsights_memory_reserved{service=~"cerebro.*"}), 1)
+) > 0.85
+
+# Desired task count at max capacity while CPU is still high.
+# Replace max_capacity with the autoscaler/exporter metric used by deployment.
+aws_applicationautoscaling_desired_capacity{resource_label=~".*cerebro.*"}
+  >= aws_applicationautoscaling_max_capacity{resource_label=~".*cerebro.*"}
+and
+(
+  avg by (service) (aws_ecs_containerinsights_cpu_utilized{service=~"cerebro.*"})
+  /
+  clamp_min(avg by (service) (aws_ecs_containerinsights_cpu_reserved{service=~"cerebro.*"}), 1)
+) > 0.75
+
+# Postgres connection pressure.
+# Replace with RDS/pg_exporter metric names available in the environment.
+(
+  sum(pg_stat_database_numbackends{datname=~"cerebro.*"})
+  /
+  clamp_min(sum(pg_settings_max_connections), 1)
+) > 0.8
+
+# Postgres pool wait pressure from app or pgx/pool exporter.
+# Replace metric names if the deployment uses a different pool collector.
+rate(cerebro_postgres_pool_wait_seconds_sum[5m])
+  / clamp_min(rate(cerebro_postgres_pool_wait_seconds_count[5m]), 1)
+> 0.05
+
+# JetStream consumer lag growing.
+# Replace metric names with the NATS exporter labels used by deployment.
+deriv(nats_jetstream_consumer_num_pending{consumer=~".*cerebro.*"}[15m]) > 0
+and
+nats_jetstream_consumer_num_pending{consumer=~".*cerebro.*"} > 100
+
+# JetStream storage pressure.
+nats_jetstream_stream_bytes{stream=~".*cerebro.*"}
+  / clamp_min(nats_jetstream_stream_bytes_limit{stream=~".*cerebro.*"}, 1)
+> 0.8
+
+# Neo4j/Aura query latency from a managed-service exporter.
+# Replace names to match the Aura/Neo4j integration.
+histogram_quantile(
+  0.95,
+  sum by (le, operation) (rate(neo4j_query_duration_seconds_bucket{database=~".*cerebro.*"}[5m]))
+) > 1.0
+
+# Scheduled live load smoke failed in GitHub Actions.
+# This requires ingesting workflow run conclusions into the metrics backend.
+github_actions_workflow_run_conclusion{
+  repository="writer/cerebro",
+  workflow="Cerebro Load Smoke",
+  conclusion!="success",
+  conclusion!="skipped"
+} > 0

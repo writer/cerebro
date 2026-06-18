@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -46,6 +46,16 @@ GRAPH_REBUILD_PAGE_LIMIT ?= 1
 GRAPH_REBUILD_EVENT_LIMIT ?= 100
 GRAPH_REBUILD_PREVIEW_LIMIT ?= 10
 CANDIDATE_SMOKE_EVENT_LIMIT ?= 25
+LOAD_SMOKE_DURATION ?= 30
+LOAD_SMOKE_RPS ?= 2
+LOAD_SMOKE_CONCURRENCY ?= 4
+LOAD_SMOKE_TIMEOUT ?= 5
+LOAD_SMOKE_PATHS ?= /health
+LOAD_SMOKE_MAX_P95_MS ?= 750
+LOAD_SMOKE_MAX_ERROR_RATE ?= 0.01
+LOAD_SMOKE_MAX_5XX_RATE ?= 0
+LOAD_SMOKE_JSON_OUT ?= tmp/load-smoke.json
+LOAD_SMOKE_MARKDOWN_OUT ?= tmp/load-smoke.md
 MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
 MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
 MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
@@ -119,6 +129,9 @@ sdk-dependency-audit: ## Audit SDK dependencies for known vulnerabilities.
 	$(PYTHON) -m venv "$(SDK_AUDIT_VENV)"
 	"$(SDK_AUDIT_VENV)/bin/python" -m pip install --upgrade pip pip-audit
 	"$(SDK_AUDIT_VENV)/bin/python" scripts/sdk_dependency_audit.py
+
+script-test: ## Run Python utility tests.
+	$(PYTHON) -m unittest discover scripts/tests
 
 # ==== Focused Tests ====
 ##@ Focused Tests
@@ -316,6 +329,20 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 release-smoke: ## Validate GoReleaser configuration.
 	$(GORELEASER) check
 
+load-smoke: ## Run bounded capacity/load smoke checks against CEREBRO_BASE_URL.
+	$(PYTHON) scripts/load_smoke.py \
+		--base-url "$(CEREBRO_BASE_URL)" \
+		$(foreach path,$(LOAD_SMOKE_PATHS),--path "$(path)") \
+		--duration "$(LOAD_SMOKE_DURATION)" \
+		--rps "$(LOAD_SMOKE_RPS)" \
+		--concurrency "$(LOAD_SMOKE_CONCURRENCY)" \
+		--timeout "$(LOAD_SMOKE_TIMEOUT)" \
+		--max-p95-ms "$(LOAD_SMOKE_MAX_P95_MS)" \
+		--max-error-rate "$(LOAD_SMOKE_MAX_ERROR_RATE)" \
+		--max-5xx-rate "$(LOAD_SMOKE_MAX_5XX_RATE)" \
+		--json-out "$(LOAD_SMOKE_JSON_OUT)" \
+		--markdown-out "$(LOAD_SMOKE_MARKDOWN_OUT)"
+
 doctor: ## Check local development toolchain availability.
 	@command -v git >/dev/null || { echo "missing required tool: git" >&2; exit 2; }
 	@command -v go >/dev/null || { echo "missing required tool: go" >&2; exit 2; }
@@ -365,7 +392,7 @@ hooks: ## Install repository git hooks.
 pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test sdk-test lint proto-lint proto-generate-check policy-rule-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
+check: build test script-test sdk-test lint proto-lint proto-generate-check policy-rule-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -381,4 +408,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

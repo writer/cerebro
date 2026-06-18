@@ -120,6 +120,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | Run the lightweight server | `make serve-dev` | Starts the API without external stores using an acknowledged local-only auth/rate-limit opt-out; useful for health, source catalog, and OpenAPI checks. |
 | Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key`. |
 | Host Cerebro | `docs/HOSTING.md`, `docs/DEPLOYMENT_EXAMPLES.md`, and `docs/OPERATIONS_RUNBOOK.md` | Deployment guidance, example platform shapes, health checks, operations, and rollout. |
+| Preserve production headroom | `docs/HEADROOM.md`, `docs/OBSERVABILITY.md`, and `make load-smoke` | Capacity SLOs, saturation alerts, autoscaling signals, wide-event incident queries, and bounded live load smoke checks. |
 | Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
 | Call the Connect API | `proto/cerebro/v1/bootstrap.proto` and `gen/cerebro/v1` | Connect RPCs are served under `/cerebro.v1.BootstrapService/{Method}`. |

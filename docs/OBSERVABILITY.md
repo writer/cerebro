@@ -8,6 +8,8 @@ Cerebro emits three layers of operational signal:
 
 The structured JSON and OTEL spans share the same trace context where possible. HTTP responses include `X-Cerebro-Trace-Id` so operators can pivot from the web UI or API response to logs and traces.
 
+For capacity SLOs, saturation dashboards, alert templates, autoscaling signals, and live load-smoke checks, use [`docs/HEADROOM.md`](./HEADROOM.md). This observability contract supplies the event and metric shape; the headroom guide defines how operators turn those signals into prevention, paging, and release gates.
+
 ## Wide Event Contract
 
 Cerebro follows a wide-event model for request and job debugging. Each top-level
@@ -25,6 +27,12 @@ Use `main=true` as the primary query predicate when asking "what happened to
 this request/job?" Child spans remain available for drill-down, but shared
 service methods annotate the active main span so the first query has the full
 shape.
+
+During headroom incidents, start with `main=true`, then group by `http.route`,
+`service.version`, replica/container identity, `tenant_id`, `source_id`,
+`runtime_id`, dependency counters, and bounded `error_kind`. That keeps the
+first query broad enough to find saturation without jumping between logs,
+metrics, traces, and deployment tooling.
 
 Inbound HTTP requests create a main OTEL `http.server` span. The route label is
 normalized before emission. Unknown or dynamic paths are collapsed to route
@@ -109,6 +117,18 @@ Run the full suite before release:
 
 ```sh
 go test ./...
+```
+
+Run Python utility tests, including the load-smoke harness:
+
+```sh
+make script-test
+```
+
+Run a bounded live headroom smoke against a local or deployed service:
+
+```sh
+make load-smoke CEREBRO_BASE_URL=http://127.0.0.1:8080
 ```
 
 For local OTLP export, run a collector listening on `4318` and start Cerebro with:
