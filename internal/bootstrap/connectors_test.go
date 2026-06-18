@@ -1321,7 +1321,7 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	if !ok {
 		t.Fatal("connectorSchemaForSource(anthropic) = false, want builtin schema")
 	}
-	for _, key := range []string{"credential_kind", "credential_scopes", "group_id", "organization_uuid", "per_page", "role_id"} {
+	for _, key := range []string{"credential_kind", "credential_scopes", "group_id", "organization_uuid", "per_page", "project_id", "role_id"} {
 		if _, ok := anthropicSchema.ConfigKeys[key]; !ok {
 			t.Fatalf("anthropic config keys missing %q: %#v", key, sortedSetKeys(anthropicSchema.ConfigKeys))
 		}
@@ -1349,6 +1349,18 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("validateConnectorConfigFields(anthropic role permission config) error = %v", err)
+	}
+	err = validateConnectorConfigFields("anthropic", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"api_key":           "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
+		"credential_kind":   connectorpreflight.AnthropicCredentialKindComplianceAccessKey,
+		"credential_scopes": "read:compliance_user_data",
+		"family":            "compliance_project_collaborator",
+		"project_id":        "claude_proj_123",
+	}, map[string]string{
+		"api_key": "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(anthropic project collaborator config) error = %v", err)
 	}
 }
 
@@ -1426,6 +1438,12 @@ func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
+			name:       "compliance projects need user data scope",
+			config:     map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "family": "compliance_project_collaborator", "credential_scopes": "read:compliance_org_data"},
+			wantCheck:  "anthropic_compliance_user_data_scope",
+			wantAction: "confirm_anthropic_compliance_scope",
+		},
+		{
 			name:       "compliance settings need settings scope",
 			config:     map[string]string{"auth_model": "bearer_token", "credential_kind": connectorpreflight.AnthropicCredentialKindOrgAdminOAuth, "family": "compliance_organization_setting", "credential_scopes": "org:admin"},
 			wantCheck:  "anthropic_compliance_org_settings_scope",
@@ -1478,6 +1496,10 @@ func TestAnthropicProviderPreflightChecksPassWithCredentialHints(t *testing.T) {
 		{
 			name:   "compliance user data scoped key",
 			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_user_data", "family": "compliance_organization_user"},
+		},
+		{
+			name:   "compliance project collaborator scoped key",
+			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_user_data", "family": "compliance_project_collaborator"},
 		},
 		{
 			name:   "compliance settings scoped key",

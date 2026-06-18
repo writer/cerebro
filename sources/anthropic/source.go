@@ -96,6 +96,8 @@ func anthropicFamilies() []jsonapi.Family {
 		anthropicListFamily("compliance_role_permission", "/compliance/organizations/{organization_uuid}/roles/{role_id}/permissions", "anthropic_compliance_role_permission", []string{"id", "permission_id", "permission", "name"}, []string{"created_at", "updated_at"}, rolePermissionAttributes(), withPathParams("organization_uuid", "role_id"), withPageCursor()),
 		anthropicListFamily("compliance_group", "/compliance/groups", "anthropic_compliance_group", []string{"id", "group_id"}, []string{"created_at", "updated_at"}, map[string]string{"group_id": "id|group_id", "group_name": "name", "name": "name", "description": "description", "source_type": "source_type", "roles": "roles", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor()),
 		anthropicListFamily("compliance_group_member", "/compliance/groups/{group_id}/members", "anthropic_compliance_group_member", []string{"user_id", "id", "email"}, []string{"created_at", "updated_at"}, map[string]string{"group_id": "group_id", "user_id": "user_id|id", "email": "email", "created_at": "created_at", "updated_at": "updated_at"}, withPathParams("group_id"), withPageCursor()),
+		anthropicListFamily("compliance_project", "/compliance/apps/projects", "anthropic_compliance_project", []string{"id", "project_id"}, []string{"created_at", "updated_at", "archived_at"}, projectAttributes(), withPageCursor()),
+		anthropicListFamily("compliance_project_collaborator", "/compliance/apps/projects/{project_id}/collaborators", "anthropic_compliance_project_collaborator", []string{"id", "assignment_id", "principal.id", "user.id", "group.id", "organization.id"}, []string{"created_at", "updated_at"}, projectCollaboratorAttributes(), withPathParams("project_id"), withPageCursor()),
 		anthropicListFamily("compliance_organization_setting", "/compliance/organizations/{organization_uuid}/settings", "anthropic_compliance_organization_setting", []string{"name"}, nil, map[string]string{"organization_uuid": "organization_uuid", "setting_name": "name", "setting_type": "type", "setting_value": "value"}, withPathParams("organization_uuid"), withListKeys("settings"), withoutPagination()),
 	}
 }
@@ -177,6 +179,43 @@ func rolePermissionAttributes() map[string]string {
 		"category":               "category|type",
 		"created_at":             "created_at",
 		"updated_at":             "updated_at",
+	}
+}
+
+func projectAttributes() map[string]string {
+	return map[string]string{
+		"project_id":        "id|project_id",
+		"name":              "name|title",
+		"description":       "description",
+		"organization_id":   "organization.id|organization_id",
+		"organization_uuid": "organization.uuid|organization_uuid|organization.id|organization_id",
+		"creator_user_id":   "created_by.id|creator.id|owner.id|created_by_user_id|user_id",
+		"creator_email":     "created_by.email|creator.email|owner.email|email",
+		"status":            "status",
+		"visibility":        "visibility",
+		"created_at":        "created_at",
+		"updated_at":        "updated_at",
+		"archived_at":       "archived_at",
+	}
+}
+
+func projectCollaboratorAttributes() map[string]string {
+	return map[string]string{
+		"project_id":        "project_id",
+		"assignment_id":     "id|assignment_id",
+		"principal_type":    "principal.type|principal_type|type|collaborator_type",
+		"principal_id":      "principal.id|principal.user_id|principal.group_id|user.id|user_id|group.id|group_id|organization.id|organization_uuid|organization_id|id",
+		"user_id":           "user.id|user_id|principal.user_id",
+		"group_id":          "group.id|group_id|principal.group_id",
+		"email":             "principal.email|user.email|email",
+		"name":              "principal.name|user.name|group.name|name",
+		"organization_id":   "organization.id|organization_id",
+		"organization_uuid": "organization.uuid|organization_uuid|organization.id|organization_id",
+		"role_id":           "role.id|role_id|role",
+		"role":              "role.name|role|role_id",
+		"role_name":         "role.name|role_name|role",
+		"created_at":        "created_at",
+		"updated_at":        "updated_at",
 	}
 }
 

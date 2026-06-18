@@ -92,6 +92,109 @@ func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
 	assertProjectedLink(t, state, projectURN, relationCanPerform, modelURN)
 }
 
+func TestProjectAnthropicProjectCollaboratorAccessEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 18, 12, 15, 0, 0, time.UTC)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "anthropic-project",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_project",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":            "compliance_project",
+				"name":              "Legal review",
+				"organization_uuid": "org-uuid-1",
+				"project_id":        "claude_proj_123",
+				"status":            "active",
+			},
+		},
+		{
+			Id:         "anthropic-project-user-collaborator",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_project_collaborator",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"email":          "alice@example.com",
+				"family":         "compliance_project_collaborator",
+				"name":           "Alice Example",
+				"principal_id":   "user_123",
+				"principal_type": "user",
+				"project_id":     "claude_proj_123",
+				"role_id":        "project_admin",
+				"role_name":      "Project admin",
+				"user_id":        "user_123",
+			},
+		},
+		{
+			Id:         "anthropic-project-group-collaborator",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_project_collaborator",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":         "compliance_project_collaborator",
+				"group_id":       "rbac_group_123",
+				"name":           "Legal",
+				"principal_id":   "rbac_group_123",
+				"principal_type": "group",
+				"project_id":     "claude_proj_123",
+				"role_id":        "project_viewer",
+				"role_name":      "Project viewer",
+			},
+		},
+		{
+			Id:         "anthropic-project-org-collaborator",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_project_collaborator",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":            "compliance_project_collaborator",
+				"organization_uuid": "org-uuid-1",
+				"principal_id":      "org-uuid-1",
+				"principal_type":    "organization",
+				"project_id":        "claude_proj_123",
+				"role_id":           "project_viewer",
+				"role_name":         "Project viewer",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	userURN := "urn:cerebro:writer:anthropic_user:user_123"
+	groupURN := "urn:cerebro:writer:anthropic_group:rbac_group_123"
+	orgURN := "urn:cerebro:writer:anthropic_org:org-uuid-1"
+	projectURN := "urn:cerebro:writer:anthropic_project:claude_proj_123"
+	adminRoleURN := "urn:cerebro:writer:anthropic_role:project:project_admin"
+	viewerRoleURN := "urn:cerebro:writer:anthropic_role:project:project_viewer"
+	identityURN := "urn:cerebro:writer:identity:email:alice@example.com"
+
+	if entity := state.entities[projectURN]; entity == nil || entity.EntityType != "anthropic.project" {
+		t.Fatalf("project entity missing or wrong: %#v", entity)
+	}
+	if entity := state.entities[adminRoleURN]; entity == nil || entity.EntityType != "anthropic.role" || entity.Label != "Project admin" || entity.Attributes["scope_kind"] != "project" {
+		t.Fatalf("admin role entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, projectURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, userURN, relationCanAdmin, adminRoleURN)
+	assertProjectedLink(t, state, userURN, relationCanAdmin, projectURN)
+	assertProjectedLink(t, state, adminRoleURN, relationGrantsEntitlement, projectURN)
+	assertProjectedLink(t, state, groupURN, relationAssignedTo, viewerRoleURN)
+	assertProjectedLink(t, state, groupURN, relationCanPerform, projectURN)
+	assertProjectedLink(t, state, orgURN, relationAssignedTo, viewerRoleURN)
+	assertProjectedLink(t, state, orgURN, relationCanPerform, projectURN)
+}
+
 func TestProjectAIGovernanceControlEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

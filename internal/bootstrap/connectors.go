@@ -1598,6 +1598,7 @@ var connectorSchemas = map[string]connectorSchema{
 			"organization_ids",
 			"per_page",
 			"periods",
+			"project_id",
 			"role_id",
 			"service_tiers",
 			"speeds",
