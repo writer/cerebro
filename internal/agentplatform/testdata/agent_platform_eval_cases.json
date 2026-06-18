@@ -71,6 +71,30 @@
     }
   },
   {
+    "id": "graph-ask-grounded-regression-contract",
+    "scenario_id": "graph-ask-grounded-regression",
+    "description": "Graph Ask regression requires quality scoring, citation coverage, safe refusals, and trace-linked failures.",
+    "expect": {
+      "required_capability_ids": ["grc-ask", "trace-streaming-replay", "knowledge-provenance"],
+      "required_runtime_events": ["eval.scenario.started", "eval.scenario.completed", "knowledge.retrieval.completed"],
+      "required_provenance_surfaces": ["ask-answer", "eval-result", "replay-record"],
+      "required_rubric_verifier_ids": ["ask-grounded-answer", "trajectory-quality"],
+      "required_integration_strategy_ids": ["graph-ask-regression-evals"]
+    }
+  },
+  {
+    "id": "model-provider-comparison-contract",
+    "scenario_id": "model-provider-comparison",
+    "description": "Model default changes compare approved routes on the same Ask and security-agent fixtures.",
+    "expect": {
+      "required_capability_ids": ["grc-ask", "security-eval-harness"],
+      "required_runtime_events": ["eval.scenario.started", "eval.scenario.completed"],
+      "required_provenance_surfaces": ["eval-result"],
+      "required_model_comparison_ids": ["graph-ask-model-routes"],
+      "required_integration_strategy_ids": ["model-provider-comparison"]
+    }
+  },
+  {
     "id": "remediation-safety-platform-contract",
     "scenario_id": "remediation-safety",
     "description": "Runtime response and action ladder contracts preserve approval and adapter boundaries.",
@@ -90,6 +114,19 @@
       "required_runtime_events": ["eval.scenario.started", "eval.scenario.completed"],
       "required_provenance_surfaces": ["finding-evaluation-run", "eval-result"],
       "required_integration_strategy_ids": ["cerebro-agent-platform-eval"]
+    }
+  },
+  {
+    "id": "ai-governance-platform-contract",
+    "scenario_id": "ai-governance-posture",
+    "description": "AI provider usage, hosted tools, model permissions, and deployments remain governed graph evidence.",
+    "expect": {
+      "required_capability_ids": ["ai-provider-governance", "knowledge-provenance"],
+      "required_runtime_events": ["capability.selected", "knowledge.retrieval.completed", "verifier.completed"],
+      "required_provenance_surfaces": ["ai-governance-posture", "source-coverage", "graph-provenance"],
+      "required_rubric_verifier_ids": ["ai-governance-posture"],
+      "required_ai_governance_source_ids": ["openai", "anthropic", "aws", "azure"],
+      "required_integration_strategy_ids": ["ai-provider-governance"]
     }
   },
   {

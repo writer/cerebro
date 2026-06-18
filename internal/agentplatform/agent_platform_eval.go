@@ -17,6 +17,9 @@ type AgentPlatformEvalExpectation struct {
 	RequiredRuntimeEvents          []string `json:"required_runtime_events,omitempty"`
 	RequiredProvenanceSurfaces     []string `json:"required_provenance_surfaces,omitempty"`
 	RequiredIntegrationStrategyIDs []string `json:"required_integration_strategy_ids,omitempty"`
+	RequiredRubricVerifierIDs      []string `json:"required_rubric_verifier_ids,omitempty"`
+	RequiredModelComparisonIDs     []string `json:"required_model_comparison_ids,omitempty"`
+	RequiredAIGovernanceSourceIDs  []string `json:"required_ai_governance_source_ids,omitempty"`
 }
 
 type AgentPlatformEvalReport struct {
@@ -111,6 +114,21 @@ func evaluateAgentPlatformEvalCase(evalCase AgentPlatformEvalCase, snapshot Cont
 			failures = append(failures, "missing integration strategy "+strategyID)
 		}
 	}
+	for _, verifierID := range expect.RequiredRubricVerifierIDs {
+		if !evalSnapshotHasRubricVerifier(snapshot, verifierID) {
+			failures = append(failures, "missing rubric verifier "+verifierID)
+		}
+	}
+	for _, comparisonID := range expect.RequiredModelComparisonIDs {
+		if !evalSnapshotHasModelComparison(snapshot, comparisonID) {
+			failures = append(failures, "missing model comparison "+comparisonID)
+		}
+	}
+	for _, sourceID := range expect.RequiredAIGovernanceSourceIDs {
+		if !evalSnapshotHasAIGovernanceSource(snapshot, sourceID) {
+			failures = append(failures, "missing AI governance source "+sourceID)
+		}
+	}
 	return AgentPlatformEvalResult{
 		ID:         evalCase.ID,
 		ScenarioID: evalCase.ScenarioID,
@@ -176,6 +194,33 @@ func evalSnapshotHasProvenanceSurface(snapshot Contract, surface string) bool {
 func evalSnapshotHasIntegrationStrategy(snapshot Contract, id string) bool {
 	for _, strategy := range snapshot.SecurityControlPlane.IntegrationStrategies {
 		if strategy.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func evalSnapshotHasRubricVerifier(snapshot Contract, id string) bool {
+	for _, verifier := range snapshot.SecurityControlPlane.RubricVerifiers {
+		if verifier.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func evalSnapshotHasModelComparison(snapshot Contract, id string) bool {
+	for _, comparison := range snapshot.SecurityControlPlane.ModelComparisons {
+		if comparison.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func evalSnapshotHasAIGovernanceSource(snapshot Contract, id string) bool {
+	for _, source := range snapshot.SecurityControlPlane.AIGovernanceSources {
+		if source.SourceID == id {
 			return true
 		}
 	}

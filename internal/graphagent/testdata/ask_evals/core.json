@@ -16,6 +16,28 @@
     "expected_intent": "top_risk_findings",
     "expected_min_rows": 1,
     "expected_urns": ["urn:cerebro:writer:finding:alpha"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "graph_ask_grounded_regression",
+    "question": "Which risky finding affects repo alpha and why?",
+    "draft_plan": {"intent": "top_risk_findings", "limit": 5},
+    "rows": [
+      {
+        "finding_urn": "urn:cerebro:writer:finding:alpha",
+        "finding_label": "Public repo token",
+        "resource_urn": "urn:cerebro:writer:repo:alpha",
+        "resource_label": "repo alpha",
+        "risk_score": 91,
+        "finding_attributes_json_internal": "{\"severity\":\"critical\",\"reason\":\"token exposure\"}"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:finding:alpha` affects `urn:cerebro:writer:repo:alpha` because token exposure creates critical repository risk.",
+    "expected_intent": "top_risk_findings",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:finding:alpha", "urn:cerebro:writer:repo:alpha"],
+    "expect_quality_pass": true,
     "expect_citations_ok": true
   },
   {
@@ -47,6 +69,7 @@
     "expected_intent": "explain_finding",
     "expected_min_rows": 1,
     "expected_urns": ["urn:cerebro:writer:finding:alpha"],
+    "expect_quality_pass": true,
     "expect_citations_ok": true
   },
   {
@@ -65,6 +88,7 @@
     "expected_intent": "identity_bridge",
     "expected_min_rows": 1,
     "expected_urns": ["urn:cerebro:writer:identity:alice"],
+    "expect_quality_pass": true,
     "expect_recovery": true,
     "expect_citations_ok": true
   },
@@ -84,6 +108,7 @@
     "expected_intent": "connector_health",
     "expected_min_rows": 1,
     "expected_urns": ["urn:cerebro:writer:source:okta"],
+    "expect_quality_pass": true,
     "expect_citations_ok": true
   },
   {
@@ -93,6 +118,7 @@
     "rows": [],
     "summary": "",
     "expected_intent": "top_risk_findings",
+    "expect_quality_pass": true,
     "expect_unsupported_code": "query_plan_conversion_failed"
   }
 ]
