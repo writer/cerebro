@@ -103,10 +103,11 @@ func TestReadPagerDutyResponderTopologyKinds(t *testing.T) {
 			path:   "/services/PS1/integrations",
 			response: map[string]any{"integrations": []map[string]any{{
 				"id": "PI1", "name": "Datadog", "summary": "Datadog integration",
-				"vendor": map[string]any{"id": "PV1", "summary": "Datadog"},
+				"service": map[string]any{"id": "PS-STALE", "summary": "Checkout API"},
+				"vendor":  map[string]any{"id": "PV1", "summary": "Datadog"},
 			}}},
 			want: map[string]string{
-				"integration_id": "PI1", "service_id": "PS1",
+				"integration_id": "PI1", "service_id": "PS1", "service_name": "Checkout API",
 				"vendor_id": "PV1", "vendor_name": "Datadog",
 			},
 		},
