@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,25 +14,26 @@ import (
 	"github.com/writer/cerebro/internal/vulndb"
 )
 
-func TestVulnDBInputClientOpenTreatsRemoteSchemeCaseInsensitive(t *testing.T) {
+func TestVulnDBInputClientRejectsLoopbackRemoteFeed(t *testing.T) {
+	targetHit := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetHit = true
 		_, _ = w.Write([]byte("ok"))
 	}))
 	defer server.Close()
 	source := "HTTP" + strings.TrimPrefix(server.URL, "http")
 	reader, err := (vulndbInputClient{}).Open(context.Background(), source, true)
-	if err != nil {
-		t.Fatalf("open uppercase-scheme feed: %v", err)
-	}
-	defer func() {
+	if reader != nil {
 		_ = reader.Close()
-	}()
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("read uppercase-scheme feed: %v", err)
 	}
-	if string(body) != "ok" {
-		t.Fatalf("body = %q, want ok", string(body))
+	if err == nil {
+		t.Fatal("Open(loopback HTTP feed) error = nil, want unsafe destination rejection")
+	}
+	if !strings.Contains(err.Error(), "must not target loopback, private, or link-local") {
+		t.Fatalf("Open(loopback HTTP feed) error = %v, want unsafe destination rejection", err)
+	}
+	if targetHit {
+		t.Fatal("Open(loopback HTTP feed) connected to loopback destination")
 	}
 }
 
