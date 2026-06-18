@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/config"
 )
@@ -32,6 +33,7 @@ func TestAccessAuditCredentialTier(t *testing.T) {
 	}{
 		{name: "admin api key", principal: authPrincipal{AuthMode: "api_key"}, want: "admin"},
 		{name: "scoped token", principal: authPrincipal{AuthMode: "api_key", Scopes: []string{scopeCosmoSecurityRead}}, want: "scoped"},
+		{name: "rbac role", principal: authPrincipal{AuthMode: "api_credential", Roles: []string{roleCerebroViewer}}, want: "rbac"},
 		{name: "device", principal: authPrincipal{AuthMode: "device_jwt", Scopes: []string{scopeCosmoSecurityRead}}, want: "device"},
 		{name: "anonymous", principal: authPrincipal{}, want: ""},
 	} {
@@ -40,5 +42,32 @@ func TestAccessAuditCredentialTier(t *testing.T) {
 				t.Fatalf("accessAuditCredentialTier() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCapabilityTokenCanAuthorizeWithRoleOnlyGrant(t *testing.T) {
+	cfg := config.AuthConfig{
+		CapabilityTokenSecrets:  []string{"capability-secret"},
+		CapabilityTokenAudience: "cerebro-api",
+	}
+	token, err := issueCapabilityToken(cfg, capabilityClaims{
+		Audience: cfg.CapabilityTokenAudience,
+		Subject:  "service:viewer",
+		TenantID: "writer",
+		Roles:    []string{roleCerebroViewer},
+		Groups:   []string{"security"},
+	}, time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("issueCapabilityToken: %v", err)
+	}
+	principal, ok := authenticateCapabilityToken(cfg, token, time.Now())
+	if !ok {
+		t.Fatal("authenticateCapabilityToken() rejected role-only token")
+	}
+	if got := expandedPrincipalScopes(principal); len(got) != 1 || got[0] != scopeCosmoSecurityRead {
+		t.Fatalf("expanded scopes = %#v, want [%s]", got, scopeCosmoSecurityRead)
+	}
+	if err := authorizePrincipalHTTPPolicy(principal, httpRoutePolicyFor("GET", "/sources")); err != nil {
+		t.Fatalf("role-only capability token rejected for read route: %v", err)
 	}
 }

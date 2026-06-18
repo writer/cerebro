@@ -102,7 +102,8 @@ Shape:
     "principal": "<principal>",
     "tenant_id": "<tenant-id>",
     "allowed_tenants": ["<tenant-id>"],
-    "scopes": ["<scope>"]
+    "scopes": ["<scope>"],
+    "roles": ["<role>"]
   }
 ]
 ```
@@ -172,8 +173,36 @@ Current route scopes include:
 | `cerebro.finding_candidates.promote` | Promote or reject finding candidates. |
 | `cerebro.findings.write` | Resolve, suppress, assign, set due dates, add notes, and link tickets on findings. |
 | `cerebro.grc.inventory.write` | Mutate GRC inventory scope, reports, and triage state. |
+| `cerebro.connector_credentials.read` | Read connector credential metadata. |
+| `cerebro.connector_credentials.write` | Create, rotate, or revoke connector credentials. |
 | `cerebro.runtime_response.write` | Execute runtime response actions and revoke runtime blocklist entries. |
 | `cerebro.graph_actions.write` | Execute provider-backed graph actions such as access-approvals Okta user suspend/unsuspend. |
+| `cerebro.reports.run` | Start report runs. |
+| `cerebro.knowledge.write` | Write platform knowledge decisions, actions, recommendations, and outcomes. |
+| `cerebro.workflow.replay` | Replay workflow events. |
+| `cerebro.sources.preview` | Check, discover, or read source previews. |
+| `cerebro.connector_definitions.write` | Create, validate, update, or promote connector definitions. |
+| `cerebro.connectors.write` | Run connector preflight and connection write operations. |
+| `cerebro.jobs.write` | Create jobs and cancel platform jobs. |
+| `cerebro.source_runtimes.write` | Create, sync, evaluate, ingest, or write claims through source runtimes. |
+
+## Roles
+
+Structured API credentials and MCP OAuth clients or entitlements can carry `roles`. Roles expand to route scopes before authorization checks run. A role-bearing credential must still be tenant-scoped with `tenant_id` or `allowed_tenants`.
+
+Role aliases are normalized exactly like scopes. Prefer the explicit `cerebro.*` names for shared deployments:
+
+| Role | Included access |
+| --- | --- |
+| `cerebro.viewer` | Read-only Cerebro routes. Aliases: `viewer`, `reader`, `read_only`. |
+| `cerebro.analyst` | Viewer access plus finding candidate promotion, finding lifecycle writes, and GRC inventory writes. Aliases: `analyst`, `editor`. |
+| `cerebro.finding_manager` | Viewer access plus finding candidate promotion and finding lifecycle writes. |
+| `cerebro.grc_reviewer` | Viewer access plus GRC inventory writes. |
+| `cerebro.connector_manager` | Viewer access plus connector credential, definition, and connection writes. |
+| `cerebro.responder` | Viewer access plus runtime response writes. |
+| `cerebro.source_manager` | Viewer access plus report runs, source previews, and source-runtime writes. |
+| `cerebro.job_manager` | Viewer access plus platform job writes. |
+| `cerebro.admin` | All Cerebro RBAC scopes. Aliases: `admin`, `owner`. |
 
 ## Public origin
 

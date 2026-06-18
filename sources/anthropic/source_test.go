@@ -20,6 +20,144 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestReadInventoryFamiliesEmitContractKinds(t *testing.T) {
+	cases := []struct {
+		family       string
+		path         string
+		record       map[string]any
+		wantKind     string
+		wantAttrKey  string
+		wantAttrVal  string
+		extraConfig  map[string]string
+		extraAsserts func(t *testing.T, attrs map[string]string)
+	}{
+		{
+			family:      "user",
+			path:        "/organizations/users",
+			record:      map[string]any{"id": "user_1", "email": "alice@example.com", "role": "admin", "status": "active"},
+			wantKind:    "anthropic.user",
+			wantAttrKey: "user_id",
+			wantAttrVal: "user_1",
+			extraAsserts: func(t *testing.T, attrs map[string]string) {
+				if got := attrs["role"]; got != "admin" {
+					t.Fatalf("role = %q, want admin", got)
+				}
+			},
+		},
+		{
+			family:      "workspace",
+			path:        "/organizations/workspaces",
+			record:      map[string]any{"id": "ws_1", "name": "Research", "created_at": "2026-01-02T03:04:05Z"},
+			wantKind:    "anthropic.workspace",
+			wantAttrKey: "workspace_id",
+			wantAttrVal: "ws_1",
+		},
+		{
+			family:      "api_key",
+			path:        "/organizations/api_keys",
+			record:      map[string]any{"id": "apikey_1", "name": "prod-key", "status": "active", "created_by": map[string]any{"id": "user_1"}},
+			wantKind:    "anthropic.api_key",
+			wantAttrKey: "api_key_id",
+			wantAttrVal: "apikey_1",
+			extraAsserts: func(t *testing.T, attrs map[string]string) {
+				if got := attrs["owner_user_id"]; got != "user_1" {
+					t.Fatalf("owner_user_id = %q, want user_1", got)
+				}
+				if got := attrs["status"]; got != "active" {
+					t.Fatalf("status = %q, want active", got)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.family, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.EscapedPath(); got != tc.path {
+					t.Fatalf("request path = %q, want %q", got, tc.path)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data":     []map[string]any{tc.record},
+					"has_more": false,
+				})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.inner.AllowLoopbackBaseURL = true
+			cfg := map[string]string{ // #nosec G101 -- test-only placeholder key.
+				"api_key":   "fixture-key",
+				"base_url":  server.URL,
+				"family":    tc.family,
+				"tenant_id": "writer",
+			}
+			for key, value := range tc.extraConfig {
+				cfg[key] = value
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(cfg), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tc.wantKind {
+				t.Fatalf("Kind = %q, want %q", event.Kind, tc.wantKind)
+			}
+			if event.TenantId != "writer" {
+				t.Fatalf("TenantId = %q, want writer", event.TenantId)
+			}
+			if got := event.Attributes[tc.wantAttrKey]; got != tc.wantAttrVal {
+				t.Fatalf("%s = %q, want %q", tc.wantAttrKey, got, tc.wantAttrVal)
+			}
+			if tc.extraAsserts != nil {
+				tc.extraAsserts(t, event.Attributes)
+			}
+		})
+	}
+}
+
+func TestReadRejectsMalformedInventoryRecords(t *testing.T) {
+	families := map[string]string{
+		"user":      "/organizations/users",
+		"workspace": "/organizations/workspaces",
+		"api_key":   "/organizations/api_keys",
+	}
+	for family, path := range families {
+		t.Run(family, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.EscapedPath(); got != path {
+					t.Fatalf("request path = %q, want %q", got, path)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data":     []map[string]any{{"name": "missing-identifier"}},
+					"has_more": false,
+				})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.inner.AllowLoopbackBaseURL = true
+			_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+				"api_key":   "fixture-key",
+				"base_url":  server.URL,
+				"family":    family,
+				"tenant_id": "writer",
+			}), nil)
+			if err == nil {
+				t.Fatalf("Read() error = nil, want malformed-record rejection for %s", family)
+			}
+		})
+	}
+}
+
 func TestReadComplianceActivityMapsResourceAndActorDetails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/compliance/activities" {
