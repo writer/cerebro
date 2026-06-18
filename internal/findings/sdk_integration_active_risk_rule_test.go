@@ -114,14 +114,46 @@ func TestSDKIntegrationActiveRiskRejectsReservedTokenDelimiter(t *testing.T) {
 	}
 }
 
-func TestSDKIntegrationActiveRiskURNKeepsUnscopedResourceDistinct(t *testing.T) {
+func TestSDKIntegrationActiveRiskRejectsCrossTenantResourceURN(t *testing.T) {
+	rule := newSDKIntegrationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-sdk-jira-posture",
+		SourceId: "sdk",
+		TenantId: "writer",
+	}
+	event := sdkIntegrationPostureEvent("sdk-risk-cross-tenant", map[string]string{
+		"resource_urn": "urn:cerebro:acme:runtime:acme-sdk-jira-posture:workspace:acme",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate() emitted %d findings, want 0", len(records))
+	}
+
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+	secure := sdkIntegrationPostureEvent("sdk-secure-cross-tenant", map[string]string{
+		"posture_status": "secure",
+		"resource_urn":   "urn:cerebro:acme:runtime:acme-sdk-jira-posture:workspace:acme",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	if anchor, closes := counterRule.CloseOnEvent(secure); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(cross-tenant secure) = (%q, %v), want no close", anchor, closes)
+	}
+}
+
+func TestSDKIntegrationActiveRiskURNRejectsUnscopedResource(t *testing.T) {
 	scoped := sdkIntegrationPostureFindingURN("writer", "jira", "sso_enforced", "urn:cerebro:writer:foo:bar")
 	unscoped := sdkIntegrationPostureFindingURN("writer", "jira", "sso_enforced", "urn:cerebro:foo:bar")
-	if scoped == "" || unscoped == "" {
-		t.Fatalf("posture URNs = %q/%q, want non-empty values", scoped, unscoped)
+	if scoped == "" {
+		t.Fatal("scoped posture URN is empty, want non-empty value")
 	}
-	if scoped == unscoped {
-		t.Fatalf("tenant-scoped and unscoped resource URNs collided at %q", scoped)
+	if unscoped != "" {
+		t.Fatalf("unscoped posture URN = %q, want rejected", unscoped)
 	}
 }
 

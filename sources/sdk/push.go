@@ -43,12 +43,9 @@ type PushedTelemetry struct {
 // malformed or cross-tenant resource urn, that embed unsafe control characters,
 // or that report an unrecognized posture status.
 func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope, error) {
-	tenantID := strings.TrimSpace(payload.TenantID)
-	if tenantID == "" {
-		return nil, fmt.Errorf("%w: sdk telemetry tenant id is required", sourcecdk.ErrInvalidConfig)
-	}
-	if hasUnsafeCharacters(tenantID) {
-		return nil, fmt.Errorf("%w: sdk telemetry tenant id contains unsafe characters", sourcecdk.ErrInvalidConfig)
+	tenantID, err := safeRequiredToken("tenant id", payload.TenantID)
+	if err != nil {
+		return nil, err
 	}
 	integration, err := safeRequiredToken("integration", payload.Integration)
 	if err != nil {

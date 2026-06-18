@@ -173,6 +173,9 @@ func sdkIntegrationPostureFindingURN(tenantID string, integration string, contro
 	if strings.Contains(integration, ":") || strings.Contains(control, ":") {
 		return ""
 	}
+	if !sdkIntegrationResourceURNBelongsToTenant(tenantID, resourceURN) {
+		return ""
+	}
 	key := sdkIntegrationPostureResourceKey(resourceURN)
 	return fmt.Sprintf("urn:cerebro:%s:sdk_integration_posture:%s:%s:%s", tenantID, integration, control, key)
 }
@@ -180,6 +183,12 @@ func sdkIntegrationPostureFindingURN(tenantID string, integration string, contro
 func sdkIntegrationPostureResourceKey(resourceURN string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(resourceURN)))
 	return "resource-" + hex.EncodeToString(sum[:16])
+}
+
+func sdkIntegrationResourceURNBelongsToTenant(tenantID string, resourceURN string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	resourceURN = strings.TrimSpace(resourceURN)
+	return tenantID != "" && strings.HasPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
 }
 
 func sdkIntegrationActiveRiskAnchor(attributes map[string]string) string {

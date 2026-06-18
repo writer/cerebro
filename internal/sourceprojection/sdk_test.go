@@ -95,6 +95,21 @@ func TestProjectSDKIntegrationPostureRejectsReservedTokenDelimiter(t *testing.T)
 	}
 }
 
+func TestProjectSDKIntegrationPostureRejectsCrossTenantResourceURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := sdkIntegrationPostureEvent()
+	event.Attributes["resource_urn"] = "urn:cerebro:acme:runtime:acme-sdk-jira-posture:workspace:acme"
+
+	result, err := service.Project(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected != 0 || result.LinksProjected != 0 {
+		t.Fatalf("Project() with cross-tenant resource = entities %d links %d, want 0/0", result.EntitiesProjected, result.LinksProjected)
+	}
+}
+
 func TestSDKPostureResourceKeyKeepsUnscopedResourceDistinct(t *testing.T) {
 	scoped := sdkPostureResourceKey("writer", "urn:cerebro:writer:foo:bar")
 	unscoped := sdkPostureResourceKey("writer", "urn:cerebro:foo:bar")

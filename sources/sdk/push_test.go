@@ -170,6 +170,7 @@ func TestNormalizePushedTelemetryRejectsUnsafeControlCharacters(t *testing.T) {
 
 func TestNormalizePushedTelemetryRejectsReservedTokenDelimiter(t *testing.T) {
 	cases := map[string]func(p *PushedTelemetry){
+		"tenant":      func(p *PushedTelemetry) { p.TenantID = "writer:prod" },
 		"integration": func(p *PushedTelemetry) { p.Integration = "jira:prod" },
 		"control":     func(p *PushedTelemetry) { p.Control = "sso:enforced" },
 	}

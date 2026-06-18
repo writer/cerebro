@@ -24,6 +24,9 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	if strings.Contains(integration, ":") || strings.Contains(control, ":") {
 		return nil, nil, nil
 	}
+	if !sdkResourceURNBelongsToTenant(tenantID, resourceURN) {
+		return nil, nil, nil
+	}
 
 	integrationURN := projectionURN(tenantID, "sdk_integration", integration)
 	postureURN := projectionURN(tenantID, "sdk_integration_posture", integration, control, sdkPostureResourceKey(tenantID, resourceURN))
@@ -83,4 +86,10 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 func sdkPostureResourceKey(_ string, resourceURN string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(resourceURN)))
 	return "resource-" + hex.EncodeToString(sum[:16])
+}
+
+func sdkResourceURNBelongsToTenant(tenantID string, resourceURN string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	resourceURN = strings.TrimSpace(resourceURN)
+	return tenantID != "" && strings.HasPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
 }
