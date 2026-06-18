@@ -171,18 +171,77 @@ jobs:
         if: steps.release.outputs.dry_run != 'true'
         env:
           GCLOUD_AUTH_TOKEN: ${{ steps.auth.outputs.access_token }}
+          SDK_VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
           if [ -z "${GCLOUD_AUTH_TOKEN}" ]; then
             echo "GCP access token is missing" >&2
             exit 1
           fi
+          python - <<'PY'
+          import base64
+          import html.parser
+          import os
+          from pathlib import Path
+          from urllib.parse import unquote, urlparse
+          import urllib.error
+          import urllib.request
+
+          class SimpleIndexParser(html.parser.HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.values = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag != "a":
+                      return
+                  for name, value in attrs:
+                      if name == "href":
+                          self.values.append(value)
+
+              def handle_data(self, data):
+                  self.values.append(data)
+
+          def filename(value):
+              parsed = urlparse(value.strip())
+              name = unquote(Path(parsed.path).name)
+              return name or unquote(value.strip())
+
+          token = os.environ["GCLOUD_AUTH_TOKEN"]
+          request = urllib.request.Request(
+              "https://us-central1-python.pkg.dev/qordoba-devel/writer-internal-packages/simple/cerebro-sdk/"
+          )
+          credential = base64.b64encode(f"oauth2accesstoken:{token}".encode()).decode()
+          request.add_header("Authorization", f"Basic {credential}")
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  body = response.read().decode()
+          except urllib.error.HTTPError as exc:
+              if exc.code == 404:
+                  body = ""
+              else:
+                  raise
+          except urllib.error.URLError:
+              raise
+
+          parser = SimpleIndexParser()
+          parser.feed(body)
+          existing = {filename(value) for value in parser.values if filename(value)}
+          for artifact in Path(os.environ["PYTHON_SDK_DIST"]).iterdir():
+              if artifact.name in existing:
+                  print(f"Artifact {artifact.name} already exists in Artifact Registry; skipping it.")
+                  artifact.unlink()
+          PY
+          artifacts=("${PYTHON_SDK_DIST}"/*)
+          if [ ! -e "${artifacts[0]}" ]; then
+            echo "cerebro-sdk ${SDK_VERSION} artifacts already exist in Artifact Registry; skipping upload."
+            exit 0
+          fi
           python -m twine upload \
-            --skip-existing \
             --repository-url https://us-central1-python.pkg.dev/qordoba-devel/writer-internal-packages/ \
             --username oauth2accesstoken \
             --password "${GCLOUD_AUTH_TOKEN}" \
-            "${PYTHON_SDK_DIST}"/*
+            "${artifacts[@]}"
 
       - name: Summarize
         run: |
