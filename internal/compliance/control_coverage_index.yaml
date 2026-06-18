@@ -61349,9 +61349,10 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 2
           mapped_rules:
             - aws-cloudtrail-s3-data-events
+            - security-tooling-map-control-coverage-gap
         - framework_name: SOC 2
           family_id: CC4
           family_name: Monitoring Activities
@@ -66081,6 +66082,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC7.1
+        - rule_id: security-tooling-map-control-coverage-gap
+          controls:
+            - framework_name: SOC 2
+              control_id: CC4.1
         - rule_id: sentinelone-agent-detect-only-mode
           controls:
             - framework_name: SOC 2

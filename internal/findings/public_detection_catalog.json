@@ -62832,6 +62832,49 @@
       ]
     },
     {
+      "id": "security-tooling-map-control-coverage-gap",
+      "pack_id": "security_tooling_map",
+      "pack_name": "Security Tooling Map",
+      "name": "Security Tooling Control Coverage Gap",
+      "description": "Detect security controls whose tooling-map coverage is an active, unremediated gap (for example partial, planned, or missing coverage), leaving the mapped control without adequate tooling support. The finding resolves when coverage is reported as covered or the control is retired, and reopens on a stable fingerprint if the gap recurs.",
+      "source_id": "security_tooling_map",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "security_tooling_map.control_mapping"
+      ],
+      "output_kind": "finding.security_tooling_map_control_coverage_gap",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "control-coverage",
+        "gap",
+        "grc",
+        "posture",
+        "security-tooling-map"
+      ],
+      "references": [
+        "https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2"
+      ],
+      "false_positives": [
+        "Controls intentionally covered by a different tool whose mapping is recorded elsewhere, or inventory-only mappings for controls that are out of scope and should be marked not-applicable instead of partial."
+      ],
+      "runbook": "Confirm whether the mapped control still requires tooling coverage; if so, extend the tool to fully cover the control or map a tool that does, otherwise mark the control coverage as not-applicable or retire the mapping.",
+      "required_attributes": [
+        "control_id",
+        "tool_id"
+      ],
+      "fingerprint_fields": [
+        "security_tool_control_coverage_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC4.1"
+        }
+      ]
+    },
+    {
       "id": "sentinelone-agent-detect-only-mode",
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",
