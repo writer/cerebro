@@ -293,6 +293,47 @@ func TestServiceExecuteUsesConfiguredActionProvider(t *testing.T) {
 	}
 }
 
+func TestServiceExecuteRejectsProviderActionWithoutExternalID(t *testing.T) {
+	const actionID = "identity.generic.lock_user"
+	provider := &stubActionProvider{executeAction: &GraphAction{
+		Action:   actionID,
+		Provider: "generic-idp",
+		Target:   "generic-user-1",
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:         "finding-1",
+		TenantID:   "tenant-a",
+		Status:     "open",
+		RuleID:     "rule-1",
+		Attributes: map[string]string{"graph_actions_allowed": actionID},
+	}}
+	_, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			"generic-idp": provider,
+		},
+		Registry: Registry{actions: map[string]ActionSpec{
+			actionID: {
+				ID:               actionID,
+				Provider:         "generic-idp",
+				ProviderAction:   "lock",
+				TargetKind:       "identity.generic.user",
+				ResolveTarget:    fixedTarget("generic-user-1"),
+				CheckEligibility: FindingAllowsAction,
+			},
+		}},
+	}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    actionID,
+	})
+	if !errors.Is(err, ErrRemote) {
+		t.Fatalf("Execute() error = %v, want ErrRemote", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("linked ref = %#v, want no unmatchable provider ref", workflow.ref)
+	}
+}
+
 func TestGraphActionFromAccessApprovalsFallsBackToResolvedTarget(t *testing.T) {
 	action := GraphActionFromAccessApprovals(ActionIdentityOktaSuspendUser, &AccessApprovalsUserAction{ID: "action-1"}, "", "00u123")
 	if action == nil || action.Target != "00u123" {

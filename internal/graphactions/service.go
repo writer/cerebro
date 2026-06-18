@@ -225,6 +225,9 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if err := normalizeProviderGraphAction(spec, graphAction, target); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(graphAction.ExternalID) == "" {
+		return nil, fmt.Errorf("%w: response missing action external_id", ErrRemote)
+	}
 	var ref ports.FindingExternalRef
 	updated := finding
 	if finding != nil {
