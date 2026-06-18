@@ -41699,9 +41699,9 @@ profiles:
       description: Technology implementation controls for access, operations, logging, vulnerability management, and secure configuration evidence.
       summary:
         selected_controls: 34
-        mapped_controls: 14
-        unmapped_controls: 20
-        mapped_rules: 108
+        mapped_controls: 15
+        unmapped_controls: 19
+        mapped_rules: 109
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41986,8 +41986,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 0
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - cerebro-high-risk-api-access
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -42199,6 +42201,10 @@ profiles:
               control_id: A.8.13
             - framework_name: ISO 27001:2022
               control_id: A.8.24
+        - rule_id: cerebro-high-risk-api-access
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.3
         - rule_id: cloud-current-public-exposure-review-needed
           controls:
             - framework_name: ISO 27001:2022
@@ -42604,8 +42610,6 @@ profiles:
           control_id: A.8.28
         - framework_name: ISO 27001:2022
           control_id: A.8.29
-        - framework_name: ISO 27001:2022
-          control_id: A.8.3
         - framework_name: ISO 27001:2022
           control_id: A.8.30
         - framework_name: ISO 27001:2022
@@ -61141,7 +61145,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 932
+        mapped_rules: 933
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61691,7 +61695,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 434
+          rule_count: 435
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -61715,6 +61719,7 @@ profiles:
             - aws-s3-https-only
             - aws-sagemaker-training-no-vpc
             - azure-vm-approved-extensions-only
+            - cerebro-high-risk-api-access
             - compliance-inventory-data-tracking
             - compliance-inventory-owners
             - data-sensitive-asset-risk
@@ -63244,6 +63249,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.7
+        - rule_id: cerebro-high-risk-api-access
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: cert-expired
           controls:
             - framework_name: SOC 2
