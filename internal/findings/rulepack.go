@@ -60,6 +60,14 @@ func builtinRulePacks() []RulePack {
 			Rules:       []Rule{newRuntimeActiveThreatEvidenceRule()},
 		},
 		{
+			ID:          "evidence_cas",
+			Name:        "Evidence CAS",
+			Description: "Evidence CAS object integrity and chain-of-custody linkage findings.",
+			Rules: []Rule{
+				newEvidenceCASUnresolvedLinkageRule(),
+			},
+		},
+		{
 			ID:          "panopticon",
 			Name:        "Panopticon",
 			Description: "Panopticon curated security operations cases.",

@@ -61090,7 +61090,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 927
+        mapped_rules: 928
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62335,7 +62335,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 32
+          rule_count: 33
           mapped_rules:
             - ai-model-monitoring
             - aws-bedrock-model-no-guardrails
@@ -62347,6 +62347,7 @@ profiles:
             - aws-security-hub-enabled
             - azure-defender-storage
             - container-runtime-exec-detected
+            - evidence-cas-unresolved-linkage
             - gcp-cloud-ids-notifications
             - grc-failing-control-open-operational-findings
             - grc-failing-control-test-unhealthy-integration
@@ -63472,6 +63473,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC1.1
+        - rule_id: evidence-cas-unresolved-linkage
+          controls:
+            - framework_name: SOC 2
+              control_id: CC7.2
         - rule_id: exposed-saas-api-token
           controls:
             - framework_name: SOC 2

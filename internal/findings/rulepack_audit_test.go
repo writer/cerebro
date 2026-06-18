@@ -825,7 +825,7 @@ func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingI
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 48; got != want {
+	if got, want := len(keepRules), 49; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -994,6 +994,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "cloudflare-zone-protection-paused", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloudflare"},
 		{RuleID: "data-sensitive-asset-risk", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "asset"},
 		{RuleID: "email-domain-authentication-misconfigured", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "email_domain_health"},
+		{RuleID: "evidence-cas-unresolved-linkage", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "evidence_cas"},
 		{RuleID: "github-app-integration-installed", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "github"},
 		{RuleID: "github-code-security-controls-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-dependabot-open-alert", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
