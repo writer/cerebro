@@ -192,6 +192,59 @@ func TestReadAuditLogMapsNestedActorAndTargetDetails(t *testing.T) {
 	}
 }
 
+func TestReadInviteMapsAcceptanceAndProjectMembershipDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/organization/invites" {
+			t.Fatalf("request path = %q, want /organization/invites", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":          "invite_123",
+				"email":       "new-admin@example.com",
+				"role":        "owner",
+				"status":      "pending",
+				"created_at":  1711471533,
+				"accepted_at": 1711471633,
+				"expires_at":  1712076333,
+				"projects": []map[string]any{{
+					"id":   "proj_123",
+					"role": "owner",
+				}},
+			}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"api_key":   "admin-key",
+		"base_url":  server.URL,
+		"family":    "invite",
+		"tenant_id": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "openai.invite" {
+		t.Fatalf("Kind = %q, want openai.invite", event.Kind)
+	}
+	if got := event.Attributes["accepted_at"]; got != "1711471633" {
+		t.Fatalf("accepted_at = %q, want 1711471633", got)
+	}
+	if got := event.Attributes["projects"]; got == "" {
+		t.Fatalf("projects attribute empty, want serialized project membership details")
+	}
+}
+
 func TestReadProjectRateLimitUsesProjectPathParam(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/organization/projects/proj_123/rate_limits" {

@@ -40,6 +40,14 @@ func anthropicOrganizationProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return aiOrganizationProjections(event, anthropicAccessProfile)
 }
 
+func openAIInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiInviteProjections(event, openAIAccessProfile)
+}
+
+func anthropicInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiInviteProjections(event, anthropicAccessProfile)
+}
+
 func anthropicWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiWorkspaceProjections(event, anthropicAccessProfile)
 }
@@ -189,6 +197,71 @@ func aiOrganizationProjections(event *cerebrov1.EventEnvelope, profile aiAccessP
 	entities := map[string]*ports.ProjectedEntity{}
 	aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, event.GetAttributes())
 	return identityProjectionResult(entities, nil)
+}
+
+func aiInviteProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	inviteID := firstNonEmpty(attrs["invite_id"], attrs["id"], event.GetId())
+	inviteURN := projectionURN(tenantID, profile.Provider+"_invite", inviteID)
+	if inviteURN == "" {
+		return identityProjectionResult(entities, links)
+	}
+	email := strings.TrimSpace(attrs["email"])
+	role := firstNonEmpty(attrs["role"], attrs["organization_role"], attrs["role_name"])
+	status := strings.TrimSpace(attrs["status"])
+	inviteAttrs := aiPrincipalAttributes(attrs, map[string]string{
+		"invite_id":    inviteID,
+		"email":        email,
+		"role":         role,
+		"status":       status,
+		"created_at":   strings.TrimSpace(attrs["created_at"]),
+		"accepted_at":  strings.TrimSpace(attrs["accepted_at"]),
+		"expires_at":   strings.TrimSpace(attrs["expires_at"]),
+		"access_state": aiInviteAccessState(status),
+		"is_admin":     boolString(aiRoleIsAdmin(role)),
+	})
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        inviteURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: profile.Provider + ".invite",
+		Label:      firstNonEmpty(email, inviteID),
+		Attributes: inviteAttrs,
+	})
+	orgURN := aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, attrs)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), inviteURN, orgURN, relationBelongsTo, aiEventLinkAttributes(event, "invite_organization")))
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), inviteURN, email, event.GetOccurredAt())
+	if !aiInviteAccessIntentActive(status) {
+		return identityProjectionResult(entities, links)
+	}
+	if role != "" {
+		roleAttrs := aiScopedRoleAttributes(attrs, role)
+		roleAttrs["role"] = role
+		roleAttrs["role_id"] = role
+		roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, roleAttrs, "organization")
+		if roleURN != "" {
+			linkAttrs := aiEventLinkAttributes(event, "invite_role")
+			addProjectedAttribute(linkAttrs, "role", role)
+			addProjectedAttribute(linkAttrs, "status", status)
+			addProjectedAttribute(linkAttrs, "access_state", aiInviteAccessState(status))
+			addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(role)))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), inviteURN, roleURN, aiRoleAssignmentRelation(role), linkAttrs))
+			aiLinkRoleToScope(links, tenantID, event, roleURN, orgURN, role, "invite_role_scope")
+		}
+	}
+	linkAttrs := aiEventLinkAttributes(event, "invite_access_intent")
+	addProjectedAttribute(linkAttrs, "role", role)
+	addProjectedAttribute(linkAttrs, "status", status)
+	addProjectedAttribute(linkAttrs, "access_state", aiInviteAccessState(status))
+	addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(role)))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), inviteURN, orgURN, aiScopeAccessRelation([]string{role}), linkAttrs))
+	return identityProjectionResult(entities, links)
 }
 
 func aiProjectProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -1212,6 +1285,33 @@ func aiAuditRoleScopeKind(attrs map[string]string) string {
 		return "project"
 	default:
 		return "organization"
+	}
+}
+
+func aiInviteAccessState(status string) string {
+	normalized := normalizeIdentifier(status)
+	switch {
+	case normalized == "":
+		return "invited"
+	case strings.Contains(normalized, "pending") || strings.Contains(normalized, "sent") || strings.Contains(normalized, "invited"):
+		return "invited"
+	case strings.Contains(normalized, "accept"):
+		return "accepted"
+	case strings.Contains(normalized, "expir"):
+		return "expired"
+	case strings.Contains(normalized, "revok") || strings.Contains(normalized, "cancel") || strings.Contains(normalized, "delete") || strings.Contains(normalized, "declin"):
+		return "inactive"
+	default:
+		return normalized
+	}
+}
+
+func aiInviteAccessIntentActive(status string) bool {
+	switch aiInviteAccessState(status) {
+	case "invited":
+		return true
+	default:
+		return false
 	}
 }
 
