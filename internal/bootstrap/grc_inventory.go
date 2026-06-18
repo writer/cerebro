@@ -810,11 +810,11 @@ func (a *App) handleGetGRCInventoryAssetReport(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, normalizeIDLookupError(err, ports.ErrGRCInventoryAssetReportNotFound))
 		return
 	}
 	if err := authorizeCerebroURNTenant(r.Context(), record.AssetURN); err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, normalizeIDLookupError(err, ports.ErrGRCInventoryAssetReportNotFound))
 		return
 	}
 	writeJSON(w, http.StatusOK, grcInventoryAssetReportResponse{Report: record, GeneratedAt: time.Now().UTC()})
