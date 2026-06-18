@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -332,6 +333,38 @@ func TestReadUsesConfiguredListKeys(t *testing.T) {
 	}
 }
 
+func TestReadSplitsBracketConfigQueryValues(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		values := r.URL.Query()["tags[]"]
+		if len(values) != 2 || values[0] != "alpha" || values[1] != "beta" {
+			t.Fatalf("tags[] = %#v, want alpha and beta", values)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "item-1"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:        "item",
+		Path:        "/items",
+		URNKind:     "item",
+		IDKeys:      []string{"id"},
+		ConfigQuery: map[string]string{"tags[]": "tags"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"tags":      "alpha, beta",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+}
+
 func TestReadResolvesPathParamsAndResultList(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/accounts/account%2Fone/items" {
@@ -460,6 +493,69 @@ func TestReadUsesCursorParamAndResultInfoPages(t *testing.T) {
 	}
 }
 
+func TestReadUsesFamilyCursorKeysAndHasMore(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("limit"); got != "1" {
+			t.Fatalf("limit = %q, want 1", got)
+		}
+		switch r.URL.Query().Get("after") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{{"id": "item-1"}},
+				"has_more": true,
+				"last_id":  "item-1",
+			})
+		case "item-1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{{"id": "item-2"}},
+				"has_more": false,
+				"last_id":  "item-2",
+			})
+		default:
+			t.Fatalf("after = %q, want empty or item-1", r.URL.Query().Get("after"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		CursorParam:    "after",
+		NextCursorKeys: []string{"last_id"},
+		HasMoreKey:     "has_more",
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"limit"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "item-1" {
+		t.Fatalf("first NextCursor = %q, want item-1", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("after") != "item-1" {
+		t.Fatalf("requests = %#v, want second request with after=item-1", requests)
+	}
+}
+
 func TestReadSingletonObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -497,6 +593,41 @@ func TestReadSingletonObject(t *testing.T) {
 	}
 }
 
+func TestReadSingletonCanDisablePageSize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.RawQuery; got != "" {
+			t.Fatalf("raw query = %q, want no page-size params", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name": "Settings",
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "settings",
+		Path:            "/settings",
+		URNKind:         "settings",
+		IDKeys:          []string{"id"},
+		Singleton:       true,
+		DisablePageSize: true,
+		Attributes:      map[string]string{"settings_name": "name"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want singleton event", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["settings_name"]; got != "Settings" {
+		t.Fatalf("settings_name = %q, want Settings", got)
+	}
+}
+
 func TestReadObjectMapRecords(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -531,6 +662,40 @@ func TestReadObjectMapRecords(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["members"]; got != "alice@example.com,bob@example.com" {
 		t.Fatalf("members = %q, want joined map values", got)
+	}
+}
+
+func TestReadParsesUnixTimestamp(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":         "item-1",
+				"created_at": 1711471533,
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:          "item",
+		Path:          "/items",
+		URNKind:       "item",
+		IDKeys:        []string{"id"},
+		TimestampKeys: []string{"created_at"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	want := time.Unix(1711471533, 0).UTC()
+	if got := pull.Events[0].OccurredAt.AsTime(); !got.Equal(want) {
+		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
 
@@ -610,6 +775,64 @@ func TestReadKeepsSameRecordIDDifferentDevices(t *testing.T) {
 	}
 	if pull.Events[0].Id == pull.Events[1].Id {
 		t.Fatalf("event IDs are equal %q, want device-scoped identities", pull.Events[0].Id)
+	}
+}
+
+func TestConfigurableBearerAuthUsesAuthorizationHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Header.Get("Authorization") {
+		case "":
+			if got := r.Header.Get("x-api-key"); got != "admin-key" {
+				t.Fatalf("x-api-key = %q, want admin-key", got)
+			}
+		case "Bearer oauth-token":
+			if got := r.Header.Get("x-api-key"); got != "" {
+				t.Fatalf("x-api-key = %q, want empty for bearer auth", got)
+			}
+		default:
+			t.Fatalf("Authorization = %q, want empty or Bearer oauth-token", r.Header.Get("Authorization"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+	}))
+	defer server.Close()
+
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+		SourceID:               "test",
+		DefaultBaseURL:         server.URL,
+		DefaultFamily:          "device",
+		RequireTenantID:        true,
+		TokenHeader:            "x-api-key",
+		ConfigurableAuthModels: []string{"bearer_token"},
+		Families: []Family{{
+			Name:   "device",
+			Path:   "/devices",
+			IDKeys: []string{"id"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+
+	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"api_key":   "admin-key",
+	}), nil); err != nil {
+		t.Fatalf("Read(default auth) error = %v", err)
+	}
+	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "writer",
+		"auth_model": "bearer_token",
+		"token":      "oauth-token",
+	}), nil); err != nil {
+		t.Fatalf("Read(bearer auth) error = %v", err)
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "writer",
+		"auth_model": "basic",
+		"token":      "admin-key",
+	})); err == nil {
+		t.Fatal("Check(unsupported auth_model) error = nil, want error")
 	}
 }
 
