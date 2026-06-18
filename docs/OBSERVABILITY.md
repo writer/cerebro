@@ -50,6 +50,14 @@ Those OTEL metrics intentionally use low-cardinality dimensions such as
 request IDs, or trace IDs as metric dimensions; use wide events and traces for
 that drill-down.
 
+When an app log group is attached to the stack dashboard, the dashboard includes
+tenant runtime drill-down widgets backed by CloudWatch Logs Insights. They query
+`source_runtime.sync` and `source_projection.project` structured telemetry by
+`tenant_id`, `source_id`, `runtime_id`, `event_kind`, `status`, and bounded
+`error_kind`. Use the OTEL metric band to find the failing aggregate shape, then
+use these log widgets to identify the affected tenant/runtime without adding
+tenant-level cardinality to CloudWatch metrics.
+
 Every ECS API task also receives stack/runtime metadata that the app copies into
 wide-event attributes:
 
@@ -182,6 +190,16 @@ uv run python scripts/provision_otel_collector_config.py \
 Use `--dry-run` to print the rendered config hash without touching AWS. Use `--print-config` to inspect the rendered collector config. Main and manual AWS deploy workflows also run this helper before secret import verification, so stale collector config is repaired before a new ECS task definition is applied. Static infra validation boots the configured ADOT image with the rendered config in `AOT_CONFIG_CONTENT`, which catches collector schema/runtime drift before deploy. The AWS secret import guard validates the collector secret parses as a collector config with the health check extension, OTLP receivers, and trace/metric pipelines; it also rejects the legacy `service.telemetry.metrics.address` key that ADOT v0.48.0 cannot load. Do not set a plaintext `otelExporterOtlpHeaders` config value; the stack validator rejects it.
 
 Remote OTLP endpoints must use `https://` without `cerebro:otelExporterOtlpInsecure=true`. Plain HTTP is accepted only for loopback collector endpoints such as `http://127.0.0.1:4318`.
+
+Tenant-level runtime/projection failure drill-down:
+
+```sql
+SOURCE '/ecs/<service>/api'
+| fields @timestamp, name, trace_id, tenant_id, source_id, runtime_id, event_kind, status, error_kind
+| filter (name = "source_runtime.sync" or name = "source_projection.project") and status = "failed"
+| sort @timestamp desc
+| limit 50
+```
 
 ## Live Rollout
 
