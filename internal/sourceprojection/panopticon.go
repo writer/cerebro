@@ -143,7 +143,7 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	for _, assetURN := range panopticonAddAssets(entities, tenantID, event.GetSourceId(), event.GetId(), nil, payload) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, assetURN, relationContains, panopticonLinkAttributes(event, "panopticon_case_asset")))
 	}
-	for _, evidenceURN := range panopticonAddEvidencePointers(entities, tenantID, event.GetSourceId(), event.GetId(), payload) {
+	for _, evidenceURN := range panopticonAddEvidencePointers(entities, links, tenantID, event, payload) {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, evidenceURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_case_evidence_cas")))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, caseURN, relationBelongsTo, panopticonLinkAttributes(event, "panopticon_evidence_cas_case")))
 	}
@@ -355,7 +355,9 @@ func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID st
 	return urns
 }
 
-func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, eventID string, payload map[string]any) []string {
+func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, payload map[string]any) []string {
+	sourceID := event.GetSourceId()
+	eventID := event.GetId()
 	seen := map[string]struct{}{}
 	var urns []string
 	for _, evidence := range panopticonObjects(payload, "evidence", "evidences", "evidence_pointers", "captures") {
@@ -368,14 +370,16 @@ func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, t
 		if evidenceURN == "" {
 			continue
 		}
+		objectURN := panopticonEvidenceCASObjectURN(tenantID, evidence, pointer)
 		attributes := compactAttributes(map[string]string{
-			"evidence_id":      panopticonString(evidence, "evidence_id", "id"),
-			"evidence_cas":     pointer,
-			"evidence_cas_uri": pointer,
-			"sha256":           panopticonEvidenceDigest(evidence),
-			"content_type":     panopticonString(evidence, "content_type"),
-			"ref_type":         panopticonString(evidence, "ref_type"),
-			"source_path":      panopticonString(evidence, "source_path"),
+			"evidence_id":             panopticonString(evidence, "evidence_id", "id"),
+			"evidence_cas":            pointer,
+			"evidence_cas_uri":        pointer,
+			"evidence_cas_object_urn": objectURN,
+			"sha256":                  panopticonEvidenceDigest(evidence),
+			"content_type":            panopticonString(evidence, "content_type"),
+			"ref_type":                panopticonString(evidence, "ref_type"),
+			"source_path":             panopticonString(evidence, "source_path"),
 			"chain_of_custody_id": firstNonEmpty(
 				panopticonString(evidence, "chain_of_custody_id"),
 				panopticonString(evidence, "custody_id"),
@@ -395,6 +399,9 @@ func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, t
 			Label:      firstNonEmpty(panopticonString(evidence, "label", "name"), evidenceID),
 			Attributes: attributes,
 		})
+		if objectURN != "" {
+			addLink(links, projectedLink(tenantID, sourceID, evidenceURN, objectURN, relationRepresents, panopticonAnchorAttributes(event, "panopticon_evidence_cas_object", "evidence_cas_object_urn", objectURN)))
+		}
 		if _, ok := seen[evidenceURN]; ok {
 			continue
 		}
@@ -402,6 +409,18 @@ func panopticonAddEvidencePointers(entities map[string]*ports.ProjectedEntity, t
 		urns = append(urns, evidenceURN)
 	}
 	return urns
+}
+
+// panopticonEvidenceCASObjectURN returns the canonical Evidence CAS object URN
+// for an evidence reference using the same identity precedence the Evidence CAS
+// source applies (evidence_id, then CAS URI). The result is tenant-scoped so a
+// Panopticon pointer never correlates across tenant boundaries.
+func panopticonEvidenceCASObjectURN(tenantID string, evidence map[string]any, pointer string) string {
+	objectID := firstNonEmpty(panopticonString(evidence, "evidence_id", "id"), pointer)
+	if objectID == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "runtime_evidence", objectID)
 }
 
 func panopticonEvidencePointer(evidence map[string]any) string {

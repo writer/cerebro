@@ -99,6 +99,59 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 	}
 }
 
+func TestTelemetryFieldsDoNotEmitRawUserAgent(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+	patterns := []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		{name: `raw user-agent telemetry key`, re: regexp.MustCompile(`Key:\s*"(http\.request\.header\.user_agent|http\.user_agent)"`)},
+	}
+	var matches []string
+	err := filepath.WalkDir(repoRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".idea", ".vscode", "bin", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		if filepath.Clean(path) == filepath.Clean(currentFile) {
+			return nil
+		}
+		contents, err := os.ReadFile(path) // #nosec G304 G122 -- path comes from WalkDir under the repository root in a repository-static lint test.
+		if err != nil {
+			return err
+		}
+		for _, pattern := range patterns {
+			if pattern.re.Match(contents) {
+				rel, err := filepath.Rel(repoRoot, path)
+				if err != nil {
+					rel = path
+				}
+				matches = append(matches, rel+" ("+pattern.name+")")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repo: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("telemetry raw user-agent fields are forbidden; emit presence/family only: %s", strings.Join(matches, ", "))
+	}
+}
+
 func TestParseTraceParentValidatesTraceFlags(t *testing.T) {
 	traceID, spanID, ok := ParseTraceParent("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
 	if !ok {
@@ -169,7 +222,7 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		IncrementMain(ctx, "cache.redis.hit.count", 2)
 		End(span, "completed", Attrs(Field{Key: "explicit_end_attr", Value: "kept"}))
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.main")
+	payload := telemetryPayloadByName(t, stderr, "test.main")
 	if payload["main"] != true || payload["wide_event"] != true {
 		t.Fatalf("main span flags missing: %#v", payload)
 	}
@@ -252,7 +305,7 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		_, span := StartMain(context.Background(), "test.runtime", Attrs())
 		End(span, "completed", Attrs())
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.runtime")
+	payload := telemetryPayloadByName(t, stderr, "test.runtime")
 	for key, want := range map[string]any{
 		"service.name":                "cerebro-api",
 		"service.namespace":           "cerebro",
@@ -288,7 +341,7 @@ func TestMainSpanDependencyAndPhaseRollups(t *testing.T) {
 		))
 		End(span, "failed", Attrs(Field{Key: "error_kind", Value: "boom_kind"}))
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.rollups")
+	payload := telemetryPayloadByName(t, stderr, "test.rollups")
 	expected := map[string]any{
 		"event.outcome":                            "failure",
 		"operation.status":                         "failed",
@@ -333,7 +386,7 @@ func TestRuntimeAttributesDoNotInferAWSFromOTELCloudRegion(t *testing.T) {
 		_, span := StartMain(context.Background(), "test.runtime.otel-region", Attrs())
 		End(span, "completed", Attrs())
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.runtime.otel-region")
+	payload := telemetryPayloadByName(t, stderr, "test.runtime.otel-region")
 	for key, want := range map[string]any{
 		"cloud.provider": "unknown",
 		"cloud.region":   "europe-west1",
@@ -448,7 +501,7 @@ func TestConfigureOpenTelemetryDisabledLeavesNoopProviderUsable(t *testing.T) {
 	End(span, "completed", Attrs())
 }
 
-func telemetryPayloadByKindAndName(t *testing.T, stderr string, kind string, name string) map[string]any {
+func telemetryPayloadByName(t *testing.T, stderr string, name string) map[string]any {
 	t.Helper()
 	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -458,11 +511,11 @@ func telemetryPayloadByKindAndName(t *testing.T, stderr string, kind string, nam
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
 			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
 		}
-		if payload["kind"] == kind && payload["name"] == name {
+		if payload["kind"] == "span_end" && payload["name"] == name {
 			return payload
 		}
 	}
-	t.Fatalf("telemetry payload kind=%q name=%q not found in stderr: %s", kind, name, stderr)
+	t.Fatalf("telemetry span_end payload name=%q not found in stderr: %s", name, stderr)
 	return nil
 }
 

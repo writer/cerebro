@@ -171,16 +171,7 @@ func slackUserAccountPrivileged(attributes map[string]string) bool {
 }
 
 func slackUserMFAEnabled(attributes map[string]string) bool {
-	if parseBoolAttribute(attributes, "has_2fa") || parseBoolAttribute(attributes, "has_mfa") {
-		return true
-	}
-	if value, ok := parseOptionalBoolAttribute(attributes, "has_2fa"); ok {
-		return value
-	}
-	if value, ok := parseOptionalBoolAttribute(attributes, "has_mfa"); ok {
-		return value
-	}
-	return false
+	return parseBoolAttribute(attributes, "has_2fa") || parseBoolAttribute(attributes, "has_mfa")
 }
 
 func slackUserAccountDeactivated(attributes map[string]string) bool {

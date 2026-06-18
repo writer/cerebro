@@ -66,7 +66,7 @@ type RateLimitConfig struct {
 	Enabled           bool
 	RequestsPerSecond float64
 	BurstSize         int
-	// ExemptPaths are route patterns that bypass rate limiting (e.g., health, metrics)
+	// ExemptPaths are route patterns that bypass rate limiting (e.g., liveness, metrics)
 	ExemptPaths []string
 }
 
@@ -262,7 +262,7 @@ type MCPOAuthUpstreamConfig struct {
 }
 
 // RequestOriginConfig controls how bootstrap reconstructs client IPs and public
-// request URLs when requests traverse reverse proxies.
+// request URLs when requests traverse explicitly trusted reverse proxies.
 type RequestOriginConfig struct {
 	PublicOrigin      string
 	TrustedProxyCIDRs []string
@@ -662,7 +662,7 @@ func Load() (Config, error) {
 	}
 	cfg.RateLimit.ExemptPaths = parseCSV(os.Getenv("CEREBRO_RATE_LIMIT_EXEMPT_PATHS"))
 	if len(cfg.RateLimit.ExemptPaths) == 0 {
-		cfg.RateLimit.ExemptPaths = []string{"/health", "/healthz", "/livez", "/metrics", "/.well-known/"}
+		cfg.RateLimit.ExemptPaths = []string{"/healthz", "/livez", "/metrics", "/.well-known/"}
 	}
 
 	return cfg, nil
