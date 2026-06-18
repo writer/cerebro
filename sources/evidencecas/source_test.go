@@ -201,6 +201,53 @@ func TestReadObjectRefsPreservesCanonicalCorrelationAndLegacyMetadata(t *testing
 	}
 }
 
+func TestReadObjectRefsEmitsCanonicalCaseURNCorrelation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"objects": []map[string]any{
+				{
+					"ref_type":         "evidencecas.manifest.v2",
+					"uri":              "evidencecas://cases/case-789/evidence/evidence-789",
+					"digest":           "sha256case",
+					"manifest_version": 2,
+					"updated_at":       "2026-06-06T00:00:00Z",
+					"metadata": map[string]any{
+						"tenant_id":        "tenant-789",
+						"source_system":    "iris",
+						"source_event_id":  "iris-event-789",
+						"evidence_id":      "evidence-789",
+						"case_id":          "case-789",
+						"case_urn":         "urn:cerebro:tenant-789:case:case-789",
+						"case_link_status": "linked",
+						"resource_urn":     "urn:cerebro:tenant-789:case:case-789",
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant-789",
+		"base_url":  server.URL,
+		"token":     "cache-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["case_urn"]; got != "urn:cerebro:tenant-789:case:case-789" {
+		t.Fatalf("case_urn = %q, want urn:cerebro:tenant-789:case:case-789", got)
+	}
+}
+
 func TestSourceCatalogRequiresSourceSystem(t *testing.T) {
 	specBytes, err := catalogFS.ReadFile("catalog.yaml")
 	if err != nil {

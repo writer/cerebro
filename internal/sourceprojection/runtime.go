@@ -21,6 +21,8 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	resourceURN := firstNonEmpty(attributes["resource_urn"], attributes["workload_urn"])
 	explicitResourceURN := resourceURN != ""
 	resourceLinkStatusInput := strings.ToLower(strings.TrimSpace(attributes["resource_link_status"]))
+	resourceContextSupplied := firstNonEmpty(attributes["resource_urn"], attributes["workload_urn"], attributes["resource_id"]) != "" ||
+		strings.EqualFold(strings.TrimSpace(attributes["unresolved_resource_context"]), "true")
 	resourceUnresolved := strings.EqualFold(strings.TrimSpace(attributes["unresolved_resource_context"]), "true") || resourceLinkStatusInput == "missing"
 	if resourceURN == "" && !isEvidenceCAS && !resourceUnresolved {
 		resourceURN = projectionURN(tenantID, "runtime_"+normalizeCloudType(firstNonEmpty(attributes["resource_type"], "resource")), firstNonEmpty(attributes["resource_id"], attributes["resource_name"], evidenceID))
@@ -42,6 +44,11 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			caseURN = firstNonEmpty(attributes["case_urn"], projectionURN(tenantID, "case", caseID))
 		}
 	}
+	evidenceLinkState := "linked"
+	resourceLinkUnresolved := resourceLinkStatus == "missing" && (!isEvidenceCAS || resourceContextSupplied)
+	if resourceLinkUnresolved || caseLinkStatus == "missing" {
+		evidenceLinkState = "unresolved"
+	}
 	if evidenceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        evidenceURN,
@@ -52,6 +59,7 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			Attributes: map[string]string{
 				"case_id":                       caseID,
 				"case_link_status":              caseLinkStatus,
+				"evidence_link_state":           evidenceLinkState,
 				"confidence":                    strings.TrimSpace(attributes["confidence"]),
 				"detector_id":                   strings.TrimSpace(attributes["detector_id"]),
 				"evidence_cas_blocks_count":     strings.TrimSpace(attributes["evidence_cas_blocks_count"]),

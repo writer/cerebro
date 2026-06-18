@@ -67,6 +67,7 @@ func New() (*Source, error) {
 					"occurred_at":                   "metadata.occurred_at|occurred_at",
 					"observed_at":                   "metadata.observed_at|observed_at|updated_at",
 					"case_id":                       "metadata.case_id",
+					"case_urn":                      "metadata.case_urn",
 					"case_link_status":              "metadata.case_link_status",
 					"resource_entity_type":          "metadata.resource_entity_type",
 					"resource_id":                   "metadata.resource_id|metadata.case_id",
