@@ -54,7 +54,7 @@ func TestProjectSDKIntegrationPosture(t *testing.T) {
 
 	resourceURN := "urn:cerebro:writer:runtime:writer-sdk-jira-posture:workspace:writer"
 	integrationURN := "urn:cerebro:writer:sdk_integration:jira"
-	postureURN := "urn:cerebro:writer:sdk_integration_posture:jira:sso_enforced:runtime/writer-sdk-jira-posture/workspace/writer"
+	postureURN := "urn:cerebro:writer:sdk_integration_posture:jira:sso_enforced:resource-5035f700434eea4e6f45818655dcdc65"
 
 	resource := state.entities[resourceURN]
 	if resource == nil || resource.EntityType != "workspace" {
@@ -100,6 +100,14 @@ func TestSDKPostureResourceKeyKeepsUnscopedResourceDistinct(t *testing.T) {
 	unscoped := sdkPostureResourceKey("writer", "urn:cerebro:foo:bar")
 	if scoped == unscoped {
 		t.Fatalf("tenant-scoped and unscoped resource keys collided at %q", scoped)
+	}
+}
+
+func TestSDKPostureResourceKeyAvoidsSlashColonCollision(t *testing.T) {
+	slashSegment := sdkPostureResourceKey("writer", "urn:cerebro:writer:github_code_repository:writer/cerebro")
+	colonSegment := sdkPostureResourceKey("writer", "urn:cerebro:writer:github_code_repository:writer:cerebro")
+	if slashSegment == colonSegment {
+		t.Fatalf("slash and colon resource keys collided at %q", slashSegment)
 	}
 }
 

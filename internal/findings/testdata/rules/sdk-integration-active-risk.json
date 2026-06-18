@@ -49,7 +49,7 @@
       "summary": "SDK integration jira reports Writer Jira at risk for control sso_enforced",
       "event_ids": ["sdk-posture-at-risk"],
       "attributes": {
-        "sdk_posture_urn": "urn:cerebro:writer:sdk_integration_posture:jira:sso_enforced:runtime/writer-sdk-jira-posture/workspace/writer",
+        "sdk_posture_urn": "urn:cerebro:writer:sdk_integration_posture:jira:sso_enforced:resource-5035f700434eea4e6f45818655dcdc65",
         "integration": "jira",
         "control": "sso_enforced",
         "resource_urn": "urn:cerebro:writer:runtime:writer-sdk-jira-posture:workspace:writer",

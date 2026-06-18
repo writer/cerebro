@@ -1,6 +1,8 @@
 package sourceprojection
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -78,7 +80,7 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return projectedEntities, projectedLinks, nil
 }
 
-func sdkPostureResourceKey(tenantID string, resourceURN string) string {
-	trimmed := strings.TrimPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
-	return strings.ReplaceAll(trimmed, ":", "/")
+func sdkPostureResourceKey(_ string, resourceURN string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(resourceURN)))
+	return "resource-" + hex.EncodeToString(sum[:16])
 }

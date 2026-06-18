@@ -2,6 +2,8 @@ package findings
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -171,9 +173,13 @@ func sdkIntegrationPostureFindingURN(tenantID string, integration string, contro
 	if strings.Contains(integration, ":") || strings.Contains(control, ":") {
 		return ""
 	}
-	key := strings.TrimPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
-	key = strings.ReplaceAll(key, ":", "/")
+	key := sdkIntegrationPostureResourceKey(resourceURN)
 	return fmt.Sprintf("urn:cerebro:%s:sdk_integration_posture:%s:%s:%s", tenantID, integration, control, key)
+}
+
+func sdkIntegrationPostureResourceKey(resourceURN string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(resourceURN)))
+	return "resource-" + hex.EncodeToString(sum[:16])
 }
 
 func sdkIntegrationActiveRiskAnchor(attributes map[string]string) string {

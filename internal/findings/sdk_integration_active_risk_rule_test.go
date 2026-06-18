@@ -124,3 +124,14 @@ func TestSDKIntegrationActiveRiskURNKeepsUnscopedResourceDistinct(t *testing.T) 
 		t.Fatalf("tenant-scoped and unscoped resource URNs collided at %q", scoped)
 	}
 }
+
+func TestSDKIntegrationActiveRiskURNAvoidsSlashColonCollision(t *testing.T) {
+	slashSegment := sdkIntegrationPostureFindingURN("writer", "jira", "sso_enforced", "urn:cerebro:writer:github_code_repository:writer/cerebro")
+	colonSegment := sdkIntegrationPostureFindingURN("writer", "jira", "sso_enforced", "urn:cerebro:writer:github_code_repository:writer:cerebro")
+	if slashSegment == "" || colonSegment == "" {
+		t.Fatalf("posture URNs = %q/%q, want non-empty values", slashSegment, colonSegment)
+	}
+	if slashSegment == colonSegment {
+		t.Fatalf("slash and colon resource URNs collided at %q", slashSegment)
+	}
+}
