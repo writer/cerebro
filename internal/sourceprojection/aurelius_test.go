@@ -182,6 +182,43 @@ func TestProjectAureliusFindingRecordsPromotedRiskEvidence(t *testing.T) {
 	}
 }
 
+func TestProjectAureliusFindingRecordsPayloadPromotedTrack(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-finding-promoted-track-payload",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.finding",
+		Attributes: map[string]string{
+			"exception_status": "none",
+			"promoted":         "true",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":         "CVE-2026-1111",
+			"image_digest":   "sha256:c6b86af5b3d40000",
+			"image_uri":      "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000",
+			"package":        "openssl",
+			"promoted_track": "prod",
+			"severity":       "high",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
+	link := state.links[imageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
+	if link == nil {
+		t.Fatalf("affected_by link missing; links=%v", state.links)
+	}
+	if got := link.Attributes["promoted_track"]; got != "prod" {
+		t.Fatalf("promoted_track = %q, want prod from payload fallback", got)
+	}
+}
+
 func TestProjectAureliusVerdictSupersededReplacementIsDeterministic(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

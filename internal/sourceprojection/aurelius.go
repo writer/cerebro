@@ -379,6 +379,7 @@ func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]str
 		"promoted",
 		"promoted_at",
 		"promoted_by",
+		"promoted_track",
 		"project_id",
 		"reason",
 		"registry",
