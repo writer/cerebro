@@ -78,7 +78,7 @@ func TestMiddlewareReturnsTraceIDHeader(t *testing.T) {
 }
 
 func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
-	_, stderr := captureObservabilityOutput(t, func() {
+	stderr := captureObservabilityOutput(t, func() {
 		handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			telemetry.AnnotateMain(r.Context(), telemetry.Attrs(
 				telemetry.Field{Key: "tenant_id", Value: "tenant-a"},
@@ -178,6 +178,36 @@ func TestMiddlewareMarksServerErrorsOnOpenTelemetrySpan(t *testing.T) {
 	}
 }
 
+func TestMiddlewareRecordsPanicPayloadAndStack(t *testing.T) {
+	stderr := captureObservabilityOutput(t, func() {
+		handler := Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			panic("boom")
+		}))
+		recorder := httptest.NewRecorder()
+
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+		if recorder.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+		}
+	})
+
+	payload := observabilityTelemetryPayload(t, stderr, "span_end", "http.server")
+	if got := payload["error_kind"]; got != "panic" {
+		t.Fatalf("error_kind = %#v, want panic; payload=%#v", got, payload)
+	}
+	if got := payload["exception.message"]; got != "boom" {
+		t.Fatalf("exception.message = %#v, want boom; payload=%#v", got, payload)
+	}
+	if got := payload["exception.type"]; got != "string" {
+		t.Fatalf("exception.type = %#v, want string; payload=%#v", got, payload)
+	}
+	stack, ok := payload["exception.stacktrace"].(string)
+	if !ok || !strings.Contains(stack, "internal/observability/metrics.go") {
+		t.Fatalf("exception.stacktrace = %#v, want middleware stack; payload=%#v", payload["exception.stacktrace"], payload)
+	}
+}
+
 func TestStatusRecorderPreservesFlushAndUnwrap(t *testing.T) {
 	inner := &flushResponseWriter{headers: http.Header{}}
 	recorder := &statusRecorder{ResponseWriter: inner, status: http.StatusOK}
@@ -223,7 +253,7 @@ func (w *flushResponseWriter) Flush() {
 	w.flushed = true
 }
 
-func captureObservabilityOutput(t *testing.T, fn func()) (string, string) {
+func captureObservabilityOutput(t *testing.T, fn func()) string {
 	t.Helper()
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
@@ -249,15 +279,14 @@ func captureObservabilityOutput(t *testing.T, fn func()) (string, string) {
 	if err := stderrWriter.Close(); err != nil {
 		t.Fatalf("close stderr writer: %v", err)
 	}
-	stdout, err := io.ReadAll(stdoutReader)
-	if err != nil {
+	if _, err := io.ReadAll(stdoutReader); err != nil {
 		t.Fatalf("read stdout: %v", err)
 	}
 	stderr, err := io.ReadAll(stderrReader)
 	if err != nil {
 		t.Fatalf("read stderr: %v", err)
 	}
-	return string(stdout), string(stderr)
+	return string(stderr)
 }
 
 func observabilityTelemetryPayload(t *testing.T, stderr string, kind string, name string) map[string]any {

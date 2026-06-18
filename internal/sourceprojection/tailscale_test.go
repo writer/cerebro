@@ -145,6 +145,31 @@ func TestProjectTailscaleDeviceOwnerStubKeepsUserIDTyped(t *testing.T) {
 	}
 }
 
+func TestProjectTailscaleUserAndDeviceShareUserIDURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, event := range []*cerebrov1.EventEnvelope{
+		tailscaleTestEvent("ts-user-canonical", "tailscale.user", map[string]string{
+			"user_id": "user-1", "login_name": "alice@writer.com", "email": "alice@writer.com", "role": "admin",
+		}),
+		tailscaleTestEvent("ts-device-canonical-owner", "tailscale.device", map[string]string{
+			"device_id": "device-1", "user_id": "user-1", "owner_email": "alice@writer.com", "authorized": "true",
+		}),
+	} {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	if entity := state.entities[userURN]; entity == nil || entity.Attributes["email"] != "alice@writer.com" || entity.Attributes["user_id"] != "user-1" {
+		t.Fatalf("canonical user entity missing attrs: %#v", entity)
+	}
+	if split := state.entities["urn:cerebro:writer:tailscale_user:alice@writer.com"]; split != nil {
+		t.Fatalf("device owner created split user entity: %#v", split)
+	}
+}
+
 func TestProjectTailscaleDeviceDeauthorizationRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

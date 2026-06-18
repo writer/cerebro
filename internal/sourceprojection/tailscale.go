@@ -16,7 +16,7 @@ func tailscaleUserURN(tenantID string, userID string) string {
 }
 
 func tailscaleUserKey(attrs map[string]string) string {
-	return firstNonEmpty(attrs["login_name"], attrs["email"], attrs["owner_email"], attrs["user_id"])
+	return firstNonEmpty(attrs["user_id"], attrs["login_name"], attrs["email"], attrs["owner_email"])
 }
 
 func tailscaleDeviceURN(tenantID string, deviceID string) string {

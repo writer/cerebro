@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,6 +105,7 @@ func Middleware(next http.Handler) http.Handler {
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		defer func() {
 			if recovered := recover(); recovered != nil {
+				panicAttrs := panicTelemetryAttributes(recovered)
 				durationSeconds := time.Since(started).Seconds()
 				labels := map[string]string{
 					"method":      method,
@@ -114,16 +116,15 @@ func Middleware(next http.Handler) http.Handler {
 				Default.Add("cerebro_http_request_duration_seconds_sum", labels, durationSeconds)
 				Default.Inc("cerebro_http_request_duration_seconds_count", labels)
 				recordOTELHTTPServerRequest(ctx, labels, http.StatusInternalServerError, durationSeconds)
+				if !recorder.wroteHeader {
+					http.Error(recorder, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
 				telemetry.Event(ctx, "http.server.error", telemetry.Attrs(
 					telemetry.Field{Key: "http.request.method", Value: method},
 					telemetry.Field{Key: "http.route", Value: route},
 					telemetry.Field{Key: "http.response.status_code", Value: http.StatusInternalServerError},
-					telemetry.Field{Key: "error_kind", Value: "panic"},
-				))
-				telemetry.End(span, "failed", httpResponseWideAttributes(recorder).WithField(telemetry.Field{Key: "error_kind", Value: "panic"}))
-				if !recorder.wroteHeader {
-					http.Error(recorder, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				}
+				).With(panicAttrs))
+				telemetry.End(span, "failed", httpResponseWideAttributes(recorder).With(panicAttrs))
 			}
 		}()
 		next.ServeHTTP(recorder, r)
@@ -150,6 +151,15 @@ func Middleware(next http.Handler) http.Handler {
 		}
 		telemetry.End(span, status, httpResponseWideAttributes(recorder))
 	})
+}
+
+func panicTelemetryAttributes(recovered any) telemetry.Attributes {
+	return telemetry.Attrs(
+		telemetry.Field{Key: "error_kind", Value: "panic"},
+		telemetry.Field{Key: "exception.type", Value: fmt.Sprintf("%T", recovered)},
+		telemetry.Field{Key: "exception.message", Value: fmt.Sprint(recovered)},
+		telemetry.Field{Key: "exception.stacktrace", Value: string(debug.Stack())},
+	)
 }
 
 func recordOTELHTTPServerRequest(ctx context.Context, labels map[string]string, statusCode int, durationSeconds float64) {
