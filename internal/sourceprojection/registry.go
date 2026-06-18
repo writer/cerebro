@@ -447,6 +447,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"anthropic.compliance_organization_setting":     anthropicGovernanceControlProjections,
 	"anthropic.compliance_organization_user":        anthropicUserProjections,
 	"anthropic.compliance_role":                     anthropicComplianceRoleProjections,
+	"anthropic.compliance_role_permission":          anthropicComplianceRolePermissionProjections,
 	"anthropic.cost_report":                         genericInventoryProjections,
 	"anthropic.external_key":                        anthropicCredentialProjections,
 	"anthropic.federation_issuer":                   anthropicFederationIssuerProjections,
