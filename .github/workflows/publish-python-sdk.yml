@@ -45,6 +45,7 @@ jobs:
           DISPATCH_TARGET_ENVIRONMENT: ${{ github.event.client_payload.target_environment || '' }}
           INPUT_TAG: ${{ github.event.inputs.release_tag || '' }}
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
