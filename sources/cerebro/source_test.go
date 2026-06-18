@@ -114,6 +114,9 @@ func TestReadAccessTelemetryArchives(t *testing.T) {
 	if pull.Events[0].GetAttributes()["actor_user"] != "ci@example.com" || pull.Events[0].GetAttributes()["source_ip"] != "198.51.100.7" {
 		t.Fatalf("first event attrs = %#v", pull.Events[0].GetAttributes())
 	}
+	if pull.Events[0].GetAttributes()["credential_id"] != "cred-audit-request-1" || pull.Events[0].GetAttributes()["scopes"] != "cerebro.cosmo.security.read,cerebro.findings.write" {
+		t.Fatalf("first event access attrs = %#v", pull.Events[0].GetAttributes())
+	}
 	if pull.Events[1].GetAttributes()["outcome_result"] != "denied" || pull.Events[1].GetAttributes()["sensitive_action"] != "true" {
 		t.Fatalf("second event attrs = %#v", pull.Events[1].GetAttributes())
 	}
@@ -203,8 +206,12 @@ func accessTelemetry(requestID string, tenantID string, outcome string, route st
 		"requested_tenant_id":   tenantID,
 		"principal":             principal,
 		"auth_mode":             "api_key",
+		"client_id":             "client-" + requestID,
 		"client_ip":             "198.51.100.7",
+		"credential_id":         "cred-" + requestID,
 		"request_id":            requestID,
+		"required_scopes":       []any{"cerebro.cosmo.security.read"},
+		"scopes":                []any{"cerebro.cosmo.security.read", "cerebro.findings.write"},
 		"sensitive_action":      strings.HasPrefix(route, "POST"),
 	}
 }
