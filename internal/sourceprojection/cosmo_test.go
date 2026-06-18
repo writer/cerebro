@@ -96,7 +96,10 @@ func TestProjectCosmoFactLinksPayloadSourceSession(t *testing.T) {
 	}
 	factURN := cosmoTestURN("cosmo_fact", "risk:key")
 	sessionURN := cosmoTestURN("cosmo_session", "payload-thread-1")
-	assertCosmoProjectedEntity(t, entities, factURN, "cosmo.fact")
+	fact := cosmoProjectedEntity(t, entities, factURN, "cosmo.fact")
+	if got := fact.Attributes["source"]; got != "session:payload-thread-1" {
+		t.Fatalf("fact source attribute = %q, want payload source", got)
+	}
 	session := cosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
 	if got := session.Attributes["ticket_id"]; got != "payload-thread-1" {
 		t.Fatalf("session ticket_id attribute = %q, want raw payload session id", got)
