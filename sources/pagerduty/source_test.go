@@ -100,10 +100,10 @@ func TestReadPagerDutyResponderTopologyKinds(t *testing.T) {
 			name:   "integration",
 			family: "integration",
 			kind:   "pagerduty.integration",
-			path:   "/services/default/integrations",
+			path:   "/services/PS1/integrations",
 			response: map[string]any{"integrations": []map[string]any{{
 				"id": "PI1", "name": "Datadog", "summary": "Datadog integration",
-				"service": map[string]any{"id": "PS1", "summary": "Checkout API"},
+				"service": map[string]any{"id": "PS-STALE", "summary": "Checkout API"},
 				"vendor":  map[string]any{"id": "PV1", "summary": "Datadog"},
 			}}},
 			want: map[string]string{
@@ -136,7 +136,7 @@ func TestReadPagerDutyResponderTopologyKinds(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "token": "pagerduty-token"}
+			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "service_id": "PS1", "token": "pagerduty-token"}
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
