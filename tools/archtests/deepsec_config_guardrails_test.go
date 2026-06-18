@@ -76,6 +76,8 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 		{name: "brace excludes internal", ignored: "{api,vendor}/**", forbidden: "internal/"},
 		{name: "multiple brace groups includes internal", ignored: "{vendor,code}/{api,internal}/**", forbidden: "internal/", want: true},
 		{name: "multiple brace groups excludes docs", ignored: "{vendor,code}/{api,internal}/**", forbidden: "docs/"},
+		{name: "nested brace group includes sources", ignored: "{{api,sources},vendor}/**", forbidden: "sources/", want: true},
+		{name: "nested brace group excludes internal", ignored: "{{api,sources},vendor}/**", forbidden: "internal/"},
 		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
 		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
 		{name: "allowed vendor", ignored: "vendor/**", forbidden: "internal/"},
@@ -159,16 +161,15 @@ func deepsecIgnorePathCandidates(pattern string) []string {
 			add(candidate)
 			return
 		}
-		endOffset := strings.Index(candidate[start+1:], "}")
-		if endOffset < 0 {
+		end := deepsecClosingBraceIndex(candidate, start)
+		if end < 0 {
 			add(candidate)
 			return
 		}
 		add(candidate)
-		end := start + 1 + endOffset
 		prefix := candidate[:start]
 		suffix := candidate[end+1:]
-		for _, option := range strings.Split(candidate[start+1:end], ",") {
+		for _, option := range deepsecBraceOptions(candidate[start+1 : end]) {
 			option = strings.TrimSpace(option)
 			if option == "" {
 				continue
@@ -178,4 +179,43 @@ func deepsecIgnorePathCandidates(pattern string) []string {
 	}
 	expand(pattern)
 	return candidates
+}
+
+func deepsecClosingBraceIndex(pattern string, start int) int {
+	depth := 0
+	for i := start; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func deepsecBraceOptions(group string) []string {
+	options := []string{}
+	depth := 0
+	start := 0
+	for i := 0; i < len(group); i++ {
+		switch group[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				options = append(options, group[start:i])
+				start = i + 1
+			}
+		}
+	}
+	options = append(options, group[start:])
+	return options
 }
