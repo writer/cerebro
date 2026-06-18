@@ -109,6 +109,71 @@ func TestClientCredentialsAcceptsHashedClientSecret(t *testing.T) {
 	}
 }
 
+func TestClientCredentialsDropsRolesWhenExplicitScopeRequested(t *testing.T) {
+	var issuedGrant AccessGrant
+	service, err := NewService(config.MCPOAuthConfig{
+		Resource:  "https://cerebro.example/api/v1/mcp",
+		AccessTTL: time.Minute,
+		Clients: []config.MCPOAuthClient{{
+			ClientID:       "panopticon",
+			ClientSecret:   "client-secret",
+			GrantTypes:     []string{"client_credentials"},
+			AllowedTenants: []string{"writer"},
+			Roles:          []string{"cerebro.connector_manager"},
+		}},
+	}, &replayRefreshStore{}, func(_ context.Context, grant AccessGrant, _ time.Duration, _ time.Time) (string, error) {
+		issuedGrant = grant
+		return "access-token", nil
+	}, WithOIDCProvider(stubOIDCProvider{}))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, err = service.Token(context.Background(), "Basic "+base64.StdEncoding.EncodeToString([]byte("panopticon:client-secret")), url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example/api/v1/mcp"},
+		"scope":      {ScopeSecurityRead},
+	})
+	if err != nil {
+		t.Fatalf("Token error = %v", err)
+	}
+	if len(issuedGrant.Roles) != 0 {
+		t.Fatalf("explicit-scope token roles = %#v, want none so scope request narrows grant", issuedGrant.Roles)
+	}
+}
+
+func TestClientCredentialsKeepsRolesWhenScopeDefaults(t *testing.T) {
+	var issuedGrant AccessGrant
+	service, err := NewService(config.MCPOAuthConfig{
+		Resource:  "https://cerebro.example/api/v1/mcp",
+		AccessTTL: time.Minute,
+		Clients: []config.MCPOAuthClient{{
+			ClientID:       "panopticon",
+			ClientSecret:   "client-secret",
+			GrantTypes:     []string{"client_credentials"},
+			AllowedTenants: []string{"writer"},
+			Roles:          []string{"cerebro.connector_manager"},
+		}},
+	}, &replayRefreshStore{}, func(_ context.Context, grant AccessGrant, _ time.Duration, _ time.Time) (string, error) {
+		issuedGrant = grant
+		return "access-token", nil
+	}, WithOIDCProvider(stubOIDCProvider{}))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, err = service.Token(context.Background(), "Basic "+base64.StdEncoding.EncodeToString([]byte("panopticon:client-secret")), url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example/api/v1/mcp"},
+	})
+	if err != nil {
+		t.Fatalf("Token error = %v", err)
+	}
+	if len(issuedGrant.Roles) != 1 || issuedGrant.Roles[0] != "cerebro.connector_manager" {
+		t.Fatalf("default-scope token roles = %#v, want connector manager role", issuedGrant.Roles)
+	}
+}
+
 func TestRegisterClientEnforcesDynamicClientLimit(t *testing.T) {
 	store := &limitedClientStore{err: ErrOAuthClientLimitExceeded}
 	service, err := NewService(config.MCPOAuthConfig{
@@ -145,7 +210,7 @@ func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 		Subject: "user-1",
 		Email:   "user@example.com",
 		Groups:  []string{"secops"},
-	}, "droid", []string{ScopeSecurityRead})
+	}, "droid", []string{ScopeSecurityRead}, false)
 	if err != nil {
 		t.Fatalf("entitlementForIdentity error = %v", err)
 	}
@@ -156,10 +221,45 @@ func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 	_, err = service.entitlementForIdentity(Identity{
 		Subject: "user-2",
 		Groups:  []string{"engineering"},
-	}, "droid", []string{ScopeSecurityRead})
+	}, "droid", []string{ScopeSecurityRead}, false)
 	var oauthErr *OAuthError
 	if !errors.As(err, &oauthErr) || oauthErr.Code != "access_denied" {
 		t.Fatalf("missing entitlement error = %v, want access_denied", err)
+	}
+}
+
+func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Groups:         []string{"secops"},
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+			Roles:          []string{"cerebro.connector_manager"},
+		}},
+	}}
+
+	narrowed, err := service.entitlementForIdentity(Identity{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Groups:  []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, true)
+	if err != nil {
+		t.Fatalf("entitlementForIdentity explicit scope error = %v", err)
+	}
+	if len(narrowed.Roles) != 0 {
+		t.Fatalf("explicit-scope entitlement roles = %#v, want none so scope request narrows grant", narrowed.Roles)
+	}
+
+	defaulted, err := service.entitlementForIdentity(Identity{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Groups:  []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("entitlementForIdentity default scope error = %v", err)
+	}
+	if len(defaulted.Roles) != 1 || defaulted.Roles[0] != "cerebro.connector_manager" {
+		t.Fatalf("default-scope entitlement roles = %#v, want connector manager role", defaulted.Roles)
 	}
 }
 
