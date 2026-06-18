@@ -135,9 +135,10 @@ type graphIngestRuntimeRunnerResult struct {
 }
 
 type graphIngestRunsOptions struct {
-	RuntimeID string
-	Status    string
-	Limit     int
+	RuntimeID  string
+	RuntimeIDs []string
+	Status     string
+	Limit      int
 }
 
 type graphHealthOptions struct {
@@ -824,9 +825,10 @@ func runGraphIngestRuns(args []string) error {
 	}
 	defer logClose(closeDeps)
 	result, err := graphingest.New(nil, nil, nil, deps.GraphStore).ListRuns(ctx, graphstore.IngestRunFilter{
-		RuntimeID: options.RuntimeID,
-		Status:    options.Status,
-		Limit:     options.Limit,
+		RuntimeID:  options.RuntimeID,
+		RuntimeIDs: options.RuntimeIDs,
+		Status:     options.Status,
+		Limit:      options.Limit,
 	})
 	if err != nil {
 		return err
@@ -1357,6 +1359,8 @@ func parseGraphIngestRunsArgs(args []string) (graphIngestRunsOptions, error) {
 		switch strings.TrimSpace(key) {
 		case "runtime_id":
 			options.RuntimeID = strings.TrimSpace(value)
+		case "runtime_ids":
+			options.RuntimeIDs = appendUniqueGraphHealthValues(options.RuntimeIDs, splitCleanupValues(value))
 		case "status":
 			options.Status = strings.TrimSpace(value)
 			if !validGraphIngestRunStatus(options.Status) {

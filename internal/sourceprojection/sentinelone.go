@@ -385,12 +385,12 @@ func sentinelOneActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	if activityID == "" {
 		return nil, nil, nil
 	}
-	activityURN := projectionURN(tenant, "sentinelone_activity", activityID)
+	activityURN := projectionURN(tenant, "runtime_evidence", activityID)
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        activityURN,
 		TenantID:   tenant,
 		SourceID:   event.GetSourceId(),
-		EntityType: sentinelOneEntityActivity,
+		EntityType: "runtime.evidence",
 		Label:      firstNonEmpty(attrs["primary_description"], attrs["description"], attrs["activity_uuid"], activityID),
 		Attributes: compactAttributes(map[string]string{
 			"activity_id":           activityID,
@@ -407,7 +407,12 @@ func sentinelOneActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 			"tenant_host":           strings.TrimSpace(attrs["tenant_host"]),
 			"threat_id":             strings.TrimSpace(attrs["threat_id"]),
 			"user_id":               strings.TrimSpace(attrs["user_id"]),
+			"evidence_id":           activityID,
+			"evidence_type":         sentinelOneEntityActivity,
 			"event_id":              event.GetId(),
+			"source_event_id":       event.GetId(),
+			"source_runtime_id":     strings.TrimSpace(attrs["source_runtime_id"]),
+			"source_system":         "sentinelone",
 			"at":                    eventObservedAt(event),
 		}),
 	})

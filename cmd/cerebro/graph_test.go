@@ -153,6 +153,7 @@ func TestPrepareGraphRuntimeSourceConfigDoesNotHydrateGitHubFromLocalCLI(t *test
 func TestParseGraphIngestRunsArgs(t *testing.T) {
 	options, err := parseGraphIngestRunsArgs([]string{
 		"runtime_id=writer-github",
+		"runtime_ids=writer-github,writer-kolide",
 		"status=failed",
 		"limit=7",
 	})
@@ -161,6 +162,9 @@ func TestParseGraphIngestRunsArgs(t *testing.T) {
 	}
 	if options.RuntimeID != "writer-github" || options.Status != "failed" || options.Limit != 7 {
 		t.Fatalf("options = %#v, want runtime/status/limit", options)
+	}
+	if got, want := strings.Join(options.RuntimeIDs, ","), "writer-github,writer-kolide"; got != want {
+		t.Fatalf("RuntimeIDs = %q, want %q", got, want)
 	}
 }
 
