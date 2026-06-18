@@ -116,6 +116,27 @@ class DroidSastContextTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertIn("run id is missing", notes[0])
 
+    def test_collect_deepsec_scan_context_handles_missing_files_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / ".deepsec"
+            findings, notes = ctx.collect_deepsec_scan_context(
+                workspace,
+                "cerebro",
+                "run-1",
+                ["internal/handler.go"],
+                {"internal/handler.go": {42}},
+            )
+
+        self.assertEqual(findings, [])
+        self.assertIn("no DeepSec candidate file records found", notes[0])
+
+    def test_latest_deepsec_scan_run_handles_missing_runs_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / ".deepsec"
+            run = ctx.latest_deepsec_scan_run(workspace, "cerebro")
+
+        self.assertIsNone(run)
+
     def test_deepsec_rule_id_sanitizes_candidate_rule_text(self):
         message = ctx.deepsec_candidate_message(
             {

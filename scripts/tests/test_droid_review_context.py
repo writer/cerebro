@@ -97,6 +97,8 @@ class DroidReviewContextTests(unittest.TestCase):
             self.assertIn("Scanner Context", markdown)
             self.assertIn("deepsec", markdown)
             self.assertIn("go-ssrf", markdown)
+            self.assertNotIn("http.Get", markdown)
+            self.assertIn("source snippets withheld", markdown)
 
     def test_fixture_driven_context_contains_pass_memory_feedback(self):
         fixture_root = REPO_ROOT / "tools" / "droidreview" / "testdata" / "review_context"

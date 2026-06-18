@@ -7,6 +7,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 from pathlib import Path
 
 COMMENT_MARKER = "<!-- droid-review-context -->"
@@ -223,8 +224,20 @@ def format_sast_finding(finding: dict[str, object]) -> str:
     return (
         f"- `{finding.get('tool', '')}` `{finding.get('rule', '')}` at `{location}` "
         f"({finding.get('severity', '')}/{finding.get('confidence', '')}): "
-        f"{compact_text(str(finding.get('message') or ''))[:180]}"
+        f"{safe_sast_message(finding)}"
     )
+
+
+def safe_sast_message(finding: dict[str, object]) -> str:
+    if str(finding.get("tool") or "").lower() == "deepsec":
+        rule = sanitize_deepsec_rule(str(finding.get("rule") or "candidate"))
+        return f"DeepSec candidate signal for `{rule}`; source snippets withheld from AI context."
+    return compact_text(str(finding.get("message") or ""))[:180]
+
+
+def sanitize_deepsec_rule(value: str) -> str:
+    rule = re.sub(r"[^A-Za-z0-9_.:-]+", "-", compact_text(value)).strip("-")
+    return rule[:80] if rule else "candidate"
 
 
 def compact_text(value: str) -> str:
