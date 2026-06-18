@@ -561,6 +561,48 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         self.assertFalse(any("otel" in finding.path and finding.severity == "error" for finding in self._validate(content)))
 
+    def test_otel_rejects_plain_http_remote_endpoint(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:otelEnabled: true\n"
+            "  cerebro:otelExporterOtlpProtocol: http/protobuf\n"
+            "  cerebro:otelExporterOtlpEndpoint: http://otel-collector.example.test:4318\n"
+            "  cerebro:otelExporterOtlpInsecure: true\n"
+        )
+        self.assertTrue(any("plain HTTP OTLP endpoints are only allowed for loopback collectors" in message for message in self._messages(content)))
+
+    def test_otel_accepts_loopback_http_endpoint_with_insecure(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:otelEnabled: true\n"
+            "  cerebro:otelExporterOtlpProtocol: http/protobuf\n"
+            "  cerebro:otelExporterOtlpEndpoint: http://127.0.0.1:4318\n"
+            "  cerebro:otelExporterOtlpInsecure: true\n"
+        )
+        self.assertFalse(any("otel" in finding.path and finding.severity == "error" for finding in self._validate(content)))
+
+    def test_otel_collector_requires_image_and_config_secret(self) -> None:
+        content = BASE_STACK + "  cerebro:otelCollectorEnabled: true\n"
+        messages = self._messages(content)
+        self.assertTrue(any("otelCollectorImage is required" in message for message in messages))
+        self.assertTrue(any("otelCollectorConfigSecretName is required" in message for message in messages))
+        self.assertFalse(any("otelEnabled requires an OTLP endpoint" in message for message in messages))
+
+    def test_otel_collector_accepts_sidecar_config(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:otelCollectorEnabled: true\n"
+            "  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0\n"
+            "  cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG\n"
+        )
+        self.assertFalse(any("otel" in finding.path and finding.severity == "error" for finding in self._validate(content)))
+
+    def test_otel_collector_rejects_app_headers_secret(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:otelCollectorEnabled: true\n"
+            "  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.0\n"
+            "  cerebro:otelCollectorConfigSecretName: CEREBRO_OTEL_COLLECTOR_CONFIG\n"
+            "  cerebro:otelExporterOtlpHeadersSecretName: CEREBRO_OTEL_EXPORTER_OTLP_HEADERS\n"
+        )
+        self.assertTrue(any("ignored when otelCollectorEnabled is true" in message for message in self._messages(content)))
+
     def test_otel_accepts_string_sample_rate_from_pulumi_config(self) -> None:
         content = BASE_STACK + '  cerebro:otelTracesSampleRate: "0.25"\n'
         self.assertFalse(any("otelTracesSampleRate" in finding.path for finding in self._validate(content)))

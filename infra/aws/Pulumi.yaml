@@ -57,6 +57,30 @@ config:
     type: string
     default: ""
     description: Infisical/AWS Secrets Manager key mounted as CEREBRO_OTEL_EXPORTER_OTLP_HEADERS; use for collector/vendor auth headers
+  cerebro:otelCollectorEnabled:
+    type: boolean
+    default: false
+    description: Deploy an ADOT/OpenTelemetry Collector sidecar and point the app OTLP exporter at localhost
+  cerebro:otelCollectorImage:
+    type: string
+    default: ""
+    description: Collector image for the sidecar; must support AOT_CONFIG_CONTENT
+  cerebro:otelCollectorConfigSecretName:
+    type: string
+    default: ""
+    description: Infisical/AWS Secrets Manager key containing collector config mounted as AOT_CONFIG_CONTENT
+  cerebro:otelCollectorConfigSecretPrefix:
+    type: string
+    default: ""
+    description: Optional secret prefix for the collector config; defaults to cerebro:infisicalSecretsPrefix
+  cerebro:otelCollectorCpu:
+    type: integer
+    default: 128
+    description: CPU units reserved for the OTEL collector sidecar
+  cerebro:otelCollectorMemory:
+    type: integer
+    default: 256
+    description: Memory reservation in MB for the OTEL collector sidecar
   cerebro:otelExporterOtlpInsecure:
     type: boolean
     default: false
@@ -72,7 +96,7 @@ config:
   cerebro:otelResourceAttributes:
     type: string
     default: ""
-    description: Additional OTEL_RESOURCE_ATTRIBUTES appended after deployment.environment
+    description: Additional OTEL_RESOURCE_ATTRIBUTES appended after deployment.environment.name
   cerebro:webEnabled:
     type: boolean
     default: false
