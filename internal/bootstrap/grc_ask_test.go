@@ -72,6 +72,41 @@ LIMIT 25`,
 	}
 }
 
+func TestGRCAskAcceptsAgentEnvelopeMetadata(t *testing.T) {
+	graphStore := &stubGraphStore{
+		cypherRows: [][]ports.CypherRow{{
+			{Values: map[string]any{
+				"entity_urn":  "urn:cerebro:example:asset:alpha",
+				"entity_type": "asset",
+				"label":       "alpha",
+			}},
+		}},
+	}
+	llm := &graphagent.StubLLMClient{
+		DraftResponse: &graphagent.DraftResponse{
+			Rationale: "Finding scoped graph rows.",
+			Cypher: `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS entity_urn, e.entity_type AS entity_type, e.label AS label
+LIMIT 25`,
+		},
+		Summary: "Review `urn:cerebro:example:asset:alpha` first.",
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"tenant_id":"example","question":"What is risky?","context":{"route":"/risk-inbox","chips":[{"label":"Severity","value":"High"}]},"surface":"agent","conversation_id":"thread-1"}`)
+	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /grc/ask error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /grc/ask status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	assertSSEEventNames(t, readSSEEvents(t, resp), []string{"progress", "graph_probe", "progress", "rationale", "query_plan", "progress", "cypher", "progress", "rows", "progress", "summary", "done"})
+}
+
 func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		GraphStore: &stubGraphStore{},
