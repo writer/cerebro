@@ -333,7 +333,7 @@ func (e *askWideEvent) finish(r *http.Request, started time.Time, status int, er
 	if r != nil {
 		attrs = attrs.WithField(telemetry.Field{Key: "http.method", Value: r.Method})
 		attrs = attrs.WithField(telemetry.Field{Key: "http.route", Value: "POST /grc/ask"})
-		attrs = attrs.WithField(telemetry.Field{Key: "http.user_agent.present", Value: strings.TrimSpace(r.Header.Get("User-Agent")) != ""})
+		attrs = attrs.WithField(telemetry.Field{Key: "http.user_agent.present", Value: r.Header.Get("User-Agent") != ""})
 	}
 	telemetry.Event(r.Context(), "cerebro.grc.ask", attrs)
 	telemetry.IncrementMain(r.Context(), "grc.ask.count", 1)

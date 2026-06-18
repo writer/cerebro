@@ -470,6 +470,17 @@ func TestLoadRejectsInsecureFlagForHTTPSOTELEndpoint(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInsecureOTLPWithoutEndpoint(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
+
+	_, err := Load()
+	if !errors.Is(err, errUnsafeOTLPTransportMode) {
+		t.Fatalf("Load() error = %v, want insecure OTLP without endpoint rejection", err)
+	}
+}
+
 func TestLoadRejectsMalformedOTELEndpoint(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_OTEL_ENABLED", "true")

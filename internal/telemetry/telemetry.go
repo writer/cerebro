@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -128,8 +129,6 @@ func RuntimeAttributes() Attributes {
 
 func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 	hostname, _ := os.Hostname()
-	var memory runtime.MemStats
-	runtime.ReadMemStats(&memory)
 	resourceAttributes := parseResourceAttributes(metadata.ResourceAttributes)
 	serviceName := firstNonEmpty(
 		metadata.ServiceName,
@@ -176,13 +175,6 @@ func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 		Field{Key: "process.cpu.count", Value: runtime.NumCPU()},
 		Field{Key: "process.gomaxprocs", Value: runtime.GOMAXPROCS(0)},
 		Field{Key: "go.goroutine.count", Value: runtime.NumGoroutine()},
-		Field{Key: "go.gc.count", Value: memory.NumGC},
-		Field{Key: "go.memory.heap_alloc_bytes", Value: memory.HeapAlloc},
-		Field{Key: "go.memory.heap_sys_bytes", Value: memory.HeapSys},
-		Field{Key: "go.memory.heap_idle_bytes", Value: memory.HeapIdle},
-		Field{Key: "go.memory.heap_inuse_bytes", Value: memory.HeapInuse},
-		Field{Key: "go.memory.stack_inuse_bytes", Value: memory.StackInuse},
-		Field{Key: "go.memory.next_gc_bytes", Value: memory.NextGC},
 		Field{Key: "cloud.provider", Value: cloudProvider},
 		Field{Key: "cloud.region", Value: cloudRegion},
 		Field{Key: "cloud.platform", Value: cloudPlatform(metadata, cloudProvider)},
@@ -439,10 +431,11 @@ func MaxMain(ctx context.Context, key string, value int64) {
 }
 
 func AnnotateMainDependency(ctx context.Context, system string, component string, operation string, status string, attributes Attributes) {
-	system = boundedKeyPart(system)
+	system = strings.TrimSpace(system)
 	if system == "" {
 		system = "unknown"
 	}
+	system = boundedKeyPart(system)
 	component = strings.TrimSpace(component)
 	operation = strings.TrimSpace(operation)
 	status = strings.TrimSpace(status)
@@ -623,7 +616,7 @@ func (s *Span) increment(key string, delta int64) {
 	s.annotations[key] = next
 	s.mu.Unlock()
 	if s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
-		s.otelSpan.SetAttributes(attribute.Int64(key, next))
+		s.otelSpan.SetAttributes(otelAttribute(key, safeAttributeValue(key, next)))
 	}
 }
 
@@ -983,6 +976,9 @@ func boundString(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	if limit <= 0 || len(value) <= limit {
 		return value
+	}
+	for limit > 0 && !utf8.ValidString(value[:limit]) {
+		limit--
 	}
 	return value[:limit] + "..."
 }

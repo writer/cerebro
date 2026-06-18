@@ -162,7 +162,7 @@ Cerebro enables OTEL export when `CEREBRO_OTEL_ENABLED=true` or when an OTLP end
 | `CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace endpoint override |
 | `CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metric endpoint override |
 | `CEREBRO_OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated OTLP auth headers; mount from secrets only |
-| `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE` | Allow insecure transport only for loopback collectors |
+| `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE` | Allow insecure transport only for loopback HTTP collectors, and only when a loopback OTLP endpoint is set |
 | `CEREBRO_OTEL_TRACES_SAMPLE_RATE` | Float from `0` to `1` |
 | `CEREBRO_OTEL_METRICS_EXPORT_INTERVAL` | Duration such as `30s` or `1m` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment.name=sec-dev` |

@@ -1048,7 +1048,7 @@ func (a *App) handleRevokeConnectorCredential(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
-		writeConnectorError(w, err)
+		writeConnectorError(w, normalizeIDLookupError(err, ports.ErrConnectorCredentialNotFound))
 		return
 	}
 	updated, err := broker.Revoke(r.Context(), connectorcredentials.RevokeRequest{

@@ -35,6 +35,16 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "APOC",
 		},
 		{
+			name:   "escaped apoc function",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `apoc.convert.fromJsonMap`(e.attributes_json).source_family AS source_family LIMIT 25",
+			reason: "APOC",
+		},
+		{
+			name:   "escaped apoc sleep function",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `apoc.util.sleep`(5000) AS x LIMIT 1",
+			reason: "APOC",
+		},
+		{
 			name:   "missing limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn`,
 			reason: "LIMIT",
@@ -114,6 +124,16 @@ RETURN b.urn AS urn LIMIT 25`,
 		{
 			name:   "collect expansion before limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN collect(e.attributes_json) AS attributes LIMIT 1`,
+			reason: "row-expanding",
+		},
+		{
+			name:   "escaped collect expansion before limit",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `collect`(e.attributes_json) AS attributes LIMIT 1",
+			reason: "row-expanding",
+		},
+		{
+			name:   "escaped range expansion before limit",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `range`(1, 1000000) AS ids LIMIT 1",
 			reason: "row-expanding",
 		},
 		{

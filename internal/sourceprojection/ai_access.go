@@ -453,6 +453,9 @@ func aiCredentialProjections(event *cerebrov1.EventEnvelope, profile aiAccessPro
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	credentialID := firstNonEmpty(attrs["api_key_id"], attrs["external_key_id"], attrs["credential_id"], attrs["id"])
+	if strings.TrimSpace(credentialID) == "" {
+		return identityProjectionResult(entities, links)
+	}
 	credentialURN := projectionURN(tenantID, profile.Provider+"_credential", credentialID)
 	if credentialURN == "" {
 		return identityProjectionResult(entities, links)
@@ -877,7 +880,8 @@ func aiFederationRuleProjections(event *cerebrov1.EventEnvelope, profile aiAcces
 	ruleID := firstNonEmpty(attrs["federation_rule_id"], attrs["id"])
 	ruleURN := projectionURN(tenantID, profile.Provider+"_federation_rule", ruleID)
 	issuerURN := projectionURN(tenantID, profile.Provider+"_federation_issuer", firstNonEmpty(attrs["issuer_id"], attrs["federation_issuer_id"]))
-	serviceAccountURN := identityPrincipalURN(tenantID, profile.Provider, "service_account", attrs["service_account_id"], "")
+	serviceAccountID := strings.TrimSpace(attrs["service_account_id"])
+	serviceAccountURN := identityPrincipalURN(tenantID, profile.Provider, "service_account", serviceAccountID, "")
 	if ruleURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        ruleURN,
@@ -906,14 +910,14 @@ func aiFederationRuleProjections(event *cerebrov1.EventEnvelope, profile aiAcces
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), issuerURN, ruleURN, relationGrantsEntitlement, aiEventLinkAttributes(event, "issuer_rule")))
 	}
-	if serviceAccountURN != "" {
+	if serviceAccountID != "" && serviceAccountURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        serviceAccountURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.Provider + ".service_account",
-			Label:      attrs["service_account_id"],
-			Attributes: map[string]string{"service_account_id": attrs["service_account_id"], "principal_type": "service_account"},
+			Label:      serviceAccountID,
+			Attributes: map[string]string{"service_account_id": serviceAccountID, "principal_type": "service_account"},
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), ruleURN, serviceAccountURN, relationCanAssume, aiEventLinkAttributes(event, "federation_rule_service_account")))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), ruleURN, serviceAccountURN, relationCanImpersonate, aiEventLinkAttributes(event, "federation_rule_service_account")))

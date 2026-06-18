@@ -451,6 +451,7 @@ func sentinelOneActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 			Label:      firstNonEmpty(attrs["threat_name"], threatID),
 			Attributes: compactAttributes(map[string]string{
 				"threat_id":   threatID,
+				"threat_name": strings.TrimSpace(attrs["threat_name"]),
 				"site_id":     strings.TrimSpace(attrs["site_id"]),
 				"group_id":    strings.TrimSpace(attrs["group_id"]),
 				"tenant_host": strings.TrimSpace(attrs["tenant_host"]),

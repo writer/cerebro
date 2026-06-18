@@ -293,6 +293,7 @@ func apiTokenAttributes(settings Settings, record Record) map[string]string {
 func authorizationServerAttributes(settings Settings, record Record) map[string]string {
 	signing := nestedMap(record.mapValue("credentials"), "signing")
 	metadataLink := nestedMap(record.mapValue("_links"), "metadata")
+	jwksLink := nestedMap(record.mapValue("_links"), "jwks")
 	audiences := nonEmptyAnyStrings(record.anySlice("audiences"))
 	attrs := map[string]string{
 		"audience_count":          strconv.Itoa(len(audiences)),
@@ -305,7 +306,7 @@ func authorizationServerAttributes(settings Settings, record Record) map[string]
 		"issuer":                  record.String("issuer"),
 		"issuer_host":             urlHost(record.String("issuer")),
 		"issuer_mode":             record.String("issuerMode"),
-		"jwks_uri_host":           urlHost(firstNonEmpty(record.String("jwks_uri"), stringMap(metadataLink, "href"))),
+		"jwks_uri_host":           urlHost(firstNonEmpty(record.String("jwks_uri"), stringMap(jwksLink, "href"), stringMap(metadataLink, "href"))),
 		"kid":                     stringMap(signing, "kid"),
 		"last_updated_at":         record.String("lastUpdated"),
 		"name":                    record.String("name"),

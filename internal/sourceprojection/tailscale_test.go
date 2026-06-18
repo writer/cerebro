@@ -122,6 +122,79 @@ func TestRegistryRoutesTailscaleCoreKinds(t *testing.T) {
 	}
 }
 
+func TestProjectTailscaleDeviceOwnerStubKeepsUserIDTyped(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-owner-email", "tailscale.device", map[string]string{
+		"device_id": "device-1", "owner_email": "alice@writer.com", "authorized": "true",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:tailscale_user:alice@writer.com"
+	entity := state.entities[userURN]
+	if entity == nil {
+		t.Fatalf("tailscale owner stub missing: %#v", state.entities)
+	}
+	if got := entity.Attributes["user_id"]; got != "" {
+		t.Fatalf("owner stub user_id = %q, want empty when event has no user_id", got)
+	}
+	if got := entity.Attributes["email"]; got != "alice@writer.com" {
+		t.Fatalf("owner stub email = %q, want alice@writer.com", got)
+	}
+}
+
+func TestProjectTailscaleUserAndDeviceShareUserIDURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, event := range []*cerebrov1.EventEnvelope{
+		tailscaleTestEvent("ts-user-canonical", "tailscale.user", map[string]string{
+			"user_id": "user-1", "login_name": "alice@writer.com", "email": "alice@writer.com", "role": "admin",
+		}),
+		tailscaleTestEvent("ts-device-canonical-owner", "tailscale.device", map[string]string{
+			"device_id": "device-1", "user_id": "user-1", "owner_email": "alice@writer.com", "authorized": "true",
+		}),
+	} {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	if entity := state.entities[userURN]; entity == nil || entity.Attributes["email"] != "alice@writer.com" || entity.Attributes["user_id"] != "user-1" {
+		t.Fatalf("canonical user entity missing attrs: %#v", entity)
+	}
+	if split := state.entities["urn:cerebro:writer:tailscale_user:alice@writer.com"]; split != nil {
+		t.Fatalf("device owner created split user entity: %#v", split)
+	}
+}
+
+func TestProjectTailscaleUserURNPrefersStableUserID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-user-canonical", "tailscale.user", map[string]string{
+		"user_id":    "user-1",
+		"login_name": "alice@writer.com",
+		"email":      "alice@writer.com",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	entity := state.entities[userURN]
+	if entity == nil {
+		t.Fatalf("tailscale user entity missing at stable user_id URN: %#v", state.entities)
+	}
+	if got := entity.Attributes["login_name"]; got != "alice@writer.com" {
+		t.Fatalf("login_name = %q, want alice@writer.com", got)
+	}
+	if splitURN := "urn:cerebro:writer:tailscale_user:alice@writer.com"; state.entities[splitURN] != nil {
+		t.Fatalf("tailscale user projected split login_name URN %q: %#v", splitURN, state.entities[splitURN])
+	}
+}
+
 func TestProjectTailscaleDeviceDeauthorizationRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

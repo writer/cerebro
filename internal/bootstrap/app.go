@@ -2964,11 +2964,13 @@ func sensitiveSourceConfigKey(key string) bool {
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
 	if strings.Contains(compact, "apikey") ||
 		strings.Contains(compact, "accesskey") ||
+		strings.Contains(compact, "credential") ||
 		strings.Contains(compact, "privatekey") ||
+		strings.Contains(compact, "passphrase") ||
 		strings.Contains(compact, "signingkey") {
 		return true
 	}
-	return value == "key"
+	return value == "key" || compact == "sshkey"
 }
 
 type bootstrapErrorMapping struct {
@@ -3640,7 +3642,6 @@ func findingCandidateMessage(candidate *ports.FindingCandidateRecord) *cerebrov1
 		RuleId:             candidate.RuleID,
 		Fingerprint:        candidate.Fingerprint,
 		Status:             candidate.Status,
-		Finding:            findingMessage(candidate.Finding),
 		Evidence:           candidate.Evidence,
 		LastRunId:          candidate.LastRunID,
 		ObservationCount:   candidate.ObservationCount,

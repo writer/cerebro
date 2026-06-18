@@ -304,9 +304,6 @@ func kolideHostDeprovisioned(attributes map[string]string) bool {
 	if registered, ok := parseOptionalBoolAttribute(attributes, "registered"); ok && !registered {
 		return true
 	}
-	if managed, ok := parseOptionalBoolAttribute(attributes, "mdm_enabled"); ok && !managed {
-		return true
-	}
 	status := strings.ToLower(strings.TrimSpace(attributes["status"]))
 	_, deprovisioned := kolideHostDeprovisionedStatuses[status]
 	return deprovisioned

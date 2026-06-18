@@ -127,6 +127,9 @@ func TestGRCInventoryAccountabilityUpdatePreservesExistingScope(t *testing.T) {
 	if got := record.Attributes["existing"]; got != "kept" {
 		t.Fatalf("existing attribute = %q, want kept", got)
 	}
+	if store.listCalls != 0 {
+		t.Fatalf("ListGRCInventoryScopes calls = %d, want atomic accountability update without read-before-write", store.listCalls)
+	}
 }
 
 func TestGRCInventoryResourceScopeRejectsMalformedAssetURN(t *testing.T) {
@@ -230,7 +233,8 @@ func TestGRCInventoryScopePropagationUpdatesRuntimeResourcePolicy(t *testing.T) 
 }
 
 type stubInventoryScopeStore struct {
-	records map[string]*ports.GRCInventoryScopeRecord
+	records   map[string]*ports.GRCInventoryScopeRecord
+	listCalls int
 }
 
 func (s *stubInventoryScopeStore) Ping(context.Context) error { return nil }
@@ -244,7 +248,39 @@ func (s *stubInventoryScopeStore) UpsertGRCInventoryScope(_ context.Context, rec
 	return cloneInventoryScopeRecord(cloned), nil
 }
 
+func (s *stubInventoryScopeStore) UpdateGRCInventoryAccountability(_ context.Context, update ports.GRCInventoryAccountabilityUpdate) (*ports.GRCInventoryScopeRecord, error) {
+	if s.records == nil {
+		s.records = map[string]*ports.GRCInventoryScopeRecord{}
+	}
+	key := inventoryScopeRecordKey(update.TenantID, update.AssetURN)
+	record := cloneInventoryScopeRecord(s.records[key])
+	if record == nil {
+		record = &ports.GRCInventoryScopeRecord{
+			TenantID:   update.TenantID,
+			AssetURN:   update.AssetURN,
+			ScopeState: grcinventory.ScopeStateInScope,
+			Attributes: map[string]string{},
+		}
+	}
+	if record.Attributes == nil {
+		record.Attributes = map[string]string{}
+	}
+	if update.SourceID != "" {
+		record.SourceID = update.SourceID
+	}
+	record.UpdatedBy = update.UpdatedBy
+	for _, key := range update.ClearAttributes {
+		delete(record.Attributes, key)
+	}
+	for key, value := range update.SetAttributes {
+		record.Attributes[key] = value
+	}
+	s.records[key] = cloneInventoryScopeRecord(record)
+	return cloneInventoryScopeRecord(record), nil
+}
+
 func (s *stubInventoryScopeStore) ListGRCInventoryScopes(_ context.Context, filter ports.GRCInventoryScopeFilter) ([]*ports.GRCInventoryScopeRecord, error) {
+	s.listCalls++
 	if s.records == nil {
 		return nil, nil
 	}

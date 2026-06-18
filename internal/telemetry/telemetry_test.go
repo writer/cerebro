@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -271,10 +272,6 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		"duration.bucket",
 		"process.uptime_ms",
 		"go.goroutine.count",
-		"go.memory.heap_alloc_bytes",
-		"go.memory.heap_sys_bytes",
-		"go.memory.heap_inuse_bytes",
-		"go.memory.next_gc_bytes",
 	} {
 		if _, ok := payload[key]; !ok {
 			t.Fatalf("%s missing from wide event payload=%#v", key, payload)
@@ -286,6 +283,16 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	}
 	if got := payload["service.name"]; got != "cerebro" {
 		t.Fatalf("runtime service attr = %#v, want cerebro; payload=%#v", got, payload)
+	}
+}
+
+func TestBoundStringPreservesUTF8(t *testing.T) {
+	got := boundString("aaébb", 3)
+	if !utf8.ValidString(got) {
+		t.Fatalf("boundString returned invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Fatalf("boundString(%q) = %q, want ellipsis suffix", "aaébb", got)
 	}
 }
 

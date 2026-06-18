@@ -71,7 +71,7 @@ func New() (*Source, error) {
 					"filevault_enabled":  "filevault_enabled|filevault.filevault_enabled",
 					"is_missing":         "is_missing",
 					"agent_installed":    "agent_installed|kandji_agent.agent_installed",
-					"status":             "mdm_status|status|state",
+					"status":             "status|state|mdm_status",
 					"last_check_in_at":   "last_check_in|mdm.last_check_in|kandji_agent.last_check_in",
 					"compliance_status":  "compliance_status",
 					"agent_installed_at": "agent_installed_at|kandji_agent.install_date",

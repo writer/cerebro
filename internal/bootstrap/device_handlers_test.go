@@ -374,6 +374,7 @@ func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
 		{name: "invalid statement", err: attestation.ErrInvalidStatement, status: http.StatusBadRequest, code: "invalid_attestation"},
 		{name: "invalid chain", err: attestation.ErrChainInvalid, status: http.StatusBadRequest, code: "invalid_attestation"},
 		{name: "nonce mismatch", err: attestation.ErrNonceMismatch, status: http.StatusBadRequest, code: "invalid_attestation"},
+		{name: "dpop binding missing", err: deviceauth.ErrDPoPBindingMissing, status: http.StatusUnauthorized, code: "dpop_required"},
 		{name: "dpop verifier unavailable", err: deviceauth.ErrDPoPVerifierUnavailable, status: http.StatusServiceUnavailable, code: "dpop_unavailable"},
 	}
 	for _, tt := range tests {
@@ -637,8 +638,9 @@ func TestDeviceAuthEnrollRejectsWrongHardware(t *testing.T) {
 		Token string `json:"token"`
 	}
 	_ = json.Unmarshal(resp.Body.Bytes(), &bootstrap)
+	deviceKey := newTestDeviceDPoPKey(t)
 
-	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-DIFFERENT"}`))
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-DIFFERENT","device_key":`+deviceKey.jwkJSON+`}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
