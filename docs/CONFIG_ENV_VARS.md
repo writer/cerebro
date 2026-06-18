@@ -15,7 +15,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_RATE_LIMIT_ENABLED` | `true` outside acknowledged dev mode | Enable global API rate limiting. |
 | `CEREBRO_RATE_LIMIT_RPS` | `100` | Global API rate-limit refill rate. |
 | `CEREBRO_RATE_LIMIT_BURST` | `150` | Global API rate-limit burst size. |
-| `CEREBRO_RATE_LIMIT_EXEMPT_PATHS` | health, metrics, and well-known metadata paths | Optional comma-separated path prefixes that bypass rate limiting. |
+| `CEREBRO_RATE_LIMIT_EXEMPT_PATHS` | liveness, metrics, and well-known metadata paths | Optional comma-separated path prefixes that bypass rate limiting. |
 | `CEREBRO_APPEND_LOG_DRIVER` | inferred | Append-log driver. Supported: `jetstream`. |
 | `CEREBRO_JETSTREAM_URL` | unset | NATS JetStream URL. Setting this infers `jetstream`. |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | `events` | Subject prefix for append-log events. |
