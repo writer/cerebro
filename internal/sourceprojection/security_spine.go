@@ -189,6 +189,7 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 	}
 	toolURN := projectionURN(tenantID, "security_tool", toolID)
 	controlURN := projectionURN(tenantID, "control", firstNonEmpty(attrs["framework"], "security"), controlID)
+	coverageStatus := firstNonEmpty(attrs["coverage_status"], securityToolingMapCoverageStatus(attrs["coverage"]))
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	addEntity(entities, &ports.ProjectedEntity{URN: toolURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "security.tool", Label: toolID, Attributes: map[string]string{"tool_id": toolID}})
@@ -199,19 +200,38 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 		EntityType: "control",
 		Label:      firstNonEmpty(attrs["control_name"], controlID),
 		Attributes: compactAttributes(map[string]string{
-			"control_id":   controlID,
-			"control_name": attrs["control_name"],
-			"framework":    attrs["framework"],
-			"coverage":     attrs["coverage"],
+			"control_id":      controlID,
+			"control_name":    attrs["control_name"],
+			"framework":       attrs["framework"],
+			"coverage":        attrs["coverage"],
+			"coverage_status": coverageStatus,
+			"control_status":  attrs["control_status"],
 		}),
 	})
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), toolURN, controlURN, relationSupports, map[string]string{
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), toolURN, controlURN, relationSupports, compactAttributes(map[string]string{
 		"event_id":         event.GetId(),
 		"coverage":         attrs["coverage"],
+		"coverage_status":  coverageStatus,
 		"evidence_surface": attrs["evidence_surface"],
-	}))
+	})))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+// securityToolingMapCoverageStatus normalizes a control-mapping coverage value
+// into "covered" or "gap"; unknown or empty values stay unclassified so the
+// projection does not assert a gap from ambiguous input.
+func securityToolingMapCoverageStatus(coverage string) string {
+	switch strings.ToLower(strings.TrimSpace(coverage)) {
+	case "":
+		return ""
+	case "full", "covered", "complete", "implemented", "operating", "met", "yes", "true":
+		return "covered"
+	case "none", "gap", "missing", "partial", "planned", "not_covered", "uncovered", "in_progress", "todo", "unmet", "no", "false":
+		return "gap"
+	default:
+		return ""
+	}
 }
 
 func addOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, owner string) {

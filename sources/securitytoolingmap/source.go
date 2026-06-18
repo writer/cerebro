@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -86,7 +87,11 @@ func New() (*Source, error) {
 					"control_name":     "control_name",
 					"framework":        "framework",
 					"coverage":         "coverage",
+					"control_status":   "control_status",
 					"evidence_surface": "evidence_surface",
+					"gap_reason":       "gap_reason",
+					"owner":            "owner",
+					"last_assessed_at": "last_assessed_at",
 				},
 				StaticAttributes: map[string]string{"source_product": "security_tooling_map"},
 			},
@@ -116,9 +121,95 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	return s.inner.Discover(ctx, cfg)
 }
 
-// Read pages inventory records and emits security_tooling_map.* events.
+// Read pages inventory records, drops malformed tooling/control records, and
+// emits normalized security_tooling_map.* events with a deterministic
+// coverage-status posture attribute on control mappings.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	return s.inner.Read(ctx, cfg, cursor)
+	pull, err := s.inner.Read(ctx, cfg, cursor)
+	if err != nil {
+		return pull, err
+	}
+	pull.Events = normalizeEvents(pull.Events)
+	return pull, nil
+}
+
+func normalizeEvents(events []*cerebrov1.EventEnvelope) []*cerebrov1.EventEnvelope {
+	if len(events) == 0 {
+		return events
+	}
+	out := make([]*cerebrov1.EventEnvelope, 0, len(events))
+	for _, event := range events {
+		if event == nil {
+			continue
+		}
+		switch event.GetKind() {
+		case sourceID + "." + familyTool:
+			if !normalizeToolEvent(event) {
+				continue
+			}
+		case sourceID + "." + familyControlMapping:
+			if !normalizeControlMappingEvent(event) {
+				continue
+			}
+		}
+		out = append(out, event)
+	}
+	return out
+}
+
+func normalizeToolEvent(event *cerebrov1.EventEnvelope) bool {
+	attrs := event.GetAttributes()
+	if attrs == nil {
+		return false
+	}
+	toolID := firstNonEmptyAttr(attrs, "tool_id", "name")
+	if toolID == "" {
+		return false
+	}
+	attrs["tool_id"] = toolID
+	return true
+}
+
+func normalizeControlMappingEvent(event *cerebrov1.EventEnvelope) bool {
+	attrs := event.GetAttributes()
+	if attrs == nil {
+		return false
+	}
+	toolID := firstNonEmptyAttr(attrs, "tool_id", "tool_name")
+	controlID := strings.TrimSpace(attrs["control_id"])
+	if toolID == "" || controlID == "" {
+		return false
+	}
+	attrs["tool_id"] = toolID
+	if status := coverageStatus(attrs["coverage"]); status != "" {
+		attrs["coverage_status"] = status
+	}
+	return true
+}
+
+// coverageStatus classifies a control-mapping coverage value into a normalized
+// posture of "covered" or "gap". Empty or unrecognized coverage values are left
+// unclassified so downstream rules do not infer a gap from unknown input.
+func coverageStatus(coverage string) string {
+	switch strings.ToLower(strings.TrimSpace(coverage)) {
+	case "":
+		return ""
+	case "full", "covered", "complete", "implemented", "operating", "met", "yes", "true":
+		return "covered"
+	case "none", "gap", "missing", "partial", "planned", "not_covered", "uncovered", "in_progress", "todo", "unmet", "no", "false":
+		return "gap"
+	default:
+		return ""
+	}
+}
+
+func firstNonEmptyAttr(attrs map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
