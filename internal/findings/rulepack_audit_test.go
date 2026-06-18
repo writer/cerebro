@@ -1068,6 +1068,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "security-tooling-map-control-coverage-gap", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_tooling_map"},
 		{RuleID: "cerebro-high-risk-api-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cerebro"},
 		{RuleID: "backstage-critical-component-missing-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "backstage"},
+		{RuleID: "aurelius-promoted-vulnerability-active", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "aurelius"},
 		{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
 		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "vulnview"},
 	}

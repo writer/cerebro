@@ -57,6 +57,7 @@ type Config struct {
 	ConnectorCredentials  ConnectorCredentialConfig
 	ConnectorSecretStores ConnectorSecretStoreConfig
 	ConnectorAccess       ConnectorAccessConfig
+	GraphActions          GraphActionsConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
 }
@@ -140,6 +141,18 @@ type ConnectorAccessConfig struct {
 	RestrictionReason   string
 	RequestAccessURL    string
 	RequestAccessAction string
+}
+
+// GraphActionsConfig configures graph action executors.
+type GraphActionsConfig struct {
+	AccessApprovals AccessApprovalsActionConfig
+}
+
+// AccessApprovalsActionConfig points Cerebro at the access-approvals action executor.
+type AccessApprovalsActionConfig struct {
+	BaseURL     string
+	BearerToken string
+	Timeout     time.Duration
 }
 
 // AWSSecretsManagerStoreConfig controls AWS Secrets Manager reference resolution.
@@ -363,6 +376,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	graphActionsAccessApprovalsToken, err := readConfigValue("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN")
+	if err != nil {
+		return Config{}, err
+	}
 	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
 	if err != nil {
 		return Config{}, err
@@ -428,6 +445,12 @@ func Load() (Config, error) {
 			RestrictionReason:   strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_RESTRICTION_REASON")),
 			RequestAccessURL:    strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL")),
 			RequestAccessAction: strings.TrimSpace(os.Getenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION")),
+		},
+		GraphActions: GraphActionsConfig{
+			AccessApprovals: AccessApprovalsActionConfig{
+				BaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL")), "/"),
+				BearerToken: graphActionsAccessApprovalsToken,
+			},
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
@@ -538,6 +561,9 @@ func Load() (Config, error) {
 	}
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
 	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphActions.AccessApprovals.Timeout, err = parseDurationEnv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", 10*time.Second); err != nil {
 		return Config{}, err
 	}
 	if cfg.Cache.DefaultTTL, err = parseDurationEnv("CEREBRO_CACHE_DEFAULT_TTL", 30*time.Second); err != nil {

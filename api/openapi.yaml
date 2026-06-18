@@ -1578,6 +1578,25 @@ paths:
       responses:
         '200':
           description: Updated finding.
+  /platform/graph/actions:
+    post:
+      summary: Execute graph action
+      description: Executes a supported provider-backed action against a graph target. Supplying `finding_id` lets Cerebro derive the target and link the provider action back to the finding as an external lifecycle reference; supplying `target` supports programmatic invocation. Requires the `cerebro.graph_actions.write` scope. Currently supported actions are `identity.okta.suspend_user` and `identity.okta.unsuspend_user`.
+      tags:
+        - Graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphActionRequest'
+      responses:
+        '202':
+          description: Graph action queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphActionResponse'
   /findings/{findingID}/assign:
     put:
       summary: Assign finding
@@ -6727,6 +6746,118 @@ components:
         rationale:
           type: string
           minLength: 1
+    GraphActionRequest:
+      type: object
+      required: [action, finding_id]
+      properties:
+        action:
+          type: string
+          enum: [identity.okta.suspend_user, identity.okta.unsuspend_user]
+        finding_id:
+          type: string
+          minLength: 1
+          description: Required finding id. Cerebro authorizes the finding tenant, derives the default target, and links the provider action back to the finding.
+        target:
+          type: string
+          description: Optional explicit graph action target within the authorized finding context. For Okta identity actions this is an Okta user id, login, or email.
+        reason:
+          type: string
+          maxLength: 2048
+        ticket_url:
+          type: string
+          format: uri
+        idempotency_key:
+          type: string
+          maxLength: 256
+          description: Optional caller-provided idempotency key. Cerebro generates a stable per-action/finding-or-target key when omitted.
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+          description: Reserved generic action parameters for future executors.
+    GraphActionResponse:
+      type: object
+      properties:
+        finding:
+          $ref: '#/components/schemas/Finding'
+        action:
+          $ref: '#/components/schemas/GraphAction'
+        target:
+          type: string
+        external_ref:
+          $ref: '#/components/schemas/FindingExternalRef'
+    GraphAction:
+      type: object
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          enum: [identity.okta.suspend_user, identity.okta.unsuspend_user]
+        provider:
+          type: string
+          enum: [access-approvals]
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        target:
+          type: string
+        external_id:
+          type: string
+        external_url:
+          type: string
+          format: uri
+        external_status:
+          type: string
+        external_status_reason:
+          type: string
+        reason:
+          type: string
+        source:
+          type: string
+        ticket_url:
+          type: string
+        idempotency_key:
+          type: string
+        actor_type:
+          type: string
+        actor_subject:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    FindingExternalRef:
+      type: object
+      properties:
+        system:
+          type: string
+        kind:
+          type: string
+        external_id:
+          type: string
+        url:
+          type: string
+        external_status:
+          type: string
+        external_status_reason:
+          type: string
+        lifecycle_owner:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
     Finding:
       type: object
       properties:

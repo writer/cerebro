@@ -10,6 +10,7 @@ const (
 	ScopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
 	ScopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
 	ScopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
+	ScopeGraphActionsWrite         = "cerebro.graph_actions.write"
 	ScopeReportsRun                = "cerebro.reports.run"
 	ScopeKnowledgeWrite            = "cerebro.knowledge.write"
 	ScopeWorkflowReplay            = "cerebro.workflow.replay"
@@ -38,6 +39,7 @@ var allScopes = []string{
 	ScopeConnectorCredentialsRead,
 	ScopeConnectorCredentialsWrite,
 	ScopeRuntimeResponseWrite,
+	ScopeGraphActionsWrite,
 	ScopeReportsRun,
 	ScopeKnowledgeWrite,
 	ScopeWorkflowReplay,

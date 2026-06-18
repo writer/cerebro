@@ -29,4 +29,6 @@ export CEREBRO_NEO4J_USERNAME='neo4j'
 export CEREBRO_NEO4J_PASSWORD='<secret>'
 ```
 
+Provider-backed graph actions are optional. To enable `POST /platform/graph/actions` for access-approvals backed identity actions such as `identity.okta.suspend_user` and `identity.okta.unsuspend_user`, configure `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL`, `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` or `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`, and grant callers the `cerebro.graph_actions.write` scope.
+
 See `docs/CONFIG_ENV_VARS.md` for the full current variable list.

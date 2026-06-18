@@ -907,6 +907,7 @@ func agentPlatformFullAuthConfig() config.Config {
 		scopeConnectorCredentialsWrite,
 		scopeRuntimeResponseWrite,
 		scopeFindingCandidatePromote,
+		scopeGraphActionsWrite,
 	}
 	return cfg
 }
