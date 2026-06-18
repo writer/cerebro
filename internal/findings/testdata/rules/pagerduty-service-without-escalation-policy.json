@@ -1,0 +1,88 @@
+{
+  "rule_id": "pagerduty-service-without-escalation-policy",
+  "runtime": {
+    "id": "writer-pagerduty-service",
+    "source_id": "pagerduty",
+    "tenant_id": "writer",
+    "config": {
+      "family": "service"
+    }
+  },
+  "events": [
+    {
+      "id": "pagerduty-service-orphan",
+      "tenant_id": "writer",
+      "source_id": "pagerduty",
+      "kind": "pagerduty.service",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "pagerduty/service/v1",
+      "attributes": {
+        "family": "service",
+        "service_id": "PS-orphan",
+        "name": "Checkout API",
+        "status": "active",
+        "source_runtime_id": "writer-pagerduty-service"
+      }
+    },
+    {
+      "id": "pagerduty-service-covered",
+      "tenant_id": "writer",
+      "source_id": "pagerduty",
+      "kind": "pagerduty.service",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "pagerduty/service/v1",
+      "attributes": {
+        "family": "service",
+        "service_id": "PS-covered",
+        "name": "Payments API",
+        "status": "active",
+        "escalation_policy_id": "PE1",
+        "escalation_policy_name": "Payments EP",
+        "source_runtime_id": "writer-pagerduty-service"
+      }
+    },
+    {
+      "id": "pagerduty-service-disabled",
+      "tenant_id": "writer",
+      "source_id": "pagerduty",
+      "kind": "pagerduty.service",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "pagerduty/service/v1",
+      "attributes": {
+        "family": "service",
+        "service_id": "PS-disabled",
+        "name": "Legacy Service",
+        "status": "disabled",
+        "source_runtime_id": "writer-pagerduty-service"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "pagerduty-service-without-escalation-policy",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "PagerDuty service Checkout API has no escalation policy",
+      "event_ids": ["pagerduty-service-orphan"],
+      "attributes": {
+        "pagerduty_service_urn": "urn:cerebro:writer:pagerduty_service:PS-orphan",
+        "service_id": "PS-orphan",
+        "service_name": "Checkout API",
+        "service_status": "active",
+        "has_escalation_policy": "false",
+        "primary_resource_urn": "urn:cerebro:writer:pagerduty_service:PS-orphan",
+        "rule_required_attributes": "service_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "pagerduty-service-covered",
+      "reason": "service with a linked escalation policy has a defined responder path"
+    },
+    {
+      "event_id": "pagerduty-service-disabled",
+      "reason": "disabled service cannot receive incidents so a missing escalation policy is not an active coverage gap"
+    }
+  ]
+}

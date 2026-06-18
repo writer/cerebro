@@ -30758,7 +30758,7 @@ profiles:
         selected_controls: 29
         mapped_controls: 29
         unmapped_controls: 0
-        mapped_rules: 391
+        mapped_rules: 392
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 29
@@ -31150,7 +31150,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC7.4
           coverage_status: mapped
-          rule_count: 10
+          rule_count: 11
           mapped_rules:
             - ai-incident-response
             - aws-guardduty-c2-traffic
@@ -31159,6 +31159,7 @@ profiles:
             - compliance-ir-plan-exists
             - compliance-p1-security-issues
             - container-runtime-exec-detected
+            - pagerduty-service-without-escalation-policy
             - sentinelone-threat-detected
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
@@ -34686,6 +34687,10 @@ profiles:
               control_id: CDR-2024-1774-Art.10
             - framework_name: DORA
               control_id: CDR-2024-1774-Art.6
+        - rule_id: pagerduty-service-without-escalation-policy
+          controls:
+            - framework_name: DORA
+              control_id: Art.19
         - rule_id: privileged-inactive-keys
           controls:
             - framework_name: DORA
@@ -42593,7 +42598,7 @@ profiles:
         selected_controls: 22
         mapped_controls: 22
         unmapped_controls: 0
-        mapped_rules: 462
+        mapped_rules: 463
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 22
@@ -43589,7 +43594,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC7.4
           coverage_status: mapped
-          rule_count: 10
+          rule_count: 11
           mapped_rules:
             - ai-incident-response
             - aws-guardduty-c2-traffic
@@ -43598,6 +43603,7 @@ profiles:
             - compliance-ir-plan-exists
             - compliance-p1-security-issues
             - container-runtime-exec-detected
+            - pagerduty-service-without-escalation-policy
             - sentinelone-threat-detected
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
@@ -46709,6 +46715,10 @@ profiles:
               control_id: CIR-2024-2690-6.6
             - framework_name: NIS2
               control_id: CIR-2024-2690-6.7
+        - rule_id: pagerduty-service-without-escalation-policy
+          controls:
+            - framework_name: NIS2
+              control_id: Art.23
         - rule_id: privileged-inactive-keys
           controls:
             - framework_name: NIS2
@@ -47330,7 +47340,7 @@ profiles:
         selected_controls: 53
         mapped_controls: 53
         unmapped_controls: 0
-        mapped_rules: 509
+        mapped_rules: 510
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 53
@@ -50315,7 +50325,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC7.4
           coverage_status: mapped
-          rule_count: 10
+          rule_count: 11
           mapped_rules:
             - ai-incident-response
             - aws-guardduty-c2-traffic
@@ -50324,6 +50334,7 @@ profiles:
             - compliance-ir-plan-exists
             - compliance-p1-security-issues
             - container-runtime-exec-detected
+            - pagerduty-service-without-escalation-policy
             - sentinelone-threat-detected
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
@@ -50347,7 +50358,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC7.4
           coverage_status: mapped
-          rule_count: 10
+          rule_count: 11
           mapped_rules:
             - ai-incident-response
             - aws-guardduty-c2-traffic
@@ -50356,6 +50367,7 @@ profiles:
             - compliance-ir-plan-exists
             - compliance-p1-security-issues
             - container-runtime-exec-detected
+            - pagerduty-service-without-escalation-policy
             - sentinelone-threat-detected
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
@@ -54706,6 +54718,12 @@ profiles:
               control_id: PR.PS-02
             - framework_name: NIST CSF 2.0
               control_id: RS.MI
+        - rule_id: pagerduty-service-without-escalation-policy
+          controls:
+            - framework_name: NIST CSF 2.0
+              control_id: RS.CO
+            - framework_name: NIST CSF 2.0
+              control_id: RS.CO-02
         - rule_id: privileged-inactive-keys
           controls:
             - framework_name: NIST CSF 2.0
@@ -61072,7 +61090,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 926
+        mapped_rules: 927
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62384,7 +62402,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 10
+          rule_count: 11
           mapped_rules:
             - ai-incident-response
             - aws-guardduty-c2-traffic
@@ -62393,6 +62411,7 @@ profiles:
             - compliance-ir-plan-exists
             - compliance-p1-security-issues
             - container-runtime-exec-detected
+            - pagerduty-service-without-escalation-policy
             - sentinelone-threat-detected
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
@@ -65923,6 +65942,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.1
+        - rule_id: pagerduty-service-without-escalation-policy
+          controls:
+            - framework_name: SOC 2
+              control_id: CC7.4
         - rule_id: panopticon-curated-case
           controls:
             - framework_name: SOC 2
