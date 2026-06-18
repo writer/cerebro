@@ -7,45 +7,23 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-const (
-	TargetKindOktaUser = "identity.okta.user"
-)
-
 type TargetResolver func(*ports.FindingRecord, string) (string, error)
 type EligibilityChecker func(string, *ports.FindingRecord) error
 
 type ActionSpec struct {
-	ID                    string
-	Provider              string
-	TargetKind            string
-	AccessApprovalsAction string
-	ResolveTarget         TargetResolver
-	CheckEligibility      EligibilityChecker
+	ID               string
+	Provider         string
+	ProviderAction   string
+	TargetKind       string
+	Effect           string
+	Destructive      bool
+	ReversibleBy     string
+	ResolveTarget    TargetResolver
+	CheckEligibility EligibilityChecker
 }
 
 type Registry struct {
 	actions map[string]ActionSpec
-}
-
-func DefaultRegistry() Registry {
-	return Registry{actions: map[string]ActionSpec{
-		ActionIdentityOktaSuspendUser: {
-			ID:                    ActionIdentityOktaSuspendUser,
-			Provider:              ProviderAccessApprovals,
-			TargetKind:            TargetKindOktaUser,
-			AccessApprovalsAction: AccessApprovalsActionSuspend,
-			ResolveTarget:         OktaUserTargetForFinding,
-			CheckEligibility:      FindingAllowsAction,
-		},
-		ActionIdentityOktaUnsuspendUser: {
-			ID:                    ActionIdentityOktaUnsuspendUser,
-			Provider:              ProviderAccessApprovals,
-			TargetKind:            TargetKindOktaUser,
-			AccessApprovalsAction: AccessApprovalsActionUnsuspend,
-			ResolveTarget:         OktaUserTargetForFinding,
-			CheckEligibility:      FindingAllowsAction,
-		},
-	}}
 }
 
 func (r Registry) Lookup(action string) (ActionSpec, error) {

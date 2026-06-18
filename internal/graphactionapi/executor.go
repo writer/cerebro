@@ -103,5 +103,10 @@ func NewAccessApprovalsService(cfg config.AccessApprovalsActionConfig, findings 
 	if err != nil {
 		return nil, err
 	}
-	return &graphactions.Service{Findings: findings, Client: client}, nil
+	return &graphactions.Service{
+		Findings: findings,
+		Providers: map[string]graphactions.ActionProvider{
+			graphactions.ProviderAccessApprovals: graphactions.AccessApprovalsProvider{Client: client},
+		},
+	}, nil
 }

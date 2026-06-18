@@ -18,9 +18,6 @@ import (
 )
 
 const (
-	ActionIdentityOktaSuspendUser   = "identity.okta.suspend_user"
-	ActionIdentityOktaUnsuspendUser = "identity.okta.unsuspend_user"
-
 	AccessApprovalsActionSuspend   = "suspend"
 	AccessApprovalsActionUnsuspend = "unsuspend"
 
@@ -106,6 +103,24 @@ type AccessApprovalsClient interface {
 	ActionURL(string) string
 }
 
+type ProviderActionRequest struct {
+	Target         string
+	Reason         string
+	Source         string
+	TicketURL      string
+	IdempotencyKey string
+	TenantID       string
+	FindingID      string
+	FindingRuleID  string
+	ResourceURN    string
+	SubjectURN     string
+}
+
+type ActionProvider interface {
+	ExecuteGraphAction(context.Context, ActionSpec, ProviderActionRequest) (*GraphAction, error)
+	GetGraphAction(context.Context, string) (*GraphAction, error)
+}
+
 type FindingWorkflow interface {
 	GetFinding(context.Context, string) (*ports.FindingRecord, error)
 	LinkFindingExternalRef(context.Context, string, ports.FindingExternalRef) (*ports.FindingRecord, error)
@@ -114,6 +129,7 @@ type FindingWorkflow interface {
 type Service struct {
 	Findings   FindingWorkflow
 	Client     AccessApprovalsClient
+	Providers  map[string]ActionProvider
 	Registry   Registry
 	BeforeLink func(context.Context, *ports.FindingRecord, *GraphAction, string) error
 }
@@ -142,23 +158,22 @@ type Result struct {
 }
 
 func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
-	if s.Client == nil {
-		return nil, ErrNotConfigured
-	}
 	findingID := strings.TrimSpace(input.FindingID)
 	if findingID == "" {
 		return nil, fmt.Errorf("%w: finding_id is required", ErrInvalidRequest)
 	}
-	var finding *ports.FindingRecord
-	var err error
 	if s.Findings == nil {
 		return nil, ErrNotConfigured
 	}
-	finding, err = s.Findings.GetFinding(ctx, findingID)
+	spec, err := s.actionSpec(input.Action)
 	if err != nil {
 		return nil, err
 	}
-	spec, err := s.actionSpec(input.Action)
+	provider, err := s.actionProvider(spec.Provider)
+	if err != nil {
+		return nil, err
+	}
+	finding, err := s.Findings.GetFinding(ctx, findingID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,8 +203,8 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if idempotencyKey == "" {
 		idempotencyKey = IdempotencyKey(spec.ID, findingID, target)
 	}
-	actionRequest := AccessApprovalsUserActionRequest{
-		EmailOrUserID:  target,
+	actionRequest := ProviderActionRequest{
+		Target:         target,
 		Reason:         reason,
 		Source:         source,
 		TicketURL:      ticketURL,
@@ -200,19 +215,16 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 		ResourceURN:    primaryResourceURN(finding),
 		SubjectURN:     subjectURNForFinding(finding),
 	}
-	var externalAction *AccessApprovalsUserAction
-	if spec.AccessApprovalsAction == AccessApprovalsActionSuspend {
-		externalAction, err = s.Client.SuspendOktaUser(ctx, actionRequest)
-	} else {
-		externalAction, err = s.Client.UnsuspendOktaUser(ctx, actionRequest)
-	}
+	graphAction, err := provider.ExecuteGraphAction(ctx, spec, actionRequest)
 	if err != nil {
 		return nil, err
 	}
-	if externalAction == nil {
+	if graphAction == nil {
 		return nil, fmt.Errorf("%w: response missing action", ErrRemote)
 	}
-	graphAction := GraphActionFromAccessApprovals(spec.ID, externalAction, s.Client.ActionURL(externalAction.ID), target)
+	if err := normalizeProviderGraphAction(spec, graphAction, target); err != nil {
+		return nil, err
+	}
 	var ref ports.FindingExternalRef
 	updated := finding
 	if finding != nil {
@@ -231,7 +243,7 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 }
 
 func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, error) {
-	if s.Client == nil || s.Findings == nil {
+	if s.Findings == nil {
 		return nil, ErrNotConfigured
 	}
 	findingID := strings.TrimSpace(input.FindingID)
@@ -246,32 +258,45 @@ func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, 
 	if err != nil {
 		return nil, err
 	}
-	if !findingHasGraphActionRef(finding, externalID) {
+	externalRef, ok := findingGraphActionRef(finding, externalID)
+	if !ok {
 		return nil, fmt.Errorf("%w: external_id is not linked to finding", ErrInvalidRequest)
 	}
-	externalAction, err := s.Client.GetOktaUserAction(ctx, externalID)
+	provider, err := s.actionProvider(externalRef.System)
 	if err != nil {
 		return nil, err
 	}
-	if externalAction == nil || strings.TrimSpace(externalAction.ID) == "" {
+	graphAction, err := provider.GetGraphAction(ctx, externalID)
+	if err != nil {
+		return nil, err
+	}
+	if graphAction == nil {
 		return nil, fmt.Errorf("%w: response missing action", ErrRemote)
 	}
-	action, err := graphActionIDFromAccessApprovals(externalAction.Action)
+	if strings.TrimSpace(graphAction.ExternalID) == "" {
+		graphAction.ExternalID = strings.TrimSpace(graphAction.ID)
+	}
+	if strings.TrimSpace(graphAction.ExternalID) == "" {
+		return nil, fmt.Errorf("%w: response missing action external_id", ErrRemote)
+	}
+	spec, err := s.actionSpec(graphAction.Action)
 	if err != nil {
 		return nil, err
 	}
-	spec, err := s.actionSpec(action)
-	if err != nil {
+	if strings.TrimSpace(spec.Provider) != strings.TrimSpace(externalRef.System) {
+		return nil, fmt.Errorf("%w: provider action %q does not match linked provider %q", ErrRemote, graphAction.Action, externalRef.System)
+	}
+	if err := normalizeProviderGraphAction(spec, graphAction, ""); err != nil {
 		return nil, err
 	}
 	if err := checkSpecEligibility(spec, finding); err != nil {
 		return nil, err
 	}
-	target, err := resolveSpecTarget(spec, finding, externalAction.Target)
+	target, err := resolveSpecTarget(spec, finding, graphAction.Target)
 	if err != nil {
 		return nil, err
 	}
-	graphAction := GraphActionFromAccessApprovals(action, externalAction, s.Client.ActionURL(externalAction.ID), target)
+	graphAction.Target = target
 	if s.BeforeLink != nil {
 		if err := s.BeforeLink(ctx, finding, graphAction, target); err != nil {
 			return nil, err
@@ -287,6 +312,45 @@ func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, 
 
 func (s Service) actionSpec(action string) (ActionSpec, error) {
 	return s.Registry.Lookup(action)
+}
+
+func (s Service) actionProvider(provider string) (ActionProvider, error) {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return nil, fmt.Errorf("%w: action provider is required", ErrInvalidRequest)
+	}
+	if s.Providers != nil {
+		if actionProvider := s.Providers[provider]; actionProvider != nil {
+			return actionProvider, nil
+		}
+	}
+	if provider == ProviderAccessApprovals && s.Client != nil {
+		return AccessApprovalsProvider{Client: s.Client}, nil
+	}
+	return nil, ErrNotConfigured
+}
+
+func normalizeProviderGraphAction(spec ActionSpec, action *GraphAction, fallbackTarget string) error {
+	if action == nil {
+		return fmt.Errorf("%w: response missing action", ErrRemote)
+	}
+	if strings.TrimSpace(action.Action) == "" {
+		action.Action = strings.TrimSpace(spec.ID)
+	} else if strings.TrimSpace(action.Action) != strings.TrimSpace(spec.ID) {
+		return fmt.Errorf("%w: provider returned action %q for requested action %q", ErrRemote, action.Action, spec.ID)
+	}
+	if strings.TrimSpace(action.Provider) == "" {
+		action.Provider = strings.TrimSpace(spec.Provider)
+	} else if strings.TrimSpace(action.Provider) != strings.TrimSpace(spec.Provider) {
+		return fmt.Errorf("%w: provider returned system %q for requested provider %q", ErrRemote, action.Provider, spec.Provider)
+	}
+	if strings.TrimSpace(action.Target) == "" {
+		action.Target = strings.TrimSpace(fallbackTarget)
+	}
+	if strings.TrimSpace(action.ExternalID) == "" {
+		action.ExternalID = strings.TrimSpace(action.ID)
+	}
+	return nil
 }
 
 func validateParameters(parameters map[string]string) error {
@@ -344,19 +408,19 @@ func subjectURNForFinding(finding *ports.FindingRecord) string {
 	return ""
 }
 
-func findingHasGraphActionRef(finding *ports.FindingRecord, externalID string) bool {
+func findingGraphActionRef(finding *ports.FindingRecord, externalID string) (ports.FindingExternalRef, bool) {
 	externalID = strings.TrimSpace(externalID)
 	if finding == nil || externalID == "" {
-		return false
+		return ports.FindingExternalRef{}, false
 	}
 	for _, ref := range finding.ExternalRefs {
-		if strings.TrimSpace(ref.System) == ProviderAccessApprovals &&
+		if strings.TrimSpace(ref.System) != "" &&
 			strings.TrimSpace(ref.Kind) == RefKind &&
 			strings.TrimSpace(ref.ExternalID) == externalID {
-			return true
+			return ref, true
 		}
 	}
-	return false
+	return ports.FindingExternalRef{}, false
 }
 
 func graphActionIDFromAccessApprovals(action string) (string, error) {
@@ -631,7 +695,7 @@ func ExternalRef(action *GraphAction) ports.FindingExternalRef {
 		observedAt = time.Unix(action.UpdatedAtUnix, 0).UTC()
 	}
 	return ports.FindingExternalRef{
-		System:               ProviderAccessApprovals,
+		System:               strings.TrimSpace(action.Provider),
 		Kind:                 RefKind,
 		ExternalID:           strings.TrimSpace(action.ExternalID),
 		URL:                  strings.TrimSpace(action.ExternalURL),

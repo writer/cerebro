@@ -87,8 +87,8 @@ The first supported integration strategies are:
 - Action ladder: agents move through observe, explain, recommend, dry-run, approve, execute, verify, and close-loop
   stages, with mutating stages requiring explicit approval and post-action verification.
 - Graph action execution: finding-scoped graph actions are a dedicated high-risk capability using the
-  `cerebro.graph_actions.write` scope, provider adapter events, workflow linkage, and reconciliation back into the
-  finding lifecycle.
+  `cerebro.graph_actions.write` scope, generated action catalog metadata, provider adapter events, workflow linkage,
+  and reconciliation back into the finding lifecycle.
 - Local eval contracts: default-on security-agent behavior declares local commands, scenario ids, capabilities, and
   rubrics so tenant isolation, stale data handling, prompt-injection resistance, remediation safety, graph action
   execution, finding quality, and simulation bounds are regression-tested.
