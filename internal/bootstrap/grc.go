@@ -522,7 +522,7 @@ func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, erro
 		return grcAuditPacketResponse{}, findings.ErrRuntimeUnavailable
 	}
 	if err := authorizeFindingIDTenant(r.Context(), store, findingID); err != nil {
-		return grcAuditPacketResponse{}, err
+		return grcAuditPacketResponse{}, normalizeIDLookupError(err, ports.ErrFindingNotFound)
 	}
 	finding, err := a.findingService().GetFinding(r.Context(), findingID)
 	if err != nil {

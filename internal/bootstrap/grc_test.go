@@ -926,6 +926,34 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	}
 }
 
+func TestGRCAuditPacketNormalizesForeignFindingLookup(t *testing.T) {
+	store := &stubRuntimeStore{
+		findings: map[string]*ports.FindingRecord{
+			"foreign-finding": {
+				ID:        "foreign-finding",
+				TenantID:  "other",
+				RuntimeID: "other-runtime",
+				Title:     "Foreign finding",
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	request := httptest.NewRequest(http.MethodGet, "/grc/audit-packets/foreign-finding", nil)
+	request.SetPathValue("packetID", "foreign-finding")
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	}))
+
+	_, err := app.buildGRCAuditPacket(request)
+	if !errors.Is(err, ports.ErrFindingNotFound) {
+		t.Fatalf("buildGRCAuditPacket() error = %v, want finding not found", err)
+	}
+	if got := grcHTTPStatusCode(err); got != http.StatusNotFound {
+		t.Fatalf("grcHTTPStatusCode(buildGRCAuditPacket error) = %d, want %d", got, http.StatusNotFound)
+	}
+}
+
 type stubGRCAggregateStore struct {
 	*stubRuntimeStore
 	aggregateCalls int
