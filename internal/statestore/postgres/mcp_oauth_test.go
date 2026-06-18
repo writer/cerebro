@@ -23,6 +23,8 @@ func TestMCPOAuthSchemaIncludesReplaySafeState(t *testing.T) {
 		"code_hash BYTEA PRIMARY KEY",
 		"token_hash BYTEA PRIMARY KEY",
 		"resource TEXT NOT NULL",
+		"roles_json JSONB NOT NULL DEFAULT '[]'::jsonb",
+		"scopes_explicit BOOLEAN NOT NULL DEFAULT FALSE",
 		"consumed_at TIMESTAMPTZ",
 		"family_revoked BOOLEAN NOT NULL DEFAULT FALSE",
 	} {

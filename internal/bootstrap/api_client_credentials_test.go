@@ -101,6 +101,83 @@ func TestAPIClientCredentialsRejectsWrongSecret(t *testing.T) {
 	}
 }
 
+func TestAPIClientCredentialsExpandsRolesForRequestedScopes(t *testing.T) {
+	cfg := apiClientCredentialsTestConfig()
+	cfg.Auth.APICredentials[0].Scopes = nil
+	cfg.Auth.APICredentials[0].Roles = []string{roleCerebroConnectorManager}
+	app, err := NewWithError(cfg, Dependencies{}, nil)
+	if err != nil {
+		t.Fatalf("NewWithError: %v", err)
+	}
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	tokenResp := exchangeAPIClientCredentialsToken(t, server, "ci-client", "client-secret", url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example"},
+		"scope":      {scopeConnectorCredentialsWrite},
+	})
+	if tokenResp.Scope != scopeConnectorCredentialsWrite {
+		t.Fatalf("token scope = %q, want %q", tokenResp.Scope, scopeConnectorCredentialsWrite)
+	}
+	principal, ok := authenticateCapabilityToken(cfg.Auth, tokenResp.AccessToken, time.Now())
+	if !ok {
+		t.Fatalf("issued token did not authenticate")
+	}
+	if len(principal.Roles) != 0 {
+		t.Fatalf("requested-scope token roles = %#v, want none so scope request narrows grant", principal.Roles)
+	}
+}
+
+func TestAPIClientCredentialsRejectsScopesOutsideRoles(t *testing.T) {
+	cfg := apiClientCredentialsTestConfig()
+	cfg.Auth.APICredentials[0].Scopes = nil
+	cfg.Auth.APICredentials[0].Roles = []string{roleCerebroViewer}
+	app, err := NewWithError(cfg, Dependencies{}, nil)
+	if err != nil {
+		t.Fatalf("NewWithError: %v", err)
+	}
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp := exchangeAPIClientCredentialsTokenRaw(t, server, "ci-client", "client-secret", url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example"},
+		"scope":      {scopeConnectorCredentialsWrite},
+	})
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("role scope rejection status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestAPIClientCredentialsIncludesRolesWhenNoScopeIsRequested(t *testing.T) {
+	cfg := apiClientCredentialsTestConfig()
+	cfg.Auth.APICredentials[0].Scopes = nil
+	cfg.Auth.APICredentials[0].Roles = []string{roleCerebroConnectorManager}
+	app, err := NewWithError(cfg, Dependencies{}, nil)
+	if err != nil {
+		t.Fatalf("NewWithError: %v", err)
+	}
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	tokenResp := exchangeAPIClientCredentialsToken(t, server, "ci-client", "client-secret", url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example"},
+	})
+	principal, ok := authenticateCapabilityToken(cfg.Auth, tokenResp.AccessToken, time.Now())
+	if !ok {
+		t.Fatalf("issued token did not authenticate")
+	}
+	if !containsAuthValue(principal.Roles, roleCerebroConnectorManager) {
+		t.Fatalf("default role token roles = %#v, want %q", principal.Roles, roleCerebroConnectorManager)
+	}
+	if !containsAuthValue(expandedPrincipalScopes(principal), scopeConnectorCredentialsWrite) {
+		t.Fatalf("default role token scopes = %#v, want connector credential write via role", expandedPrincipalScopes(principal))
+	}
+}
+
 func TestResourceBoundCapabilityTokenCannotCrossSurfaces(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

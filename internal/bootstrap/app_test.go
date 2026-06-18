@@ -2567,7 +2567,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 
 func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
-	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
+	if got := httpRoutePolicyForRequest(req).Scope; got != scopeCosmoSecurityRead {
 		t.Fatalf("scopeForHTTPRequest(POST /grc/ask) = %q, want %q", got, scopeCosmoSecurityRead)
 	}
 }
@@ -2601,7 +2601,7 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/finding-candidates/candidate-1/reject", want: scopeFindingCandidatePromote},
 	} {
 		req := httptest.NewRequest(tt.method, tt.path, nil)
-		if got := scopeForHTTPRequest(req); got != tt.want {
+		if got := httpRoutePolicyForRequest(req).Scope; got != tt.want {
 			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tt.method, tt.path, got, tt.want)
 		}
 	}
@@ -2614,8 +2614,8 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 	} {
-		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
-			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		if got := connectProcedurePolicyFor(tt.procedure).Scope; got != tt.want {
+			t.Fatalf("connectProcedurePolicyFor(%s).Scope = %q, want %q", tt.procedure, got, tt.want)
 		}
 	}
 }
@@ -5647,6 +5647,41 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := evaluateFindingsResp.Msg.GetEvidence()[0].GetClaimIds(); len(got) != 1 || got[0] != "claim-1" {
 		t.Fatalf("EvaluateSourceRuntimeFindings evidence claim ids = %#v, want [claim-1]", got)
 	}
+	evaluatedFindingID := evaluateFindingsResp.Msg.GetFindings()[0].GetId()
+	storedFinding, ok := runtimeStore.findings[evaluatedFindingID]
+	if !ok {
+		t.Fatalf("stored finding %q missing", evaluatedFindingID)
+	}
+	if storedFinding.Attributes == nil {
+		storedFinding.Attributes = map[string]string{}
+	}
+	storedFinding.Attributes["api_key"] = "finding-secret"
+	storedFinding.Attributes["environment"] = "prod"
+	evaluatedEvidenceID := evaluateFindingsResp.Msg.GetEvidence()[0].GetId()
+	storedEvidence, ok := runtimeStore.findingEvidence[evaluatedEvidenceID]
+	if !ok {
+		t.Fatalf("stored evidence %q missing", evaluatedEvidenceID)
+	}
+	seedFindingEvidenceSecrets := func() {
+		for _, evidence := range runtimeStore.findingEvidence {
+			if evidence.Attributes == nil {
+				evidence.Attributes = map[string]string{}
+			}
+			evidence.Attributes["token"] = "evidence-secret"
+			evidence.Attributes["policy_rule_status"] = "inactive"
+			evidence.GraphRows = []*cerebrov1.GraphEvidenceRow{{
+				Label:      "policy-rule",
+				Attributes: map[string]string{"private_key": "row-secret", "resource_id": "rul-1"},
+				Paths: []*cerebrov1.GraphEvidencePath{{
+					Attributes: map[string]string{"password": "path-secret", "relation": "member"},
+				}},
+			}}
+		}
+	}
+	seedFindingEvidenceSecrets()
+	if got := storedEvidence.GetAttributes()["token"]; got != "evidence-secret" {
+		t.Fatalf("stored evaluated evidence token = %q, want original value", got)
+	}
 	listFindingsResp, err := client.ListFindings(context.Background(), connect.NewRequest(&cerebrov1.ListFindingsRequest{
 		RuntimeId:   "writer-okta-policy-rule",
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
@@ -5674,6 +5709,15 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := len(listFindingsResp.Msg.GetFindings()[0].GetControlRefs()); got != 2 {
 		t.Fatalf("len(ListFindings().Findings[0].ControlRefs) = %d, want 2", got)
+	}
+	if got := listFindingsResp.Msg.GetFindings()[0].GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("ListFindings().Findings[0].Attributes[api_key] = %q, want [redacted]", got)
+	}
+	if got := listFindingsResp.Msg.GetFindings()[0].GetAttributes()["environment"]; got != "prod" {
+		t.Fatalf("ListFindings().Findings[0].Attributes[environment] = %q, want prod", got)
+	}
+	if got := runtimeStore.findings[evaluatedFindingID].Attributes["api_key"]; got != "finding-secret" {
+		t.Fatalf("stored finding api_key = %q, want original value", got)
 	}
 	if got := runtimeStore.findingListRequest.TenantID; got != "writer" {
 		t.Fatalf("runtimeStore.findingListRequest.TenantID = %q, want writer", got)
@@ -5728,6 +5772,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := len(lifecycleEvaluation.GetEvidence()); got != 1 {
 		t.Fatalf("len(EvaluateSourceRuntimeFindingRules().Evaluations[0].Evidence) = %d, want 1", got)
 	}
+	seedFindingEvidenceSecrets()
 	listEvidenceResp, err := client.ListFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvidenceRequest{
 		RuntimeId:    "writer-okta-policy-rule",
 		FindingId:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
@@ -5744,6 +5789,22 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := len(listEvidenceResp.Msg.GetEvidence()); got != 1 {
 		t.Fatalf("len(ListFindingEvidence().Evidence) = %d, want 1", got)
 	}
+	listedConnectEvidence := listEvidenceResp.Msg.GetEvidence()[0]
+	if got := listedConnectEvidence.GetAttributes()["token"]; got != "[redacted]" {
+		t.Fatalf("ListFindingEvidence().Evidence[0].Attributes[token] = %q, want [redacted]", got)
+	}
+	if got := listedConnectEvidence.GetAttributes()["policy_rule_status"]; got != "inactive" {
+		t.Fatalf("ListFindingEvidence().Evidence[0].Attributes[policy_rule_status] = %q, want inactive", got)
+	}
+	if got := listedConnectEvidence.GetGraphRows()[0].GetAttributes()["private_key"]; got != "[redacted]" {
+		t.Fatalf("ListFindingEvidence().Evidence[0].GraphRows[0].Attributes[private_key] = %q, want [redacted]", got)
+	}
+	if got := listedConnectEvidence.GetGraphRows()[0].GetPaths()[0].GetAttributes()["password"]; got != "[redacted]" {
+		t.Fatalf("ListFindingEvidence().Evidence[0].GraphRows[0].Paths[0].Attributes[password] = %q, want [redacted]", got)
+	}
+	if got := runtimeStore.findingEvidence[listedConnectEvidence.GetId()].GetAttributes()["token"]; got != "evidence-secret" {
+		t.Fatalf("stored evidence token = %q, want original value", got)
+	}
 	getFindingEvidenceResp, err := client.GetFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.GetFindingEvidenceRequest{
 		Id: listEvidenceResp.Msg.GetEvidence()[0].GetId(),
 	}))
@@ -5752,6 +5813,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getFindingEvidenceResp.Msg.GetEvidence().GetId(); got != listEvidenceResp.Msg.GetEvidence()[0].GetId() {
 		t.Fatalf("GetFindingEvidence().Evidence.Id = %q, want %q", got, listEvidenceResp.Msg.GetEvidence()[0].GetId())
+	}
+	if got := getFindingEvidenceResp.Msg.GetEvidence().GetAttributes()["token"]; got != "[redacted]" {
+		t.Fatalf("GetFindingEvidence().Evidence.Attributes[token] = %q, want [redacted]", got)
 	}
 	getEvaluationRunResp, err := client.GetFindingEvaluationRun(context.Background(), connect.NewRequest(&cerebrov1.GetFindingEvaluationRunRequest{
 		Id: evaluateFindingsResp.Msg.GetRun().GetId(),
@@ -5790,6 +5854,13 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := assignFinding["assignee"]; got != "secops" {
 		t.Fatalf("assign finding assignee = %#v, want secops", got)
+	}
+	assignAttributes, ok := assignFinding["attributes"].(map[string]any)
+	if !ok {
+		t.Fatalf("assign finding attributes = %#v, want object", assignFinding["attributes"])
+	}
+	if got := assignAttributes["api_key"]; got != "[redacted]" {
+		t.Fatalf("assign finding api_key = %#v, want [redacted]", got)
 	}
 	httpDueAt := "2026-05-01T12:00:00Z"
 	dueBody, err := protojson.Marshal(&cerebrov1.SetFindingDueDateRequest{DueAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))})
@@ -5860,6 +5931,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := len(addNoteResp.Msg.GetFinding().GetNotes()); got != 2 {
 		t.Fatalf("len(AddFindingNote().Finding.Notes) = %d, want 2", got)
+	}
+	if got := addNoteResp.Msg.GetFinding().GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("AddFindingNote().Finding.Attributes[api_key] = %q, want [redacted]", got)
 	}
 	ticketBody, err := protojson.Marshal(&cerebrov1.LinkFindingTicketRequest{
 		Url:        "https://jira.writer.com/browse/ENG-123",
@@ -5956,6 +6030,16 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getFindingBody["due_at"]; got != "2026-05-02T12:00:00Z" {
 		t.Fatalf("get finding due_at = %#v, want 2026-05-02T12:00:00Z", got)
+	}
+	getFindingAttributes, ok := getFindingBody["attributes"].(map[string]any)
+	if !ok {
+		t.Fatalf("get finding attributes = %#v, want object", getFindingBody["attributes"])
+	}
+	if got := getFindingAttributes["api_key"]; got != "[redacted]" {
+		t.Fatalf("get finding api_key = %#v, want [redacted]", got)
+	}
+	if got := getFindingAttributes["environment"]; got != "prod" {
+		t.Fatalf("get finding environment = %#v, want prod", got)
 	}
 	getFindingNotes, ok := getFindingBody["notes"].([]any)
 	if !ok || len(getFindingNotes) != 2 {
@@ -6094,6 +6178,33 @@ func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
 	if candidateID == "" {
 		t.Fatal("candidate id is empty")
 	}
+	storedCandidate, ok := runtimeStore.findingCandidates[candidateID]
+	if !ok {
+		t.Fatalf("stored candidate %q missing", candidateID)
+	}
+	if storedCandidate.Finding == nil {
+		t.Fatal("stored candidate finding is nil")
+	}
+	if storedCandidate.Finding.Attributes == nil {
+		storedCandidate.Finding.Attributes = map[string]string{}
+	}
+	storedCandidate.Finding.Attributes["api_key"] = "candidate-finding-secret"
+	storedCandidate.Finding.Attributes["environment"] = "prod"
+	if len(storedCandidate.Evidence) != 1 {
+		t.Fatalf("len(stored candidate evidence) = %d, want 1", len(storedCandidate.Evidence))
+	}
+	if storedCandidate.Evidence[0].Attributes == nil {
+		storedCandidate.Evidence[0].Attributes = map[string]string{}
+	}
+	storedCandidate.Evidence[0].Attributes["token"] = "candidate-evidence-secret"
+	storedCandidate.Evidence[0].Attributes["resource_id"] = "rul-1"
+	storedCandidate.Evidence[0].GraphRows = []*cerebrov1.GraphEvidenceRow{{
+		Label:      "candidate-policy-rule",
+		Attributes: map[string]string{"private_key": "candidate-row-secret", "resource_id": "rul-1"},
+		Paths: []*cerebrov1.GraphEvidencePath{{
+			Attributes: map[string]string{"password": "candidate-path-secret", "relation": "member"},
+		}},
+	}}
 	if got := len(runtimeStore.findings); got != 0 {
 		t.Fatalf("production findings after candidate evaluate = %d, want 0", got)
 	}
@@ -6115,6 +6226,30 @@ func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
 	if got := len(listCandidates); got != 1 {
 		t.Fatalf("listed candidates = %d, want 1", got)
 	}
+	listedCandidate, ok := listCandidates[0].(map[string]any)
+	if !ok {
+		t.Fatalf("listed candidate = %#v, want object", listCandidates[0])
+	}
+	listedCandidateFinding, ok := listedCandidate["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("listed candidate finding = %#v, want object", listedCandidate["finding"])
+	}
+	listedCandidateAttributes, ok := listedCandidateFinding["attributes"].(map[string]any)
+	if !ok {
+		t.Fatalf("listed candidate finding attributes = %#v, want object", listedCandidateFinding["attributes"])
+	}
+	if got := listedCandidateAttributes["api_key"]; got != "[redacted]" {
+		t.Fatalf("listed candidate finding api_key = %#v, want [redacted]", got)
+	}
+	listedCandidateEvidence := listedCandidate["evidence"].([]any)[0].(map[string]any)
+	listedEvidenceAttributes := listedCandidateEvidence["attributes"].(map[string]any)
+	if got := listedEvidenceAttributes["token"]; got != "[redacted]" {
+		t.Fatalf("listed candidate evidence token = %#v, want [redacted]", got)
+	}
+	listedGraphRow := listedCandidateEvidence["graph_rows"].([]any)[0].(map[string]any)
+	if got := listedGraphRow["attributes"].(map[string]any)["private_key"]; got != "[redacted]" {
+		t.Fatalf("listed candidate graph row private_key = %#v, want [redacted]", got)
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	getResp, err := client.GetFindingCandidate(context.Background(), connect.NewRequest(&cerebrov1.GetFindingCandidateRequest{Id: candidateID}))
@@ -6123,6 +6258,12 @@ func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
 	}
 	if got := getResp.Msg.GetCandidate().GetId(); got != candidateID {
 		t.Fatalf("GetFindingCandidate().Candidate.Id = %q, want %q", got, candidateID)
+	}
+	if got := getResp.Msg.GetCandidate().GetFinding().GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("GetFindingCandidate().Candidate.Finding.Attributes[api_key] = %q, want [redacted]", got)
+	}
+	if got := getResp.Msg.GetCandidate().GetEvidence()[0].GetAttributes()["token"]; got != "[redacted]" {
+		t.Fatalf("GetFindingCandidate().Candidate.Evidence[0].Attributes[token] = %q, want [redacted]", got)
 	}
 
 	promoteBody, err := protojson.Marshal(&cerebrov1.PromoteFindingCandidateRequest{
@@ -6156,6 +6297,17 @@ func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
 	if got := promotedCandidate["status"]; got != "promoted" {
 		t.Fatalf("promoted candidate status = %#v, want promoted", got)
 	}
+	promotedFinding := promotePayload["finding"].(map[string]any)
+	if got := promotedFinding["attributes"].(map[string]any)["api_key"]; got != "[redacted]" {
+		t.Fatalf("promoted finding api_key = %#v, want [redacted]", got)
+	}
+	promotedCandidateEvidence := promotedCandidate["evidence"].([]any)[0].(map[string]any)
+	if got := promotedCandidateEvidence["attributes"].(map[string]any)["token"]; got != "[redacted]" {
+		t.Fatalf("promoted candidate evidence token = %#v, want [redacted]", got)
+	}
+	if got := promotedCandidateEvidence["graph_rows"].([]any)[0].(map[string]any)["paths"].([]any)[0].(map[string]any)["attributes"].(map[string]any)["password"]; got != "[redacted]" {
+		t.Fatalf("promoted candidate graph path password = %#v, want [redacted]", got)
+	}
 	if got := len(runtimeStore.findings); got != 1 {
 		t.Fatalf("production findings after promote = %d, want 1", got)
 	}
@@ -6187,6 +6339,12 @@ func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
 	}
 	if got := rejectResp.Msg.GetCandidate().GetStatus(); got != "rejected" {
 		t.Fatalf("RejectFindingCandidate().Candidate.Status = %q, want rejected", got)
+	}
+	if got := rejectResp.Msg.GetCandidate().GetFinding().GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("RejectFindingCandidate().Candidate.Finding.Attributes[api_key] = %q, want [redacted]", got)
+	}
+	if got := rejectResp.Msg.GetCandidate().GetEvidence()[0].GetGraphRows()[0].GetAttributes()["private_key"]; got != "[redacted]" {
+		t.Fatalf("RejectFindingCandidate().Candidate.Evidence[0].GraphRows[0].Attributes[private_key] = %q, want [redacted]", got)
 	}
 	if rejectResp.Msg.GetDecisionId() == "" {
 		t.Fatal("RejectFindingCandidate().DecisionId is empty")
@@ -7293,6 +7451,125 @@ func TestFindingMessageIncludesRiskFactors(t *testing.T) {
 	}
 	if factor.GetObservedAt().AsTime() != observedAt {
 		t.Fatalf("ObservedAt = %v, want %v", factor.GetObservedAt().AsTime(), observedAt)
+	}
+}
+
+func TestSafeFindingMessageRedactsSensitiveAttributes(t *testing.T) {
+	record := &ports.FindingRecord{
+		ID:         "finding-redaction",
+		Attributes: map[string]string{"api_key": "finding-secret", "environment": "prod"},
+	}
+
+	message := safeFindingMessage(record)
+	if got := message.GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("safe finding api_key = %q, want [redacted]", got)
+	}
+	if got := message.GetAttributes()["environment"]; got != "prod" {
+		t.Fatalf("safe finding environment = %q, want prod", got)
+	}
+	if got := record.Attributes["api_key"]; got != "finding-secret" {
+		t.Fatalf("source finding api_key = %q, want original value", got)
+	}
+}
+
+func TestSafeFindingEvidenceRedactsSensitiveAttributes(t *testing.T) {
+	evidence := &cerebrov1.FindingEvidence{
+		Id:         "evidence-redaction",
+		Attributes: map[string]string{"token": "evidence-secret", "resource_id": "asset-1"},
+		GraphRows: []*cerebrov1.GraphEvidenceRow{{
+			Label:      "root",
+			Attributes: map[string]string{"private_key": "row-secret", "asset_type": "service"},
+			Paths: []*cerebrov1.GraphEvidencePath{{
+				Attributes: map[string]string{"password": "path-secret", "relation": "owns"},
+			}},
+		}},
+		Observations: []*cerebrov1.FindingEvidenceObservation{{
+			GraphRows: []*cerebrov1.GraphEvidenceRow{{
+				Label:      "observation",
+				Attributes: map[string]string{"signing_key": "observation-secret", "asset_type": "user"},
+				Paths: []*cerebrov1.GraphEvidencePath{{
+					Attributes: map[string]string{"secret_access_key": "observation-path-secret", "relation": "member"},
+				}},
+			}},
+		}},
+	}
+
+	safe := safeFindingEvidence(evidence)
+	if got := safe.GetAttributes()["token"]; got != "[redacted]" {
+		t.Fatalf("safe evidence token = %q, want [redacted]", got)
+	}
+	if got := safe.GetAttributes()["resource_id"]; got != "asset-1" {
+		t.Fatalf("safe evidence resource_id = %q, want asset-1", got)
+	}
+	if got := safe.GetGraphRows()[0].GetAttributes()["private_key"]; got != "[redacted]" {
+		t.Fatalf("safe graph row private_key = %q, want [redacted]", got)
+	}
+	if got := safe.GetGraphRows()[0].GetPaths()[0].GetAttributes()["password"]; got != "[redacted]" {
+		t.Fatalf("safe graph path password = %q, want [redacted]", got)
+	}
+	if got := safe.GetObservations()[0].GetGraphRows()[0].GetAttributes()["signing_key"]; got != "[redacted]" {
+		t.Fatalf("safe observation graph row signing_key = %q, want [redacted]", got)
+	}
+	if got := safe.GetObservations()[0].GetGraphRows()[0].GetPaths()[0].GetAttributes()["secret_access_key"]; got != "[redacted]" {
+		t.Fatalf("safe observation graph path secret_access_key = %q, want [redacted]", got)
+	}
+	if got := evidence.GetAttributes()["token"]; got != "evidence-secret" {
+		t.Fatalf("source evidence token = %q, want original value", got)
+	}
+	if got := evidence.GetGraphRows()[0].GetAttributes()["private_key"]; got != "row-secret" {
+		t.Fatalf("source graph row private_key = %q, want original value", got)
+	}
+}
+
+func TestFindingCandidateResponsesRedactNestedAttributes(t *testing.T) {
+	candidate := &ports.FindingCandidateRecord{
+		ID:        "candidate-redaction",
+		TenantID:  "writer",
+		RuntimeID: "runtime-1",
+		Finding: &ports.FindingRecord{
+			ID:         "candidate-finding",
+			Attributes: map[string]string{"api_key": "candidate-finding-secret", "environment": "prod"},
+		},
+		Evidence: []*cerebrov1.FindingEvidence{{
+			Id:         "candidate-evidence",
+			Attributes: map[string]string{"token": "candidate-evidence-secret", "resource_id": "asset-1"},
+			GraphRows: []*cerebrov1.GraphEvidenceRow{{
+				Attributes: map[string]string{"private_key": "candidate-row-secret", "asset_type": "service"},
+				Paths: []*cerebrov1.GraphEvidencePath{{
+					Attributes: map[string]string{"password": "candidate-path-secret", "relation": "owns"},
+				}},
+			}},
+		}},
+	}
+
+	listResponse := listFindingCandidatesResponse(&findings.ListCandidatesResult{Candidates: []*ports.FindingCandidateRecord{candidate}})
+	listCandidate := listResponse.GetCandidates()[0]
+	if got := listCandidate.GetFinding().GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("list candidate finding api_key = %q, want [redacted]", got)
+	}
+	if got := listCandidate.GetEvidence()[0].GetAttributes()["token"]; got != "[redacted]" {
+		t.Fatalf("list candidate evidence token = %q, want [redacted]", got)
+	}
+	if got := listCandidate.GetEvidence()[0].GetGraphRows()[0].GetAttributes()["private_key"]; got != "[redacted]" {
+		t.Fatalf("list candidate graph row private_key = %q, want [redacted]", got)
+	}
+
+	promoteResponse := promoteFindingCandidateResponse(&findings.PromoteCandidateResult{
+		Candidate:  candidate,
+		Finding:    candidate.Finding,
+		DecisionID: "decision-1",
+	})
+	if got := promoteResponse.GetFinding().GetAttributes()["api_key"]; got != "[redacted]" {
+		t.Fatalf("promote finding api_key = %q, want [redacted]", got)
+	}
+	if got := promoteResponse.GetCandidate().GetEvidence()[0].GetGraphRows()[0].GetPaths()[0].GetAttributes()["password"]; got != "[redacted]" {
+		t.Fatalf("promote candidate graph path password = %q, want [redacted]", got)
+	}
+	if got := candidate.Finding.Attributes["api_key"]; got != "candidate-finding-secret" {
+		t.Fatalf("source candidate finding api_key = %q, want original value", got)
+	}
+	if got := candidate.Evidence[0].GetAttributes()["token"]; got != "candidate-evidence-secret" {
+		t.Fatalf("source candidate evidence token = %q, want original value", got)
 	}
 }
 
