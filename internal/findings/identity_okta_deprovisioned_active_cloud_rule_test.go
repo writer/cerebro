@@ -82,6 +82,9 @@ func TestDeprovisionedOktaActiveCloudAccessRuleEvaluateRowsBuildsFinding(t *test
 	if got := finding.Attributes["access_relations"]; got != grcOverlayAccessEdgeRelationCanAdmin {
 		t.Fatalf("access_relations = %q, want %q", got, grcOverlayAccessEdgeRelationCanAdmin)
 	}
+	if got := finding.Attributes["graph_actions_allowed"]; got != "identity.okta.suspend_user" {
+		t.Fatalf("graph_actions_allowed = %q, want only suspend action for deprovisioned identity finding", got)
+	}
 }
 
 func TestDeprovisionedOktaActiveCloudAccessRuleRequiresFreshEmailBridgeAndAccess(t *testing.T) {

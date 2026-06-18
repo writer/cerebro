@@ -2,6 +2,8 @@ package graphactionworkflow
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -31,7 +33,7 @@ func Record(ctx context.Context, appendLog ports.AppendLog, finding *ports.Findi
 	if externalID == "" {
 		externalID = strings.TrimSpace(action.ID)
 	}
-	actionID := fmt.Sprintf("urn:cerebro:%s:graph_action:%s", strings.TrimSpace(finding.TenantID), externalID)
+	actionID := canonicalActionID(finding.TenantID, action.Provider, action.Action, externalID)
 	event, err := workflowevents.NewActionRecordedEvent(workflowevents.ActionRecorded{
 		TenantID:      strings.TrimSpace(finding.TenantID),
 		ActionID:      actionID,
@@ -89,6 +91,17 @@ func actionTarget(action *graphactions.GraphAction) string {
 		return ""
 	}
 	return action.Target
+}
+
+func canonicalActionID(tenantID string, provider string, action string, externalID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		tenantID,
+		strings.TrimSpace(provider),
+		strings.TrimSpace(action),
+		strings.TrimSpace(externalID),
+	}, "\x00")))
+	return fmt.Sprintf("urn:cerebro:%s:graph_action:%s", tenantID, hex.EncodeToString(sum[:]))
 }
 
 func dedupe(values []string) []string {

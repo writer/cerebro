@@ -288,7 +288,7 @@ func (r *deprovisionedOktaActiveCloudAccessRule) buildFinding(runtime *cerebrov1
 		"access_resource_labels": strings.Join(accessLabels, ","),
 		"access_resource_types":  strings.Join(accessTypes, ","),
 		"access_relations":       strings.Join(accessRelations, ","),
-		"graph_actions_allowed":  "identity.okta.suspend_user,identity.okta.unsuspend_user",
+		"graph_actions_allowed":  "identity.okta.suspend_user",
 		"source_runtime_id":      strings.TrimSpace(runtime.GetId()),
 		"source_runtime_tenant":  tenantID,
 	}
