@@ -82,6 +82,8 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 		{name: "character class includes api", ignored: "[ai]pi/**", forbidden: "api/", want: true},
 		{name: "character class includes sources", ignored: "[s]ources/**", forbidden: "sources/", want: true},
 		{name: "character range includes api", ignored: "[a-c]pi/**", forbidden: "api/", want: true},
+		{name: "negated character class includes internal", ignored: "[!z]nternal/**", forbidden: "internal/", want: true},
+		{name: "negated character range includes api", ignored: "[!b-z]pi/**", forbidden: "api/", want: true},
 		{name: "question mark includes api", ignored: "a?i/**", forbidden: "api/", want: true},
 		{name: "prefix wildcard includes api", ignored: "ap*/**", forbidden: "api/", want: true},
 		{name: "character class excludes internal", ignored: "[as]pi/**", forbidden: "internal/"},
@@ -96,6 +98,19 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 				t.Fatalf("deepsecIgnorePathTouchesSurface(%q, %q) = %v, want %v", tt.ignored, tt.forbidden, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDeepSecCharacterClassOptionsExpandsWideRanges(t *testing.T) {
+	options := deepsecCharacterClassOptions("0-z")
+	seen := map[string]bool{}
+	for _, option := range options {
+		seen[option] = true
+	}
+	for _, want := range []string{"0", "9", "A", "Z", "a", "z"} {
+		if !seen[want] {
+			t.Fatalf("deepsecCharacterClassOptions(%q) missing %q in %v", "0-z", want, options)
+		}
 	}
 }
 
@@ -156,12 +171,24 @@ func deepsecIgnorePathCandidateGlobMatchesSurface(candidate string, surface stri
 		if segment == "" || segment == "*" || segment == "**" || !strings.ContainsAny(segment, "*?[") {
 			continue
 		}
-		matched, err := path.Match(segment, surface)
+		matched, err := path.Match(deepsecPathMatchSegment(segment), surface)
 		if err == nil && matched {
 			return true
 		}
 	}
 	return false
+}
+
+func deepsecPathMatchSegment(segment string) string {
+	converted := strings.Builder{}
+	for i := 0; i < len(segment); i++ {
+		converted.WriteByte(segment[i])
+		if segment[i] == '[' && i+1 < len(segment) && segment[i+1] == '!' {
+			converted.WriteByte('^')
+			i++
+		}
+	}
+	return converted.String()
 }
 
 func deepsecIgnorePathCandidates(pattern string) []string {
@@ -274,7 +301,7 @@ func deepsecCharacterClassOptions(group string) []string {
 		options = append(options, string(value))
 	}
 	for i := 0; i < len(group); i++ {
-		if i+2 < len(group) && group[i+1] == '-' && group[i] <= group[i+2] && group[i+2]-group[i] <= 64 {
+		if i+2 < len(group) && group[i+1] == '-' && group[i] <= group[i+2] {
 			for value := group[i]; value <= group[i+2]; value++ {
 				add(value)
 			}
