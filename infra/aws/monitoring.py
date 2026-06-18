@@ -84,6 +84,31 @@ def _service_quota_alarm_specs(name: str, threshold_percent: int) -> list[dict]:
     return []
 
 
+def _nats_log_metric_filter_specs() -> dict[str, dict[str, str]]:
+    return {
+        "nats_healthcheck_failures": {
+            "suffix": "nats-healthcheck-failures",
+            "metric_name": "NatsHealthcheckFailures",
+            "pattern": '"Healthcheck failed"',
+        },
+        "nats_bootstrap_errors": {
+            "suffix": "nats-bootstrap-errors",
+            "metric_name": "NatsBootstrapErrors",
+            "pattern": '"nats: error"',
+        },
+        "nats_corrupt_state_recoveries": {
+            "suffix": "nats-corrupt-state-recoveries",
+            "metric_name": "NatsCorruptStateRecoveries",
+            "pattern": '"corrupt state file"',
+        },
+        "nats_restore_completions": {
+            "suffix": "nats-restore-completions",
+            "metric_name": "NatsRestoreCompletions",
+            "pattern": '"Restored" "messages for stream"',
+        },
+    }
+
+
 def _cloudtrail_audit_metric_filter_specs(name: str) -> list[dict]:
     return [
         {
@@ -410,6 +435,8 @@ def create_monitoring(
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
+    jetstream_stream_bytes_alarm_threshold: int = 0,
+    nats_log_group_name: pulumi.Input[str] = None,
     api_request_count_per_target_alarm_threshold: int = 0,
     api_latency_p95_alarm_threshold_seconds: int = 3,
     web_latency_p95_alarm_threshold_seconds: int = 3,
@@ -925,6 +952,38 @@ def create_monitoring(
                 alarm_actions=alarm_actions,
             )
 
+    nats_log_filters = {}
+    if nats_log_group_name is not None:
+        nats_log_filters = _create_nats_log_metric_filters(name, nats_log_group_name, telemetry_namespace)
+        _custom_metric_alarm(
+            resource_name=f"{name}-nats-bootstrap-errors-alarm",
+            alarm_name=f"{name}-nats-bootstrap-errors",
+            namespace=telemetry_namespace,
+            metric_name="NatsBootstrapErrors",
+            threshold=0,
+            description="NATS JetStream bootstrap reported CLI errors; inspect /ecs/<stack>/nats for stream config drift or request timeouts.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-nats-corrupt-state-alarm",
+            alarm_name=f"{name}-nats-corrupt-state-recoveries",
+            namespace=telemetry_namespace,
+            metric_name="NatsCorruptStateRecoveries",
+            threshold=0,
+            description="NATS JetStream recovered from a corrupt state file; inspect stream restore duration and storage health.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-nats-healthcheck-failures-alarm",
+            alarm_name=f"{name}-nats-healthcheck-failures",
+            namespace=telemetry_namespace,
+            metric_name="NatsHealthcheckFailures",
+            threshold=0,
+            description="NATS health checks have failed for three consecutive periods; JetStream may be restoring or unavailable.",
+            alarm_actions=alarm_actions,
+            evaluation_periods=3,
+        )
+
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
             resource_name=f"{name}-jetstream-lag-alarm",
@@ -933,6 +992,18 @@ def create_monitoring(
             metric_name="JetStreamConsumerLag",
             threshold=jetstream_lag_alarm_threshold,
             description="JetStream consumer lag is above the autoscaling readiness threshold",
+            alarm_actions=alarm_actions,
+            statistic="Maximum",
+            dimensions={"Service": name, "Stream": jetstream_stream_name},
+        )
+    if jetstream_stream_bytes_alarm_threshold > 0:
+        _custom_metric_alarm(
+            resource_name=f"{name}-jetstream-stream-bytes-alarm",
+            alarm_name=f"{name}-jetstream-stream-bytes",
+            namespace=telemetry_namespace,
+            metric_name="JetStreamStreamBytes",
+            threshold=jetstream_stream_bytes_alarm_threshold,
+            description="JetStream stream bytes are above the configured restore-risk threshold; trim retention or scale storage before restart risk grows.",
             alarm_actions=alarm_actions,
             statistic="Maximum",
             dimensions={"Service": name, "Stream": jetstream_stream_name},
@@ -1089,6 +1160,7 @@ def create_monitoring(
         "dashboard": dashboard,
         "telemetry_filters": telemetry_filters,
         "otel_collector_filters": otel_collector_filters,
+        "nats_log_filters": nats_log_filters,
     }
 
 
@@ -1097,20 +1169,22 @@ def _custom_metric_alarm(
     alarm_name: str,
     namespace: str,
     metric_name: str,
-    threshold: int,
+    threshold: int | float,
     description: str,
     alarm_actions: list[pulumi.Input[str]],
     statistic: str = "Sum",
     dimensions: dict = None,
+    period: int = 300,
+    evaluation_periods: int = 1,
 ) -> aws.cloudwatch.MetricAlarm:
     return aws.cloudwatch.MetricAlarm(
         resource_name,
         name=alarm_name,
         comparison_operator="GreaterThanThreshold",
-        evaluation_periods=1,
+        evaluation_periods=evaluation_periods,
         metric_name=metric_name,
         namespace=namespace,
-        period=300,
+        period=period,
         statistic=statistic,
         threshold=threshold,
         treat_missing_data="notBreaching",
@@ -1294,6 +1368,25 @@ def _access_audit_metric_filter_specs() -> dict[str, dict[str, str]]:
 def _create_access_audit_metric_filters(name: str, log_group_name: pulumi.Output[str], namespace: str) -> dict:
     filters = {}
     for key, spec in _access_audit_metric_filter_specs().items():
+        suffix = spec["suffix"]
+        filters[key] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-{suffix}-filter",
+            name=f"{name}-{suffix}",
+            log_group_name=log_group_name,
+            pattern=spec["pattern"],
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name=spec["metric_name"],
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        )
+    return filters
+
+
+def _create_nats_log_metric_filters(name: str, log_group_name: pulumi.Input[str], namespace: str) -> dict:
+    filters = {}
+    for key, spec in _nats_log_metric_filter_specs().items():
         suffix = spec["suffix"]
         filters[key] = aws.cloudwatch.LogMetricFilter(
             f"{name}-{suffix}-filter",
@@ -1743,6 +1836,21 @@ def _dashboard_body(
             },
             {
                 "type": "metric",
+                "x": 0, "y": 60, "width": 24, "height": 6,
+                "properties": {
+                    "title": "NATS JetStream Operations",
+                    "metrics": [
+                        [telemetry_namespace, "NatsHealthcheckFailures", {"stat": "Sum"}],
+                        [".", "NatsBootstrapErrors", {"stat": "Sum"}],
+                        [".", "NatsCorruptStateRecoveries", {"stat": "Sum"}],
+                        [".", "NatsRestoreCompletions", {"stat": "Sum"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
                 "x": 0, "y": 30, "width": 12, "height": 6,
                 "properties": {
                     "title": "Runtime / Report Failures",
@@ -1879,8 +1987,8 @@ def _dashboard_body(
                 },
             },
         ])
-    tenant_diagnostic_widgets = _tenant_runtime_diagnostic_widgets(app_log_group_name, 60) if app_log_group_name else []
-    next_y = 66 if tenant_diagnostic_widgets else 60
+    tenant_diagnostic_widgets = _tenant_runtime_diagnostic_widgets(app_log_group_name, 66) if app_log_group_name else []
+    next_y = 72 if tenant_diagnostic_widgets else 66
     otel_widgets = (
         _otel_collector_observability_widgets(
             name,

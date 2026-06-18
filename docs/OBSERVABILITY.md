@@ -201,6 +201,27 @@ SOURCE '/ecs/<service>/api'
 | limit 50
 ```
 
+## NATS JetStream Monitoring
+
+The monitoring stack attaches the NATS service log group (`/ecs/<stack>/nats`)
+to CloudWatch metric filters for operational symptoms that can block event
+append and projection:
+
+| Metric | Source log signal | Why it matters |
+| --- | --- | --- |
+| `NatsHealthcheckFailures` | `Healthcheck failed` | NATS or JetStream is unavailable to ECS health checks |
+| `NatsBootstrapErrors` | `nats: error` | stream bootstrap/edit drift, timeout, or authorization failure |
+| `NatsCorruptStateRecoveries` | `corrupt state file` | stream state recovered from a corrupt file during startup |
+| `NatsRestoreCompletions` | `Restored ... messages for stream` | restart restore completed; use with stream size to estimate restart risk |
+
+The `<service>-dashboard` includes a `NATS JetStream Operations` widget beside
+the existing JetStream lag and stream depth widgets. Active stacks also set
+`cerebro:jetstreamStreamBytesAlarmThreshold` to `85899345920` bytes (80 GiB), so
+`JetStreamStreamBytes` alerts before stream restore size reaches the range that
+caused long startup recovery in sec-dev. Keep the threshold below the point
+where a single NATS restart would exceed the acceptable restore window, and
+revisit it after restore drills or retention changes.
+
 ## Live Rollout
 
 Use AWS SSO profiles that match the stack accounts:

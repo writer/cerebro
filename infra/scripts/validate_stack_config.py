@@ -1713,6 +1713,7 @@ def validate_stack(path: Path) -> list[Finding]:
         "apiLatencyP95AlarmThresholdSeconds",
         "webLatencyP95AlarmThresholdSeconds",
         "dashboardLatencyP95AlarmThresholdMs",
+        "jetstreamStreamBytesAlarmThreshold",
         "awsServiceQuotaAlarmThresholdPercent",
         "monthlyCostBudgetLimitUsd",
     ):

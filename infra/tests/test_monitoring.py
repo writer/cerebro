@@ -106,6 +106,24 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("AwsControlPlaneIamMutations", metrics)
         self.assertIn("UpdateAssumeRolePolicy", metrics["AwsControlPlaneIamMutations"])
 
+    def test_nats_log_metric_filter_specs_cover_restore_failures(self) -> None:
+        specs = monitoring._nats_log_metric_filter_specs()
+
+        metrics = {spec["metric_name"]: spec["pattern"] for spec in specs.values()}
+        self.assertEqual(
+            set(metrics),
+            {
+                "NatsBootstrapErrors",
+                "NatsCorruptStateRecoveries",
+                "NatsHealthcheckFailures",
+                "NatsRestoreCompletions",
+            },
+        )
+        self.assertIn("Healthcheck failed", metrics["NatsHealthcheckFailures"])
+        self.assertIn("nats: error", metrics["NatsBootstrapErrors"])
+        self.assertIn("corrupt state file", metrics["NatsCorruptStateRecoveries"])
+        self.assertIn("messages for stream", metrics["NatsRestoreCompletions"])
+
     def test_dashboard_includes_access_audit_metrics(self) -> None:
         original_get_region = monitoring.aws.get_region
         monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
@@ -184,6 +202,21 @@ class MonitoringRuntimeTest(unittest.TestCase):
 
         self.assertIn("SourceRuntimeWatermarkLagSeconds", body)
         self.assertIn("RuntimeId", body)
+
+    def test_dashboard_includes_nats_jetstream_operations(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            body = monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", None, "CEREBRO_EVENTS")
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("NATS JetStream Operations", body)
+        self.assertIn("NatsHealthcheckFailures", body)
+        self.assertIn("NatsBootstrapErrors", body)
+        self.assertIn("NatsCorruptStateRecoveries", body)
+        self.assertIn("NatsRestoreCompletions", body)
+        self.assertIn("JetStreamStreamBytes", body)
 
     def test_dashboard_includes_postgres_metrics_when_identifier_is_set(self) -> None:
         original_get_region = monitoring.aws.get_region
@@ -275,6 +308,30 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("runtime_id", body)
         self.assertIn("stats count(*) as events by tenant_id, source_id, runtime_id, event_kind, error_kind", body)
 
+    def test_dashboard_offsets_tenant_diagnostics_after_nats_operations(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            parsed = json.loads(
+                monitoring._dashboard_body(
+                    "cerebro-test",
+                    "alb",
+                    "tg",
+                    "cluster",
+                    "service",
+                    None,
+                    "CEREBRO_EVENTS",
+                    app_log_group_name="/ecs/cerebro-test/api",
+                )
+            )
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        by_title = {widget["properties"]["title"]: widget for widget in parsed["widgets"]}
+        self.assertEqual(by_title["NATS JetStream Operations"]["y"], 60)
+        self.assertEqual(by_title["Tenant Runtime Failures"]["y"], 66)
+        self.assertEqual(by_title["Tenant Runtime Failure Groups"]["y"], 66)
+
     def test_otel_product_metric_widgets_follow_collector_widgets(self) -> None:
         class Region:
             region = "us-east-1"
@@ -344,6 +401,54 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("OtelCollectorDropped", metric_names)
         self.assertIn("OtelCollectorRefused", metric_names)
         self.assertIn("OtelCollectorFailures", metric_names)
+
+    def test_nats_log_metric_filters_roll_up_to_single_metrics(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            filters = monitoring._create_nats_log_metric_filters(
+                "cerebro-test",
+                "/ecs/cerebro-test/nats",
+                "Cerebro/cerebro-test",
+            )
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        self.assertEqual(
+            set(filters),
+            {
+                "nats_bootstrap_errors",
+                "nats_corrupt_state_recoveries",
+                "nats_healthcheck_failures",
+                "nats_restore_completions",
+            },
+        )
+        self.assertTrue(all(call["log_group_name"] == "/ecs/cerebro-test/nats" for call in calls))
+        self.assertTrue(all(call["metric_transformation"].namespace == "Cerebro/cerebro-test" for call in calls))
+        self.assertTrue(all(call["metric_transformation"].value == "1" for call in calls))
+        self.assertTrue(all(call["metric_transformation"].default_value == 0 for call in calls))
+        metric_names = {call["metric_transformation"].name for call in calls}
+        self.assertEqual(
+            metric_names,
+            {
+                "NatsBootstrapErrors",
+                "NatsCorruptStateRecoveries",
+                "NatsHealthcheckFailures",
+                "NatsRestoreCompletions",
+            },
+        )
 
     def test_telemetry_metric_filters_include_grc_dashboard_latency(self) -> None:
         calls: list[dict] = []

@@ -56,6 +56,7 @@ config:
   cerebro:enableJetstreamLagProbe: true
   cerebro:jetstreamLagProbeIntervalSeconds: 60
   cerebro:jetstreamLagAlarmThreshold: 50000
+  cerebro:jetstreamStreamBytesAlarmThreshold: 85899345920
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:837279440628:aws-controltower-SecurityNotifications
   cerebro:apiAuthEnabled: true
