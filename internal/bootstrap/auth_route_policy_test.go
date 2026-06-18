@@ -1,7 +1,9 @@
 package bootstrap
 
 import (
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -108,6 +110,24 @@ func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
 	writer := authPrincipal{Scopes: []string{scopeConnectorCredentialsWrite}}
 	if err := authorizePrincipalScope(writer, scopeConnectorCredentialsWrite); err != nil {
 		t.Fatalf("connector credential writer rejected: %v", err)
+	}
+}
+
+func TestMetricsHTTPRouteRequiresAdminOnly(t *testing.T) {
+	policy := httpRoutePolicyFor(http.MethodGet, "/metrics")
+	if policy.Scope != "" || !policy.AdminOnly {
+		t.Fatalf("GET /metrics policy = %#v, want admin-only", policy)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	readOnly := authContext{principal: authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}}
+	if err := authorizeHTTPRequestScope(readOnly, request); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("read-only authorizeHTTPRequestScope(/metrics) error = %v, want scope forbidden", err)
+	}
+
+	operator := authContext{principal: authPrincipal{AuthMode: "api_key"}}
+	if err := authorizeHTTPRequestScope(operator, request); err != nil {
+		t.Fatalf("operator authorizeHTTPRequestScope(/metrics) error = %v", err)
 	}
 }
 

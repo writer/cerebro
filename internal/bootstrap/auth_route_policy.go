@@ -37,7 +37,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/api/v1/agent-platform/graph/reason", Scope: scopeCosmoSecurityRead, Static: true},
 	{Exact: "/api/v1/mcp", Scope: scopeCosmoSecurityRead, Static: true},
-	{Method: http.MethodGet, Exact: "/metrics", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/metrics", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Prefix: "/reports/", Suffix: "/runs", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Exact: "/platform/knowledge/decisions", Static: true, AdminOnly: true},
 	{Method: http.MethodPost, Exact: "/platform/knowledge/actions", Static: true, AdminOnly: true},
