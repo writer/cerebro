@@ -230,8 +230,6 @@ func cosmoScalarString(value any) string {
 	switch typed := value.(type) {
 	case string:
 		return strings.TrimSpace(typed)
-	case json.Number:
-		return strings.TrimSpace(typed.String())
 	case float64:
 		return strconv.FormatFloat(typed, 'f', -1, 64)
 	case bool:
