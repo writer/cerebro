@@ -1,0 +1,123 @@
+{
+  "rule_id": "duo-active-user-mfa-not-enforced",
+  "runtime": {
+    "id": "writer-duo-user",
+    "source_id": "duo",
+    "tenant_id": "writer",
+    "config": {
+      "family": "user"
+    }
+  },
+  "events": [
+    {
+      "id": "duo-user-enrolled",
+      "tenant_id": "writer",
+      "source_id": "duo",
+      "kind": "duo.user",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "duo/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "user-enrolled",
+        "username": "carol",
+        "email": "carol@writer.com",
+        "status": "active",
+        "is_enrolled": "true",
+        "source_runtime_id": "writer-duo-user"
+      }
+    },
+    {
+      "id": "duo-user-bypass",
+      "tenant_id": "writer",
+      "source_id": "duo",
+      "kind": "duo.user",
+      "occurred_at": "2026-04-23T12:05:00Z",
+      "schema_ref": "duo/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "user-bypass",
+        "username": "alice",
+        "email": "alice@writer.com",
+        "status": "bypass",
+        "is_enrolled": "true",
+        "source_runtime_id": "writer-duo-user"
+      }
+    },
+    {
+      "id": "duo-user-unenrolled",
+      "tenant_id": "writer",
+      "source_id": "duo",
+      "kind": "duo.user",
+      "occurred_at": "2026-04-23T12:10:00Z",
+      "schema_ref": "duo/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "user-unenrolled",
+        "username": "bob",
+        "email": "bob@writer.com",
+        "status": "active",
+        "is_enrolled": "false",
+        "source_runtime_id": "writer-duo-user"
+      }
+    },
+    {
+      "id": "duo-user-disabled",
+      "tenant_id": "writer",
+      "source_id": "duo",
+      "kind": "duo.user",
+      "occurred_at": "2026-04-23T12:15:00Z",
+      "schema_ref": "duo/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "user-disabled",
+        "username": "dave",
+        "email": "dave@writer.com",
+        "status": "disabled",
+        "is_enrolled": "false",
+        "source_runtime_id": "writer-duo-user"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "duo-active-user-mfa-not-enforced",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Duo user alice is active without enforced MFA",
+      "event_ids": ["duo-user-bypass"],
+      "attributes": {
+        "duo_user_urn": "urn:cerebro:writer:duo_user:user-bypass",
+        "user_id": "user-bypass",
+        "status": "bypass",
+        "mfa_gap_reason": "mfa_bypass",
+        "primary_resource_urn": "urn:cerebro:writer:duo_user:user-bypass",
+        "rule_required_attributes": "user_id"
+      }
+    },
+    {
+      "rule_id": "duo-active-user-mfa-not-enforced",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Duo user bob is active without enforced MFA",
+      "event_ids": ["duo-user-unenrolled"],
+      "attributes": {
+        "duo_user_urn": "urn:cerebro:writer:duo_user:user-unenrolled",
+        "user_id": "user-unenrolled",
+        "status": "active",
+        "is_enrolled": "false",
+        "mfa_gap_reason": "not_enrolled",
+        "primary_resource_urn": "urn:cerebro:writer:duo_user:user-unenrolled"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "duo-user-enrolled",
+      "reason": "active user enrolled in MFA and not in bypass is healthy"
+    },
+    {
+      "event_id": "duo-user-disabled",
+      "reason": "disabled identity cannot authenticate so a missing factor is not an active MFA gap"
+    }
+  ]
+}

@@ -551,6 +551,52 @@
       ]
     },
     {
+      "id": "duo-active-user-mfa-not-enforced",
+      "pack_id": "duo",
+      "pack_name": "Duo",
+      "name": "Duo Active User Without Enforced MFA",
+      "description": "Detect active Duo users who can authenticate without multi-factor protection because they are in MFA bypass mode or are not enrolled in any factor, leaving a current authentication control gap on the identity.",
+      "source_id": "duo",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "duo.user"
+      ],
+      "output_kind": "finding.duo_active_user_mfa_not_enforced",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "access-control",
+        "authentication",
+        "duo",
+        "identity",
+        "mfa"
+      ],
+      "references": [
+        "https://duo.com/docs/adminapi"
+      ],
+      "false_positives": [
+        "Service or break-glass identities that are intentionally placed in MFA bypass under a documented, risk-accepted exception."
+      ],
+      "runbook": "Confirm whether the Duo user should authenticate with MFA; if so, remove the bypass status or complete factor enrollment so the identity is protected by multi-factor authentication.",
+      "required_attributes": [
+        "user_id"
+      ],
+      "fingerprint_fields": [
+        "duo_user_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        }
+      ]
+    },
+    {
       "id": "email-domain-authentication-misconfigured",
       "pack_id": "email_domain",
       "pack_name": "Email Domain",
