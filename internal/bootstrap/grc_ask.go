@@ -15,18 +15,26 @@ import (
 
 const maxGRCAskBodyBytes = 128 << 10
 
+type grcAskRequestEnvelope struct {
+	graphagent.AskRequest
+	Context        json.RawMessage `json:"context,omitempty"`
+	Surface        string          `json:"surface,omitempty"`
+	ConversationID string          `json:"conversation_id,omitempty"`
+}
+
 func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	evt := askWideEvent{provider: a.cfg.GraphAgentLLM.Provider}
 
-	var request graphagent.AskRequest
+	var envelope grcAskRequestEnvelope
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxGRCAskBodyBytes))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
+	if err := decoder.Decode(&envelope); err != nil {
 		evt.finish(r, started, http.StatusBadRequest, err)
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
+	request := envelope.AskRequest
 	evt.tenantID = request.TenantID
 	evt.question = request.Question
 	evt.scopeURN = request.ScopeURN
