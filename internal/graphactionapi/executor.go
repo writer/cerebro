@@ -53,6 +53,13 @@ func AccessApprovalsConfigured(cfg config.AccessApprovalsActionConfig) bool {
 	return strings.TrimSpace(cfg.BaseURL) != "" && strings.TrimSpace(cfg.BearerToken) != ""
 }
 
+func NewAccessApprovalsServiceIfConfigured(cfg config.AccessApprovalsActionConfig, findings graphactions.FindingWorkflow) (*graphactions.Service, error) {
+	if !AccessApprovalsConfigured(cfg) {
+		return nil, nil
+	}
+	return NewAccessApprovalsService(cfg, findings)
+}
+
 func NewAccessApprovalsService(cfg config.AccessApprovalsActionConfig, findings graphactions.FindingWorkflow) (*graphactions.Service, error) {
 	client, err := accessapprovalsclient.New(cfg)
 	if err != nil {

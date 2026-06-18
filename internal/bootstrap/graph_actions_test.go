@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -193,7 +194,7 @@ func TestGraphActionNotConfiguredReturnsServiceUnavailable(t *testing.T) {
 }
 
 func TestGraphActionConnectErrorMapsRemoteToUnavailable(t *testing.T) {
-	err := graphActionConnectError(graphactions.ErrRemote)
+	err := graphactionapi.ConnectError(graphactions.ErrRemote, graphActionErrors)
 	if !errors.Is(err, graphactions.ErrRemote) && err == nil {
 		t.Fatalf("graphActionConnectError() = %v, want connect error", err)
 	}

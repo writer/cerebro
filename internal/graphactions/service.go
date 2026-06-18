@@ -167,13 +167,10 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 		IdempotencyKey: idempotencyKey,
 	}
 	var externalAction *AccessApprovalsUserAction
-	switch action {
-	case ActionIdentityOktaSuspendUser:
+	if action == ActionIdentityOktaSuspendUser {
 		externalAction, err = s.Client.SuspendOktaUser(ctx, actionRequest)
-	case ActionIdentityOktaUnsuspendUser:
+	} else {
 		externalAction, err = s.Client.UnsuspendOktaUser(ctx, actionRequest)
-	default:
-		return nil, fmt.Errorf("%w: unsupported action %q", ErrInvalidRequest, action)
 	}
 	if err != nil {
 		return nil, err
