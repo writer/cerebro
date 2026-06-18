@@ -181,3 +181,54 @@ func TestReadProjectHostedToolPermissionDoesNotSendPageSize(t *testing.T) {
 		t.Fatalf("code_interpreter_enabled = %q, want true", got)
 	}
 }
+
+func TestReadProjectRoleUsesProjectRootPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/projects/proj_123/roles" {
+			t.Fatalf("request path = %q, want /projects/proj_123/roles", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":            "role_123",
+				"name":          "Project Key Manager",
+				"permissions":   []string{"api.organization.projects.api_keys.read"},
+				"resource_type": "api.project",
+			}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"api_key":    "admin-key",
+		"base_url":   server.URL,
+		"family":     "project_role",
+		"per_page":   "2",
+		"project_id": "proj_123",
+		"tenant_id":  "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "openai.project_role" {
+		t.Fatalf("Kind = %q, want openai.project_role", event.Kind)
+	}
+	if got := event.Attributes["project_id"]; got != "proj_123" {
+		t.Fatalf("project_id = %q, want proj_123", got)
+	}
+	if got := event.Attributes["resource_type"]; got != "api.project" {
+		t.Fatalf("resource_type = %q, want api.project", got)
+	}
+}

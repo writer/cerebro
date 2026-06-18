@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -897,6 +898,31 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	}
 	if packet.RecommendedAction == "" {
 		t.Fatalf("packet recommended action is empty")
+	}
+	if packet.Metadata.Readiness.Status == "" || packet.Metadata.Provenance.ReportType != "finding" {
+		t.Fatalf("packet metadata = %#v, want finding readiness and provenance", packet.Metadata)
+	}
+	if packet.Metadata.Redaction.DefaultMode != "share_safe" {
+		t.Fatalf("redaction metadata = %#v, want share-safe default", packet.Metadata.Redaction)
+	}
+
+	exportResp, err := server.Client().Get(server.URL + "/grc/audit-packets/finding-high/export")
+	if err != nil {
+		t.Fatalf("GET /grc/audit-packets export error = %v", err)
+	}
+	defer func() { _ = exportResp.Body.Close() }()
+	if exportResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/audit-packets export status = %d, want %d", exportResp.StatusCode, http.StatusOK)
+	}
+	body, err := io.ReadAll(exportResp.Body)
+	if err != nil {
+		t.Fatalf("read packet export: %v", err)
+	}
+	markdown := string(body)
+	for _, want := range []string{"# Finding Audit Packet", "Recommended Action", "Readiness"} {
+		if !strings.Contains(markdown, want) {
+			t.Fatalf("finding export missing %q:\n%s", want, markdown)
+		}
 	}
 }
 

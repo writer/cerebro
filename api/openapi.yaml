@@ -3424,6 +3424,36 @@ paths:
       responses:
         '200':
           description: Projection provenance for one graph entity, including projection class, source/runtime identifiers, attributes, and freshness signals.
+  /grc/audit-packets/{packetID}/export:
+    get:
+      operationId: exportGRCAuditPacket
+      summary: Export a GRC audit packet
+      tags:
+        - GRC
+      parameters:
+        - name: packetID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum:
+              - markdown
+              - json
+          description: Optional export format. Defaults to markdown.
+      responses:
+        '200':
+          description: Exported audit packet content.
+          content:
+            text/markdown:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
 
 components:
   securitySchemes:

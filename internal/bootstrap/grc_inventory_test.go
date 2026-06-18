@@ -6,6 +6,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grcinventory"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 )
@@ -23,14 +24,14 @@ func TestGRCInventoryVulnerabilitiesReturnsEmptySlice(t *testing.T) {
 func TestGRCInventoryReviewPostureKeepsOrdinaryUnownedAssetsInBaseline(t *testing.T) {
 	asset := graphquery.InventoryAsset{
 		URN:        "urn:cerebro:writer:github_code_repository:writer/app",
-		ScopeState: grcInventoryScopeStateInScope,
+		ScopeState: grcinventory.ScopeStateInScope,
 		Attributes: map[string]string{},
 	}
-	applyGRCInventoryReviewPosture(&asset)
-	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcInventoryReviewBaseline {
+	grcinventory.ApplyReviewPosture(&asset)
+	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcinventory.ReviewBaseline {
 		t.Fatalf("review_disposition = %#v, want baseline", asset.ReviewDisposition)
 	}
-	if asset.Accountability == nil || asset.Accountability.State != grcInventoryAccountabilityNone {
+	if asset.Accountability == nil || asset.Accountability.State != grcinventory.AccountabilityNone {
 		t.Fatalf("accountability = %#v, want not_required", asset.Accountability)
 	}
 }
@@ -39,14 +40,14 @@ func TestGRCInventoryReviewPostureRequiresOwnerForHighRiskUnownedAssets(t *testi
 	asset := graphquery.InventoryAsset{
 		URN:        "urn:cerebro:writer:aws_s3_bucket:bucket-a",
 		RiskScore:  80,
-		ScopeState: grcInventoryScopeStateInScope,
+		ScopeState: grcinventory.ScopeStateInScope,
 		Attributes: map[string]string{},
 	}
-	applyGRCInventoryReviewPosture(&asset)
-	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcInventoryReviewNeedsReview {
+	grcinventory.ApplyReviewPosture(&asset)
+	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcinventory.ReviewNeedsReview {
 		t.Fatalf("review_disposition = %#v, want needs_review", asset.ReviewDisposition)
 	}
-	if asset.Accountability == nil || asset.Accountability.State != grcInventoryAccountabilityRequired {
+	if asset.Accountability == nil || asset.Accountability.State != grcinventory.AccountabilityRequired {
 		t.Fatalf("accountability = %#v, want required_missing", asset.Accountability)
 	}
 }
@@ -54,13 +55,13 @@ func TestGRCInventoryReviewPostureRequiresOwnerForHighRiskUnownedAssets(t *testi
 func TestGRCInventoryReviewPostureReportsActiveIssues(t *testing.T) {
 	asset := graphquery.InventoryAsset{
 		URN:                     "urn:cerebro:writer:aws_s3_bucket:bucket-a",
-		ScopeState:              grcInventoryScopeStateInScope,
+		ScopeState:              grcinventory.ScopeStateInScope,
 		AssetReportCount:        1,
 		LatestAssetReportStatus: ports.GRCInventoryAssetReportStatusAccepted,
 		Attributes:              map[string]string{},
 	}
-	applyGRCInventoryReviewPosture(&asset)
-	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcInventoryReviewReportedIssue {
+	grcinventory.ApplyReviewPosture(&asset)
+	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcinventory.ReviewReportedIssue {
 		t.Fatalf("review_disposition = %#v, want reported_issue", asset.ReviewDisposition)
 	}
 }
@@ -76,7 +77,7 @@ func TestGRCInventoryScopePropagationUpdatesRuntimeResourcePolicy(t *testing.T) 
 		AssetURN:   assetURN,
 		SourceID:   "aws",
 		RuntimeID:  "runtime-a",
-		ScopeState: grcInventoryScopeStateOutScope,
+		ScopeState: grcinventory.ScopeStateOutScope,
 		Reason:     "Not in audit scope",
 	})
 	if err != nil {
@@ -101,7 +102,7 @@ func TestGRCInventoryScopePropagationUpdatesRuntimeResourcePolicy(t *testing.T) 
 		AssetURN:   assetURN,
 		SourceID:   "aws",
 		RuntimeID:  "runtime-a",
-		ScopeState: grcInventoryScopeStateInScope,
+		ScopeState: grcinventory.ScopeStateInScope,
 	})
 	if err != nil {
 		t.Fatalf("applyGRCInventoryScopeToSourceRuntimes(in) error = %v", err)

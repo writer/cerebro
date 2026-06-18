@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -149,6 +150,7 @@ type grcAuditPacketResponse struct {
 	Graph             *ports.EntityNeighborhood `json:"graph,omitempty"`
 	Controls          []grcControlRef           `json:"controls,omitempty"`
 	RecommendedAction string                    `json:"recommended_action"`
+	Metadata          grccontrol.ReportMetadata `json:"metadata"`
 	GeneratedAt       time.Time                 `json:"generated_at"`
 }
 
@@ -466,39 +468,56 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
+	packet, err := a.buildGRCAuditPacket(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, packet)
+}
+
+func (a *App) handleGRCAuditPacketExport(w http.ResponseWriter, r *http.Request) {
+	packet, err := a.buildGRCAuditPacket(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
+		writeJSON(w, http.StatusOK, packet)
+		return
+	}
+	writeGRCMarkdownExport(w, "finding-audit-packet.md", grccontrol.RenderFindingAuditPacketMarkdown(grcFindingAuditMarkdownInput(packet)))
+}
+
+func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, error) {
 	findingID := strings.TrimSpace(r.PathValue("packetID"))
 	if findingID == "" {
-		writeGRCError(w, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest))
-		return
+		return grcAuditPacketResponse{}, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest)
 	}
 	limit, err := grcLimitFromRequest(r)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
 	store := findingStore(a.deps.StateStore)
 	if store == nil {
-		writeGRCError(w, findings.ErrRuntimeUnavailable)
-		return
+		return grcAuditPacketResponse{}, findings.ErrRuntimeUnavailable
 	}
 	if err := authorizeFindingIDTenant(r.Context(), store, findingID); err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
 	finding, err := a.findingService().GetFinding(r.Context(), findingID)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
-	runtimes, err := a.grcListRuntimes(r, grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: limit})
+	scope := grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: limit}
+	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
+	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
 	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingID: finding.ID, Limit: limit})
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
@@ -508,18 +527,66 @@ func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
 	}
 	items := grcFindingItems([]*ports.FindingRecord{finding}, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence))
 	if len(items) == 0 {
-		writeGRCError(w, ports.ErrFindingNotFound)
-		return
+		return grcAuditPacketResponse{}, ports.ErrFindingNotFound
 	}
-	writeJSON(w, http.StatusOK, grcAuditPacketResponse{
+	generatedAt := time.Now().UTC()
+	controls := grcControlRefs(finding.ControlRefs)
+	packet := grcAuditPacketResponse{
 		ID:                finding.ID,
 		Finding:           items[0],
 		Evidence:          grcEvidenceItems(evidence, map[string]string{finding.ID: finding.Title}),
 		Graph:             graph,
-		Controls:          grcControlRefs(finding.ControlRefs),
+		Controls:          controls,
 		RecommendedAction: grcRecommendedAction(items[0]),
-		GeneratedAt:       time.Now().UTC(),
+		GeneratedAt:       generatedAt,
+	}
+	packet.Metadata = grccontrol.BuildReportMetadata(grccontrol.ReportMetadataInput{
+		ReportType:    "finding",
+		GeneratedAt:   generatedAt,
+		ControlCount:  len(controls),
+		FindingCount:  1,
+		EvidenceCount: len(evidence),
+		Readiness: grccontrol.BuildFindingAuditReadiness(grccontrol.FindingAuditReadinessInput{
+			Owner:          packet.Finding.Owner,
+			ControlCount:   len(controls),
+			EvidenceCount:  len(evidence),
+			HasImpactProof: packet.Graph != nil && packet.Graph.Root != nil,
+		}),
+		Runtimes: reportScopeRuntimes,
 	})
+	return packet, nil
+}
+
+func grcFindingAuditMarkdownInput(packet grcAuditPacketResponse) grccontrol.FindingAuditMarkdownInput {
+	controls := make([]grccontrol.ControlRef, 0, len(packet.Controls))
+	for _, control := range packet.Controls {
+		controls = append(controls, grccontrol.ControlRef{FrameworkName: control.FrameworkName, ControlID: control.ControlID})
+	}
+	evidence := make([]grccontrol.FindingAuditMarkdownEvidence, 0, len(packet.Evidence))
+	for _, item := range packet.Evidence {
+		evidence = append(evidence, grccontrol.FindingAuditMarkdownEvidence{
+			ID:        item.ID,
+			RuleID:    item.RuleID,
+			CreatedAt: item.CreatedAt,
+		})
+	}
+	return grccontrol.FindingAuditMarkdownInput{
+		Finding: grccontrol.FindingAuditMarkdownFinding{
+			ID:        packet.Finding.ID,
+			Title:     packet.Finding.Title,
+			Severity:  packet.Finding.Severity,
+			Status:    packet.Finding.Status,
+			Summary:   packet.Finding.Summary,
+			RiskScore: packet.Finding.RiskScore,
+			Owner:     packet.Finding.Owner,
+			SLAStatus: packet.Finding.SLAStatus,
+		},
+		Controls:          controls,
+		Evidence:          evidence,
+		RecommendedAction: packet.RecommendedAction,
+		Metadata:          packet.Metadata,
+		GeneratedAt:       packet.GeneratedAt,
+	}
 }
 
 type grcFindingFilter struct {
@@ -693,6 +760,24 @@ func (a *App) grcListRuntimes(r *http.Request, scope grcScope) ([]*cerebrov1.Sou
 		return nil, err
 	}
 	return runtimes, nil
+}
+
+func (a *App) grcReportScopeRuntimes(r *http.Request, scope grcScope, fallback []*cerebrov1.SourceRuntime) []*cerebrov1.SourceRuntime {
+	store, ok := a.deps.StateStore.(ports.SourceRuntimeListStore)
+	if !ok {
+		return grccontrol.ReportScopeRuntimeSnapshots(fallback)
+	}
+	runtimes, err := store.ListSourceRuntimes(r.Context(), ports.SourceRuntimeFilter{
+		RuntimeID:  scope.RuntimeID,
+		RuntimeIDs: scope.RuntimeIDs,
+		TenantID:   scope.TenantID,
+		SourceID:   scope.SourceID,
+		Limit:      scope.Limit,
+	})
+	if err != nil {
+		return grccontrol.ReportScopeRuntimeSnapshots(fallback)
+	}
+	return grccontrol.ReportScopeRuntimeSnapshots(runtimes)
 }
 
 func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.SourceRuntime, filter grcFindingFilter) ([]*ports.FindingRecord, error) {

@@ -303,3 +303,57 @@ func TestFamilyEngineAppliesIncrementalWatermarkFallback(t *testing.T) {
 		t.Fatalf("NextCursor opaque = %q, want resumable envelope", pull.NextCursor.GetOpaque())
 	}
 }
+
+func TestFamilyEngineCarriesResourceScopeThroughIncrementalWatermark(t *testing.T) {
+	watermark := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	checkpoint := IncrementalWatermarkCheckpoint("aws", "cloudtrail", []*primitives.Event{
+		{Id: "known", OccurredAt: timestamppb.New(watermark)},
+	}, IncrementalWatermarkState{})
+	engine, err := NewFamilyEngineWithSourceID("aws", func(cfg Config) (string, error) {
+		family, _ := cfg.Lookup("family")
+		return family, nil
+	}, func(settings string) string { return settings }, Family[string]{
+		Name:                 "cloudtrail",
+		IncrementalWatermark: true,
+		Read: func(context.Context, string, *cerebrov1.SourceCursor) (Pull, error) {
+			return Pull{
+				Events: []*primitives.Event{
+					{
+						Id:         "keep",
+						Kind:       "aws.cloudtrail",
+						OccurredAt: timestamppb.New(watermark.Add(time.Minute)),
+						Attributes: map[string]string{"resource_urn": "urn:cerebro:tenant:aws_s3_bucket:kept"},
+					},
+					{
+						Id:         "drop",
+						Kind:       "aws.cloudtrail",
+						OccurredAt: timestamppb.New(watermark.Add(2 * time.Minute)),
+						Attributes: map[string]string{"resource_urn": "urn:cerebro:tenant:aws_s3_bucket:excluded"},
+					},
+				},
+				NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFamilyEngineWithSourceID() error = %v", err)
+	}
+	rawPolicy, err := resourcescope.ConfigValue(resourcescope.Policy{ExcludedResourceURNs: []string{"urn:cerebro:tenant:aws_s3_bucket:excluded"}})
+	if err != nil {
+		t.Fatalf("ConfigValue() error = %v", err)
+	}
+
+	pull, err := engine.ReadWithCheckpoint(context.Background(), NewConfig(map[string]string{
+		"family":                "cloudtrail",
+		resourcescope.ConfigKey: rawPolicy,
+	}), nil, checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetId() != "keep" {
+		t.Fatalf("events = %#v, want resource-scope exclusion applied after incremental filtering", pull.Events)
+	}
+	if pull.NextCursor == nil || !ResumableCursorOpaque(pull.NextCursor.GetOpaque()) {
+		t.Fatalf("NextCursor = %#v, want resumable incremental cursor", pull.NextCursor)
+	}
+}

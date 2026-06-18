@@ -76,12 +76,13 @@ context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
 
-The GRC control evidence packet routes add small HTTP adapters that resolve
-request scope, load findings and evidence, decode generated custom control-pack
-requests, and hand posture calculation or markdown rendering to
-`internal/grccontrol`. Profile resolution, rule coverage, evidence freshness,
-control status behavior, custom profile resolution, and export rendering stay
-behind that domain package.
+The GRC report packet routes add small HTTP adapters that resolve request scope,
+load findings, evidence, and graph proof, decode generated custom control-pack
+requests, and hand readiness, posture calculation, scope metadata, redaction
+metadata, and markdown rendering to `internal/grccontrol`. Profile resolution,
+rule coverage, evidence freshness, control status behavior, custom profile
+resolution, report metadata construction, and export rendering stay behind that
+domain package.
 
 The agent platform graph preflight contract lives in `internal/agentplatform`.
 The bootstrap budget includes the HTTP and MCP request/response mapping needed
