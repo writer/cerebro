@@ -61,6 +61,38 @@ class DroidSastContextTests(unittest.TestCase):
         self.assertIn("3 candidate(s)", notes[0])
         self.assertIn("3 candidate(s) on changed files", notes[0])
 
+    def test_collect_deepsec_scan_context_preserves_promoted_changed_line_annotation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / ".deepsec"
+            files_dir = workspace / "data" / "cerebro" / "files" / "internal"
+            files_dir.mkdir(parents=True)
+            (files_dir / "handler.go.json").write_text(
+                json.dumps(
+                    {
+                        "filePath": "internal/handler.go",
+                        "lastScannedRunId": "run-1",
+                        "candidates": [
+                            {"vulnSlug": "go-ssrf", "lineNumbers": [7]},
+                            {"vulnSlug": "go-ssrf", "lineNumbers": [7, 42]},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            findings, _ = ctx.collect_deepsec_scan_context(
+                workspace,
+                "cerebro",
+                "run-1",
+                ["internal/handler.go"],
+                {"internal/handler.go": {42}},
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0]["changed_line"])
+        self.assertEqual(findings[0]["line"], 7)
+        self.assertIn("spans changed line(s): 42", findings[0]["message"])
+
     def test_collect_deepsec_scan_context_filters_unchanged_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / ".deepsec"
@@ -130,9 +162,36 @@ class DroidSastContextTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertIn("no DeepSec candidate file records found", notes[0])
 
+    def test_collect_deepsec_scan_context_handles_file_instead_of_files_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / ".deepsec"
+            files_dir = workspace / "data" / "cerebro" / "files"
+            files_dir.parent.mkdir(parents=True)
+            files_dir.write_text("not a directory", encoding="utf-8")
+            findings, notes = ctx.collect_deepsec_scan_context(
+                workspace,
+                "cerebro",
+                "run-1",
+                ["internal/handler.go"],
+                {"internal/handler.go": {42}},
+            )
+
+        self.assertEqual(findings, [])
+        self.assertIn("no DeepSec candidate file records found", notes[0])
+
     def test_latest_deepsec_scan_run_handles_missing_runs_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / ".deepsec"
+            run = ctx.latest_deepsec_scan_run(workspace, "cerebro")
+
+        self.assertIsNone(run)
+
+    def test_latest_deepsec_scan_run_handles_file_instead_of_runs_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / ".deepsec"
+            runs_dir = workspace / "data" / "cerebro" / "runs"
+            runs_dir.parent.mkdir(parents=True)
+            runs_dir.write_text("not a directory", encoding="utf-8")
             run = ctx.latest_deepsec_scan_run(workspace, "cerebro")
 
         self.assertIsNone(run)

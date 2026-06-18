@@ -345,7 +345,7 @@ def parse_deepsec_run_id(value: str) -> str:
 
 def latest_deepsec_scan_run(workspace: Path, project_id: str, preferred_run_id: str = "") -> dict[str, object] | None:
     runs_dir = workspace / "data" / project_id / "runs"
-    if not runs_dir.exists():
+    if not runs_dir.is_dir():
         return None
     runs: list[dict[str, object]] = []
     for path in sorted(runs_dir.glob("*.json")):
@@ -372,7 +372,7 @@ def collect_deepsec_scan_context(
     run_id = str(run_id).strip()
     if not run_id:
         return [], ["DeepSec scan run id is missing; no historical candidates were included."]
-    if not files_dir.exists():
+    if not files_dir.is_dir():
         return [], [f"Run {run_id}: no DeepSec candidate file records found."]
     changed_files = {normalize_repo_path(path) for path in files}
     total_candidates = 0
@@ -424,6 +424,7 @@ def collect_deepsec_scan_context(
                 if changed_line and not existing.get("changed_line"):
                     existing["changed_line"] = True
                     existing["line"] = line
+                    existing["message"] = message
                 continue
             review_findings_by_key[key] = finding
     review_findings = list(review_findings_by_key.values())
