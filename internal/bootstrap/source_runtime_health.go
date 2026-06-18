@@ -681,7 +681,7 @@ func runtimeContractProbeState(runtime *cerebrov1.SourceRuntime) string {
 	if strings.TrimSpace(runtime.GetSourceId()) != "evidence_cas" {
 		return "not_configured"
 	}
-	if runtime.GetLastSyncedAt() == nil {
+	if timestampValue(runtime.GetLastSyncedAt()).IsZero() {
 		return "unknown"
 	}
 	return "passing"
