@@ -183,7 +183,7 @@ func tailscaleDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			"at":         eventObservedAt(event),
 			"match_type": "tailscale_device_owner",
 		}))
-		if tailscaleBoolIsTrue(attrs["authorized"]) {
+		if tailscaleBoolIsTrue(attrs["authorized"]) && !tailscaleBoolIsTrue(attrs["blocks_incoming_connections"]) {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), ownerURN, deviceURN, relationCanReach, map[string]string{
 				"event_id":   event.GetId(),
 				"at":         eventObservedAt(event),
@@ -349,9 +349,9 @@ func tailscaleGrantProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 }
 
 // tailscaleAccessRetractions clears obsolete access edges when Tailscale evidence
-// shows that access has been revoked: a deauthorized device must no longer be
-// reachable by its owner, and a disabled ACL grant must no longer confer source
-// entitlements or destination reachability.
+// shows that access has been revoked: a deauthorized device, or one that blocks
+// incoming connections, must no longer be reachable by its owner, and a disabled
+// ACL grant must no longer confer source entitlements or destination reachability.
 func tailscaleAccessRetractions(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error) {
 	switch event.GetKind() {
 	case "tailscale.device":
@@ -365,7 +365,9 @@ func tailscaleAccessRetractions(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 
 func tailscaleDeviceAccessRetractions(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error) {
 	attrs := event.GetAttributes()
-	if !tailscaleBoolIsFalse(attrs["authorized"]) {
+	deauthorized := tailscaleBoolIsFalse(attrs["authorized"])
+	blocksIncoming := tailscaleBoolIsTrue(attrs["blocks_incoming_connections"])
+	if !deauthorized && !blocksIncoming {
 		return nil, nil
 	}
 	tenantID, err := tenantID(event)
@@ -377,12 +379,16 @@ func tailscaleDeviceAccessRetractions(event *cerebrov1.EventEnvelope) ([]*ports.
 	if deviceID == "" || strings.TrimSpace(ownerID) == "" {
 		return nil, nil
 	}
+	reason := "tailscale_device_blocks_incoming"
+	if deauthorized {
+		reason = "tailscale_device_deauthorized"
+	}
 	deviceURN := tailscaleDeviceURN(tenantID, deviceID)
 	ownerURN := tailscaleUserURN(tenantID, ownerID)
 	links := map[string]*ports.ProjectedLink{}
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), ownerURN, deviceURN, relationCanReach, map[string]string{
 		"event_id":   event.GetId(),
-		"retraction": "tailscale_device_deauthorized",
+		"retraction": reason,
 	}))
 	_, projectedLinks := entitiesAndLinks(nil, links)
 	return projectedLinks, nil

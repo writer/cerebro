@@ -86,6 +86,29 @@ Core runtime operations emit structured spans:
 
 Outbound HTTP uses W3C `traceparent`. The source transport and graph-agent HTTP doer inject child trace context, but they do not emit full URLs, query strings, request bodies, authorization headers, or API keys. Graph-agent LLM spans also do not emit prompt text, completion text, raw Cypher, raw tool arguments, rows, or headers.
 
+## Product OTEL Metrics
+
+The app exports explicit low-cardinality OTEL metrics for the domain operations
+that decide whether Cerebro is useful, not just reachable. These metrics are
+safe to aggregate in CloudWatch, Prometheus, or a vendor backend.
+
+| Metric | Unit | Primary dimensions | Meaning |
+| --- | --- | --- | --- |
+| `cerebro.http.server.requests` | `{request}` | `http.request.method`, `http.route`, `http.response.status_code` | API request rate and error-rate denominator |
+| `cerebro.http.server.request.duration` | `s` | `http.request.method`, `http.route`, `http.response.status_code` | API latency distribution |
+| `cerebro.source_runtime.sync.runs` | `{run}` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync success/failure rate |
+| `cerebro.source_runtime.sync.duration` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync duration distribution |
+| `cerebro.source_runtime.records` | `{record}` | `source_id`, `status`, `error_kind`, `contract_configured`, `record.kind` | Pages, scanned records, accepted/rejected events, appended events, and projected entities/links |
+| `cerebro.source_runtime.watermark.lag` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Observed source freshness lag when a checkpoint watermark exists |
+| `cerebro.source_projection.runs` | `{projection}` | `source_id`, `event_kind`, `status` | Projection success/failure rate |
+| `cerebro.source_projection.duration` | `s` | `source_id`, `event_kind`, `status` | Projection latency distribution |
+| `cerebro.source_projection.records` | `{record}` | `source_id`, `event_kind`, `status`, `record.kind` | Graph/current-state records projected or deleted |
+
+Metric attributes deliberately exclude `tenant_id`, `runtime_id`, `resource_urn`,
+`evidence_id`, `request_id`, and `trace_id`. Those identifiers remain available
+in spans and wide events for drill-down, while metrics stay safe for aggregation
+and alerting.
+
 ## Error Contract
 
 Use `telemetry.CaptureError(ctx, name, err, attrs)` for Sentry-style handled errors. It emits:

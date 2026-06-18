@@ -58,7 +58,7 @@ func New() (*Source, error) {
 				Attributes: map[string]string{
 					"tenant_id":                     "metadata.tenant_id|tenant_id",
 					"evidence_id":                   "metadata.evidence_id|uri|key",
-					"resource_urn":                  "metadata.resource_urn|metadata.case_urn",
+					"resource_urn":                  "metadata.resource_urn",
 					"source_runtime_id":             "metadata.source_runtime_id|source_runtime_id",
 					"source_event_id":               "metadata.source_event_id|source_event_id|metadata.event_id|event_id",
 					"request_id":                    "metadata.request_id|request_id",
@@ -70,7 +70,7 @@ func New() (*Source, error) {
 					"case_urn":                      "metadata.case_urn",
 					"case_link_status":              "metadata.case_link_status",
 					"resource_entity_type":          "metadata.resource_entity_type",
-					"resource_id":                   "metadata.resource_id|metadata.case_id",
+					"resource_id":                   "metadata.resource_id",
 					"resource_link_status":          "metadata.resource_link_status",
 					"resource_name":                 "metadata.resource_name|metadata.filename",
 					"resource_type":                 "metadata.resource_type",
