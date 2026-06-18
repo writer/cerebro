@@ -15,6 +15,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
 
@@ -1014,6 +1015,73 @@ func TestReadLiveGCPAuditLogsWithCheckpoint(t *testing.T) {
 	wantFilter := `timestamp >= "` + watermark.Add(-gcpcloud.FindingCheckpointLookback).Format(time.RFC3339Nano) + `"`
 	if got := gotBody["filter"]; got != wantFilter {
 		t.Fatalf("filter = %v, want %s", got, wantFilter)
+	}
+}
+
+func TestReadLiveGCPAuditLogsWithCheckpointIgnoresLegacyPageToken(t *testing.T) {
+	watermark := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v2/entries:list" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if _, ok := gotBody["pageToken"]; ok {
+			t.Fatalf("checkpointed audit read sent stale pageToken in body: %#v", gotBody)
+		}
+		writeJSON(t, w, map[string]any{"entries": []map[string]any{
+			{"insertId": "new-audit", "timestamp": watermark.Add(time.Hour).Format(time.RFC3339Nano), "protoPayload": map[string]any{"methodName": "storage.buckets.update"}},
+		}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyAudit,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), &cerebrov1.SourceCursor{Opaque: "stale-provider-page-token"}, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(%s) error = %v", familyAudit, err)
+	}
+	if got := gotBody["orderBy"]; got != "timestamp desc" {
+		t.Fatalf("orderBy = %v, want timestamp desc", got)
+	}
+}
+
+func TestReadLiveGCPComputeInstancesAllowsLargeAggregatedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/compute/v1/projects/writer-prod/aggregated/instances" {
+			http.NotFound(w, r)
+			return
+		}
+		padding := strings.Repeat("x", sourcehttp.MaxBodyBytes+1024)
+		writeJSON(t, w, map[string]any{"padding": padding, "items": map[string]any{}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyComputeInstance,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyComputeInstance, err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(events) = %d, want 0", len(pull.Events))
 	}
 }
 

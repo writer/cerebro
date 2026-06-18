@@ -347,11 +347,14 @@ func TestProjectSentinelOneActivityBuildsAuditEvidenceContext(t *testing.T) {
 	if result.EntitiesProjected == 0 || result.LinksProjected == 0 {
 		t.Fatalf("activity projection = entities %d links %d, want graph evidence context", result.EntitiesProjected, result.LinksProjected)
 	}
-	activityURN := "urn:cerebro:writer:sentinelone_activity:activity-1"
+	activityURN := "urn:cerebro:writer:runtime_evidence:activity-1"
 	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
 	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
 	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
-	assertProjectedEntityType(t, state, activityURN, "sentinelone.activity")
+	assertProjectedEntityType(t, state, activityURN, "runtime.evidence")
+	if got := state.entities[activityURN].Attributes["evidence_type"]; got != "sentinelone.activity" {
+		t.Fatalf("activity evidence_type = %q, want sentinelone.activity", got)
+	}
 	assertProjectedEntityType(t, state, agentURN, "sentinelone.agent")
 	assertProjectedEntityType(t, state, threatURN, "sentinelone.threat")
 	assertProjectedEntityType(t, state, siteURN, "sentinelone.site")

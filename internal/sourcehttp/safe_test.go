@@ -121,6 +121,26 @@ func TestNewRequestNormalizesOriginPathQueryAndBody(t *testing.T) {
 	}
 }
 
+func TestNewJSONRequestSetsJSONHeadersAndBody(t *testing.T) {
+	req, err := NewJSONRequest(context.Background(), "test_source", "https://api.example.com", false, http.MethodPost, "/v1/items", nil, map[string]string{"id": "123"})
+	if err != nil {
+		t.Fatalf("NewJSONRequest() error = %v", err)
+	}
+	if got := req.Header.Get("Accept"); got != "application/json" {
+		t.Fatalf("Accept = %q, want application/json", got)
+	}
+	if got := req.Header.Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(request body) error = %v", err)
+	}
+	if string(body) != `{"id":"123"}` {
+		t.Fatalf("body = %q, want JSON payload", string(body))
+	}
+}
+
 func TestSafeRoundTripperPropagatesTraceWithoutLeakingURLQuery(t *testing.T) {
 	var propagated string
 	ctx, parent := telemetry.StartMain(context.Background(), "test.parent", telemetry.Attrs())

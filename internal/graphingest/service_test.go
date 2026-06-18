@@ -1173,6 +1173,30 @@ func TestHealthEmitsTelemetry(t *testing.T) {
 	}
 }
 
+func TestListRunsFailedCountHonorsRuntimeIDsFilter(t *testing.T) {
+	store := &stubRunStore{
+		runs: []graphstore.IngestRun{
+			{ID: "runtime-a-failed", RuntimeID: "runtime-a", Status: graphstore.IngestRunStatusFailed},
+			{ID: "runtime-b-failed", RuntimeID: "runtime-b", Status: graphstore.IngestRunStatusFailed},
+			{ID: "runtime-c-failed", RuntimeID: "runtime-c", Status: graphstore.IngestRunStatusFailed},
+			{ID: "runtime-a-completed", RuntimeID: "runtime-a", Status: graphstore.IngestRunStatusCompleted},
+		},
+	}
+	result, err := New(nil, nil, nil, store).ListRuns(context.Background(), graphstore.IngestRunFilter{
+		RuntimeIDs: []string{"runtime-a", "runtime-b"},
+		Limit:      10,
+	})
+	if err != nil {
+		t.Fatalf("ListRuns() error = %v", err)
+	}
+	if result.FailedCount != 2 {
+		t.Fatalf("ListRuns().FailedCount = %d, want 2 scoped to runtime_ids", result.FailedCount)
+	}
+	if len(result.Runs) != 3 {
+		t.Fatalf("len(ListRuns().Runs) = %d, want 3 scoped runs", len(result.Runs))
+	}
+}
+
 func TestListRunsTelemetryRecordsInvalidRequest(t *testing.T) {
 	stderr := captureGraphIngestStderr(t, func() {
 		_, err := New(nil, nil, nil, &stubRunStore{}).ListRuns(context.Background(), graphstore.IngestRunFilter{Status: "bogus"})
