@@ -232,6 +232,9 @@ func normalizeBackstageOwnerValue(owner string) string {
 	owner = strings.ToLower(strings.TrimSpace(owner))
 	owner = strings.TrimPrefix(owner, "group:")
 	owner = strings.TrimPrefix(owner, "user:")
+	if slash := strings.LastIndex(owner, "/"); slash >= 0 {
+		owner = owner[slash+1:]
+	}
 	return strings.TrimSpace(owner)
 }
 
