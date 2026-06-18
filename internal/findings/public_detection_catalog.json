@@ -459,6 +459,52 @@
       ]
     },
     {
+      "id": "cloudflare-zone-protection-paused",
+      "pack_id": "cloudflare",
+      "pack_name": "Cloudflare",
+      "name": "Cloudflare Zone Edge Protection Paused",
+      "description": "Detect Cloudflare zones whose edge protection is currently paused, bypassing WAF, DDoS, and TLS controls.",
+      "source_id": "cloudflare",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "cloudflare.zone"
+      ],
+      "output_kind": "finding.cloudflare_zone_protection_paused",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "cloudflare",
+        "defense-evasion",
+        "edge",
+        "waf",
+        "zone"
+      ],
+      "references": [
+        "https://developers.cloudflare.com/fundamentals/setup/manage-domains/pause-cloudflare/"
+      ],
+      "false_positives": [
+        "Temporary, approved zone pause during a maintenance or migration change window."
+      ],
+      "runbook": "Confirm whether the zone pause is an approved change; if not, unpause the zone to restore edge security controls and review who paused it.",
+      "required_attributes": [
+        "zone_id"
+      ],
+      "fingerprint_fields": [
+        "cloudflare_zone_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        }
+      ]
+    },
+    {
       "id": "data-sensitive-asset-risk",
       "pack_id": "data",
       "pack_name": "Data",

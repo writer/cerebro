@@ -7,7 +7,7 @@ profiles:
         selected_controls: 31
         mapped_controls: 31
         unmapped_controls: 0
-        mapped_rules: 469
+        mapped_rules: 470
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 31
@@ -2517,7 +2517,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 285
+          rule_count: 286
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -2625,6 +2625,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - container-cleartext-cloud-keys
             - container-cross-account-keys
             - container-image-cleartext-keys
@@ -4844,6 +4845,10 @@ profiles:
             - framework_name: CJIS Security Policy
               control_id: PA-9
         - rule_id: cloud-public-resource-exposure
+          controls:
+            - framework_name: CJIS Security Policy
+              control_id: PA-9
+        - rule_id: cloudflare-zone-protection-paused
           controls:
             - framework_name: CJIS Security Policy
               control_id: PA-9
@@ -11921,7 +11926,7 @@ profiles:
         selected_controls: 52
         mapped_controls: 52
         unmapped_controls: 0
-        mapped_rules: 457
+        mapped_rules: 458
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 52
@@ -14241,7 +14246,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -14258,6 +14263,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -14308,7 +14314,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -14325,6 +14331,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -14375,7 +14382,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -14392,6 +14399,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -14442,7 +14450,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -14459,6 +14467,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -14509,7 +14518,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -14526,6 +14535,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -14578,7 +14588,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 285
+          rule_count: 286
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -14686,6 +14696,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - container-cleartext-cloud-keys
             - container-cross-account-keys
             - container-image-cleartext-keys
@@ -19322,6 +19333,20 @@ profiles:
             - framework_name: CMMC 2.0
               control_id: PE.L2
         - rule_id: cloud-public-resource-exposure
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: PE.L1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.3
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.4
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.5
+            - framework_name: CMMC 2.0
+              control_id: PE.L2
+        - rule_id: cloudflare-zone-protection-paused
           controls:
             - framework_name: CMMC 2.0
               control_id: PE.L1
@@ -24106,7 +24131,7 @@ profiles:
         selected_controls: 23
         mapped_controls: 23
         unmapped_controls: 0
-        mapped_rules: 365
+        mapped_rules: 366
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 23
@@ -25290,7 +25315,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -25307,6 +25332,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -25357,7 +25383,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -25374,6 +25400,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -25424,7 +25451,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -25441,6 +25468,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -25491,7 +25519,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -25508,6 +25536,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -25558,7 +25587,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -25575,6 +25604,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -27785,6 +27815,18 @@ profiles:
             - framework_name: CMMC 2.0
               control_id: PE.L1-3.10.5
         - rule_id: cloud-public-resource-exposure
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: PE.L1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.3
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.4
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.5
+        - rule_id: cloudflare-zone-protection-paused
           controls:
             - framework_name: CMMC 2.0
               control_id: PE.L1
@@ -41635,7 +41677,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 98
+        mapped_rules: 99
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41810,7 +41852,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 6
+          rule_count: 7
           mapped_rules:
             - cloud-current-public-exposure-review-needed
             - cloud-effective-admin-permission
@@ -41818,6 +41860,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -42140,6 +42183,10 @@ profiles:
             - framework_name: ISO 27001:2022
               control_id: A.8.20
         - rule_id: cloud-public-resource-exposure
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.20
+        - rule_id: cloudflare-zone-protection-paused
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.20
@@ -60990,7 +61037,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 918
+        mapped_rules: 919
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62047,7 +62094,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-default-sg-no-rules
             - aws-ec2-public-ports-restricted
@@ -62064,6 +62111,7 @@ profiles:
             - cloud-privilege-path-granted
             - cloud-public-exposure-privileged-principal
             - cloud-public-resource-exposure
+            - cloudflare-zone-protection-paused
             - email-domain-authentication-misconfigured
             - gcp-dns-dnssec
             - gcp-gke-network-policy-enabled
@@ -63112,6 +63160,10 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
         - rule_id: cloud-public-resource-exposure
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.6
+        - rule_id: cloudflare-zone-protection-paused
           controls:
             - framework_name: SOC 2
               control_id: CC6.6
