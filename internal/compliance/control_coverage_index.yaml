@@ -41682,7 +41682,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 106
+        mapped_rules: 107
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41778,7 +41778,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 22
+          rule_count: 23
           mapped_rules:
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -41802,6 +41802,7 @@ profiles:
             - sentinelone-threat-detected
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
+            - trusted-endpoint-active-trust-gate-failure
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -42542,6 +42543,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.8
+        - rule_id: trusted-endpoint-active-trust-gate-failure
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.16
         - rule_id: vulnview-actionable-external-finding
           controls:
             - framework_name: ISO 27001:2022
@@ -61090,7 +61095,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 927
+        mapped_rules: 928
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61638,7 +61643,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 432
+          rule_count: 433
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -62071,6 +62076,7 @@ profiles:
             - openai-orphaned-privileged-api-key
             - slack-privileged-user-without-mfa
             - tailscale-tailnet-device-approval-disabled
+            - trusted-endpoint-active-trust-gate-failure
             - vpc-external-peering
         - framework_name: SOC 2
           family_id: CC6
@@ -66202,6 +66208,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC7.1
+        - rule_id: trusted-endpoint-active-trust-gate-failure
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: unknown-account-trusted
           controls:
             - framework_name: SOC 2

@@ -23,8 +23,12 @@ type Principal struct {
 	Hostname     string
 }
 
-// Normalize converts the endpoint telemetry ingest envelope into bounded
-// source events that downstream projections can persist or replay.
+// Normalize converts the Trusted Endpoint telemetry ingest envelope into
+// bounded source events that downstream projections can persist or replay. It
+// emits the supported trusted_endpoint.* telemetry families (host posture,
+// security findings, trust-gate decisions, GRC evidence, and action outcomes)
+// and rejects malformed records that cannot satisfy the per-kind emission
+// contract.
 func Normalize(body []byte, principal Principal, observedAt time.Time) ([]*cerebrov1.EventEnvelope, error) {
 	tenantID := strings.TrimSpace(principal.TenantID)
 	if tenantID == "" {
@@ -78,17 +82,17 @@ func Normalize(body []byte, principal Principal, observedAt time.Time) ([]*cereb
 		if err := sourcecdk.ValidateEventEnvelope(envelope); err != nil {
 			return nil, err
 		}
+		if err := validateEmittedAttributes(envelope); err != nil {
+			return nil, err
+		}
 	}
 	return envelopes, nil
 }
 
 func normalizeEvent(raw map[string]any, principal Principal, agentID string) (string, string, map[string]any, map[string]string) {
 	eventType := firstString(raw, "type", "event", "action", "status")
-	action := actionFromEventType(eventType)
-	outcome := outcomeFromEvent(raw, eventType)
-	if firstString(raw, "finding_id", "findingId") != "" {
-		findingID := firstString(raw, "finding_id", "findingId")
-		severity := firstNonEmpty(firstString(raw, "severity"), "unknown")
+	if findingID := firstString(raw, "finding_id", "findingId"); findingID != "" {
+		severity := normalizeSeverity(firstString(raw, "severity"))
 		payload := map[string]any{
 			"agent_id":   agentID,
 			"device_id":  principal.DeviceID,
@@ -104,6 +108,46 @@ func normalizeEvent(raw map[string]any, principal Principal, agentID string) (st
 			"severity":   severity,
 		}
 	}
+	if controlID := firstString(raw, "control_id", "controlId"); controlID != "" {
+		status := normalizeStatus(firstString(raw, "status", "result", "state"))
+		payload := map[string]any{
+			"agent_id":   agentID,
+			"device_id":  principal.DeviceID,
+			"control_id": controlID,
+			"status":     status,
+			"framework":  firstString(raw, "framework", "control_framework"),
+			"source":     "endpoint_telemetry",
+			"raw":        raw,
+		}
+		return "trusted_endpoint.grc_evidence", "trusted_endpoint/grc_evidence/v1", payload, map[string]string{
+			"agent_id":   agentID,
+			"device_id":  principal.DeviceID,
+			"control_id": controlID,
+			"status":     status,
+		}
+	}
+	if isTrustGateEvent(raw, eventType) {
+		action := trustGateAction(raw, eventType)
+		decision := normalizeDecision(firstNonEmpty(firstString(raw, "decision", "verdict", "result"), decisionFromEventType(eventType)))
+		severity := normalizeSeverity(firstString(raw, "severity"))
+		payload := map[string]any{
+			"agent_id": agentID,
+			"action":   action,
+			"decision": decision,
+			"reason":   firstString(raw, "reason", "decision_reason", "rationale"),
+			"source":   "endpoint_telemetry",
+			"raw":      raw,
+		}
+		return "trusted_endpoint.trust_gate_decision", "trusted_endpoint/trust_gate_decision/v1", payload, map[string]string{
+			"agent_id": agentID,
+			"action":   action,
+			"decision": decision,
+			"reason":   firstString(raw, "reason", "decision_reason", "rationale"),
+			"severity": severity,
+		}
+	}
+	action := actionFromEventType(eventType)
+	outcome := outcomeFromEvent(raw, eventType)
 	payload := map[string]any{
 		"agent_id":  agentID,
 		"device_id": principal.DeviceID,
@@ -116,6 +160,31 @@ func normalizeEvent(raw map[string]any, principal Principal, agentID string) (st
 		"device_id":      principal.DeviceID,
 		"action":         action,
 		"outcome_result": outcome,
+	}
+}
+
+// validateEmittedAttributes rejects telemetry that cannot satisfy the per-kind
+// emission contract, so malformed trust-gate or GRC evidence records do not
+// enter the append log with missing posture-critical fields.
+func validateEmittedAttributes(envelope *cerebrov1.EventEnvelope) error {
+	attrs := envelope.GetAttributes()
+	requireAttrs := func(keys ...string) error {
+		for _, key := range keys {
+			if strings.TrimSpace(attrs[key]) == "" {
+				return fmt.Errorf("%s telemetry missing required attribute %q", envelope.GetKind(), key)
+			}
+		}
+		return nil
+	}
+	switch envelope.GetKind() {
+	case "trusted_endpoint.trust_gate_decision":
+		return requireAttrs("agent_id", "action", "decision")
+	case "trusted_endpoint.grc_evidence":
+		return requireAttrs("agent_id", "control_id", "status")
+	case "trusted_endpoint.security_finding":
+		return requireAttrs("agent_id", "finding_id", "severity")
+	default:
+		return nil
 	}
 }
 
@@ -145,6 +214,66 @@ func eventID(tenantID, agentID, kind string, payload []byte, index int) string {
 
 func observationTable(posture map[string]any) string {
 	return firstNonEmpty(firstString(posture, "observation_table", "type", "kind"), "secheck.posture")
+}
+
+func isTrustGateEvent(raw map[string]any, eventType string) bool {
+	if firstString(raw, "decision", "verdict") != "" {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimSpace(eventType), "trust_gate")
+}
+
+func trustGateAction(raw map[string]any, eventType string) string {
+	if action := firstString(raw, "action", "gated_action", "operation"); action != "" {
+		return action
+	}
+	if _, after, ok := strings.Cut(strings.TrimSpace(eventType), "."); ok && strings.TrimSpace(after) != "" {
+		return after
+	}
+	return "trust_gate"
+}
+
+func decisionFromEventType(eventType string) string {
+	if _, after, ok := strings.Cut(strings.TrimSpace(eventType), "."); ok {
+		return strings.TrimSpace(after)
+	}
+	return ""
+}
+
+func normalizeDecision(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "deny", "denied", "block", "blocked", "fail", "failed", "reject", "rejected":
+		return "deny"
+	case "allow", "allowed", "pass", "passed", "ok", "permit", "permitted", "approved":
+		return "allow"
+	case "error", "errored":
+		return "error"
+	case "":
+		return ""
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func normalizeStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "fail", "failed", "failing", "non_compliant", "noncompliant", "violation":
+		return "failing"
+	case "pass", "passed", "passing", "compliant", "ok", "success":
+		return "passing"
+	case "":
+		return ""
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func normalizeSeverity(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" {
+		return "unknown"
+	}
+	return trimmed
 }
 
 func actionFromEventType(eventType string) string {

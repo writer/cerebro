@@ -63311,6 +63311,54 @@
       ]
     },
     {
+      "id": "trusted-endpoint-active-trust-gate-failure",
+      "pack_id": "trusted_endpoint",
+      "pack_name": "Trusted Endpoint",
+      "name": "Trusted Endpoint Active Trust-Gate Failure",
+      "description": "Detect Trusted Endpoint agents whose latest trust-gate decision denies a gated action, indicating the workstation currently fails the endpoint posture/trust checks required to perform the action until its posture is remediated.",
+      "source_id": "trusted_endpoint",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "trusted_endpoint.trust_gate_decision"
+      ],
+      "output_kind": "finding.trusted_endpoint_active_trust_gate_failure",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "device-posture",
+        "endpoint",
+        "trust-gate",
+        "trusted-endpoint",
+        "zero-trust"
+      ],
+      "references": [
+        "https://github.com/writer/cerebro/blob/main/docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md"
+      ],
+      "false_positives": [
+        "A trust-gate denial issued during an approved maintenance window or risk-accepted exception that has not yet been reflected as an allow decision."
+      ],
+      "runbook": "Inspect the agent's failing endpoint posture/trust checks, remediate the underlying gap, and confirm the next trust-gate decision for the action allows it.",
+      "required_attributes": [
+        "action",
+        "agent_id",
+        "decision"
+      ],
+      "fingerprint_fields": [
+        "trusted_endpoint_gate_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        }
+      ]
+    },
+    {
       "id": "vulnview-actionable-external-finding",
       "pack_id": "vulnview",
       "pack_name": "VulnView",
