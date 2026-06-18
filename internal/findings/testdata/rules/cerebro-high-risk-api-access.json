@@ -1,0 +1,146 @@
+{
+  "rule_id": "cerebro-high-risk-api-access",
+  "runtime": {
+    "id": "writer-cerebro-access",
+    "source_id": "cerebro",
+    "tenant_id": "writer",
+    "config": {
+      "family": "access"
+    }
+  },
+  "events": [
+    {
+      "id": "cerebro-access-cross-tenant",
+      "tenant_id": "writer",
+      "source_id": "cerebro",
+      "kind": "cerebro.api_access",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "cerebro/api_access/v1",
+      "attributes": {
+        "event_type": "api_access",
+        "method": "GET",
+        "route": "GET /findings",
+        "operation_family": "finding",
+        "operation_type": "read",
+        "outcome_result": "allowed",
+        "status_code": "200",
+        "principal": "alice@example.com",
+        "auth_mode": "api_key",
+        "effective_tenant_id": "writer",
+        "requested_tenant_id": "tenant-b",
+        "tenant_mismatch": "true",
+        "source_runtime_id": "writer-cerebro-access"
+      }
+    },
+    {
+      "id": "cerebro-access-high-risk-level",
+      "tenant_id": "writer",
+      "source_id": "cerebro",
+      "kind": "cerebro.api_access",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "cerebro/api_access/v1",
+      "attributes": {
+        "event_type": "api_access",
+        "method": "POST",
+        "route": "POST /source-runtimes/{runtimeID}/sync",
+        "operation_family": "source",
+        "operation_type": "write",
+        "outcome_result": "allowed",
+        "status_code": "200",
+        "principal": "bob@example.com",
+        "auth_mode": "api_key",
+        "effective_tenant_id": "writer",
+        "risk_level": "critical",
+        "risk_score": "95",
+        "source_runtime_id": "writer-cerebro-access"
+      }
+    },
+    {
+      "id": "cerebro-access-denied-attempt",
+      "tenant_id": "writer",
+      "source_id": "cerebro",
+      "kind": "cerebro.api_access",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "cerebro/api_access/v1",
+      "attributes": {
+        "event_type": "api_access",
+        "method": "POST",
+        "route": "POST /findings/{findingID}/notes",
+        "operation_family": "finding",
+        "operation_type": "write",
+        "outcome_result": "denied",
+        "status_code": "403",
+        "principal": "carol@example.com",
+        "auth_mode": "api_key",
+        "effective_tenant_id": "writer",
+        "requested_tenant_id": "tenant-b",
+        "tenant_mismatch": "true",
+        "source_runtime_id": "writer-cerebro-access"
+      }
+    },
+    {
+      "id": "cerebro-access-clean",
+      "tenant_id": "writer",
+      "source_id": "cerebro",
+      "kind": "cerebro.api_access",
+      "occurred_at": "2026-05-01T12:15:00Z",
+      "schema_ref": "cerebro/api_access/v1",
+      "attributes": {
+        "event_type": "api_access",
+        "method": "GET",
+        "route": "GET /sources",
+        "operation_family": "source",
+        "operation_type": "read",
+        "outcome_result": "allowed",
+        "status_code": "200",
+        "principal": "dave@example.com",
+        "auth_mode": "api_key",
+        "effective_tenant_id": "writer",
+        "requested_tenant_id": "writer",
+        "risk_level": "low",
+        "source_runtime_id": "writer-cerebro-access"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "cerebro-high-risk-api-access",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Cerebro principal alice@example.com has an active high-risk API access posture",
+      "event_ids": ["cerebro-access-cross-tenant"],
+      "attributes": {
+        "cerebro_principal_urn": "urn:cerebro:writer:cerebro_principal:alice@example.com",
+        "principal": "alice@example.com",
+        "tenant_mismatch": "true",
+        "risk_reason": "cross_tenant_access",
+        "primary_resource_urn": "urn:cerebro:writer:cerebro_principal:alice@example.com",
+        "rule_required_attributes": "route"
+      }
+    },
+    {
+      "rule_id": "cerebro-high-risk-api-access",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Cerebro principal bob@example.com has an active high-risk API access posture",
+      "event_ids": ["cerebro-access-high-risk-level"],
+      "attributes": {
+        "cerebro_principal_urn": "urn:cerebro:writer:cerebro_principal:bob@example.com",
+        "principal": "bob@example.com",
+        "risk_level": "critical",
+        "risk_reason": "high_risk_level",
+        "primary_resource_urn": "urn:cerebro:writer:cerebro_principal:bob@example.com"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "cerebro-access-denied-attempt",
+      "reason": "denied cross-tenant attempt was blocked by the control and is not a granted risk"
+    },
+    {
+      "event_id": "cerebro-access-clean",
+      "reason": "successful low-risk same-tenant access is not a high-risk posture"
+    }
+  ]
+}

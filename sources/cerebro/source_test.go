@@ -122,6 +122,52 @@ func TestReadAccessTelemetryArchives(t *testing.T) {
 	}
 }
 
+func TestReadDerivesTenantMismatchForCrossTenantRequest(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	record := accessTelemetry("audit-request-mismatch", "writer", "allowed", "GET /sources", "ci@example.com")
+	record["requested_tenant_id"] = "tenant-b"
+	delete(record, "tenant_mismatch")
+	src.newClient = func(context.Context, settings) (s3ndjson.API, error) {
+		return newFakeS3([]fakeObject{{key: "access/mismatch.ndjson", records: []map[string]any{record}}}), nil
+	}
+	pull, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"bucket": "example-cerebro-access-logs", "prefix": "access/", "tenant_id": "writer"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].GetAttributes()["tenant_mismatch"]; got != "true" {
+		t.Fatalf("tenant_mismatch = %q, want true (derived from requested_tenant_id != effective_tenant_id)", got)
+	}
+}
+
+func TestReadPreservesContractMandatoryAttributes(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	src.newClient = func(context.Context, settings) (s3ndjson.API, error) {
+		return newFakeS3([]fakeObject{{key: "access/contract.ndjson", records: []map[string]any{accessTelemetry("audit-request-contract", "writer", "allowed", "GET /sources", "ci@example.com")}}}), nil
+	}
+	pull, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"bucket": "example-cerebro-access-logs", "prefix": "access/", "tenant_id": "writer"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].GetAttributes()
+	for _, required := range []string{"event_type", "outcome_result", "route", "method"} {
+		if strings.TrimSpace(attrs[required]) == "" {
+			t.Fatalf("contract-mandatory attribute %q missing, attrs = %#v", required, attrs)
+		}
+	}
+}
+
 func TestReadRejectsOutsideTenantTelemetry(t *testing.T) {
 	src, err := New()
 	if err != nil {

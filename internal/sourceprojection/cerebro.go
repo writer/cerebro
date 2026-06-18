@@ -86,7 +86,7 @@ func cerebroPrincipalLabel(attrs map[string]string) string {
 
 func cerebroPrincipalAttributes(attrs map[string]string) map[string]string {
 	out := map[string]string{"source_product": "cerebro"}
-	for _, key := range []string{"auth_mode", "client_id", "credential_id", "device_id", "effective_tenant_id", "principal", "principal_tenant_id", "risk_level", "risk_score", "scopes"} {
+	for _, key := range []string{"auth_mode", "client_id", "credential_id", "device_id", "effective_tenant_id", "principal", "principal_tenant_id", "requested_tenant_id", "risk_level", "risk_score", "scopes", "tenant_mismatch"} {
 		addProjectedAttribute(out, key, attrs[key])
 	}
 	return out

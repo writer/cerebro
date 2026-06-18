@@ -70,6 +70,62 @@ func TestProjectCerebroAPIAccessLinksPrincipalAndService(t *testing.T) {
 	assertProjectedLink(t, state, scopeURN, relationSupports, routeURN)
 }
 
+func TestRegistryRoutesCerebroDeclaredKinds(t *testing.T) {
+	declared := []string{
+		"cerebro.api_access",
+	}
+	registered := make(map[string]struct{})
+	for _, kind := range BuiltinRegistry().Kinds() {
+		registered[kind] = struct{}{}
+	}
+	for _, kind := range declared {
+		if _, ok := registered[kind]; !ok {
+			t.Fatalf("declared Cerebro kind %q is not routed in the projection registry", kind)
+		}
+	}
+}
+
+func TestProjectCerebroAPIAccessSurfacesTenantMismatchOnPrincipal(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "cerebro-api-access-cross-tenant",
+		TenantId:   "writer",
+		SourceId:   "cerebro",
+		Kind:       "cerebro.api_access",
+		OccurredAt: timestamppb.New(time.Date(2026, 6, 9, 12, 2, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"auth_mode":           "api_key",
+			"credential_id":       "cred-cross",
+			"effective_tenant_id": "writer",
+			"method":              "GET",
+			"operation_family":    "finding",
+			"operation_type":      "read",
+			"outcome_result":      "allowed",
+			"principal":           "svc@example.com",
+			"request_id":          "cross-tenant-1",
+			"requested_tenant_id": "tenant-b",
+			"route":               "GET /findings",
+			"status_code":         "200",
+			"tenant_mismatch":     "true",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	principalURN := "urn:cerebro:writer:cerebro_principal:svc@example.com"
+	principal := state.entities[principalURN]
+	if principal == nil {
+		t.Fatalf("principal entity %q was not projected", principalURN)
+	}
+	if got := principal.Attributes["tenant_mismatch"]; got != "true" {
+		t.Fatalf("principal tenant_mismatch attribute = %q, want true so the identity node reflects cross-tenant risk", got)
+	}
+	if got := principal.Attributes["requested_tenant_id"]; got != "tenant-b" {
+		t.Fatalf("principal requested_tenant_id attribute = %q, want tenant-b", got)
+	}
+}
+
 func TestProjectCerebroAPIAccessDeniedDoesNotGrantRoute(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

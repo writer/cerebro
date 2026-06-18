@@ -221,6 +221,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "cerebro",
+			Name:        "Cerebro",
+			Description: "Cerebro API access posture and authorization risk findings.",
+			Rules: []Rule{
+				newCerebroHighRiskAPIAccessRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
