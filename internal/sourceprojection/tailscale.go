@@ -15,6 +15,10 @@ func tailscaleUserURN(tenantID string, userID string) string {
 	return projectionURN(tenantID, "tailscale_user", strings.TrimSpace(userID))
 }
 
+func tailscaleUserKey(attrs map[string]string) string {
+	return firstNonEmpty(attrs["login_name"], attrs["email"], attrs["owner_email"], attrs["user_id"])
+}
+
 func tailscaleDeviceURN(tenantID string, deviceID string) string {
 	return projectionURN(tenantID, "tailscale_device", strings.TrimSpace(deviceID))
 }
@@ -133,8 +137,9 @@ func tailscaleUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	if userID == "" {
 		return nil, nil, nil
 	}
+	userKey := firstNonEmpty(tailscaleUserKey(attrs), userID)
 	entities := map[string]*ports.ProjectedEntity{}
-	addEntity(entities, tailscaleEntity(event, tailscaleUserURN(tenantID, userID), "tailscale.user", firstNonEmpty(attrs["login_name"], attrs["email"], userID), tailscaleAttributes(map[string]string{
+	addEntity(entities, tailscaleEntity(event, tailscaleUserURN(tenantID, userKey), "tailscale.user", firstNonEmpty(attrs["login_name"], attrs["email"], userID), tailscaleAttributes(map[string]string{
 		"user_id":      userID,
 		"login_name":   attrs["login_name"],
 		"email":        attrs["email"],
@@ -175,7 +180,7 @@ func tailscaleDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		"blocks_incoming_connections": attrs["blocks_incoming_connections"],
 		"tags":                        attrs["tags"],
 	})))
-	if ownerID := firstNonEmpty(attrs["user_id"], attrs["owner_email"]); strings.TrimSpace(ownerID) != "" {
+	if ownerID := tailscaleUserKey(attrs); strings.TrimSpace(ownerID) != "" {
 		ownerURN := tailscaleUserURN(tenantID, ownerID)
 		addEntity(entities, tailscaleEntity(event, ownerURN, "tailscale.user", "", map[string]string{"user_id": strings.TrimSpace(ownerID)}))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), deviceURN, ownerURN, relationOwnedBy, map[string]string{
@@ -375,7 +380,7 @@ func tailscaleDeviceAccessRetractions(event *cerebrov1.EventEnvelope) ([]*ports.
 		return nil, err
 	}
 	deviceID := strings.TrimSpace(attrs["device_id"])
-	ownerID := firstNonEmpty(attrs["user_id"], attrs["owner_email"])
+	ownerID := tailscaleUserKey(attrs)
 	if deviceID == "" || strings.TrimSpace(ownerID) == "" {
 		return nil, nil
 	}

@@ -164,6 +164,8 @@ def fetch_once(base_url: str, path: str, headers: dict[str, str], timeout_second
         status_code = exc.code
         try:
             response_bytes = len(exc.read(max_read_bytes))
+        except OSError as read_exc:
+            error_kind = read_exc.__class__.__name__
         finally:
             exc.close()
     except TimeoutError:

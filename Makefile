@@ -340,7 +340,6 @@ release-smoke: ## Validate GoReleaser configuration.
 
 load-smoke: ## Run bounded capacity/load smoke checks against CEREBRO_BASE_URL.
 	$(PYTHON) scripts/load_smoke.py \
-		--base-url "$(CEREBRO_BASE_URL)" \
 		$(foreach path,$(LOAD_SMOKE_PATHS),--path "$(path)") \
 		--duration "$(LOAD_SMOKE_DURATION)" \
 		--rps "$(LOAD_SMOKE_RPS)" \

@@ -151,7 +151,7 @@ func addCerebroCredentialEntities(entities map[string]*ports.ProjectedEntity, li
 }
 
 func addCerebroScopeEntities(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, attrs map[string]string, principalURN string, credentialURN string, routeURN string) {
-	for _, scope := range splitCerebroList(firstNonEmpty(attrs["required_scopes"], attrs["matched_scope"], attrs["scopes"])) {
+	for _, scope := range splitCerebroList(firstNonEmpty(attrs["matched_scope"], attrs["scopes"], attrs["required_scopes"])) {
 		scopeURN := cerebroScopeURN(tenantID, scope)
 		addCerebroScopeEntity(entities, tenantID, event.GetSourceId(), scopeURN, scope)
 		if routeURN != "" {
@@ -255,6 +255,9 @@ func cerebroAccessAllowed(attrs map[string]string) bool {
 	outcome := normalizeIdentifier(firstNonEmpty(attrs["outcome_result"], attrs["status"]))
 	if outcome == "allowed" || outcome == "allow" || outcome == "success" || outcome == "succeeded" || outcome == "ok" {
 		return true
+	}
+	if outcome != "" {
+		return false
 	}
 	status := strings.TrimSpace(firstNonEmpty(attrs["effective_status_code"], attrs["status_code"]))
 	return strings.HasPrefix(status, "2")

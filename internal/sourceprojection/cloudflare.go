@@ -236,9 +236,6 @@ func cloudflareDNSRecordRetractions(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	}
 	recordURN := cloudflareDNSRecordURN(tenantID, recordID)
 	previousZoneURN := cloudflareZoneURN(tenantID, previousZoneID)
-	if recordURN == "" || previousZoneURN == "" {
-		return nil, nil
-	}
 	links := map[string]*ports.ProjectedLink{}
 	retractionAttrs := map[string]string{
 		"event_id":   event.GetId(),

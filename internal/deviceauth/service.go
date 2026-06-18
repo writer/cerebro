@@ -344,6 +344,9 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	if agentJKT != "" && attestationJKT != "" && !constantTimeStringEqual(agentJKT, attestationJKT) {
 		return EnrollResponse{}, fmt.Errorf("%w: device_key thumbprint does not match attested key", ErrInvalidRequest)
 	}
+	if agentJKT == "" && attestationJKT == "" {
+		return EnrollResponse{}, fmt.Errorf("%w: device_key or attestation is required to bind refresh tokens", ErrInvalidRequest)
+	}
 	hash := HashToken(bootstrapToken)
 	consumed, err := s.store.ConsumeBootstrapToken(ctx, hash, hardwareUUID, now, "agent")
 	if err != nil {
@@ -580,7 +583,7 @@ func (s *Service) RefreshTokenRateLimitKey(ctx context.Context, refreshToken str
 func (s *Service) verifyDPoPForRefresh(device DeviceRecord, request TokenRequest) error {
 	jkt := strings.TrimSpace(device.Metadata["dpop_jkt"])
 	if jkt == "" {
-		return fmt.Errorf("%w: device has no DPoP binding", ErrDPoPMissing)
+		return fmt.Errorf("%w: device has no DPoP binding", ErrInvalidRequest)
 	}
 	if s.cfg.DPoP == nil {
 		return ErrDPoPVerifierUnavailable

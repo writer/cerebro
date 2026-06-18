@@ -117,6 +117,16 @@ RETURN b.urn AS urn LIMIT 25`,
 			reason: "row-expanding",
 		},
 		{
+			name:   "escaped collect expansion before limit",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `collect`(e.attributes_json) AS attributes LIMIT 1",
+			reason: "row-expanding",
+		},
+		{
+			name:   "escaped range expansion before limit",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `range`(1, 1000000) AS ids LIMIT 1",
+			reason: "row-expanding",
+		},
+		{
 			name:   "call local binding cannot escape",
 			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) CALL { WITH seed MATCH (seed)-[:RELATION]->(tmp:Entity {tenant_id: $tenant_id}) RETURN 1 AS keep LIMIT 1 } MATCH (tmp) RETURN tmp.urn LIMIT 25`,
 			reason: "inline tenant_id",

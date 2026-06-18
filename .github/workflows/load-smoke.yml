@@ -66,7 +66,9 @@ jobs:
           echo "::add-mask::$target_url"
           echo "skip=false" >> "$GITHUB_OUTPUT"
           {
-            echo "CEREBRO_BASE_URL=$target_url"
+            echo "CEREBRO_BASE_URL<<LOAD_SMOKE_BASE_URL"
+            echo "$target_url"
+            echo "LOAD_SMOKE_BASE_URL"
             echo "LOAD_SMOKE_DURATION=${INPUT_DURATION_SECONDS:-60}"
             echo "LOAD_SMOKE_RPS=${INPUT_RPS:-3}"
             echo "LOAD_SMOKE_CONCURRENCY=${INPUT_CONCURRENCY:-6}"

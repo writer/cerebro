@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -101,6 +102,28 @@ func Middleware(next http.Handler) http.Handler {
 		}
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				durationSeconds := time.Since(started).Seconds()
+				labels := map[string]string{
+					"method":      method,
+					"route":       route,
+					"status_code": strconv.Itoa(http.StatusInternalServerError),
+				}
+				Default.Inc("cerebro_http_requests_total", labels)
+				Default.Add("cerebro_http_request_duration_seconds_sum", labels, durationSeconds)
+				Default.Inc("cerebro_http_request_duration_seconds_count", labels)
+				recordOTELHTTPServerRequest(ctx, labels, http.StatusInternalServerError, durationSeconds)
+				telemetry.Event(ctx, "http.server.error", telemetry.Attrs(
+					telemetry.Field{Key: "http.request.method", Value: method},
+					telemetry.Field{Key: "http.route", Value: route},
+					telemetry.Field{Key: "http.response.status_code", Value: http.StatusInternalServerError},
+					telemetry.Field{Key: "error_kind", Value: "panic"},
+				))
+				telemetry.End(span, "failed", httpResponseWideAttributes(recorder).WithField(telemetry.Field{Key: "error_kind", Value: "panic"}))
+				panic(recovered)
+			}
+		}()
 		next.ServeHTTP(recorder, r)
 		durationSeconds := time.Since(started).Seconds()
 		labels := map[string]string{
@@ -313,12 +336,10 @@ func requestHost(r *http.Request) string {
 	if host == "" && r.URL != nil {
 		host = r.URL.Host
 	}
-	if strings.Contains(host, ":") {
-		if hostname, _, ok := strings.Cut(host, ":"); ok {
-			return hostname
-		}
+	if hostname, _, err := net.SplitHostPort(host); err == nil {
+		return strings.Trim(hostname, "[]")
 	}
-	return host
+	return strings.Trim(host, "[]")
 }
 
 func requestPort(r *http.Request) int {
@@ -329,7 +350,7 @@ func requestPort(r *http.Request) int {
 	if host == "" && r.URL != nil {
 		host = r.URL.Host
 	}
-	if _, port, ok := strings.Cut(host, ":"); ok {
+	if _, port, err := net.SplitHostPort(host); err == nil {
 		parsed, err := strconv.Atoi(port)
 		if err == nil && parsed > 0 {
 			return parsed
@@ -366,12 +387,10 @@ func remoteAddressHash(r *http.Request) string {
 		return ""
 	}
 	host := r.RemoteAddr
-	if strings.Contains(host, ":") {
-		if parsedHost, _, ok := strings.Cut(host, ":"); ok {
-			host = parsedHost
-		}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
 	}
-	sum := sha256.Sum256([]byte(strings.TrimSpace(host)))
+	sum := sha256.Sum256([]byte("cerebro-http-client:" + strings.Trim(strings.TrimSpace(host), "[]")))
 	return hex.EncodeToString(sum[:8])
 }
 

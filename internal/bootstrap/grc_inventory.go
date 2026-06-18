@@ -477,9 +477,13 @@ func upsertGRCInventoryAccountability(ctx context.Context, store ports.GRCInvent
 	}
 	request.AssetURN = strings.TrimSpace(request.AssetURN)
 	request.SourceID = strings.TrimSpace(request.SourceID)
+	request.RuntimeID = strings.TrimSpace(request.RuntimeID)
 	request.State = strings.TrimSpace(request.State)
 	request.Owner = strings.TrimSpace(request.Owner)
 	request.Reason = strings.TrimSpace(request.Reason)
+	if request.RuntimeID != "" {
+		return nil, fmt.Errorf("%w: runtime_id is not supported for accountability updates", errInvalidHTTPRequest)
+	}
 	if request.AssetURN == "" {
 		return nil, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest)
 	}
@@ -845,11 +849,11 @@ func (a *App) handleUpdateGRCInventoryAssetReportTriage(w http.ResponseWriter, r
 		return
 	}
 	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, normalizeIDLookupError(err, ports.ErrGRCInventoryAssetReportNotFound))
 		return
 	}
 	if err := authorizeCerebroURNTenant(r.Context(), record.AssetURN); err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, normalizeIDLookupError(err, ports.ErrGRCInventoryAssetReportNotFound))
 		return
 	}
 	triagedBy := strings.TrimSpace(request.TriagedBy)

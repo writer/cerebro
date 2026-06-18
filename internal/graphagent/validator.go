@@ -40,6 +40,7 @@ type cypherTokenKind int
 
 const (
 	cypherTokenIdentifier cypherTokenKind = iota
+	cypherTokenEscapedIdentifier
 	cypherTokenNumber
 	cypherTokenSymbol
 	cypherTokenParameter
@@ -200,7 +201,9 @@ func lexCypher(query string) []cypherToken {
 		case ch == '\'' || ch == '"':
 			i = skipQuotedLiteral(query, i, ch)
 		case ch == '`':
-			i = skipEscapedIdentifier(query, i)
+			text, end := escapedIdentifierToken(query, i)
+			tokens = append(tokens, cypherToken{kind: cypherTokenEscapedIdentifier, text: text, pos: i})
+			i = end
 		case ch == '/' && i+1 < len(query) && query[i+1] == '/':
 			for i+1 < len(query) && query[i+1] != '\n' && query[i+1] != '\r' {
 				i++
@@ -242,17 +245,20 @@ func lexCypher(query string) []cypherToken {
 	return tokens
 }
 
-func skipEscapedIdentifier(query string, start int) int {
+func escapedIdentifierToken(query string, start int) (string, int) {
+	var builder strings.Builder
 	for i := start + 1; i < len(query); i++ {
 		if query[i] == '`' {
 			if i+1 < len(query) && query[i+1] == '`' {
+				builder.WriteByte('`')
 				i++
 				continue
 			}
-			return i
+			return builder.String(), i
 		}
+		builder.WriteByte(query[i])
 	}
-	return len(query) - 1
+	return builder.String(), len(query) - 1
 }
 
 func hasForbiddenWriteOrBulkLoad(tokens []cypherToken) bool {
@@ -428,7 +434,7 @@ func hasForbiddenExpansion(tokens []cypherToken) bool {
 		if keywordToken(token, "UNWIND") {
 			return true
 		}
-		if token.kind != cypherTokenIdentifier || !symbolTokenAt(tokens, i+1, "(") {
+		if !functionNameToken(token) || !symbolTokenAt(tokens, i+1, "(") {
 			continue
 		}
 		switch strings.ToLower(token.text) {
@@ -697,6 +703,10 @@ func keywordTokenAt(tokens []cypherToken, index int, keyword string) bool {
 
 func keywordToken(token cypherToken, keyword string) bool {
 	return token.kind == cypherTokenIdentifier && strings.EqualFold(token.text, keyword)
+}
+
+func functionNameToken(token cypherToken) bool {
+	return token.kind == cypherTokenIdentifier || token.kind == cypherTokenEscapedIdentifier
 }
 
 func upperToken(token cypherToken) string {

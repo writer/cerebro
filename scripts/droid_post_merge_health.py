@@ -257,7 +257,7 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
     elif active_progress:
         status = "in_progress"
         reason = "Droid has an unsuperseded in-progress comment."
-    elif has_active_droid_check(pr):
+    elif has_active_droid_check(pr) and not finished:
         status = "in_progress"
         reason = "Droid review check is still in progress."
     elif post_merge_checkout_errors and finished:

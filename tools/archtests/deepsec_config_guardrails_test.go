@@ -34,7 +34,7 @@ func TestDeepSecConfigKeepsSecurityCriticalSurfacesInScope(t *testing.T) {
 			"sources/",
 			"tools/",
 		} {
-			if strings.HasPrefix(normalized, forbidden) {
+			if ignorePathCoversDeepSecSurface(normalized, forbidden) {
 				t.Fatalf("deepsec ignorePaths excludes security-critical surface %q via %q", forbidden, normalized)
 			}
 		}
@@ -64,5 +64,35 @@ func TestDeepSecConfigKeepsSecurityCriticalSurfacesInScope(t *testing.T) {
 		if !strings.Contains(text, required) {
 			t.Fatalf("deepsec priorityPaths missing %s", required)
 		}
+	}
+}
+
+func ignorePathCoversDeepSecSurface(pattern string, surface string) bool {
+	normalized := strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(pattern)), "./")
+	surface = filepath.ToSlash(strings.TrimSpace(surface))
+	if normalized == "" || surface == "" {
+		return false
+	}
+	if strings.HasPrefix(normalized, surface) {
+		return true
+	}
+	for strings.HasPrefix(normalized, "**/") {
+		normalized = strings.TrimPrefix(normalized, "**/")
+		if strings.HasPrefix(normalized, surface) {
+			return true
+		}
+	}
+	return strings.Contains(normalized, "/"+surface)
+}
+
+func TestIgnorePathCoversDeepSecSurfaceDetectsGlobBypass(t *testing.T) {
+	if !ignorePathCoversDeepSecSurface("**/internal/**", "internal/") {
+		t.Fatal("glob-prefixed internal ignore path was not detected")
+	}
+	if !ignorePathCoversDeepSecSurface("foo/tools/**", "tools/") {
+		t.Fatal("nested tools ignore path was not detected")
+	}
+	if ignorePathCoversDeepSecSurface("tmp/internal-not-surface/**", "internal/") {
+		t.Fatal("non-surface segment was treated as ignored internal surface")
 	}
 }

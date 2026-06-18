@@ -637,8 +637,9 @@ func TestDeviceAuthEnrollRejectsWrongHardware(t *testing.T) {
 		Token string `json:"token"`
 	}
 	_ = json.Unmarshal(resp.Body.Bytes(), &bootstrap)
+	deviceKey := newTestDeviceDPoPKey(t)
 
-	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-DIFFERENT"}`))
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-DIFFERENT","device_key":`+deviceKey.jwkJSON+`}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)

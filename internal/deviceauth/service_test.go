@@ -161,18 +161,9 @@ func TestServiceEnrollRejectsUnboundRefreshTokenMinting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	boundBootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
-		HardwareUUID: "hw-unbound",
-		TenantID:     "writer",
-		TTL:          time.Hour,
-		IssuedBy:     "operator",
-	})
-	if err != nil {
-		t.Fatalf("IssueBootstrapToken(bound): %v", err)
-	}
 	deviceJWK, _ := makeEd25519JWK(t, pub)
 	enroll, err := service.Enroll(ctx, EnrollRequest{
-		BootstrapToken: boundBootstrap.Token,
+		BootstrapToken: bootstrap.Token,
 		HardwareUUID:   "hw-unbound",
 		OSType:         "darwin",
 		DeviceJWK:      deviceJWK,
@@ -211,8 +202,8 @@ func TestServiceIssueTokenRejectsLegacyUnboundDeviceRefresh(t *testing.T) {
 		RefreshToken: refresh,
 		HTTPMethod:   "POST",
 		HTTPURL:      "https://cerebro.test/platform/devices/token",
-	}); !errors.Is(err, ErrDPoPMissing) {
-		t.Fatalf("IssueToken legacy unbound err = %v, want ErrDPoPMissing", err)
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("IssueToken legacy unbound err = %v, want ErrInvalidRequest", err)
 	}
 	row, err := store.LookupRefreshToken(ctx, HashToken(refresh), now)
 	if err != nil {
@@ -227,7 +218,12 @@ func TestServiceEnrollRequiresMatchingHardware(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
 	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
-	if _, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-DIFFERENT"}); !errors.Is(err, ErrBootstrapTokenMismatch) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	deviceJWK, _ := makeEd25519JWK(t, pub)
+	if _, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-DIFFERENT", DeviceJWK: deviceJWK}); !errors.Is(err, ErrBootstrapTokenMismatch) {
 		t.Fatalf("Enroll with wrong hw err = %v, want ErrBootstrapTokenMismatch", err)
 	}
 }

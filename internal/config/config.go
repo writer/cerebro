@@ -740,6 +740,9 @@ func (cfg OpenTelemetryConfig) hasExporterConfig() bool {
 }
 
 func validateOpenTelemetryEndpoints(cfg OpenTelemetryConfig) error {
+	if cfg.Insecure && !cfg.hasExporterConfig() {
+		return fmt.Errorf("%w: CEREBRO_OTEL_EXPORTER_OTLP_INSECURE requires a loopback HTTP OTLP endpoint", errUnsafeOTLPTransportMode)
+	}
 	for _, endpoint := range []struct {
 		name  string
 		value string
