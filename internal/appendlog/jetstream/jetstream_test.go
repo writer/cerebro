@@ -144,7 +144,7 @@ func TestAppendDoesNotRetryWithoutMessageID(t *testing.T) {
 }
 
 func TestJetstreamErrorTelemetryAttrsIncludesAPIErrorDetails(t *testing.T) {
-	attrs := jetstreamErrorTelemetryAttrs(&natsjetstream.APIError{
+	attrs := jetstreamErrorTelemetryAttrs("append", &natsjetstream.APIError{
 		Code:        503,
 		ErrorCode:   natsjetstream.JSErrCodeStreamNotFound,
 		Description: "stream not found",
@@ -164,6 +164,15 @@ func TestJetstreamErrorTelemetryAttrsIncludesAPIErrorDetails(t *testing.T) {
 	}
 	if values["messaging.jetstream.publish.retryable"] != "false" {
 		t.Fatalf("messaging.jetstream.publish.retryable = %q, want false", values["messaging.jetstream.publish.retryable"])
+	}
+}
+
+func TestJetstreamErrorTelemetryAttrsScopesPublishRetryableToAppend(t *testing.T) {
+	attrs := jetstreamErrorTelemetryAttrs("ping", errors.New("nats: no response from stream"))
+	for _, attr := range attrs.OTELAttributes() {
+		if string(attr.Key) == "messaging.jetstream.publish.retryable" {
+			t.Fatalf("unexpected publish retryable attr on ping: %v", attr.Value.AsInterface())
+		}
 	}
 }
 
