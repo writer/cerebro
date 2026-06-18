@@ -50,7 +50,7 @@ func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
 			Kind:       "openai.project_api_key",
 			OccurredAt: timestamppb.New(occurred),
 			Attributes: map[string]string{
-				"api_key_id":    "key_123",
+				"api_key_id":    "fixture_123",
 				"family":        "project_api_key",
 				"name":          "prod-key",
 				"owner_user_id": "user_123",
@@ -78,7 +78,7 @@ func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
 
 	userURN := "urn:cerebro:writer:openai_user:user_123"
 	projectURN := "urn:cerebro:writer:openai_project:proj_123"
-	credentialURN := "urn:cerebro:writer:openai_credential:key_123"
+	credentialURN := "urn:cerebro:writer:openai_credential:fixture_123" // #nosec G101 -- test credential URN fixture, not credential material.
 	identityURN := "urn:cerebro:writer:identity:email:alice@example.com"
 	modelURN := "urn:cerebro:writer:openai_model:gpt-4.1"
 
@@ -132,7 +132,7 @@ func TestProjectAnthropicWorkspaceCredentialFederationAndComplianceEdges(t *test
 			Kind:       "anthropic.api_key",
 			OccurredAt: timestamppb.New(occurred),
 			Attributes: map[string]string{
-				"api_key_id":    "ak_123",
+				"api_key_id":    "fixture_456",
 				"family":        "api_key",
 				"name":          "workspace-key",
 				"owner_user_id": "user_456",
@@ -178,7 +178,7 @@ func TestProjectAnthropicWorkspaceCredentialFederationAndComplianceEdges(t *test
 
 	userURN := "urn:cerebro:writer:anthropic_user:user_456"
 	workspaceURN := "urn:cerebro:writer:anthropic_workspace:ws_123"
-	credentialURN := "urn:cerebro:writer:anthropic_credential:ak_123"
+	credentialURN := "urn:cerebro:writer:anthropic_credential:fixture_456" // #nosec G101 -- test credential URN fixture, not credential material.
 	identityURN := "urn:cerebro:writer:identity:email:bob@example.com"
 	ruleURN := "urn:cerebro:writer:anthropic_federation_rule:rule_123"
 	serviceAccountURN := "urn:cerebro:writer:anthropic_service_account:sa_123"
