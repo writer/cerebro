@@ -105,6 +105,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssetDetail))
 	registerHTTPRoute(mux, "GET /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.resource_scope", time.Minute, grcCacheScopeInventory, grcCacheScopeGraph), app.handleGRCResourceScope))
 	registerHTTPRoute(mux, "POST /grc/inventory/resource-scope", routeSurfacePlatformHTTP, app.handleUpdateGRCResourceScope)
+	registerHTTPRoute(mux, "POST /grc/inventory/accountability", routeSurfacePlatformHTTP, app.handleUpdateGRCInventoryAccountability)
 	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset_reports", time.Minute, grcCacheScopeInventory), app.handleListGRCInventoryAssetReports))
 	registerHTTPRoute(mux, "POST /grc/inventory/asset-reports", routeSurfacePlatformHTTP, app.handleCreateGRCInventoryAssetReport)
 	registerHTTPRoute(mux, "GET /grc/inventory/asset-reports/{reportID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset_report", time.Minute, grcCacheScopeInventory), app.handleGetGRCInventoryAssetReport))

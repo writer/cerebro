@@ -97,6 +97,7 @@ func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
 		path   string
 	}{
 		{method: http.MethodPost, path: "/grc/inventory/resource-scope"},
+		{method: http.MethodPost, path: "/grc/inventory/accountability"},
 		{method: http.MethodPost, path: "/grc/inventory/asset-reports"},
 		{method: http.MethodPatch, path: "/grc/inventory/asset-reports/report-1/triage"},
 	} {

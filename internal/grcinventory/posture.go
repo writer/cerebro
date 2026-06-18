@@ -20,6 +20,13 @@ const (
 	AccountabilityKnown    = "known"
 	AccountabilityRequired = "required_missing"
 	AccountabilityNone     = "not_required"
+
+	AttributeAccountabilityState     = "accountability_state"
+	AttributeAccountabilityPrincipal = "accountability_principal"
+	AttributeAccountabilityReason    = "accountability_reason"
+	AttributeOwnerNotRequired        = "owner_not_required"
+	AttributeOwnerSource             = "owner_source"
+	AttributeOwnerSourceCerebro      = "cerebro_inventory_accountability"
 )
 
 type Summary struct {
@@ -54,6 +61,7 @@ func ApplyScope(asset *graphquery.InventoryAsset, record *ports.GRCInventoryScop
 	if !record.UpdatedAt.IsZero() {
 		asset.ScopeUpdatedAt = record.UpdatedAt.UTC().Format(time.RFC3339)
 	}
+	applyAccountabilityAttributes(asset, record.Attributes)
 }
 
 func ApplyAssetReportSummary(asset *graphquery.InventoryAsset, summary *ports.GRCInventoryAssetReportSummary) {
@@ -93,7 +101,13 @@ func ApplyReviewPosture(asset *graphquery.InventoryAsset) {
 		return
 	}
 
-	if owner != "" {
+	if ownerNotRequired(*asset) {
+		asset.Accountability = &graphquery.InventoryAccountability{
+			State:   AccountabilityNone,
+			Label:   "Owner not required",
+			Reasons: []graphquery.InventoryReviewReason{{Code: "accountability_not_required", Label: fallback(asset.Attributes[AttributeAccountabilityReason], "Owner not required")}},
+		}
+	} else if owner != "" {
 		asset.Accountability = &graphquery.InventoryAccountability{
 			State:     AccountabilityKnown,
 			Label:     "Owner known",
@@ -285,7 +299,7 @@ func AssetOwner(asset graphquery.InventoryAsset) string {
 }
 
 func AssetOwnerPrincipal(asset graphquery.InventoryAsset) string {
-	return fallback(asset.Attributes["owner"], asset.Attributes["owner_email"], asset.Attributes["assignee"], asset.Attributes["account_manager_email"], asset.Attributes["owner_login"])
+	return fallback(asset.Attributes[AttributeAccountabilityPrincipal], asset.Attributes["owner"], asset.Attributes["owner_email"], asset.Attributes["assignee"], asset.Attributes["account_manager_email"], asset.Attributes["owner_login"])
 }
 
 func AssetOrg(asset graphquery.InventoryAsset) string {
@@ -312,6 +326,9 @@ func ownerRequired(asset graphquery.InventoryAsset) bool {
 	if asset.ScopeState == ScopeStateOutScope || AssetOwnerPrincipal(asset) != "" {
 		return false
 	}
+	if ownerNotRequired(asset) {
+		return false
+	}
 	if attributeTruthy(asset, "owner_required", "requires_owner", "accountability_required") {
 		return true
 	}
@@ -333,6 +350,42 @@ func accountabilityReasons(asset graphquery.InventoryAsset) []graphquery.Invento
 		reasons = append(reasons, graphquery.InventoryReviewReason{Code: "accountability_missing", Label: "Owner missing where required"})
 	}
 	return reasons
+}
+
+func applyAccountabilityAttributes(asset *graphquery.InventoryAsset, attributes map[string]string) {
+	if asset == nil || len(attributes) == 0 {
+		return
+	}
+	if asset.Attributes == nil {
+		asset.Attributes = map[string]string{}
+	}
+	for key, value := range attributes {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			asset.Attributes[key] = trimmed
+		}
+	}
+	state := strings.TrimSpace(attributes[AttributeAccountabilityState])
+	switch state {
+	case AccountabilityKnown:
+		principal := fallback(attributes[AttributeAccountabilityPrincipal], attributes["owner"])
+		if principal != "" {
+			asset.Attributes[AttributeAccountabilityPrincipal] = principal
+			asset.Attributes["owner"] = principal
+			asset.Attributes[AttributeOwnerSource] = AttributeOwnerSourceCerebro
+			asset.Attributes["accountability_required"] = "true"
+		}
+	case AccountabilityNone:
+		asset.Attributes[AttributeOwnerNotRequired] = "true"
+	}
+}
+
+func ownerNotRequired(asset graphquery.InventoryAsset) bool {
+	return strings.TrimSpace(asset.Attributes[AttributeAccountabilityState]) == AccountabilityNone ||
+		attributeTruthy(asset, AttributeOwnerNotRequired)
 }
 
 func attributeTruthy(asset graphquery.InventoryAsset, keys ...string) bool {
