@@ -1096,3 +1096,4 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  # awscollectorgen:deploy-runtimes (insert new runtimes above this line)
