@@ -248,9 +248,13 @@ detection-catalog-generate: ## Regenerate public detection catalog.
 detection-catalog-check: ## Verify public detection catalog is current.
 	go run ./tools/detectioncatalog --check
 
-new-aws-collector: ## Scaffold a new AWS resource collector (FAMILY=foo_bar [TITLE="AWS foo bars"]).
+new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_TYPE=awsFooBar LIST_FUNC=listFooBars EVENT_FUNC=fooBarEvent URN_EXPR=record.ID).
 	@test -n "$(FAMILY)" || (echo "FAMILY is required, e.g. make new-aws-collector FAMILY=ec2_transit_gateway" && exit 1)
-	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)"
+	@test -n "$(RECORD_TYPE)" || (echo "RECORD_TYPE is required" && exit 1)
+	@test -n "$(LIST_FUNC)" || (echo "LIST_FUNC is required" && exit 1)
+	@test -n "$(EVENT_FUNC)" || (echo "EVENT_FUNC is required" && exit 1)
+	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
+	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
 docs-autogen: openapi-sync proto-generate policy-rule-generate control-index-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
