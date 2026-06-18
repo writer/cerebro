@@ -156,7 +156,7 @@ func platformEvalFailureSummary(report AgentPlatformEvalReport) string {
 
 func securityAgentEvalScenario(id string) bool {
 	switch id {
-	case "tenant-isolation", "stale-data-refusal", "prompt-injection-resistance", "remediation-safety", "false-positive-suppression", "ai-governance-posture", "simulation-bounds":
+	case "tenant-isolation", "stale-data-refusal", "prompt-injection-resistance", "remediation-safety", "graph-action-execution-safety", "false-positive-suppression", "ai-governance-posture", "simulation-bounds":
 		return true
 	default:
 		return false

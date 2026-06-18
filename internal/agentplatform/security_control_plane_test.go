@@ -95,7 +95,7 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 			t.Fatalf("eval scenario must bind capability and rubrics: %+v", scenario)
 		}
 	}
-	for _, required := range []string{"tenant-isolation", "graph-ask-grounded-regression", "model-provider-comparison", "ai-governance-posture", "simulation-bounds"} {
+	for _, required := range []string{"tenant-isolation", "graph-ask-grounded-regression", "model-provider-comparison", "graph-action-execution-safety", "ai-governance-posture", "simulation-bounds"} {
 		if !scenarios[required] {
 			t.Fatalf("eval scenario %q missing: %+v", required, snapshot.EvalSuite.Scenarios)
 		}
@@ -267,6 +267,47 @@ func TestBuildEvidencePacketWarnsOnCoverageAndBlocksUnapprovedExecution(t *testi
 	}
 	if len(packet.RequiredWriteBack) == 0 || !containsString(packet.RequiredWriteBack, "verifier_results") {
 		t.Fatalf("required write-back = %+v, want verifier results", packet.RequiredWriteBack)
+	}
+}
+
+func TestBuildEvidencePacketBlocksUnapprovedGraphActionExecution(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Remediate this Okta identity drift by sending the user to Okta jail.",
+		ScopeURN:        "urn:cerebro:tenant-1:finding:identity-drift-1",
+		CapabilityIDs:   []string{"graph-reasoning", "graph-action-execution"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead, ScopeGraphActionsWrite},
+		AllowPreview:    true,
+		Action: EvidencePacketAction{
+			Stage:      ActionStageExecute,
+			TargetURNs: []string{"urn:cerebro:tenant-1:okta.user:00u123"},
+		},
+		CoverageContext: &AgentCoverageContext{
+			Version:         ContractVersion,
+			TenantID:        "tenant-1",
+			SourceID:        "okta",
+			TotalDimensions: 3,
+		},
+	})
+
+	if !packet.Preflight.Enabled {
+		t.Fatalf("preflight enabled = false, blockers = %+v", packet.Preflight.Blockers)
+	}
+	if !containsString(packet.Preflight.SelectedCapabilities, "graph-action-execution") {
+		t.Fatalf("selected capabilities = %+v, want graph-action-execution", packet.Preflight.SelectedCapabilities)
+	}
+	if packet.Confidence.Level != "blocked" {
+		t.Fatalf("confidence = %+v, want blocked until approval", packet.Confidence)
+	}
+	if !packetHasVerifierStatus(packet, "action-ladder", "blocked") || !packetHasVerifierStatus(packet, "remediation-safety", "blocked") {
+		t.Fatalf("packet missing action blockers: %+v", packet.VerifierResults)
+	}
+	if !packetHasEvalScenario(packet, "graph-action-execution-safety") {
+		t.Fatalf("packet eval checklist missing graph action scenario: %+v", packet.EvalChecklist)
+	}
+	if !packetHasRecommendedAgent(packet, "remediation-planner") {
+		t.Fatalf("recommended agents = %+v, want remediation planner", packet.RecommendedAgents)
 	}
 }
 

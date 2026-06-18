@@ -86,9 +86,12 @@ The first supported integration strategies are:
   detection analysis declare their capabilities, semantic graph views, required verifiers, and maximum action stage.
 - Action ladder: agents move through observe, explain, recommend, dry-run, approve, execute, verify, and close-loop
   stages, with mutating stages requiring explicit approval and post-action verification.
+- Graph action execution: finding-scoped graph actions are a dedicated high-risk capability using the
+  `cerebro.graph_actions.write` scope, provider adapter events, workflow linkage, and reconciliation back into the
+  finding lifecycle.
 - Local eval contracts: default-on security-agent behavior declares local commands, scenario ids, capabilities, and
-  rubrics so tenant isolation, stale data handling, prompt-injection resistance, remediation safety, finding quality,
-  and simulation bounds are regression-tested.
+  rubrics so tenant isolation, stale data handling, prompt-injection resistance, remediation safety, graph action
+  execution, finding quality, and simulation bounds are regression-tested.
 - Security memory: accepted risks, false positives, prior investigations, remediation outcomes, and detector learnings
   are typed, tenant-scoped, provenance-bearing records with retention policy and required fields.
 - Connector and OAuth agent infrastructure: connector readiness, token owner, scope declarations, credential
@@ -109,7 +112,7 @@ go test ./internal/bootstrap -run TestAgentPlatformSecurityControlPlaneEndToEndW
 The platform fixture suite lives at `internal/agentplatform/testdata/agent_platform_eval_cases.json` and covers every
 declared scenario and integration strategy, including A2A discovery, outbound event subscription contracts,
 idempotency, tenant isolation, stale coverage, prompt-injection handling, remediation safety, finding promotion gates,
-connector readiness, and bounded simulation. The security behavior fixture remains in
+graph action execution safety, connector readiness, and bounded simulation. The security behavior fixture remains in
 `internal/agentplatform/testdata/security_agent_eval_cases.json` and exercises evidence packets, verifiers, action
 gates, confidence, and write-back requirements.
 

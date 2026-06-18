@@ -12,6 +12,7 @@ const (
 	ScopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
 	ScopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
 	ScopeFindingCandidatePromote   = "cerebro.finding_candidates.promote"
+	ScopeGraphActionsWrite         = "cerebro.graph_actions.write"
 	ScopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
 )
 
@@ -508,6 +509,33 @@ var Capabilities = []Capability{
 		Review: ReviewStatus{
 			State:             "required",
 			Cadence:           "before adding or changing mutating actions",
+			RequiredApprovers: []string{"platform", "security"},
+		},
+	},
+	{
+		ID:              "graph-action-execution",
+		Name:            "Graph action execution",
+		DomainID:        "execution",
+		Kind:            "side-effect-adapter",
+		Version:         "1.0.0",
+		Owner:           "cerebro-platform",
+		Risk:            "high",
+		DefaultOn:       false,
+		Summary:         "Executes finding-scoped graph actions through provider adapters with policy checks, workflow linkage, and reconciliation.",
+		ConsoleSurfaces: []string{"Findings", "Graph actions", "workflow actions"},
+		RequiredScopes:  []string{ScopeGraphActionsWrite},
+		Eval: EvalStatus{
+			Required:      true,
+			Status:        "required",
+			LocalCommands: []string{"go test ./internal/graphactions ./internal/bootstrap -run 'Test.*GraphAction'"},
+			ScenarioSets:  []string{"graph-action-execution-safety"},
+			Rubrics:       []string{"finding-scoped target", "allowed action policy", "provider action ref", "reconciliation status"},
+		},
+		RuntimeEvents: []string{"adapter.execution.started", "adapter.execution.completed", "adapter.execution.failed"},
+		Provenance:    []string{"runtime-response-action"},
+		Review: ReviewStatus{
+			State:             "required",
+			Cadence:           "before adding provider-backed graph actions or changing reconciliation semantics",
 			RequiredApprovers: []string{"platform", "security"},
 		},
 	},
