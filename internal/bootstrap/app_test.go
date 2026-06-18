@@ -2071,6 +2071,10 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 				Principal: "ci",
 				TenantID:  "writer",
 			}},
+			RequestOrigin: config.RequestOriginConfig{
+				TrustedProxyCIDRs: []string{"127.0.0.0/8"},
+				TrustedProxyCount: 1,
+			},
 		},
 	}
 	app := New(cfg, Dependencies{}, registry)
@@ -2331,20 +2335,6 @@ func TestAccessAuditRemoteIPDropsPort(t *testing.T) {
 	}
 }
 
-func TestAccessAuditClientIPTrustsForwardedForFromPrivateRemote(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
-	req.RemoteAddr = "10.0.0.5:54321"
-	req.Header.Set("X-Forwarded-For", "198.51.100.10, 10.0.0.5")
-	if got := accessAuditClientIP(req); got != "198.51.100.10" {
-		t.Fatalf("accessAuditClientIP(private remote) = %q, want forwarded client", got)
-	}
-
-	req.RemoteAddr = "203.0.113.20:54321"
-	if got := accessAuditClientIP(req); got != "" {
-		t.Fatalf("accessAuditClientIP(public remote) = %q, want empty", got)
-	}
-}
-
 func TestResolveRequestOriginUsesConfiguredPublicOrigin(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token?rotate=true", nil)
 	req.RemoteAddr = "10.0.0.5:54321"
@@ -2387,10 +2377,18 @@ func TestResolveRequestOriginDoesNotTrustCallerSuppliedForwardedFor(t *testing.T
 	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
 	req.RemoteAddr = "10.0.1.20:443"
 	req.Header.Set("X-Forwarded-For", "198.51.100.99, 203.0.113.200")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
 
 	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
-	if got := origin.ClientIP; got != "203.0.113.200" {
-		t.Fatalf("ClientIP = %q, want proxy-appended client IP", got)
+	if origin.TrustedProxy {
+		t.Fatal("TrustedProxy = true, want false without explicit trusted proxy CIDRs")
+	}
+	if got := origin.ClientIP; got != "10.0.1.20" {
+		t.Fatalf("ClientIP = %q, want remote address", got)
+	}
+	if got := origin.PublicURL; got != "http://example.com/sources" {
+		t.Fatalf("PublicURL = %q, want request origin", got)
 	}
 }
 
@@ -2399,7 +2397,7 @@ func TestResolveRequestOriginRejectsMalformedForwardedHost(t *testing.T) {
 	req.RemoteAddr = "10.0.1.20:443"
 	req.Header.Set("X-Forwarded-Host", "user@evil.example")
 
-	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{TrustedProxyCIDRs: []string{"10.0.0.0/8"}})
 	if got := origin.PublicURL; got != "http://example.com/sources" {
 		t.Fatalf("PublicURL = %q, want request host when forwarded host is malformed", got)
 	}
@@ -2412,7 +2410,7 @@ func TestResolveRequestOriginRejectsMalformedTrailingForwardedOrigin(t *testing.
 	req.Header.Set("X-Forwarded-Proto", "https, gopher")
 	req.Header.Set("X-Forwarded-Host", "stale.example, user@evil.example")
 
-	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{TrustedProxyCIDRs: []string{"10.0.0.0/8"}})
 	if got := origin.PublicURL; got != "http://internal.local/sources" {
 		t.Fatalf("PublicURL = %q, want request origin when trailing forwarded origin is malformed", got)
 	}
@@ -2425,7 +2423,7 @@ func TestResolveRequestOriginDoesNotMixForwardedOriginWithFallback(t *testing.T)
 	req.Header.Set("X-Forwarded-Proto", "https, gopher")
 	req.Header.Set("X-Forwarded-Host", "api.writer.com, api.writer.com")
 
-	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{TrustedProxyCIDRs: []string{"10.0.0.0/8"}})
 	if got := origin.PublicURL; got != "http://internal.local/sources" {
 		t.Fatalf("PublicURL = %q, want request origin when forwarded proto is malformed", got)
 	}

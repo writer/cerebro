@@ -239,6 +239,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	ctx, span := telemetry.Start(ctx, "source_runtime.sync", telemetry.Attrs(
 		telemetry.Field{Key: "runtime_id", Value: runtimeID},
 		telemetry.Field{Key: "page_limit", Value: req.GetPageLimit()},
+		telemetry.Field{Key: "operation.type", Value: "source_runtime_sync"},
 	))
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
@@ -258,10 +259,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		telemetry.IncrementMain(ctx, "source_runtime.sync.count", 1)
+		spanAttributes = spanAttributes.
+			WithField(telemetry.Field{Key: "source_runtime.sync.contract_configured", Value: contractConfigured}).
+			WithField(telemetry.Field{Key: "source_runtime.sync.runtime_loaded", Value: runtimeLoadedForRun})
 		telemetry.AnnotateMain(ctx, spanAttributes.With(telemetry.Attrs(
 			telemetry.Field{Key: "source_runtime.sync.status", Value: status},
 			telemetry.Field{Key: "source_runtime.id", Value: runtimeID},
 		)))
+		telemetry.AnnotateMainPhase(ctx, "source_runtime.sync", status, spanAttributes)
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.store == nil || s.appendLog == nil {
@@ -336,6 +341,12 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "reconciliation_reason", Value: pageReconciliationReason},
 		), pull.Checkpoint)
 		telemetry.Event(ctx, "source_runtime.page_read", pageReadAttrs)
+		telemetry.IncrementMain(ctx, "source_runtime.page.read.count", 1)
+		telemetry.AnnotateMain(ctx, pageReadAttrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "source_runtime.page.last_number", Value: pageNumber},
+			telemetry.Field{Key: "source_runtime.page.last_events_read", Value: eventsRead},
+			telemetry.Field{Key: "source_runtime.page.last_has_next_cursor", Value: pull.NextCursor != nil},
+		)))
 		if pull.Checkpoint != nil {
 			advanceRuntimeCheckpoint(runtime, pull.Checkpoint)
 		}
@@ -360,6 +371,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 						telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
 						telemetry.Field{Key: "failure_category", Value: category},
 						telemetry.Field{Key: "retryable", Value: false},
+					))
+					telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
+					telemetry.AnnotateMain(ctx, telemetry.Attrs(
+						telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
+						telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
 					))
 					continue
 				}
@@ -410,6 +426,13 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "reconciliation_reason", Value: pageReconciliationReason},
 		), runtime.GetCheckpoint())
 		telemetry.Event(ctx, "source_runtime.page_committed", pageCommittedAttrs)
+		telemetry.IncrementMain(ctx, "source_runtime.page.committed.count", 1)
+		telemetry.AnnotateMain(ctx, pageCommittedAttrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "source_runtime.page.last_committed_number", Value: pageNumber},
+			telemetry.Field{Key: "source_runtime.page.last_records_scanned", Value: recordsScanned},
+			telemetry.Field{Key: "source_runtime.page.last_records_accepted", Value: eventsAppended},
+			telemetry.Field{Key: "source_runtime.page.last_records_rejected", Value: recordsRejected},
+		)))
 		if pull.NextCursor == nil {
 			break
 		}

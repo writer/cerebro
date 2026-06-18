@@ -12,7 +12,7 @@ import (
 )
 
 // rateLimiter implements per-IP token bucket rate limiting with configurable
-// exemptions for health and metadata endpoints.
+// exemptions for liveness and metadata endpoints.
 type rateLimiter struct {
 	config          config.RateLimitConfig
 	originConfig    config.RequestOriginConfig

@@ -2,6 +2,8 @@ package sourcehttp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,9 +28,13 @@ type ClientCredentialsOptions struct {
 	Timeout          time.Duration
 }
 
-// ClientCredentialsCache caches one access token until shortly before expiry.
+// ClientCredentialsCache caches access tokens until shortly before expiry.
 type ClientCredentialsCache struct {
-	mu        sync.Mutex
+	mu      sync.Mutex
+	entries map[string]clientCredentialsCacheEntry
+}
+
+type clientCredentialsCacheEntry struct {
 	value     string
 	expiresAt time.Time
 }
@@ -37,12 +43,6 @@ type ClientCredentialsCache struct {
 func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config, options ClientCredentialsOptions) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("%s oauth token cache is required", sourceID(options.SourceID))
-	}
-	now := time.Now()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.value != "" && now.Before(c.expiresAt) {
-		return c.value, nil
 	}
 	tokenURL, err := renderTemplate(firstNonEmpty(configValue(cfg, "token_url"), options.TokenURLTemplate), cfg, options)
 	if err != nil {
@@ -70,6 +70,13 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 			return "", err
 		}
 		form.Set(key, value)
+	}
+	cacheKey := clientCredentialsCacheKey(sourceID(options.SourceID), tokenURL, form)
+	now := time.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if cached, ok := c.entries[cacheKey]; ok && cached.value != "" && now.Before(cached.expiresAt) {
+		return cached.value, nil
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -103,12 +110,24 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 	if expiresIn <= 0 {
 		expiresIn = 300
 	}
-	c.value = token
-	c.expiresAt = now.Add(time.Duration(expiresIn)*time.Second - firstNonZeroDuration(options.ExpirationBuffer, time.Minute))
-	if !c.expiresAt.After(now) {
-		c.expiresAt = now.Add(time.Minute)
+	entry := clientCredentialsCacheEntry{
+		value:     token,
+		expiresAt: now.Add(time.Duration(expiresIn)*time.Second - firstNonZeroDuration(options.ExpirationBuffer, time.Minute)),
 	}
-	return c.value, nil
+	if !entry.expiresAt.After(now) {
+		entry.expiresAt = now.Add(time.Minute)
+	}
+	if c.entries == nil {
+		c.entries = make(map[string]clientCredentialsCacheEntry)
+	}
+	c.entries[cacheKey] = entry
+	return entry.value, nil
+}
+
+func clientCredentialsCacheKey(sourceID string, tokenURL string, form url.Values) string {
+	material := strings.Join([]string{sourceID, tokenURL, form.Encode()}, "\x00")
+	sum := sha256.Sum256([]byte(material))
+	return hex.EncodeToString(sum[:])
 }
 
 func renderTemplate(template string, cfg sourcecdk.Config, options ClientCredentialsOptions) (string, error) {

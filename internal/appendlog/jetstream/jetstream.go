@@ -395,10 +395,13 @@ func jetstreamAnnotateMain(ctx context.Context, operation string, status string)
 	if status == "failed" {
 		telemetry.IncrementMain(ctx, "messaging.jetstream.error.count", 1)
 	}
-	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "messaging.jetstream.last_operation", Value: strings.TrimSpace(operation)},
 		telemetry.Field{Key: "messaging.jetstream.last_status", Value: strings.TrimSpace(status)},
-	))
+		telemetry.Field{Key: "messaging.system", Value: "nats"},
+	)
+	telemetry.AnnotateMain(ctx, attrs)
+	telemetry.AnnotateMainDependency(ctx, "messaging.jetstream", "appendlog.jetstream", operation, status, attrs)
 }
 
 func countAtLeastUint32(count int, limit uint32) bool {

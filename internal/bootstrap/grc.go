@@ -181,6 +181,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 			telemetry.Field{Key: "grc.dashboard.status", Value: status},
 			telemetry.Field{Key: "grc.dashboard.status_code", Value: statusCode},
 		)))
+		telemetry.AnnotateMainPhase(dashboardCtx, "grc.dashboard", status, endAttrs)
 		telemetry.End(span, status, endAttrs)
 	}()
 	scope, err := grcScopeFromRequest(r)
@@ -196,7 +197,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, runtimesSpan := telemetry.Start(r.Context(), "grc.dashboard.runtimes", grcDashboardScopeTelemetryAttrs(scope))
 	runtimesRequest := r.WithContext(ctx)
 	runtimes, err := a.grcListRuntimes(runtimesRequest, scope)
-	telemetry.End(runtimesSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}))
+	runtimeAttrs := telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
+	telemetry.AnnotateMainPhase(ctx, "grc.dashboard.runtimes", grcTelemetryStatus(err), runtimeAttrs)
+	telemetry.End(runtimesSpan, grcTelemetryStatus(err), runtimeAttrs)
 	if err != nil {
 		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
@@ -206,7 +209,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, findingsSpan := telemetry.Start(r.Context(), "grc.dashboard.findings", grcDashboardScopeTelemetryAttrs(scope))
 	findingsRequest := r.WithContext(ctx)
 	findings, err := a.grcListFindingRecords(findingsRequest, runtimes, grcFindingFilter{Status: "open", Limit: previewLimit})
-	telemetry.End(findingsSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findings)}))
+	findingAttrs := telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findings)})
+	telemetry.AnnotateMainPhase(ctx, "grc.dashboard.findings", grcTelemetryStatus(err), findingAttrs)
+	telemetry.End(findingsSpan, grcTelemetryStatus(err), findingAttrs)
 	if err != nil {
 		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
@@ -229,7 +234,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		ctx, evidenceSpan := telemetry.Start(parent, "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
 		evidenceRequest := r.WithContext(ctx)
 		evidence, err = a.grcListEvidenceRecords(evidenceRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: previewLimit})
-		telemetry.End(evidenceSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)}))
+		evidenceAttrs := telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)})
+		telemetry.AnnotateMainPhase(ctx, "grc.dashboard.evidence", grcTelemetryStatus(err), evidenceAttrs)
+		telemetry.End(evidenceSpan, grcTelemetryStatus(err), evidenceAttrs)
 		if err != nil {
 			errs <- err
 		}
@@ -251,6 +258,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 			attrs = attrs.WithField(telemetry.Field{Key: "evidence_count", Value: aggregate.EvidenceCount})
 			attrs = attrs.WithField(telemetry.Field{Key: "open_findings", Value: aggregate.FindingSummary.OpenFindings})
 		}
+		telemetry.AnnotateMainPhase(ctx, "grc.dashboard.aggregate", grcTelemetryStatus(err), attrs)
 		telemetry.End(aggregateSpan, grcTelemetryStatus(err), attrs)
 		if err != nil {
 			errs <- err
@@ -522,7 +530,7 @@ func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, erro
 		return grcAuditPacketResponse{}, findings.ErrRuntimeUnavailable
 	}
 	if err := authorizeFindingIDTenant(r.Context(), store, findingID); err != nil {
-		return grcAuditPacketResponse{}, err
+		return grcAuditPacketResponse{}, normalizeIDLookupError(err, ports.ErrFindingNotFound)
 	}
 	finding, err := a.findingService().GetFinding(r.Context(), findingID)
 	if err != nil {

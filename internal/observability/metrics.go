@@ -194,6 +194,8 @@ func httpRequestWideAttributes(r *http.Request, method string, route string) tel
 		telemetry.Field{Key: "operation", Value: method},
 		telemetry.Field{Key: "http.request.method", Value: method},
 		telemetry.Field{Key: "http.route", Value: route},
+		telemetry.Field{Key: "http.route.family", Value: routeFamily(route)},
+		telemetry.Field{Key: "http.route.healthcheck", Value: routeIsHealthcheck(route)},
 		telemetry.Field{Key: "url.path_family", Value: route},
 		telemetry.Field{Key: "url.path_depth", Value: pathDepth},
 		telemetry.Field{Key: "url.query.param_count", Value: queryParamCount(r)},
@@ -203,13 +205,16 @@ func httpRequestWideAttributes(r *http.Request, method string, route string) tel
 		telemetry.Field{Key: "server.port", Value: requestPort(r)},
 		telemetry.Field{Key: "network.protocol.version", Value: requestProto(r)},
 		telemetry.Field{Key: "http.request.body.size", Value: requestBodySize(r)},
+		telemetry.Field{Key: "http.request.id.present", Value: requestID(r) != ""},
+		telemetry.Field{Key: "http.request.id_hash", Value: requestIDHash(r)},
 		telemetry.Field{Key: "http.request.header.traceparent.present", Value: requestHeader(r, "Traceparent") != ""},
+		telemetry.Field{Key: "http.request.header.x_amzn_trace_id.present", Value: requestHeader(r, "X-Amzn-Trace-Id") != ""},
 		telemetry.Field{Key: "http.request.header.x_request_id.present", Value: requestHeader(r, "X-Request-Id") != ""},
 		telemetry.Field{Key: "http.request.auth_header.present", Value: requestHeader(r, "Authorization") != ""},
 		telemetry.Field{Key: "http.request.header.accept", Value: requestHeader(r, "Accept")},
 		telemetry.Field{Key: "http.request.header.accept_encoding", Value: requestHeader(r, "Accept-Encoding")},
 		telemetry.Field{Key: "http.request.header.content_type", Value: requestHeader(r, "Content-Type")},
-		telemetry.Field{Key: "http.request.header.user_agent", Value: requestHeader(r, "User-Agent")},
+		telemetry.Field{Key: "http.request.header.user_agent.present", Value: requestHeader(r, "User-Agent") != ""},
 		telemetry.Field{Key: "user_agent.family", Value: userAgentFamily(requestHeader(r, "User-Agent"))},
 		telemetry.Field{Key: "client.address_hash", Value: remoteAddressHash(r)},
 	))
@@ -221,11 +226,60 @@ func httpResponseWideAttributes(recorder *statusRecorder) telemetry.Attributes {
 	}
 	return telemetry.RuntimeAttributes().With(telemetry.Attrs(
 		telemetry.Field{Key: "http.response.status_code", Value: recorder.status},
+		telemetry.Field{Key: "http.response.status_class", Value: telemetry.HTTPStatusClass(recorder.status)},
 		telemetry.Field{Key: "http.response.body.size", Value: recorder.bytes},
 		telemetry.Field{Key: "http.response.header.cache_control", Value: recorder.Header().Get("Cache-Control")},
 		telemetry.Field{Key: "http.response.header.content_type", Value: recorder.Header().Get("Content-Type")},
 		telemetry.Field{Key: "http.response.header.retry_after", Value: recorder.Header().Get("Retry-After")},
 	))
+}
+
+func routeFamily(route string) string {
+	route = strings.TrimSpace(route)
+	if route == "" || route == "/" {
+		return "root"
+	}
+	parts := strings.Split(strings.Trim(route, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return "root"
+	}
+	if len(parts) >= 2 && parts[0] == "api" {
+		return strings.Join(parts[:2], "/")
+	}
+	if len(parts) >= 2 && parts[0] == "cerebro.v1.BootstrapService" {
+		return "grpc/bootstrap"
+	}
+	return parts[0]
+}
+
+func routeIsHealthcheck(route string) bool {
+	switch strings.TrimSpace(route) {
+	case "/health", "/healthz", "/livez":
+		return true
+	default:
+		return false
+	}
+}
+
+func requestID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	for _, header := range []string{"X-Request-Id", "X-Amzn-Trace-Id", "X-Correlation-Id"} {
+		if value := strings.TrimSpace(r.Header.Get(header)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func requestIDHash(r *http.Request) string {
+	id := requestID(r)
+	if id == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:8])
 }
 
 func requestHeader(r *http.Request, key string) string {

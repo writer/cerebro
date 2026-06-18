@@ -99,6 +99,59 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 	}
 }
 
+func TestTelemetryFieldsDoNotEmitRawUserAgent(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+	patterns := []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		{name: `raw user-agent telemetry key`, re: regexp.MustCompile(`Key:\s*"(http\.request\.header\.user_agent|http\.user_agent)"`)},
+	}
+	var matches []string
+	err := filepath.WalkDir(repoRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".idea", ".vscode", "bin", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		if filepath.Clean(path) == filepath.Clean(currentFile) {
+			return nil
+		}
+		contents, err := os.ReadFile(path) // #nosec G304 G122 -- path comes from WalkDir under the repository root in a repository-static lint test.
+		if err != nil {
+			return err
+		}
+		for _, pattern := range patterns {
+			if pattern.re.Match(contents) {
+				rel, err := filepath.Rel(repoRoot, path)
+				if err != nil {
+					rel = path
+				}
+				matches = append(matches, rel+" ("+pattern.name+")")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repo: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("telemetry raw user-agent fields are forbidden; emit presence/family only: %s", strings.Join(matches, ", "))
+	}
+}
+
 func TestParseTraceParentValidatesTraceFlags(t *testing.T) {
 	traceID, spanID, ok := ParseTraceParent("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
 	if !ok {
@@ -169,7 +222,7 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		IncrementMain(ctx, "cache.redis.hit.count", 2)
 		End(span, "completed", Attrs(Field{Key: "explicit_end_attr", Value: "kept"}))
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.main")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.main")
 	if payload["main"] != true || payload["wide_event"] != true {
 		t.Fatalf("main span flags missing: %#v", payload)
 	}
@@ -191,6 +244,37 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	if got := payload["explicit_end_attr"]; got != "kept" {
 		t.Fatalf("explicit end attr missing: %#v", payload)
 	}
+	for key, want := range map[string]any{
+		"telemetry.schema.version":  wideEventSchemaVersion,
+		"wide_event.schema.version": wideEventSchemaVersion,
+		"event.dataset":             "cerebro.wide_events",
+		"telemetry.signal.kind":     "span",
+		"event.category":            "operation",
+		"event.type":                "end",
+		"event.outcome":             "success",
+		"operation.name":            "test.main",
+		"operation.status":          "completed",
+		"process.runtime.name":      "go",
+		"process.gomaxprocs":        float64(runtime.GOMAXPROCS(0)),
+		"process.cpu.count":         float64(runtime.NumCPU()),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{
+		"duration.bucket",
+		"process.uptime_ms",
+		"go.goroutine.count",
+		"go.memory.heap_alloc_bytes",
+		"go.memory.heap_sys_bytes",
+		"go.memory.heap_inuse_bytes",
+		"go.memory.next_gc_bytes",
+	} {
+		if _, ok := payload[key]; !ok {
+			t.Fatalf("%s missing from wide event payload=%#v", key, payload)
+		}
+	}
 	oversized, ok := payload["oversized"].(string)
 	if !ok || len(oversized) > maxAttributeStringLength+3 || !strings.HasSuffix(oversized, "...") {
 		t.Fatalf("oversized attribute was not bounded: len=%d value=%q", len(oversized), oversized)
@@ -207,6 +291,10 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		DeploymentEnvironment: "sec-dev",
 		CloudRegion:           "us-east-1",
 		ContainerID:           "task-hostname",
+		ECSCluster:            "cerebro-sec-dev-cluster",
+		ECSServiceName:        "cerebro-sec-dev-api",
+		ECSTaskFamily:         "cerebro-sec-dev",
+		ECSTaskRevision:       "362",
 		ResourceAttributes:    "service.namespace=cerebro,cloud.provider=gcp,cloud.region=europe-west1,cloud.availability_zone=us-east-1a,container.id=otel-container,deployment.environment.name=ignored-by-cerebro-env",
 	})
 	t.Cleanup(func() {
@@ -217,7 +305,7 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		_, span := StartMain(context.Background(), "test.runtime", Attrs())
 		End(span, "completed", Attrs())
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.runtime")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.runtime")
 	for key, want := range map[string]any{
 		"service.name":                "cerebro-api",
 		"service.namespace":           "cerebro",
@@ -225,9 +313,60 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		"deployment.environment.name": "sec-dev",
 		"cloud.provider":              "aws",
 		"cloud.region":                "us-east-1",
+		"cloud.platform":              "aws_ecs",
 		"cloud.availability_zone":     "us-east-1a",
 		"container.id":                "task-hostname",
+		"aws.ecs.cluster.name":        "cerebro-sec-dev-cluster",
+		"aws.ecs.service.name":        "cerebro-sec-dev-api",
+		"aws.ecs.task.family":         "cerebro-sec-dev",
+		"aws.ecs.task.revision":       "362",
 	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func TestMainSpanDependencyAndPhaseRollups(t *testing.T) {
+	_, stderr := captureOutput(t, func() {
+		ctx, span := StartMain(context.Background(), "test.rollups", Attrs())
+		AnnotateMainDependency(ctx, "db.postgres", "statestore.postgres", "query", "completed", Attrs(
+			Field{Key: "db.system.name", Value: "postgresql"},
+		))
+		AnnotateMainDependency(ctx, "outbound.http", "sourcehttp", "round_trip", "failed", Attrs(
+			Field{Key: "http.response.status_class", Value: "5xx"},
+		))
+		AnnotateMainPhase(ctx, "source_runtime.sync", "failed", Attrs(
+			Field{Key: "source_id", Value: "github"},
+		))
+		End(span, "failed", Attrs(Field{Key: "error_kind", Value: "boom_kind"}))
+	})
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.rollups")
+	expected := map[string]any{
+		"event.outcome":                            "failure",
+		"operation.status":                         "failed",
+		"dependency.operation.count":               float64(2),
+		"dependency.error.count":                   float64(1),
+		"dependency.db_postgres.operation.count":   float64(1),
+		"dependency.outbound_http.operation.count": float64(1),
+		"dependency.outbound_http.error.count":     float64(1),
+		"dependency.last_system":                   "outbound_http",
+		"dependency.last_component":                "sourcehttp",
+		"dependency.last_operation":                "round_trip",
+		"dependency.last_status":                   "failed",
+		"dependency.outbound_http.last_status":     "failed",
+		"phase.count":                              float64(1),
+		"phase.error.count":                        float64(1),
+		"phase.source_runtime_sync.count":          float64(1),
+		"phase.source_runtime_sync.error.count":    float64(1),
+		"phase.last_name":                          "source_runtime.sync",
+		"phase.last_status":                        "failed",
+		"phase.source_runtime_sync.status":         "failed",
+		"http.response.status_class":               "5xx",
+		"source_id":                                "github",
+		"error_kind":                               "boom_kind",
+	}
+	for key, want := range expected {
 		if got := payload[key]; got != want {
 			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
@@ -247,7 +386,7 @@ func TestRuntimeAttributesDoNotInferAWSFromOTELCloudRegion(t *testing.T) {
 		_, span := StartMain(context.Background(), "test.runtime.otel-region", Attrs())
 		End(span, "completed", Attrs())
 	})
-	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.runtime.otel-region")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.runtime.otel-region")
 	for key, want := range map[string]any{
 		"cloud.provider": "unknown",
 		"cloud.region":   "europe-west1",
@@ -362,7 +501,7 @@ func TestConfigureOpenTelemetryDisabledLeavesNoopProviderUsable(t *testing.T) {
 	End(span, "completed", Attrs())
 }
 
-func telemetryPayloadByKindAndName(t *testing.T, stderr string, kind string, name string) map[string]any {
+func telemetrySpanEndPayloadByName(t *testing.T, stderr string, name string) map[string]any {
 	t.Helper()
 	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -372,11 +511,11 @@ func telemetryPayloadByKindAndName(t *testing.T, stderr string, kind string, nam
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
 			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
 		}
-		if payload["kind"] == kind && payload["name"] == name {
+		if payload["kind"] == "span_end" && payload["name"] == name {
 			return payload
 		}
 	}
-	t.Fatalf("telemetry payload kind=%q name=%q not found in stderr: %s", kind, name, stderr)
+	t.Fatalf("telemetry span_end payload name=%q not found in stderr: %s", name, stderr)
 	return nil
 }
 
