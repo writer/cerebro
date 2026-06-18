@@ -86,6 +86,31 @@ func TestCosmoCoordinationActiveRiskDerivesStateFromPayload(t *testing.T) {
 	}
 }
 
+func TestCosmoCoordinationActiveRiskDoesNotUseGenericValueAsReason(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}
+	event := &cerebrov1.EventEnvelope{
+		Id:         "cosmo-payload-value-only",
+		TenantId:   "writer",
+		SourceId:   "cosmo",
+		Kind:       "cosmo.fact",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "cosmo/fact/v1",
+		Attributes: map[string]string{"key": "coordination:risk:thread-9"},
+		Payload:    []byte(`{"key":"coordination:risk:thread-9","category":"coordination_risk","source":"session:thread-9","status":"active","value":"attacker-controlled generic text"}`),
+	}
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(value-only payload) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(value-only payload) emitted %d findings, want 1", len(records))
+	}
+	if got := records[0].Attributes["risk_reason"]; got != "" {
+		t.Fatalf("risk_reason = %q, want omitted for generic value payload", got)
+	}
+}
+
 func TestCosmoCoordinationActiveRiskRemediationResolves(t *testing.T) {
 	open := cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))

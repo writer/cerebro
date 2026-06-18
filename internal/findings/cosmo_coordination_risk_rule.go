@@ -120,7 +120,7 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 		"session_id":           sessionID,
 		"category":             cosmoFactCategory(event),
 		"risk_state":           "active",
-		"risk_reason":          firstNonEmpty(strings.TrimSpace(attrs["risk_reason"]), cosmoFactPayloadString(event, "risk_reason", "reason", "summary", "value")),
+		"risk_reason":          firstNonEmpty(strings.TrimSpace(attrs["risk_reason"]), cosmoFactPayloadString(event, "risk_reason", "reason", "summary")),
 		"risk_severity":        firstNonEmpty(strings.TrimSpace(attrs["risk_severity"]), cosmoFactPayloadString(event, "risk_severity", "severity")),
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"source_runtime_id":    strings.TrimSpace(attrs[ports.EventAttributeSourceRuntimeID]),
