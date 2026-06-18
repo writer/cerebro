@@ -197,6 +197,7 @@ event_contracts:
   - kind: anthropic.compliance_role_permission
     schema_ref: anthropic/compliance_role_permission/v1
     required_attributes: [organization_uuid, role_id, permission_id]
+    required_payload_fields: [id]
   - kind: anthropic.compliance_group
     schema_ref: anthropic/compliance_group/v1
     required_attributes: [group_id]

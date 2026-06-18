@@ -234,8 +234,8 @@ func projectCollaboratorAttributes() map[string]string {
 		"organization_id":   "organization.id|organization_id",
 		"organization_uuid": "organization.uuid|organization_uuid|organization.id|organization_id",
 		"role_id":           "role.id|role_id|role",
-		"role":              "role.name|role|role_id",
-		"role_name":         "role.name|role_name|role",
+		"role":              "role.name|role.id|role_id",
+		"role_name":         "role.name|role_name|role.id|role_id",
 		"created_at":        "created_at",
 		"updated_at":        "updated_at",
 	}
