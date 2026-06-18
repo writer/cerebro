@@ -1694,7 +1694,7 @@ func connectorSchemaForSource(sourceID string) (connectorSchema, bool) {
 
 func connectorSchemaFromDefinition(definition connectordefinitions.Definition) connectorSchema {
 	schema := connectorSchema{
-		ConfigKeys:     stringSet("family", "health_path", "base_url", "token_url", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"),
+		ConfigKeys:     stringSet("family", "health_path", "base_url", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"),
 		CredentialKeys: map[string]struct{}{},
 	}
 	for _, field := range definition.ConfigFields {
