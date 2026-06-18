@@ -60,6 +60,16 @@ func TestKolideHostFailingComplianceChecksFixture(t *testing.T) {
 	assertRuleFixture(t, newKolideHostFailingComplianceChecksRule(), "testdata/rules/kolide-host-failing-compliance-checks.json")
 }
 
+func TestKolideHostFailingComplianceChecksRequiredAttributesByKind(t *testing.T) {
+	metadata := newKolideHostFailingComplianceChecksRule().(MetadataRule).RuleMetadata()
+	if got := strings.Join(metadata.RequiredAttributesByKind[kolideIssueEventKind], ","); got != "device_id,issue_id" {
+		t.Fatalf("kolide.issue required attrs = %q, want device_id,issue_id", got)
+	}
+	if got := strings.Join(metadata.RequiredAttributesByKind[kolideDeviceEventKind], ","); got != "device_id" {
+		t.Fatalf("kolide.device required attrs = %q, want device_id", got)
+	}
+}
+
 func TestKolideIssueOpenFinding(t *testing.T) {
 	rule := newKolideHostFailingComplianceChecksRule()
 	runtime := &cerebrov1.SourceRuntime{

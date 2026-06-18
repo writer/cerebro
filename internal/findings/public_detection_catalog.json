@@ -3049,6 +3049,15 @@
       "required_attributes": [
         "device_id"
       ],
+      "required_attributes_by_kind": {
+        "kolide.device": [
+          "device_id"
+        ],
+        "kolide.issue": [
+          "device_id",
+          "issue_id"
+        ]
+      },
       "fingerprint_fields": [
         "kolide_issue_urn",
         "kolide_device_urn"

@@ -55,9 +55,13 @@ type RuleDefinition struct {
 	FalsePositives     []string
 	Runbook            string
 	RequiredAttributes []string
-	FingerprintFields  []string
-	ControlRefs        []ports.FindingControlRef
-	Lifecycle          Lifecycle
+	// RequiredAttributesByKind narrows required attribute contracts for rules
+	// that intentionally accept multiple event kinds with different schemas.
+	// Runtime matching remains rule-specific; this field is exported metadata.
+	RequiredAttributesByKind map[string][]string
+	FingerprintFields        []string
+	ControlRefs              []ports.FindingControlRef
+	Lifecycle                Lifecycle
 }
 
 type eventRuleConfig struct {
@@ -156,6 +160,9 @@ func (d RuleDefinition) AttributeMap() map[string]string {
 	joinAttribute(attributes, "false_positives", d.FalsePositives)
 	joinAttribute(attributes, "references", d.References)
 	joinAttribute(attributes, "required_attributes", d.RequiredAttributes)
+	if byKind := keyedAttributesAttribute(d.RequiredAttributesByKind); byKind != "" {
+		attributes["required_attributes_by_kind"] = byKind
+	}
 	joinAttribute(attributes, "tags", d.Tags)
 	if strings.TrimSpace(d.Runbook) != "" {
 		attributes["runbook"] = strings.TrimSpace(d.Runbook)

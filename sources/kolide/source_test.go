@@ -328,7 +328,7 @@ func TestReadIssueFamily(t *testing.T) {
 					"last_rechecked_at":  "2026-05-01T13:00:00Z",
 					"blocks_device_at":   "2026-05-02T12:00:00Z",
 					"exempted":           false,
-					"device_information": map[string]any{"identifier": "device-1", "location": "https://api.kolide.com/devices/device-1"},
+					"device_information": map[string]any{"identifier": "device-1", "name": "Writer MacBook", "hostname": "writer-mbp.local", "serial_number": "SERIAL1", "location": "https://api.kolide.com/devices/device-1"},
 					"check_information":  map[string]any{"identifier": "check-1", "location": "https://api.kolide.com/checks/check-1"},
 					"value":              map[string]any{"encrypted": false},
 				},
@@ -361,6 +361,9 @@ func TestReadIssueFamily(t *testing.T) {
 	for key, want := range map[string]string{
 		"issue_id":         "issue-1",
 		"device_id":        "device-1",
+		"device_name":      "Writer MacBook",
+		"hostname":         "writer-mbp.local",
+		"serial_number":    "SERIAL1",
 		"check_id":         "check-1",
 		"title":            "Disk encryption disabled",
 		"exempted":         "false",

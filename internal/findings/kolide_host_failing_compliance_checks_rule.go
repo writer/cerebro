@@ -56,9 +56,13 @@ var kolideHostFailingComplianceChecksDefinition = RuleDefinition{
 	FalsePositives:     []string{"Hosts with failing checks that are covered by a documented, risk-accepted exception or are pending a scheduled maintenance window."},
 	Runbook:            "Review the host's failing Kolide checks, remediate the underlying configuration gaps (or apply auto-remediation), and confirm the host returns to a passing compliance state.",
 	RequiredAttributes: []string{"device_id"},
-	FingerprintFields:  []string{"kolide_issue_urn", "kolide_device_urn"},
-	ControlRefs:        kolideHostFailingComplianceChecksControlRefs,
-	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
+	RequiredAttributesByKind: map[string][]string{
+		kolideDeviceEventKind: {"device_id"},
+		kolideIssueEventKind:  {"device_id", "issue_id"},
+	},
+	FingerprintFields: []string{"kolide_issue_urn", "kolide_device_urn"},
+	ControlRefs:       kolideHostFailingComplianceChecksControlRefs,
+	Lifecycle:         Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 }
 
 var kolideHostFailingComplianceChecksKindMatcher = eventKindMatcher(kolideHostFailingComplianceChecksDefinition.EventKinds...)
