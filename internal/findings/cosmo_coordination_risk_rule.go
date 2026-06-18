@@ -162,7 +162,8 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 // cosmoFactRiskState resolves a coordination-risk memory fact into a durable
 // "active" or "resolved" state from the event attributes the Cosmo source emits
 // and the raw fact payload. It returns an empty string for facts that are not in
-// a coordination-risk category so benign memory facts never open findings.
+// a coordination-risk category or that lack explicit state evidence so benign
+// and ambiguous memory facts never open HIGH findings.
 func cosmoFactRiskState(event *cerebrov1.EventEnvelope) string {
 	if !cosmoCoordinationRiskCategory(cosmoFactCategory(event)) {
 		return ""

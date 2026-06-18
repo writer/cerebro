@@ -119,6 +119,52 @@ func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {
 	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
 }
 
+func TestProjectCosmoFactRequiresExplicitCoordinationRiskState(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload map[string]any
+	}{
+		{
+			name: "missing state",
+			payload: map[string]any{
+				"key":      "coordination:risk:thread-1",
+				"category": "coordination_risk",
+			},
+		},
+		{
+			name: "unknown state",
+			payload: map[string]any{
+				"key":      "coordination:risk:thread-1",
+				"category": "coordination_risk",
+				"status":   "needs-review",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+				Id:       "cosmo-writer-fact-coordination-risk-ambiguous",
+				TenantId: "writer",
+				SourceId: "cosmo",
+				Kind:     "cosmo.fact",
+				Payload:  mustJSON(t, tc.payload),
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			fact := cosmoProjectedEntity(t, entities, cosmoTestURN("cosmo_fact", "coordination:risk:thread-1"), "cosmo.fact")
+			if got := fact.Attributes["risk_state"]; got != "" {
+				t.Fatalf("fact risk_state = %q, want omitted without explicit active/resolved evidence", got)
+			}
+			if got := fact.Attributes["risk_reason"]; got != "" {
+				t.Fatalf("fact risk_reason = %q, want omitted without explicit active/resolved evidence", got)
+			}
+			if got := fact.Attributes["risk_severity"]; got != "" {
+				t.Fatalf("fact risk_severity = %q, want omitted without explicit active/resolved evidence", got)
+			}
+		})
+	}
+}
+
 func TestProjectCosmoFactResolvedBooleanMatchesFindingState(t *testing.T) {
 	entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-fact-coordination-risk-resolved",

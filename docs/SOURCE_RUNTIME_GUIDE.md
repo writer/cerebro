@@ -271,6 +271,28 @@ Inspect graph ingest runs:
 ./bin/cerebro graph ingest-run <run-id>
 ```
 
+### Projection identity changes
+
+Projection identity changes must be handled as graph rebuilds, not as dual
+writes of old and new URNs. When a source projection moves from a lossy
+normalization to a collision-resistant key, run a dry-run rebuild for the
+runtime, review the projected entity count and sample URNs, then rerun graph
+ingest for the affected runtime:
+
+```bash
+./bin/cerebro graph rebuild <runtime-id> dry_run=true mode=replay preview_limit=20
+./bin/cerebro graph ingest-runtime <runtime-id> page_limit=100
+```
+
+Cosmo fact, message, session, and survey-feedback projections use hashed
+external identifiers so raw keys containing `:`, `/`, whitespace, or mixed
+delimiters cannot collide into the same graph URN. The raw provider key remains
+available in attributes such as `record_id`, `key`, `ticket_id`, and
+`thread_key`; use those attributes to reconcile old dash-normalized graph nodes
+before pruning stale projection rows. Do not dual-write legacy Cosmo URNs: the
+legacy normalization was ambiguous, and preserving it would reintroduce the
+collision class the rebuild is meant to remove.
+
 ## Scheduling guidance
 
 Use your scheduler or orchestrator to run sync jobs:

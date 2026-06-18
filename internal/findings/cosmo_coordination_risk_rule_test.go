@@ -87,6 +87,80 @@ func TestCosmoCoordinationActiveRiskDerivesStateFromPayload(t *testing.T) {
 	}
 }
 
+func TestCosmoCoordinationActiveRiskRequiresExplicitStateEvidence(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}
+
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name:    "missing state",
+			payload: `{"key":"coordination:risk:thread-9","category":"coordination_risk","source":"session:thread-9"}`,
+		},
+		{
+			name:    "unknown state",
+			payload: `{"key":"coordination:risk:thread-9","category":"coordination_risk","source":"session:thread-9","status":"needs-review"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			event := &cerebrov1.EventEnvelope{
+				Id:         "cosmo-ambiguous-risk",
+				TenantId:   "writer",
+				SourceId:   "cosmo",
+				Kind:       "cosmo.fact",
+				OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+				SchemaRef:  "cosmo/fact/v1",
+				Attributes: map[string]string{
+					"key":                               "coordination:risk:thread-9",
+					"category":                          "coordination_risk",
+					"source":                            "session:thread-9",
+					ports.EventAttributeSourceRuntimeID: "writer-cosmo-fact",
+				},
+				Payload: []byte(tc.payload),
+			}
+			records, err := rule.Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate(%s) error = %v", tc.name, err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(%s) emitted %d findings, want 0 without explicit active/resolved state evidence", tc.name, len(records))
+			}
+		})
+	}
+}
+
+func TestCosmoCoordinationActiveRiskResolvedFalseOpens(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}
+	event := &cerebrov1.EventEnvelope{
+		Id:         "cosmo-resolved-false-risk",
+		TenantId:   "writer",
+		SourceId:   "cosmo",
+		Kind:       "cosmo.fact",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "cosmo/fact/v1",
+		Attributes: map[string]string{
+			"key":                               "coordination:risk:thread-9",
+			"category":                          "coordination_risk",
+			"source":                            "session:thread-9",
+			ports.EventAttributeSourceRuntimeID: "writer-cosmo-fact",
+		},
+		Payload: []byte(`{"key":"coordination:risk:thread-9","category":"coordination_risk","source":"session:thread-9","resolved":false}`),
+	}
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(resolved=false) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(resolved=false) emitted %d findings, want 1", len(records))
+	}
+	if got := records[0].Attributes["risk_state"]; got != "active" {
+		t.Fatalf("risk_state = %q, want active", got)
+	}
+}
+
 func TestCosmoCoordinationActiveRiskDoesNotUseGenericValueAsReason(t *testing.T) {
 	rule := newCosmoCoordinationActiveRiskRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}

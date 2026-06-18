@@ -199,7 +199,8 @@ func cosmoFactSessionID(source string) string {
 
 // cosmoFactRiskState mirrors the finding-layer derivation so the projected
 // cosmo.fact entity carries the same durable coordination-risk state that the
-// finding rule keys on. It returns an empty string for non-risk facts.
+// finding rule keys on. It returns an empty string for non-risk facts and for
+// coordination-risk facts that do not carry explicit active/resolved evidence.
 func cosmoFactRiskState(attrs map[string]string, payload map[string]any) string {
 	category := strings.ToLower(firstNonEmpty(attrs["category"], stringValue(payload, "category")))
 	if !cosmoCoordinationRiskCategory(category) {
