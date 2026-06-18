@@ -42,8 +42,15 @@ func SecurityHubGetFindingsInput(maxResults int32, token string, checkpoint *cer
 		}},
 	}
 	if start, ok := checkpointStart(checkpoint, lookback); ok {
+		end := time.Now().UTC()
+		if end.Before(start) {
+			end = start
+		}
 		input.Filters = &securityhubtypes.AwsSecurityFindingFilters{
-			UpdatedAt: []securityhubtypes.DateFilter{{Start: awssdk.String(start.Format(time.RFC3339Nano))}},
+			UpdatedAt: []securityhubtypes.DateFilter{{
+				Start: awssdk.String(start.Format(time.RFC3339Nano)),
+				End:   awssdk.String(end.Format(time.RFC3339Nano)),
+			}},
 		}
 	}
 	return input

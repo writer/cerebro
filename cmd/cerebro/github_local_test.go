@@ -266,6 +266,43 @@ func TestPrepareSourceRuntimeWithCLIAuditAppAuthSkipsTokenHydration(t *testing.T
 	}
 }
 
+func TestPrepareSourceRuntimeWithCLIOrgGitHubFamiliesSkipRepoHydration(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_APP_ID", "42")
+	t.Setenv("CEREBRO_SOURCE_GITHUB_INSTALLATION_ID", "123")
+	t.Setenv("CEREBRO_SOURCE_GITHUB_PRIVATE_KEY_BASE64", "key")
+	for _, family := range []string{"org_inventory", "repository", "secret_scanning_alert"} {
+		t.Run(family, func(t *testing.T) {
+			cli := &fakeGitHubLocalCLI{}
+			runtime, err := prepareSourceRuntimeWithCLI(context.Background(), &cerebrov1.SourceRuntime{
+				Id:       "example-github-" + family,
+				SourceId: githubSourceID,
+				Config: map[string]string{
+					"app_id":             "env:CEREBRO_SOURCE_GITHUB_APP_ID",
+					"family":             family,
+					"installation_id":    "env:CEREBRO_SOURCE_GITHUB_INSTALLATION_ID",
+					"owner":              "example-org",
+					"private_key_base64": "env:CEREBRO_SOURCE_GITHUB_PRIVATE_KEY_BASE64",
+				},
+			}, cli)
+			if err != nil {
+				t.Fatalf("prepareSourceRuntimeWithCLI() error = %v", err)
+			}
+			if _, ok := runtime.GetConfig()["repo"]; ok {
+				t.Fatalf("runtime.Config[repo] = %q, want omitted", runtime.GetConfig()["repo"])
+			}
+			if _, ok := runtime.GetConfig()["token"]; ok {
+				t.Fatalf("runtime.Config[token] = %q, want omitted", runtime.GetConfig()["token"])
+			}
+			if cli.repoCalls != 0 {
+				t.Fatalf("repoCalls = %d, want 0", cli.repoCalls)
+			}
+			if cli.authTokenCalls != 0 {
+				t.Fatalf("authTokenCalls = %d, want 0", cli.authTokenCalls)
+			}
+		})
+	}
+}
+
 func TestPrepareSourceConfigWithCLIResolvesEnvOwnerBeforeHydration(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
 	cli := &fakeGitHubLocalCLI{

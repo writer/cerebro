@@ -175,7 +175,12 @@ func githubReadRequiresRepo(command string, config map[string]string) bool {
 }
 
 func githubRuntimeRequiresRepo(config map[string]string) bool {
-	return strings.TrimSpace(config["family"]) != "audit"
+	switch strings.TrimSpace(config["family"]) {
+	case "", "pull_request", "dependabot_alert":
+		return true
+	default:
+		return false
+	}
 }
 
 func githubRequiresToken(config map[string]string) bool {

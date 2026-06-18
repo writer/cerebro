@@ -336,9 +336,10 @@ func TestReadAWSFindingFamiliesWithCheckpointUseUpdatedTimeRequests(t *testing.T
 			t.Fatalf("Security Hub sort = %#v, want UpdatedAt desc", input.SortCriteria)
 		}
 		if input.Filters == nil || len(input.Filters.UpdatedAt) != 1 {
-			t.Fatalf("Security Hub UpdatedAt filter = %#v, want one start filter", input.Filters)
+			t.Fatalf("Security Hub UpdatedAt filter = %#v, want one start/end filter", input.Filters)
 		}
 		assertAWSFindingFilterStart(t, awssdk.ToString(input.Filters.UpdatedAt[0].Start), watermark)
+		assertAWSFindingFilterEnd(t, awssdk.ToString(input.Filters.UpdatedAt[0].End), watermark)
 	})
 
 	t.Run("guardduty", func(t *testing.T) {
@@ -479,6 +480,7 @@ func TestReadAWSSecurityHubCheckpointCursorKeepsOriginalWatermark(t *testing.T) 
 		t.Fatalf("second NextToken = %q, want token-2", got)
 	}
 	assertAWSFindingFilterStart(t, awssdk.ToString(fake.securityHubInputs[1].Filters.UpdatedAt[0].Start), watermark)
+	assertAWSFindingFilterEnd(t, awssdk.ToString(fake.securityHubInputs[1].Filters.UpdatedAt[0].End), watermark)
 }
 
 func awsSecurityTestCheckpoint(watermark time.Time) *cerebrov1.SourceCheckpoint {
@@ -494,6 +496,18 @@ func assertAWSFindingFilterStart(t *testing.T, raw string, watermark time.Time) 
 	want := watermark.Add(-awsFindingCheckpointLookback)
 	if !got.Equal(want) {
 		t.Fatalf("filter start = %s, want %s", got, want)
+	}
+}
+
+func assertAWSFindingFilterEnd(t *testing.T, raw string, watermark time.Time) {
+	t.Helper()
+	got, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		t.Fatalf("parse filter end %q: %v", raw, err)
+	}
+	wantAfter := watermark.Add(-awsFindingCheckpointLookback)
+	if got.Before(wantAfter) {
+		t.Fatalf("filter end = %s, want >= %s", got, wantAfter)
 	}
 }
 
