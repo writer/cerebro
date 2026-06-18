@@ -2879,6 +2879,52 @@
       ]
     },
     {
+      "id": "kandji-endpoint-disk-encryption-disabled",
+      "pack_id": "kandji",
+      "pack_name": "Kandji",
+      "name": "Kandji Endpoint Disk Encryption Disabled",
+      "description": "Detect Kandji-managed Apple endpoints whose FileVault disk encryption is currently disabled, leaving data at rest unprotected on a managed device.",
+      "source_id": "kandji",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "kandji.device"
+      ],
+      "output_kind": "finding.kandji_endpoint_disk_encryption_disabled",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "device-posture",
+        "disk-encryption",
+        "endpoint",
+        "filevault",
+        "kandji"
+      ],
+      "references": [
+        "https://support.kandji.io/kb/filevault-overview"
+      ],
+      "false_positives": [
+        "Endpoints that are intentionally exempt from FileVault enforcement under a documented, risk-accepted blueprint."
+      ],
+      "runbook": "Confirm the device should enforce FileVault; if so, apply the FileVault Library Item to the device's blueprint and escalate disk encryption so data at rest is protected.",
+      "required_attributes": [
+        "device_id"
+      ],
+      "fingerprint_fields": [
+        "kandji_device_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        }
+      ]
+    },
+    {
       "id": "panopticon-curated-case",
       "pack_id": "panopticon",
       "pack_name": "Panopticon",

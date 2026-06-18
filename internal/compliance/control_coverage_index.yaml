@@ -41677,7 +41677,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 101
+        mapped_rules: 102
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41897,7 +41897,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 7
+          rule_count: 8
           mapped_rules:
             - aws-cloudtrail-kms-encryption
             - azure-vm-unmanaged-disk
@@ -41906,6 +41906,7 @@ profiles:
             - endpoint-intune-disk-encryption
             - endpoint-jamf-disk-encryption
             - endpoint-kandji-disk-encryption
+            - kandji-endpoint-disk-encryption-disabled
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -42444,6 +42445,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.14
+        - rule_id: kandji-endpoint-disk-encryption-disabled
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.24
         - rule_id: m365-dlp-policy-missing
           controls:
             - framework_name: ISO 27001:2022
@@ -61047,7 +61052,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 921
+        mapped_rules: 922
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61595,7 +61600,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 428
+          rule_count: 429
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -62023,6 +62028,7 @@ profiles:
             - k8s-service-loadbalancer-internal
             - k8s-service-no-nodeport
             - k8s-workload-not-default-namespace
+            - kandji-endpoint-disk-encryption-disabled
             - tailscale-tailnet-device-approval-disabled
             - vpc-external-peering
         - framework_name: SOC 2
@@ -65745,6 +65751,10 @@ profiles:
               control_id: CC6.1
             - framework_name: SOC 2
               control_id: CC6.6
+        - rule_id: kandji-endpoint-disk-encryption-disabled
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: log4shell-privileged
           controls:
             - framework_name: SOC 2
