@@ -34,7 +34,6 @@ import (
 const (
 	mcpProtocolVersion          = "2025-11-25"
 	mcpEndpointPath             = "/api/v1/mcp"
-	mcpRedactedValue            = "[redacted]"
 	defaultMCPListLimit         = 25
 	maxMCPListLimit             = 100
 	defaultMCPAssetLimit        = 10
@@ -3097,18 +3096,7 @@ func mcpStringMapFromJSON(raw string) (map[string]string, error) {
 }
 
 func mcpRedactSensitiveAttributes(attributes map[string]string) map[string]string {
-	if len(attributes) == 0 {
-		return attributes
-	}
-	redacted := make(map[string]string, len(attributes))
-	for key, value := range attributes {
-		if sensitiveSourceConfigKey(key) {
-			redacted[key] = mcpRedactedValue
-			continue
-		}
-		redacted[key] = value
-	}
-	return redacted
+	return redactSensitiveAttributes(attributes)
 }
 
 func mcpSafeFindingValue(finding *ports.FindingRecord) (any, error) {
@@ -3128,12 +3116,7 @@ func mcpSafeFindingValues(findings []*ports.FindingRecord) ([]any, error) {
 }
 
 func mcpSafeFindingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
-	message := findingMessage(finding)
-	if message == nil {
-		return nil
-	}
-	message.Attributes = mcpRedactSensitiveAttributes(message.GetAttributes())
-	return message
+	return safeFindingMessage(finding)
 }
 
 func mcpSafeFindingEvidenceValue(evidence *cerebrov1.FindingEvidence) (any, error) {
@@ -3153,41 +3136,7 @@ func mcpSafeFindingEvidenceValues(evidence []*cerebrov1.FindingEvidence) ([]any,
 }
 
 func mcpSafeFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.FindingEvidence {
-	if evidence == nil {
-		return nil
-	}
-	cloned := proto.Clone(evidence).(*cerebrov1.FindingEvidence)
-	cloned.Attributes = mcpRedactSensitiveAttributes(cloned.GetAttributes())
-	cloned.GraphRows = mcpSafeGraphEvidenceRows(cloned.GetGraphRows())
-	for _, observation := range cloned.GetObservations() {
-		if observation == nil {
-			continue
-		}
-		observation.GraphRows = mcpSafeGraphEvidenceRows(observation.GetGraphRows())
-	}
-	return cloned
-}
-
-func mcpSafeGraphEvidenceRows(rows []*cerebrov1.GraphEvidenceRow) []*cerebrov1.GraphEvidenceRow {
-	if len(rows) == 0 {
-		return rows
-	}
-	safeRows := make([]*cerebrov1.GraphEvidenceRow, 0, len(rows))
-	for _, row := range rows {
-		if row == nil {
-			continue
-		}
-		cloned := proto.Clone(row).(*cerebrov1.GraphEvidenceRow)
-		cloned.Attributes = mcpRedactSensitiveAttributes(cloned.GetAttributes())
-		for _, path := range cloned.GetPaths() {
-			if path == nil {
-				continue
-			}
-			path.Attributes = mcpRedactSensitiveAttributes(path.GetAttributes())
-		}
-		safeRows = append(safeRows, cloned)
-	}
-	return safeRows
+	return safeFindingEvidence(evidence)
 }
 
 func mcpImpactKindIsAsset(kind string) bool {

@@ -237,6 +237,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "backstage",
+			Name:        "Backstage",
+			Description: "Backstage service-catalog ownership and accountability posture findings.",
+			Rules: []Rule{
+				newBackstageCriticalComponentMissingOwnerRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

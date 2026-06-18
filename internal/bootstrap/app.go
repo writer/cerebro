@@ -105,6 +105,7 @@ const (
 	maxProtoJSONBodyBytes              = 1 << 20
 	healthCheckTimeout                 = 2 * time.Second
 	sourceRuntimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
+	redactedAttributeValue             = "[redacted]"
 )
 
 var (
@@ -203,6 +204,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 				TenantID:       grant.TenantID,
 				AllowedTenants: grant.AllowedTenants,
 				Scopes:         grant.Scopes,
+				Roles:          grant.Roles,
 				Groups:         grant.Groups,
 			}, ttl, now)
 		}, mcpoauth.WithOIDCProvider(newMCPOAuthOIDCClient(cfg.Auth.MCPOAuth.Upstream)))
@@ -412,7 +414,7 @@ func (a *App) handleGetFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -442,7 +444,7 @@ func (a *App) handleResolveFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.ResolveFindingResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -472,7 +474,7 @@ func (a *App) handleSuppressFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.SuppressFindingResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -497,7 +499,7 @@ func (a *App) handleAssignFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.AssignFindingResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -523,7 +525,7 @@ func (a *App) handleSetFindingDueDate(w http.ResponseWriter, r *http.Request) {
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.SetFindingDueDateResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -545,7 +547,7 @@ func (a *App) handleAddFindingNote(w http.ResponseWriter, r *http.Request) {
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.AddFindingNoteResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -573,7 +575,7 @@ func (a *App) handleLinkFindingTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.LinkFindingTicketResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -595,7 +597,7 @@ func (a *App) handleLinkFindingExternalRef(w http.ResponseWriter, r *http.Reques
 	}
 	a.bumpGRCCacheForFinding(r.Context(), finding)
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.LinkFindingExternalRefResponse{
-		Finding: findingMessage(finding),
+		Finding: safeFindingMessage(finding),
 	})
 }
 
@@ -672,7 +674,7 @@ func (a *App) handleGetFindingEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingEvidenceResponse{
-		Evidence: response,
+		Evidence: safeFindingEvidence(response),
 	})
 }
 
@@ -1724,7 +1726,7 @@ func (a *App) handleGetFindingCandidate(w http.ResponseWriter, r *http.Request) 
 		writeFindingError(w, normalizeIDLookupError(err, ports.ErrFindingCandidateNotFound))
 		return
 	}
-	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingCandidateResponse{Candidate: findingCandidateMessage(candidate)})
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingCandidateResponse{Candidate: safeFindingCandidateMessage(candidate)})
 }
 
 func (a *App) handlePromoteFindingCandidate(w http.ResponseWriter, r *http.Request) {
@@ -1840,9 +1842,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		writeFindingError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusOK, &cerebrov1.ListFindingEvidenceResponse{
-		Evidence: response.Evidence,
-	})
+	writeProtoJSON(w, http.StatusOK, listFindingEvidenceResponse(response))
 }
 
 func (a *App) handleListFindingEvaluationRuns(w http.ResponseWriter, r *http.Request) {
@@ -2088,7 +2088,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.ListFindingCandidatesRequest]) (*connect.Response[cerebrov1.ListFindingCandidatesResponse], error) {
@@ -2118,7 +2118,7 @@ func (s *bootstrapService) GetFindingCandidate(ctx context.Context, req *connect
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingCandidateNotFound))
 	}
-	return connect.NewResponse(&cerebrov1.GetFindingCandidateResponse{Candidate: findingCandidateMessage(candidate)}), nil
+	return connect.NewResponse(&cerebrov1.GetFindingCandidateResponse{Candidate: safeFindingCandidateMessage(candidate)}), nil
 }
 
 func (s *bootstrapService) EvaluateSourceRuntimeFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingCandidatesRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingCandidatesResponse], error) {
@@ -2199,7 +2199,7 @@ func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Requ
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.ResolveFindingResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.ResolveFindingResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Request[cerebrov1.SuppressFindingRequest]) (*connect.Response[cerebrov1.SuppressFindingResponse], error) {
@@ -2215,7 +2215,7 @@ func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Req
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.SuppressFindingResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.SuppressFindingResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Request[cerebrov1.AssignFindingRequest]) (*connect.Response[cerebrov1.AssignFindingResponse], error) {
@@ -2227,7 +2227,7 @@ func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Reque
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.AssignFindingResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.AssignFindingResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.Request[cerebrov1.SetFindingDueDateRequest]) (*connect.Response[cerebrov1.SetFindingDueDateResponse], error) {
@@ -2243,7 +2243,7 @@ func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.R
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.SetFindingDueDateResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.SetFindingDueDateResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Request[cerebrov1.AddFindingNoteRequest]) (*connect.Response[cerebrov1.AddFindingNoteResponse], error) {
@@ -2255,7 +2255,7 @@ func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Requ
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.AddFindingNoteResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.AddFindingNoteResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.Request[cerebrov1.LinkFindingTicketRequest]) (*connect.Response[cerebrov1.LinkFindingTicketResponse], error) {
@@ -2273,7 +2273,7 @@ func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.R
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.LinkFindingTicketResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.LinkFindingTicketResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) LinkFindingExternalRef(ctx context.Context, req *connect.Request[cerebrov1.LinkFindingExternalRefRequest]) (*connect.Response[cerebrov1.LinkFindingExternalRefResponse], error) {
@@ -2285,7 +2285,7 @@ func (s *bootstrapService) LinkFindingExternalRef(ctx context.Context, req *conn
 		return nil, findingConnectError(err)
 	}
 	bumpGRCCacheForFinding(ctx, s.deps.QueryCache, finding)
-	return connect.NewResponse(&cerebrov1.LinkFindingExternalRefResponse{Finding: findingMessage(finding)}), nil
+	return connect.NewResponse(&cerebrov1.LinkFindingExternalRefResponse{Finding: safeFindingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvidenceRequest]) (*connect.Response[cerebrov1.ListFindingEvidenceResponse], error) {
@@ -2306,9 +2306,7 @@ func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.ListFindingEvidenceResponse{
-		Evidence: response.Evidence,
-	}), nil
+	return connect.NewResponse(listFindingEvidenceResponse(response)), nil
 }
 
 func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvaluationRunsRequest]) (*connect.Response[cerebrov1.ListFindingEvaluationRunsResponse], error) {
@@ -2348,7 +2346,7 @@ func (s *bootstrapService) GetFindingEvidence(ctx context.Context, req *connect.
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), evidence.GetRuntimeId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrFindingEvidenceNotFound))
 	}
-	return connect.NewResponse(&cerebrov1.GetFindingEvidenceResponse{Evidence: evidence}), nil
+	return connect.NewResponse(&cerebrov1.GetFindingEvidenceResponse{Evidence: safeFindingEvidence(evidence)}), nil
 }
 
 func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingRulesResponse], error) {
@@ -3435,9 +3433,9 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		Rule:             result.Rule,
 		EventsEvaluated:  result.EventsEvaluated,
 		FindingsUpserted: boundedUint32(len(result.Findings)),
-		Findings:         findingMessages(result.Findings),
+		Findings:         safeFindingMessages(result.Findings),
 		Run:              result.Run,
-		Evidence:         result.Evidence,
+		Evidence:         safeFindingEvidenceMessages(result.Evidence),
 	}
 	return response
 }
@@ -3503,7 +3501,7 @@ func redactSourceRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRunt
 			continue
 		}
 		if sensitiveSourceConfigKey(key) {
-			config[key] = "[redacted]"
+			config[key] = redactedAttributeValue
 			continue
 		}
 		config[key] = value
@@ -3518,9 +3516,9 @@ func findingRuleEvaluationMessage(result *findings.RuleEvaluationResult) *cerebr
 	}
 	return &cerebrov1.FindingRuleEvaluation{
 		Rule:     result.Rule,
-		Findings: findingMessages(result.Findings),
+		Findings: safeFindingMessages(result.Findings),
 		Run:      result.Run,
-		Evidence: result.Evidence,
+		Evidence: safeFindingEvidenceMessages(result.Evidence),
 	}
 }
 
@@ -3531,7 +3529,7 @@ func findingCandidateRuleEvaluationMessage(result *findings.FindingCandidateEval
 	return &cerebrov1.FindingCandidateRuleEvaluation{
 		Rule:       result.Rule,
 		Run:        findingCandidateRunMessage(result.Run),
-		Candidates: findingCandidateMessages(result.Candidates),
+		Candidates: safeFindingCandidateMessages(result.Candidates),
 	}
 }
 
@@ -3540,7 +3538,7 @@ func listFindingsResponse(result *findings.ListResult) *cerebrov1.ListFindingsRe
 		return &cerebrov1.ListFindingsResponse{}
 	}
 	return &cerebrov1.ListFindingsResponse{
-		Findings: findingMessages(result.Findings),
+		Findings: safeFindingMessages(result.Findings),
 	}
 }
 
@@ -3549,7 +3547,16 @@ func listFindingCandidatesResponse(result *findings.ListCandidatesResult) *cereb
 		return &cerebrov1.ListFindingCandidatesResponse{}
 	}
 	return &cerebrov1.ListFindingCandidatesResponse{
-		Candidates: findingCandidateMessages(result.Candidates),
+		Candidates: safeFindingCandidateMessages(result.Candidates),
+	}
+}
+
+func listFindingEvidenceResponse(result *findings.ListEvidenceResult) *cerebrov1.ListFindingEvidenceResponse {
+	if result == nil {
+		return &cerebrov1.ListFindingEvidenceResponse{}
+	}
+	return &cerebrov1.ListFindingEvidenceResponse{
+		Evidence: safeFindingEvidenceMessages(result.Evidence),
 	}
 }
 
@@ -3558,8 +3565,8 @@ func promoteFindingCandidateResponse(result *findings.PromoteCandidateResult) *c
 		return &cerebrov1.PromoteFindingCandidateResponse{}
 	}
 	return &cerebrov1.PromoteFindingCandidateResponse{
-		Finding:    findingMessage(result.Finding),
-		Candidate:  findingCandidateMessage(result.Candidate),
+		Finding:    safeFindingMessage(result.Finding),
+		Candidate:  safeFindingCandidateMessage(result.Candidate),
 		DecisionId: result.DecisionID,
 	}
 }
@@ -3569,23 +3576,23 @@ func rejectFindingCandidateResponse(result *findings.RejectCandidateResult) *cer
 		return &cerebrov1.RejectFindingCandidateResponse{}
 	}
 	return &cerebrov1.RejectFindingCandidateResponse{
-		Candidate:  findingCandidateMessage(result.Candidate),
+		Candidate:  safeFindingCandidateMessage(result.Candidate),
 		DecisionId: result.DecisionID,
 	}
 }
 
-func findingMessages(findings []*ports.FindingRecord) []*cerebrov1.Finding {
+func safeFindingMessages(findings []*ports.FindingRecord) []*cerebrov1.Finding {
 	messages := make([]*cerebrov1.Finding, 0, len(findings))
 	for _, finding := range findings {
-		messages = append(messages, findingMessage(finding))
+		messages = append(messages, safeFindingMessage(finding))
 	}
 	return messages
 }
 
-func findingCandidateMessages(candidates []*ports.FindingCandidateRecord) []*cerebrov1.FindingCandidate {
+func safeFindingCandidateMessages(candidates []*ports.FindingCandidateRecord) []*cerebrov1.FindingCandidate {
 	messages := make([]*cerebrov1.FindingCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		messages = append(messages, findingCandidateMessage(candidate))
+		messages = append(messages, safeFindingCandidateMessage(candidate))
 	}
 	return messages
 }
@@ -3659,6 +3666,16 @@ func findingCandidateMessage(candidate *ports.FindingCandidateRecord) *cerebrov1
 	return message
 }
 
+func safeFindingCandidateMessage(candidate *ports.FindingCandidateRecord) *cerebrov1.FindingCandidate {
+	message := findingCandidateMessage(candidate)
+	if message == nil {
+		return nil
+	}
+	message.Finding = safeFindingMessage(candidate.Finding)
+	message.Evidence = safeFindingEvidenceMessages(candidate.Evidence)
+	return message
+}
+
 func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 	if finding == nil {
 		return nil
@@ -3713,6 +3730,76 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		message.LastObservedAt = timestamppb.New(finding.LastObservedAt)
 	}
 	return message
+}
+
+func safeFindingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
+	message := findingMessage(finding)
+	if message == nil {
+		return nil
+	}
+	message.Attributes = redactSensitiveAttributes(message.GetAttributes())
+	return message
+}
+
+func safeFindingEvidenceMessages(evidence []*cerebrov1.FindingEvidence) []*cerebrov1.FindingEvidence {
+	messages := make([]*cerebrov1.FindingEvidence, 0, len(evidence))
+	for _, record := range evidence {
+		messages = append(messages, safeFindingEvidence(record))
+	}
+	return messages
+}
+
+func safeFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.FindingEvidence {
+	if evidence == nil {
+		return nil
+	}
+	cloned := proto.Clone(evidence).(*cerebrov1.FindingEvidence)
+	cloned.Attributes = redactSensitiveAttributes(cloned.GetAttributes())
+	cloned.GraphRows = safeGraphEvidenceRows(cloned.GetGraphRows())
+	for _, observation := range cloned.GetObservations() {
+		if observation == nil {
+			continue
+		}
+		observation.GraphRows = safeGraphEvidenceRows(observation.GetGraphRows())
+	}
+	return cloned
+}
+
+func safeGraphEvidenceRows(rows []*cerebrov1.GraphEvidenceRow) []*cerebrov1.GraphEvidenceRow {
+	if len(rows) == 0 {
+		return rows
+	}
+	safeRows := make([]*cerebrov1.GraphEvidenceRow, 0, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		cloned := proto.Clone(row).(*cerebrov1.GraphEvidenceRow)
+		cloned.Attributes = redactSensitiveAttributes(cloned.GetAttributes())
+		for _, path := range cloned.GetPaths() {
+			if path == nil {
+				continue
+			}
+			path.Attributes = redactSensitiveAttributes(path.GetAttributes())
+		}
+		safeRows = append(safeRows, cloned)
+	}
+	return safeRows
+}
+
+func redactSensitiveAttributes(attributes map[string]string) map[string]string {
+	if len(attributes) == 0 {
+		return attributes
+	}
+	redacted := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		if sensitiveSourceConfigKey(key) {
+			redacted[key] = redactedAttributeValue
+			continue
+		}
+		redacted[key] = value
+	}
+	return redacted
 }
 
 func findingRiskFactorMessages(factors []ports.FindingRiskFactor) []*cerebrov1.FindingRiskFactor {
