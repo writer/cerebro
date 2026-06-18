@@ -73,6 +73,53 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	}
 }
 
+func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/devices" {
+			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":            "device-1",
+				"name":          "mba-1",
+				"serial_number": "SERIAL1",
+				"failure_count": 3,
+				"registered":    true,
+				"resolved_at":   nil,
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kolide-token",
+		"family":    "device",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["device_id"] != "device-1" {
+		t.Fatalf("device_id = %q, want device-1", attrs["device_id"])
+	}
+	if attrs["failure_count"] != "3" {
+		t.Fatalf("failure_count = %q, want 3", attrs["failure_count"])
+	}
+	if attrs["registered"] != "true" {
+		t.Fatalf("registered = %q, want true", attrs["registered"])
+	}
+}
+
 func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/devices" {

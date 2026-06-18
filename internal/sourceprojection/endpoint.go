@@ -35,10 +35,6 @@ var (
 	}
 )
 
-func kolideDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return endpointDeviceProjections(event, kolideEndpointProfile)
-}
-
 func kolideUserDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return endpointDeviceProjections(event, kolideEndpointProfile)
 }

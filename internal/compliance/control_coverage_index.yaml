@@ -41677,7 +41677,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 102
+        mapped_rules: 103
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -42085,7 +42085,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 21
+          rule_count: 22
           mapped_rules:
             - github-app-integration-installed
             - github-code-security-controls-disabled
@@ -42107,6 +42107,7 @@ profiles:
             - identity-okta-policy-lifecycle-tampering-30d
             - identity-okta-policy-rule-lifecycle-tampering
             - identity-okta-policy-rule-lifecycle-tampering-30d
+            - kolide-host-failing-compliance-checks
             - sentinelone-risky-exclusion
       rules:
         - rule_id: aws-cloudtrail-kms-encryption
@@ -42449,6 +42450,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.24
+        - rule_id: kolide-host-failing-compliance-checks
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.9
         - rule_id: m365-dlp-policy-missing
           controls:
             - framework_name: ISO 27001:2022
@@ -61052,7 +61057,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 922
+        mapped_rules: 923
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62235,7 +62240,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 48
+          rule_count: 49
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-guardduty-c2-traffic
@@ -62275,6 +62280,7 @@ profiles:
             - k8s-pod-image-pinned-by-digest
             - k8s-pod-image-tag-not-latest
             - k8s-resource-no-deprecated-api
+            - kolide-host-failing-compliance-checks
             - ml-model-untrusted-source
             - okta-suspicious-login
             - security-reviewer-reported-finding
@@ -65755,6 +65761,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.1
+        - rule_id: kolide-host-failing-compliance-checks
+          controls:
+            - framework_name: SOC 2
+              control_id: CC7.1
         - rule_id: log4shell-privileged
           controls:
             - framework_name: SOC 2

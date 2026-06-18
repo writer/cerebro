@@ -157,6 +157,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "kolide",
+			Name:        "Kolide",
+			Description: "Kolide/osquery endpoint host compliance posture findings.",
+			Rules: []Rule{
+				newKolideHostFailingComplianceChecksRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

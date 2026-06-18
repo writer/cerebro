@@ -2925,6 +2925,52 @@
       ]
     },
     {
+      "id": "kolide-host-failing-compliance-checks",
+      "pack_id": "kolide",
+      "pack_name": "Kolide",
+      "name": "Kolide Host Failing Compliance Checks",
+      "description": "Detect Kolide-managed hosts that currently fail one or more device compliance checks, indicating a sustained non-compliant endpoint posture that leaves the host out of policy.",
+      "source_id": "kolide",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "kolide.device"
+      ],
+      "output_kind": "finding.kolide_host_failing_compliance_checks",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "compliance",
+        "device-posture",
+        "endpoint",
+        "kolide",
+        "osquery"
+      ],
+      "references": [
+        "https://www.kolide.com/features/checks"
+      ],
+      "false_positives": [
+        "Hosts with failing checks that are covered by a documented, risk-accepted exception or are pending a scheduled maintenance window."
+      ],
+      "runbook": "Review the host's failing Kolide checks, remediate the underlying configuration gaps (or apply auto-remediation), and confirm the host returns to a passing compliance state.",
+      "required_attributes": [
+        "device_id"
+      ],
+      "fingerprint_fields": [
+        "kolide_device_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
       "id": "panopticon-curated-case",
       "pack_id": "panopticon",
       "pack_name": "Panopticon",
