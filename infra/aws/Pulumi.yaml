@@ -62,8 +62,8 @@ config:
     default: false
     description: Allow insecure OTLP exporter transport
   cerebro:otelTracesSampleRate:
-    type: number
-    default: 1
+    type: string
+    default: "1"
     description: OTEL trace sample rate from 0 to 1
   cerebro:otelMetricsExportInterval:
     type: string
