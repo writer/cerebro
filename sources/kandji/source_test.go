@@ -25,27 +25,33 @@ func TestSourceSpec(t *testing.T) {
 
 func TestReadDeviceFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/devices" {
-			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
-		}
-		if got := r.Header.Get("Authorization"); got != "Bearer kandji-token" {
-			t.Fatalf("Authorization = %q, want Bearer kandji-token", got)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": []map[string]any{
-				{
-					"device_id":     "device-1",
-					"device_name":   "MacBook Pro",
-					"serial_number": "SERIAL1",
-					"platform":      "macOS",
-					"os_version":    "15.0",
-					"last_check_in": "2026-05-01T12:00:00Z",
-					"user": map[string]any{
-						"email": "alice@example.com",
+		switch r.URL.Path {
+		case "/api/v1/devices":
+			if got := r.Header.Get("Authorization"); got != "Bearer kandji-token" {
+				t.Fatalf("Authorization = %q, want Bearer kandji-token", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"device_id":     "device-1",
+						"device_name":   "MacBook Pro",
+						"serial_number": "SERIAL1",
+						"platform":      "macOS",
+						"os_version":    "15.0",
+						"last_check_in": "2026-05-01T12:00:00Z",
+						"user": map[string]any{
+							"email": "alice@example.com",
+						},
 					},
 				},
-			},
-		})
+			})
+		case "/api/v1/devices/device-1/details":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"general": map[string]any{"device_id": "device-1"},
+			})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
 	}))
 	defer server.Close()
 
@@ -83,25 +89,36 @@ func TestReadDeviceFamily(t *testing.T) {
 
 func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/devices" {
-			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": []map[string]any{
-				{
-					"device_id":         "device-9",
-					"device_name":       "MacBook Air",
-					"serial_number":     "SERIAL9",
-					"platform":          "macOS",
-					"mdm_enabled":       true,
-					"filevault_enabled": false,
-					"is_missing":        false,
-					"compliance_status": "non_compliant",
-					"mdm_status":        "enrolled",
-					"last_check_in":     "2026-05-01T12:00:00Z",
+		switch r.URL.Path {
+		case "/api/v1/devices":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"device_id":         "device-9",
+						"device_name":       "MacBook Air",
+						"serial_number":     "SERIAL9",
+						"platform":          "macOS",
+						"is_missing":        false,
+						"compliance_status": "non_compliant",
+						"mdm_status":        "enrolled",
+						"last_check_in":     "2026-05-01T12:00:00Z",
+					},
 				},
-			},
-		})
+			})
+		case "/api/v1/devices/device-9/details":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"general": map[string]any{
+					"device_id":      "device-9",
+					"device_name":    "MacBook Air",
+					"blueprint_name": "Engineering Macs",
+					"assigned_user":  map[string]any{"email": "alice@example.com"},
+				},
+				"mdm":       map[string]any{"mdm_enabled": "True"},
+				"filevault": map[string]any{"filevault_enabled": false},
+			})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
 	}))
 	defer server.Close()
 
@@ -130,11 +147,13 @@ func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
 		t.Fatalf("device_id = %q, want device-9 (stable asset identity)", attrs["device_id"])
 	}
 	for key, want := range map[string]string{
-		"mdm_enabled":       "true",
+		"mdm_enabled":       "True",
 		"filevault_enabled": "false",
 		"is_missing":        "false",
 		"compliance_status": "non_compliant",
 		"status":            "enrolled",
+		"blueprint_name":    "Engineering Macs",
+		"owner_email":       "alice@example.com",
 	} {
 		if got := attrs[key]; got != want {
 			t.Fatalf("posture attribute %q = %q, want %q", key, got, want)
