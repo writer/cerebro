@@ -146,6 +146,12 @@ def create_ecs_cluster(
             tags={"Name": f"{name}-otel-collector-logs"},
         )
 
+    api_runtime_environment = {
+        **runtime_environment,
+        "ECS_CLUSTER": f"{name}-cluster",
+        "ECS_SERVICE_NAME": f"{name}-api",
+        "ECS_TASK_FAMILY": name,
+    }
     api_task_definition = _create_task_definition(
         name=name,
         container_image=container_image,
@@ -155,7 +161,7 @@ def create_ecs_cluster(
         task_role_arn=task_role.arn,
         log_group_name=log_group.name,
         otel_collector_log_group_name=otel_collector_log_group.name if otel_collector_log_group else None,
-        environment=runtime_environment,
+        environment=api_runtime_environment,
         secret_keys=secret_keys or [],
         external_secrets_prefix=external_secrets_prefix,
         efs_file_system_id=efs_file_system_id,
@@ -189,6 +195,11 @@ def create_ecs_cluster(
             enable_otel_collector=otel_collector_enabled,
         )
         schedules = prepared_orchestrator_schedules
+        orchestrator_runtime_environment = {
+            **runtime_environment,
+            "ECS_CLUSTER": f"{name}-cluster",
+            "ECS_TASK_FAMILY": f"{name}-orchestrator",
+        }
         task_definition = _create_task_definition(
             name=f"{name}-orchestrator",
             container_image=container_image,
@@ -198,7 +209,7 @@ def create_ecs_cluster(
             task_role_arn=worker_task_role.arn,
             log_group_name=log_group.name,
             otel_collector_log_group_name=otel_collector_log_group.name if otel_collector_log_group else None,
-            environment=runtime_environment,
+            environment=orchestrator_runtime_environment,
             secret_keys=secret_keys or [],
             external_secrets_prefix=external_secrets_prefix,
             efs_file_system_id=efs_file_system_id,

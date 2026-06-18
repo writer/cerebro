@@ -443,6 +443,28 @@ class WorkerTaskRoleTest(unittest.TestCase):
             "arn:aws:iam::123456789012:role/cerebro-sec-dev-worker-task-role",
         )
         self.assertEqual(
+            {
+                key: api_task_definition["environment"][key]
+                for key in ["ECS_CLUSTER", "ECS_SERVICE_NAME", "ECS_TASK_FAMILY"]
+            },
+            {
+                "ECS_CLUSTER": "cerebro-sec-dev-cluster",
+                "ECS_SERVICE_NAME": "cerebro-sec-dev-api",
+                "ECS_TASK_FAMILY": "cerebro-sec-dev",
+            },
+        )
+        self.assertEqual(
+            {
+                key: orchestrator_task_definition["environment"][key]
+                for key in ["ECS_CLUSTER", "ECS_TASK_FAMILY"]
+            },
+            {
+                "ECS_CLUSTER": "cerebro-sec-dev-cluster",
+                "ECS_TASK_FAMILY": "cerebro-sec-dev-orchestrator",
+            },
+        )
+        self.assertNotIn("ECS_SERVICE_NAME", orchestrator_task_definition["environment"])
+        self.assertEqual(
             api_task_definition["source_runtime_bootstrap_environment_file_arn"],
             "arn:aws:s3:::bootstrap/service.env",
         )

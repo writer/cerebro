@@ -37,11 +37,16 @@ wide-event attributes:
 - `CEREBRO_DEPLOYMENT_ENVIRONMENT=<stack environment>`
 - `AWS_REGION=<provider region>`
 - `AWS_DEFAULT_REGION=<provider region>`
+- API task only: `ECS_SERVICE_NAME=<stack service name>`
+- API and orchestrator tasks: `ECS_CLUSTER=<stack cluster name>`
+- API and orchestrator tasks: `ECS_TASK_FAMILY=<task definition family>`
 - `OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=<env>,deployment.environment=<env>,service.namespace=cerebro,cloud.provider=aws,cloud.region=<region>[,<cerebro:otelResourceAttributes>]`
 
 These attributes keep CloudWatch wide events and exported spans queryable by
 environment, region, service namespace, and cloud provider even when the app
-image is reused across stacks.
+image is reused across stacks. New runtime images also copy the ECS identity
+environment into `aws.ecs.cluster.name`, `aws.ecs.service.name`,
+`aws.ecs.task.family`, and `cloud.platform=aws_ecs` on wide events.
 
 The live Cerebro stacks use collector mode:
 
@@ -198,6 +203,8 @@ Expected ECS task-definition changes:
 - app container has `CEREBRO_OTEL_ENABLED=true`
 - app container exports to `http://127.0.0.1:4318` with `http/protobuf`
 - app container has the runtime metadata env vars listed above
+- API task definitions include `ECS_CLUSTER`, `ECS_SERVICE_NAME`, and `ECS_TASK_FAMILY`
+- orchestrator task definitions include `ECS_CLUSTER` and `ECS_TASK_FAMILY`
 - app container has `OTEL_RESOURCE_ATTRIBUTES` with deployment/cloud attributes
 - task includes an `otel-collector` sidecar
 - collector has `AOT_CONFIG_CONTENT` mounted from the stack collector secret
@@ -277,7 +284,9 @@ aws logs describe-log-streams \
 Useful CloudWatch Logs Insights query for API wide events:
 
 ```sql
-fields @timestamp, @logStream, @message
+fields @timestamp, @logStream, name, service.version, event.outcome, duration_ms,
+  http.route, runtime_id, source_id, dependency.last_system, dependency.last_status,
+  phase.last_name, phase.last_status, error_kind
 | filter @message like /"wide_event":true/
 | sort @timestamp desc
 | limit 20
@@ -285,12 +294,39 @@ fields @timestamp, @logStream, @message
 
 Expected fields on fresh events:
 
+- `wide_event.schema.version` is present
+- `event.outcome`, `operation.status`, `duration_ms`, and `duration.bucket` are present
 - `deployment.environment.name` is `sec-dev` or `go-production`
 - `deployment.environment` matches the stack environment
 - `cloud.provider` is `aws`
 - `cloud.region` is `us-east-1`
+- `cloud.platform` is `aws_ecs`
 - `service.namespace` is `cerebro`
 - `service.name` is `cerebro-api`
+- `aws.ecs.cluster.name` matches the stack cluster
+- API events include `aws.ecs.service.name`
+- dependency-heavy work includes `dependency.*` rollups
+- multi-phase work includes `phase.*` rollups
+
+Useful dependency rollup query:
+
+```sql
+stats count(*) as events,
+  pct(duration_ms, 95) as p95_ms,
+  max(duration_ms) as max_ms
+by dependency.last_system, dependency.last_status, service.version, deployment.environment.name
+| sort p95_ms desc
+```
+
+Useful orchestrator/source-runtime phase query:
+
+```sql
+stats count(*) as events,
+  sum(orchestrator.runtime.failed.count) as failed_runtimes,
+  sum(source_runtime.invalid_event.count) as invalid_events
+by phase.last_name, phase.last_status, source_id, runtime_id, error_kind
+| sort events desc
+```
 
 Collector health is visible in `/ecs/<stack>/otel-collector`. Investigate
 exporter errors there before declaring the rollout complete.
