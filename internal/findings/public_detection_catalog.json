@@ -717,9 +717,11 @@
         "https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"
       ],
       "false_positives": [
-        "Memory facts that record a historical coordination-risk pattern that has already been remediated but were not updated to a resolved state in agent memory."
+        "Memory facts that record a historical coordination-risk pattern that has already been remediated but were not updated to a resolved state in agent memory.",
+        "Resolved Cosmo memory facts can close a matching finding, but prompt-injected or otherwise agent-written resolution state must be operator-verified against session and runtime evidence.",
+        "risk_reason and risk_severity are evidence hints from Cosmo memory when their source attributes are agent_memory_payload; validate them before treating the text as authoritative."
       ],
-      "runbook": "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination; the finding resolves automatically once the agent memory records the fact as resolved.",
+      "runbook": "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination. Treat risk_reason and risk_severity as agent-written evidence hints when their source is agent_memory_payload, and verify resolved memory facts against session and runtime evidence before accepting automatic closure.",
       "required_attributes": [
         "key"
       ],

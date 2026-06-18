@@ -65,8 +65,20 @@ func TestCosmoCoordinationActiveRiskDerivesStateFromPayload(t *testing.T) {
 	if got := records[0].Attributes["risk_reason"]; got == "" {
 		t.Fatal("risk_reason = empty, want reason derived from payload")
 	}
+	if got := records[0].Attributes["risk_reason_source"]; got != "agent_memory_payload" {
+		t.Fatalf("risk_reason_source = %q, want agent_memory_payload", got)
+	}
+	if got := records[0].Attributes["risk_reason_operator_validation"]; got != "required" {
+		t.Fatalf("risk_reason_operator_validation = %q, want required", got)
+	}
 	if got := records[0].Attributes["risk_severity"]; got != "high" {
 		t.Fatalf("risk_severity = %q, want high (from payload)", got)
+	}
+	if got := records[0].Attributes["risk_severity_source"]; got != "agent_memory_payload" {
+		t.Fatalf("risk_severity_source = %q, want agent_memory_payload", got)
+	}
+	if got := records[0].Attributes["risk_severity_operator_validation"]; got != "required" {
+		t.Fatalf("risk_severity_operator_validation = %q, want required", got)
 	}
 
 	benign := &cerebrov1.EventEnvelope{
@@ -188,6 +200,21 @@ func TestCosmoCoordinationActiveRiskDoesNotUseGenericPayloadAsReason(t *testing.
 				t.Fatalf("risk_reason = %q, want omitted for generic %s payload", got, field)
 			}
 		})
+	}
+}
+
+func TestCosmoCoordinationActiveRiskMetadataDocumentsOperatorValidation(t *testing.T) {
+	metadata := newCosmoCoordinationActiveRiskRule().(MetadataRule).RuleMetadata()
+	falsePositiveGuidance := strings.Join(metadata.FalsePositives, " ")
+	for _, phrase := range []string{"operator-verified", "agent_memory_payload"} {
+		if !strings.Contains(falsePositiveGuidance, phrase) {
+			t.Fatalf("FalsePositives = %q, want guidance containing %q", falsePositiveGuidance, phrase)
+		}
+	}
+	for _, phrase := range []string{"agent-written evidence hints", "verify resolved memory facts"} {
+		if !strings.Contains(metadata.Runbook, phrase) {
+			t.Fatalf("Runbook = %q, want guidance containing %q", metadata.Runbook, phrase)
+		}
 	}
 }
 

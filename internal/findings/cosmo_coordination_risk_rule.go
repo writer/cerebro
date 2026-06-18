@@ -33,19 +33,23 @@ type cosmoCoordinationActiveRiskRule struct {
 }
 
 var cosmoCoordinationActiveRiskDefinition = RuleDefinition{
-	ID:                 cosmoCoordinationActiveRiskRuleID,
-	Name:               cosmoCoordinationActiveRiskTitle,
-	Description:        "Detect Cosmo agent-memory facts that record an active coordination-risk pattern in a session, so a durable finding tracks the risky condition until the agent memory records it resolved.",
-	SourceID:           "cosmo",
-	EventKinds:         []string{"cosmo.fact"},
-	OutputKind:         "finding.cosmo_coordination_active_risk",
-	Severity:           cosmoCoordinationActiveRiskSeverity,
-	Status:             cosmoCoordinationActiveRiskStatus,
-	Maturity:           "test",
-	Tags:               []string{"cosmo", "agent-memory", "coordination", "posture"},
-	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"},
-	FalsePositives:     []string{"Memory facts that record a historical coordination-risk pattern that has already been remediated but were not updated to a resolved state in agent memory."},
-	Runbook:            "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination; the finding resolves automatically once the agent memory records the fact as resolved.",
+	ID:          cosmoCoordinationActiveRiskRuleID,
+	Name:        cosmoCoordinationActiveRiskTitle,
+	Description: "Detect Cosmo agent-memory facts that record an active coordination-risk pattern in a session, so a durable finding tracks the risky condition until the agent memory records it resolved.",
+	SourceID:    "cosmo",
+	EventKinds:  []string{"cosmo.fact"},
+	OutputKind:  "finding.cosmo_coordination_active_risk",
+	Severity:    cosmoCoordinationActiveRiskSeverity,
+	Status:      cosmoCoordinationActiveRiskStatus,
+	Maturity:    "test",
+	Tags:        []string{"cosmo", "agent-memory", "coordination", "posture"},
+	References:  []string{"https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"},
+	FalsePositives: []string{
+		"Memory facts that record a historical coordination-risk pattern that has already been remediated but were not updated to a resolved state in agent memory.",
+		"Resolved Cosmo memory facts can close a matching finding, but prompt-injected or otherwise agent-written resolution state must be operator-verified against session and runtime evidence.",
+		"risk_reason and risk_severity are evidence hints from Cosmo memory when their source attributes are agent_memory_payload; validate them before treating the text as authoritative.",
+	},
+	Runbook:            "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination. Treat risk_reason and risk_severity as agent-written evidence hints when their source is agent_memory_payload, and verify resolved memory facts against session and runtime evidence before accepting automatic closure.",
 	RequiredAttributes: []string{"key"},
 	FingerprintFields:  []string{"cosmo_risk_urn"},
 	ControlRefs:        cosmoCoordinationActiveRiskControlRefs,
@@ -115,19 +119,24 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 	if sessionURN := cosmoSessionResourceURN(tenantID, sessionID); sessionURN != "" {
 		resourceURNs = append(resourceURNs, sessionURN)
 	}
-	attrs := event.GetAttributes()
+	riskReason, riskReasonSource := cosmoFactEvidenceString(event, "risk_reason", "risk_reason")
+	riskSeverity, riskSeveritySource := cosmoFactEvidenceString(event, "risk_severity", "risk_severity", "severity")
 	attributes := map[string]string{
 		"cosmo_risk_urn":       riskURN,
 		"fact_key":             factKey,
 		"session_id":           sessionID,
 		"category":             cosmoFactCategory(event),
 		"risk_state":           "active",
-		"risk_reason":          firstNonEmpty(strings.TrimSpace(attrs["risk_reason"]), cosmoFactPayloadString(event, "risk_reason")),
-		"risk_severity":        firstNonEmpty(strings.TrimSpace(attrs["risk_severity"]), cosmoFactPayloadString(event, "risk_severity", "severity")),
+		"risk_reason":          riskReason,
+		"risk_reason_source":   riskReasonSource,
+		"risk_severity":        riskSeverity,
+		"risk_severity_source": riskSeveritySource,
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"source_runtime_id":    sourceRuntimeID,
 		"primary_resource_urn": factURN,
 	}
+	markAgentMemoryEvidence(attributes, "risk_reason", riskReasonSource)
+	markAgentMemoryEvidence(attributes, "risk_severity", riskSeveritySource)
 	for key, value := range cosmoCoordinationActiveRiskDefinition.AttributeMap() {
 		attributes["rule_"+key] = value
 	}
@@ -224,6 +233,26 @@ func cosmoFactPayloadString(event *cerebrov1.EventEnvelope, keys ...string) stri
 		}
 	}
 	return ""
+}
+
+func cosmoFactEvidenceString(event *cerebrov1.EventEnvelope, attributeKey string, payloadKeys ...string) (string, string) {
+	if event == nil {
+		return "", ""
+	}
+	if value := strings.TrimSpace(event.GetAttributes()[attributeKey]); value != "" {
+		return value, "event_attribute"
+	}
+	if value := cosmoFactPayloadString(event, payloadKeys...); value != "" {
+		return value, "agent_memory_payload"
+	}
+	return "", ""
+}
+
+func markAgentMemoryEvidence(attributes map[string]string, key string, source string) {
+	if strings.TrimSpace(attributes[key]) == "" || source != "agent_memory_payload" {
+		return
+	}
+	attributes[key+"_operator_validation"] = "required"
 }
 
 func cosmoScalarString(value any) string {
