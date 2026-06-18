@@ -141,6 +141,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "tailscale",
+			Name:        "Tailscale",
+			Description: "Tailscale tailnet, device, and access posture findings.",
+			Rules: []Rule{
+				newTailscaleTailnetDeviceApprovalDisabledRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

@@ -62942,6 +62942,51 @@
       ]
     },
     {
+      "id": "tailscale-tailnet-device-approval-disabled",
+      "pack_id": "tailscale",
+      "pack_name": "Tailscale",
+      "name": "Tailscale Tailnet Device Approval Disabled",
+      "description": "Detect Tailscale tailnets whose device approval is currently disabled, allowing new devices to join the tailnet without administrator review.",
+      "source_id": "tailscale",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "tailscale.tailnet"
+      ],
+      "output_kind": "finding.tailscale_tailnet_device_approval_disabled",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "access-control",
+        "device-approval",
+        "tailnet",
+        "tailscale"
+      ],
+      "references": [
+        "https://tailscale.com/kb/1099/device-approval"
+      ],
+      "false_positives": [
+        "Tailnets that intentionally rely on tag/ACL-based authorization instead of manual device approval."
+      ],
+      "runbook": "Confirm whether device approval should be enforced for this tailnet; if so, enable device approval so new devices require administrator review before joining.",
+      "required_attributes": [
+        "tailnet"
+      ],
+      "fingerprint_fields": [
+        "tailscale_tailnet_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.2"
+        }
+      ]
+    },
+    {
       "id": "trivy-image-vulnerability-active",
       "pack_id": "trivy",
       "pack_name": "Trivy",
