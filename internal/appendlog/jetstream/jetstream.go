@@ -382,7 +382,7 @@ func jetstreamTelemetryAttrs(operation string) telemetry.Attributes {
 
 func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
 	jetstreamAnnotateMain(ctx, operation, "failed")
-	attrs := jetstreamErrorTelemetryAttrs(err)
+	attrs := jetstreamErrorTelemetryAttrs(operation, err)
 	telemetry.CaptureError(ctx, "jetstream.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "appendlog.jetstream"},
 		telemetry.Field{Key: "operation", Value: operation},
@@ -390,11 +390,11 @@ func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operatio
 	telemetry.End(span, "failed", attrs)
 }
 
-func jetstreamErrorTelemetryAttrs(err error) telemetry.Attributes {
-	attrs := telemetry.Attrs(
-		telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)},
-		telemetry.Field{Key: "messaging.jetstream.publish.retryable", Value: retryablePublishError(err)},
-	)
+func jetstreamErrorTelemetryAttrs(operation string, err error) telemetry.Attributes {
+	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	if strings.TrimSpace(operation) == "append" {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.publish.retryable", Value: retryablePublishError(err)})
+	}
 	var apiErr *jetstream.APIError
 	if errors.As(err, &apiErr) && apiErr != nil {
 		attrs = attrs.With(telemetry.Attrs(
