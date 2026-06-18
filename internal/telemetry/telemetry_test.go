@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -104,6 +105,18 @@ func TestParseTraceParentValidatesTraceFlags(t *testing.T) {
 	}
 }
 
+func TestEnsureTraceContextSeedsTraceParentWithoutSpan(t *testing.T) {
+	ctx := EnsureTraceContext(context.Background())
+	traceparent := TraceParent(ctx)
+	traceID, spanID, ok := ParseTraceParent(traceparent)
+	if !ok {
+		t.Fatalf("TraceParent() = %q, want valid traceparent", traceparent)
+	}
+	if traceID == "" || spanID == "" {
+		t.Fatalf("empty trace context from %q", traceparent)
+	}
+}
+
 func TestStartAndEventBridgeToOpenTelemetry(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
@@ -153,6 +166,53 @@ func TestEndMapsErrorStatusesToOpenTelemetryErrors(t *testing.T) {
 				t.Fatalf("span status code = %v, want Error", got)
 			}
 		})
+	}
+}
+
+func TestCaptureErrorEmitsFingerprintWithoutRawMessage(t *testing.T) {
+	_, stderr := captureOutput(t, func() {
+		ctx, span := Start(context.Background(), "test.operation", Attrs(Field{Key: "component", Value: "test"}))
+		CaptureError(ctx, "test.error", errors.New("secret-token-shaped raw message"), Attrs(
+			Field{Key: "component", Value: "test"},
+			Field{Key: "operation", Value: "fetch"},
+		))
+		End(span, "failed", Attrs())
+	})
+	if strings.Contains(stderr, "secret-token-shaped raw message") {
+		t.Fatalf("raw error message leaked into telemetry: %s", stderr)
+	}
+	if !strings.Contains(stderr, `"name":"test.error"`) {
+		t.Fatalf("capture event missing from stderr: %s", stderr)
+	}
+	if !strings.Contains(stderr, `"error_kind":"error"`) || !strings.Contains(stderr, `"error_fingerprint"`) {
+		t.Fatalf("bounded error fields missing from stderr: %s", stderr)
+	}
+}
+
+func TestCaptureErrorMarksActiveOpenTelemetrySpanErrored(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	oldProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(oldProvider)
+		_ = provider.Shutdown(context.Background())
+	})
+
+	ctx, span := Start(context.Background(), "test.operation", Attrs())
+	CaptureError(ctx, "test.error", context.DeadlineExceeded, Attrs(Field{Key: "component", Value: "test"}))
+	End(span, "failed", Attrs())
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(ended))
+	}
+	if ended[0].Status().Code != codes.Error {
+		t.Fatalf("span status = %v, want error", ended[0].Status())
+	}
+	events := ended[0].Events()
+	if len(events) != 1 || events[0].Name != "test.error" {
+		t.Fatalf("span events = %#v, want test.error", events)
 	}
 }
 

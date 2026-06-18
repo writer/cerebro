@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/projectionmeta"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const defaultIngestRunListLimit = 25
@@ -1284,22 +1285,59 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 }
 
 func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver.ManagedTransaction) (any, error)) (any, error) {
+	attrs := neo4jTelemetryAttrs("read", s.database, s.queryTimeout)
 	if s.queryTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, s.queryTimeout)
 		defer cancel()
 	}
+	ctx, span := telemetry.Start(ctx, "neo4j.read", attrs)
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
-	return session.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	result, err := session.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		return work(ctx, tx)
 	})
+	if err != nil {
+		neo4jTelemetryError(ctx, span, "read", err)
+		return nil, err
+	}
+	telemetry.End(span, "completed", telemetry.Attrs())
+	return result, nil
 }
 
 func (s *Store) write(ctx context.Context, work neo4jdriver.ManagedTransactionWork) (any, error) {
+	ctx, span := telemetry.Start(ctx, "neo4j.write", neo4jTelemetryAttrs("write", s.database, 0))
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
-	return session.ExecuteWrite(ctx, work)
+	result, err := session.ExecuteWrite(ctx, work)
+	if err != nil {
+		neo4jTelemetryError(ctx, span, "write", err)
+		return nil, err
+	}
+	telemetry.End(span, "completed", telemetry.Attrs())
+	return result, nil
+}
+
+func neo4jTelemetryAttrs(operation string, database string, timeout time.Duration) telemetry.Attributes {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "graphstore.neo4j"},
+		telemetry.Field{Key: "operation", Value: operation},
+		telemetry.Field{Key: "db.system.name", Value: "neo4j"},
+		telemetry.Field{Key: "db.namespace", Value: strings.TrimSpace(database)},
+	)
+	if timeout > 0 {
+		attrs = attrs.WithField(telemetry.Field{Key: "timeout_ms", Value: timeout.Milliseconds()})
+	}
+	return attrs
+}
+
+func neo4jTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	telemetry.CaptureError(ctx, "neo4j.error", err, telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "graphstore.neo4j"},
+		telemetry.Field{Key: "operation", Value: operation},
+	))
+	telemetry.End(span, "failed", attrs)
 }
 
 func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, error) {

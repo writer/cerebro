@@ -1,10 +1,16 @@
 package observability
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -52,6 +58,47 @@ func TestMiddlewareDoesNotTrustInboundTraceParentBeforeAuth(t *testing.T) {
 
 	if strings.Contains(propagated, attackerTraceID) {
 		t.Fatalf("inbound traceparent was trusted before auth: %q", propagated)
+	}
+}
+
+func TestMiddlewareReturnsTraceIDHeader(t *testing.T) {
+	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	if got := recorder.Header().Get("X-Cerebro-Trace-Id"); len(got) != 32 {
+		t.Fatalf("X-Cerebro-Trace-Id = %q, want 32 hex chars", got)
+	}
+}
+
+func TestMiddlewareMarksServerErrorsOnOpenTelemetrySpan(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	oldProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(oldProvider)
+		_ = provider.Shutdown(context.Background())
+	})
+	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusBadGateway)
+	}))
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(ended))
+	}
+	if ended[0].Status().Code != codes.Error {
+		t.Fatalf("span status = %v, want error", ended[0].Status())
+	}
+	events := ended[0].Events()
+	if len(events) != 1 || events[0].Name != "http.server.error" {
+		t.Fatalf("span events = %#v, want http.server.error", events)
 	}
 }
 

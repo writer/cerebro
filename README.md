@@ -433,6 +433,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [Hosting](docs/HOSTING.md) | hosting guide for containers, backing stores, proxy/TLS, operations, and rollout |
 | [Deployment examples](docs/DEPLOYMENT_EXAMPLES.md) | portable examples for Docker Compose, Kubernetes, ECS-style tasks, systemd, and scheduled jobs |
 | [Operations runbook](docs/OPERATIONS_RUNBOOK.md) | startup, health, dependency, rollout, rollback, and incident triage guidance |
+| [Observability](docs/OBSERVABILITY.md) | OTEL, structured span logs, trace propagation, error capture, and verification |
 | [Source runtime guide](docs/SOURCE_RUNTIME_GUIDE.md) | source preview, runtime persistence, sync, secrets, health, and scheduling |
 | [Auth and tenancy](docs/AUTH_TENANCY.md) | API keys, structured credentials, tenant scoping, public origin, proxy trust, and rotation |
 | [Graph operations](docs/GRAPH_OPERATIONS.md) | graph health, ingest, rebuild, cleanup, query safety, and troubleshooting |

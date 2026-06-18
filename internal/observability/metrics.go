@@ -12,8 +12,11 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 var Default = NewRegistry()
@@ -93,7 +96,14 @@ func Middleware(next http.Handler) http.Handler {
 			),
 		)
 		defer span.End()
+		ctx = telemetry.EnsureTraceContext(ctx)
 		r = r.WithContext(ctx)
+		if traceparent := telemetry.TraceParent(ctx); traceparent != "" {
+			traceID, _, ok := telemetry.ParseTraceParent(traceparent)
+			if ok {
+				w.Header().Set("X-Cerebro-Trace-Id", traceID)
+			}
+		}
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
@@ -103,6 +113,14 @@ func Middleware(next http.Handler) http.Handler {
 			"status_code": strconv.Itoa(recorder.status),
 		}
 		span.SetAttributes(attribute.Int("http.response.status_code", recorder.status))
+		if recorder.status >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, fmt.Sprintf("http_status_%d", recorder.status))
+			span.AddEvent("http.server.error", oteltrace.WithAttributes(
+				attribute.String("http.request.method", method),
+				attribute.String("http.route", route),
+				attribute.Int("http.response.status_code", recorder.status),
+			))
+		}
 		Default.Inc("cerebro_http_requests_total", labels)
 		Default.Add("cerebro_http_request_duration_seconds_sum", labels, time.Since(started).Seconds())
 		Default.Inc("cerebro_http_request_duration_seconds_count", labels)
