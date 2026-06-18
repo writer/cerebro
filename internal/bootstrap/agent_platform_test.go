@@ -91,7 +91,7 @@ func TestHandleA2AJSONRPCSendMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Authorization", "Bearer operator-key")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.Client().Do(req)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestHandleA2AJSONRPCEvidencePacketTask(t *testing.T) {
 			}
 		}
 	}`)
-	resp := postA2AJSONRPC(t, server, "test-key", "task-key-1", body)
+	resp := postA2AJSONRPC(t, server, "operator-key", "task-key-1", body)
 	defer func() { _ = resp.Body.Close() }()
 	var response agentplatform.A2AJSONRPCResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
@@ -158,7 +158,7 @@ func TestHandleA2AJSONRPCEvidencePacketTask(t *testing.T) {
 		t.Fatalf("packet missing verifier or writeback guidance: %+v", packet)
 	}
 
-	replay := postA2AJSONRPC(t, server, "test-key", "task-key-1", body)
+	replay := postA2AJSONRPC(t, server, "operator-key", "task-key-1", body)
 	defer func() { _ = replay.Body.Close() }()
 	var replayResponse agentplatform.A2AJSONRPCResponse
 	if err := json.NewDecoder(replay.Body).Decode(&replayResponse); err != nil {
@@ -197,7 +197,7 @@ func TestHandleA2AJSONRPCGetAndListTasks(t *testing.T) {
 			}
 		}
 	}`)
-	createResp := postA2AJSONRPC(t, server, "test-key", "task-key-2", createBody)
+	createResp := postA2AJSONRPC(t, server, "operator-key", "task-key-2", createBody)
 	defer func() { _ = createResp.Body.Close() }()
 	var createResponse agentplatform.A2AJSONRPCResponse
 	if err := json.NewDecoder(createResp.Body).Decode(&createResponse); err != nil {
@@ -217,7 +217,7 @@ func TestHandleA2AJSONRPCGetAndListTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal get body: %v", err)
 	}
-	getResp := postA2AJSONRPC(t, server, "test-key", "", getBody)
+	getResp := postA2AJSONRPC(t, server, "operator-key", "", getBody)
 	defer func() { _ = getResp.Body.Close() }()
 	var getResponse agentplatform.A2AJSONRPCResponse
 	if err := json.NewDecoder(getResp.Body).Decode(&getResponse); err != nil {
@@ -228,7 +228,7 @@ func TestHandleA2AJSONRPCGetAndListTasks(t *testing.T) {
 		t.Fatalf("GetTask result = %+v, want same task without history", got)
 	}
 
-	listResp := postA2AJSONRPC(t, server, "test-key", "", []byte(`{"jsonrpc":"2.0","id":"list","method":"ListTasks","params":{"limit":10}}`))
+	listResp := postA2AJSONRPC(t, server, "operator-key", "", []byte(`{"jsonrpc":"2.0","id":"list","method":"ListTasks","params":{"limit":10}}`))
 	defer func() { _ = listResp.Body.Close() }()
 	var listResponse agentplatform.A2AJSONRPCResponse
 	if err := json.NewDecoder(listResp.Body).Decode(&listResponse); err != nil {
@@ -253,13 +253,12 @@ func TestHandleA2AJSONRPCGetTaskHidesOtherTenantTasks(t *testing.T) {
 		Key:       "other-key",
 		Principal: "other-tester",
 		TenantID:  "other",
-		Scopes:    []string{scopeCosmoSecurityRead},
 	})
 	app := New(cfg, Dependencies{StateStore: store}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	createResp := postA2AJSONRPC(t, server, "test-key", "task-key-3", []byte(`{
+	createResp := postA2AJSONRPC(t, server, "operator-key", "task-key-3", []byte(`{
 		"jsonrpc": "2.0",
 		"id": "create",
 		"method": "SendMessage",
@@ -879,14 +878,23 @@ func agentPlatformAuthConfig() config.Config {
 		ShutdownTimeout: time.Second,
 		Auth: config.AuthConfig{
 			Enabled: true,
-			APICredentials: []config.APICredential{{
-				ID:        "test-credential",
-				ClientID:  "test-client",
-				Key:       "test-key",
-				Principal: "tester",
-				TenantID:  "writer",
-				Scopes:    []string{scopeCosmoSecurityRead},
-			}},
+			APICredentials: []config.APICredential{
+				{
+					ID:        "test-credential",
+					ClientID:  "test-client",
+					Key:       "test-key",
+					Principal: "tester",
+					TenantID:  "writer",
+					Scopes:    []string{scopeCosmoSecurityRead},
+				},
+				{
+					ID:        "operator-credential",
+					ClientID:  "operator-client",
+					Key:       "operator-key",
+					Principal: "tester",
+					TenantID:  "writer",
+				},
+			},
 		},
 	}
 }
