@@ -58,6 +58,7 @@ func main() {
 }
 
 func run(args []string) error {
+	telemetry.ConfigureRuntimeMetadata(runtimeTelemetryMetadataFromEnv())
 	command := "serve"
 	if len(args) > 0 {
 		command = args[0]
@@ -191,6 +192,36 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func runtimeTelemetryMetadataFromEnv() telemetry.RuntimeMetadata {
+	return telemetry.RuntimeMetadata{
+		ResourceAttributes: os.Getenv("OTEL_RESOURCE_ATTRIBUTES"),
+		ServiceName: firstNonEmptyString(
+			os.Getenv("CEREBRO_OTEL_SERVICE_NAME"),
+			os.Getenv("OTEL_SERVICE_NAME"),
+		),
+		DeploymentEnvironment: firstNonEmptyString(
+			os.Getenv("CEREBRO_DEPLOYMENT_ENVIRONMENT"),
+			os.Getenv("CEREBRO_ENVIRONMENT"),
+			os.Getenv("OTEL_ENVIRONMENT_NAME"),
+			os.Getenv("ENVIRONMENT"),
+			os.Getenv("APP_ENV"),
+		),
+		CloudRegion: firstNonEmptyString(
+			os.Getenv("AWS_REGION"),
+			os.Getenv("AWS_DEFAULT_REGION"),
+		),
+		ContainerID: firstNonEmptyString(
+			os.Getenv("ECS_CONTAINER_ID"),
+			os.Getenv("HOSTNAME"),
+		),
+		ECSContainerMetadataURI: firstNonEmptyString(
+			os.Getenv("ECS_CONTAINER_METADATA_URI_V4"),
+			os.Getenv("ECS_CONTAINER_METADATA_URI"),
+		),
+		AWSExecutionEnvironment: os.Getenv("AWS_EXECUTION_ENV"),
+	}
 }
 
 func shutdownTelemetry(ctx context.Context, closeTelemetry telemetry.ShutdownFunc, timeout time.Duration) {

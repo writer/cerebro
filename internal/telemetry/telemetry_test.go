@@ -201,11 +201,17 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 }
 
 func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
-	t.Setenv("CEREBRO_OTEL_SERVICE_NAME", "cerebro-api")
-	t.Setenv("CEREBRO_ENVIRONMENT", "sec-dev")
-	t.Setenv("AWS_REGION", "us-east-1")
-	t.Setenv("HOSTNAME", "task-hostname")
-	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.namespace=cerebro,cloud.availability_zone=us-east-1a,deployment.environment.name=ignored-by-cerebro-env")
+	previous := configuredRuntimeMetadata()
+	ConfigureRuntimeMetadata(RuntimeMetadata{
+		ServiceName:           "cerebro-api",
+		DeploymentEnvironment: "sec-dev",
+		CloudRegion:           "us-east-1",
+		ContainerID:           "task-hostname",
+		ResourceAttributes:    "service.namespace=cerebro,cloud.availability_zone=us-east-1a,deployment.environment.name=ignored-by-cerebro-env",
+	})
+	t.Cleanup(func() {
+		ConfigureRuntimeMetadata(previous)
+	})
 
 	_, stderr := captureOutput(t, func() {
 		_, span := StartMain(context.Background(), "test.runtime", Attrs())

@@ -54,7 +54,23 @@ type Field struct {
 	Value any
 }
 
+type RuntimeMetadata struct {
+	ResourceAttributes      string
+	ServiceName             string
+	DeploymentEnvironment   string
+	CloudRegion             string
+	CloudProvider           string
+	ContainerID             string
+	ECSContainerMetadataURI string
+	AWSExecutionEnvironment string
+}
+
 const maxAttributeStringLength = 1024
+
+var (
+	runtimeMetadataMu sync.RWMutex
+	runtimeMetadata   RuntimeMetadata
+)
 
 func Attrs(fields ...Field) Attributes {
 	attributes := Attributes{values: map[string]any{}}
@@ -88,40 +104,50 @@ func (a Attributes) with(key string, value any) Attributes {
 	return a
 }
 
+func ConfigureRuntimeMetadata(metadata RuntimeMetadata) {
+	runtimeMetadataMu.Lock()
+	defer runtimeMetadataMu.Unlock()
+	runtimeMetadata = metadata
+}
+
+func configuredRuntimeMetadata() RuntimeMetadata {
+	runtimeMetadataMu.RLock()
+	defer runtimeMetadataMu.RUnlock()
+	return runtimeMetadata
+}
+
 func RuntimeAttributes() Attributes {
+	return RuntimeAttributesFor(configuredRuntimeMetadata())
+}
+
+func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 	hostname, _ := os.Hostname()
-	resourceAttributes := parseResourceAttributes(os.Getenv("OTEL_RESOURCE_ATTRIBUTES"))
+	resourceAttributes := parseResourceAttributes(metadata.ResourceAttributes)
 	serviceName := firstNonEmpty(
-		strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
-		strings.TrimSpace(os.Getenv("OTEL_SERVICE_NAME")),
+		metadata.ServiceName,
 		resourceAttributes["service.name"],
 		buildinfo.ServiceName,
 	)
 	deploymentEnvironment := firstNonEmpty(
-		strings.TrimSpace(os.Getenv("CEREBRO_DEPLOYMENT_ENVIRONMENT")),
-		strings.TrimSpace(os.Getenv("CEREBRO_ENVIRONMENT")),
-		strings.TrimSpace(os.Getenv("OTEL_ENVIRONMENT_NAME")),
+		metadata.DeploymentEnvironment,
 		resourceAttributes["deployment.environment.name"],
 		resourceAttributes["deployment.environment"],
 		resourceAttributes["environment"],
-		strings.TrimSpace(os.Getenv("ENVIRONMENT")),
-		strings.TrimSpace(os.Getenv("APP_ENV")),
 		"unknown",
 	)
 	cloudRegion := firstNonEmpty(
 		resourceAttributes["cloud.region"],
-		strings.TrimSpace(os.Getenv("AWS_REGION")),
-		strings.TrimSpace(os.Getenv("AWS_DEFAULT_REGION")),
+		metadata.CloudRegion,
 	)
 	cloudProvider := firstNonEmpty(
 		resourceAttributes["cloud.provider"],
-		inferredCloudProvider(cloudRegion),
+		metadata.CloudProvider,
+		inferredCloudProvider(metadata, cloudRegion),
 		"unknown",
 	)
 	containerID := firstNonEmpty(
 		resourceAttributes["container.id"],
-		strings.TrimSpace(os.Getenv("ECS_CONTAINER_ID")),
-		strings.TrimSpace(os.Getenv("HOSTNAME")),
+		metadata.ContainerID,
 		hostname,
 	)
 	attributes := resourceAttributesToTelemetry(resourceAttributes)
@@ -236,8 +262,8 @@ func resourceAttributesToTelemetry(values map[string]string) Attributes {
 	return attributes
 }
 
-func inferredCloudProvider(region string) string {
-	if strings.TrimSpace(region) != "" || strings.TrimSpace(os.Getenv("ECS_CONTAINER_METADATA_URI_V4")) != "" || strings.TrimSpace(os.Getenv("ECS_CONTAINER_METADATA_URI")) != "" || strings.Contains(strings.ToLower(strings.TrimSpace(os.Getenv("AWS_EXECUTION_ENV"))), "aws") {
+func inferredCloudProvider(metadata RuntimeMetadata, region string) string {
+	if strings.TrimSpace(region) != "" || strings.TrimSpace(metadata.ECSContainerMetadataURI) != "" || strings.Contains(strings.ToLower(strings.TrimSpace(metadata.AWSExecutionEnvironment)), "aws") {
 		return "aws"
 	}
 	return ""
