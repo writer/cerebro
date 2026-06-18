@@ -233,7 +233,7 @@ def _build_container_definitions(
             "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
             "environment": [
                 {"name": "NATS_URL", "value": "nats://127.0.0.1:4222"},
-                {"name": "NATS_TIMEOUT", "value": "60s"},
+                {"name": "NATS_TIMEOUT", "value": "120s"},
                 {"name": "STREAM_NAME", "value": stream_name},
                 {"name": "SUBJECT_PREFIX", "value": subject_prefix},
                 {"name": "STREAM_MAX_BYTES", "value": str(stream_max_bytes or "")},
@@ -243,14 +243,15 @@ def _build_container_definitions(
                 "sh",
                 "-ec",
                 (
+                    'nats_js() { nats --server "$NATS_URL" --timeout "$NATS_TIMEOUT" "$@"; }; '
                     'set -- --subjects "${SUBJECT_PREFIX}.>" --discard old --replicas 1; '
                     'if [ -n "$STREAM_MAX_BYTES" ]; then set -- "$@" --max-bytes "$STREAM_MAX_BYTES"; fi; '
                     'if [ -n "$STREAM_MAX_AGE" ]; then set -- "$@" --max-age "$STREAM_MAX_AGE"; fi; '
-                    'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
-                    'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --force; '
-                    'else nats --server "$NATS_URL" stream add "$STREAM_NAME" "$@" '
+                    'if nats_js stream info "$STREAM_NAME" >/dev/null 2>&1; then '
+                    'nats_js stream edit "$STREAM_NAME" "$@" --force; '
+                    'else nats_js stream add "$STREAM_NAME" "$@" '
                     '--storage file --retention limits --defaults || '
-                    'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --force; fi'
+                    'nats_js stream edit "$STREAM_NAME" "$@" --force; fi'
                 ),
             ],
             "logConfiguration": {
