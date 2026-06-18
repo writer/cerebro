@@ -121,7 +121,9 @@ func Middleware(next http.Handler) http.Handler {
 					telemetry.Field{Key: "error_kind", Value: "panic"},
 				))
 				telemetry.End(span, "failed", httpResponseWideAttributes(recorder).WithField(telemetry.Field{Key: "error_kind", Value: "panic"}))
-				panic(recovered)
+				if !recorder.wroteHeader {
+					http.Error(recorder, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
 			}
 		}()
 		next.ServeHTTP(recorder, r)
