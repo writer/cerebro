@@ -161,12 +161,12 @@ func TestGraphActionTargetForFindingUsesExplicitTargetFirst(t *testing.T) {
 			"okta_user_urn": "urn:cerebro:writer:okta.user:alice@writer.com",
 		},
 	}
-	target, err := graphactions.OktaUserTargetForFinding(finding, "00u-explicit")
+	target, err := graphactions.OktaUserTargetForFinding(finding, "Alice Example <alice@writer.com>")
 	if err != nil {
 		t.Fatalf("OktaUserTargetForFinding() error = %v", err)
 	}
-	if target != "00u-explicit" {
-		t.Fatalf("target = %q, want explicit target", target)
+	if target != "alice@writer.com" {
+		t.Fatalf("target = %q, want normalized explicit target", target)
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestNormalizeTargetExtractsDisplayNameEmailAddress(t *testing.T) {
@@ -30,6 +32,27 @@ func TestServiceExecuteRequiresFindingID(t *testing.T) {
 	}
 }
 
+func TestServiceExecuteRejectsExplicitTargetOutsideFinding(t *testing.T) {
+	client := &stubAccessApprovalsClient{}
+	findings := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID: "finding-1",
+		Attributes: map[string]string{
+			"okta_user_urn": "urn:cerebro:writer:okta.user:alice@writer.com",
+		},
+	}}
+	_, err := (Service{Client: client, Findings: findings}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    ActionIdentityOktaSuspendUser,
+		Target:    "bob@other.example",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Execute() error = %v, want ErrInvalidRequest", err)
+	}
+	if client.called {
+		t.Fatalf("cross-finding explicit target reached access-approvals client")
+	}
+}
+
 type stubAccessApprovalsClient struct {
 	called bool
 }
@@ -46,4 +69,16 @@ func (s *stubAccessApprovalsClient) UnsuspendOktaUser(context.Context, AccessApp
 
 func (s *stubAccessApprovalsClient) ActionURL(string) string {
 	return ""
+}
+
+type stubFindingWorkflow struct {
+	finding *ports.FindingRecord
+}
+
+func (s *stubFindingWorkflow) GetFinding(context.Context, string) (*ports.FindingRecord, error) {
+	return s.finding, nil
+}
+
+func (s *stubFindingWorkflow) LinkFindingExternalRef(context.Context, string, ports.FindingExternalRef) (*ports.FindingRecord, error) {
+	return s.finding, nil
 }
