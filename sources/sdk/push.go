@@ -3,6 +3,7 @@ package sdk
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ const (
 	postureStatusAtRisk = "at_risk"
 	postureStatusSecure = "secure"
 )
+
+var errPostureStatusRequired = errors.New("sdk telemetry posture status is required")
 
 // PushedTelemetry is one raw SDK push-surface integration posture payload
 // submitted by an SDK-onboarded application about a resource it owns.
@@ -70,7 +73,7 @@ func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope
 	}
 	rawPostureStatus := strings.TrimSpace(payload.PostureStatus)
 	if rawPostureStatus == "" {
-		return nil, fmt.Errorf("%w: sdk telemetry posture status is required", sourcecdk.ErrInvalidConfig)
+		return nil, fmt.Errorf("%w: %w", sourcecdk.ErrInvalidConfig, errPostureStatusRequired)
 	}
 	postureStatus := normalizePostureStatus(rawPostureStatus)
 	if postureStatus == "" {

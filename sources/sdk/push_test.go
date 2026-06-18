@@ -126,6 +126,9 @@ func TestNormalizePushedTelemetryRejectsMissingIdentity(t *testing.T) {
 			if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
 				t.Fatalf("NormalizePushedTelemetry() error = %v, want ErrInvalidConfig", err)
 			}
+			if name == "posture" && !errors.Is(err, errPostureStatusRequired) {
+				t.Fatalf("NormalizePushedTelemetry() posture error = %v, want errPostureStatusRequired", err)
+			}
 		})
 	}
 }
