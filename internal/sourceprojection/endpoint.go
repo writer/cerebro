@@ -291,7 +291,7 @@ func endpointOwnerIDRetractionProfile(kind string) (endpointProjectionProfile, b
 	switch strings.TrimSpace(kind) {
 	case "kolide.device", "kolide.user_device":
 		return kolideEndpointProfile, false, true
-	case "kolide.software", "kolide.check":
+	case "kolide.software", "kolide.check", "kolide.issue":
 		return kolideEndpointProfile, true, true
 	case "kandji.device":
 		return kandjiEndpointProfile, false, true
