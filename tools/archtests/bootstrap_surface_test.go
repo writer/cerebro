@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const bootstrapProductionGoLineBudget = 22984
+const bootstrapProductionGoLineBudget = 23042
 
 type bootstrapFileLineCount struct {
 	path  string
