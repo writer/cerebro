@@ -69,8 +69,8 @@ func openAIFamilies() []jsonapi.Family {
 		openAIListFamily("user", "/organization/users", "openai_user", []string{"id"}, []string{"added_at"}, map[string]string{"user_id": "id", "name": "name", "email": "email", "role": "role", "status": "status", "added_at": "added_at"}),
 		openAIListFamily("project", "/organization/projects", "openai_project", []string{"id"}, []string{"created_at"}, map[string]string{"project_id": "id", "name": "name", "status": "status", "created_at": "created_at", "archived_at": "archived_at", "external_key_id": "external_key_id"}),
 		openAIListFamily("service_account", "/organization/projects/default/service_accounts", "openai_service_account", []string{"id"}, []string{"created_at"}, map[string]string{"service_account_id": "id", "project_id": "project_id", "name": "name", "role": "role", "created_at": "created_at"}),
-		openAIListFamily("api_key", "/organization/projects/default/api_keys", "openai_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "project_id": "project_id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "created_at": "created_at", "last_used_at": "last_used_at"}),
-		openAIListFamily("admin_api_key", "/organization/admin_api_keys", "openai_admin_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "created_at": "created_at", "last_used_at": "last_used_at"}),
+		openAIListFamily("api_key", "/organization/projects/default/api_keys", "openai_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "project_id": "project_id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "owner_type": "owner.type", "status": "status", "created_at": "created_at", "last_used_at": "last_used_at"}),
+		openAIListFamily("admin_api_key", "/organization/admin_api_keys", "openai_admin_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "owner_type": "owner.type", "status": "status", "created_at": "created_at", "last_used_at": "last_used_at"}, withStaticAttributes(map[string]string{"key_class": "admin", "privileged": "true"})),
 		openAIListFamily("audit_log", "/organization/audit_logs", "openai_audit_log", []string{"id"}, []string{"effective_at", "created_at"}, openAIAuditAttributes(), withQuery(map[string]string{"actor_emails": "actor_emails", "actor_ids": "actor_ids", "effective_at[gt]": "effective_at_gt", "effective_at[gte]": "effective_at_gte", "effective_at[lt]": "effective_at_lt", "effective_at[lte]": "effective_at_lte", "event_types": "event_types", "project_ids": "project_ids", "resource_ids": "resource_ids", "tenant_only": "tenant_only"})),
 		openAIListFamily("invite", "/organization/invites", "openai_invite", []string{"id"}, []string{"created_at"}, map[string]string{"invite_id": "id", "email": "email", "role": "role", "status": "status", "projects": "projects", "created_at": "created_at", "accepted_at": "accepted_at", "expires_at": "expires_at"}),
 		openAIListFamily("role", "/organization/roles", "openai_role", []string{"id"}, []string{"created_at", "updated_at"}, roleAttributes()),
@@ -95,7 +95,7 @@ func openAIFamilies() []jsonapi.Family {
 		openAIListFamily("project_user", "/organization/projects/{project_id}/users", "openai_project_user", []string{"id", "user_id"}, []string{"added_at"}, map[string]string{"project_id": "project_id", "user_id": "id|user_id", "email": "email", "name": "name", "role": "role", "added_at": "added_at"}, withPathParams("project_id")),
 		openAIListFamily("project_user_role", "/projects/{project_id}/users/{user_id}/roles", "openai_project_user_role", []string{"id"}, []string{"created_at", "updated_at"}, roleAttributes(), withPathParams("project_id", "user_id"), withCursor("after", "next", "has_more")),
 		openAIListFamily("project_service_account", "/organization/projects/{project_id}/service_accounts", "openai_project_service_account", []string{"id"}, []string{"created_at"}, map[string]string{"project_id": "project_id", "service_account_id": "id", "name": "name", "role": "role", "created_at": "created_at"}, withPathParams("project_id")),
-		openAIListFamily("project_api_key", "/organization/projects/{project_id}/api_keys", "openai_project_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"project_id": "project_id", "api_key_id": "id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "created_at": "created_at", "last_used_at": "last_used_at"}, withPathParams("project_id")),
+		openAIListFamily("project_api_key", "/organization/projects/{project_id}/api_keys", "openai_project_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"project_id": "project_id", "api_key_id": "id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "owner_type": "owner.type", "status": "status", "created_at": "created_at", "last_used_at": "last_used_at"}, withPathParams("project_id")),
 		openAIListFamily("project_rate_limit", "/organization/projects/{project_id}/rate_limits", "openai_project_rate_limit", []string{"id", "model"}, []string{"updated_at", "created_at"}, projectRateLimitAttributes(), withPathParams("project_id")),
 		openAISingletonFamily("project_model_permission", "/organization/projects/{project_id}/model_permissions", "openai_project_model_permission", map[string]string{"project_id": "project_id", "mode": "mode", "model_ids": "model_ids"}, withPathParams("project_id")),
 		openAISingletonFamily("project_hosted_tool_permission", "/organization/projects/{project_id}/hosted_tool_permissions", "openai_project_hosted_tool_permission", map[string]string{"project_id": "project_id", "code_interpreter_enabled": "code_interpreter.enabled", "file_search_enabled": "file_search.enabled", "image_generation_enabled": "image_generation.enabled", "mcp_enabled": "mcp.enabled", "web_search_enabled": "web_search.enabled"}, withPathParams("project_id")),
@@ -230,6 +230,19 @@ func projectRateLimitAttributes() map[string]string {
 func withPathParams(params ...string) familyOption {
 	return func(f *jsonapi.Family) {
 		f.PathParams = append([]string{}, params...)
+	}
+}
+
+func withStaticAttributes(extra map[string]string) familyOption {
+	return func(f *jsonapi.Family) {
+		merged := make(map[string]string, len(f.StaticAttributes)+len(extra))
+		for key, value := range f.StaticAttributes {
+			merged[key] = value
+		}
+		for key, value := range extra {
+			merged[key] = value
+		}
+		f.StaticAttributes = merged
 	}
 }
 

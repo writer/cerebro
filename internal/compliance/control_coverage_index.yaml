@@ -41677,7 +41677,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 104
+        mapped_rules: 105
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -41834,7 +41834,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 9
+          rule_count: 10
           mapped_rules:
             - github-org-owner-role-review-needed
             - identity-okta-admin-plus-app-owner
@@ -41844,6 +41844,7 @@ profiles:
             - identity-okta-group-grants-admin-app
             - identity-okta-superadmin-count
             - identity-okta-support-session-impersonation-30d
+            - openai-orphaned-privileged-api-key
             - tailscale-tailnet-device-approval-disabled
         - framework_name: ISO 27001:2022
           family_id: A.8
@@ -42467,6 +42468,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.16
+        - rule_id: openai-orphaned-privileged-api-key
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
         - rule_id: security-reviewer-reported-finding
           controls:
             - framework_name: ISO 27001:2022
@@ -61062,7 +61067,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 924
+        mapped_rules: 925
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61610,7 +61615,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 430
+          rule_count: 431
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -62040,6 +62045,7 @@ profiles:
             - k8s-service-no-nodeport
             - k8s-workload-not-default-namespace
             - kandji-endpoint-disk-encryption-disabled
+            - openai-orphaned-privileged-api-key
             - tailscale-tailnet-device-approval-disabled
             - vpc-external-peering
         - framework_name: SOC 2
@@ -65907,6 +65913,10 @@ profiles:
               control_id: CC7.2
             - framework_name: SOC 2
               control_id: CC7.3
+        - rule_id: openai-orphaned-privileged-api-key
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: panopticon-curated-case
           controls:
             - framework_name: SOC 2
