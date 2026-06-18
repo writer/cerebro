@@ -222,7 +222,7 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		IncrementMain(ctx, "cache.redis.hit.count", 2)
 		End(span, "completed", Attrs(Field{Key: "explicit_end_attr", Value: "kept"}))
 	})
-	payload := telemetryPayloadByName(t, stderr, "test.main")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.main")
 	if payload["main"] != true || payload["wide_event"] != true {
 		t.Fatalf("main span flags missing: %#v", payload)
 	}
@@ -305,7 +305,7 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		_, span := StartMain(context.Background(), "test.runtime", Attrs())
 		End(span, "completed", Attrs())
 	})
-	payload := telemetryPayloadByName(t, stderr, "test.runtime")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.runtime")
 	for key, want := range map[string]any{
 		"service.name":                "cerebro-api",
 		"service.namespace":           "cerebro",
@@ -341,7 +341,7 @@ func TestMainSpanDependencyAndPhaseRollups(t *testing.T) {
 		))
 		End(span, "failed", Attrs(Field{Key: "error_kind", Value: "boom_kind"}))
 	})
-	payload := telemetryPayloadByName(t, stderr, "test.rollups")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.rollups")
 	expected := map[string]any{
 		"event.outcome":                            "failure",
 		"operation.status":                         "failed",
@@ -386,7 +386,7 @@ func TestRuntimeAttributesDoNotInferAWSFromOTELCloudRegion(t *testing.T) {
 		_, span := StartMain(context.Background(), "test.runtime.otel-region", Attrs())
 		End(span, "completed", Attrs())
 	})
-	payload := telemetryPayloadByName(t, stderr, "test.runtime.otel-region")
+	payload := telemetrySpanEndPayloadByName(t, stderr, "test.runtime.otel-region")
 	for key, want := range map[string]any{
 		"cloud.provider": "unknown",
 		"cloud.region":   "europe-west1",
@@ -501,7 +501,7 @@ func TestConfigureOpenTelemetryDisabledLeavesNoopProviderUsable(t *testing.T) {
 	End(span, "completed", Attrs())
 }
 
-func telemetryPayloadByName(t *testing.T, stderr string, name string) map[string]any {
+func telemetrySpanEndPayloadByName(t *testing.T, stderr string, name string) map[string]any {
 	t.Helper()
 	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
 		if strings.TrimSpace(line) == "" {
