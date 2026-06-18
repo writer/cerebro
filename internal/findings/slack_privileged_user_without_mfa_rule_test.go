@@ -60,6 +60,36 @@ func TestSlackPrivilegedUserWithoutMFADeactivationResolves(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newSlackPrivilegedUserWithoutMFARule(), open, deleted, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestSlackPrivilegedUserWithoutMFAMissingVisibilityIsUnknown(t *testing.T) {
+	rule := newSlackPrivilegedUserWithoutMFARule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-slack-user",
+		SourceId: "slack",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "user"},
+	}
+	unknown := slackUserEvent("slack-mfa-unknown", map[string]string{
+		"has_2fa": "",
+		"has_mfa": "",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, unknown)
+	if err != nil {
+		t.Fatalf("Evaluate(unknown MFA) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(unknown MFA) emitted %d findings, want 0", len(records))
+	}
+
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+	if anchor, closes := counterRule.CloseOnEvent(unknown); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(unknown MFA) = (%q, %v), want no close", anchor, closes)
+	}
+}
+
 func TestSlackPrivilegedUserWithoutMFAReopensOnRecurrence(t *testing.T) {
 	rule := newSlackPrivilegedUserWithoutMFARule()
 	runtime := &cerebrov1.SourceRuntime{
