@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -4917,10 +4918,10 @@ func TestGraphIngestEndpoints(t *testing.T) {
 }
 
 func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
-	var sawAuth bool
+	var sawAuth atomic.Bool
 	archetypeAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "Bearer test-token" {
-			sawAuth = true
+			sawAuth.Store(true)
 		}
 		switch r.URL.Path {
 		case "/api/v1/scans":
@@ -5013,7 +5014,7 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	if got := ingestPayload["links_projected"]; got != float64(5) {
 		t.Fatalf("links_projected = %#v, want 5", got)
 	}
-	if !sawAuth {
+	if !sawAuth.Load() {
 		t.Fatal("Archetype API did not receive bearer token")
 	}
 

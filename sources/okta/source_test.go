@@ -946,6 +946,12 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			want:   "login.example.com",
 		},
 		{
+			family: "authorization_server",
+			kind:   "okta.authorization_server",
+			attr:   "jwks_uri_host",
+			want:   "login.example.com",
+		},
+		{
 			family: "brand",
 			kind:   "okta.brand",
 			attr:   "custom_privacy_policy_host",
@@ -1952,6 +1958,11 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		"created":     "2026-04-20T00:00:00Z",
 		"lastUpdated": "2026-04-23T00:00:00Z",
 		"credentials": map[string]any{"signing": map[string]any{"kid": "kid-1", "rotationMode": "AUTO", "lastRotated": "2026-04-20T00:00:00Z"}},
+		"_links": map[string]any{
+			"metadata": map[string]any{
+				"href": "https://login.example.com/oauth2/aus-api/.well-known/openid-configuration",
+			},
+		},
 	}}
 	brandRecords := []map[string]any{{
 		"id":                     "brand-prod",

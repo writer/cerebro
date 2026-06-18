@@ -207,7 +207,7 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		DeploymentEnvironment: "sec-dev",
 		CloudRegion:           "us-east-1",
 		ContainerID:           "task-hostname",
-		ResourceAttributes:    "service.namespace=cerebro,cloud.availability_zone=us-east-1a,deployment.environment.name=ignored-by-cerebro-env",
+		ResourceAttributes:    "service.namespace=cerebro,cloud.provider=gcp,cloud.region=europe-west1,cloud.availability_zone=us-east-1a,container.id=otel-container,deployment.environment.name=ignored-by-cerebro-env",
 	})
 	t.Cleanup(func() {
 		ConfigureRuntimeMetadata(previous)
@@ -227,6 +227,31 @@ func TestRuntimeAttributesUseECSAndOTELResourceEnvironment(t *testing.T) {
 		"cloud.region":                "us-east-1",
 		"cloud.availability_zone":     "us-east-1a",
 		"container.id":                "task-hostname",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func TestRuntimeAttributesDoNotInferAWSFromOTELCloudRegion(t *testing.T) {
+	previous := configuredRuntimeMetadata()
+	ConfigureRuntimeMetadata(RuntimeMetadata{
+		ResourceAttributes: "cloud.region=europe-west1,container.id=otel-container",
+	})
+	t.Cleanup(func() {
+		ConfigureRuntimeMetadata(previous)
+	})
+
+	_, stderr := captureOutput(t, func() {
+		_, span := StartMain(context.Background(), "test.runtime.otel-region", Attrs())
+		End(span, "completed", Attrs())
+	})
+	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.runtime.otel-region")
+	for key, want := range map[string]any{
+		"cloud.provider": "unknown",
+		"cloud.region":   "europe-west1",
+		"container.id":   "otel-container",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)

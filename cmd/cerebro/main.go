@@ -204,7 +204,6 @@ func runtimeTelemetryMetadataFromEnv() telemetry.RuntimeMetadata {
 		DeploymentEnvironment: firstNonEmptyString(
 			os.Getenv("CEREBRO_DEPLOYMENT_ENVIRONMENT"),
 			os.Getenv("CEREBRO_ENVIRONMENT"),
-			os.Getenv("OTEL_ENVIRONMENT_NAME"),
 			os.Getenv("ENVIRONMENT"),
 			os.Getenv("APP_ENV"),
 		),
