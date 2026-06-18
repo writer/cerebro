@@ -173,6 +173,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "openai",
+			Name:        "OpenAI",
+			Description: "OpenAI organization credential and privileged-access posture findings.",
+			Rules: []Rule{
+				newOpenAIOrphanedPrivilegedAPIKeyRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

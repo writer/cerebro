@@ -21,6 +21,113 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestReadEmitsRequiredInventoryKindIdentifiers(t *testing.T) {
+	cases := []struct {
+		family      string
+		record      map[string]any
+		wantKind    string
+		wantAttr    string
+		wantAttrVal string
+	}{
+		{family: "user", record: map[string]any{"id": "user_1", "email": "alice@example.com", "role": "owner"}, wantKind: "openai.user", wantAttr: "user_id", wantAttrVal: "user_1"},
+		{family: "project", record: map[string]any{"id": "proj_1", "name": "Production", "status": "active"}, wantKind: "openai.project", wantAttr: "project_id", wantAttrVal: "proj_1"},
+		{family: "service_account", record: map[string]any{"id": "sa_1", "name": "ci-bot", "role": "member"}, wantKind: "openai.service_account", wantAttr: "service_account_id", wantAttrVal: "sa_1"},
+		{family: "api_key", record: map[string]any{"id": "key_1", "name": "prod-key", "owner": map[string]any{"type": "user", "user": map[string]any{"id": "user_1"}}}, wantKind: "openai.api_key", wantAttr: "api_key_id", wantAttrVal: "key_1"},
+		{family: "admin_api_key", record: map[string]any{"id": "admin_1", "name": "admin-key", "owner": map[string]any{"type": "service_account", "service_account": map[string]any{"id": "sa_9"}}}, wantKind: "openai.admin_api_key", wantAttr: "api_key_id", wantAttrVal: "admin_1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.family, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data":     []map[string]any{tc.record},
+					"has_more": false,
+				})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.inner.AllowLoopbackBaseURL = true
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"api_key":   "admin-key",
+				"base_url":  server.URL,
+				"family":    tc.family,
+				"tenant_id": "writer",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tc.wantKind {
+				t.Fatalf("Kind = %q, want %q", event.Kind, tc.wantKind)
+			}
+			if got := event.Attributes[tc.wantAttr]; got != tc.wantAttrVal {
+				t.Fatalf("%s = %q, want %q", tc.wantAttr, got, tc.wantAttrVal)
+			}
+		})
+	}
+}
+
+func TestReadAdminAPIKeyEmitsOwnerTypeAndPrivilegeMarker(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/organization/admin_api_keys" {
+			t.Fatalf("request path = %q, want /organization/admin_api_keys", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":   "admin_1",
+				"name": "admin-key",
+				"owner": map[string]any{
+					"type": "user",
+					"user": map[string]any{"id": "user_1"},
+				},
+				"created_at": 1711471533,
+			}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"api_key":   "admin-key",
+		"base_url":  server.URL,
+		"family":    "admin_api_key",
+		"tenant_id": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Attributes["api_key_id"]; got != "admin_1" {
+		t.Fatalf("api_key_id = %q, want admin_1", got)
+	}
+	if got := event.Attributes["owner_type"]; got != "user" {
+		t.Fatalf("owner_type = %q, want user", got)
+	}
+	if got := event.Attributes["owner_user_id"]; got != "user_1" {
+		t.Fatalf("owner_user_id = %q, want user_1", got)
+	}
+	if got := event.Attributes["key_class"]; got != "admin" {
+		t.Fatalf("key_class = %q, want admin", got)
+	}
+	if got := event.Attributes["privileged"]; got != "true" {
+		t.Fatalf("privileged = %q, want true", got)
+	}
+}
+
 func TestReadAuditLogMapsQueryAndUnixTimestamp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/organization/audit_logs" {

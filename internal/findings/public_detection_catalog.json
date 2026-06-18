@@ -3017,6 +3017,52 @@
       ]
     },
     {
+      "id": "openai-orphaned-privileged-api-key",
+      "pack_id": "openai",
+      "pack_name": "OpenAI",
+      "name": "OpenAI Orphaned Privileged API Key",
+      "description": "Detect active OpenAI organization-level admin API keys that have no accountable owner (no owning user or service account), leaving a privileged credential without a responsible identity to govern or revoke it.",
+      "source_id": "openai",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "openai.admin_api_key"
+      ],
+      "output_kind": "finding.openai_orphaned_privileged_api_key",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "api-key",
+        "credential",
+        "openai",
+        "ownership",
+        "privileged-access"
+      ],
+      "references": [
+        "https://platform.openai.com/docs/api-reference/admin-api-keys"
+      ],
+      "false_positives": [
+        "Admin keys intentionally owned by a shared break-glass identity that is tracked outside the OpenAI ownership model."
+      ],
+      "runbook": "Identify the orphaned OpenAI admin API key, assign an accountable owner (user or service account), or revoke the key if it is no longer required.",
+      "required_attributes": [
+        "api_key_id"
+      ],
+      "fingerprint_fields": [
+        "openai_credential_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.2"
+        }
+      ]
+    },
+    {
       "id": "panopticon-curated-case",
       "pack_id": "panopticon",
       "pack_name": "Panopticon",

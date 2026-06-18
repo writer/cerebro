@@ -1,0 +1,91 @@
+{
+  "rule_id": "openai-orphaned-privileged-api-key",
+  "runtime": {
+    "id": "writer-openai-admin-api-key",
+    "source_id": "openai",
+    "tenant_id": "writer",
+    "config": {
+      "family": "admin_api_key"
+    }
+  },
+  "events": [
+    {
+      "id": "openai-admin-key-owned",
+      "tenant_id": "writer",
+      "source_id": "openai",
+      "kind": "openai.admin_api_key",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "openai/admin_api_key/v1",
+      "attributes": {
+        "family": "admin_api_key",
+        "api_key_id": "admin_owned",
+        "name": "owned-admin-key",
+        "key_class": "admin",
+        "privileged": "true",
+        "owner_type": "user",
+        "owner_user_id": "user_123",
+        "source_runtime_id": "writer-openai-admin-api-key"
+      }
+    },
+    {
+      "id": "openai-admin-key-orphaned",
+      "tenant_id": "writer",
+      "source_id": "openai",
+      "kind": "openai.admin_api_key",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "openai/admin_api_key/v1",
+      "attributes": {
+        "family": "admin_api_key",
+        "api_key_id": "admin_orphaned",
+        "name": "orphaned-admin-key",
+        "key_class": "admin",
+        "privileged": "true",
+        "source_runtime_id": "writer-openai-admin-api-key"
+      }
+    },
+    {
+      "id": "openai-admin-key-revoked",
+      "tenant_id": "writer",
+      "source_id": "openai",
+      "kind": "openai.admin_api_key",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "openai/admin_api_key/v1",
+      "attributes": {
+        "family": "admin_api_key",
+        "api_key_id": "admin_revoked",
+        "name": "revoked-admin-key",
+        "key_class": "admin",
+        "privileged": "true",
+        "status": "deleted",
+        "source_runtime_id": "writer-openai-admin-api-key"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "openai-orphaned-privileged-api-key",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "OpenAI privileged admin API key orphaned-admin-key has no accountable owner",
+      "event_ids": ["openai-admin-key-orphaned"],
+      "attributes": {
+        "openai_credential_urn": "urn:cerebro:writer:openai_credential:admin_orphaned",
+        "api_key_id": "admin_orphaned",
+        "privileged": "true",
+        "key_class": "admin",
+        "primary_resource_urn": "urn:cerebro:writer:openai_credential:admin_orphaned",
+        "rule_required_attributes": "api_key_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "openai-admin-key-owned",
+      "reason": "privileged key with an accountable owner is governed"
+    },
+    {
+      "event_id": "openai-admin-key-revoked",
+      "reason": "revoked key is no longer an active privileged credential"
+    }
+  ]
+}
