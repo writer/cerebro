@@ -137,6 +137,44 @@ func TestMetricsHTTPRouteRequiresAdminOnly(t *testing.T) {
 	if err := authorizeHTTPRequestScope(operator, request); err != nil {
 		t.Fatalf("operator authorizeHTTPRequestScope(/metrics) error = %v", err)
 	}
+
+	admin := authContext{principal: authPrincipal{Roles: []string{roleCerebroAdmin}}}
+	if err := authorizeHTTPRequestScope(admin, request); err != nil {
+		t.Fatalf("rbac admin authorizeHTTPRequestScope(/metrics) error = %v", err)
+	}
+}
+
+func TestRBACRolesAuthorizeRouteScopes(t *testing.T) {
+	viewer := authPrincipal{Roles: []string{roleCerebroViewer}}
+	if err := authorizePrincipalHTTPPolicy(viewer, httpRoutePolicyFor(http.MethodGet, "/sources")); err != nil {
+		t.Fatalf("viewer rejected for read route: %v", err)
+	}
+	if err := authorizePrincipalHTTPPolicy(viewer, httpRoutePolicyFor(http.MethodPost, "/findings/finding-1/resolve")); err == nil {
+		t.Fatal("viewer authorized for finding lifecycle write")
+	}
+
+	findingManager := authPrincipal{Roles: []string{roleCerebroFindingManager}}
+	if err := authorizePrincipalHTTPPolicy(findingManager, httpRoutePolicyFor(http.MethodPost, "/findings/finding-1/resolve")); err != nil {
+		t.Fatalf("finding manager rejected for finding lifecycle write: %v", err)
+	}
+
+	connectorManager := authPrincipal{Roles: []string{roleCerebroConnectorManager}}
+	if err := authorizePrincipalHTTPPolicy(connectorManager, httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")); err != nil {
+		t.Fatalf("connector manager rejected for credential write: %v", err)
+	}
+	if err := authorizePrincipalHTTPPolicy(connectorManager, httpRoutePolicyFor(http.MethodPut, "/source-runtimes/runtime-1")); err == nil {
+		t.Fatal("connector manager authorized for source runtime write")
+	}
+
+	sourceManager := authPrincipal{Roles: []string{roleCerebroSourceManager}}
+	if err := authorizePrincipalHTTPPolicy(sourceManager, httpRoutePolicyFor(http.MethodPut, "/source-runtimes/runtime-1")); err != nil {
+		t.Fatalf("source manager rejected for source runtime write: %v", err)
+	}
+
+	admin := authPrincipal{Roles: []string{roleCerebroAdmin}}
+	if err := authorizePrincipalHTTPPolicy(admin, httpRoutePolicyFor(http.MethodPost, "/platform/jobs")); err != nil {
+		t.Fatalf("admin rejected for job write: %v", err)
+	}
 }
 
 func TestA2AJSONRPCHTTPRouteRequiresAdminOnly(t *testing.T) {
