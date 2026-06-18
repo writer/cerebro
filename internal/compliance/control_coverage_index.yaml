@@ -41701,7 +41701,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 108
+        mapped_rules: 109
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -42095,8 +42095,9 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 9
+          rule_count: 10
           mapped_rules:
+            - aurelius-promoted-vulnerability-active
             - aws-rds-auto-minor-upgrade
             - grc-isolated-target-enrichment-gap
             - grc-overdue-vulnerability-live-on-assets
@@ -42143,6 +42144,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.2
+        - rule_id: aurelius-promoted-vulnerability-active
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.8
         - rule_id: aws-cloudtrail-kms-encryption
           controls:
             - framework_name: ISO 27001:2022
@@ -61141,7 +61146,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 932
+        mapped_rules: 933
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62331,8 +62336,9 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 49
+          rule_count: 50
           mapped_rules:
+            - aurelius-promoted-vulnerability-active
             - aws-ecr-immutable-tags
             - aws-guardduty-c2-traffic
             - aws-guardduty-crypto-mining
@@ -62590,6 +62596,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.1
+        - rule_id: aurelius-promoted-vulnerability-active
+          controls:
+            - framework_name: SOC 2
+              control_id: CC7.1
         - rule_id: aws-alb-http-to-https
           controls:
             - framework_name: SOC 2

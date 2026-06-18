@@ -124,7 +124,7 @@ func aureliusFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 
 	vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attrs)
 	if vulnerabilityURN != "" && imageURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, vulnerabilityURN, relationAffectedBy, aureliusFindingEvidenceAttributes(event, attrs)))
 	}
 	packageURN := vulnerabilityPackageURN(tenantID, attrs, "aurelius")
 	canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), attrs, "aurelius")
@@ -137,14 +137,14 @@ func aureliusFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			}
 		}
 		if vulnerabilityURN != "" {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, aureliusFindingEvidenceAttributes(event, attrs)))
 		}
 	}
 	if packageURN != "" && canonicalPackageURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attrs, "aurelius")))
 	}
 	if canonicalPackageURN != "" && vulnerabilityURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, aureliusFindingEvidenceAttributes(event, attrs)))
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -273,6 +273,17 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 	return projectedEntities, projectedLinks, nil
 }
 
+// aureliusFindingEvidenceAttributes augments the shared vulnerability evidence
+// with Aurelius promotion and policy-exception context so the graph carries the
+// current promoted-risk state that the durable Aurelius finding rule depends on.
+func aureliusFindingEvidenceAttributes(event *cerebrov1.EventEnvelope, attrs map[string]string) map[string]string {
+	evidence := vulnerabilityEvidenceAttributes(event, attrs)
+	addAureliusAttribute(evidence, "promoted", firstAttribute(attrs, "promoted"))
+	addAureliusAttribute(evidence, "promoted_track", firstAttribute(attrs, "track", "promoted_track"))
+	addAureliusAttribute(evidence, "exception_status", firstAttribute(attrs, "exception_status"))
+	return evidence
+}
+
 func aureliusImageURN(tenantID string, attrs map[string]string) string {
 	id := aureliusImageIdentifier(attrs)
 	if id == "" {
@@ -352,6 +363,7 @@ func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]str
 		"cve_id",
 		"excepted_findings",
 		"exception_id",
+		"exception_status",
 		"expires_at",
 		"fixed_version",
 		"image",
@@ -364,6 +376,7 @@ func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]str
 		"image_repository",
 		"github_code_repository",
 		"org.opencontainers.image.source",
+		"promoted",
 		"promoted_at",
 		"promoted_by",
 		"project_id",
