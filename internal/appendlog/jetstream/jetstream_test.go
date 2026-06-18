@@ -3,6 +3,7 @@ package jetstream
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -139,6 +140,30 @@ func TestAppendDoesNotRetryWithoutMessageID(t *testing.T) {
 	}
 	if pub.publishCalls != 1 {
 		t.Fatalf("publish calls = %d, want 1", pub.publishCalls)
+	}
+}
+
+func TestJetstreamErrorTelemetryAttrsIncludesAPIErrorDetails(t *testing.T) {
+	attrs := jetstreamErrorTelemetryAttrs(&natsjetstream.APIError{
+		Code:        503,
+		ErrorCode:   natsjetstream.JSErrCodeStreamNotFound,
+		Description: "stream not found",
+	})
+	values := map[string]string{}
+	for _, attr := range attrs.OTELAttributes() {
+		values[string(attr.Key)] = fmt.Sprint(attr.Value.AsInterface())
+	}
+	if values["nats.api.error.code"] != "503" {
+		t.Fatalf("nats.api.error.code = %q, want 503", values["nats.api.error.code"])
+	}
+	if values["nats.jetstream.error_code"] != strconv.Itoa(int(natsjetstream.JSErrCodeStreamNotFound)) {
+		t.Fatalf("nats.jetstream.error_code = %q, want %d", values["nats.jetstream.error_code"], natsjetstream.JSErrCodeStreamNotFound)
+	}
+	if values["nats.jetstream.error_description"] != "stream not found" {
+		t.Fatalf("nats.jetstream.error_description = %q, want stream not found", values["nats.jetstream.error_description"])
+	}
+	if values["messaging.jetstream.publish.retryable"] != "false" {
+		t.Fatalf("messaging.jetstream.publish.retryable = %q, want false", values["messaging.jetstream.publish.retryable"])
 	}
 }
 
