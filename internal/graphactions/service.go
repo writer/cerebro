@@ -260,8 +260,18 @@ func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, 
 	if err != nil {
 		return nil, err
 	}
-	graphAction := GraphActionFromAccessApprovals(action, externalAction, s.Client.ActionURL(externalAction.ID), externalAction.Target)
-	target := strings.TrimSpace(graphAction.Target)
+	spec, err := s.actionSpec(action)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkSpecEligibility(spec, finding); err != nil {
+		return nil, err
+	}
+	target, err := resolveSpecTarget(spec, finding, externalAction.Target)
+	if err != nil {
+		return nil, err
+	}
+	graphAction := GraphActionFromAccessApprovals(action, externalAction, s.Client.ActionURL(externalAction.ID), target)
 	if s.BeforeLink != nil {
 		if err := s.BeforeLink(ctx, finding, graphAction, target); err != nil {
 			return nil, err

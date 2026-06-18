@@ -270,6 +270,109 @@ func TestServiceReconcileRefreshesLinkedExternalRef(t *testing.T) {
 	}
 }
 
+func TestServiceReconcileRejectsClosedFinding(t *testing.T) {
+	client := &stubAccessApprovalsClient{
+		getAction: &AccessApprovalsUserAction{
+			ID:     "action-1",
+			Action: AccessApprovalsActionSuspend,
+			Status: "succeeded",
+			Target: "00u123",
+		},
+	}
+	finding := eligibleFinding(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     ProviderAccessApprovals,
+				Kind:       RefKind,
+				ExternalID: "action-1",
+			}},
+		},
+		Attributes: map[string]string{"okta_user_urn": "urn:cerebro:tenant-a:okta_user:00u123"},
+	})
+	finding.Status = "resolved"
+	workflow := &stubFindingWorkflow{finding: finding}
+	_, err := (Service{Findings: workflow, Client: client}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: "action-1",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Reconcile() error = %v, want ErrInvalidRequest", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("reconcile linked ref despite closed finding: %#v", workflow.ref)
+	}
+}
+
+func TestServiceReconcileRejectsActionDisallowedByFindingPolicy(t *testing.T) {
+	client := &stubAccessApprovalsClient{
+		getAction: &AccessApprovalsUserAction{
+			ID:     "action-1",
+			Action: AccessApprovalsActionUnsuspend,
+			Status: "succeeded",
+			Target: "00u123",
+		},
+	}
+	finding := eligibleFinding(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     ProviderAccessApprovals,
+				Kind:       RefKind,
+				ExternalID: "action-1",
+			}},
+		},
+		Attributes: map[string]string{"okta_user_urn": "urn:cerebro:tenant-a:okta_user:00u123"},
+	})
+	finding.Attributes["graph_actions_allowed"] = ActionIdentityOktaSuspendUser
+	workflow := &stubFindingWorkflow{finding: finding}
+	_, err := (Service{Findings: workflow, Client: client}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: "action-1",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Reconcile() error = %v, want ErrInvalidRequest", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("reconcile linked ref despite disallowed action: %#v", workflow.ref)
+	}
+}
+
+func TestServiceReconcileRejectsProviderTargetOutsideFinding(t *testing.T) {
+	client := &stubAccessApprovalsClient{
+		getAction: &AccessApprovalsUserAction{
+			ID:     "action-1",
+			Action: AccessApprovalsActionSuspend,
+			Status: "succeeded",
+			Target: "00uvictim",
+		},
+	}
+	workflow := &stubFindingWorkflow{finding: eligibleFinding(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     ProviderAccessApprovals,
+				Kind:       RefKind,
+				ExternalID: "action-1",
+			}},
+		},
+		Attributes: map[string]string{"okta_user_urn": "urn:cerebro:tenant-a:okta_user:00u123"},
+	})}
+	_, err := (Service{Findings: workflow, Client: client}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: "action-1",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Reconcile() error = %v, want ErrInvalidRequest", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("reconcile linked ref despite target mismatch: %#v", workflow.ref)
+	}
+}
+
 func eligibleFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	if finding.Attributes == nil {
 		finding.Attributes = map[string]string{}
