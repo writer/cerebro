@@ -42,6 +42,69 @@ func TestTrustedEndpointActiveTrustGateFailureRemediationResolves(t *testing.T) 
 	assertIdentityRuleRemediationTrajectory(t, newTrustedEndpointActiveTrustGateFailureRule(), open, resolved, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestTrustedEndpointActiveTrustGateFailureDeprovisionResolves(t *testing.T) {
+	open := trustedEndpointGateEvent("te-open", map[string]string{"decision": "deny", "severity": "high"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	deprovisioned := trustedEndpointGateEvent("te-deprovisioned", map[string]string{"decision": "deny", "agent_status": "deprovisioned"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	assertIdentityRuleRemediationTrajectory(t, newTrustedEndpointActiveTrustGateFailureRule(), open, deprovisioned, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestTrustedEndpointActiveTrustGateFailureUnmanagedAgentResolves(t *testing.T) {
+	open := trustedEndpointGateEvent("te-open", map[string]string{"decision": "deny", "severity": "high"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	unmanaged := trustedEndpointGateEvent("te-unmanaged", map[string]string{"decision": "deny", "managed": "false"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	assertIdentityRuleRemediationTrajectory(t, newTrustedEndpointActiveTrustGateFailureRule(), open, unmanaged, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestTrustedEndpointActiveTrustGateFailureReopensAfterDeprovision(t *testing.T) {
+	rule := newTrustedEndpointActiveTrustGateFailureRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-trusted-endpoint",
+		SourceId: "trusted_endpoint",
+		TenantId: "writer",
+	}
+
+	emitOpen := func(event *cerebrov1.EventEnvelope) *ports.FindingRecord {
+		t.Helper()
+		records, err := rule.Evaluate(context.Background(), runtime, event)
+		if err != nil {
+			t.Fatalf("Evaluate(%q) error = %v", event.GetId(), err)
+		}
+		if len(records) != 1 {
+			t.Fatalf("Evaluate(%q) emitted %d findings, want 1", event.GetId(), len(records))
+		}
+		if got := strings.TrimSpace(records[0].Status); got != findingStatusOpen {
+			t.Fatalf("Evaluate(%q) status = %q, want open", event.GetId(), got)
+		}
+		return records[0]
+	}
+
+	opened := emitOpen(trustedEndpointGateEvent("te-deny-1", map[string]string{"decision": "deny", "severity": "high"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)))
+	openFingerprint := strings.TrimSpace(opened.Fingerprint)
+	if openFingerprint == "" {
+		t.Fatal("opened finding has empty fingerprint")
+	}
+
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+	deprovisionedEvent := trustedEndpointGateEvent("te-deprovisioned", map[string]string{"decision": "deny", "agent_status": "offboarded"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	closeAnchor, closes := counterRule.CloseOnEvent(deprovisionedEvent)
+	if !closes || closeAnchor == "" {
+		t.Fatalf("CloseOnEvent(deprovisioned) = (%q, %v), want a non-empty closing anchor", closeAnchor, closes)
+	}
+	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor != closeAnchor {
+		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
+	}
+
+	reopened := emitOpen(trustedEndpointGateEvent("te-deny-2", map[string]string{"decision": "deny", "severity": "high", "agent_status": "active"}, time.Date(2026, 5, 1, 14, 0, 0, 0, time.UTC)))
+	if got := strings.TrimSpace(reopened.Fingerprint); got != openFingerprint {
+		t.Fatalf("recurrence fingerprint = %q, want stable %q", got, openFingerprint)
+	}
+	if got := strings.TrimSpace(reopened.ID); got != strings.TrimSpace(opened.ID) {
+		t.Fatalf("recurrence finding id = %q, want stable %q", got, strings.TrimSpace(opened.ID))
+	}
+}
+
 func TestTrustedEndpointActiveTrustGateFailureReopensOnRecurrence(t *testing.T) {
 	rule := newTrustedEndpointActiveTrustGateFailureRule()
 	runtime := &cerebrov1.SourceRuntime{

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -130,6 +131,7 @@ func normalizeEvent(raw map[string]any, principal Principal, agentID string) (st
 		action := trustGateAction(raw, eventType)
 		decision := normalizeDecision(firstNonEmpty(firstString(raw, "decision", "verdict", "result"), decisionFromEventType(eventType)))
 		severity := normalizeSeverity(firstString(raw, "severity"))
+		lifecycle := normalizeAgentLifecycle(raw)
 		payload := map[string]any{
 			"agent_id": agentID,
 			"action":   action,
@@ -138,13 +140,18 @@ func normalizeEvent(raw map[string]any, principal Principal, agentID string) (st
 			"source":   "endpoint_telemetry",
 			"raw":      raw,
 		}
-		return "trusted_endpoint.trust_gate_decision", "trusted_endpoint/trust_gate_decision/v1", payload, map[string]string{
-			"agent_id": agentID,
-			"action":   action,
-			"decision": decision,
-			"reason":   firstString(raw, "reason", "decision_reason", "rationale"),
-			"severity": severity,
+		attrs := map[string]string{
+			"agent_id":     agentID,
+			"action":       action,
+			"decision":     decision,
+			"reason":       firstString(raw, "reason", "decision_reason", "rationale"),
+			"severity":     severity,
+			"agent_status": lifecycle,
 		}
+		if managed, ok := normalizeManagedFlag(raw); ok {
+			attrs["managed"] = strconv.FormatBool(managed)
+		}
+		return "trusted_endpoint.trust_gate_decision", "trusted_endpoint/trust_gate_decision/v1", payload, attrs
 	}
 	action := actionFromEventType(eventType)
 	outcome := outcomeFromEvent(raw, eventType)
@@ -266,6 +273,45 @@ func normalizeStatus(value string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
+}
+
+// normalizeAgentLifecycle derives a deterministic agent lifecycle state from the
+// endpoint control-plane fields so downstream trust-gate findings can resolve for
+// deprovisioned/offboarded agents instead of reading inconsistent raw values.
+func normalizeAgentLifecycle(raw map[string]any) string {
+	return normalizeAgentStatus(firstString(raw, "agent_status", "device_status", "agent_state", "lifecycle", "lifecycle_state", "enrollment_status"))
+}
+
+func normalizeAgentStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "deprovisioned", "deleted", "removed", "offboarded", "off-boarded", "off boarded", "unenrolled", "un-enrolled", "deactivated", "inactive", "retired", "decommissioned", "disabled", "terminated", "revoked":
+		return "deprovisioned"
+	case "active", "enrolled", "managed", "enabled", "provisioned", "online":
+		return "active"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func normalizeManagedFlag(raw map[string]any) (bool, bool) {
+	value, ok := raw["managed"]
+	if !ok {
+		return false, false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "1", "t", "true", "yes", "y", "enabled", "on", "active", "managed":
+			return true, true
+		case "0", "f", "false", "no", "n", "disabled", "off", "inactive", "unmanaged":
+			return false, true
+		}
+	}
+	return false, false
 }
 
 func normalizeSeverity(value string) string {

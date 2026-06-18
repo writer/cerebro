@@ -23,17 +23,6 @@ var trustedEndpointActiveTrustGateFailureControlRefs = []ports.FindingControlRef
 	{FrameworkName: "ISO 27001:2022", ControlID: "A.8.16"},
 }
 
-var trustedEndpointAgentDeprovisionedStatuses = map[string]struct{}{
-	"deleted":        {},
-	"removed":        {},
-	"offboarded":     {},
-	"unenrolled":     {},
-	"deactivated":    {},
-	"inactive":       {},
-	"retired":        {},
-	"decommissioned": {},
-}
-
 type trustedEndpointActiveTrustGateFailureRule struct {
 	Rule
 	definition RuleDefinition
@@ -183,16 +172,28 @@ func trustedEndpointGateRemediated(attributes map[string]string) bool {
 	return trustedEndpointNormalizeDecisionValue(attributes["decision"]) == "allow"
 }
 
+// trustedEndpointAgentDeprovisioned reports whether the agent is no longer
+// managed based on the normalized lifecycle state propagated by the source
+// normalizer, so offboarded agents resolve stale trust-gate findings instead of
+// relying on inconsistent raw attribute values.
 func trustedEndpointAgentDeprovisioned(attributes map[string]string) bool {
 	if managed, ok := parseOptionalBoolAttribute(attributes, "managed"); ok && !managed {
 		return true
 	}
-	status := strings.ToLower(strings.TrimSpace(attributes["agent_status"]))
-	if status == "" {
-		status = strings.ToLower(strings.TrimSpace(attributes["status"]))
+	return trustedEndpointNormalizeAgentStatus(attributes["agent_status"]) == "deprovisioned"
+}
+
+func trustedEndpointNormalizeAgentStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "deprovisioned", "deleted", "removed", "offboarded", "off-boarded", "off boarded", "unenrolled", "un-enrolled", "deactivated", "inactive", "retired", "decommissioned", "disabled", "terminated", "revoked":
+		return "deprovisioned"
+	case "active", "enrolled", "managed", "enabled", "provisioned", "online":
+		return "active"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
 	}
-	_, deprovisioned := trustedEndpointAgentDeprovisionedStatuses[status]
-	return deprovisioned
 }
 
 func trustedEndpointNormalizeDecisionValue(value string) string {

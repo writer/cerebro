@@ -84,6 +84,44 @@ func TestNormalizeTrustGateDecisionAttributes(t *testing.T) {
 	}
 }
 
+func TestNormalizeTrustGatePropagatesDeprovisionState(t *testing.T) {
+	principal := endpointtelemetry.Principal{TenantID: "writer", DeviceID: "dev_123"}
+	body := []byte(`{"events":[{"type":"trust_gate.deny","action":"git_push","reason":"posture_failed","agent_status":"Off-boarded","managed":false}]}`)
+	events, err := endpointtelemetry.Normalize(body, principal, time.Date(2026, 6, 4, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	attrs := events[0].GetAttributes()
+	if got := attrs["agent_status"]; got != "deprovisioned" {
+		t.Fatalf("agent_status attr = %q, want deprovisioned", got)
+	}
+	if got := attrs["managed"]; got != "false" {
+		t.Fatalf("managed attr = %q, want false", got)
+	}
+}
+
+func TestNormalizeTrustGateMarksManagedAgentActive(t *testing.T) {
+	principal := endpointtelemetry.Principal{TenantID: "writer", DeviceID: "dev_123"}
+	body := []byte(`{"events":[{"type":"trust_gate.deny","action":"git_push","agent_status":"active","managed":true}]}`)
+	events, err := endpointtelemetry.Normalize(body, principal, time.Date(2026, 6, 4, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	attrs := events[0].GetAttributes()
+	if got := attrs["agent_status"]; got != "active" {
+		t.Fatalf("agent_status attr = %q, want active", got)
+	}
+	if got := attrs["managed"]; got != "true" {
+		t.Fatalf("managed attr = %q, want true", got)
+	}
+}
+
 func TestNormalizeGRCEvidenceAttributes(t *testing.T) {
 	principal := endpointtelemetry.Principal{TenantID: "writer", DeviceID: "dev_123"}
 	body := []byte(`{"events":[{"control_id":"AC-2","status":"failing","framework":"SOC2"}]}`)
