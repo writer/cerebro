@@ -96,7 +96,7 @@ func openAIFamilies() []jsonapi.Family {
 		openAIListFamily("project_user_role", "/projects/{project_id}/users/{user_id}/roles", "openai_project_user_role", []string{"id"}, []string{"created_at", "updated_at"}, roleAttributes(), withPathParams("project_id", "user_id"), withCursor("after", "next", "has_more")),
 		openAIListFamily("project_service_account", "/organization/projects/{project_id}/service_accounts", "openai_project_service_account", []string{"id"}, []string{"created_at"}, map[string]string{"project_id": "project_id", "service_account_id": "id", "name": "name", "role": "role", "created_at": "created_at"}, withPathParams("project_id")),
 		openAIListFamily("project_api_key", "/organization/projects/{project_id}/api_keys", "openai_project_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"project_id": "project_id", "api_key_id": "id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "created_at": "created_at", "last_used_at": "last_used_at"}, withPathParams("project_id")),
-		openAIListFamily("project_rate_limit", "/organization/projects/{project_id}/rate_limits", "openai_project_rate_limit", []string{"id", "model"}, []string{"updated_at", "created_at"}, map[string]string{"project_id": "project_id", "rate_limit_id": "id", "model": "model", "max_requests_per_1_minute": "max_requests_per_1_minute", "max_tokens_per_1_minute": "max_tokens_per_1_minute", "max_images_per_1_minute": "max_images_per_1_minute", "max_requests_per_1_day": "max_requests_per_1_day", "batch_1_day_max_input_tokens": "batch_1_day_max_input_tokens"}, withPathParams("project_id")),
+		openAIListFamily("project_rate_limit", "/organization/projects/{project_id}/rate_limits", "openai_project_rate_limit", []string{"id", "model"}, []string{"updated_at", "created_at"}, projectRateLimitAttributes(), withPathParams("project_id")),
 		openAISingletonFamily("project_model_permission", "/organization/projects/{project_id}/model_permissions", "openai_project_model_permission", map[string]string{"project_id": "project_id", "mode": "mode", "model_ids": "model_ids"}, withPathParams("project_id")),
 		openAISingletonFamily("project_hosted_tool_permission", "/organization/projects/{project_id}/hosted_tool_permissions", "openai_project_hosted_tool_permission", map[string]string{"project_id": "project_id", "code_interpreter_enabled": "code_interpreter.enabled", "file_search_enabled": "file_search.enabled", "image_generation_enabled": "image_generation.enabled", "mcp_enabled": "mcp.enabled", "web_search_enabled": "web_search.enabled"}, withPathParams("project_id")),
 		openAIListFamily("project_group", "/organization/projects/{project_id}/groups", "openai_project_group", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"project_id": "project_id", "group_id": "id", "name": "name", "created_at": "created_at", "updated_at": "updated_at"}, withPathParams("project_id")),
@@ -169,6 +169,19 @@ func roleAttributes() map[string]string {
 		"created_at":      "created_at",
 		"updated_at":      "updated_at",
 		"created_by":      "created_by",
+	}
+}
+
+func projectRateLimitAttributes() map[string]string {
+	return map[string]string{ // #nosec G101 -- provider field names only, not credentials.
+		"project_id":                   "project_id",
+		"rate_limit_id":                "id",
+		"model":                        "model",
+		"max_requests_per_1_minute":    "max_requests_per_1_minute",
+		"max_tokens_per_1_minute":      "max_tokens_per_1_minute",
+		"max_images_per_1_minute":      "max_images_per_1_minute",
+		"max_requests_per_1_day":       "max_requests_per_1_day",
+		"batch_1_day_max_input_tokens": "batch_1_day_max_input_tokens",
 	}
 }
 

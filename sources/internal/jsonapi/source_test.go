@@ -785,12 +785,12 @@ func TestConfigurableBearerAuthUsesAuthorizationHeader(t *testing.T) {
 			if got := r.Header.Get("x-api-key"); got != "admin-key" {
 				t.Fatalf("x-api-key = %q, want admin-key", got)
 			}
-		case "Bearer oauth-token":
+		case "Bearer oauth-value":
 			if got := r.Header.Get("x-api-key"); got != "" {
 				t.Fatalf("x-api-key = %q, want empty for bearer auth", got)
 			}
 		default:
-			t.Fatalf("Authorization = %q, want empty or Bearer oauth-token", r.Header.Get("Authorization"))
+			t.Fatalf("Authorization = %q, want empty or Bearer oauth-value", r.Header.Get("Authorization"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
 	}))
@@ -820,10 +820,10 @@ func TestConfigurableBearerAuthUsesAuthorizationHeader(t *testing.T) {
 	}), nil); err != nil {
 		t.Fatalf("Read(default auth) error = %v", err)
 	}
-	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
 		"tenant_id":  "writer",
 		"auth_model": "bearer_token",
-		"token":      "oauth-token",
+		"token":      "oauth-value",
 	}), nil); err != nil {
 		t.Fatalf("Read(bearer auth) error = %v", err)
 	}

@@ -111,8 +111,8 @@ func TestReadServiceAccountCanUseBearerToken(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/organizations/service_accounts" {
 			t.Fatalf("request path = %q, want /organizations/service_accounts", got)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer oauth-token" {
-			t.Fatalf("Authorization = %q, want Bearer oauth-token", got)
+		if got := r.Header.Get("Authorization"); got != "Bearer oauth-value" {
+			t.Fatalf("Authorization = %q, want Bearer oauth-value", got)
 		}
 		if got := r.Header.Get("x-api-key"); got != "" {
 			t.Fatalf("x-api-key = %q, want empty", got)
@@ -136,12 +136,12 @@ func TestReadServiceAccountCanUseBearerToken(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.inner.AllowLoopbackBaseURL = true
-	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
 		"auth_model": "bearer_token",
 		"base_url":   server.URL,
 		"family":     "service_account",
 		"tenant_id":  "writer",
-		"token":      "oauth-token",
+		"token":      "oauth-value",
 	}), nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)

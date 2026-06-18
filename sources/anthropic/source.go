@@ -77,7 +77,7 @@ func anthropicFamilies() []jsonapi.Family {
 		anthropicListFamily("workspace", "/organizations/workspaces", "anthropic_workspace", []string{"id"}, []string{"created_at", "archived_at"}, map[string]string{"workspace_id": "id", "name": "name", "display_color": "display_color", "created_at": "created_at", "archived_at": "archived_at"}, withQuery(map[string]string{"include_archived": "include_archived"})),
 		anthropicListFamily("workspace_member", "/organizations/workspaces/{workspace_id}/members", "anthropic_workspace_member", []string{"id", "user_id"}, []string{"added_at", "created_at"}, map[string]string{"workspace_id": "workspace_id", "user_id": "id|user_id", "email": "email", "name": "name", "workspace_role": "workspace_role|role", "added_at": "added_at"}, withPathParams("workspace_id")),
 		anthropicListFamily("api_key", "/organizations/api_keys", "anthropic_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "name": "name", "status": "status", "workspace_id": "workspace_id|workspace.id", "owner_user_id": "created_by.id|owner.id|user_id", "created_at": "created_at", "last_used_at": "last_used_at"}, withQuery(map[string]string{"status": "status", "workspace_id": "workspace_id"})),
-		anthropicListFamily("external_key", "/organizations/external_keys", "anthropic_external_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"external_key_id": "id", "name": "name", "status": "status", "provider": "provider", "workspace_id": "workspace_id|workspace.id", "created_at": "created_at", "last_used_at": "last_used_at"}, withCursor("page", "next_page", "")),
+		anthropicListFamily("external_key", "/organizations/external_keys", "anthropic_external_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"external_key_id": "id", "name": "name", "status": "status", "provider": "provider", "workspace_id": "workspace_id|workspace.id", "created_at": "created_at", "last_used_at": "last_used_at"}, withPageCursor()),
 		anthropicListFamily("service_account", "/organizations/service_accounts", "anthropic_service_account", []string{"id"}, []string{"created_at"}, map[string]string{"service_account_id": "id", "name": "name", "status": "status", "description": "description", "created_at": "created_at"}),
 		anthropicListFamily("federation_issuer", "/organizations/federation_issuers", "anthropic_federation_issuer", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"federation_issuer_id": "id", "issuer": "issuer", "name": "name", "status": "status", "created_at": "created_at", "updated_at": "updated_at"}),
 		anthropicListFamily("federation_rule", "/organizations/federation_rules", "anthropic_federation_rule", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"federation_rule_id": "id", "issuer_id": "issuer_id|federation_issuer_id", "service_account_id": "service_account_id", "subject": "subject", "scopes": "scopes", "created_at": "created_at", "updated_at": "updated_at"}),
@@ -85,10 +85,10 @@ func anthropicFamilies() []jsonapi.Family {
 		anthropicReportFamily("usage_report_claude_code", "/organizations/usage_report/claude_code"),
 		anthropicReportFamily("cost_report", "/organizations/cost_report"),
 		anthropicReportFamily("analytics_cost", "/organizations/analytics/cost"),
-		anthropicListFamily("rate_limit", "/organizations/rate_limits", "anthropic_rate_limit", []string{"id", "group_type", "model", "name"}, []string{"updated_at"}, rateLimitAttributes(), withQuery(map[string]string{"model": "model"}), withCursor("page", "next_page", "")),
-		anthropicListFamily("workspace_rate_limit", "/organizations/workspaces/{workspace_id}/rate_limits", "anthropic_workspace_rate_limit", []string{"id", "group_type", "model", "name"}, []string{"updated_at"}, rateLimitAttributes(), withPathParams("workspace_id"), withCursor("page", "next_page", "")),
-		anthropicListFamily("spend_limit", "/organizations/spend_limits/effective", "anthropic_spend_limit", []string{"spend_limit_id", "id", "scope.user_id", "actor.user_id"}, []string{"created_at", "updated_at"}, map[string]string{"spend_limit_id": "spend_limit_id|id", "scope_type": "scope.type", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "amount": "amount", "currency": "currency", "period": "period", "source_type": "source.type", "period_to_date_spend": "period_to_date_spend", "created_at": "created_at", "updated_at": "updated_at"}, withCursor("page", "next_page", ""), withQuery(map[string]string{"actor_ids[]": "actor_ids", "period[]": "periods", "user_ids[]": "user_ids"})),
-		anthropicListFamily("spend_limit_increase_request", "/organizations/spend_limit_increase_requests", "anthropic_spend_limit_increase_request", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"request_id": "id", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "status": "status", "amount": "amount", "currency": "currency", "period": "period", "created_at": "created_at", "updated_at": "updated_at"}, withCursor("page", "next_page", ""), withQuery(map[string]string{"actor_ids[]": "actor_ids", "status[]": "status"})),
+		anthropicListFamily("rate_limit", "/organizations/rate_limits", "anthropic_rate_limit", []string{"id", "group_type", "model", "name"}, []string{"updated_at"}, rateLimitAttributes(), withQuery(map[string]string{"model": "model"}), withPageCursor()),
+		anthropicListFamily("workspace_rate_limit", "/organizations/workspaces/{workspace_id}/rate_limits", "anthropic_workspace_rate_limit", []string{"id", "group_type", "model", "name"}, []string{"updated_at"}, rateLimitAttributes(), withPathParams("workspace_id"), withPageCursor()),
+		anthropicListFamily("spend_limit", "/organizations/spend_limits/effective", "anthropic_spend_limit", []string{"spend_limit_id", "id", "scope.user_id", "actor.user_id"}, []string{"created_at", "updated_at"}, map[string]string{"spend_limit_id": "spend_limit_id|id", "scope_type": "scope.type", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "amount": "amount", "currency": "currency", "period": "period", "source_type": "source.type", "period_to_date_spend": "period_to_date_spend", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor(), withQuery(map[string]string{"actor_ids[]": "actor_ids", "period[]": "periods", "user_ids[]": "user_ids"})),
+		anthropicListFamily("spend_limit_increase_request", "/organizations/spend_limit_increase_requests", "anthropic_spend_limit_increase_request", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"request_id": "id", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "status": "status", "amount": "amount", "currency": "currency", "period": "period", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor(), withQuery(map[string]string{"actor_ids[]": "actor_ids", "status[]": "status"})),
 		anthropicListFamily("compliance_activity", "/compliance/activities", "anthropic_compliance_activity", []string{"id"}, []string{"created_at"}, map[string]string{"activity_id": "id", "activity_type": "type", "organization_id": "organization_id", "organization_uuid": "organization_uuid", "actor_type": "actor.type", "actor_user_id": "actor.user_id", "actor_api_key_id": "actor.api_key_id", "actor_email": "actor.email_address|actor.email", "created_at": "created_at"}, withQuery(map[string]string{"activity_types[]": "activity_types", "actor_ids[]": "actor_ids", "created_at.gt": "created_at_gt", "created_at.gte": "created_at_gte", "created_at.lt": "created_at_lt", "created_at.lte": "created_at_lte", "organization_ids[]": "organization_ids"})),
 	}
 }
@@ -136,11 +136,11 @@ func anthropicReportFamily(name string, path string) jsonapi.Family {
 		"output_tokens":   "output_tokens",
 		"request_count":   "request_count|requests",
 		"organization_id": "organization_id",
-	}, withCursor("page", "next_page", ""), withQuery(reportQuery))
+	}, withPageCursor(), withQuery(reportQuery))
 }
 
 func rateLimitAttributes() map[string]string {
-	return map[string]string{
+	return map[string]string{ // #nosec G101 -- provider field names only, not credentials.
 		"rate_limit_id":       "id",
 		"group_type":          "group_type",
 		"name":                "name",
@@ -168,11 +168,11 @@ func withQuery(query map[string]string) familyOption {
 	}
 }
 
-func withCursor(param string, nextKey string, hasMoreKey string) familyOption {
+func withPageCursor() familyOption {
 	return func(f *jsonapi.Family) {
-		f.CursorParam = param
-		f.NextCursorKeys = []string{nextKey}
-		f.HasMoreKey = hasMoreKey
+		f.CursorParam = "page"
+		f.NextCursorKeys = []string{"next_page"}
+		f.HasMoreKey = ""
 	}
 }
 
