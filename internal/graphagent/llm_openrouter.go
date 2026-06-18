@@ -68,7 +68,7 @@ func NewOpenRouterLLMClient(cfg OpenRouterConfig) (*OpenRouterLLMClient, error) 
 	if cfg.HTTPDoer == nil {
 		return nil, fmt.Errorf("%w: HTTPDoer is required for the openrouter LLM provider", ErrRuntimeUnavailable)
 	}
-	if cfg.DefaultModel == "" {
+	if strings.TrimSpace(cfg.DefaultModel) == "" {
 		cfg.DefaultModel = defaultOpenRouterModel
 	}
 	if cfg.MaxTokens <= 0 {
@@ -88,7 +88,11 @@ func NewOpenRouterLLMClient(cfg OpenRouterConfig) (*OpenRouterLLMClient, error) 
 
 func (c *OpenRouterLLMClient) DraftCypher(ctx context.Context, req DraftRequest) (*DraftResponse, error) {
 	prompt := draftPrompt(req)
-	text, err := c.chat(ctx, c.modelID(req.Model), prompt, c.maxTokens)
+	modelID, err := c.modelID(req.Model)
+	if err != nil {
+		return nil, err
+	}
+	text, err := c.chat(ctx, modelID, prompt, c.maxTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +113,11 @@ func (c *OpenRouterLLMClient) DraftCypher(ctx context.Context, req DraftRequest)
 }
 
 func (c *OpenRouterLLMClient) Summarize(ctx context.Context, req SummarizeRequest) (string, error) {
-	return c.chat(ctx, c.modelID(req.Model), summarizePrompt(req), c.maxTokens)
+	modelID, err := c.modelID(req.Model)
+	if err != nil {
+		return "", err
+	}
+	return c.chat(ctx, modelID, summarizePrompt(req), c.maxTokens)
 }
 
 func (c *OpenRouterLLMClient) Probe(ctx context.Context) error {
@@ -117,20 +125,8 @@ func (c *OpenRouterLLMClient) Probe(ctx context.Context) error {
 	return err
 }
 
-func (c *OpenRouterLLMClient) modelID(requested string) string {
-	switch normalizeModel(requested) {
-	case "claude-sonnet-4-6":
-		return firstNonEmpty(c.sonnetModel, c.defaultModel)
-	case "claude-opus-4-7":
-		return firstNonEmpty(c.opusModel, c.defaultModel)
-	case "claude-haiku-4-5-20251001":
-		return firstNonEmpty(c.haikuModel, c.defaultModel)
-	default:
-		if strings.TrimSpace(requested) != "" {
-			return strings.TrimSpace(requested)
-		}
-		return c.defaultModel
-	}
+func (c *OpenRouterLLMClient) modelID(requested string) (string, error) {
+	return configuredModelID(requested, c.defaultModel, c.sonnetModel, c.opusModel, c.haikuModel)
 }
 
 func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt string, maxTokens int) (string, error) {
