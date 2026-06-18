@@ -201,7 +201,17 @@ func TargetForAction(action string, finding *ports.FindingRecord, explicit strin
 }
 
 func OktaUserTargetForFinding(finding *ports.FindingRecord, explicit string) (string, error) {
-	for _, candidate := range targetCandidates(finding, explicit) {
+	if strings.TrimSpace(explicit) != "" {
+		target, err := NormalizeTarget(explicit)
+		if err != nil {
+			return "", err
+		}
+		if targetMatchesFinding(target, finding) {
+			return target, nil
+		}
+		return "", fmt.Errorf("%w: explicit target must match authorized finding identity", ErrInvalidRequest)
+	}
+	for _, candidate := range targetCandidates(finding) {
 		normalized, err := NormalizeTarget(candidate)
 		if err == nil {
 			return normalized, nil
@@ -210,8 +220,25 @@ func OktaUserTargetForFinding(finding *ports.FindingRecord, explicit string) (st
 	return "", fmt.Errorf("%w: email_or_user_id is required or no Okta user target could be derived from finding", ErrInvalidRequest)
 }
 
-func targetCandidates(finding *ports.FindingRecord, explicit string) []string {
-	candidates := []string{explicit}
+func targetMatchesFinding(target string, finding *ports.FindingRecord) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	for _, candidate := range targetCandidates(finding) {
+		normalized, err := NormalizeTarget(candidate)
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(normalized, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func targetCandidates(finding *ports.FindingRecord) []string {
+	candidates := []string{}
 	if finding == nil {
 		return candidates
 	}
