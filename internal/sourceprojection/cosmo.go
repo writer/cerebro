@@ -1,13 +1,12 @@
 package sourceprojection
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"strconv"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 func cosmoSessionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -169,12 +168,7 @@ func cosmoSessionURN(tenantID string, sessionID string) string {
 }
 
 func cosmoExternalIDKey(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(normalized))
-	return "id-" + hex.EncodeToString(sum[:16])
+	return sourceidentity.HashedExternalIDKey(value, "")
 }
 
 func addCosmoSessionLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, sessionID string) {

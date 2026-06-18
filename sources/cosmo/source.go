@@ -3,7 +3,6 @@ package cosmo
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -22,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 //go:embed catalog.yaml
@@ -683,7 +683,7 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 }
 
 func recordURN(settings settings, family string, id string) (sourcecdk.URN, error) {
-	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, cosmoExternalIDKey(id)))
+	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(id, "unknown")))
 }
 
 func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
@@ -729,7 +729,7 @@ func eventFromRecord(settings settings, family string, record record) *primitive
 }
 
 func eventID(settings settings, family string, recordID string) string {
-	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, cosmoExternalIDKey(recordID)}, "-")
+	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(recordID, "unknown")}, "-")
 }
 
 func attributesFor(family string, values map[string]any) map[string]string {
@@ -1153,19 +1153,11 @@ func stableID(parts ...string) string {
 }
 
 func normalizeID(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
+	if value = strings.TrimSpace(value); value == "" {
 		return "unknown"
 	}
 	replacer := strings.NewReplacer(" ", "-", "/", "-", ":", "-", "\n", "-", "\t", "-")
-	return replacer.Replace(normalized)
-}
-
-func cosmoExternalIDKey(value string) string {
-	if normalized := strings.TrimSpace(value); normalized != "" {
-		return fmt.Sprintf("id-%x", sha256.Sum256([]byte(normalized)))
-	}
-	return "unknown"
+	return replacer.Replace(value)
 }
 
 func firstNonEmpty(values ...string) string {
