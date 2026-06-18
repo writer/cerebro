@@ -25,6 +25,22 @@ const (
 	maxGRCInventoryAssetReportBodyBytes = 32 << 10
 )
 
+func validateGRCInventoryAssetURN(assetURN string) error {
+	parts := strings.Split(assetURN, ":")
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return fmt.Errorf("%w: asset_urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", errInvalidHTTPRequest)
+	}
+	if parts[len(parts)-1] == "" {
+		return fmt.Errorf("%w: asset_urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", errInvalidHTTPRequest)
+	}
+	for index, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (index < 3 && part == "") {
+			return fmt.Errorf("%w: asset_urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", errInvalidHTTPRequest)
+		}
+	}
+	return nil
+}
+
 type grcInventoryCategoriesResponse struct {
 	Categories  []graphquery.InventoryCategory `json:"categories"`
 	GeneratedAt time.Time                      `json:"generated_at"`
@@ -360,6 +376,10 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 		writeGRCError(w, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest))
 		return
 	}
+	if err := validateGRCInventoryAssetURN(request.AssetURN); err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	if err := authorizeCerebroURNTenant(r.Context(), request.AssetURN); err != nil {
 		writeGRCError(w, err)
 		return
@@ -421,6 +441,10 @@ func (a *App) handleUpdateGRCInventoryAccountability(w http.ResponseWriter, r *h
 		writeGRCError(w, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest))
 		return
 	}
+	if err := validateGRCInventoryAssetURN(request.AssetURN); err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	if err := authorizeCerebroURNTenant(r.Context(), request.AssetURN); err != nil {
 		writeGRCError(w, err)
 		return
@@ -458,6 +482,9 @@ func upsertGRCInventoryAccountability(ctx context.Context, store ports.GRCInvent
 	request.Reason = strings.TrimSpace(request.Reason)
 	if request.AssetURN == "" {
 		return nil, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest)
+	}
+	if err := validateGRCInventoryAssetURN(request.AssetURN); err != nil {
+		return nil, err
 	}
 	existing, err := loadGRCInventoryScopeRecord(ctx, store, tenantID, request.AssetURN)
 	if err != nil {
@@ -666,6 +693,10 @@ func (a *App) handleCreateGRCInventoryAssetReport(w http.ResponseWriter, r *http
 	request.Reason = strings.TrimSpace(request.Reason)
 	if request.AssetURN == "" {
 		writeGRCError(w, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest))
+		return
+	}
+	if err := validateGRCInventoryAssetURN(request.AssetURN); err != nil {
+		writeGRCError(w, err)
 		return
 	}
 	if request.Reason == "" {
