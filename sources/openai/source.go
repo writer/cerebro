@@ -71,7 +71,7 @@ func openAIFamilies() []jsonapi.Family {
 		openAIListFamily("service_account", "/organization/projects/default/service_accounts", "openai_service_account", []string{"id"}, []string{"created_at"}, map[string]string{"service_account_id": "id", "project_id": "project_id", "name": "name", "role": "role", "created_at": "created_at"}),
 		openAIListFamily("api_key", "/organization/projects/default/api_keys", "openai_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "project_id": "project_id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "created_at": "created_at", "last_used_at": "last_used_at"}),
 		openAIListFamily("admin_api_key", "/organization/admin_api_keys", "openai_admin_api_key", []string{"id"}, []string{"created_at", "last_used_at"}, map[string]string{"api_key_id": "id", "name": "name", "owner_user_id": "owner.user.id", "owner_service_account_id": "owner.service_account.id", "created_at": "created_at", "last_used_at": "last_used_at"}),
-		openAIListFamily("audit_log", "/organization/audit_logs", "openai_audit_log", []string{"id"}, []string{"effective_at", "created_at"}, map[string]string{"audit_log_id": "id", "event_type": "type|event_type", "actor_id": "actor.id|actor.user.id|actor.service_account.id|actor.api_key.id", "actor_type": "actor.type", "actor_email": "actor.user.email|actor.email", "project_id": "project.id|project_id", "api_key_id": "api_key.id|api_key_id", "effective_at": "effective_at"}, withQuery(map[string]string{"actor_emails": "actor_emails", "actor_ids": "actor_ids", "effective_at[gt]": "effective_at_gt", "effective_at[gte]": "effective_at_gte", "effective_at[lt]": "effective_at_lt", "effective_at[lte]": "effective_at_lte", "event_types": "event_types", "project_ids": "project_ids"})),
+		openAIListFamily("audit_log", "/organization/audit_logs", "openai_audit_log", []string{"id"}, []string{"effective_at", "created_at"}, openAIAuditAttributes(), withQuery(map[string]string{"actor_emails": "actor_emails", "actor_ids": "actor_ids", "effective_at[gt]": "effective_at_gt", "effective_at[gte]": "effective_at_gte", "effective_at[lt]": "effective_at_lt", "effective_at[lte]": "effective_at_lte", "event_types": "event_types", "project_ids": "project_ids", "resource_ids": "resource_ids", "tenant_only": "tenant_only"})),
 		openAIListFamily("invite", "/organization/invites", "openai_invite", []string{"id"}, []string{"created_at"}, map[string]string{"invite_id": "id", "email": "email", "role": "role", "status": "status", "created_at": "created_at", "expires_at": "expires_at"}),
 		openAIListFamily("role", "/organization/roles", "openai_role", []string{"id"}, []string{"created_at", "updated_at"}, roleAttributes()),
 		openAIListFamily("user_role", "/organization/users/{user_id}/roles", "openai_user_role", []string{"id"}, []string{"created_at", "updated_at"}, roleAttributes(), withPathParams("user_id")),
@@ -156,6 +156,48 @@ func openAIUsageFamily(name string, path string) jsonapi.Family {
 		"organization_object": "object",
 	}
 	return openAIListFamily(name, path, "openai_"+name, []string{"id"}, []string{"start_time", "end_time"}, attrs, withCursor("page", "next_page", ""), withQuery(usageQuery))
+}
+
+func openAIAuditAttributes() map[string]string {
+	return map[string]string{
+		"api_key_id":               "api_key.created.id|api_key.updated.id|api_key.deleted.id|api_key.id|api_key_id",
+		"audit_log_id":             "id",
+		"actor_api_key_id":         "actor.api_key.id",
+		"actor_city":               "actor.session.ip_address_details.city",
+		"actor_country":            "actor.session.ip_address_details.country",
+		"actor_email":              "actor.session.user.email|actor.api_key.user.email|actor.user.email|actor.email",
+		"actor_id":                 "actor.session.user.id|actor.api_key.user.id|actor.api_key.service_account.id|actor.api_key.id|actor.user.id|actor.service_account.id|actor.id",
+		"actor_ip_address":         "actor.session.ip_address",
+		"actor_region":             "actor.session.ip_address_details.region",
+		"actor_service_account_id": "actor.api_key.service_account.id|actor.service_account.id",
+		"actor_type":               "actor.type|actor.api_key.type",
+		"actor_user_agent":         "actor.session.user_agent",
+		"actor_user_id":            "actor.session.user.id|actor.api_key.user.id|actor.user.id",
+		"certificate_id":           "certificate.created.id|certificate.updated.id|certificate.deleted.id",
+		"certificate_name":         "certificate.created.name|certificate.updated.name|certificate.deleted.name",
+		"effective_at":             "effective_at",
+		"event_type":               "type|event_type",
+		"external_key_id":          "external_key.registered.id|external_key.removed.id",
+		"group_id":                 "group.created.id|group.updated.id|group.deleted.id",
+		"group_name":               "group.created.data.group_name|group.updated.changes_requested.group_name",
+		"invite_email":             "invite.sent.data.email",
+		"invite_id":                "invite.sent.id|invite.accepted.id|invite.deleted.id",
+		"invite_role":              "invite.sent.data.role",
+		"ip_allowlist_id":          "ip_allowlist.created.id|ip_allowlist.updated.id|ip_allowlist.deleted.id",
+		"ip_allowlist_name":        "ip_allowlist.created.name|ip_allowlist.deleted.name",
+		"organization_id":          "organization.updated.id|organization_id|org_id",
+		"principal_id":             "role.assignment.created.principal_id|role.assignment.deleted.principal_id",
+		"principal_type":           "role.assignment.created.principal_type|role.assignment.deleted.principal_type",
+		"project_id":               "project.created.id|project.updated.id|project.archived.id|project.deleted.id|checkpoint.permission.created.data.project_id|project.id|project_id",
+		"rate_limit_id":            "rate_limit.updated.id|rate_limit.deleted.id",
+		"resource_id":              "role.assignment.created.resource_id|role.assignment.deleted.resource_id|role.bound_to_resource.resource_id|role.unbound_from_resource.resource_id|resource.deleted.id",
+		"resource_type":            "role.assignment.created.resource_type|role.assignment.deleted.resource_type|role.bound_to_resource.resource_type|role.unbound_from_resource.resource_type|resource.deleted.type",
+		"role_assignment_id":       "role.assignment.created.id|role.assignment.deleted.id",
+		"role_id":                  "role.created.id|role.updated.id|role.deleted.id|role.bound_to_resource.role_id|role.unbound_from_resource.role_id",
+		"role_name":                "role.created.data.role_name|role.updated.changes_requested.role_name|role.bound_to_resource.role_name|role.unbound_from_resource.role_name",
+		"service_account_id":       "service_account.created.id|service_account.updated.id|service_account.deleted.id",
+		"user_id":                  "user.added.id|user.updated.id|user.deleted.id",
+	}
 }
 
 func roleAttributes() map[string]string {

@@ -92,6 +92,87 @@ func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
 	assertProjectedLink(t, state, projectURN, relationCanPerform, modelURN)
 }
 
+func TestProjectOpenAIAuditDeepAccessEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 18, 12, 5, 0, 0, time.UTC)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "openai-audit-api-key",
+			TenantId:   "writer",
+			SourceId:   "openai",
+			Kind:       "openai.audit_log",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"actor_api_key_id":         "key_actor",
+				"actor_service_account_id": "sa_123",
+				"api_key_id":               "key_target",
+				"event_type":               "api_key.updated",
+				"family":                   "audit_log",
+			},
+		},
+		{
+			Id:         "openai-audit-role-assignment",
+			TenantId:   "writer",
+			SourceId:   "openai",
+			Kind:       "openai.audit_log",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"actor_email":    "admin@example.com",
+				"actor_user_id":  "user_admin",
+				"event_type":     "role.assignment.created",
+				"family":         "audit_log",
+				"principal_id":   "group_123",
+				"principal_type": "group",
+				"resource_id":    "proj_456",
+				"resource_type":  "project",
+			},
+		},
+		{
+			Id:         "openai-audit-group",
+			TenantId:   "writer",
+			SourceId:   "openai",
+			Kind:       "openai.audit_log",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"actor_email":   "admin@example.com",
+				"actor_user_id": "user_admin",
+				"event_type":    "group.updated",
+				"family":        "audit_log",
+				"group_id":      "group_123",
+				"group_name":    "Engineering",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	actorCredentialURN := "urn:cerebro:writer:openai_credential:key_actor"   // #nosec G101 -- test credential URN fixture, not credential material.
+	targetCredentialURN := "urn:cerebro:writer:openai_credential:key_target" // #nosec G101 -- test credential URN fixture, not credential material.
+	serviceAccountURN := "urn:cerebro:writer:openai_service_account:sa_123"
+	userURN := "urn:cerebro:writer:openai_user:user_admin"
+	projectURN := "urn:cerebro:writer:openai_project:proj_456"
+	groupURN := "urn:cerebro:writer:openai_group:group_123"
+	identityURN := "urn:cerebro:writer:identity:email:admin@example.com"
+
+	assertProjectedLink(t, state, serviceAccountURN, relationAssignedTo, actorCredentialURN)
+	assertProjectedLink(t, state, actorCredentialURN, relationActedOn, targetCredentialURN)
+	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, userURN, relationActedOn, projectURN)
+	assertProjectedLink(t, state, userURN, relationActedOn, groupURN)
+	link := state.links[actorCredentialURN+"|"+relationActedOn+"|"+targetCredentialURN]
+	if got := link.Attributes["event_type"]; got != "api_key.updated" {
+		t.Fatalf("acted_on event_type = %q, want api_key.updated", got)
+	}
+	if got := link.Attributes["actor_type"]; got != "credential" {
+		t.Fatalf("acted_on actor_type = %q, want credential", got)
+	}
+}
+
 func TestProjectAnthropicProjectCollaboratorAccessEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
