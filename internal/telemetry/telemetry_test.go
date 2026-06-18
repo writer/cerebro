@@ -99,6 +99,59 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 	}
 }
 
+func TestTelemetryFieldsDoNotEmitRawUserAgent(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+	patterns := []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		{name: `raw user-agent telemetry key`, re: regexp.MustCompile(`Key:\s*"(http\.request\.header\.user_agent|http\.user_agent)"`)},
+	}
+	var matches []string
+	err := filepath.WalkDir(repoRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".idea", ".vscode", "bin", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		if filepath.Clean(path) == filepath.Clean(currentFile) {
+			return nil
+		}
+		contents, err := os.ReadFile(path) // #nosec G304 G122 -- path comes from WalkDir under the repository root in a repository-static lint test.
+		if err != nil {
+			return err
+		}
+		for _, pattern := range patterns {
+			if pattern.re.Match(contents) {
+				rel, err := filepath.Rel(repoRoot, path)
+				if err != nil {
+					rel = path
+				}
+				matches = append(matches, rel+" ("+pattern.name+")")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repo: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("telemetry raw user-agent fields are forbidden; emit presence/family only: %s", strings.Join(matches, ", "))
+	}
+}
+
 func TestParseTraceParentValidatesTraceFlags(t *testing.T) {
 	traceID, spanID, ok := ParseTraceParent("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
 	if !ok {
