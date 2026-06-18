@@ -51,6 +51,15 @@ func TestBackstageCriticalComponentMissingOwnerOwnershipResolves(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newBackstageCriticalComponentMissingOwnerRule(), open, owned, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestBackstageCriticalComponentMissingOwnerCanonicalEntityRefResolves(t *testing.T) {
+	open := backstageComponentEvent("backstage-open-fallback-ref", map[string]string{"owner": ""}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	owned := backstageComponentEvent("backstage-owned-canonical-ref", map[string]string{
+		"owner":      "group:platform/payments",
+		"entity_ref": "component:default/payments",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	assertIdentityRuleRemediationTrajectory(t, newBackstageCriticalComponentMissingOwnerRule(), open, owned, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestBackstageCriticalComponentMissingOwnerDowngradeResolves(t *testing.T) {
 	open := backstageComponentEvent("backstage-open", map[string]string{"owner": ""}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	downgraded := backstageComponentEvent("backstage-downgraded", map[string]string{"owner": "", "criticality": "low"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
@@ -61,6 +70,28 @@ func TestBackstageCriticalComponentMissingOwnerDecommissionResolves(t *testing.T
 	open := backstageComponentEvent("backstage-open", map[string]string{"owner": ""}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	retired := backstageComponentEvent("backstage-retired", map[string]string{"owner": "", "lifecycle": "deprecated"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	assertIdentityRuleRemediationTrajectory(t, newBackstageCriticalComponentMissingOwnerRule(), open, retired, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestBackstageCriticalComponentMissingOwnerNamespaceQualifiedPlaceholders(t *testing.T) {
+	cases := []struct {
+		name      string
+		owner     string
+		wantOwned bool
+	}{
+		{name: "missing owner", owner: "", wantOwned: false},
+		{name: "bare placeholder", owner: "unknown", wantOwned: false},
+		{name: "group placeholder entity ref", owner: "group:default/unknown", wantOwned: false},
+		{name: "user placeholder entity ref", owner: "user:default/unassigned", wantOwned: false},
+		{name: "qualified owning team", owner: "group:platform/payments", wantOwned: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			owned := backstageComponentHasAccountableOwner(map[string]string{"owner": tc.owner})
+			if owned != tc.wantOwned {
+				t.Fatalf("backstageComponentHasAccountableOwner(owner=%q) = %v, want %v", tc.owner, owned, tc.wantOwned)
+			}
+		})
+	}
 }
 
 func TestBackstageCriticalComponentMissingOwnerReopensOnRecurrence(t *testing.T) {

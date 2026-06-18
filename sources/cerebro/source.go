@@ -229,7 +229,19 @@ func accessAttributes(body map[string]any) map[string]string {
 			attrs[key] = value
 		}
 	}
+	if attrs["tenant_mismatch"] == "" && cerebroTenantMismatch(attrs) {
+		attrs["tenant_mismatch"] = "true"
+	}
 	return attrs
+}
+
+// cerebroTenantMismatch reports whether the access request targeted a tenant
+// other than the authenticated/effective tenant, so cross-tenant access carries
+// a reliable signal even when upstream telemetry omits the explicit flag.
+func cerebroTenantMismatch(attrs map[string]string) bool {
+	effective := firstNonEmpty(attrs["effective_tenant_id"], attrs["tenant_id"])
+	requested := firstNonEmpty(attrs["requested_tenant_id"], attrs["principal_tenant_id"])
+	return effective != "" && requested != "" && requested != effective
 }
 
 func accessEventID(body map[string]any, raw []byte) string {

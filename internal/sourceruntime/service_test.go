@@ -715,6 +715,7 @@ func TestProgressConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
 		sourceconfig.RuntimeIDKey:              "writer-inventory",
 		sourceconfig.RuntimeTenantIDKey:        "writer",
 		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		sourceconfig.GCPWIFAllowlistKey:        "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com",
 		runtimeProgressConfigHashKey:           "old-hash",
 	})
 	if base != withInternal {
@@ -727,6 +728,7 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 		"family":                               "public_endpoint",
 		runtimeProgressConfigHashKey:           "hash",
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.GCPWIFAllowlistKey:        "caller-controlled",
 		sourceconfig.RuntimeIDKey:              "writer-endpoint",
 		sourceconfig.RuntimeTenantIDKey:        "writer",
 	})
@@ -735,6 +737,9 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 	}
 	if _, ok := config[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
 		t.Fatal("userConfig preserved internal assume-role allowlist key")
+	}
+	if _, ok := config[sourceconfig.GCPWIFAllowlistKey]; ok {
+		t.Fatal("userConfig preserved internal gcp wif allowlist key")
 	}
 	if _, ok := config[runtimeProgressConfigHashKey]; ok {
 		t.Fatal("userConfig preserved progress config hash key")
@@ -752,6 +757,9 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 		if _, ok := values[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
 			t.Fatal("resolver input preserved caller-controlled allowlist")
 		}
+		if _, ok := values[sourceconfig.GCPWIFAllowlistKey]; ok {
+			t.Fatal("resolver input preserved caller-controlled gcp wif allowlist")
+		}
 		if got := values[sourceconfig.RuntimeIDKey]; got != "writer-endpoint" {
 			t.Fatalf("resolver runtime id = %q, want writer-endpoint", got)
 		}
@@ -762,17 +770,22 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 			"family":                               "public_endpoint",
 			runtimeProgressConfigHashKey:           "hash",
 			sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+			sourceconfig.GCPWIFAllowlistKey:        "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com",
 		}, nil
 	})
 
 	resolved, err := service.resolveConfig(context.Background(), "aws", "writer", "writer-endpoint", map[string]string{
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.GCPWIFAllowlistKey:        "caller-controlled",
 	})
 	if err != nil {
 		t.Fatalf("resolveConfig() error = %v", err)
 	}
 	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
 		t.Fatalf("assume-role allowlist = %q, want trusted resolver value", got)
+	}
+	if got := resolved[sourceconfig.GCPWIFAllowlistKey]; got != "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com" {
+		t.Fatalf("gcp wif allowlist = %q, want trusted resolver value", got)
 	}
 	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
 		t.Fatalf("runtime tenant = %q, want writer", got)

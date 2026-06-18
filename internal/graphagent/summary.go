@@ -3,11 +3,20 @@ package graphagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
 
+var (
+	ErrSummaryRowTooLarge     = errors.New("graph row exceeds summary byte limit")
+	ErrSummaryPayloadTooLarge = errors.New("graph rows exceed summary byte limit")
+)
+
 func (s *Service) summarizeRows(ctx context.Context, request AskRequest, model string, cypher string, rows []map[string]any, history []HistoryMessage) (string, error) {
+	if err := validateSummaryRows(rows, s.options.MapReduceByteThreshold, s.options.EnableMapReduce); err != nil {
+		return "", err
+	}
 	if !s.options.EnableMapReduce || !shouldMapReduceRows(rows, s.options.MapReduceRowThreshold, s.options.MapReduceByteThreshold) {
 		return s.llm.Summarize(ctx, SummarizeRequest{
 			TenantID: strings.TrimSpace(request.TenantID),
@@ -49,6 +58,32 @@ func (s *Service) summarizeRows(ctx context.Context, request AskRequest, model s
 		Rows:     reduceRows,
 		History:  history,
 	})
+}
+
+func validateSummaryRows(rows []map[string]any, byteThreshold int, mapReduce bool) error {
+	if byteThreshold <= 0 {
+		byteThreshold = 64 << 10
+	}
+	for i, row := range rows {
+		raw, err := json.Marshal(row)
+		if err != nil {
+			return fmt.Errorf("marshal graph row %d for summary: %w", i+1, err)
+		}
+		if len(raw) > byteThreshold {
+			return fmt.Errorf("%w: row %d exceeds limit %d", ErrSummaryRowTooLarge, i+1, byteThreshold)
+		}
+	}
+	if mapReduce {
+		return nil
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		return fmt.Errorf("marshal graph rows for summary: %w", err)
+	}
+	if len(raw) > byteThreshold {
+		return fmt.Errorf("%w: limit %d", ErrSummaryPayloadTooLarge, byteThreshold)
+	}
+	return nil
 }
 
 func shouldMapReduceRows(rows []map[string]any, rowThreshold int, byteThreshold int) bool {

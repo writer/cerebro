@@ -23,6 +23,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
@@ -111,6 +112,7 @@ type settings struct {
 	keyRing                                             string
 	artifactRepository                                  string
 	token, wifAudience, wifServiceAccount, wifAWSRegion string
+	tenantID, wifBindings                               string
 	baseURL                                             string
 	filter                                              string
 	perPage                                             int
@@ -701,6 +703,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		wifAudience:         configValue(cfg, "wif_audience"),
 		wifServiceAccount:   configValue(cfg, "wif_service_account_email"),
 		wifAWSRegion:        configValue(cfg, "wif_aws_region"),
+		tenantID:            configValue(cfg, sourceconfig.RuntimeTenantIDKey),
+		wifBindings:         configValue(cfg, sourceconfig.GCPWIFAllowlistKey),
 		baseURL:             strings.TrimRight(configValue(cfg, "base_url"), "/"),
 		filter:              configValue(cfg, "filter"),
 		perPage:             defaultPageSize,
@@ -718,16 +722,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 		settings.perPage = perPage
 	}
-	if settings.token == "" {
-		if settings.wifAudience == "" && settings.wifServiceAccount == "" {
-			return settings, fmt.Errorf("gcp token or wif_audience and wif_service_account_email are required")
-		}
-		if settings.wifAudience == "" {
-			return settings, fmt.Errorf("gcp wif_audience is required when token is not provided")
-		}
-		if settings.wifServiceAccount == "" {
-			return settings, fmt.Errorf("gcp wif_service_account_email is required when token is not provided")
-		}
+	if err := sourceconfig.ValidateGCPTokenOrWIF(settings.token, settings.wifAudience, settings.wifServiceAccount, settings.tenantID, settings.wifBindings); err != nil {
+		return settings, err
 	}
 	switch settings.family {
 	case familyAssetMetadata, familyAIDataset, familyAIEndpoint, familyArtifactRepo, familyAudit, familyBinaryAuthorizationPolicy, familyBinaryAuthorizationAttestor, familyBigQueryDataset, familyBigQueryTable, familyBigtableInstance, familyBigtableTable, familyCertificateManagerCertificate, familyCertificateManagerCertificateMap, familyCertificateManagerCertificateMapEntry, familyCertificateManagerDNSAuthorization, familyCloudFunction, familyCloudIDSEndpoint, familyCloudSchedulerJob, familyCloudRunRevision, familyCloudRunService, familyCloudSQLDatabase, familyCloudSQLInstance, familyCloudSQLUser, familyContainerRegistry, familyContainerVuln, familyComputeAddress, familyComputeBackendBucket, familyComputeBackendService, familyComputeDisk, familyComputeExternalVPNGateway, familyComputeFirewall, familyComputeForwardingRule, familyComputeHealthCheck, familyComputeInstance, familyComputeInstanceGroup, familyComputeInstanceGroupMgr, familyComputeInstanceTemplate, familyComputeInterconnect, familyComputeInterconnectAttachment, familyComputeNetworkEndpointGroup, familyComputeNetworkFirewallPolicy, familyComputeNetwork, familyComputePacketMirroring, familyComputeRoute, familyComputeRouter, familyComputeSecurityPolicy, familyComputeSSLCertificate, familyComputeSSLPolicy, familyComputeSubnetwork, familyComputeTargetGRPCProxy, familyComputeTargetHTTPProxy, familyComputeTargetHTTPSProxy, familyComputeTargetSSLProxy, familyComputeTargetTCPProxy, familyComputeTargetVPNGateway, familyComputeURLMap, familyComputeVPNGateway, familyComputeVPNTunnel, familyDNSManagedZone, familyDNSRecordSet, familyEffectivePermission, familyGCSBucket, familyGCSObject, familyGKECluster, familyGKENodePool, familyLoggingMetric, familyLoggingSink, familyMonitoringAlertPolicy, familyMonitoringNotificationChannel, familyOrgPolicy, familyPubSubSubscription, familyPubSubTopic, familyResourceExposure, familyResourceProject, familyRoleAssign, familySecret, familySecretVersion, familySecurityCenterFinding, familyServiceAcct, familyServiceUsageService, familySpannerDatabase, familySpannerInstance, familyVPCAccessConnector, familyWorkloadIdentityPool, familyWorkloadIdentityProvider:
