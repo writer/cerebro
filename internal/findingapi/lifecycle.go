@@ -164,9 +164,7 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	}
 	findingID, _ := proposal["finding_id"].(string)
 	endpoint := "/platform/graph/actions"
-	for _, key := range []string{"external_id", "external_url", "external_status", "external_status_reason", "lifecycle_owner"} {
-		proposal[key] = ""
-	}
+	clearMCPGraphActionExternalRefProposal(proposal)
 	proposal["graph_action"] = graphAction
 	proposal["target"] = target
 	proposal["endpoint"] = endpoint
@@ -179,6 +177,18 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	proposal["external_ref_kind"] = graphactions.RefKind
 	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
 	return nil
+}
+
+func clearMCPGraphActionExternalRefProposal(proposal MCPActionProposalPayload) {
+	for _, key := range []string{
+		"lifecycle_owner",
+		"external_id",
+		"external_url",
+		"external_status",
+		"external_status_reason",
+	} {
+		proposal[key] = ""
+	}
 }
 
 // MCPActionInputProperties returns the finding action proposal input schema pieces.

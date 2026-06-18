@@ -128,28 +128,32 @@ func TestServiceExecuteDerivesTargetFromOktaUserURN(t *testing.T) {
 	}
 }
 
-func TestServiceExecuteDerivesTargetFromDelimitedOktaUserURNAttribute(t *testing.T) {
-	client := &stubAccessApprovalsClient{}
-	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
-		ID:       "finding-1",
-		TenantID: "tenant-a",
-		Title:    "User needs action",
-		Attributes: map[string]string{
-			"okta_user_urn": "urn:cerebro:tenant-a:okta_user:00u123",
-		},
-	}}
-	result, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
-		FindingID: "finding-1",
-		Action:    ActionIdentityOktaSuspendUser,
-	})
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if result == nil || result.Target != "00u123" {
-		t.Fatalf("Execute() target = %#v, want Okta user id from URN attribute", result)
-	}
-	if got := client.request.EmailOrUserID; got != "00u123" {
-		t.Fatalf("access-approvals target = %q, want extracted Okta user id", got)
+func TestServiceExecuteDerivesDelimitedOktaURNWithoutForwardingRawURN(t *testing.T) {
+	for _, key := range []string{"okta_user_urn", "identity_urns"} {
+		t.Run(key, func(t *testing.T) {
+			client := &stubAccessApprovalsClient{}
+			workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+				ID:       "finding-1",
+				TenantID: "tenant-a",
+				Title:    "User needs action",
+				Attributes: map[string]string{
+					key: "urn:cerebro:tenant-a:okta_user:00u123",
+				},
+			}}
+			result, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
+				FindingID: "finding-1",
+				Action:    ActionIdentityOktaSuspendUser,
+			})
+			if err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			if result == nil || result.Target != "00u123" {
+				t.Fatalf("Execute() target = %#v, want Okta user id from delimited URN", result)
+			}
+			if got := client.request.EmailOrUserID; got != "00u123" {
+				t.Fatalf("access-approvals target = %q, want extracted Okta user id", got)
+			}
+		})
 	}
 }
 
