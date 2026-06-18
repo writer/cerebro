@@ -15,8 +15,8 @@ config:
   cerebro:publicSubnetIds:
     - subnet-0dee23b7f11d39069
     - subnet-06c3659db5372e941
-  cerebro:apiCpu: 2048
-  cerebro:apiMemory: 4096
+  cerebro:apiCpu: 4096
+  cerebro:apiMemory: 8192
   cerebro:apiMinInstances: 1
   # apiMaxInstances pinned to 1 while deviceAuthEnabled is on: the DPoP
   # replay cache is per-replica in-process (internal/deviceauth/dpop.go), so
@@ -30,7 +30,7 @@ config:
   cerebro:apiRequestCountPerTargetAlarmThreshold: 1000
   cerebro:apiLatencyP95AlarmThresholdSeconds: 3
   cerebro:dashboardLatencyP95AlarmThresholdMs: 3000
-  cerebro:postgresInstanceClass: db.t4g.small
+  cerebro:postgresInstanceClass: db.t4g.medium
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3
   cerebro:postgresMaxAllocatedStorage: 200
@@ -660,6 +660,8 @@ config:
         - unknown
         - not_configured
   cerebro:orchestratorEnabled: true
+  cerebro:orchestratorCpu: 2048
+  cerebro:orchestratorMemory: 4096
   cerebro:orchestratorScheduleExpression: "rate(30 minutes)"
   cerebro:orchestratorCommand:
     - orchestrator

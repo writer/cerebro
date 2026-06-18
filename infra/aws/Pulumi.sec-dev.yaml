@@ -22,8 +22,8 @@ config:
   cerebro:webOidcTokenEndpoint: https://writer.okta.com/oauth2/v1/token
   cerebro:webOidcUserInfoEndpoint: https://writer.okta.com/oauth2/v1/userinfo
   cerebro:webOidcClientId: 0oa234e4mu4Dnot0q1d8
-  cerebro:webCpu: 512
-  cerebro:webMemory: 1024
+  cerebro:webCpu: 1024
+  cerebro:webMemory: 2048
   cerebro:webMinInstances: 1
   cerebro:webMaxInstances: 2
   cerebro:albIdleTimeoutSeconds: 600
@@ -37,8 +37,8 @@ config:
   cerebro:publicSubnetIds:
     - subnet-075aed8f036657648
     - subnet-0f3b3171121b9da7b
-  cerebro:apiCpu: 1024
-  cerebro:apiMemory: 2048
+  cerebro:apiCpu: 2048
+  cerebro:apiMemory: 4096
   cerebro:apiMinInstances: 1
   # Pinned to 1 because cerebro:deviceAuthEnabled is true and the secheck
   # DPoP replay cache is in-process per replica. The Pulumi __main__.py
@@ -539,6 +539,8 @@ config:
         - unknown
         - not_configured
   cerebro:orchestratorEnabled: true
+  cerebro:orchestratorCpu: 2048
+  cerebro:orchestratorMemory: 4096
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:
     - orchestrator
