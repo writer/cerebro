@@ -81,7 +81,7 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 	case "stub":
 		return NewStubLLMClient(), nil
 	case "bedrock":
-		return NewBedrockLLMClient(ctx, BedrockConfig{
+		client, err := NewBedrockLLMClient(ctx, BedrockConfig{
 			DefaultModel: cfg.Model,
 			SonnetModel:  cfg.SonnetModel,
 			OpusModel:    cfg.OpusModel,
@@ -90,8 +90,12 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 			MaxTokens:    cfg.MaxTokens,
 			Temperature:  cfg.Temperature,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return instrumentLLMClient(provider, client), nil
 	case "openrouter":
-		return NewOpenRouterLLMClient(OpenRouterConfig{
+		client, err := NewOpenRouterLLMClient(OpenRouterConfig{
 			APIKey:       cfg.OpenRouterAPIKey,
 			HTTPDoer:     cfg.HTTPDoer,
 			DefaultModel: cfg.Model,
@@ -101,6 +105,10 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 			MaxTokens:    cfg.MaxTokens,
 			Temperature:  cfg.Temperature,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return instrumentLLMClient(provider, client), nil
 	default:
 		return nil, fmt.Errorf("%w: unsupported graph agent llm provider %q", ErrInvalidRequest, provider)
 	}
