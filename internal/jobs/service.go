@@ -128,7 +128,7 @@ func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:con
 			s.mu.Unlock()
 			s.wg.Done()
 		}()
-		telemetry.Event(runCtx, "platform.job.async_started", jobTelemetryAttrs(job).WithField(telemetry.Field{Key: "job.async_id", Value: int64(asyncID)}))
+		telemetry.Event(runCtx, "platform.job.async_started", jobTelemetryAttrs(job).WithField(telemetry.Field{Key: "job.async_id", Value: asyncID}))
 		_ = s.Run(runCtx, job.ID)
 	}()
 }

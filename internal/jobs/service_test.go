@@ -118,7 +118,7 @@ func TestRunEmitsPlatformJobWideEventWithoutPayloadValues(t *testing.T) {
 	service.WithRunner(KindSourceRuntimeOrchestrate, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
 		return map[string]any{
 			"events_appended": 25,
-			"secret_result":   "raw-result-secret-value",
+			"private_result":  "raw-result-private-value",
 		}, map[string]string{"graph_ingest_run_id": "graph-run-1"}, nil
 	})
 
@@ -142,7 +142,7 @@ func TestRunEmitsPlatformJobWideEventWithoutPayloadValues(t *testing.T) {
 		"job.payload.key_count": float64(2),
 		"job.payload.keys":      "api_token,runtime_id",
 		"job.result.key_count":  float64(2),
-		"job.result.keys":       "events_appended,secret_result",
+		"job.result.keys":       "events_appended,private_result",
 		"job.result_ref.keys":   "graph_ingest_run_id",
 	} {
 		if got := payload[key]; got != want {
@@ -155,7 +155,7 @@ func TestRunEmitsPlatformJobWideEventWithoutPayloadValues(t *testing.T) {
 	if got, ok := payload["job.run_duration_ms"].(float64); !ok || got <= 0 {
 		t.Fatalf("job.run_duration_ms = %#v, want positive number; payload=%#v", payload["job.run_duration_ms"], payload)
 	}
-	if strings.Contains(stderr, "raw-secret-token-value") || strings.Contains(stderr, "raw-result-secret-value") || strings.Contains(stderr, "idem-secret-value") {
+	if strings.Contains(stderr, "raw-secret-token-value") || strings.Contains(stderr, "raw-result-private-value") || strings.Contains(stderr, "idem-secret-value") {
 		t.Fatalf("platform job telemetry leaked raw payload/result/idempotency values: %s", stderr)
 	}
 	if !strings.Contains(stderr, `"name":"platform.job.started"`) || !strings.Contains(stderr, `"name":"platform.job.completed"`) {
