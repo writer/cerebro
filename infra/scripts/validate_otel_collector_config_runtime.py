@@ -16,6 +16,12 @@ from provision_otel_collector_config import bool_value, load_stack, render_colle
 
 
 READY_MARKER = "Everything is ready. Begin running and processing data."
+TRANSIENT_REGISTRY_ERRORS = (
+    "toomanyrequests",
+    "too many requests",
+    "rate exceeded",
+    "429",
+)
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -67,6 +73,11 @@ def start_collector(
     return completed.stdout.strip()
 
 
+def transient_registry_error(exc: BaseException) -> bool:
+    detail = str(exc).lower()
+    return any(marker in detail for marker in TRANSIENT_REGISTRY_ERRORS)
+
+
 def wait_for_ready(*, docker_bin: str, container_name: str, timeout_seconds: int) -> str:
     deadline = time.monotonic() + timeout_seconds
     latest_logs = ""
@@ -80,7 +91,14 @@ def wait_for_ready(*, docker_bin: str, container_name: str, timeout_seconds: int
     raise TimeoutError(f"collector did not become ready within {timeout_seconds}s:\n{latest_logs.strip()}")
 
 
-def validate_stack_file(path: Path, *, docker_bin: str, region: str, timeout_seconds: int) -> str:
+def validate_stack_file(
+    path: Path,
+    *,
+    docker_bin: str,
+    region: str,
+    timeout_seconds: int,
+    allow_registry_unavailable: bool = False,
+) -> str:
     stack = stack_name(path)
     config = load_stack(path)
     if not bool_value(config.get("otelCollectorEnabled")):
@@ -91,13 +109,18 @@ def validate_stack_file(path: Path, *, docker_bin: str, region: str, timeout_sec
     rendered = render_collector_config(service_name(config, stack))
     container_name = f"cerebro-adot-validate-{uuid4().hex[:12]}"
     try:
-        start_collector(
-            docker_bin=docker_bin,
-            image=image,
-            container_name=container_name,
-            config=rendered,
-            region=region,
-        )
+        try:
+            start_collector(
+                docker_bin=docker_bin,
+                image=image,
+                container_name=container_name,
+                config=rendered,
+                region=region,
+            )
+        except RuntimeError as exc:
+            if allow_registry_unavailable and transient_registry_error(exc):
+                return f"registry-unavailable: {path} image={image}: {exc}"
+            raise
         wait_for_ready(docker_bin=docker_bin, container_name=container_name, timeout_seconds=timeout_seconds)
     finally:
         remove_container(docker_bin, container_name)
@@ -110,6 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--timeout-seconds", type=int, default=20)
     parser.add_argument("--docker-bin", default="docker")
+    parser.add_argument(
+        "--allow-registry-unavailable",
+        action="store_true",
+        help="Treat transient registry pull rate limits as a skipped runtime check for static CI.",
+    )
     args = parser.parse_args(argv)
 
     for stack_file in args.stack_file:
@@ -119,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
                 docker_bin=args.docker_bin,
                 region=args.region,
                 timeout_seconds=args.timeout_seconds,
+                allow_registry_unavailable=args.allow_registry_unavailable,
             )
         )
     return 0
