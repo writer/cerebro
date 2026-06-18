@@ -2,6 +2,52 @@
   "version": "2026-05-21",
   "detections": [
     {
+      "id": "backstage-critical-component-missing-owner",
+      "pack_id": "backstage",
+      "pack_name": "Backstage",
+      "name": "Backstage Critical Component Missing Accountable Owner",
+      "description": "Detect business-critical Backstage components that have no accountable owner, leaving a high-importance service without a responsible team to govern its security posture, on-call response, or remediation.",
+      "source_id": "backstage",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "backstage.component"
+      ],
+      "output_kind": "finding.backstage_critical_component_missing_owner",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "accountability",
+        "backstage",
+        "crown-jewel",
+        "ownership",
+        "service-catalog"
+      ],
+      "references": [
+        "https://backstage.io/docs/features/software-catalog/system-model"
+      ],
+      "false_positives": [
+        "Critical components intentionally owned by a shared platform group that is tracked outside the Backstage ownership model."
+      ],
+      "runbook": "Identify the unowned critical Backstage component and assign an accountable owning team in the catalog, or downgrade its criticality if it is no longer business-critical.",
+      "required_attributes": [
+        "name"
+      ],
+      "fingerprint_fields": [
+        "backstage_component_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC1.4"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.2"
+        }
+      ]
+    },
+    {
       "id": "cloud-current-public-exposure-review-needed",
       "pack_id": "cloud",
       "pack_name": "Cloud",

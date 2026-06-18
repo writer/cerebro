@@ -7,7 +7,7 @@ profiles:
         selected_controls: 31
         mapped_controls: 31
         unmapped_controls: 0
-        mapped_rules: 470
+        mapped_rules: 471
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 31
@@ -124,10 +124,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 5
+          rule_count: 6
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
             - m365-terminated-users-active
@@ -468,10 +469,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
         - framework_id: cjis-security-policy
@@ -1338,10 +1340,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 5
+          rule_count: 6
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
             - m365-terminated-users-active
@@ -1909,10 +1912,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
         - framework_id: cjis-security-policy
@@ -4682,6 +4686,16 @@ profiles:
               control_id: 5.10.1.2
             - framework_name: CJIS Security Policy
               control_id: PA-8
+        - rule_id: backstage-critical-component-missing-owner
+          controls:
+            - framework_name: CJIS Security Policy
+              control_id: 5.12.1
+            - framework_name: CJIS Security Policy
+              control_id: 5.2.1
+            - framework_name: CJIS Security Policy
+              control_id: PA-12
+            - framework_name: CJIS Security Policy
+              control_id: PA-2
         - rule_id: backup-encryption
           controls:
             - framework_name: CJIS Security Policy
@@ -11926,7 +11940,7 @@ profiles:
         selected_controls: 52
         mapped_controls: 52
         unmapped_controls: 0
-        mapped_rules: 458
+        mapped_rules: 459
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 52
@@ -13364,10 +13378,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
         - framework_id: cmmc-2
@@ -19078,6 +19093,10 @@ profiles:
               control_id: MP.L2
             - framework_name: CMMC 2.0
               control_id: SC.L2
+        - rule_id: backstage-critical-component-missing-owner
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: AT.L2
         - rule_id: backup-encryption
           controls:
             - framework_name: CMMC 2.0
@@ -42603,7 +42622,7 @@ profiles:
         selected_controls: 22
         mapped_controls: 22
         unmapped_controls: 0
-        mapped_rules: 463
+        mapped_rules: 464
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 22
@@ -43071,10 +43090,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
         - framework_id: nis2
@@ -44211,10 +44231,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
       rules:
@@ -45172,6 +45193,12 @@ profiles:
           controls:
             - framework_name: NIS2
               control_id: Art.21(2)(h)
+        - rule_id: backstage-critical-component-missing-owner
+          controls:
+            - framework_name: NIS2
+              control_id: Art.21(2)(g)
+            - framework_name: NIS2
+              control_id: CIR-2024-2690-8.2
         - rule_id: backup-encryption
           controls:
             - framework_name: NIS2
@@ -47345,7 +47372,7 @@ profiles:
         selected_controls: 53
         mapped_controls: 53
         unmapped_controls: 0
-        mapped_rules: 510
+        mapped_rules: 511
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 53
@@ -48104,7 +48131,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 86
+          rule_count: 87
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -48115,6 +48142,7 @@ profiles:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
             - aws-s3-bucket-versioning-enabled
+            - backstage-critical-component-missing-owner
             - backup-encryption
             - backup-offsite
             - backup-retention
@@ -48212,7 +48240,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 86
+          rule_count: 87
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
@@ -48223,6 +48251,7 @@ profiles:
             - aws-rds-backup-enabled
             - aws-rds-deletion-protection
             - aws-s3-bucket-versioning-enabled
+            - backstage-critical-component-missing-owner
             - backup-encryption
             - backup-offsite
             - backup-retention
@@ -49575,10 +49604,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
         - framework_id: nist-csf-2.0
@@ -49601,10 +49631,11 @@ profiles:
             - framework_name: SOC 2
               control_id: CC1.4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 5
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
             - identity-account-deprovision
             - identity-offboarding-sla
         - framework_id: nist-csf-2.0
@@ -52201,6 +52232,16 @@ profiles:
               control_id: PR.DS
             - framework_name: NIST CSF 2.0
               control_id: PR.DS-01
+        - rule_id: backstage-critical-component-missing-owner
+          controls:
+            - framework_name: NIST CSF 2.0
+              control_id: GV.RR
+            - framework_name: NIST CSF 2.0
+              control_id: GV.RR-02
+            - framework_name: NIST CSF 2.0
+              control_id: PR.AT
+            - framework_name: NIST CSF 2.0
+              control_id: PR.AT-01
         - rule_id: backup-encryption
           controls:
             - framework_name: NIST CSF 2.0
@@ -61095,7 +61136,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 930
+        mapped_rules: 931
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61223,10 +61264,11 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 2
+          rule_count: 3
           mapped_rules:
             - ai-bias-testing
             - ai-explainability
+            - backstage-critical-component-missing-owner
         - framework_name: SOC 2
           family_id: CC1
           family_name: Control Environment
@@ -63132,6 +63174,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.7
+        - rule_id: backstage-critical-component-missing-owner
+          controls:
+            - framework_name: SOC 2
+              control_id: CC1.4
         - rule_id: backup-encryption
           controls:
             - framework_name: SOC 2
