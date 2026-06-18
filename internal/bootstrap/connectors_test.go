@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectorpreflight"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -1307,7 +1308,7 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	}
 	err = validateConnectorConfigFields("openai", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
 		"api_key":         "env:CEREBRO_SOURCE_OPENAI_API_KEY",
-		"credential_kind": openAICredentialKindAdminAPIKey,
+		"credential_kind": connectorpreflight.OpenAICredentialKindAdminAPIKey,
 		"family":          "audit_log",
 		"per_page":        "100",
 	}, map[string]string{
@@ -1327,7 +1328,7 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	}
 	err = validateConnectorConfigFields("anthropic", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
 		"api_key":           "env:CEREBRO_SOURCE_ANTHROPIC_API_KEY",
-		"credential_kind":   anthropicCredentialKindScopedAdminAPIKey,
+		"credential_kind":   connectorpreflight.AnthropicCredentialKindScopedAdminAPIKey,
 		"credential_scopes": "read:spend_limits",
 		"family":            "spend_limit",
 	}, map[string]string{
@@ -1372,7 +1373,7 @@ func TestOpenAIProviderPreflightChecksCredentialRequirements(t *testing.T) {
 
 func TestOpenAIProviderPreflightChecksPassWithAdminKeyHint(t *testing.T) {
 	checks := connectorProviderPreflightChecks("openai", connectorAuthMethodExternalReference, map[string]string{
-		"credential_kind": openAICredentialKindAdminAPIKey,
+		"credential_kind": connectorpreflight.OpenAICredentialKindAdminAPIKey,
 		"family":          "audit_log",
 	}, resourcescope.Policy{})
 	if len(checks) != 0 {
@@ -1395,37 +1396,37 @@ func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
 		},
 		{
 			name:       "compliance activity needs read compliance scope",
-			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "compliance_activity"},
+			config:     map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindAdminAPIKey, "family": "compliance_activity"},
 			wantCheck:  "anthropic_compliance_scope",
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
 			name:       "compliance directory needs org data scope",
-			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "compliance_group", "credential_scopes": "read:compliance_activities"},
+			config:     map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindAdminAPIKey, "family": "compliance_group", "credential_scopes": "read:compliance_activities"},
 			wantCheck:  "anthropic_compliance_org_data_scope",
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
 			name:       "compliance members need user data scope",
-			config:     map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "family": "compliance_group_member", "credential_scopes": "read:compliance_org_data"},
+			config:     map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "family": "compliance_group_member", "credential_scopes": "read:compliance_org_data"},
 			wantCheck:  "anthropic_compliance_user_data_scope",
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
 			name:       "compliance settings need settings scope",
-			config:     map[string]string{"auth_model": "bearer_token", "credential_kind": anthropicCredentialKindOrgAdminOAuth, "family": "compliance_organization_setting", "credential_scopes": "org:admin"},
+			config:     map[string]string{"auth_model": "bearer_token", "credential_kind": connectorpreflight.AnthropicCredentialKindOrgAdminOAuth, "family": "compliance_organization_setting", "credential_scopes": "org:admin"},
 			wantCheck:  "anthropic_compliance_org_settings_scope",
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
 			name:       "spend limits reject unscoped admin key even with read spend scope",
-			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:spend_limits"},
+			config:     map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:spend_limits"},
 			wantCheck:  "anthropic_spend_limit_scope",
 			wantAction: "confirm_anthropic_spend_limit_scope",
 		},
 		{
 			name:       "spend limits require read spend scope even with scoped admin key",
-			config:     map[string]string{"credential_kind": anthropicCredentialKindScopedAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:usage"},
+			config:     map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindScopedAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:usage"},
 			wantCheck:  "anthropic_spend_limit_scope",
 			wantAction: "confirm_anthropic_spend_limit_scope",
 		},
@@ -1451,27 +1452,27 @@ func TestAnthropicProviderPreflightChecksPassWithCredentialHints(t *testing.T) {
 	}{
 		{
 			name:   "service account org admin oauth",
-			config: map[string]string{"auth_model": "bearer_token", "credential_kind": anthropicCredentialKindOrgAdminOAuth, "credential_scopes": "org:admin", "family": "service_account"},
+			config: map[string]string{"auth_model": "bearer_token", "credential_kind": connectorpreflight.AnthropicCredentialKindOrgAdminOAuth, "credential_scopes": "org:admin", "family": "service_account"},
 		},
 		{
 			name:   "compliance activity scoped key",
-			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_activities", "family": "compliance_activity"},
+			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_activities", "family": "compliance_activity"},
 		},
 		{
 			name:   "compliance directory scoped key",
-			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_org_data", "family": "compliance_group"},
+			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_org_data", "family": "compliance_group"},
 		},
 		{
 			name:   "compliance user data scoped key",
-			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_user_data", "family": "compliance_organization_user"},
+			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_user_data", "family": "compliance_organization_user"},
 		},
 		{
 			name:   "compliance settings scoped key",
-			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_org_settings", "family": "compliance_organization_setting"},
+			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_org_settings", "family": "compliance_organization_setting"},
 		},
 		{
 			name:   "spend limit scoped key",
-			config: map[string]string{"credential_kind": anthropicCredentialKindScopedAdminAPIKey, "credential_scopes": "read:spend_limits", "family": "spend_limit"},
+			config: map[string]string{"credential_kind": connectorpreflight.AnthropicCredentialKindScopedAdminAPIKey, "credential_scopes": "read:spend_limits", "family": "spend_limit"},
 		},
 	}
 	for _, test := range tests {

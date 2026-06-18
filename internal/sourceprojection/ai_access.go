@@ -104,6 +104,14 @@ func openAIProjectEntitlementProjections(event *cerebrov1.EventEnvelope) ([]*por
 	return aiProjectEntitlementProjections(event, openAIAccessProfile)
 }
 
+func openAIGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiGovernanceControlProjections(event, openAIAccessProfile)
+}
+
+func anthropicGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiGovernanceControlProjections(event, anthropicAccessProfile)
+}
+
 func anthropicFederationIssuerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiFederationIssuerProjections(event, anthropicAccessProfile)
 }
@@ -436,6 +444,64 @@ func aiProjectEntitlementProjections(event *cerebrov1.EventEnvelope, profile aiA
 	return identityProjectionResult(entities, links)
 }
 
+func aiGovernanceControlProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	family := aiFamily(event, profile)
+	controlID := aiGovernanceControlID(family, attrs, event.GetId())
+	if controlID == "" {
+		return identityProjectionResult(entities, links)
+	}
+	controlURN := projectionURN(tenantID, profile.Provider+"_"+family, strings.Split(controlID, "|")...)
+	controlType := aiGovernanceControlType(family)
+	scopeKind := aiGovernanceControlScopeKind(attrs, event.GetKind(), family)
+	controlAttrs := cloneAttributes(attrs)
+	controlAttrs["event_kind"] = event.GetKind()
+	controlAttrs["source_event_id"] = event.GetId()
+	addProjectedAttribute(controlAttrs, "control_id", controlID)
+	addProjectedAttribute(controlAttrs, "control_type", controlType)
+	addProjectedAttribute(controlAttrs, "scope_kind", scopeKind)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        controlURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: profile.Provider + "." + family,
+		Label:      aiGovernanceControlLabel(family, attrs, controlID),
+		Attributes: controlAttrs,
+	})
+	scopeURN := aiEnsureScope(entities, tenantID, event.GetSourceId(), profile, scopeKind, attrs)
+	if scopeURN != "" {
+		linkAttrs := aiEventLinkAttributes(event, "governance_control_scope")
+		addProjectedAttribute(linkAttrs, "control_type", controlType)
+		addProjectedAttribute(linkAttrs, "family", family)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), controlURN, scopeURN, relationBelongsTo, linkAttrs))
+	}
+	for _, modelID := range aiGovernanceControlModels(attrs) {
+		modelURN := projectionURN(tenantID, profile.Provider+"_model", modelID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        modelURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.Provider + ".model",
+			Label:      modelID,
+			Attributes: map[string]string{"model_id": modelID},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), controlURN, modelURN, relationAssociatedWith, aiEventLinkAttributes(event, "governance_control_model")))
+	}
+	userID := firstNonEmpty(attrs["user_id"], attrs["actor_user_id"])
+	userEmail := firstNonEmpty(attrs["email"], attrs["actor_email"])
+	if userID != "" || userEmail != "" {
+		userURN := aiEnsureUser(entities, links, tenantID, event, profile, userID, userEmail, attrs["name"], "")
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), controlURN, userURN, relationAssociatedWith, aiEventLinkAttributes(event, "governance_control_principal")))
+	}
+	return identityProjectionResult(entities, links)
+}
+
 func aiFederationIssuerProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -746,6 +812,21 @@ func aiCredentialScopeKind(attrs map[string]string, kind string) string {
 	}
 }
 
+func aiGovernanceControlScopeKind(attrs map[string]string, kind string, family string) string {
+	switch {
+	case strings.TrimSpace(attrs["project_id"]) != "":
+		return "project"
+	case strings.TrimSpace(attrs["workspace_id"]) != "":
+		return "workspace"
+	case strings.Contains(kind, ".project_") || strings.HasPrefix(family, "project_"):
+		return "project"
+	case strings.Contains(kind, ".workspace_") || strings.HasPrefix(family, "workspace_"):
+		return "workspace"
+	default:
+		return "organization"
+	}
+}
+
 func aiRoleScopeKind(attrs map[string]string, kind string) string {
 	switch {
 	case strings.TrimSpace(attrs["project_id"]) != "":
@@ -809,6 +890,83 @@ func aiActorTypeIsCredential(actorType string) bool {
 	return strings.Contains(normalized, "api_key") ||
 		strings.Contains(normalized, "apikey") ||
 		strings.Contains(normalized, "credential")
+}
+
+func aiFamily(event *cerebrov1.EventEnvelope, profile aiAccessProfile) string {
+	if family := strings.TrimSpace(event.GetAttributes()["family"]); family != "" {
+		return family
+	}
+	return strings.TrimPrefix(strings.TrimSpace(event.GetKind()), profile.Provider+".")
+}
+
+func aiGovernanceControlID(family string, attrs map[string]string, fallback string) string {
+	switch family {
+	case "project_rate_limit":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "project_id", "rate_limit_id", "model", "name"), fallback)
+	case "workspace_rate_limit":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "workspace_id", "rate_limit_id", "model", "name"), fallback)
+	case "rate_limit":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "rate_limit_id", "group_type", "model", "name"), joinProjectionIdentity(attrs, "id", "group_type", "model", "name"), fallback)
+	case "project_data_retention":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "project_id", "retention_type", "object"), fallback)
+	case "data_retention":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "organization_id", "organization_uuid", "retention_type", "object"), joinProjectionIdentity(attrs, "retention_type", "object"), fallback)
+	case "project_spend_alert":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "project_id", "spend_alert_id", "name"), fallback)
+	case "spend_alert":
+		return firstNonEmpty(attrs["spend_alert_id"], attrs["id"], attrs["name"], fallback)
+	case "project_certificate":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "project_id", "certificate_id"), fallback)
+	case "certificate":
+		return firstNonEmpty(attrs["certificate_id"], attrs["id"], attrs["name"], fallback)
+	case "spend_limit":
+		return firstNonEmpty(attrs["spend_limit_id"], attrs["id"], joinProjectionIdentity(attrs, "scope_type", "user_id", "period", "amount"), fallback)
+	case "spend_limit_increase_request":
+		return firstNonEmpty(attrs["request_id"], attrs["id"], joinProjectionIdentity(attrs, "user_id", "period", "amount"), fallback)
+	case "compliance_organization_setting":
+		return firstNonEmpty(joinProjectionIdentity(attrs, "organization_uuid", "organization_id", "setting_name", "name"), fallback)
+	}
+	return firstNonEmpty(inventoryEntityID("", family, attrs), fallback)
+}
+
+func aiGovernanceControlType(family string) string {
+	controlType := strings.TrimSpace(family)
+	controlType = strings.TrimPrefix(controlType, "project_")
+	controlType = strings.TrimPrefix(controlType, "workspace_")
+	controlType = strings.TrimPrefix(controlType, "compliance_organization_")
+	if controlType == "" {
+		return "governance_control"
+	}
+	return controlType
+}
+
+func aiGovernanceControlLabel(family string, attrs map[string]string, fallback string) string {
+	return firstNonEmpty(
+		attrs["name"],
+		attrs["setting_name"],
+		attrs["model"],
+		attrs["rate_limit_id"],
+		attrs["spend_alert_id"],
+		attrs["certificate_id"],
+		attrs["retention_type"],
+		aiGovernanceControlType(family),
+		fallback,
+	)
+}
+
+func aiGovernanceControlModels(attrs map[string]string) []string {
+	seen := map[string]struct{}{}
+	models := []string{}
+	for _, value := range []string{attrs["model"], attrs["models"], attrs["model_ids"]} {
+		for _, modelID := range splitAttributeList(value) {
+			if _, ok := seen[modelID]; ok {
+				continue
+			}
+			seen[modelID] = struct{}{}
+			models = append(models, modelID)
+		}
+	}
+	return models
 }
 
 func aiEventLinkAttributes(event *cerebrov1.EventEnvelope, matchType string) map[string]string {
