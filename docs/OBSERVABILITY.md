@@ -30,6 +30,26 @@ Prefer `cerebro:otelCollectorEnabled` for production. In collector mode, the app
 
 Collector mode creates a dedicated `/ecs/<service>/otel-collector` log group, adds CloudWatch metric filters/alarms for collector errors, dropped telemetry, refused telemetry, and failed sends, and adds dashboard widgets for collector container resources, `otelcol_*` self-metrics, recent collector logs, and collector exporter errors. The ECS app container waits for the collector health check before starting.
 
+The API dashboard also includes an OTEL product metrics band sourced from
+`Cerebro/OTEL`. These are emitted by the runtime image and exported by the
+collector, separate from the older CloudWatch Logs metric filters:
+
+| Metric | Dashboard use |
+| --- | --- |
+| `cerebro.source_runtime.sync.runs` | Source sync success/failure rate by source and bounded error class |
+| `cerebro.source_runtime.sync.duration` | Source sync latency distribution |
+| `cerebro.source_runtime.records` | Pages, scanned records, accepted/rejected events, appended events, projected entities, and projected links |
+| `cerebro.source_runtime.watermark.lag` | Source freshness lag when a runtime checkpoint has a watermark |
+| `cerebro.source_projection.runs` | Projection success/failure rate by source, event kind, and status |
+| `cerebro.source_projection.duration` | Projection latency distribution |
+| `cerebro.source_projection.records` | Graph/current-state records projected or deleted |
+
+Those OTEL metrics intentionally use low-cardinality dimensions such as
+`source_id`, `status`, `error_kind`, `contract_configured`, `event_kind`, and
+`record.kind`. Do not add tenant IDs, runtime IDs, resource URNs, evidence IDs,
+request IDs, or trace IDs as metric dimensions; use wide events and traces for
+that drill-down.
+
 Every ECS API task also receives stack/runtime metadata that the app copies into
 wide-event attributes:
 
@@ -242,7 +262,7 @@ After deployment, verify:
 - `/health` returns `X-Cerebro-Trace-Id`.
 - CloudWatch API logs contain structured span/event JSON lines with the same `trace_id`.
 - The collector receives `http.server` spans plus child spans for source HTTP, graph, cache, JetStream, and dependency operations.
-- The `<service>-dashboard` CloudWatch dashboard includes `OTEL Collector Container`, `OTEL Collector Errors`, and `OTEL Collector Recent Logs` widgets.
+- The `<service>-dashboard` CloudWatch dashboard includes `OTEL Collector Container`, `OTEL Collector Errors`, `OTEL Collector Recent Logs`, and the `OTEL Product Source Runtime` / `OTEL Projection Records` widgets.
 
 Useful read-only AWS checks:
 
