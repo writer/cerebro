@@ -32,6 +32,10 @@ try:
     from source_rollouts import apply_source_runtime_rollouts
 except ModuleNotFoundError:  # pragma: no cover - used when imported as aws.__main__
     from aws.source_rollouts import apply_source_runtime_rollouts
+try:
+    from otel_collector_config import collector_config_sha256
+except ModuleNotFoundError:  # pragma: no cover - used when imported as aws.__main__
+    from aws.otel_collector_config import collector_config_sha256
 
 config = pulumi.Config()
 
@@ -789,6 +793,7 @@ if otel_collector_enabled:
         "image": otel_collector_image,
         "config_secret_name": otel_collector_config_secret_name,
         "config_secret_prefix": otel_collector_config_secret_prefix,
+        "config_fingerprint": collector_config_sha256(f"cerebro-{environment}"),
         "cpu": otel_collector_cpu,
         "memory": otel_collector_memory,
     }

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -11,6 +10,12 @@ import tempfile
 from typing import Any
 
 import yaml
+
+try:
+    from aws.otel_collector_config import collector_config_sha256, render_collector_config, service_name
+except ModuleNotFoundError:  # pragma: no cover - supports direct script execution from arbitrary cwd
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from aws.otel_collector_config import collector_config_sha256, render_collector_config, service_name
 
 
 def load_stack(path: Path) -> dict[str, Any]:
@@ -41,74 +46,6 @@ def collector_secret_id(config: dict[str, Any], stack: str) -> str:
     if not source:
         raise ValueError("otelCollectorConfigSecretName is required")
     return f"{prefix}/{source}" if prefix else source
-
-
-def service_name(config: dict[str, Any], stack: str) -> str:
-    environment = str(config.get("environment") or stack).strip()
-    return f"cerebro-{environment}"
-
-
-def render_collector_config(service: str) -> str:
-    metrics_log_group = f"/aws/otel/{service}/metrics"
-    return f"""extensions:
-  health_check:
-    endpoint: 127.0.0.1:13133
-
-receivers:
-  prometheus/internal:
-    config:
-      scrape_configs:
-        - job_name: otel-collector
-          scrape_interval: 30s
-          static_configs:
-            - targets: [127.0.0.1:8888]
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 127.0.0.1:4317
-      http:
-        endpoint: 127.0.0.1:4318
-
-processors:
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 192
-    spike_limit_mib: 64
-  resourcedetection:
-    detectors: [env, ecs]
-    timeout: 2s
-    override: false
-  batch/traces:
-    timeout: 5s
-    send_batch_size: 512
-  batch/metrics:
-    timeout: 30s
-    send_batch_size: 512
-
-exporters:
-  awsxray: {{}}
-  awsemf:
-    namespace: Cerebro/OTEL
-    log_group_name: {metrics_log_group}
-    dimension_rollup_option: NoDimensionRollup
-
-service:
-  extensions: [health_check]
-  telemetry:
-    logs:
-      level: info
-    metrics:
-      level: detailed
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch/traces]
-      exporters: [awsxray]
-    metrics:
-      receivers: [otlp, prometheus/internal]
-      processors: [memory_limiter, resourcedetection, batch/metrics]
-      exporters: [awsemf]
-"""
 
 
 def aws_json(args: list[str], profile: str | None, region: str) -> tuple[int, dict[str, Any] | None, str]:
@@ -180,12 +117,13 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("otelCollectorEnabled must be true for the selected stack")
     stack = stack_name(args.stack_file)
     secret_id = collector_secret_id(config, stack)
-    rendered = render_collector_config(service_name(config, stack))
+    service = service_name(config, stack)
+    rendered = render_collector_config(service)
     if args.print_config:
         sys.stdout.write(rendered)
         return 0
     upsert_secret(secret_id, rendered, args.profile, args.region, args.dry_run)
-    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:12]
+    digest = collector_config_sha256(service)[:12]
     mode = "dry-run" if args.dry_run else "applied"
     print(f"{mode}: collector config ready config_sha256={digest}")
     return 0

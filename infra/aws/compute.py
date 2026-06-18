@@ -1071,6 +1071,7 @@ def _create_task_definition(
     otel_collector_enabled = bool(otel_collector.get("enabled"))
     otel_collector_image = str(otel_collector.get("image") or "").strip()
     otel_collector_config_secret = _otel_collector_config_secret_key(otel_collector, external_secrets_prefix)
+    otel_collector_config_fingerprint = str(otel_collector.get("config_fingerprint") or "").strip()
     otel_collector_cpu = int(otel_collector.get("cpu") or 0)
     otel_collector_memory = int(otel_collector.get("memory") or 0)
     if otel_collector_enabled:
@@ -1108,6 +1109,11 @@ def _create_task_definition(
                 "environment": [
                     {"name": "AWS_REGION", "value": region},
                     {"name": "AWS_DEFAULT_REGION", "value": region},
+                    *(
+                        [{"name": "CEREBRO_OTEL_COLLECTOR_CONFIG_SHA256", "value": otel_collector_config_fingerprint}]
+                        if otel_collector_config_fingerprint
+                        else []
+                    ),
                 ],
                 "secrets": [
                     {

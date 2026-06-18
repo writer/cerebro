@@ -49,6 +49,13 @@ class ProvisionOtelCollectorConfigTest(unittest.TestCase):
         self.assertEqual(config["service"]["pipelines"]["metrics"]["receivers"], ["otlp", "prometheus/internal"])
         self.assertEqual(config["service"]["pipelines"]["metrics"]["exporters"], ["awsemf"])
 
+    def test_collector_config_sha_changes_with_service_name(self) -> None:
+        sec_dev = provision_otel_collector_config.collector_config_sha256("cerebro-sec-dev")
+        go_prod = provision_otel_collector_config.collector_config_sha256("cerebro-go-production")
+
+        self.assertEqual(len(sec_dev), 64)
+        self.assertNotEqual(sec_dev, go_prod)
+
     def test_dry_run_prints_config_hash_without_calling_aws(self) -> None:
         with TemporaryDirectory() as tmp:
             stack = Path(tmp) / "Pulumi.sec-dev.yaml"

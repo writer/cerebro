@@ -795,6 +795,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
                     "image": "public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0",
                     "config_secret_name": "CEREBRO_OTEL_COLLECTOR_CONFIG",
                     "config_secret_prefix": "/cerebro/sec-dev",
+                    "config_fingerprint": "abc123",
                     "cpu": 128,
                     "memory": 256,
                 },
@@ -830,6 +831,7 @@ class WorkerTaskRoleTest(unittest.TestCase):
             [
                 {"name": "AWS_REGION", "value": "us-east-1"},
                 {"name": "AWS_DEFAULT_REGION", "value": "us-east-1"},
+                {"name": "CEREBRO_OTEL_COLLECTOR_CONFIG_SHA256", "value": "abc123"},
             ],
         )
         self.assertEqual(
