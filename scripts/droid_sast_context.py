@@ -24,6 +24,9 @@ GOVULNCHECK_CMD = [
     "run",
     "golang.org/x/vuln/cmd/govulncheck@v1.1.4",
 ]
+DEFAULT_DEEPSEC_WORKSPACE = ".deepsec"
+DEFAULT_DEEPSEC_PROJECT_ID = "cerebro"
+DEFAULT_DEEPSEC_CONTEXT_LIMIT = 30
 
 
 @dataclass
@@ -272,6 +275,198 @@ def run_semgrep(lines_by_file: dict[str, set[int]]) -> ToolResult:
     return ToolResult("semgrep", str(config), "completed", findings, notes)
 
 
+def run_deepsec_scan(files: list[str], lines_by_file: dict[str, set[int]]) -> ToolResult:
+    workspace = Path(os.environ.get("DROID_DEEPSEC_WORKSPACE", DEFAULT_DEEPSEC_WORKSPACE))
+    project_id = os.environ.get("DROID_DEEPSEC_PROJECT_ID", DEFAULT_DEEPSEC_PROJECT_ID)
+    context_limit = max(0, env_int("DROID_DEEPSEC_CONTEXT_LIMIT", DEFAULT_DEEPSEC_CONTEXT_LIMIT))
+    scope = f"project `{project_id}` candidate scan"
+    if not (workspace / "package.json").exists():
+        return ToolResult("deepsec", scope, "skipped", [], [f"No DeepSec workspace found at {workspace}."])
+    if not (workspace / "node_modules" / ".bin" / "deepsec").exists():
+        return ToolResult(
+            "deepsec",
+            scope,
+            "skipped",
+            [],
+            [f"DeepSec is not installed; run `pnpm -C {workspace} install --frozen-lockfile`."],
+        )
+    completed = run_command(
+        [
+            "pnpm",
+            "-C",
+            str(workspace),
+            "exec",
+            "deepsec",
+            "scan",
+            "--project-id",
+            project_id,
+        ],
+        timeout=360,
+    )
+    if completed.returncode != 0:
+        notes = trim_lines("\n".join(part for part in [completed.stderr, completed.stdout] if part), 12)
+        notes.insert(0, f"deepsec scan exited {completed.returncode}; treating as tool error, not a confirmed vulnerability.")
+        return ToolResult("deepsec", scope, "error", [], notes)
+    run_id = parse_deepsec_run_id(completed.stdout) or parse_deepsec_run_id(completed.stderr)
+    run = latest_deepsec_scan_run(workspace, project_id, run_id)
+    if not run:
+        return ToolResult("deepsec", scope, "error", [], ["DeepSec scan completed but no scan run record was found."])
+    findings, notes = collect_deepsec_scan_context(
+        workspace,
+        project_id,
+        str(run.get("runId") or run_id or ""),
+        files,
+        lines_by_file,
+        context_limit,
+    )
+    return ToolResult("deepsec", scope, "completed", findings, notes)
+
+
+def env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+
+def parse_deepsec_run_id(value: str) -> str:
+    match = re.search(r"Run ID:\s*([A-Za-z0-9_-]+)", value)
+    return match.group(1) if match else ""
+
+
+def latest_deepsec_scan_run(workspace: Path, project_id: str, preferred_run_id: str = "") -> dict[str, object] | None:
+    runs_dir = workspace / "data" / project_id / "runs"
+    runs: list[dict[str, object]] = []
+    for path in sorted(runs_dir.glob("*.json")):
+        data = read_json_object(path)
+        if not data or data.get("type") != "scan":
+            continue
+        if preferred_run_id and data.get("runId") == preferred_run_id:
+            return data
+        runs.append(data)
+    if not runs:
+        return None
+    return max(runs, key=lambda item: str(item.get("completedAt") or item.get("createdAt") or item.get("runId") or ""))
+
+
+def collect_deepsec_scan_context(
+    workspace: Path,
+    project_id: str,
+    run_id: str,
+    files: list[str],
+    lines_by_file: dict[str, set[int]],
+    limit: int = DEFAULT_DEEPSEC_CONTEXT_LIMIT,
+) -> tuple[list[dict[str, object]], list[str]]:
+    files_dir = workspace / "data" / project_id / "files"
+    changed_files = {normalize_repo_path(path) for path in files}
+    total_candidates = 0
+    files_with_candidates = 0
+    changed_file_candidates = 0
+    review_findings_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
+    for path in sorted(files_dir.rglob("*.json")):
+        record = read_json_object(path)
+        if not record:
+            continue
+        if run_id and record.get("lastScannedRunId") != run_id:
+            continue
+        file_path = normalize_repo_path(str(record.get("filePath") or ""))
+        candidates = record.get("candidates") if isinstance(record.get("candidates"), list) else []
+        if candidates:
+            files_with_candidates += 1
+        total_candidates += len(candidates)
+        file_changed = file_path in changed_files
+        if file_changed:
+            changed_file_candidates += len(candidates)
+        for candidate in candidates:
+            if not isinstance(candidate, dict) or not file_changed:
+                continue
+            candidate_lines = deepsec_candidate_lines(candidate)
+            changed_candidate_lines = sorted(set(candidate_lines).intersection(lines_by_file.get(file_path, set())))
+            line = min(candidate_lines) if candidate_lines else None
+            changed_line = bool(changed_candidate_lines)
+            rule = str(candidate.get("vulnSlug") or "candidate")
+            base_message = deepsec_candidate_message(candidate)
+            message = base_message
+            if changed_candidate_lines and line not in changed_candidate_lines:
+                changed_refs = ", ".join(str(item) for item in changed_candidate_lines[:3])
+                if len(changed_candidate_lines) > 3:
+                    changed_refs = f"{changed_refs}, ..."
+                message = f"{message} (spans changed line(s): {changed_refs})"[:240]
+            finding = {
+                "tool": "deepsec",
+                "rule": rule,
+                "file": file_path,
+                "line": line,
+                "severity": "INFO",
+                "confidence": "SIGNAL",
+                "message": message,
+                "changed_line": changed_line,
+            }
+            key = (file_path, rule, base_message)
+            existing = review_findings_by_key.get(key)
+            if existing:
+                if changed_line and not existing.get("changed_line"):
+                    existing["changed_line"] = True
+                    existing["line"] = line
+                continue
+            review_findings_by_key[key] = finding
+    review_findings = list(review_findings_by_key.values())
+    review_findings.sort(
+        key=lambda finding: (
+            not bool(finding.get("changed_line")),
+            str(finding.get("file") or ""),
+            int(finding.get("line") or 0),
+            str(finding.get("rule") or ""),
+        )
+    )
+    notes = [
+        f"Run {run_id}: {total_candidates} candidate(s) across {files_with_candidates} file(s); "
+        f"{changed_file_candidates} candidate(s) on changed files."
+    ]
+    if len(review_findings) > limit:
+        notes.append(f"DeepSec changed-file candidates truncated to {limit} of {len(review_findings)}.")
+    return review_findings[:limit], notes
+
+
+def read_json_object(path: Path) -> dict[str, object] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def normalize_repo_path(path: str) -> str:
+    return Path(path).as_posix().removeprefix("./")
+
+
+def deepsec_candidate_lines(candidate: dict[str, object]) -> list[int]:
+    raw_lines = candidate.get("lineNumbers")
+    if not isinstance(raw_lines, list):
+        return []
+    lines: list[int] = []
+    for raw_line in raw_lines:
+        try:
+            line = int(raw_line)
+        except (TypeError, ValueError):
+            continue
+        if line > 0:
+            lines.append(line)
+    return lines
+
+
+def deepsec_candidate_message(candidate: dict[str, object]) -> str:
+    matched = compact_text(str(candidate.get("matchedPattern") or ""))
+    if matched:
+        return matched[:240]
+    snippet = compact_text(str(candidate.get("snippet") or ""))
+    return snippet[:240] if snippet else "DeepSec candidate signal"
+
+
+def compact_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def first_nonempty_line(value: str) -> str:
     for line in value.splitlines():
         line = line.strip()
@@ -454,6 +649,7 @@ def main() -> int:
         run_gosec(packages, lines_by_file),
         run_govulncheck(packages),
         run_semgrep(lines_by_file),
+        run_deepsec_scan(files, lines_by_file),
     ]
     markdown = render_markdown(args.base, args.head, files, packages, results)
     out_path = Path(args.markdown_out)

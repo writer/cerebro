@@ -104,6 +104,20 @@ def active_feedback(feedback: object) -> list[dict[str, object]]:
     return []
 
 
+def scanner_tools(sast: object) -> list[dict[str, object]]:
+    if not isinstance(sast, dict) or not isinstance(sast.get("tools"), list):
+        return []
+    return [item for item in sast["tools"] if isinstance(item, dict)]
+
+
+def scanner_findings(sast: object) -> list[dict[str, object]]:
+    findings: list[dict[str, object]] = []
+    for tool in scanner_tools(sast):
+        tool_findings = tool.get("findings") if isinstance(tool.get("findings"), list) else []
+        findings.extend(item for item in tool_findings if isinstance(item, dict))
+    return findings
+
+
 def assemble(args: argparse.Namespace) -> dict[str, object]:
     preflight = read_json(args.preflight_json)
     sast = read_json(args.sast_json)
@@ -160,6 +174,26 @@ def render_markdown(context: dict[str, object]) -> str:
         lines.append(f"- `{item.get('name', '')}` ({item.get('source', '')}): {item.get('why', '')}")
         if commands:
             lines.append(f"  Commands: {commands}")
+    tools = scanner_tools(sast)
+    findings = scanner_findings(sast)
+    if tools:
+        lines.extend(["", "### Scanner Context", ""])
+        for tool in tools:
+            tool_findings = tool.get("findings") if isinstance(tool.get("findings"), list) else []
+            notes = tool.get("notes") if isinstance(tool.get("notes"), list) else []
+            note = compact_text("; ".join(str(item) for item in notes[:1]))
+            suffix = f" - {note[:180]}" if note else ""
+            lines.append(
+                f"- `{tool.get('name', '')}` {tool.get('status', '')}: "
+                f"{len(tool_findings)} finding(s) in {tool.get('scope', '')}{suffix}"
+            )
+        if findings:
+            lines.append("")
+            lines.append("Review these scanner candidates against the changed code:")
+            for finding in findings[:10]:
+                lines.append(format_sast_finding(finding))
+            if len(findings) > 10:
+                lines.append(f"- ... truncated {len(findings) - 10} scanner finding(s)")
     if memories:
         lines.extend(["", "### Relevant Review Memory", ""])
         for item in memories[:8]:
@@ -180,6 +214,21 @@ def render_markdown(context: dict[str, object]) -> str:
             if isinstance(item, dict):
                 lines.append(f"- `{item.get('name', '')}`: {item.get('details_url', '')}")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def format_sast_finding(finding: dict[str, object]) -> str:
+    file_path = str(finding.get("file") or "")
+    line = finding.get("line")
+    location = f"{file_path}:{line}" if file_path and line else file_path or "(repo)"
+    return (
+        f"- `{finding.get('tool', '')}` `{finding.get('rule', '')}` at `{location}` "
+        f"({finding.get('severity', '')}/{finding.get('confidence', '')}): "
+        f"{compact_text(str(finding.get('message') or ''))[:180]}"
+    )
+
+
+def compact_text(value: str) -> str:
+    return " ".join(value.split())
 
 
 def main() -> int:
