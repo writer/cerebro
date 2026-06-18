@@ -37,11 +37,12 @@ class NatsContainerDefinitionTest(unittest.TestCase):
 
         self.assertEqual(by_name["nats"]["user"], "10001")
         self.assertIs(by_name["nats"]["readonlyRootFilesystem"], True)
-        self.assertEqual(by_name["nats"]["healthCheck"]["interval"], 30)
+        self.assertEqual(by_name["nats"]["healthCheck"]["interval"], 60)
         self.assertEqual(by_name["nats"]["healthCheck"]["retries"], 10)
         self.assertEqual(by_name["nats"]["healthCheck"]["startPeriod"], 300)
         self.assertEqual(by_name["jetstream-bootstrap"]["user"], "10001")
         bootstrap_env = {item["name"]: item["value"] for item in by_name["jetstream-bootstrap"]["environment"]}
+        self.assertEqual(bootstrap_env["NATS_TIMEOUT"], "60s")
         self.assertEqual(bootstrap_env["STREAM_MAX_BYTES"], "128849018880")
         self.assertEqual(bootstrap_env["STREAM_MAX_AGE"], "168h")
         bootstrap_command = " ".join(by_name["jetstream-bootstrap"]["command"])
@@ -49,6 +50,7 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         self.assertIn("stream add", bootstrap_command)
         self.assertIn("stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits", bootstrap_command)
         self.assertIn("stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits --defaults", bootstrap_command)
+        self.assertIn("stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits --defaults || nats", bootstrap_command)
         self.assertNotIn("stream edit \"$STREAM_NAME\" \"$@\" --defaults", bootstrap_command)
         self.assertNotIn("stream edit \"$STREAM_NAME\" \"$@\" --storage", bootstrap_command)
         self.assertEqual(by_name["jetstream-lag-probe"]["user"], "10001")

@@ -215,7 +215,7 @@ def _build_container_definitions(
             "mountPoints": [{"sourceVolume": "nats-data", "containerPath": "/data", "readOnly": False}],
             "healthCheck": {
                 "command": ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null || exit 1"],
-                "interval": 30,
+                "interval": 60,
                 "timeout": 5,
                 "retries": 10,
                 "startPeriod": 300,
@@ -233,6 +233,7 @@ def _build_container_definitions(
             "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
             "environment": [
                 {"name": "NATS_URL", "value": "nats://127.0.0.1:4222"},
+                {"name": "NATS_TIMEOUT", "value": "60s"},
                 {"name": "STREAM_NAME", "value": stream_name},
                 {"name": "SUBJECT_PREFIX", "value": subject_prefix},
                 {"name": "STREAM_MAX_BYTES", "value": str(stream_max_bytes or "")},
@@ -248,7 +249,8 @@ def _build_container_definitions(
                     'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
                     'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --force; '
                     'else nats --server "$NATS_URL" stream add "$STREAM_NAME" "$@" '
-                    '--storage file --retention limits --defaults; fi'
+                    '--storage file --retention limits --defaults || '
+                    'nats --server "$NATS_URL" stream edit "$STREAM_NAME" "$@" --force; fi'
                 ),
             ],
             "logConfiguration": {
