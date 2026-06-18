@@ -102,6 +102,15 @@ coverage, preview, and export endpoints; reusable control archetypes,
 validation, YAML generation, and rule coverage mapping stay behind the
 compliance package boundary.
 
+Inventory accountability and source-connector setup remain bootstrap-boundary
+work for now. The budget includes GRC inventory request/response mapping and
+tenant authorization that compose existing inventory data for review workflows;
+durable inventory semantics stay behind the inventory and compliance packages.
+The budget also includes connector setup metadata for source runtime config
+validation, including richer OpenAI and Anthropic family/filter keys. That
+metadata belongs at the connector API boundary until connector setup schemas are
+extracted behind a dedicated catalog/service package.
+
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
 only public Agent Card serving and authenticated request/response mapping for
