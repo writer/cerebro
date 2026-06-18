@@ -95,6 +95,14 @@ func TestProjectSDKIntegrationPostureRejectsReservedTokenDelimiter(t *testing.T)
 	}
 }
 
+func TestSDKPostureResourceKeyKeepsUnscopedResourceDistinct(t *testing.T) {
+	scoped := sdkPostureResourceKey("writer", "urn:cerebro:writer:foo:bar")
+	unscoped := sdkPostureResourceKey("writer", "urn:cerebro:foo:bar")
+	if scoped == unscoped {
+		t.Fatalf("tenant-scoped and unscoped resource keys collided at %q", scoped)
+	}
+}
+
 func TestProjectSDKIntegrationPostureIsIdempotent(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

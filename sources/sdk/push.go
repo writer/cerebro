@@ -47,6 +47,9 @@ func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: sdk telemetry tenant id is required", sourcecdk.ErrInvalidConfig)
 	}
+	if hasUnsafeCharacters(tenantID) {
+		return nil, fmt.Errorf("%w: sdk telemetry tenant id contains unsafe characters", sourcecdk.ErrInvalidConfig)
+	}
 	integration, err := safeRequiredToken("integration", payload.Integration)
 	if err != nil {
 		return nil, err

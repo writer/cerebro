@@ -149,6 +149,7 @@ func TestNormalizePushedTelemetryRejectsCrossTenantResourceURN(t *testing.T) {
 
 func TestNormalizePushedTelemetryRejectsUnsafeControlCharacters(t *testing.T) {
 	cases := map[string]func(p *PushedTelemetry){
+		"tenant":          func(p *PushedTelemetry) { p.TenantID = "writer\njira" },
 		"integration":     func(p *PushedTelemetry) { p.Integration = "jira\nrm -rf" },
 		"control":         func(p *PushedTelemetry) { p.Control = "sso\tenforced" },
 		"runtime_id":      func(p *PushedTelemetry) { p.RuntimeID = "writer-sdk\njira" },

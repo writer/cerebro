@@ -80,6 +80,5 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 
 func sdkPostureResourceKey(tenantID string, resourceURN string) string {
 	trimmed := strings.TrimPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
-	trimmed = strings.TrimPrefix(trimmed, "urn:cerebro:")
 	return strings.ReplaceAll(trimmed, ":", "/")
 }

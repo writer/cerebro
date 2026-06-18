@@ -113,3 +113,14 @@ func TestSDKIntegrationActiveRiskRejectsReservedTokenDelimiter(t *testing.T) {
 		t.Fatalf("Evaluate() emitted %d findings, want 0", len(records))
 	}
 }
+
+func TestSDKIntegrationActiveRiskURNKeepsUnscopedResourceDistinct(t *testing.T) {
+	scoped := sdkIntegrationPostureFindingURN("writer", "jira", "sso_enforced", "urn:cerebro:writer:foo:bar")
+	unscoped := sdkIntegrationPostureFindingURN("writer", "jira", "sso_enforced", "urn:cerebro:foo:bar")
+	if scoped == "" || unscoped == "" {
+		t.Fatalf("posture URNs = %q/%q, want non-empty values", scoped, unscoped)
+	}
+	if scoped == unscoped {
+		t.Fatalf("tenant-scoped and unscoped resource URNs collided at %q", scoped)
+	}
+}

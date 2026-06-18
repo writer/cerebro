@@ -172,7 +172,6 @@ func sdkIntegrationPostureFindingURN(tenantID string, integration string, contro
 		return ""
 	}
 	key := strings.TrimPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
-	key = strings.TrimPrefix(key, "urn:cerebro:")
 	key = strings.ReplaceAll(key, ":", "/")
 	return fmt.Sprintf("urn:cerebro:%s:sdk_integration_posture:%s:%s:%s", tenantID, integration, control, key)
 }
