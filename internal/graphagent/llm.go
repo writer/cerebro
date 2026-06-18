@@ -6,7 +6,11 @@ import (
 	"strings"
 )
 
-const DefaultModel = "claude-sonnet-4-6"
+const (
+	DefaultModel = "claude-sonnet-4-6"
+	OpusModel    = "claude-opus-4-7"
+	HaikuModel   = "claude-haiku-4-5-20251001"
+)
 
 type HistoryMessage struct {
 	Role    string `json:"role"`
@@ -130,4 +134,37 @@ func normalizeModel(model string) string {
 		return DefaultModel
 	}
 	return strings.TrimSpace(model)
+}
+
+func validateModel(model string) error {
+	if graphAgentModelAllowed(model) {
+		return nil
+	}
+	return unsupportedGraphAgentModelError()
+}
+
+func graphAgentModelAllowed(model string) bool {
+	switch normalizeModel(model) {
+	case DefaultModel, OpusModel, HaikuModel:
+		return true
+	default:
+		return false
+	}
+}
+
+func configuredModelID(requested string, defaultModel string, sonnetModel string, opusModel string, haikuModel string) (string, error) {
+	switch normalizeModel(requested) {
+	case DefaultModel:
+		return firstNonEmpty(sonnetModel, defaultModel), nil
+	case OpusModel:
+		return firstNonEmpty(opusModel, defaultModel), nil
+	case HaikuModel:
+		return firstNonEmpty(haikuModel, defaultModel), nil
+	default:
+		return "", unsupportedGraphAgentModelError()
+	}
+}
+
+func unsupportedGraphAgentModelError() error {
+	return fmt.Errorf("%w: unsupported graph agent model; supported models are %s, %s, %s", ErrInvalidRequest, DefaultModel, OpusModel, HaikuModel)
 }

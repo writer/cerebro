@@ -317,6 +317,9 @@ func ValidateRequest(request AskRequest) error {
 	if len(question) > 4096 {
 		return fmt.Errorf("%w: question exceeds 4096 characters", ErrInvalidRequest)
 	}
+	if err := validateModel(request.Model); err != nil {
+		return err
+	}
 	return nil
 }
 
