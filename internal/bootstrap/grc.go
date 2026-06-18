@@ -14,7 +14,9 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -149,6 +151,7 @@ type grcAuditPacketResponse struct {
 	Graph             *ports.EntityNeighborhood `json:"graph,omitempty"`
 	Controls          []grcControlRef           `json:"controls,omitempty"`
 	RecommendedAction string                    `json:"recommended_action"`
+	Metadata          grccontrol.ReportMetadata `json:"metadata"`
 	GeneratedAt       time.Time                 `json:"generated_at"`
 }
 
@@ -466,39 +469,56 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
+	packet, err := a.buildGRCAuditPacket(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, packet)
+}
+
+func (a *App) handleGRCAuditPacketExport(w http.ResponseWriter, r *http.Request) {
+	packet, err := a.buildGRCAuditPacket(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
+		writeJSON(w, http.StatusOK, packet)
+		return
+	}
+	writeGRCMarkdownExport(w, "finding-audit-packet.md", renderGRCAuditPacketMarkdown(packet))
+}
+
+func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, error) {
 	findingID := strings.TrimSpace(r.PathValue("packetID"))
 	if findingID == "" {
-		writeGRCError(w, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest))
-		return
+		return grcAuditPacketResponse{}, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest)
 	}
 	limit, err := grcLimitFromRequest(r)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
 	store := findingStore(a.deps.StateStore)
 	if store == nil {
-		writeGRCError(w, findings.ErrRuntimeUnavailable)
-		return
+		return grcAuditPacketResponse{}, findings.ErrRuntimeUnavailable
 	}
 	if err := authorizeFindingIDTenant(r.Context(), store, findingID); err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
 	finding, err := a.findingService().GetFinding(r.Context(), findingID)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
-	runtimes, err := a.grcListRuntimes(r, grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: limit})
+	scope := grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: limit}
+	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
+	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
 	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingID: finding.ID, Limit: limit})
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return grcAuditPacketResponse{}, err
 	}
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
@@ -508,18 +528,157 @@ func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
 	}
 	items := grcFindingItems([]*ports.FindingRecord{finding}, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence))
 	if len(items) == 0 {
-		writeGRCError(w, ports.ErrFindingNotFound)
-		return
+		return grcAuditPacketResponse{}, ports.ErrFindingNotFound
 	}
-	writeJSON(w, http.StatusOK, grcAuditPacketResponse{
+	generatedAt := time.Now().UTC()
+	controls := grcControlRefs(finding.ControlRefs)
+	packet := grcAuditPacketResponse{
 		ID:                finding.ID,
 		Finding:           items[0],
 		Evidence:          grcEvidenceItems(evidence, map[string]string{finding.ID: finding.Title}),
 		Graph:             graph,
-		Controls:          grcControlRefs(finding.ControlRefs),
+		Controls:          controls,
 		RecommendedAction: grcRecommendedAction(items[0]),
-		GeneratedAt:       time.Now().UTC(),
+		GeneratedAt:       generatedAt,
+	}
+	packet.Metadata = grccontrol.BuildReportMetadata(grccontrol.ReportMetadataInput{
+		ReportType:    "finding",
+		GeneratedAt:   generatedAt,
+		ControlCount:  len(controls),
+		FindingCount:  1,
+		EvidenceCount: len(evidence),
+		Readiness:     grcAuditPacketReadiness(packet),
+		Runtimes:      reportScopeRuntimes,
 	})
+	return packet, nil
+}
+
+func grcAuditPacketReadiness(packet grcAuditPacketResponse) grccontrol.ReportReadiness {
+	readiness := grccontrol.ReportReadiness{
+		Status:  "ready",
+		Score:   100,
+		Summary: "Finding packet has owner, controls, evidence, and impact proof.",
+	}
+	addBlocker := func(code string, label string, count int, penalty int) {
+		if count <= 0 {
+			return
+		}
+		readiness.Blockers = append(readiness.Blockers, grccontrol.ReportReadinessBlocker{Code: code, Label: label, Count: count})
+		readiness.Score -= penalty
+	}
+	if strings.TrimSpace(packet.Finding.Owner) == "" || strings.EqualFold(packet.Finding.Owner, "Unassigned") {
+		addBlocker("missing_owner", "No accountable owner", 1, 20)
+	}
+	if len(packet.Controls) == 0 {
+		addBlocker("missing_controls", "No mapped controls", 1, 25)
+	}
+	if len(packet.Evidence) == 0 {
+		addBlocker("missing_evidence", "No evidence attached", 1, 30)
+	}
+	if packet.Graph == nil || packet.Graph.Root == nil {
+		addBlocker("missing_impact_proof", "No impact graph proof", 1, 20)
+	}
+	if readiness.Score < 0 {
+		readiness.Score = 0
+	}
+	if len(readiness.Blockers) != 0 {
+		readiness.Status = "needs_attention"
+		readiness.Summary = "Packet can be reviewed, but the listed gaps should be resolved or accepted before auditor reliance."
+	}
+	if len(packet.Evidence) == 0 || len(packet.Controls) == 0 {
+		readiness.Status = "blocked"
+		readiness.Summary = "Packet is not audit-ready until evidence and control mappings are present."
+	}
+	return readiness
+}
+
+func renderGRCAuditPacketMarkdown(packet grcAuditPacketResponse) string {
+	var builder strings.Builder
+	writeMarkdownLine(&builder, "# Finding Audit Packet")
+	writeMarkdownLine(&builder, "")
+	writeMarkdownLine(&builder, "- Finding: "+grcMarkdownValue(packet.Finding.Title))
+	writeMarkdownLine(&builder, "- Finding ID: "+grcMarkdownValue(packet.Finding.ID))
+	writeMarkdownLine(&builder, "- Severity: "+grcMarkdownValue(packet.Finding.Severity))
+	writeMarkdownLine(&builder, "- Status: "+grcMarkdownValue(packet.Finding.Status))
+	writeMarkdownLine(&builder, "- Risk score: "+fmt.Sprintf("%d", packet.Finding.RiskScore))
+	writeMarkdownLine(&builder, "- Owner: "+grcMarkdownValue(packet.Finding.Owner))
+	writeMarkdownLine(&builder, "- SLA: "+grcMarkdownValue(packet.Finding.SLAStatus))
+	writeMarkdownLine(&builder, "- Generated: "+packet.GeneratedAt.UTC().Format(time.RFC3339))
+	writeMarkdownLine(&builder, "- Readiness: "+grcMarkdownValue(packet.Metadata.Readiness.Status)+" ("+fmt.Sprintf("%d", packet.Metadata.Readiness.Score)+"/100)")
+	writeMarkdownLine(&builder, "- Collection exclusions: "+fmt.Sprintf("%d", packet.Metadata.Scope.Exclusions.Total))
+	if packet.RecommendedAction != "" {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "## Recommended Action")
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, grcMarkdownValue(packet.RecommendedAction))
+	}
+	if packet.Finding.Summary != "" {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "## Summary")
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, grcMarkdownValue(packet.Finding.Summary))
+	}
+	if len(packet.Controls) != 0 {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "## Controls")
+		writeMarkdownLine(&builder, "")
+		for _, control := range packet.Controls {
+			writeMarkdownLine(&builder, "- "+grcMarkdownValue(control.FrameworkName+" "+control.ControlID))
+		}
+	}
+	if len(packet.Evidence) != 0 {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "## Evidence")
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "| ID | Rule | Created |")
+		writeMarkdownLine(&builder, "| --- | --- | --- |")
+		for _, evidence := range packet.Evidence {
+			writeMarkdownLine(&builder, "| "+grcMarkdownCell(evidence.ID)+" | "+grcMarkdownCell(evidence.RuleID)+" | "+grcMarkdownCell(evidence.CreatedAt.UTC().Format(time.RFC3339))+" |")
+		}
+	}
+	if len(packet.Metadata.Readiness.Blockers) != 0 {
+		writeMarkdownLine(&builder, "")
+		writeMarkdownLine(&builder, "## Readiness Blockers")
+		writeMarkdownLine(&builder, "")
+		for _, blocker := range packet.Metadata.Readiness.Blockers {
+			writeMarkdownLine(&builder, "- "+grcMarkdownValue(blocker.Label)+" ("+fmt.Sprintf("%d", blocker.Count)+")")
+		}
+	}
+	return strings.TrimRight(builder.String(), "\n") + "\n"
+}
+
+func grcMarkdownValue(value string) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if value == "" {
+		return "Not specified"
+	}
+	return grcEscapeMarkdownText(value)
+}
+
+func grcMarkdownCell(value string) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if value == "" {
+		return "-"
+	}
+	return grcEscapeMarkdownText(value)
+}
+
+func grcEscapeMarkdownText(value string) string {
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for _, char := range value {
+		switch char {
+		case '\\', '`', '*', '_', '~', '[', ']', '(', ')', '#', '!', '<', '>', '|':
+			builder.WriteByte('\\')
+		}
+		builder.WriteRune(char)
+	}
+	return builder.String()
+}
+
+func writeMarkdownLine(builder *strings.Builder, line string) {
+	builder.WriteString(line)
+	builder.WriteByte('\n')
 }
 
 type grcFindingFilter struct {
@@ -693,6 +852,43 @@ func (a *App) grcListRuntimes(r *http.Request, scope grcScope) ([]*cerebrov1.Sou
 		return nil, err
 	}
 	return runtimes, nil
+}
+
+func (a *App) grcReportScopeRuntimes(r *http.Request, scope grcScope, fallback []*cerebrov1.SourceRuntime) []*cerebrov1.SourceRuntime {
+	store, ok := a.deps.StateStore.(ports.SourceRuntimeListStore)
+	if !ok {
+		return grcScopeRuntimeSnapshots(fallback)
+	}
+	runtimes, err := store.ListSourceRuntimes(r.Context(), ports.SourceRuntimeFilter{
+		RuntimeID:  scope.RuntimeID,
+		RuntimeIDs: scope.RuntimeIDs,
+		TenantID:   scope.TenantID,
+		SourceID:   scope.SourceID,
+		Limit:      scope.Limit,
+	})
+	if err != nil {
+		return grcScopeRuntimeSnapshots(fallback)
+	}
+	return grcScopeRuntimeSnapshots(runtimes)
+}
+
+func grcScopeRuntimeSnapshots(runtimes []*cerebrov1.SourceRuntime) []*cerebrov1.SourceRuntime {
+	snapshots := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		snapshot := &cerebrov1.SourceRuntime{
+			Id:       runtime.GetId(),
+			SourceId: runtime.GetSourceId(),
+			TenantId: runtime.GetTenantId(),
+		}
+		if value := strings.TrimSpace(runtime.GetConfig()[resourcescope.ConfigKey]); value != "" {
+			snapshot.Config = map[string]string{resourcescope.ConfigKey: value}
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots
 }
 
 func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.SourceRuntime, filter grcFindingFilter) ([]*ports.FindingRecord, error) {

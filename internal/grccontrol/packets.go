@@ -10,6 +10,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 )
 
 const DefaultEvidenceProfileID = "soc2-security-core"
@@ -23,6 +24,7 @@ type BuildInput struct {
 	Findings  []*ports.FindingRecord
 	Evidence  []*cerebrov1.FindingEvidence
 	SourceIDs map[string]string
+	Runtimes  []*cerebrov1.SourceRuntime
 	Now       time.Time
 }
 
@@ -33,6 +35,7 @@ type CustomBuildInput struct {
 	Findings  []*ports.FindingRecord
 	Evidence  []*cerebrov1.FindingEvidence
 	SourceIDs map[string]string
+	Runtimes  []*cerebrov1.SourceRuntime
 	Now       time.Time
 }
 
@@ -40,6 +43,7 @@ type PacketResult struct {
 	Profile  Profile
 	Packet   compliance.ControlEvidencePacket
 	Controls []ControlItem
+	Metadata ReportMetadata
 }
 
 type CustomPacketResult struct {
@@ -47,6 +51,7 @@ type CustomPacketResult struct {
 	Packet   compliance.ControlEvidencePacket `json:"packet"`
 	Controls []ControlItem                    `json:"controls"`
 	Preview  compliance.ControlPackPreview    `json:"preview"`
+	Metadata ReportMetadata                   `json:"metadata,omitempty"`
 }
 
 type Profile struct {
@@ -102,6 +107,84 @@ type ControlItem struct {
 	Findings         []FindingItem `json:"findings,omitempty"`
 }
 
+type ReportMetadata struct {
+	Readiness  ReportReadiness  `json:"readiness"`
+	Provenance ReportProvenance `json:"provenance"`
+	Scope      ReportScope      `json:"scope"`
+	Redaction  ReportRedaction  `json:"redaction"`
+}
+
+type ReportReadiness struct {
+	Status   string                   `json:"status"`
+	Score    int                      `json:"score"`
+	Summary  string                   `json:"summary,omitempty"`
+	Blockers []ReportReadinessBlocker `json:"blockers,omitempty"`
+}
+
+type ReportReadinessBlocker struct {
+	Code  string `json:"code"`
+	Label string `json:"label"`
+	Count int    `json:"count,omitempty"`
+}
+
+type ReportProvenance struct {
+	ReportType    string    `json:"report_type"`
+	ProfileID     string    `json:"profile_id,omitempty"`
+	ProfileName   string    `json:"profile_name,omitempty"`
+	PacketVersion string    `json:"packet_version,omitempty"`
+	GeneratedAt   time.Time `json:"generated_at"`
+	ControlCount  int       `json:"control_count,omitempty"`
+	FindingCount  int       `json:"finding_count,omitempty"`
+	EvidenceCount int       `json:"evidence_count,omitempty"`
+	RuntimeCount  int       `json:"runtime_count,omitempty"`
+	SourceIDs     []string  `json:"source_ids,omitempty"`
+}
+
+type ReportScope struct {
+	SourceIDs        []string               `json:"source_ids,omitempty"`
+	RuntimeIDs       []string               `json:"runtime_ids,omitempty"`
+	Exclusions       ReportScopeExclusions  `json:"exclusions"`
+	IncrementalFetch ReportIncrementalFetch `json:"incremental_fetch"`
+}
+
+type ReportScopeExclusions struct {
+	Total                         int                              `json:"total"`
+	RuntimeIDs                    []string                         `json:"runtime_ids,omitempty"`
+	ExcludedFamilies              []string                         `json:"excluded_families,omitempty"`
+	ExcludedAssetClasses          []string                         `json:"excluded_asset_classes,omitempty"`
+	ExcludedKinds                 []string                         `json:"excluded_kinds,omitempty"`
+	ExcludedResourceURNs          []string                         `json:"excluded_resource_urns,omitempty"`
+	ExcludedResources             []resourcescope.ResourceSelector `json:"excluded_resources,omitempty"`
+	AppliedToIncrementalFetch     bool                             `json:"applied_to_incremental_fetch"`
+	FilteredBeforeGraphProjection bool                             `json:"filtered_before_graph_projection"`
+}
+
+type ReportIncrementalFetch struct {
+	Status                         string `json:"status"`
+	PolicyAppliedBeforeRead        bool   `json:"policy_applied_before_read"`
+	EventFilteringBeforeProjection bool   `json:"event_filtering_before_projection"`
+	Summary                        string `json:"summary,omitempty"`
+}
+
+type ReportRedaction struct {
+	DefaultMode     string   `json:"default_mode"`
+	AvailableModes  []string `json:"available_modes,omitempty"`
+	SensitiveFields []string `json:"sensitive_fields,omitempty"`
+	Summary         string   `json:"summary,omitempty"`
+}
+
+type ReportMetadataInput struct {
+	ReportType    string
+	Profile       Profile
+	PacketVersion string
+	GeneratedAt   time.Time
+	ControlCount  int
+	FindingCount  int
+	EvidenceCount int
+	Readiness     ReportReadiness
+	Runtimes      []*cerebrov1.SourceRuntime
+}
+
 func BuildBuiltinEvidencePacket(input BuildInput) (PacketResult, error) {
 	now := input.Now
 	if now.IsZero() {
@@ -125,10 +208,22 @@ func BuildBuiltinEvidencePacket(input BuildInput) (PacketResult, error) {
 	packet := compliance.BuildControlEvidencePacket(postureInput)
 	packet.Controls = FilterPacketControls(packet.Controls, input.Framework, input.ControlID)
 	packet.Summary = SummarizePacket(packet.SelectionID, packet.Controls)
+	controls := ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs)
 	return PacketResult{
 		Profile:  profile,
 		Packet:   packet,
-		Controls: ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs),
+		Controls: controls,
+		Metadata: BuildReportMetadata(ReportMetadataInput{
+			ReportType:    "control",
+			Profile:       profile,
+			PacketVersion: packet.Version,
+			GeneratedAt:   packet.GeneratedAt,
+			ControlCount:  packet.Summary.Total,
+			FindingCount:  len(input.Findings),
+			EvidenceCount: len(input.Evidence),
+			Readiness:     PacketReadiness(packet.Controls),
+			Runtimes:      input.Runtimes,
+		}),
 	}, nil
 }
 
@@ -177,6 +272,7 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 		packet := compliance.BuildControlEvidencePacket(postureInput)
 		packet.Controls = FilterPacketControls(packet.Controls, input.Framework, input.ControlID)
 		packet.Summary = SummarizePacket(packet.SelectionID, packet.Controls)
+		controls := ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs)
 		return CustomPacketResult{
 			Profile: Profile{
 				ID:          item.Profile.ID,
@@ -184,8 +280,19 @@ func BuildCustomEvidencePacket(input CustomBuildInput) (CustomPacketResult, []co
 				Description: item.Profile.Description,
 			},
 			Packet:   packet,
-			Controls: ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs),
+			Controls: controls,
 			Preview:  preview,
+			Metadata: BuildReportMetadata(ReportMetadataInput{
+				ReportType:    "control",
+				Profile:       Profile{ID: item.Profile.ID, Name: item.Profile.Name, Description: item.Profile.Description},
+				PacketVersion: packet.Version,
+				GeneratedAt:   packet.GeneratedAt,
+				ControlCount:  packet.Summary.Total,
+				FindingCount:  len(input.Findings),
+				EvidenceCount: len(input.Evidence),
+				Readiness:     PacketReadiness(packet.Controls),
+				Runtimes:      input.Runtimes,
+			}),
 		}, nil, nil
 	}
 	return CustomPacketResult{}, []compliance.ValidationIssue{{Path: "profile_id", Message: fmt.Sprintf("generated profile %q was not resolved", profileID)}}, nil
@@ -311,6 +418,158 @@ func ControlItemsFromPacket(packetControls []compliance.ControlEvidencePacketCon
 	return controls
 }
 
+func PacketReadiness(controls []compliance.ControlEvidencePacketControl) ReportReadiness {
+	if len(controls) == 0 {
+		return ReportReadiness{
+			Status:  "blocked",
+			Score:   0,
+			Summary: "No controls matched the selected packet filters.",
+			Blockers: []ReportReadinessBlocker{{
+				Code:  "no_controls",
+				Label: "No controls matched",
+				Count: 1,
+			}},
+		}
+	}
+	readiness := ReportReadiness{
+		Status:  "ready",
+		Score:   100,
+		Summary: "Packet is ready for auditor review.",
+	}
+	scoreTotal := 0
+	counts := map[string]int{}
+	for _, control := range controls {
+		scoreTotal += control.Readiness.Score
+		switch control.Status {
+		case compliance.ControlPostureFailing:
+			counts["open_findings"] += maxInt(1, len(control.Findings))
+		case compliance.ControlPostureMissingEvidence:
+			counts["missing_evidence"] += maxInt(1, control.Readiness.MissingEvidence)
+		case compliance.ControlPostureStaleEvidence:
+			counts["stale_evidence"] += maxInt(1, control.Readiness.StaleEvidence)
+		case compliance.ControlPostureManualReview:
+			counts["manual_review"] += 1
+		case compliance.ControlPostureException:
+			counts["exceptions"] += 1
+		}
+	}
+	readiness.Score = scoreTotal / len(controls)
+	addBlocker := func(code string, label string) {
+		if count := counts[code]; count > 0 {
+			readiness.Blockers = append(readiness.Blockers, ReportReadinessBlocker{Code: code, Label: label, Count: count})
+		}
+	}
+	addBlocker("open_findings", "Open findings remain mapped")
+	addBlocker("missing_evidence", "Required evidence is missing")
+	addBlocker("stale_evidence", "Evidence is stale")
+	addBlocker("manual_review", "Manual evidence needs review")
+	addBlocker("exceptions", "Exceptions limit reliance")
+	if len(readiness.Blockers) != 0 {
+		readiness.Status = "needs_attention"
+		readiness.Summary = "Packet is useful, but blockers must be resolved or accepted before auditor reliance."
+	}
+	if counts["open_findings"] > 0 || counts["missing_evidence"] > 0 {
+		readiness.Status = "blocked"
+		readiness.Summary = "Packet is not audit-ready until open findings or missing evidence are addressed."
+	}
+	return readiness
+}
+
+func BuildReportMetadata(input ReportMetadataInput) ReportMetadata {
+	generatedAt := input.GeneratedAt
+	if generatedAt.IsZero() {
+		generatedAt = time.Now().UTC()
+	}
+	scope := ReportScopeFromRuntimes(input.Runtimes)
+	sourceIDs := scope.SourceIDs
+	if len(sourceIDs) == 0 {
+		sourceIDs = uniqueSortedRuntimeSourceIDs(input.Runtimes)
+	}
+	return ReportMetadata{
+		Readiness: input.Readiness,
+		Provenance: ReportProvenance{
+			ReportType:    fallbackString(input.ReportType, "packet"),
+			ProfileID:     input.Profile.ID,
+			ProfileName:   input.Profile.Name,
+			PacketVersion: input.PacketVersion,
+			GeneratedAt:   generatedAt,
+			ControlCount:  input.ControlCount,
+			FindingCount:  input.FindingCount,
+			EvidenceCount: input.EvidenceCount,
+			RuntimeCount:  len(input.Runtimes),
+			SourceIDs:     sourceIDs,
+		},
+		Scope: scope,
+		Redaction: ReportRedaction{
+			DefaultMode:    "share_safe",
+			AvailableModes: []string{"share_safe", "internal"},
+			SensitiveFields: []string{
+				"finding IDs",
+				"resource URNs",
+				"runtime IDs",
+				"source-specific identifiers",
+				"identity labels",
+			},
+			Summary: "Use share-safe mode before sending packets outside the operating team.",
+		},
+	}
+}
+
+func ReportScopeFromRuntimes(runtimes []*cerebrov1.SourceRuntime) ReportScope {
+	scope := ReportScope{
+		SourceIDs:  uniqueSortedRuntimeSourceIDs(runtimes),
+		RuntimeIDs: uniqueSortedRuntimeIDs(runtimes),
+		IncrementalFetch: ReportIncrementalFetch{
+			Status:                         "all_collected",
+			PolicyAppliedBeforeRead:        true,
+			EventFilteringBeforeProjection: true,
+			Summary:                        "No collection exclusions are configured for the selected source runtimes.",
+		},
+	}
+	excludedRuntimeIDs := []string{}
+	families := []string{}
+	assetClasses := []string{}
+	kinds := []string{}
+	resourceURNs := []string{}
+	resources := []resourcescope.ResourceSelector{}
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		policy, err := resourcescope.FromConfig(runtime.GetConfig())
+		if err != nil || policy.Empty() {
+			continue
+		}
+		excludedRuntimeIDs = append(excludedRuntimeIDs, runtime.GetId())
+		families = append(families, policy.ExcludedFamilies...)
+		assetClasses = append(assetClasses, policy.ExcludedAssetClasses...)
+		kinds = append(kinds, policy.ExcludedKinds...)
+		resourceURNs = append(resourceURNs, policy.ExcludedResourceURNs...)
+		resources = append(resources, policy.ExcludedResources...)
+	}
+	scope.Exclusions = ReportScopeExclusions{
+		RuntimeIDs:           uniqueSortedStrings(excludedRuntimeIDs),
+		ExcludedFamilies:     uniqueSortedStrings(families),
+		ExcludedAssetClasses: uniqueSortedStrings(assetClasses),
+		ExcludedKinds:        uniqueSortedStrings(kinds),
+		ExcludedResourceURNs: uniqueSortedStrings(resourceURNs),
+		ExcludedResources:    uniqueSortedResources(resources),
+	}
+	scope.Exclusions.Total =
+		len(scope.Exclusions.ExcludedFamilies) +
+			len(scope.Exclusions.ExcludedAssetClasses) +
+			len(scope.Exclusions.ExcludedKinds) +
+			len(scope.Exclusions.ExcludedResourceURNs) +
+			len(scope.Exclusions.ExcludedResources)
+	if scope.Exclusions.Total > 0 {
+		scope.Exclusions.AppliedToIncrementalFetch = true
+		scope.Exclusions.FilteredBeforeGraphProjection = true
+		scope.IncrementalFetch.Status = "exclusions_applied"
+		scope.IncrementalFetch.Summary = "Configured exclusions are evaluated before source reads where possible and again before graph projection."
+	}
+	return scope
+}
+
 func RenderMarkdown(result PacketResult) string {
 	var builder strings.Builder
 	writeMarkdownLine(&builder, "# Control Evidence Packet")
@@ -322,6 +581,8 @@ func RenderMarkdown(result PacketResult) string {
 	writeMarkdownLine(&builder, "- Failing controls: "+fmt.Sprintf("%d", result.Packet.Summary.ByStatus[compliance.ControlPostureFailing]))
 	writeMarkdownLine(&builder, "- Missing-evidence controls: "+fmt.Sprintf("%d", result.Packet.Summary.ByStatus[compliance.ControlPostureMissingEvidence]))
 	writeMarkdownLine(&builder, "- Stale-evidence controls: "+fmt.Sprintf("%d", result.Packet.Summary.ByStatus[compliance.ControlPostureStaleEvidence]))
+	writeMarkdownLine(&builder, "- Readiness: "+markdownValue(result.Metadata.Readiness.Status)+" ("+fmt.Sprintf("%d", result.Metadata.Readiness.Score)+"/100)")
+	writeMarkdownLine(&builder, "- Collection exclusions: "+fmt.Sprintf("%d", result.Metadata.Scope.Exclusions.Total))
 	for _, control := range result.Packet.Controls {
 		writeMarkdownLine(&builder, "")
 		writeMarkdownLine(&builder, "## "+markdownHeading(control.Control.FrameworkName+" "+control.Control.ControlID))
@@ -649,6 +910,74 @@ func fallbackString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func uniqueSortedRuntimeSourceIDs(runtimes []*cerebrov1.SourceRuntime) []string {
+	values := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime != nil {
+			values = append(values, runtime.GetSourceId())
+		}
+	}
+	return uniqueSortedStrings(values)
+}
+
+func uniqueSortedRuntimeIDs(runtimes []*cerebrov1.SourceRuntime) []string {
+	values := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime != nil {
+			values = append(values, runtime.GetId())
+		}
+	}
+	return uniqueSortedStrings(values)
+}
+
+func uniqueSortedStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func uniqueSortedResources(values []resourcescope.ResourceSelector) []resourcescope.ResourceSelector {
+	out := make([]resourcescope.ResourceSelector, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		key := strings.TrimSpace(value.URN) + "\x00" + strings.ToLower(strings.TrimSpace(value.Type)) + "\x00" + strings.TrimSpace(value.ID)
+		if key == "\x00\x00" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		left := out[i].URN + out[i].Type + out[i].ID
+		right := out[j].URN + out[j].Type + out[j].ID
+		return left < right
+	})
+	return out
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func timePtr(value time.Time) *time.Time {
