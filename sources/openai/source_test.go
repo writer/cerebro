@@ -33,7 +33,7 @@ func TestReadEmitsRequiredInventoryKindIdentifiers(t *testing.T) {
 		{family: "project", record: map[string]any{"id": "proj_1", "name": "Production", "status": "active"}, wantKind: "openai.project", wantAttr: "project_id", wantAttrVal: "proj_1"},
 		{family: "service_account", record: map[string]any{"id": "sa_1", "name": "ci-bot", "role": "member"}, wantKind: "openai.service_account", wantAttr: "service_account_id", wantAttrVal: "sa_1"},
 		{family: "api_key", record: map[string]any{"id": "key_1", "name": "prod-key", "owner": map[string]any{"type": "user", "user": map[string]any{"id": "user_1"}}}, wantKind: "openai.api_key", wantAttr: "api_key_id", wantAttrVal: "key_1"},
-		{family: "admin_api_key", record: map[string]any{"id": "admin_1", "name": "admin-key", "owner": map[string]any{"type": "service_account", "service_account": map[string]any{"id": "sa_9"}}}, wantKind: "openai.admin_api_key", wantAttr: "api_key_id", wantAttrVal: "admin_1"},
+		{family: "admin_api_key", record: map[string]any{"id": "admin_1", "name": "admin-key", "owner": map[string]any{"type": "service_account", "id": "sa_9"}}, wantKind: "openai.admin_api_key", wantAttr: "api_key_id", wantAttrVal: "admin_1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.family, func(t *testing.T) {
@@ -83,8 +83,11 @@ func TestReadAdminAPIKeyEmitsOwnerTypeAndPrivilegeMarker(t *testing.T) {
 				"id":   "admin_1",
 				"name": "admin-key",
 				"owner": map[string]any{
-					"type": "user",
-					"user": map[string]any{"id": "user_1"},
+					"type":   "user",
+					"object": "organization.user",
+					"id":     "user_1",
+					"name":   "Ada Lovelace",
+					"role":   "owner",
 				},
 				"created_at": 1711471533,
 			}},
@@ -117,8 +120,17 @@ func TestReadAdminAPIKeyEmitsOwnerTypeAndPrivilegeMarker(t *testing.T) {
 	if got := event.Attributes["owner_type"]; got != "user" {
 		t.Fatalf("owner_type = %q, want user", got)
 	}
-	if got := event.Attributes["owner_user_id"]; got != "user_1" {
-		t.Fatalf("owner_user_id = %q, want user_1", got)
+	if got := event.Attributes["owner_id"]; got != "user_1" {
+		t.Fatalf("owner_id = %q, want user_1", got)
+	}
+	if got := event.Attributes["owner_name"]; got != "Ada Lovelace" {
+		t.Fatalf("owner_name = %q, want Ada Lovelace", got)
+	}
+	if got := event.Attributes["owner_object"]; got != "organization.user" {
+		t.Fatalf("owner_object = %q, want organization.user", got)
+	}
+	if got := event.Attributes["owner_role"]; got != "owner" {
+		t.Fatalf("owner_role = %q, want owner", got)
 	}
 	if got := event.Attributes["key_class"]; got != "admin" {
 		t.Fatalf("key_class = %q, want admin", got)
