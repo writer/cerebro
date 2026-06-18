@@ -7,6 +7,7 @@ Use it with:
 - [`docs/HOSTING.md`](./HOSTING.md) for the hosting baseline.
 - [`docs/DEPLOYMENT_EXAMPLES.md`](./DEPLOYMENT_EXAMPLES.md) for portable deployment patterns.
 - [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) for symptom-driven debugging.
+- [`docs/HEADROOM.md`](./HEADROOM.md) for capacity SLOs, saturation alerts, autoscaling signals, load-smoke gates, and capacity incident playbooks.
 - [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for current environment variables.
 - [`api/openapi.yaml`](../api/openapi.yaml) for the HTTP route contract.
 
@@ -245,6 +246,16 @@ Use this sequence for most incidents:
 
 Escalate only after you can say which layer is failing.
 
+For saturation or headroom incidents, immediately add:
+
+1. Compare current replica count with configured max capacity.
+2. Check CPU, memory, restart count, readiness failures, and request concurrency.
+3. Check route-level 5xx, average latency from `/metrics`, and p95/p99 latency from OTEL if available.
+4. Slice wide events with `main=true` by `http.route`, `service.version`, `tenant_id`, `source_id`, `runtime_id`, and bounded `error_kind`.
+5. Check whether Postgres pool wait, JetStream lag, Neo4j/Aura latency, Redis/Valkey errors, source provider throttling, or LLM latency is the first saturated dependency.
+6. If dependencies have room, scale Cerebro out or up. If a dependency is saturated, reduce app/background concurrency or pause the specific runtime/ingest/rebuild path before adding replicas.
+7. After mitigation, run `make load-smoke` against the recovered origin and save `tmp/load-smoke.json` with the incident notes.
+
 ## Alert suggestions
 
 Useful alerts for any shared deployment:
@@ -252,6 +263,8 @@ Useful alerts for any shared deployment:
 - process not serving `/livez`
 - `/health` degraded for longer than a short rollout window
 - sustained HTTP `5xx`
+- sustained HTTP p95/p99 latency above the route budget
+- API replicas at max capacity while CPU, memory, concurrency, or queue pressure remains high
 - unusual HTTP `401` or `403` increase
 - Postgres connection saturation
 - Postgres query failures
@@ -261,5 +274,6 @@ Useful alerts for any shared deployment:
 - source runtime sync failures
 - repeated process restarts
 - missing metrics scrape
+- scheduled live load-smoke failure
 
-Keep exact thresholds environment-specific.
+Keep exact thresholds environment-specific. Use [`docs/HEADROOM.md`](./HEADROOM.md) and [`docs/observability/headroom-alerts.promql`](./observability/headroom-alerts.promql) as the portable baseline.

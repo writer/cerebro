@@ -27,6 +27,8 @@ jobs:
             command: make sdk-test
           - name: sdk-dependency-audit
             command: make sdk-dependency-audit
+          - name: script-test
+            command: make script-test
           - name: mcp
             command: make mcp-contract-check mcp-sdk-compat
           - name: lint

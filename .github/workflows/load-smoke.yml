@@ -1,0 +1,90 @@
+name: Cerebro Load Smoke
+
+on:
+  schedule:
+    # Run daily after the compose smoke. The job skips cleanly unless a live target secret is configured.
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Cerebro origin to exercise; falls back to CEREBRO_LOAD_SMOKE_BASE_URL secret when empty'
+        required: false
+        type: string
+      duration_seconds:
+        description: 'Smoke duration in seconds'
+        required: false
+        default: '60'
+        type: string
+      rps:
+        description: 'Target requests per second'
+        required: false
+        default: '3'
+        type: string
+      concurrency:
+        description: 'Maximum in-flight requests'
+        required: false
+        default: '6'
+        type: string
+      max_p95_ms:
+        description: 'Fail when p95 latency is above this threshold'
+        required: false
+        default: '750'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  load-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      INPUT_BASE_URL: ${{ github.event.inputs.base_url }}
+      INPUT_DURATION_SECONDS: ${{ github.event.inputs.duration_seconds }}
+      INPUT_RPS: ${{ github.event.inputs.rps }}
+      INPUT_CONCURRENCY: ${{ github.event.inputs.concurrency }}
+      INPUT_MAX_P95_MS: ${{ github.event.inputs.max_p95_ms }}
+      SECRET_BASE_URL: ${{ secrets.CEREBRO_LOAD_SMOKE_BASE_URL }}
+      CEREBRO_LOAD_SMOKE_BEARER_TOKEN: ${{ secrets.CEREBRO_LOAD_SMOKE_BEARER_TOKEN }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Resolve target
+        id: target
+        shell: bash
+        run: |
+          target_url="${INPUT_BASE_URL:-$SECRET_BASE_URL}"
+          if [ -z "$target_url" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No load-smoke target configured; set the CEREBRO_LOAD_SMOKE_BASE_URL secret or pass base_url manually."
+            exit 0
+          fi
+          echo "::add-mask::$target_url"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "CEREBRO_BASE_URL=$target_url"
+            echo "LOAD_SMOKE_DURATION=${INPUT_DURATION_SECONDS:-60}"
+            echo "LOAD_SMOKE_RPS=${INPUT_RPS:-3}"
+            echo "LOAD_SMOKE_CONCURRENCY=${INPUT_CONCURRENCY:-6}"
+            echo "LOAD_SMOKE_MAX_P95_MS=${INPUT_MAX_P95_MS:-750}"
+            echo "LOAD_SMOKE_JSON_OUT=tmp/load-smoke.json"
+            echo "LOAD_SMOKE_MARKDOWN_OUT=tmp/load-smoke.md"
+          } >> "$GITHUB_ENV"
+
+      - name: Run load smoke
+        if: steps.target.outputs.skip != 'true'
+        run: make load-smoke
+
+      - name: Upload load-smoke artifacts
+        if: steps.target.outputs.skip != 'true' && always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cerebro-load-smoke
+          path: |
+            tmp/load-smoke.json
+            tmp/load-smoke.md
+          if-no-files-found: warn
