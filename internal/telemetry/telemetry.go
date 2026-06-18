@@ -63,13 +63,19 @@ type RuntimeMetadata struct {
 	ContainerID             string
 	ECSContainerMetadataURI string
 	AWSExecutionEnvironment string
+	ECSCluster              string
+	ECSServiceName          string
+	ECSTaskFamily           string
+	ECSTaskRevision         string
 }
 
 const maxAttributeStringLength = 1024
+const wideEventSchemaVersion = "2026-06-18"
 
 var (
 	runtimeMetadataMu sync.RWMutex
 	runtimeMetadata   RuntimeMetadata
+	processStartedAt  = time.Now().UTC()
 )
 
 func Attrs(fields ...Field) Attributes {
@@ -122,6 +128,8 @@ func RuntimeAttributes() Attributes {
 
 func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 	hostname, _ := os.Hostname()
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
 	resourceAttributes := parseResourceAttributes(metadata.ResourceAttributes)
 	serviceName := firstNonEmpty(
 		metadata.ServiceName,
@@ -162,13 +170,27 @@ func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 		Field{Key: "os.type", Value: runtime.GOOS},
 		Field{Key: "os.arch", Value: runtime.GOARCH},
 		Field{Key: "process.pid", Value: os.Getpid()},
+		Field{Key: "process.uptime_ms", Value: time.Since(processStartedAt).Milliseconds()},
 		Field{Key: "process.runtime.name", Value: "go"},
 		Field{Key: "process.runtime.version", Value: runtime.Version()},
 		Field{Key: "process.cpu.count", Value: runtime.NumCPU()},
+		Field{Key: "process.gomaxprocs", Value: runtime.GOMAXPROCS(0)},
 		Field{Key: "go.goroutine.count", Value: runtime.NumGoroutine()},
+		Field{Key: "go.gc.count", Value: memory.NumGC},
+		Field{Key: "go.memory.heap_alloc_bytes", Value: memory.HeapAlloc},
+		Field{Key: "go.memory.heap_sys_bytes", Value: memory.HeapSys},
+		Field{Key: "go.memory.heap_idle_bytes", Value: memory.HeapIdle},
+		Field{Key: "go.memory.heap_inuse_bytes", Value: memory.HeapInuse},
+		Field{Key: "go.memory.stack_inuse_bytes", Value: memory.StackInuse},
+		Field{Key: "go.memory.next_gc_bytes", Value: memory.NextGC},
 		Field{Key: "cloud.provider", Value: cloudProvider},
 		Field{Key: "cloud.region", Value: cloudRegion},
+		Field{Key: "cloud.platform", Value: cloudPlatform(metadata, cloudProvider)},
 		Field{Key: "container.id", Value: containerID},
+		Field{Key: "aws.ecs.cluster.name", Value: strings.TrimSpace(metadata.ECSCluster)},
+		Field{Key: "aws.ecs.service.name", Value: strings.TrimSpace(metadata.ECSServiceName)},
+		Field{Key: "aws.ecs.task.family", Value: strings.TrimSpace(metadata.ECSTaskFamily)},
+		Field{Key: "aws.ecs.task.revision", Value: strings.TrimSpace(metadata.ECSTaskRevision)},
 	))
 }
 
@@ -269,12 +291,25 @@ func inferredCloudProvider(metadata RuntimeMetadata) string {
 	return ""
 }
 
+func cloudPlatform(metadata RuntimeMetadata, provider string) string {
+	if strings.TrimSpace(metadata.ECSContainerMetadataURI) != "" ||
+		strings.TrimSpace(metadata.ECSCluster) != "" ||
+		strings.TrimSpace(metadata.ECSServiceName) != "" ||
+		strings.Contains(strings.ToLower(strings.TrimSpace(metadata.AWSExecutionEnvironment)), "ecs") {
+		return "aws_ecs"
+	}
+	if strings.TrimSpace(provider) == "aws" {
+		return "aws"
+	}
+	return ""
+}
+
 func Start(ctx context.Context, name string, attributes Attributes) (context.Context, *Span) {
 	return StartWithOptions(ctx, name, attributes)
 }
 
 func StartMain(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
-	attributes = RuntimeAttributes().With(attributes).
+	attributes = RuntimeAttributes().With(wideEventBaseAttributes(name)).With(attributes).
 		WithField(Field{Key: "main", Value: true}).
 		WithField(Field{Key: "wide_event", Value: true})
 	ctx, span := StartWithOptions(ctx, name, attributes, options...)
@@ -285,6 +320,7 @@ func StartMain(ctx context.Context, name string, attributes Attributes, options 
 }
 
 func StartWithOptions(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
+	attributes = spanBaseAttributes(name).With(attributes)
 	parent, _ := ctx.Value(spanContextKey{}).(spanContext)
 	traceID := parent.TraceID
 	if traceID == "" {
@@ -366,6 +402,7 @@ func ParseTraceParent(header string) (string, string, bool) {
 }
 
 func Event(ctx context.Context, name string, attributes Attributes) {
+	attributes = eventBaseAttributes(name).With(attributes)
 	current, _ := ctx.Value(spanContextKey{}).(spanContext)
 	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		span.AddEvent(name, oteltrace.WithAttributes(attributes.OTELAttributes()...))
@@ -388,6 +425,57 @@ func IncrementMain(ctx context.Context, key string, delta int64) {
 		return
 	}
 	span.increment(key, delta)
+}
+
+func AnnotateMainDependency(ctx context.Context, system string, component string, operation string, status string, attributes Attributes) {
+	system = boundedKeyPart(system)
+	if system == "" {
+		system = "unknown"
+	}
+	component = strings.TrimSpace(component)
+	operation = strings.TrimSpace(operation)
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "unknown"
+	}
+	IncrementMain(ctx, "dependency.operation.count", 1)
+	IncrementMain(ctx, "dependency."+system+".operation.count", 1)
+	if telemetryStatus(status) == codes.Error {
+		IncrementMain(ctx, "dependency.error.count", 1)
+		IncrementMain(ctx, "dependency."+system+".error.count", 1)
+	}
+	attrs := attributes.With(Attrs(
+		Field{Key: "dependency.last_system", Value: system},
+		Field{Key: "dependency.last_component", Value: component},
+		Field{Key: "dependency.last_operation", Value: operation},
+		Field{Key: "dependency.last_status", Value: status},
+		Field{Key: "dependency." + system + ".last_component", Value: component},
+		Field{Key: "dependency." + system + ".last_operation", Value: operation},
+		Field{Key: "dependency." + system + ".last_status", Value: status},
+	))
+	AnnotateMain(ctx, attrs)
+}
+
+func AnnotateMainPhase(ctx context.Context, phase string, status string, attributes Attributes) {
+	phaseKey := boundedKeyPart(phase)
+	if phaseKey == "" {
+		phaseKey = "unknown"
+	}
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "unknown"
+	}
+	IncrementMain(ctx, "phase.count", 1)
+	IncrementMain(ctx, "phase."+phaseKey+".count", 1)
+	if telemetryStatus(status) == codes.Error {
+		IncrementMain(ctx, "phase.error.count", 1)
+		IncrementMain(ctx, "phase."+phaseKey+".error.count", 1)
+	}
+	AnnotateMain(ctx, attributes.With(Attrs(
+		Field{Key: "phase.last_name", Value: strings.TrimSpace(phase)},
+		Field{Key: "phase.last_status", Value: status},
+		Field{Key: "phase." + phaseKey + ".status", Value: status},
+	)))
 }
 
 // CaptureError records a Sentry-style handled error event without serializing
@@ -466,7 +554,14 @@ func End(span *Span, status string, attributes Attributes) {
 	if status != "" {
 		attributes = attributes.with("status", status)
 	}
-	attributes = attributes.with("duration_ms", time.Since(span.started).Milliseconds())
+	duration := time.Since(span.started)
+	attributes = attributes.
+		with("operation.name", span.name).
+		with("operation.status", strings.TrimSpace(status)).
+		with("event.type", "end").
+		with("event.outcome", eventOutcomeForStatus(status)).
+		with("duration_ms", duration.Milliseconds()).
+		with("duration.bucket", durationBucket(duration))
 	if span.otelSpan != nil && span.otelSpan.SpanContext().IsValid() {
 		span.otelSpan.SetAttributes(attributes.OTELAttributes()...)
 		switch telemetryStatus(strings.TrimSpace(status)) {
@@ -557,6 +652,108 @@ func telemetryStatus(status string) codes.Code {
 	default:
 		return codes.Ok
 	}
+}
+
+func spanBaseAttributes(name string) Attributes {
+	return Attrs(
+		Field{Key: "telemetry.schema.version", Value: wideEventSchemaVersion},
+		Field{Key: "event.dataset", Value: "cerebro.telemetry"},
+		Field{Key: "telemetry.signal.kind", Value: "span"},
+		Field{Key: "event.category", Value: "operation"},
+		Field{Key: "event.type", Value: "start"},
+		Field{Key: "operation.name", Value: strings.TrimSpace(name)},
+	)
+}
+
+func wideEventBaseAttributes(name string) Attributes {
+	return spanBaseAttributes(name).With(Attrs(
+		Field{Key: "event.dataset", Value: "cerebro.wide_events"},
+		Field{Key: "wide_event.schema.version", Value: wideEventSchemaVersion},
+		Field{Key: "wide_event.contract", Value: "main-span"},
+	))
+}
+
+func eventBaseAttributes(name string) Attributes {
+	return Attrs(
+		Field{Key: "telemetry.schema.version", Value: wideEventSchemaVersion},
+		Field{Key: "event.dataset", Value: "cerebro.telemetry"},
+		Field{Key: "telemetry.signal.kind", Value: "event"},
+		Field{Key: "event.category", Value: "application"},
+		Field{Key: "event.type", Value: "info"},
+		Field{Key: "event.name", Value: strings.TrimSpace(name)},
+	)
+}
+
+func eventOutcomeForStatus(status string) string {
+	switch telemetryStatus(strings.TrimSpace(status)) {
+	case codes.Error:
+		return "failure"
+	case codes.Ok:
+		return "success"
+	default:
+		switch strings.ToLower(strings.TrimSpace(status)) {
+		case "skipped", "miss":
+			return "neutral"
+		default:
+			return "unknown"
+		}
+	}
+}
+
+func HTTPStatusClass(statusCode int) string {
+	switch {
+	case statusCode >= 100 && statusCode < 200:
+		return "1xx"
+	case statusCode >= 200 && statusCode < 300:
+		return "2xx"
+	case statusCode >= 300 && statusCode < 400:
+		return "3xx"
+	case statusCode >= 400 && statusCode < 500:
+		return "4xx"
+	case statusCode >= 500 && statusCode < 600:
+		return "5xx"
+	case statusCode == 0:
+		return "none"
+	default:
+		return "other"
+	}
+}
+
+func durationBucket(duration time.Duration) string {
+	switch {
+	case duration < 10*time.Millisecond:
+		return "lt_10ms"
+	case duration < 50*time.Millisecond:
+		return "lt_50ms"
+	case duration < 100*time.Millisecond:
+		return "lt_100ms"
+	case duration < 250*time.Millisecond:
+		return "lt_250ms"
+	case duration < 500*time.Millisecond:
+		return "lt_500ms"
+	case duration < time.Second:
+		return "lt_1s"
+	case duration < 5*time.Second:
+		return "lt_5s"
+	case duration < 30*time.Second:
+		return "lt_30s"
+	case duration < time.Minute:
+		return "lt_1m"
+	case duration < 5*time.Minute:
+		return "lt_5m"
+	case duration < 30*time.Minute:
+		return "lt_30m"
+	default:
+		return "gte_30m"
+	}
+}
+
+func boundedKeyPart(value string) string {
+	value = compactErrorKind(value)
+	if len(value) > 64 {
+		return value[:64]
+	}
+	return value
 }
 
 func InjectEventAttributes(ctx context.Context, attributes map[string]string) {

@@ -86,6 +86,7 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 		}
 		telemetry.IncrementMain(ctx, "source_runtime.lease.count", 1)
 		telemetry.AnnotateMain(ctx, attrs.WithField(telemetry.Field{Key: "source_runtime.lease.status", Value: status}))
+		telemetry.AnnotateMainPhase(ctx, "source_runtime.sync_with_lease", status, attrs)
 		telemetry.End(span, status, attrs)
 	}()
 	if s == nil {

@@ -95,6 +95,7 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer definitely-not-emitted")
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+		request.Header.Set("X-Request-Id", "request-123")
 		request.Header.Set("User-Agent", "curl/8.0")
 
 		handler.ServeHTTP(httptest.NewRecorder(), request)
@@ -107,6 +108,8 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 		"tenant_id":                "tenant-a",
 		"http.request.method":      http.MethodPost,
 		"http.route":               "/platform/jobs/{jobID}/events",
+		"http.route.family":        "platform",
+		"http.route.healthcheck":   false,
 		"url.path_depth":           float64(4),
 		"url.query.param_count":    float64(2),
 		"url.query.keys":           "cursor,limit",
@@ -115,17 +118,21 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 		"server.port":              float64(8443),
 		"network.protocol.version": "1.1",
 		"http.request.body.size":   float64(4),
-		"http.request.header.traceparent.present": true,
-		"http.request.header.accept":              "application/json",
-		"http.request.header.accept_encoding":     "gzip",
-		"http.request.header.content_type":        "application/json",
-		"http.request.header.user_agent.present":  true,
-		"http.request.auth_header.present":        true,
-		"user_agent.family":                       "curl",
-		"cache.redis.hit.count":                   float64(1),
-		"http.response.status_code":               float64(http.StatusOK),
-		"http.response.body.size":                 float64(len(`{"ok":true}`)),
-		"http.response.header.content_type":       "application/json",
+		"http.request.id.present":  true,
+		"http.request.header.traceparent.present":     true,
+		"http.request.header.x_amzn_trace_id.present": false,
+		"http.request.header.x_request_id.present":    true,
+		"http.request.header.accept":                  "application/json",
+		"http.request.header.accept_encoding":         "gzip",
+		"http.request.header.content_type":            "application/json",
+		"http.request.header.user_agent.present":      true,
+		"http.request.auth_header.present":            true,
+		"user_agent.family":                           "curl",
+		"cache.redis.hit.count":                       float64(1),
+		"http.response.status_code":                   float64(http.StatusOK),
+		"http.response.status_class":                  "2xx",
+		"http.response.body.size":                     float64(len(`{"ok":true}`)),
+		"http.response.header.content_type":           "application/json",
 	}
 	for key, want := range expected {
 		if got := payload[key]; got != want {
@@ -134,6 +141,9 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 	}
 	if strings.Contains(stderr, "definitely-not-emitted") {
 		t.Fatalf("authorization header leaked into telemetry: %s", stderr)
+	}
+	if got, ok := payload["http.request.id_hash"].(string); !ok || got == "" || strings.Contains(got, "request-123") {
+		t.Fatalf("request id hash = %#v, want non-empty hash without raw id; payload=%#v", payload["http.request.id_hash"], payload)
 	}
 	if strings.Contains(stderr, "curl/8.0") {
 		t.Fatalf("raw user-agent leaked into telemetry: %s", stderr)

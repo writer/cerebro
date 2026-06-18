@@ -222,6 +222,9 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 	}
 	defer shutdownTelemetry(orchestratorShutdownContext(options, ctx), closeTelemetry, cfg.ShutdownTimeout)
 	ctx, span := telemetry.StartMain(ctx, "orchestrator.run", telemetry.Attrs(
+		telemetryField("operation.type", "background_job"),
+		telemetryField("workload.kind", "orchestrator"),
+		telemetryField("job.name", "orchestrator.run"),
 		telemetryField("runtime_id", options.Filter.RuntimeID),
 		telemetryField("tenant_id", options.Filter.TenantID),
 		telemetryField("source_id", options.Filter.SourceID),
@@ -416,6 +419,7 @@ func runOrchestratorIteration(
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
 	defer func() {
+		telemetry.AnnotateMainPhase(ctx, "orchestrator.iteration", status, spanAttributes.WithField(telemetryField("iteration", iteration)))
 		telemetry.End(span, status, spanAttributes)
 	}()
 	targetLimit := options.Filter.Limit
@@ -469,6 +473,7 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_stage", "lease")
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_kind", telemetry.ErrorKind(err))
 			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "lease", err)
+			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
 			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 			continue
 		}
@@ -477,6 +482,7 @@ func runOrchestratorIteration(
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runtimeStatus = "skipped"
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reason", "lease_not_acquired")
+			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
 			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 			continue
 		}
@@ -506,6 +512,7 @@ func runOrchestratorIteration(
 				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "release_lease", releaseErr)
 			}
 			result.Runtimes = append(result.Runtimes, runtimeResult)
+			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
 			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 			continue
 		} else {
@@ -604,6 +611,7 @@ func runOrchestratorIteration(
 		if runtimeResult.Error != "" {
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "runtime_error_present", true)
 		}
+		annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
 		telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 	}
 	status = "completed"
@@ -652,8 +660,48 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 		}
 		captureOrchestratorError(phaseCtx, name+".error", iteration, runtime, name, err)
 	}
+	telemetry.AnnotateMainPhase(phaseCtx, name, status, endAttrs.
+		WithField(telemetryField("phase.iteration", iteration)).
+		WithField(telemetryField("phase.runtime_id", runtime.GetId())).
+		WithField(telemetryField("phase.source_id", runtime.GetSourceId())).
+		WithField(telemetryField("phase.tenant_id", runtime.GetTenantId())))
 	telemetry.End(span, status, endAttrs)
 	return result, err
+}
+
+func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRuntimeResult, status string, attrs telemetry.Attributes) {
+	if result == nil {
+		return
+	}
+	telemetry.IncrementMain(ctx, "orchestrator.runtime.count", 1)
+	switch status {
+	case "completed":
+		telemetry.IncrementMain(ctx, "orchestrator.runtime.completed.count", 1)
+	case "skipped":
+		telemetry.IncrementMain(ctx, "orchestrator.runtime.skipped.count", 1)
+	case "failed":
+		telemetry.IncrementMain(ctx, "orchestrator.runtime.failed.count", 1)
+	}
+	mainAttrs := attrs.With(telemetry.Attrs(
+		telemetryField("orchestrator.runtime.last_status", status),
+		telemetryField("orchestrator.runtime.last_runtime_id", result.RuntimeID),
+		telemetryField("orchestrator.runtime.last_source_id", result.SourceID),
+		telemetryField("orchestrator.runtime.last_tenant_id", result.TenantID),
+		telemetryField("orchestrator.runtime.last_sync_status", result.Sync),
+		telemetryField("orchestrator.runtime.last_graph_ingest_status", result.GraphIngest),
+		telemetryField("orchestrator.runtime.last_finding_rules_status", result.FindingRules),
+		telemetryField("orchestrator.runtime.last_graph_rules_status", result.GraphRules),
+		telemetryField("orchestrator.runtime.last_pages_read", result.PagesRead),
+		telemetryField("orchestrator.runtime.last_events_appended", result.EventsAppended),
+		telemetryField("orchestrator.runtime.last_events_evaluated", result.EventsEvaluated),
+		telemetryField("orchestrator.runtime.last_entities_projected", result.EntitiesProjected),
+		telemetryField("orchestrator.runtime.last_links_projected", result.LinksProjected),
+		telemetryField("orchestrator.runtime.last_finding_evaluations", result.FindingEvaluations),
+		telemetryField("orchestrator.runtime.last_graph_rule_evaluations", result.GraphRuleEvaluations),
+		telemetryField("orchestrator.runtime.last_graph_rule_findings", result.GraphRuleFindings),
+		telemetryField("orchestrator.runtime.last_graph_rule_rows_read", result.GraphRuleRowsRead),
+	))
+	telemetry.AnnotateMainPhase(ctx, "orchestrator.runtime", status, mainAttrs)
 }
 
 func captureOrchestratorError(ctx context.Context, name string, iteration uint32, runtime *cerebrov1.SourceRuntime, stage string, err error) {

@@ -123,8 +123,7 @@ func TestNewRequestNormalizesOriginPathQueryAndBody(t *testing.T) {
 
 func TestSafeRoundTripperPropagatesTraceWithoutLeakingURLQuery(t *testing.T) {
 	var propagated string
-	ctx, parent := telemetry.Start(context.Background(), "test.parent", telemetry.Attrs())
-	defer telemetry.End(parent, "completed", telemetry.Attrs())
+	ctx, parent := telemetry.StartMain(context.Background(), "test.parent", telemetry.Attrs())
 	req := httptest.NewRequest(http.MethodGet, "https://93.184.216.34/v1/items?token=secret", nil).WithContext(ctx)
 	_, stderr := captureSourceHTTPStderr(t, func() {
 		resp, err := SafeRoundTripper{
@@ -145,6 +144,7 @@ func TestSafeRoundTripperPropagatesTraceWithoutLeakingURLQuery(t *testing.T) {
 		if resp != nil {
 			_ = resp.Body.Close()
 		}
+		telemetry.End(parent, "completed", telemetry.Attrs())
 	})
 	if propagated == "" {
 		t.Fatal("traceparent was not propagated")
@@ -154,6 +154,17 @@ func TestSafeRoundTripperPropagatesTraceWithoutLeakingURLQuery(t *testing.T) {
 	}
 	if !strings.Contains(stderr, `"name":"source.http.request"`) {
 		t.Fatalf("source HTTP span missing from telemetry: %s", stderr)
+	}
+	for _, expected := range []string{
+		`"dependency.outbound_http.operation.count":1`,
+		`"dependency.last_component":"sourcehttp"`,
+		`"dependency.last_operation":"round_trip"`,
+		`"dependency.last_status":"completed"`,
+		`"http.response.status_class":"2xx"`,
+	} {
+		if !strings.Contains(stderr, expected) {
+			t.Fatalf("telemetry missing %s: %s", expected, stderr)
+		}
 	}
 }
 

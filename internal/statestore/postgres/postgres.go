@@ -146,10 +146,13 @@ func postgresAnnotateMain(ctx context.Context, operation string, status string) 
 	if status == "failed" {
 		telemetry.IncrementMain(ctx, "db.postgres.error.count", 1)
 	}
-	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "db.postgres.last_operation", Value: strings.TrimSpace(operation)},
 		telemetry.Field{Key: "db.postgres.last_status", Value: strings.TrimSpace(status)},
-	))
+		telemetry.Field{Key: "db.system.name", Value: "postgresql"},
+	)
+	telemetry.AnnotateMain(ctx, attrs)
+	telemetry.AnnotateMainDependency(ctx, "db.postgres", "statestore.postgres", operation, status, attrs)
 }
 
 const schemaMigrationsDDL = `

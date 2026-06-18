@@ -17,11 +17,15 @@ unit of work emits one canonical span/event with:
 
 - `main=true`
 - `wide_event=true`
+- `wide_event.schema.version`
+- `telemetry.schema.version`, `telemetry.signal.kind`, `event.dataset`, `event.type`, `event.outcome`
 - service, deployment, runtime, host, cloud, and container metadata
+- ECS metadata when deployed on Fargate: `aws.ecs.cluster.name`, `aws.ecs.service.name`, `aws.ecs.task.family`, and `cloud.platform`
+- process/headroom hints such as `process.uptime_ms`, `process.cpu.count`, `process.gomaxprocs`, `go.goroutine.count`, and Go heap/GC fields
 - request/job shape
 - auth/customer posture
 - downstream cache, database, queue, graph, source, LLM, MCP, and domain counts
-- final status, duration, and bounded error kind
+- final status, `operation.status`, `duration_ms`, `duration.bucket`, and bounded error kind
 
 Use `main=true` as the primary query predicate when asking "what happened to
 this request/job?" Child spans remain available for drill-down, but shared
@@ -30,9 +34,15 @@ shape.
 
 During headroom incidents, start with `main=true`, then group by `http.route`,
 `service.version`, replica/container identity, `tenant_id`, `source_id`,
-`runtime_id`, dependency counters, and bounded `error_kind`. That keeps the
+`runtime_id`, `dependency.last_system`, `dependency.last_status`, `phase.last_name`,
+`phase.last_status`, dependency counters, and bounded `error_kind`. That keeps the
 first query broad enough to find saturation without jumping between logs,
 metrics, traces, and deployment tooling.
+
+Main spans include two generic rollup families:
+
+- `dependency.*`: counts and last-seen status for Postgres, Neo4j, Redis, JetStream, outbound HTTP, and graph-agent LLM calls. Use this when you do not yet know which dependency is guilty.
+- `phase.*`: counts and last-seen status for orchestration phases, source sync, graph ingest, GRC dashboard subtasks, and source operations. Use this when one logical job has several internal steps.
 
 Inbound HTTP requests create a main OTEL `http.server` span. The route label is
 normalized before emission. Unknown or dynamic paths are collapsed to route
@@ -42,11 +52,11 @@ errors are not emitted.
 
 Expected HTTP dimensions include:
 
-- `http.request.method`, `http.route`, `url.path_depth`, `url.query.param_count`, `url.query.keys`
+- `http.request.method`, `http.route`, `http.route.family`, `http.route.healthcheck`, `url.path_depth`, `url.query.param_count`, `url.query.keys`
 - `url.scheme`, `server.address`, `server.port`, `network.protocol.version`
-- `http.request.body.size`, selected safe request header values, header-presence booleans
+- `http.request.body.size`, `http.request.id.present`, `http.request.id_hash`, selected safe request header values, header-presence booleans
 - `user_agent.family`, `client.address_hash`
-- `http.response.status_code`, `http.response.body.size`, selected safe response header values
+- `http.response.status_code`, `http.response.status_class`, `http.response.body.size`, selected safe response header values
 
 Expected propagated dimensions include:
 
@@ -56,6 +66,7 @@ Expected propagated dimensions include:
 - Graph-agent LLM: `gen_ai.provider.name`, `gen_ai.operation.name`, `gen_ai.request.model`, `graphagent.*.count`, `graphagent.*.bytes`, refusal/plan/Cypher presence flags
 - Stores: `cache.redis.*.count`, `db.postgres.*.count`, `db.neo4j.*.count`
 - Messaging/source/graph: `messaging.jetstream.*.count`, `source_runtime.*`, `source.operation.*`, `graph.ingest.*`
+- Cross-cutting rollups: `dependency.*`, `phase.*`
 - Domain outcomes: `source_projection.*`, `finding_candidate.*`, `finding_evaluation.*`
 
 Core runtime operations emit structured spans:
@@ -106,12 +117,47 @@ Cerebro enables OTEL export when `CEREBRO_OTEL_ENABLED=true` or when an OTLP end
 | `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment.name=sec-dev` |
 | `CEREBRO_ENVIRONMENT` / `CEREBRO_DEPLOYMENT_ENVIRONMENT` | Environment value used by structured wide events |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | AWS region used by structured wide events when running on ECS |
+| `ECS_CLUSTER` / `ECS_SERVICE_NAME` / `ECS_TASK_FAMILY` / `ECS_TASK_REVISION` | Optional ECS identity used by structured wide events |
 
 Structured wide events also read `OTEL_RESOURCE_ATTRIBUTES` so CloudWatch JSON
 logs and exported OTEL spans share the same `service.namespace`,
-`deployment.environment.name`, `cloud.provider`, and `cloud.region` dimensions.
+`deployment.environment.name`, `cloud.provider`, `cloud.region`, and ECS dimensions.
 The deployment-specific env vars take precedence over generic resource
 attributes when both are present.
+
+## Useful Queries
+
+Start every incident with wide events only:
+
+```sql
+fields @timestamp, name, service.version, event.outcome, duration_ms, duration.bucket,
+  http.route, runtime_id, source_id, tenant_id,
+  dependency.last_system, dependency.last_status,
+  phase.last_name, phase.last_status, error_kind
+| filter wide_event = true and kind = "span_end"
+| sort @timestamp desc
+| limit 100
+```
+
+Find the dependency correlated with slow or failed work:
+
+```sql
+stats count(*) as events,
+  pct(duration_ms, 95) as p95_ms,
+  max(duration_ms) as max_ms
+by dependency.last_system, dependency.last_status, service.version, deployment.environment.name
+| sort p95_ms desc
+```
+
+Find the phase where orchestrator jobs are failing:
+
+```sql
+stats count(*) as events,
+  sum(orchestrator.runtime.failed.count) as failed_runtimes,
+  sum(source_runtime.invalid_event.count) as invalid_events
+by phase.last_name, phase.last_status, source_id, runtime_id, error_kind
+| sort events desc
+```
 
 ## Local Verification
 

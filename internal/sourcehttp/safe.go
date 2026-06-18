@@ -215,41 +215,57 @@ func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		base = http.DefaultTransport
 	}
 	if req != nil {
+		method := strings.ToUpper(strings.TrimSpace(req.Method))
+		host := requestHost(req)
+		scheme := requestScheme(req)
 		ctx, span := telemetry.Start(req.Context(), "source.http.request", telemetry.Attrs(
 			telemetry.Field{Key: "component", Value: "sourcehttp"},
 			telemetry.Field{Key: "source_id", Value: rt.SourceID},
-			telemetry.Field{Key: "http.request.method", Value: strings.ToUpper(strings.TrimSpace(req.Method))},
-			telemetry.Field{Key: "server.address", Value: requestHost(req)},
-			telemetry.Field{Key: "url.scheme", Value: requestScheme(req)},
+			telemetry.Field{Key: "http.request.method", Value: method},
+			telemetry.Field{Key: "server.address", Value: host},
+			telemetry.Field{Key: "url.scheme", Value: scheme},
 		))
 		finish := func(statusCode int, err error) {
-			attrs := telemetry.Attrs(telemetry.Field{Key: "http.response.status_code", Value: statusCode})
+			status := "completed"
+			if err != nil || statusCode >= http.StatusInternalServerError {
+				status = "failed"
+			}
+			attrs := telemetry.Attrs(
+				telemetry.Field{Key: "http.response.status_code", Value: statusCode},
+				telemetry.Field{Key: "http.response.status_class", Value: telemetry.HTTPStatusClass(statusCode)},
+			)
 			telemetry.IncrementMain(ctx, "outbound.http.request.count", 1)
-			telemetry.AnnotateMain(ctx, telemetry.Attrs(
+			mainAttrs := telemetry.Attrs(
 				telemetry.Field{Key: "outbound.http.last_component", Value: "sourcehttp"},
 				telemetry.Field{Key: "outbound.http.last_source_id", Value: rt.SourceID},
-				telemetry.Field{Key: "outbound.http.last_host", Value: requestHost(req)},
-				telemetry.Field{Key: "outbound.http.last_method", Value: strings.ToUpper(strings.TrimSpace(req.Method))},
-				telemetry.Field{Key: "outbound.http.last_scheme", Value: requestScheme(req)},
+				telemetry.Field{Key: "outbound.http.last_host", Value: host},
+				telemetry.Field{Key: "outbound.http.last_method", Value: method},
+				telemetry.Field{Key: "outbound.http.last_scheme", Value: scheme},
 				telemetry.Field{Key: "outbound.http.last_status_code", Value: statusCode},
-			))
+				telemetry.Field{Key: "outbound.http.last_status_class", Value: telemetry.HTTPStatusClass(statusCode)},
+			)
+			telemetry.AnnotateMain(ctx, mainAttrs)
 			if err != nil {
 				telemetry.IncrementMain(ctx, "outbound.http.error.count", 1)
 				attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+				mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 				telemetry.CaptureError(ctx, "source.http.error", err, telemetry.Attrs(
 					telemetry.Field{Key: "component", Value: "sourcehttp"},
 					telemetry.Field{Key: "source_id", Value: rt.SourceID},
 					telemetry.Field{Key: "operation", Value: "round_trip"},
 				))
+				telemetry.AnnotateMainDependency(ctx, "outbound.http", "sourcehttp", "round_trip", status, mainAttrs)
 				telemetry.End(span, "failed", attrs)
 				return
 			}
 			if statusCode >= http.StatusInternalServerError {
 				telemetry.IncrementMain(ctx, "outbound.http.server_error.count", 1)
+				telemetry.AnnotateMainDependency(ctx, "outbound.http", "sourcehttp", "round_trip", status, mainAttrs)
 				telemetry.End(span, "failed", attrs.WithField(telemetry.Field{Key: "status_detail", Value: "server_error"}))
 				return
 			}
 			telemetry.IncrementMain(ctx, "outbound.http.success.count", 1)
+			telemetry.AnnotateMainDependency(ctx, "outbound.http", "sourcehttp", "round_trip", status, mainAttrs)
 			telemetry.End(span, "completed", attrs)
 		}
 		req = req.Clone(ctx)

@@ -1354,11 +1354,15 @@ func neo4jAnnotateMain(ctx context.Context, database string, operation string, s
 	if status == "failed" {
 		telemetry.IncrementMain(ctx, "db.neo4j.error.count", 1)
 	}
-	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "db.neo4j.last_database", Value: strings.TrimSpace(database)},
 		telemetry.Field{Key: "db.neo4j.last_operation", Value: strings.TrimSpace(operation)},
 		telemetry.Field{Key: "db.neo4j.last_status", Value: strings.TrimSpace(status)},
-	))
+		telemetry.Field{Key: "db.system.name", Value: "neo4j"},
+		telemetry.Field{Key: "db.namespace", Value: strings.TrimSpace(database)},
+	)
+	telemetry.AnnotateMain(ctx, attrs)
+	telemetry.AnnotateMainDependency(ctx, "db.neo4j", "graphstore.neo4j", operation, status, attrs)
 }
 
 func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, error) {
