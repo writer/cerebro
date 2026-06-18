@@ -146,6 +146,49 @@ func TestProjectTailscaleDeviceDeauthorizationRetraction(t *testing.T) {
 	}
 }
 
+func TestProjectTailscaleDeviceBlocksIncomingRetraction(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-blocks-incoming", "tailscale.device", map[string]string{
+		"device_id": "device-1", "user_id": "user-1", "authorized": "true", "blocks_incoming_connections": "true",
+	})
+	links, err := service.ProjectRetractions(event)
+	if err != nil {
+		t.Fatalf("ProjectRetractions() error = %v", err)
+	}
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-1"
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	var retracted *struct{ reason string }
+	for _, link := range links {
+		if link.FromURN == userURN && link.ToURN == deviceURN && link.Relation == relationCanReach {
+			retracted = &struct{ reason string }{reason: link.Attributes["retraction"]}
+		}
+	}
+	if retracted == nil {
+		t.Fatalf("expected user->device can_reach retracted; links=%#v", links)
+	}
+	if retracted.reason != "tailscale_device_blocks_incoming" {
+		t.Fatalf("retraction reason = %q, want tailscale_device_blocks_incoming", retracted.reason)
+	}
+	if got := projectionRetractionReason(links); got != "tailscale_device_blocks_incoming" {
+		t.Fatalf("projectionRetractionReason() = %q, want tailscale_device_blocks_incoming", got)
+	}
+
+	entities, projectedLinks, err := BuiltinRegistry().Project(event)
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatalf("expected device entity to project; entities=%#v", entities)
+	}
+	for _, link := range projectedLinks {
+		if link.FromURN == userURN && link.ToURN == deviceURN && link.Relation == relationCanReach {
+			t.Fatalf("expected no owner can_reach edge for device blocking incoming connections; links=%#v", projectedLinks)
+		}
+	}
+}
+
 func TestProjectTailscaleGrantDisabledRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

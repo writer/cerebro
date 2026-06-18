@@ -211,6 +211,13 @@ func TestProjectionRetractionReason(t *testing.T) {
 			want: "tailscale_grant_disabled",
 		},
 		{
+			name: "tailscale device blocks incoming",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "tailscale_device_blocks_incoming"},
+			}},
+			want: "tailscale_device_blocks_incoming",
+		},
+		{
 			name: "mixed",
 			links: []*ports.ProjectedLink{
 				{Attributes: map[string]string{"retraction": "endpoint_owner_id"}},
