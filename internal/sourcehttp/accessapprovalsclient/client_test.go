@@ -98,6 +98,12 @@ func TestClientConfigurationAndRemoteErrors(t *testing.T) {
 	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: ":", BearerToken: "token"}); !errors.Is(err, graphactions.ErrInvalidRequest) {
 		t.Fatalf("New(invalid URL) error = %v, want ErrInvalidRequest", err)
 	}
+	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: "http://approvals.example.com", BearerToken: "token"}); !errors.Is(err, graphactions.ErrInvalidRequest) {
+		t.Fatalf("New(http URL) error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: "https://approvals.example.com", BearerToken: "token"}); err != nil {
+		t.Fatalf("New(https URL) error = %v", err)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		if _, err := w.Write([]byte(`{"error":"missing required scopes"}`)); err != nil {

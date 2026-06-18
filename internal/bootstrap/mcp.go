@@ -1676,7 +1676,9 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 	}
 	proposal := findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action)
 	mcpApplyExternalLifecycleProposal(proposal, finding, action)
-	findingapi.ApplyMCPGraphActionProposal(proposal, finding, action, findingapi.MCPArguments(args), scopeGraphActionsWrite)
+	if err := findingapi.ApplyMCPGraphActionProposal(proposal, finding, action, findingapi.MCPArguments(args), scopeGraphActionsWrite); err != nil {
+		return nil, err
+	}
 	return proposal, nil
 }
 

@@ -153,14 +153,14 @@ func MCPGraphActionTarget(args MCPArguments, finding *ports.FindingRecord) (stri
 	return graphactions.TargetForAction(graphAction, finding, target)
 }
 
-func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *ports.FindingRecord, action string, args MCPArguments, requiredScope string) {
+func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *ports.FindingRecord, action string, args MCPArguments, requiredScope string) error {
 	if action != "execute_graph_action" {
-		return
+		return nil
 	}
 	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
 	target, err := MCPGraphActionTarget(args, finding)
 	if err != nil {
-		return
+		return err
 	}
 	findingID, _ := proposal["finding_id"].(string)
 	endpoint := "/platform/graph/actions"
@@ -175,6 +175,7 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	proposal["external_system"] = graphactions.ProviderAccessApprovals
 	proposal["external_ref_kind"] = graphactions.RefKind
 	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
+	return nil
 }
 
 // MCPActionInputProperties returns the finding action proposal input schema pieces.
