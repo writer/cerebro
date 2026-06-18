@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -61,23 +62,24 @@ type orchestratorIterationResult struct {
 }
 
 type orchestratorRuntimeResult struct {
-	RuntimeID            string `json:"runtime_id"`
-	SourceID             string `json:"source_id,omitempty"`
-	TenantID             string `json:"tenant_id,omitempty"`
-	Sync                 string `json:"sync"`
-	PagesRead            uint32 `json:"pages_read,omitempty"`
-	EventsAppended       uint32 `json:"events_appended,omitempty"`
-	FindingRules         string `json:"finding_rules"`
-	EventsEvaluated      uint32 `json:"events_evaluated,omitempty"`
-	FindingEvaluations   int    `json:"finding_evaluations,omitempty"`
-	GraphIngest          string `json:"graph_ingest"`
-	EntitiesProjected    uint32 `json:"entities_projected,omitempty"`
-	LinksProjected       uint32 `json:"links_projected,omitempty"`
-	GraphRules           string `json:"graph_rules"`
-	GraphRuleEvaluations int    `json:"graph_rule_evaluations,omitempty"`
-	GraphRuleFindings    int    `json:"graph_rule_findings,omitempty"`
-	GraphRuleRowsRead    uint32 `json:"graph_rule_rows_read,omitempty"`
-	Error                string `json:"error,omitempty"`
+	RuntimeID            string              `json:"runtime_id"`
+	SourceID             string              `json:"source_id,omitempty"`
+	TenantID             string              `json:"tenant_id,omitempty"`
+	Sync                 string              `json:"sync"`
+	PagesRead            uint32              `json:"pages_read,omitempty"`
+	EventsAppended       uint32              `json:"events_appended,omitempty"`
+	FindingRules         string              `json:"finding_rules"`
+	EventsEvaluated      uint32              `json:"events_evaluated,omitempty"`
+	FindingEvaluations   int                 `json:"finding_evaluations,omitempty"`
+	GraphIngest          string              `json:"graph_ingest"`
+	EntitiesProjected    uint32              `json:"entities_projected,omitempty"`
+	LinksProjected       uint32              `json:"links_projected,omitempty"`
+	GraphRules           string              `json:"graph_rules"`
+	GraphRuleEvaluations int                 `json:"graph_rule_evaluations,omitempty"`
+	GraphRuleFindings    int                 `json:"graph_rule_findings,omitempty"`
+	GraphRuleRowsRead    uint32              `json:"graph_rule_rows_read,omitempty"`
+	Error                string              `json:"error,omitempty"`
+	Health               sourcehealth.Record `json:"-"`
 }
 
 func runOrchestrator(args []string) error {
@@ -107,6 +109,16 @@ func shouldPrintOrchestratorResult(result *orchestratorResult) bool {
 
 func orchestratorShutdownSignals() []os.Signal {
 	return []os.Signal{os.Interrupt, syscall.SIGTERM}
+}
+
+func orchestratorScheduleName(options orchestratorOptions) string {
+	if options.RunForever {
+		return "forever"
+	}
+	if options.Iterations > 1 {
+		return "interval"
+	}
+	return "single_run"
 }
 
 func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
@@ -232,6 +244,10 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		telemetryField("page_limit", options.PageLimit),
 		telemetryField("event_limit", options.EventLimit),
 		telemetryField("graph_page_limit", options.GraphPageLimit),
+		telemetryField("effective_page_limit", options.PageLimit),
+		telemetryField("effective_event_limit", options.EventLimit),
+		telemetryField("effective_graph_page_limit", options.GraphPageLimit),
+		telemetryField("orchestrator.schedule.name", orchestratorScheduleName(options)),
 		telemetryField("phase_timeout_ms", options.PhaseTimeout.Milliseconds()),
 		telemetryField("graph_timeout_ms", options.GraphTimeout.Milliseconds()),
 		telemetryField("iterations", options.Iterations),
@@ -458,11 +474,14 @@ func runOrchestratorIteration(
 			telemetryField("runtime_id", runtime.GetId()),
 			telemetryField("source_id", runtime.GetSourceId()),
 			telemetryField("tenant_id", runtime.GetTenantId()),
+			telemetryField("effective_page_limit", options.PageLimit),
+			telemetryField("effective_event_limit", options.EventLimit),
 		)
 		runtimeResult := &orchestratorRuntimeResult{
 			RuntimeID: strings.TrimSpace(runtime.GetId()),
 			SourceID:  strings.TrimSpace(runtime.GetSourceId()),
 			TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+			Health:    sourcehealth.RecordFromRuntime(runtime, time.Now().UTC()),
 		}
 		acquired, err := acquireOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner)
 		if err != nil {
@@ -519,6 +538,10 @@ func runOrchestratorIteration(
 			runtimeResult.Sync = "completed"
 			runtimeResult.PagesRead = syncResult.GetPagesRead()
 			runtimeResult.EventsAppended = syncResult.GetEventsAppended()
+			if syncResult.GetRuntime() != nil {
+				runtime = syncResult.GetRuntime()
+				runtimeResult.Health = sourcehealth.RecordFromRuntime(runtime, time.Now().UTC())
+			}
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
 		}
@@ -546,6 +569,7 @@ func runOrchestratorIteration(
 		} else {
 			runtimeResult.GraphIngest = "completed"
 		}
+		runtimeResult.Health = withOrchestratorGraphHealth(runtimeResult.Health, graphResult, runtimeResult.GraphIngest, time.Now().UTC())
 		findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
 			return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
 		})
@@ -566,6 +590,7 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_evaluated", runtimeResult.EventsEvaluated)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
 		}
+		runtimeResult.Health = withOrchestratorFindingHealth(runtimeResult.Health, runtimeResult.FindingRules)
 		// Run graph rules whenever the projection has caught up to the same cursor
 		// reached by source sync, even if a trailing PutIngestRun(completed) write
 		// failed. The graph is fresh enough for read-only rules at that point.
@@ -649,9 +674,16 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 		telemetryField("tenant_id", runtime.GetTenantId()),
 		telemetryField("timeout_ms", timeout.Milliseconds()),
 	))
+	started := time.Now()
 	result, err := fn(phaseCtx)
+	durationMs := time.Since(started).Milliseconds()
 	status := "completed"
-	endAttrs := telemetry.Attrs()
+	phaseKey := orchestratorPhaseTelemetryKey(name)
+	endAttrs := telemetry.Attrs(
+		telemetryField("duration_ms", durationMs),
+		telemetryField("phase."+phaseKey+".last_duration_ms", durationMs),
+	)
+	telemetry.MaxMain(phaseCtx, "phase."+phaseKey+".max_duration_ms", durationMs)
 	if err != nil {
 		status = "failed"
 		endAttrs = withTelemetryField(endAttrs, "error_kind", telemetry.ErrorKind(err))
@@ -682,6 +714,14 @@ func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRu
 	case "failed":
 		telemetry.IncrementMain(ctx, "orchestrator.runtime.failed.count", 1)
 	}
+	healthRecord := normalizedOrchestratorRuntimeHealth(result)
+	healthState := sourcehealth.Evaluate(healthRecord)
+	if healthState.FreshnessState != "" {
+		telemetry.IncrementMain(ctx, "orchestrator.runtime.freshness."+orchestratorPhaseTelemetryKey(healthState.FreshnessState)+".count", 1)
+	}
+	if healthState.BackfillEligible {
+		telemetry.IncrementMain(ctx, "orchestrator.runtime.backfill_eligible.count", 1)
+	}
 	mainAttrs := attrs.With(telemetry.Attrs(
 		telemetryField("orchestrator.runtime.last_status", status),
 		telemetryField("orchestrator.runtime.last_runtime_id", result.RuntimeID),
@@ -700,8 +740,131 @@ func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRu
 		telemetryField("orchestrator.runtime.last_graph_rule_evaluations", result.GraphRuleEvaluations),
 		telemetryField("orchestrator.runtime.last_graph_rule_findings", result.GraphRuleFindings),
 		telemetryField("orchestrator.runtime.last_graph_rule_rows_read", result.GraphRuleRowsRead),
+		telemetryField("source_runtime.family", healthRecord.Family),
+		telemetryField("source_runtime.enabled_state", healthRecord.EnabledState),
+		telemetryField("source_runtime.freshness_state", healthState.FreshnessState),
+		telemetryField("source_runtime.source_sync_state", healthState.SourceSyncState),
+		telemetryField("source_runtime.graph_ingest_state", healthState.GraphIngestState),
+		telemetryField("source_runtime.finding_evaluation_state", healthState.FindingEvaluationState),
+		telemetryField("source_runtime.failure_class", healthState.FailureClass),
+		telemetryField("source_runtime.next_action", healthState.NextAction),
+		telemetryField("source_runtime.backfill_eligible", healthState.BackfillEligible),
+		telemetryField("source_runtime.sync_lag_seconds", optionalInt64Value(healthRecord.SyncLagSeconds)),
+		telemetryField("source_runtime.watermark_lag_seconds", optionalInt64Value(healthRecord.WatermarkLagSeconds)),
+		telemetryField("source_runtime.graph_lag_seconds", optionalInt64Value(healthRecord.GraphLagSeconds)),
+		telemetryField("source_runtime.expected_cadence_seconds", optionalInt64Value(healthRecord.ExpectedCadenceSeconds)),
+		telemetryField("source_runtime.stale_after_seconds", optionalInt64Value(healthRecord.StaleAfterSeconds)),
+		telemetryField("source_runtime.cursor_pending", healthRecord.CursorPending),
+		telemetryField("source_runtime.checkpoint_cursor_present", healthRecord.CheckpointCursorPresent),
+		telemetryField("source_runtime.contract_probe_state", healthRecord.ContractProbeState),
+		telemetryField("source_runtime.contract_probe_status", sourcehealth.ContractProbeStatus(healthRecord.ContractProbeState)),
 	))
 	telemetry.AnnotateMainPhase(ctx, "orchestrator.runtime", status, mainAttrs)
+}
+
+func normalizedOrchestratorRuntimeHealth(result *orchestratorRuntimeResult) sourcehealth.Record {
+	record := result.Health
+	if strings.TrimSpace(record.RuntimeID) == "" {
+		record.RuntimeID = result.RuntimeID
+	}
+	if strings.TrimSpace(record.SourceID) == "" {
+		record.SourceID = result.SourceID
+	}
+	if strings.TrimSpace(record.TenantID) == "" {
+		record.TenantID = result.TenantID
+	}
+	if strings.TrimSpace(record.EnabledState) == "" {
+		record.EnabledState = "unknown"
+	}
+	if strings.TrimSpace(record.Status) == "" {
+		record.Status = "unknown"
+	}
+	if strings.TrimSpace(record.ContractProbeState) == "" {
+		record.ContractProbeState = "unknown"
+	}
+	if result.Sync == "failed" {
+		record.Status = "failing"
+		if strings.TrimSpace(record.LastFailureCategory) == "" {
+			record.LastFailureCategory = "source_sync_failed"
+		}
+	}
+	if record.LatestGraphRun == nil {
+		switch result.GraphIngest {
+		case "completed", "failed", "running", "pending":
+			record.LatestGraphRun = &sourcehealth.GraphRun{Status: result.GraphIngest}
+		}
+	}
+	if record.LatestFindingEvaluation == nil {
+		switch result.FindingRules {
+		case "completed", "failed", "running", "pending":
+			record.LatestFindingEvaluation = &sourcehealth.FindingEvaluation{Status: result.FindingRules}
+		}
+	}
+	return record
+}
+
+func withOrchestratorGraphHealth(record sourcehealth.Record, graphResult *graphingest.RunResult, graphStatus string, now time.Time) sourcehealth.Record {
+	if graphResult == nil {
+		if graphStatus != "" && graphStatus != "skipped" {
+			record.LatestGraphRun = &sourcehealth.GraphRun{Status: graphStatus}
+		}
+		return record
+	}
+	status := strings.TrimSpace(graphResult.Run.Status)
+	if status == "" {
+		status = graphStatus
+	}
+	if status == "" {
+		status = "unknown"
+	}
+	record.LatestGraphRun = &sourcehealth.GraphRun{Status: status}
+	record.GraphLagSeconds = orchestratorGraphRunLagSeconds(now, graphResult.Run.StartedAt, graphResult.Run.FinishedAt)
+	return record
+}
+
+func withOrchestratorFindingHealth(record sourcehealth.Record, findingStatus string) sourcehealth.Record {
+	switch findingStatus {
+	case "completed", "failed", "running", "pending":
+		record.LatestFindingEvaluation = &sourcehealth.FindingEvaluation{Status: findingStatus}
+	}
+	return record
+}
+
+func orchestratorGraphRunLagSeconds(now time.Time, startedAt string, finishedAt string) *int64 {
+	if finished, ok := parseOrchestratorRFC3339(finishedAt); ok {
+		return orchestratorSecondsSince(now, finished)
+	}
+	if started, ok := parseOrchestratorRFC3339(startedAt); ok {
+		return orchestratorSecondsSince(now, started)
+	}
+	return nil
+}
+
+func parseOrchestratorRFC3339(value string) (time.Time, bool) {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, text)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
+func orchestratorSecondsSince(now time.Time, then time.Time) *int64 {
+	seconds := int64(now.UTC().Sub(then.UTC()).Seconds())
+	if seconds < 0 {
+		seconds = 0
+	}
+	return &seconds
+}
+
+func optionalInt64Value(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func captureOrchestratorError(ctx context.Context, name string, iteration uint32, runtime *cerebrov1.SourceRuntime, stage string, err error) {
@@ -847,6 +1010,17 @@ func appendRuntimeError(existing string, stage string, err error) string {
 
 func telemetryField(key string, value any) telemetry.Field {
 	return telemetry.Field{Key: key, Value: value}
+}
+
+func orchestratorPhaseTelemetryKey(name string) string {
+	key := strings.TrimSpace(name)
+	key = strings.ReplaceAll(key, ".", "_")
+	key = strings.ReplaceAll(key, "-", "_")
+	key = strings.Trim(key, "_")
+	if key == "" {
+		return "unknown"
+	}
+	return key
 }
 
 func withTelemetryField(attributes telemetry.Attributes, key string, value any) telemetry.Attributes {

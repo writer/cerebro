@@ -5108,6 +5108,20 @@ func TestProjectEvidenceCASMissingLinksAreObservableAndBounded(t *testing.T) {
 			t.Fatalf("telemetry %s = %#v, want %#v (payload %#v)", key, got, want, payload)
 		}
 	}
+	linkPayload := sourceProjectionTelemetryEventPayload(t, stderr, "runtime.evidence.link_status")
+	for key, want := range map[string]any{
+		"source_id":            "evidence_cas",
+		"runtime_id":           "iris-runtime",
+		"link_status":          "orphan",
+		"resource_link_status": "missing",
+		"case_link_status":     "missing",
+		"orphan_count":         float64(1),
+		"missing_case_count":   float64(1),
+	} {
+		if got := linkPayload[key]; got != want {
+			t.Fatalf("link telemetry %s = %#v, want %#v (payload %#v)", key, got, want, linkPayload)
+		}
+	}
 	for _, prohibited := range []string{"evidence-orphan", "iris-event-orphan", "sha256orphan", "evidencecas://", "case-missing"} {
 		if strings.Contains(stderr, prohibited) {
 			t.Fatalf("telemetry leaked high-cardinality value %q: %s", prohibited, stderr)

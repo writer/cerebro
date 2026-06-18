@@ -205,7 +205,7 @@ event_contracts:
   - kind: anthropic.compliance_group_member
     schema_ref: anthropic/compliance_group_member/v1
     required_attributes: [group_id, user_id]
-    required_payload_fields: [user_id]
+    required_payload_fields: [id]
   - kind: anthropic.compliance_project
     schema_ref: anthropic/compliance_project/v1
     required_attributes: [project_id]

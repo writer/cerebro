@@ -40,9 +40,19 @@ type GRCInventoryScopeFilter struct {
 	Limit      uint32
 }
 
+type GRCInventoryAccountabilityUpdate struct {
+	TenantID        string
+	AssetURN        string
+	SourceID        string
+	UpdatedBy       string
+	SetAttributes   map[string]string
+	ClearAttributes []string
+}
+
 type GRCInventoryScopeStore interface {
 	StateStore
 	UpsertGRCInventoryScope(context.Context, GRCInventoryScopeRecord) (*GRCInventoryScopeRecord, error)
+	UpdateGRCInventoryAccountability(context.Context, GRCInventoryAccountabilityUpdate) (*GRCInventoryScopeRecord, error)
 	ListGRCInventoryScopes(context.Context, GRCInventoryScopeFilter) ([]*GRCInventoryScopeRecord, error)
 }
 

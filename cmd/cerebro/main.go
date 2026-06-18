@@ -308,7 +308,7 @@ func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfil
 			telemetry.Field{Key: "job.name", Value: "finding.risk_backfill"},
 			telemetry.Field{Key: "backfiller_present", Value: false},
 		)
-		_, span := telemetry.StartMain(ctx, "finding.risk_backfill", attrs)
+		ctx, span := telemetry.StartMain(ctx, "finding.risk_backfill", attrs)
 		telemetry.AnnotateMainPhase(ctx, "finding.risk_backfill", "skipped", attrs)
 		telemetry.End(span, "skipped", attrs)
 		close(done)

@@ -16,8 +16,10 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -127,6 +129,28 @@ func TestRunOrchestratorPhasePassesThroughErrors(t *testing.T) {
 	}
 }
 
+func TestRunOrchestratorPhaseAnnotatesMainDuration(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	stderr := captureCommandStderr(t, func() {
+		ctx, span := telemetry.StartMain(context.Background(), "orchestrator.run", telemetry.Attrs())
+		_, err := runOrchestratorPhase[int](ctx, "orchestrator.test_phase", 1, runtime, time.Second, func(context.Context) (int, error) {
+			return 1, nil
+		})
+		if err != nil {
+			t.Fatalf("runOrchestratorPhase() error = %v", err)
+		}
+		telemetry.End(span, "completed", telemetry.Attrs())
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if _, ok := payload["phase.orchestrator_test_phase.last_duration_ms"].(float64); !ok {
+		t.Fatalf("last duration missing: %#v", payload)
+	}
+	if _, ok := payload["phase.orchestrator_test_phase.max_duration_ms"].(float64); !ok {
+		t.Fatalf("max duration missing: %#v", payload)
+	}
+}
+
 // runOrchestratorPhase must inherit cancellation from the parent runtime
 // context. The orchestrator's lease-renewal goroutine cancels the
 // runtime context when lease renewal fails, and that cancellation must
@@ -146,6 +170,80 @@ func TestRunOrchestratorPhaseInheritsParentCancellation(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("runOrchestratorPhase() error = %v, want context.Canceled (inherited from parent)", err)
+	}
+}
+
+func TestAnnotateOrchestratorRuntimeMainAddsHealthFields(t *testing.T) {
+	syncLag := int64(30)
+	watermarkLag := int64(45)
+	graphLag := int64(60)
+	cadence := int64(300)
+	staleAfter := int64(600)
+	stderr := captureCommandStderr(t, func() {
+		ctx, span := telemetry.StartMain(context.Background(), "orchestrator.run", telemetry.Attrs())
+		annotateOrchestratorRuntimeMain(ctx, &orchestratorRuntimeResult{
+			RuntimeID:      "runtime-1",
+			SourceID:       "github",
+			TenantID:       "writer",
+			Sync:           "completed",
+			GraphIngest:    "completed",
+			FindingRules:   "completed",
+			GraphRules:     "completed",
+			PagesRead:      2,
+			EventsAppended: 3,
+			Health: sourcehealth.Record{
+				RuntimeID:                 "runtime-1",
+				SourceID:                  "github",
+				TenantID:                  "writer",
+				Family:                    "code",
+				EnabledState:              "enabled",
+				Status:                    "healthy",
+				ContractProbeState:        "passing",
+				CursorPending:             true,
+				CheckpointCursorPresent:   true,
+				SyncLagSeconds:            &syncLag,
+				WatermarkLagSeconds:       &watermarkLag,
+				GraphLagSeconds:           &graphLag,
+				ExpectedCadenceSeconds:    &cadence,
+				StaleAfterSeconds:         &staleAfter,
+				LatestGraphRun:            &sourcehealth.GraphRun{Status: "completed"},
+				LatestFindingEvaluation:   &sourcehealth.FindingEvaluation{Status: "completed"},
+				ScheduleContextConfigured: true,
+			},
+		}, "completed", telemetry.Attrs())
+		telemetry.End(span, "completed", telemetry.Attrs())
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"source_runtime.family":                        "code",
+		"source_runtime.enabled_state":                 "enabled",
+		"source_runtime.freshness_state":               "healthy",
+		"source_runtime.source_sync_state":             "current",
+		"source_runtime.graph_ingest_state":            "current",
+		"source_runtime.finding_evaluation_state":      "current",
+		"source_runtime.next_action":                   "monitor",
+		"source_runtime.backfill_eligible":             false,
+		"source_runtime.contract_probe_state":          "passing",
+		"source_runtime.contract_probe_status":         "success",
+		"source_runtime.cursor_pending":                true,
+		"source_runtime.checkpoint_cursor_present":     true,
+		"orchestrator.runtime.freshness.healthy.count": float64(1),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for key, want := range map[string]float64{
+		"source_runtime.sync_lag_seconds":         30,
+		"source_runtime.watermark_lag_seconds":    45,
+		"source_runtime.graph_lag_seconds":        60,
+		"source_runtime.expected_cadence_seconds": 300,
+		"source_runtime.stale_after_seconds":      600,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
 	}
 }
 

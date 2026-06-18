@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -220,6 +221,8 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		AnnotateMain(ctx, Attrs(Field{Key: "cache.redis.last_status", Value: "hit"}))
 		IncrementMain(ctx, "cache.redis.hit.count", 1)
 		IncrementMain(ctx, "cache.redis.hit.count", 2)
+		MaxMain(ctx, "cache.redis.max_latency_ms", 5)
+		MaxMain(ctx, "cache.redis.max_latency_ms", 3)
 		End(span, "completed", Attrs(Field{Key: "explicit_end_attr", Value: "kept"}))
 	})
 	payload := telemetrySpanEndPayloadByName(t, stderr, "test.main")
@@ -240,6 +243,9 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	}
 	if got := payload["cache.redis.hit.count"]; got != float64(3) {
 		t.Fatalf("incremented count = %#v, want 3; payload=%#v", got, payload)
+	}
+	if got := payload["cache.redis.max_latency_ms"]; got != float64(5) {
+		t.Fatalf("max value = %#v, want 5; payload=%#v", got, payload)
 	}
 	if got := payload["explicit_end_attr"]; got != "kept" {
 		t.Fatalf("explicit end attr missing: %#v", payload)
@@ -266,10 +272,6 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		"duration.bucket",
 		"process.uptime_ms",
 		"go.goroutine.count",
-		"go.memory.heap_alloc_bytes",
-		"go.memory.heap_sys_bytes",
-		"go.memory.heap_inuse_bytes",
-		"go.memory.next_gc_bytes",
 	} {
 		if _, ok := payload[key]; !ok {
 			t.Fatalf("%s missing from wide event payload=%#v", key, payload)
@@ -281,6 +283,16 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	}
 	if got := payload["service.name"]; got != "cerebro" {
 		t.Fatalf("runtime service attr = %#v, want cerebro; payload=%#v", got, payload)
+	}
+}
+
+func TestBoundStringPreservesUTF8(t *testing.T) {
+	got := boundString("aaébb", 3)
+	if !utf8.ValidString(got) {
+		t.Fatalf("boundString returned invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Fatalf("boundString(%q) = %q, want ellipsis suffix", "aaébb", got)
 	}
 }
 

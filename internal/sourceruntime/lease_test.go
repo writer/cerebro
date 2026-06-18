@@ -375,3 +375,22 @@ func sourceRuntimeTelemetryPayload(t *testing.T, stderr string, name string) map
 	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
 	return nil
 }
+
+func sourceRuntimeTelemetryEventPayload(t *testing.T, stderr string, name string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(lines[i]), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", lines[i], err)
+		}
+		if payload["kind"] == "event" && payload["name"] == name {
+			return payload
+		}
+	}
+	t.Fatalf("telemetry event %q not found in stderr: %s", name, stderr)
+	return nil
+}

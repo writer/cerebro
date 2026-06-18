@@ -132,22 +132,25 @@ func duoEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 
 func duoPhoneProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return duoFactorProjections(event, "phone_id", duoPhoneURN, "duo.phone", map[string]string{
-		"name":       "name",
-		"number":     "number",
-		"platform":   "platform",
-		"model":      "model",
-		"activated":  "activated",
-		"encrypted":  "encrypted",
-		"screenlock": "screenlock",
-		"tampered":   "tampered",
+		"name":         "name",
+		"number":       "number",
+		"platform":     "platform",
+		"model":        "model",
+		"activated":    "activated",
+		"encrypted":    "encrypted",
+		"screenlock":   "screenlock",
+		"tampered":     "tampered",
+		"capabilities": "capabilities",
+		"last_seen_at": "last_seen_at",
 	})
 }
 
 func duoTokenProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return duoFactorProjections(event, "token_id", duoTokenURN, "duo.token", map[string]string{
-		"serial":    "serial",
-		"type":      "type",
-		"totp_step": "totp_step",
+		"serial":       "serial",
+		"type":         "type",
+		"totp_step":    "totp_step",
+		"last_seen_at": "last_seen_at",
 	})
 }
 

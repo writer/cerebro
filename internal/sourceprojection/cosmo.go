@@ -1,10 +1,12 @@
 package sourceprojection
 
 import (
+	"strconv"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 func cosmoSessionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -50,15 +52,22 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	factURN := projectionURN(tenantID, "cosmo_fact", factID)
-	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, map[string]string{
+	factURN := projectionURN(tenantID, "cosmo_fact", cosmoExternalIDKey(factID))
+	source := firstNonEmpty(attrs["source"], stringValue(payload, "source"))
+	factAttributes := map[string]string{
 		"record_id":  attrs["record_id"],
 		"key":        firstNonEmpty(attrs["key"], stringValue(payload, "key")),
-		"category":   attrs["category"],
-		"source":     attrs["source"],
+		"category":   firstNonEmpty(attrs["category"], stringValue(payload, "category")),
+		"source":     source,
 		"confidence": attrs["confidence"],
-	})))
-	if sessionID := cosmoFactSessionID(attrs["source"]); sessionID != "" {
+	}
+	if state := cosmoFactRiskState(attrs, payload); state != "" {
+		factAttributes["risk_state"] = state
+		factAttributes["risk_reason"] = firstNonEmpty(attrs["risk_reason"], stringValue(payload, "risk_reason"))
+		factAttributes["risk_severity"] = firstNonEmpty(attrs["risk_severity"], stringValue(payload, "risk_severity"), stringValue(payload, "severity"))
+	}
+	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, factAttributes)))
+	if sessionID := cosmoFactSessionID(source); sessionID != "" {
 		addCosmoSessionLink(entities, links, event, tenantID, factURN, sessionID)
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -78,7 +87,7 @@ func cosmoMessageProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	messageURN := projectionURN(tenantID, "cosmo_message", messageID)
+	messageURN := projectionURN(tenantID, "cosmo_message", cosmoExternalIDKey(messageID))
 	addEntity(entities, cosmoEntity(event, messageURN, "cosmo.message", firstNonEmpty(attrs["event_type"], attrs["role"], messageID), cosmoAttributes(attrs, map[string]string{
 		"record_id":  attrs["record_id"],
 		"ticket_id":  firstNonEmpty(attrs["ticket_id"], stringValue(payload, "ticket_id")),
@@ -110,7 +119,7 @@ func cosmoSurveyFeedbackProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	feedbackURN := projectionURN(tenantID, "cosmo_survey_feedback", feedbackID)
+	feedbackURN := projectionURN(tenantID, "cosmo_survey_feedback", cosmoExternalIDKey(feedbackID))
 	addEntity(entities, cosmoEntity(event, feedbackURN, "cosmo.survey_feedback", firstNonEmpty(attrs["sentiment"], attrs["reaction"], feedbackID), cosmoAttributes(attrs, map[string]string{
 		"record_id":        attrs["record_id"],
 		"ticket_id":        firstNonEmpty(attrs["ticket_id"], stringValue(payload, "ticketId")),
@@ -156,7 +165,11 @@ func cosmoSessionURN(tenantID string, sessionID string) string {
 	if strings.TrimSpace(sessionID) == "" {
 		return ""
 	}
-	return projectionURN(tenantID, "cosmo_session", sessionID)
+	return projectionURN(tenantID, "cosmo_session", cosmoExternalIDKey(sessionID))
+}
+
+func cosmoExternalIDKey(value string) string {
+	return sourceidentity.HashedExternalIDKey(value, "")
 }
 
 func addCosmoSessionLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, sessionID string) {
@@ -183,4 +196,39 @@ func cosmoFactSessionID(source string) string {
 		return strings.TrimSpace(strings.TrimPrefix(source, "session:"))
 	}
 	return ""
+}
+
+// cosmoFactRiskState mirrors the finding-layer derivation so the projected
+// cosmo.fact entity carries the same durable coordination-risk state that the
+// finding rule keys on. It returns an empty string for non-risk facts and for
+// coordination-risk facts that do not carry explicit active/resolved evidence.
+func cosmoFactRiskState(attrs map[string]string, payload map[string]any) string {
+	category := strings.ToLower(firstNonEmpty(attrs["category"], stringValue(payload, "category")))
+	if !cosmoCoordinationRiskCategory(category) {
+		return ""
+	}
+	switch strings.ToLower(firstNonEmpty(attrs["risk_state"], stringValue(payload, "risk_state"), stringValue(payload, "state"), stringValue(payload, "status"))) {
+	case "resolved", "closed", "mitigated", "inactive", "remediated":
+		return "resolved"
+	case "active", "open", "ongoing", "current":
+		return "active"
+	}
+	if raw := firstNonEmpty(attrs["resolved"], stringValue(payload, "resolved")); raw != "" {
+		if resolved, err := strconv.ParseBool(raw); err == nil {
+			if resolved {
+				return "resolved"
+			}
+			return "active"
+		}
+	}
+	return ""
+}
+
+func cosmoCoordinationRiskCategory(category string) bool {
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "coordination_risk", "coordination-risk", "security_risk", "security-risk":
+		return true
+	default:
+		return false
+	}
 }

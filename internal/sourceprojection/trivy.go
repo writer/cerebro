@@ -156,7 +156,7 @@ func trivyFixProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 	vulnerabilityID := strings.TrimSpace(attrs["vulnerability_id"])
 	pkg := strings.TrimSpace(attrs["package"])
 	fixedVersion := strings.TrimSpace(attrs["fixed_version"])
-	if vulnerabilityID == "" || pkg == "" || fixedVersion == "" {
+	if imageDigest == "" || vulnerabilityID == "" || pkg == "" || fixedVersion == "" {
 		return nil, nil, nil
 	}
 	entities := map[string]*ports.ProjectedEntity{}

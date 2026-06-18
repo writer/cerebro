@@ -1301,7 +1301,7 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 		return work(ctx, tx)
 	})
 	if err != nil {
-		neo4jTelemetryError(ctx, span, "read", err)
+		neo4jTelemetryError(ctx, span, s.database, "read", err)
 		return nil, err
 	}
 	neo4jAnnotateMain(ctx, s.database, "read", "completed")
@@ -1315,7 +1315,7 @@ func (s *Store) write(ctx context.Context, work neo4jdriver.ManagedTransactionWo
 	defer func() { _ = session.Close(ctx) }()
 	result, err := session.ExecuteWrite(ctx, work)
 	if err != nil {
-		neo4jTelemetryError(ctx, span, "write", err)
+		neo4jTelemetryError(ctx, span, s.database, "write", err)
 		return nil, err
 	}
 	neo4jAnnotateMain(ctx, s.database, "write", "completed")
@@ -1336,12 +1336,13 @@ func neo4jTelemetryAttrs(operation string, database string, timeout time.Duratio
 	return attrs
 }
 
-func neo4jTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
-	neo4jAnnotateMain(ctx, "", operation, "failed")
+func neo4jTelemetryError(ctx context.Context, span *telemetry.Span, database string, operation string, err error) {
+	neo4jAnnotateMain(ctx, database, operation, "failed")
 	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 	telemetry.CaptureError(ctx, "neo4j.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "graphstore.neo4j"},
 		telemetry.Field{Key: "operation", Value: operation},
+		telemetry.Field{Key: "db.namespace", Value: strings.TrimSpace(database)},
 	))
 	telemetry.End(span, "failed", attrs)
 }

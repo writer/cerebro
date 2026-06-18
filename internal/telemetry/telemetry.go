@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -70,7 +71,7 @@ type RuntimeMetadata struct {
 }
 
 const maxAttributeStringLength = 1024
-const wideEventSchemaVersion = "2026-06-18"
+const wideEventSchemaVersion = "2026-06-18.1"
 
 var (
 	runtimeMetadataMu sync.RWMutex
@@ -128,8 +129,6 @@ func RuntimeAttributes() Attributes {
 
 func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 	hostname, _ := os.Hostname()
-	var memory runtime.MemStats
-	runtime.ReadMemStats(&memory)
 	resourceAttributes := parseResourceAttributes(metadata.ResourceAttributes)
 	serviceName := firstNonEmpty(
 		metadata.ServiceName,
@@ -176,13 +175,6 @@ func RuntimeAttributesFor(metadata RuntimeMetadata) Attributes {
 		Field{Key: "process.cpu.count", Value: runtime.NumCPU()},
 		Field{Key: "process.gomaxprocs", Value: runtime.GOMAXPROCS(0)},
 		Field{Key: "go.goroutine.count", Value: runtime.NumGoroutine()},
-		Field{Key: "go.gc.count", Value: memory.NumGC},
-		Field{Key: "go.memory.heap_alloc_bytes", Value: memory.HeapAlloc},
-		Field{Key: "go.memory.heap_sys_bytes", Value: memory.HeapSys},
-		Field{Key: "go.memory.heap_idle_bytes", Value: memory.HeapIdle},
-		Field{Key: "go.memory.heap_inuse_bytes", Value: memory.HeapInuse},
-		Field{Key: "go.memory.stack_inuse_bytes", Value: memory.StackInuse},
-		Field{Key: "go.memory.next_gc_bytes", Value: memory.NextGC},
 		Field{Key: "cloud.provider", Value: cloudProvider},
 		Field{Key: "cloud.region", Value: cloudRegion},
 		Field{Key: "cloud.platform", Value: cloudPlatform(metadata, cloudProvider)},
@@ -427,11 +419,23 @@ func IncrementMain(ctx context.Context, key string, delta int64) {
 	span.increment(key, delta)
 }
 
+func MaxMain(ctx context.Context, key string, value int64) {
+	if strings.TrimSpace(key) == "" {
+		return
+	}
+	span, ok := ctx.Value(mainSpanContextKey{}).(*Span)
+	if !ok || span == nil {
+		return
+	}
+	span.max(key, value)
+}
+
 func AnnotateMainDependency(ctx context.Context, system string, component string, operation string, status string, attributes Attributes) {
-	system = boundedKeyPart(system)
+	system = strings.TrimSpace(system)
 	if system == "" {
 		system = "unknown"
 	}
+	system = boundedKeyPart(system)
 	component = strings.TrimSpace(component)
 	operation = strings.TrimSpace(operation)
 	status = strings.TrimSpace(status)
@@ -605,26 +609,53 @@ func (s *Span) increment(key string, delta int64) {
 		s.annotations = map[string]any{}
 	}
 	current := int64(0)
-	switch value := s.annotations[key].(type) {
-	case int:
-		current = int64(value)
-	case int64:
+	if value, ok := numericInt64(s.annotations[key]); ok {
 		current = value
-	case uint32:
-		current = int64(value)
-	case uint64:
-		if value <= uint64(^uint(0)>>1) {
-			current = int64(value)
-		}
-	case float64:
-		current = int64(value)
 	}
 	next := current + delta
 	s.annotations[key] = next
 	s.mu.Unlock()
 	if s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
-		s.otelSpan.SetAttributes(attribute.Int64(key, next))
+		s.otelSpan.SetAttributes(otelAttribute(key, safeAttributeValue(key, next)))
 	}
+}
+
+func (s *Span) max(key string, value int64) {
+	if s == nil {
+		return
+	}
+	updated := false
+	s.mu.Lock()
+	if s.annotations == nil {
+		s.annotations = map[string]any{}
+	}
+	current, ok := numericInt64(s.annotations[key])
+	if !ok || value > current {
+		s.annotations[key] = value
+		updated = true
+	}
+	s.mu.Unlock()
+	if updated && s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
+		s.otelSpan.SetAttributes(attribute.Int64(key, value))
+	}
+}
+
+func numericInt64(value any) (int64, bool) {
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case uint32:
+		return int64(v), true
+	case uint64:
+		if v <= uint64(^uint(0)>>1) {
+			return int64(v), true
+		}
+	case float64:
+		return int64(v), true
+	}
+	return 0, false
 }
 
 func (s *Span) snapshotAnnotations() map[string]any {
@@ -945,6 +976,9 @@ func boundString(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	if limit <= 0 || len(value) <= limit {
 		return value
+	}
+	for limit > 0 && !utf8.ValidString(value[:limit]) {
+		limit--
 	}
 	return value[:limit] + "..."
 }

@@ -477,94 +477,69 @@ func upsertGRCInventoryAccountability(ctx context.Context, store ports.GRCInvent
 	}
 	request.AssetURN = strings.TrimSpace(request.AssetURN)
 	request.SourceID = strings.TrimSpace(request.SourceID)
+	request.RuntimeID = strings.TrimSpace(request.RuntimeID)
 	request.State = strings.TrimSpace(request.State)
 	request.Owner = strings.TrimSpace(request.Owner)
 	request.Reason = strings.TrimSpace(request.Reason)
+	if request.RuntimeID != "" {
+		return nil, fmt.Errorf("%w: runtime_id is not supported for accountability updates", errInvalidHTTPRequest)
+	}
 	if request.AssetURN == "" {
 		return nil, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest)
 	}
 	if err := validateGRCInventoryAssetURN(request.AssetURN); err != nil {
 		return nil, err
 	}
-	existing, err := loadGRCInventoryScopeRecord(ctx, store, tenantID, request.AssetURN)
-	if err != nil {
-		return nil, err
-	}
-	scopeState := grcinventory.ScopeStateInScope
-	scopeReason := ""
-	sourceID := request.SourceID
-	attributes := map[string]string{}
-	if existing != nil {
-		if strings.TrimSpace(existing.ScopeState) != "" {
-			scopeState = existing.ScopeState
-		}
-		scopeReason = existing.Reason
-		if sourceID == "" {
-			sourceID = existing.SourceID
-		}
-		for key, value := range existing.Attributes {
-			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
-				attributes[key] = value
-			}
-		}
-	}
+	setAttributes := map[string]string{}
+	clearAttributes := []string{}
 	switch request.State {
 	case grcinventory.AccountabilityKnown:
 		if request.Owner == "" {
 			return nil, fmt.Errorf("%w: owner is required when state is known", errInvalidHTTPRequest)
 		}
-		attributes[grcinventory.AttributeAccountabilityState] = grcinventory.AccountabilityKnown
-		attributes[grcinventory.AttributeAccountabilityPrincipal] = request.Owner
-		attributes["owner"] = request.Owner
-		attributes[grcinventory.AttributeOwnerSource] = grcinventory.AttributeOwnerSourceCerebro
-		attributes["accountability_required"] = "true"
-		delete(attributes, grcinventory.AttributeOwnerNotRequired)
+		setAttributes[grcinventory.AttributeAccountabilityState] = grcinventory.AccountabilityKnown
+		setAttributes[grcinventory.AttributeAccountabilityPrincipal] = request.Owner
+		setAttributes["owner"] = request.Owner
+		setAttributes[grcinventory.AttributeOwnerSource] = grcinventory.AttributeOwnerSourceCerebro
+		setAttributes["accountability_required"] = "true"
+		clearAttributes = append(clearAttributes, grcinventory.AttributeOwnerNotRequired)
 	case grcinventory.AccountabilityNone:
-		attributes[grcinventory.AttributeAccountabilityState] = grcinventory.AccountabilityNone
-		attributes[grcinventory.AttributeOwnerNotRequired] = "true"
-		delete(attributes, grcinventory.AttributeAccountabilityPrincipal)
-		delete(attributes, "owner")
-		delete(attributes, grcinventory.AttributeOwnerSource)
-		delete(attributes, "accountability_required")
+		setAttributes[grcinventory.AttributeAccountabilityState] = grcinventory.AccountabilityNone
+		setAttributes[grcinventory.AttributeOwnerNotRequired] = "true"
+		clearAttributes = append(clearAttributes,
+			grcinventory.AttributeAccountabilityPrincipal,
+			"owner",
+			grcinventory.AttributeOwnerSource,
+			"accountability_required",
+		)
 	case "clear":
-		delete(attributes, grcinventory.AttributeAccountabilityState)
-		delete(attributes, grcinventory.AttributeAccountabilityPrincipal)
-		delete(attributes, grcinventory.AttributeAccountabilityReason)
-		delete(attributes, grcinventory.AttributeOwnerNotRequired)
-		delete(attributes, grcinventory.AttributeOwnerSource)
-		delete(attributes, "owner")
-		delete(attributes, "accountability_required")
-		delete(attributes, "accountability_updated_by")
-		delete(attributes, "accountability_updated_at")
+		clearAttributes = append(clearAttributes,
+			grcinventory.AttributeAccountabilityState,
+			grcinventory.AttributeAccountabilityPrincipal,
+			grcinventory.AttributeAccountabilityReason,
+			grcinventory.AttributeOwnerNotRequired,
+			grcinventory.AttributeOwnerSource,
+			"owner",
+			"accountability_required",
+			"accountability_updated_by",
+			"accountability_updated_at",
+		)
 	default:
 		return nil, fmt.Errorf("%w: state must be known, not_required, or clear", errInvalidHTTPRequest)
 	}
 	if request.State != "clear" {
-		attributes[grcinventory.AttributeAccountabilityReason] = fallbackString(request.Reason, accountabilityDefaultReason(request.State))
-		attributes["accountability_updated_by"] = strings.TrimSpace(updatedBy)
-		attributes["accountability_updated_at"] = time.Now().UTC().Format(time.RFC3339)
+		setAttributes[grcinventory.AttributeAccountabilityReason] = fallbackString(request.Reason, accountabilityDefaultReason(request.State))
+		setAttributes["accountability_updated_by"] = strings.TrimSpace(updatedBy)
+		setAttributes["accountability_updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	}
-	return store.UpsertGRCInventoryScope(ctx, ports.GRCInventoryScopeRecord{
-		TenantID:   tenantID,
-		AssetURN:   request.AssetURN,
-		SourceID:   sourceID,
-		ScopeState: scopeState,
-		Reason:     scopeReason,
-		UpdatedBy:  updatedBy,
-		Attributes: attributes,
+	return store.UpdateGRCInventoryAccountability(ctx, ports.GRCInventoryAccountabilityUpdate{
+		TenantID:        tenantID,
+		AssetURN:        request.AssetURN,
+		SourceID:        request.SourceID,
+		UpdatedBy:       updatedBy,
+		SetAttributes:   setAttributes,
+		ClearAttributes: clearAttributes,
 	})
-}
-
-func loadGRCInventoryScopeRecord(ctx context.Context, store ports.GRCInventoryScopeStore, tenantID string, assetURN string) (*ports.GRCInventoryScopeRecord, error) {
-	records, err := store.ListGRCInventoryScopes(ctx, ports.GRCInventoryScopeFilter{
-		TenantID:  tenantID,
-		AssetURNs: []string{assetURN},
-		Limit:     1,
-	})
-	if err != nil || len(records) == 0 {
-		return nil, err
-	}
-	return records[0], nil
 }
 
 func accountabilityDefaultReason(state string) string {
@@ -845,11 +820,11 @@ func (a *App) handleUpdateGRCInventoryAssetReportTriage(w http.ResponseWriter, r
 		return
 	}
 	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, normalizeIDLookupError(err, ports.ErrGRCInventoryAssetReportNotFound))
 		return
 	}
 	if err := authorizeCerebroURNTenant(r.Context(), record.AssetURN); err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, normalizeIDLookupError(err, ports.ErrGRCInventoryAssetReportNotFound))
 		return
 	}
 	triagedBy := strings.TrimSpace(request.TriagedBy)

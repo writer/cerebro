@@ -85,6 +85,54 @@ RETURNING tenant_id, asset_urn, source_id, scope_state, reason, updated_by, attr
 	return scanGRCInventoryScope(row)
 }
 
+func (s *Store) UpdateGRCInventoryAccountability(ctx context.Context, update ports.GRCInventoryAccountabilityUpdate) (*ports.GRCInventoryScopeRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureGRCInventoryScopeTables(ctx); err != nil {
+		return nil, err
+	}
+	update.TenantID = strings.TrimSpace(update.TenantID)
+	update.AssetURN = strings.TrimSpace(update.AssetURN)
+	update.SourceID = strings.TrimSpace(update.SourceID)
+	update.UpdatedBy = strings.TrimSpace(update.UpdatedBy)
+	if update.TenantID == "" || update.AssetURN == "" {
+		return nil, errors.New("tenant_id and asset_urn are required")
+	}
+	setAttrs := sanitizedStringMap(update.SetAttributes)
+	clearAttrs := sanitizedStringSlice(update.ClearAttributes)
+	attrs, err := json.Marshal(setAttrs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal inventory accountability attributes: %w", err)
+	}
+	clearKeys, err := json.Marshal(clearAttrs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal inventory accountability clear keys: %w", err)
+	}
+	row := s.db.QueryRowContext(ctx, `
+INSERT INTO grc_inventory_scopes (tenant_id, asset_urn, source_id, scope_state, reason, updated_by, attributes_json)
+VALUES ($1, $2, $3, 'in_scope', '', $4, $5::jsonb)
+ON CONFLICT (tenant_id, asset_urn)
+DO UPDATE SET source_id = CASE
+                  WHEN EXCLUDED.source_id <> '' THEN EXCLUDED.source_id
+                  ELSE grc_inventory_scopes.source_id
+              END,
+              updated_by = EXCLUDED.updated_by,
+              attributes_json = (
+                  SELECT COALESCE(jsonb_object_agg(existing.key, existing.value), '{}'::jsonb)
+                  FROM jsonb_each(grc_inventory_scopes.attributes_json) AS existing(key, value)
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements_text($6::jsonb) AS cleared(key)
+                      WHERE cleared.key = existing.key
+                  )
+              ) || $5::jsonb,
+              updated_at = NOW()
+RETURNING tenant_id, asset_urn, source_id, scope_state, reason, updated_by, attributes_json::text, created_at, updated_at`,
+		update.TenantID, update.AssetURN, update.SourceID, update.UpdatedBy, string(attrs), string(clearKeys))
+	return scanGRCInventoryScope(row)
+}
+
 func (s *Store) ListGRCInventoryScopes(ctx context.Context, filter ports.GRCInventoryScopeFilter) ([]*ports.GRCInventoryScopeRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
@@ -354,6 +402,36 @@ func scanGRCInventoryAssetReportSummary(row scanner) (*ports.GRCInventoryAssetRe
 		return nil, err
 	}
 	return summary, nil
+}
+
+func sanitizedStringMap(values map[string]string) map[string]string {
+	sanitized := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		sanitized[key] = value
+	}
+	return sanitized
+}
+
+func sanitizedStringSlice(values []string) []string {
+	sanitized := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		sanitized = append(sanitized, value)
+	}
+	return sanitized
 }
 
 func emptyStringMap(values map[string]string) map[string]string {
