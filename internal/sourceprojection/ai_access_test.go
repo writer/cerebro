@@ -550,6 +550,89 @@ func TestProjectAIGovernanceControlEdges(t *testing.T) {
 	assertProjectedLink(t, state, anthropicSettingURN, relationBelongsTo, anthropicOrgURN)
 }
 
+func TestProjectAIUsageAndCostMetricEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 18, 12, 45, 0, 0, time.UTC)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "openai-usage-completion",
+			TenantId:   "writer",
+			SourceId:   "openai",
+			Kind:       "openai.usage_completion",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"api_key_id":         "fixture_123",
+				"end_time":           "2026-06-18T13:00:00Z",
+				"family":             "usage_completion",
+				"id":                 "usage_123",
+				"input_tokens":       "1200",
+				"model":              "gpt-4o",
+				"num_model_requests": "5",
+				"output_tokens":      "320",
+				"project_id":         "proj_123",
+				"start_time":         "2026-06-18T12:00:00Z",
+				"user_id":            "user_123",
+			},
+		},
+		{
+			Id:         "anthropic-cost-report",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.cost_report",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"api_key_id":      "fixture_456",
+				"cost_usd":        "42.50",
+				"end_time":        "2026-06-18T13:00:00Z",
+				"family":          "cost_report",
+				"id":              "cost_123",
+				"model":           "claude-sonnet-4-20250514",
+				"organization_id": "org_123",
+				"start_time":      "2026-06-18T12:00:00Z",
+				"user_id":         "user_456",
+				"workspace_id":    "ws_123",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	openAIMetricURN := "urn:cerebro:writer:openai_usage_completion:usage_123"
+	openAIOrgURN := "urn:cerebro:writer:openai_org:openai"
+	openAIProjectURN := "urn:cerebro:writer:openai_project:proj_123"
+	openAIUserURN := "urn:cerebro:writer:openai_user:user_123"
+	openAICredentialURN := "urn:cerebro:writer:openai_credential:fixture_123" // #nosec G101 -- test credential URN fixture, not credential material.
+	openAIModelURN := "urn:cerebro:writer:openai_model:gpt-4o"
+	anthropicMetricURN := "urn:cerebro:writer:anthropic_cost_report:cost_123"
+	anthropicOrgURN := "urn:cerebro:writer:anthropic_org:org_123"
+	anthropicWorkspaceURN := "urn:cerebro:writer:anthropic_workspace:ws_123"
+	anthropicUserURN := "urn:cerebro:writer:anthropic_user:user_456"
+	anthropicCredentialURN := "urn:cerebro:writer:anthropic_credential:fixture_456" // #nosec G101 -- test credential URN fixture, not credential material.
+	anthropicModelURN := "urn:cerebro:writer:anthropic_model:claude-sonnet-4-20250514"
+
+	if entity := state.entities[openAIMetricURN]; entity == nil || entity.EntityType != "openai.usage_completion" || entity.Attributes["metric_type"] != "usage" {
+		t.Fatalf("openai usage metric entity missing or wrong: %#v", entity)
+	}
+	if entity := state.entities[anthropicMetricURN]; entity == nil || entity.EntityType != "anthropic.cost_report" || entity.Attributes["metric_type"] != "cost" {
+		t.Fatalf("anthropic cost metric entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, openAIMetricURN, relationBelongsTo, openAIOrgURN)
+	assertProjectedLink(t, state, openAIMetricURN, relationObservedOn, openAIProjectURN)
+	assertProjectedLink(t, state, openAIMetricURN, relationObservedOn, openAIUserURN)
+	assertProjectedLink(t, state, openAIMetricURN, relationObservedOn, openAICredentialURN)
+	assertProjectedLink(t, state, openAIMetricURN, relationAssociatedWith, openAIModelURN)
+	assertProjectedLink(t, state, anthropicMetricURN, relationBelongsTo, anthropicOrgURN)
+	assertProjectedLink(t, state, anthropicMetricURN, relationObservedOn, anthropicWorkspaceURN)
+	assertProjectedLink(t, state, anthropicMetricURN, relationObservedOn, anthropicUserURN)
+	assertProjectedLink(t, state, anthropicMetricURN, relationObservedOn, anthropicCredentialURN)
+	assertProjectedLink(t, state, anthropicMetricURN, relationAssociatedWith, anthropicModelURN)
+}
+
 func TestProjectAnthropicWorkspaceCredentialFederationAndComplianceEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
