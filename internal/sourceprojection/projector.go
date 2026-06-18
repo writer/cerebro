@@ -2942,6 +2942,8 @@ func stringValue(values map[string]any, key string) string {
 		return strings.TrimSpace(typed)
 	case float64:
 		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(typed)
 	default:
 		return ""
 	}

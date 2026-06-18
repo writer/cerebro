@@ -108,6 +108,27 @@ func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {
 	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:thread-1")
 }
 
+func TestProjectCosmoFactResolvedBooleanMatchesFindingState(t *testing.T) {
+	entities, _, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-coordination-risk-resolved",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Payload: mustJSON(t, map[string]any{
+			"key":      "coordination:risk:thread-1",
+			"category": "coordination_risk",
+			"resolved": true,
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	fact := cosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-1", "cosmo.fact")
+	if got := fact.Attributes["risk_state"]; got != "resolved" {
+		t.Fatalf("fact risk_state = %q, want resolved for native JSON boolean resolved=true", got)
+	}
+}
+
 func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-message-msg-1",
