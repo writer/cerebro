@@ -109,7 +109,7 @@ func New() (*Source, error) {
 				URNKind: "kolide_issue",
 				IDKeys:  []string{"id", "issue_id"},
 				TimestampKeys: []string{
-					"last_rechecked_at", "detected_at", "resolved_at", "blocks_device_at",
+					"last_rechecked_at", "detected_at", "resolved_at",
 				},
 				Attributes: map[string]string{
 					"issue_id":           "id|issue_id",
