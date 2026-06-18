@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
