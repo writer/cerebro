@@ -140,6 +140,9 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 
 func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	values := cfg.Values()
+	if err := validateAuth0Domain(configValue(cfg, "domain")); err != nil {
+		return sourcecdk.Config{}, err
+	}
 	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(defaultBaseURLTemplate) != "" {
 		baseURL, err := renderTemplate(defaultBaseURLTemplate, cfg)
 		if err != nil {
@@ -165,6 +168,20 @@ func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourc
 	}
 	values["token"] = token
 	return sourcecdk.NewConfig(values), nil
+}
+
+func validateAuth0Domain(value string) error {
+	domain := strings.ToLower(strings.TrimSpace(value))
+	if domain == "" {
+		return fmt.Errorf("%w: %s domain is required", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	if strings.Contains(domain, "://") || strings.ContainsAny(domain, "/?#@") || strings.Contains(domain, ":") {
+		return fmt.Errorf("%w: %s domain must be a bare Auth0 hostname", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	if !strings.HasSuffix(domain, ".auth0.com") {
+		return fmt.Errorf("%w: %s domain must be an Auth0 hostname", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	return nil
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {

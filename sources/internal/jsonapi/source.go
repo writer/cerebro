@@ -233,6 +233,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings{}, fmt.Errorf("jsonapi source is required")
 	}
 	var err error
+	configuredTokenURL := configValue(cfg, "token_url")
 	resolved := settings{
 		tenantID:                firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
 		family:                  strings.TrimSpace(configValue(cfg, "family")),
@@ -244,7 +245,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		clientID:                configValue(cfg, "client_id"),
 		clientSecret:            configValue(cfg, "client_secret"),
 		refreshToken:            configValue(cfg, "refresh_token"),
-		tokenURL:                firstNonEmpty(configValue(cfg, "token_url"), s.options.OAuthTokenURL),
+		tokenURL:                firstNonEmpty(configuredTokenURL, s.options.OAuthTokenURL),
 		oauthScopes:             cloneStrings(s.options.OAuthScopes),
 		oauthTokenParams:        cloneStringMap(s.options.OAuthTokenParams),
 		oauthTokenRequestMethod: firstNonEmpty(configValue(cfg, "token_request_auth_method"), s.options.OAuthTokenRequestAuthMethod),
@@ -272,6 +273,9 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	if resolved.baseURL == "" {
 		return resolved, fmt.Errorf("%s base_url is required", s.options.SourceID)
+	}
+	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(s.options.OAuthTokenURL) != "" && !providerManagedTokenURLOverrideAllowed(configuredTokenURL, s.AllowLoopbackBaseURL) {
+		return resolved, fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, s.options.SourceID)
 	}
 	resolved.baseURL, err = resolveConfigTemplate(s.options.SourceID, resolved.baseURL, cfg)
 	if err != nil {
@@ -340,6 +344,17 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	resolved.query = queryFromConfig(cfg, family.ConfigQuery)
 	return resolved, nil
+}
+
+func providerManagedTokenURLOverrideAllowed(raw string, allowLoopback bool) bool {
+	if !allowLoopback {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil || strings.TrimSpace(parsed.Host) == "" {
+		return false
+	}
+	return sourcehttp.IsLoopbackHost(parsed.Hostname())
 }
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {

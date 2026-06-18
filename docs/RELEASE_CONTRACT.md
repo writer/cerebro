@@ -34,9 +34,9 @@ A release can include:
 - Linux runtime binaries,
 - multi-arch runtime image,
 - image provenance and signatures,
-- `cerebro-runtime-contract.json`,
-- `cerebro-runtime-contract.json.sig`,
-- `cerebro-runtime-contract.json.pem`.
+- environment-specific runtime contracts, such as `cerebro-runtime-contract-sec-dev.json` and `cerebro-runtime-contract-go-prod.json`,
+- matching runtime contract signatures,
+- matching runtime contract certificates.
 
 Runtime image:
 
@@ -214,12 +214,15 @@ Keep those in your deployment system.
 
 ## Signature artifacts
 
-Releases upload:
+Releases upload one signed contract per deployment target:
 
 ```text
-cerebro-runtime-contract.json
-cerebro-runtime-contract.json.sig
-cerebro-runtime-contract.json.pem
+cerebro-runtime-contract-sec-dev.json
+cerebro-runtime-contract-sec-dev.json.sig
+cerebro-runtime-contract-sec-dev.json.pem
+cerebro-runtime-contract-go-prod.json
+cerebro-runtime-contract-go-prod.json.sig
+cerebro-runtime-contract-go-prod.json.pem
 ```
 
 Use the signature and certificate with your preferred Sigstore verification workflow. Verification policy is environment-specific, but the contract content is public and should not contain live secrets.
@@ -230,7 +233,7 @@ Suggested flow:
 
 1. Select an immutable release tag.
 2. Pull or pin `ghcr.io/writer/cerebro:<tag>`.
-3. Download `cerebro-runtime-contract.json`.
+3. Download the contract whose suffix matches your deployment target, such as `cerebro-runtime-contract-go-prod.json`.
 4. Verify the contract signature if your deployment process requires it.
 5. Check `required_secrets` against your secret manager.
 6. Check source runtimes against your intended tenants and schedules.
