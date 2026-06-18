@@ -1,0 +1,87 @@
+{
+  "rule_id": "kandji-endpoint-disk-encryption-disabled",
+  "runtime": {
+    "id": "writer-kandji-device",
+    "source_id": "kandji",
+    "tenant_id": "writer",
+    "config": {
+      "family": "device"
+    }
+  },
+  "events": [
+    {
+      "id": "kandji-device-filevault-on",
+      "tenant_id": "writer",
+      "source_id": "kandji",
+      "kind": "kandji.device",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "kandji/device/v1",
+      "attributes": {
+        "family": "device",
+        "device_id": "device-1",
+        "device_name": "compliant-mac",
+        "mdm_enabled": "true",
+        "filevault_enabled": "true",
+        "source_runtime_id": "writer-kandji-device"
+      }
+    },
+    {
+      "id": "kandji-device-filevault-off",
+      "tenant_id": "writer",
+      "source_id": "kandji",
+      "kind": "kandji.device",
+      "occurred_at": "2026-04-23T12:05:00Z",
+      "schema_ref": "kandji/device/v1",
+      "attributes": {
+        "family": "device",
+        "device_id": "device-2",
+        "device_name": "risky-mac",
+        "mdm_enabled": "true",
+        "filevault_enabled": "false",
+        "source_runtime_id": "writer-kandji-device"
+      }
+    },
+    {
+      "id": "kandji-device-offboarded",
+      "tenant_id": "writer",
+      "source_id": "kandji",
+      "kind": "kandji.device",
+      "occurred_at": "2026-04-23T12:10:00Z",
+      "schema_ref": "kandji/device/v1",
+      "attributes": {
+        "family": "device",
+        "device_id": "device-3",
+        "device_name": "offboarded-mac",
+        "mdm_enabled": "false",
+        "filevault_enabled": "false",
+        "source_runtime_id": "writer-kandji-device"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "kandji-endpoint-disk-encryption-disabled",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Kandji endpoint risky-mac has FileVault disk encryption disabled",
+      "event_ids": ["kandji-device-filevault-off"],
+      "attributes": {
+        "kandji_device_urn": "urn:cerebro:writer:kandji_device:device-2",
+        "device_id": "device-2",
+        "filevault_enabled": "false",
+        "primary_resource_urn": "urn:cerebro:writer:kandji_device:device-2",
+        "rule_required_attributes": "device_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "kandji-device-filevault-on",
+      "reason": "managed endpoint with FileVault enabled is compliant"
+    },
+    {
+      "event_id": "kandji-device-offboarded",
+      "reason": "deprovisioned endpoint must not open a stale posture finding"
+    }
+  ]
+}

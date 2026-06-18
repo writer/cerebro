@@ -149,6 +149,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "kandji",
+			Name:        "Kandji",
+			Description: "Kandji Apple endpoint device posture findings.",
+			Rules: []Rule{
+				newKandjiEndpointDiskEncryptionDisabledRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",

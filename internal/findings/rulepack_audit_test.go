@@ -825,7 +825,7 @@ func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingI
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 42; got != want {
+	if got, want := len(keepRules), 43; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1021,6 +1021,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "grc-source-integration-concentrated-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-vendor-review-overdue", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-vulnerability-sla-overdue", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
+		{RuleID: "kandji-endpoint-disk-encryption-disabled", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "kandji"},
 		{RuleID: "identity-admin-privilege-granted", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
 		{RuleID: "identity-api-token-or-oauth-app-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-auth-control-lifecycle-tampering", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},

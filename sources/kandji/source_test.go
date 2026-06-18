@@ -81,6 +81,67 @@ func TestReadDeviceFamily(t *testing.T) {
 	}
 }
 
+func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/devices" {
+			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{
+					"device_id":         "device-9",
+					"device_name":       "MacBook Air",
+					"serial_number":     "SERIAL9",
+					"platform":          "macOS",
+					"mdm_enabled":       true,
+					"filevault_enabled": false,
+					"is_missing":        false,
+					"compliance_status": "non_compliant",
+					"mdm_status":        "enrolled",
+					"last_check_in":     "2026-05-01T12:00:00Z",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kandji-token",
+		"family":    "device",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if pull.Events[0].Kind != "kandji.device" {
+		t.Fatalf("Kind = %q, want kandji.device", pull.Events[0].Kind)
+	}
+	if attrs["device_id"] != "device-9" {
+		t.Fatalf("device_id = %q, want device-9 (stable asset identity)", attrs["device_id"])
+	}
+	for key, want := range map[string]string{
+		"mdm_enabled":       "true",
+		"filevault_enabled": "false",
+		"is_missing":        "false",
+		"compliance_status": "non_compliant",
+		"status":            "enrolled",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("posture attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestReadApplicationFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/prism/apps" {
