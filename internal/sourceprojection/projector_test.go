@@ -5293,6 +5293,37 @@ func TestProjectEvidenceCASStampsNormalizedLinkState(t *testing.T) {
 		t.Fatalf("unresolved evidence_link_state = %q, want unresolved", got)
 	}
 
+	blankCaseStatusState := &projectionRecorder{}
+	service = New(blankCaseStatusState, nil)
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-blank-case-status",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"case_id":               "case-blank-status",
+			"evidence_cas_digest":   "sha256blankstatus",
+			"evidence_cas_ref_type": "evidencecas.manifest.v2",
+			"evidence_cas_uri":      "evidencecas://cases/case-blank-status/evidence/evidence-blank-status",
+			"evidence_id":           "evidence-blank-status",
+			"source_event_id":       "iris-event-blank-status",
+			"source_runtime_id":     "iris-runtime",
+			"source_system":         "iris",
+		},
+	}); err != nil {
+		t.Fatalf("Project(blank case status) error = %v", err)
+	}
+	blankCaseStatus := blankCaseStatusState.entities["urn:cerebro:writer:runtime_evidence:evidence-blank-status"]
+	if blankCaseStatus == nil {
+		t.Fatal("blank case status runtime evidence entity missing")
+	}
+	if got := blankCaseStatus.Attributes["case_link_status"]; got != "missing" {
+		t.Fatalf("blank case status case_link_status = %q, want missing", got)
+	}
+	if got := blankCaseStatus.Attributes["evidence_link_state"]; got != "unresolved" {
+		t.Fatalf("blank case status evidence_link_state = %q, want unresolved", got)
+	}
+
 	bareState := &projectionRecorder{}
 	service = New(bareState, nil)
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
