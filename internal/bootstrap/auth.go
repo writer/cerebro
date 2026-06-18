@@ -1076,32 +1076,6 @@ func accessAuditRemoteIP(remoteAddr string) string {
 	return ""
 }
 
-func accessAuditClientIP(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	remoteIP := net.ParseIP(accessAuditRemoteIP(r.RemoteAddr))
-	if remoteIP == nil || !accessAuditTrustsForwardedFor(remoteIP) {
-		return ""
-	}
-	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-	for i := len(parts) - 1; i >= 0; i-- {
-		ip := net.ParseIP(strings.TrimSpace(parts[i]))
-		if ip == nil {
-			continue
-		}
-		if accessAuditTrustsForwardedFor(ip) {
-			continue
-		}
-		return ip.String()
-	}
-	return ""
-}
-
-func accessAuditTrustsForwardedFor(remoteIP net.IP) bool {
-	return remoteIP != nil && (remoteIP.IsLoopback() || remoteIP.IsPrivate() || remoteIP.IsLinkLocalUnicast())
-}
-
 func accessAuditRequestID(r *http.Request) string {
 	if r == nil {
 		return ""
