@@ -95,9 +95,6 @@ func (r *cerebroHighRiskAPIAccessRule) CloseOnEvent(event Event) (string, bool) 
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if cerebroAPIAccessRouteIdentity(attributes) == "" {
-		return "", false
-	}
 	if !cerebroAPIAccessRemediated(attributes) {
 		return "", false
 	}

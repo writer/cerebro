@@ -171,11 +171,28 @@ func TestCerebroHighRiskAPIAccessReopensOnRecurrence(t *testing.T) {
 		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
 	}
 
+	routeLessCleanEvent := cerebroAPIAccessEvent("cerebro-access-cleaned-route-less", map[string]string{"route": "", "connect_procedure": "", "requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 30, 0, 0, time.UTC))
+	routeLessCloseAnchor, routeLessCloses := counterRule.CloseOnEvent(routeLessCleanEvent)
+	if !routeLessCloses || routeLessCloseAnchor != closeAnchor {
+		t.Fatalf("CloseOnEvent(route-less clean) = (%q, %v), want same principal anchor %q", routeLessCloseAnchor, routeLessCloses, closeAnchor)
+	}
+
+	otherPrincipalCleanEvent := cerebroAPIAccessEvent("cerebro-access-other-principal-cleaned", map[string]string{"principal": "other@example.com", "requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 45, 0, 0, time.UTC))
+	otherCloseAnchor, otherCloses := counterRule.CloseOnEvent(otherPrincipalCleanEvent)
+	if !otherCloses || otherCloseAnchor == "" || otherCloseAnchor == closeAnchor {
+		t.Fatalf("CloseOnEvent(other principal clean) = (%q, %v), want distinct non-empty anchor from %q", otherCloseAnchor, otherCloses, closeAnchor)
+	}
+
 	reopened := emitOpen(cerebroAPIAccessEvent("cerebro-access-risky-2", map[string]string{"tenant_mismatch": "true", "requested_tenant_id": "tenant-b"}, time.Date(2026, 5, 1, 14, 0, 0, 0, time.UTC)))
 	if got := strings.TrimSpace(reopened.Fingerprint); got != openFingerprint {
 		t.Fatalf("recurrence fingerprint = %q, want stable %q", got, openFingerprint)
 	}
 	if got := strings.TrimSpace(reopened.ID); got != strings.TrimSpace(opened.ID) {
 		t.Fatalf("recurrence finding id = %q, want stable %q", got, strings.TrimSpace(opened.ID))
+	}
+
+	otherPrincipal := emitOpen(cerebroAPIAccessEvent("cerebro-access-other-principal-risky", map[string]string{"principal": "other@example.com", "tenant_mismatch": "true", "requested_tenant_id": "tenant-b"}, time.Date(2026, 5, 1, 14, 30, 0, 0, time.UTC)))
+	if got := strings.TrimSpace(otherPrincipal.Fingerprint); got == "" || got == openFingerprint {
+		t.Fatalf("other principal fingerprint = %q, want distinct from %q", got, openFingerprint)
 	}
 }
