@@ -27,7 +27,7 @@ func TestProjectCerebroAPIAccessLinksPrincipalAndService(t *testing.T) {
 			"method":              "GET",
 			"operation_family":    "source",
 			"operation_type":      "read",
-			"outcome_result":      "allowed",
+			"outcome_result":      "succeeded",
 			"principal":           "ci@example.com",
 			"required_scopes":     "cerebro.cosmo.security.read",
 			"request_id":          "audit-request-1",
