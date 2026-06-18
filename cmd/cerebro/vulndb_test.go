@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/internal/vulndb"
 )
 
@@ -29,7 +30,7 @@ func TestVulnDBInputClientRejectsLoopbackRemoteFeed(t *testing.T) {
 	if err == nil {
 		t.Fatal("Open(loopback HTTP feed) error = nil, want unsafe destination rejection")
 	}
-	if !strings.Contains(err.Error(), "must not target loopback, private, or link-local") {
+	if !errors.Is(err, sourcehttp.ErrUnsafeHostAddress) {
 		t.Fatalf("Open(loopback HTTP feed) error = %v, want unsafe destination rejection", err)
 	}
 	if targetHit {

@@ -2,10 +2,10 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +67,7 @@ func TestOpenVulnDBFeedRejectsLoopbackDestination(t *testing.T) {
 	if err == nil {
 		t.Fatal("OpenVulnDBFeed() error = nil, want unsafe destination rejection")
 	}
-	if !strings.Contains(err.Error(), "must not target loopback, private, or link-local") {
+	if !errors.Is(err, sourcehttp.ErrUnsafeHostAddress) {
 		t.Fatalf("OpenVulnDBFeed() error = %v, want unsafe destination rejection", err)
 	}
 	if targetHit {
