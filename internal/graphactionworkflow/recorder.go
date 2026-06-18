@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -101,7 +102,12 @@ func canonicalActionID(tenantID string, provider string, action string, external
 		strings.TrimSpace(action),
 		strings.TrimSpace(externalID),
 	}, "\x00")))
-	return fmt.Sprintf("urn:cerebro:%s:graph_action:%s", tenantID, hex.EncodeToString(sum[:]))
+	return fmt.Sprintf("urn:cerebro:%s:graph_action:%s", urnSegment(tenantID), hex.EncodeToString(sum[:]))
+}
+
+func urnSegment(value string) string {
+	escaped := url.PathEscape(strings.TrimSpace(value))
+	return strings.ReplaceAll(escaped, ":", "%3A")
 }
 
 func dedupe(values []string) []string {
