@@ -428,7 +428,11 @@ func jobTelemetryAttrs(job *ports.Job) telemetry.Attributes {
 		attrs = attrs.WithField(telemetry.Field{Key: "runtime_id", Value: runtimeID})
 		attrs = attrs.WithField(telemetry.Field{Key: "source_runtime_id", Value: runtimeID})
 	}
-	if reportID := firstStringPayload(job.Payload, "report_id", job.SubjectID); reportID != "" && (job.Kind == KindReportRun || job.SubjectType == "report") {
+	reportID := firstStringPayload(job.Payload, "report_id")
+	if reportID == "" {
+		reportID = strings.TrimSpace(job.SubjectID)
+	}
+	if reportID != "" && (job.Kind == KindReportRun || job.SubjectType == "report") {
 		attrs = attrs.WithField(telemetry.Field{Key: "report_id", Value: reportID})
 	}
 	if !job.CreatedAt.IsZero() && !job.StartedAt.IsZero() {
