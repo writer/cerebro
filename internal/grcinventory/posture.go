@@ -193,7 +193,7 @@ func Summarize(assets []graphquery.InventoryAsset) Summary {
 	for _, asset := range assets {
 		ApplyReviewPosture(&asset)
 		state := strings.TrimSpace(asset.ScopeState)
-		if state == "" || state == ScopeStateInScope {
+		if state == ScopeStateInScope {
 			summary.InScopeAssets++
 		}
 		if state == ScopeStateOutScope {
