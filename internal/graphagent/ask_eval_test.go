@@ -21,6 +21,7 @@ type askEvalCase struct {
 	ExpectedIntent        string            `json:"expected_intent"`
 	ExpectedMinRows       int               `json:"expected_min_rows"`
 	ExpectedURNs          []string          `json:"expected_urns"`
+	ExpectQualityPass     *bool             `json:"expect_quality_pass"`
 	ExpectRecovery        bool              `json:"expect_recovery"`
 	ExpectCitationsOK     bool              `json:"expect_citations_ok"`
 	ExpectUnsupportedCode string            `json:"expect_unsupported_code"`
@@ -74,6 +75,10 @@ func TestAskTrajectoryGoldenEvals(t *testing.T) {
 				t.Fatalf("probe did not report fixture finding count")
 			}
 			summary := eventData[SummaryEvent](t, events, EventSummary)
+			score := ScoreAskEvents(events)
+			if tc.ExpectQualityPass != nil && score.Passed != *tc.ExpectQualityPass {
+				t.Fatalf("quality score = %+v, want passed %v", score, *tc.ExpectQualityPass)
+			}
 			if tc.ExpectUnsupportedCode != "" {
 				if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != tc.ExpectUnsupportedCode {
 					t.Fatalf("unsupported query = %#v, want code %q", summary.UnsupportedQuery, tc.ExpectUnsupportedCode)
@@ -199,6 +204,35 @@ func TestAskRecoveryRefusesSaturatedCandidateWindow(t *testing.T) {
 	}
 	if countEvents(events, EventRows) != 0 {
 		t.Fatalf("recovery emitted rows after saturated candidate window: %#v", events)
+	}
+}
+
+func TestScoreAskEventsRequiresGroundingAndCitations(t *testing.T) {
+	score := ScoreAskEvents([]Event{
+		{Name: EventQueryPlan, Data: QueryPlanEvent{Plan: AskQueryPlan{Intent: IntentTopRiskFindings}}},
+		{Name: EventRows, Data: RowsEvent{Rows: []map[string]any{{"finding_urn": "urn:cerebro:writer:finding:alpha"}}}},
+		{Name: EventSummary, Data: SummaryEvent{CitationValidation: &CitationValidation{OK: true, RowURNCount: 1, ReferencedURNCount: 1}}},
+	})
+	if !score.Passed || score.QueryPlanStatus != "pass" || score.GroundingStatus != "pass" || score.CitationStatus != "pass" {
+		t.Fatalf("score = %+v, want passed with query plan, grounding, and citations", score)
+	}
+
+	ungrounded := ScoreAskEvents([]Event{
+		{Name: EventQueryPlan, Data: QueryPlanEvent{Plan: AskQueryPlan{Intent: IntentTopRiskFindings}}},
+		{Name: EventSummary, Data: SummaryEvent{Markdown: "alpha is risky"}},
+	})
+	if ungrounded.Passed || len(ungrounded.Failures) == 0 {
+		t.Fatalf("ungrounded score = %+v, want failures", ungrounded)
+	}
+}
+
+func TestScoreAskEventsAcceptsSafeRefusal(t *testing.T) {
+	score := ScoreAskEvents([]Event{
+		{Name: EventQueryPlan, Data: QueryPlanEvent{Plan: AskQueryPlan{Intent: IntentTopRiskFindings}}},
+		{Name: EventSummary, Data: SummaryEvent{UnsupportedQuery: &UnsupportedQuery{Code: "unsupported_filter"}}},
+	})
+	if !score.Passed || score.UnsupportedStatus != "safe_refusal" || score.CitationStatus != "not_required" {
+		t.Fatalf("score = %+v, want safe refusal pass", score)
 	}
 }
 

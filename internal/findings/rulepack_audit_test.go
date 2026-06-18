@@ -1064,6 +1064,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "pagerduty-service-without-escalation-policy", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "pagerduty"},
 		{RuleID: "trusted-endpoint-active-trust-gate-failure", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "trusted_endpoint"},
 		{RuleID: "cosmo-coordination-active-risk", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cosmo"},
+		{RuleID: "sdk-integration-active-risk", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sdk"},
 		{RuleID: "security-tooling-map-control-coverage-gap", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_tooling_map"},
 		{RuleID: "cerebro-high-risk-api-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cerebro"},
 		{RuleID: "backstage-critical-component-missing-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "backstage"},

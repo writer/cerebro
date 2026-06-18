@@ -229,6 +229,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "sdk",
+			Name:        "SDK",
+			Description: "SDK-onboarded integration posture and control-gap findings.",
+			Rules: []Rule{
+				newSDKIntegrationActiveRiskRule(),
+			},
+		},
+		{
 			ID:          "security_tooling_map",
 			Name:        "Security Tooling Map",
 			Description: "Security tooling inventory and control-coverage posture findings.",

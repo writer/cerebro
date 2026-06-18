@@ -37,6 +37,9 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 		"specialized-agents",
 		"action-ladder",
 		"cerebro-agent-platform-eval",
+		"graph-ask-regression-evals",
+		"model-provider-comparison",
+		"ai-provider-governance",
 		"a2a-protocol-boundary",
 		"event-subscription-webhooks",
 		"public-idempotency-contract",
@@ -56,7 +59,7 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 			t.Fatalf("profile must expose capability, verifier, and action bounds: %+v", profile)
 		}
 	}
-	for _, required := range []string{"coverage-scout", "remediation-planner", "detection-engineer"} {
+	for _, required := range []string{"coverage-scout", "remediation-planner", "detection-engineer", "ai-governance-analyst"} {
 		if _, ok := profiles[required]; !ok {
 			t.Fatalf("profile %q missing: %+v", required, snapshot.AgentProfiles)
 		}
@@ -92,7 +95,7 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 			t.Fatalf("eval scenario must bind capability and rubrics: %+v", scenario)
 		}
 	}
-	for _, required := range []string{"tenant-isolation", "simulation-bounds"} {
+	for _, required := range []string{"tenant-isolation", "graph-ask-grounded-regression", "model-provider-comparison", "ai-governance-posture", "simulation-bounds"} {
 		if !scenarios[required] {
 			t.Fatalf("eval scenario %q missing: %+v", required, snapshot.EvalSuite.Scenarios)
 		}
@@ -104,6 +107,9 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 	}
 	if snapshot.SimulationHarness.Mode != "graph_or_fixture_only" {
 		t.Fatalf("simulation mode = %q, want graph_or_fixture_only", snapshot.SimulationHarness.Mode)
+	}
+	if len(snapshot.RubricVerifiers) == 0 || len(snapshot.ModelComparisons) == 0 || len(snapshot.AIGovernanceSources) == 0 {
+		t.Fatalf("snapshot missing NLP governance surfaces: rubrics=%+v comparisons=%+v sources=%+v", snapshot.RubricVerifiers, snapshot.ModelComparisons, snapshot.AIGovernanceSources)
 	}
 }
 
@@ -165,6 +171,39 @@ func TestSecurityControlPlaneReferencesKnownRegistryEntries(t *testing.T) {
 	for _, scenario := range snapshot.EvalSuite.Scenarios {
 		if _, ok := capabilityByID(scenario.Capability); !ok {
 			t.Fatalf("eval scenario %q references unknown capability %q", scenario.ID, scenario.Capability)
+		}
+	}
+	scenarioIDs := map[string]bool{}
+	for _, scenario := range snapshot.EvalSuite.Scenarios {
+		scenarioIDs[scenario.ID] = true
+	}
+	for _, rubric := range snapshot.RubricVerifiers {
+		if _, ok := capabilityByID(rubric.CapabilityID); !ok {
+			t.Fatalf("rubric verifier %q references unknown capability %q", rubric.ID, rubric.CapabilityID)
+		}
+		if len(rubric.RequiredSignals) == 0 {
+			t.Fatalf("rubric verifier %q must declare required signals", rubric.ID)
+		}
+	}
+	for _, comparison := range snapshot.ModelComparisons {
+		if _, ok := capabilityByID(comparison.CapabilityID); !ok {
+			t.Fatalf("model comparison %q references unknown capability %q", comparison.ID, comparison.CapabilityID)
+		}
+		for _, scenarioID := range comparison.ScenarioIDs {
+			if !scenarioIDs[scenarioID] {
+				t.Fatalf("model comparison %q references unknown scenario %q", comparison.ID, scenarioID)
+			}
+		}
+		if len(comparison.ModelRoutes) == 0 || len(comparison.RequiredMetrics) == 0 || comparison.PromotionGate == "" {
+			t.Fatalf("model comparison %q must declare routes, metrics, and promotion gate", comparison.ID)
+		}
+	}
+	for _, source := range snapshot.AIGovernanceSources {
+		if source.SourceID == "" || len(source.GovernedFamilies) == 0 || len(source.RiskSignals) == 0 {
+			t.Fatalf("AI governance source must declare source, families, and risk signals: %+v", source)
+		}
+		if _, ok := capabilityByID(source.RecommendedCapability); !ok {
+			t.Fatalf("AI governance source %q references unknown capability %q", source.SourceID, source.RecommendedCapability)
 		}
 	}
 	readableMemoryTypes := map[string]bool{}
@@ -229,6 +268,81 @@ func TestBuildEvidencePacketWarnsOnCoverageAndBlocksUnapprovedExecution(t *testi
 	if len(packet.RequiredWriteBack) == 0 || !containsString(packet.RequiredWriteBack, "verifier_results") {
 		t.Fatalf("required write-back = %+v, want verifier results", packet.RequiredWriteBack)
 	}
+}
+
+func TestBuildEvidencePacketSelectsAIGovernanceAnalyst(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Review OpenAI hosted tool permissions and model usage.",
+		ScopeURN:        "urn:cerebro:tenant-1:source:openai",
+		CapabilityIDs:   []string{"ai-provider-governance", "knowledge-provenance"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead},
+		Action:          EvidencePacketAction{Stage: ActionStageRecommend},
+		CoverageContext: &AgentCoverageContext{
+			Version:         ContractVersion,
+			TenantID:        "tenant-1",
+			SourceID:        "openai",
+			TotalDimensions: 4,
+		},
+	})
+
+	if !packetHasRecommendedAgent(packet, "ai-governance-analyst") {
+		t.Fatalf("packet agents = %+v, want ai-governance-analyst", packet.RecommendedAgents)
+	}
+	if !packetHasVerifierStatus(packet, "ai-provider-governance", "pass") {
+		t.Fatalf("packet missing AI provider governance pass: %+v", packet.VerifierResults)
+	}
+	if !packetHasEvalScenario(packet, "ai-governance-posture") {
+		t.Fatalf("packet eval checklist missing ai-governance-posture: %+v", packet.EvalChecklist)
+	}
+}
+
+func TestBuildEvidencePacketSelectsAIGovernanceAnalystWhenAccessIsMentioned(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Review OpenAI model access and hosted tool permissions.",
+		ScopeURN:        "urn:cerebro:tenant-1:source:openai",
+		CapabilityIDs:   []string{"ai-provider-governance", "knowledge-provenance"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead},
+		Action:          EvidencePacketAction{Stage: ActionStageRecommend},
+		CoverageContext: &AgentCoverageContext{
+			Version:         ContractVersion,
+			TenantID:        "tenant-1",
+			SourceID:        "openai",
+			TotalDimensions: 4,
+		},
+	})
+
+	if !packetHasRecommendedAgent(packet, "ai-governance-analyst") {
+		t.Fatalf("packet agents = %+v, want ai-governance-analyst", packet.RecommendedAgents)
+	}
+	if !packetHasRecommendedAgent(packet, "identity-drift-analyst") {
+		t.Fatalf("packet agents = %+v, want identity-drift-analyst for access review", packet.RecommendedAgents)
+	}
+	if !packetHasVerifierStatus(packet, "ai-provider-governance", "pass") {
+		t.Fatalf("packet missing AI provider governance pass: %+v", packet.VerifierResults)
+	}
+}
+
+func TestAgentModelComparisonsUseStableRouteIDs(t *testing.T) {
+	snapshot := SecurityControlPlaneSnapshot()
+	for _, comparison := range snapshot.ModelComparisons {
+		if comparison.ID != "graph-ask-model-routes" {
+			continue
+		}
+		for _, required := range []string{"claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"} {
+			if !containsString(comparison.ModelRoutes, required) {
+				t.Fatalf("model routes = %+v, want %q", comparison.ModelRoutes, required)
+			}
+		}
+		if containsString(comparison.ModelRoutes, "claude-haiku-4-5-20251001") {
+			t.Fatalf("model routes = %+v, want route IDs without date suffixes", comparison.ModelRoutes)
+		}
+		return
+	}
+	t.Fatal("graph-ask-model-routes comparison missing")
 }
 
 func TestBuildEvidencePacketKeepsBlockedConfidenceWithoutCoverage(t *testing.T) {
@@ -348,6 +462,15 @@ func packetHasVerifierStatus(packet AgentEvidencePacket, id string, status strin
 func packetHasAnyVerifierStatus(packet AgentEvidencePacket, status string) bool {
 	for _, result := range packet.VerifierResults {
 		if result.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func packetHasEvalScenario(packet AgentEvidencePacket, id string) bool {
+	for _, scenario := range packet.EvalChecklist {
+		if scenario.ID == id {
 			return true
 		}
 	}

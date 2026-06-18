@@ -227,6 +227,42 @@
     }
   },
   {
+    "id": "ai-provider-governance-posture",
+    "scenario_id": "ai-governance-posture",
+    "description": "AI provider questions select the AI governance analyst and keep model/tool posture as cited graph evidence.",
+    "covered_strategy_ids": ["ai-provider-governance"],
+    "request": {
+      "tenant_id": "tenant-1",
+      "actor_id": "eval-analyst",
+      "question": "Review OpenAI hosted tool and model permissions before trusting this AI workflow.",
+      "scope_urn": "urn:cerebro:tenant-1:source:openai",
+      "capability_ids": ["ai-provider-governance", "knowledge-provenance"],
+      "requested_scopes": ["cosmo.security.read"],
+      "action": {"stage": "recommend"},
+      "coverage_context": {
+        "version": "2026-06-16.cerebro-agent-platform",
+        "tenant_id": "tenant-1",
+        "source_id": "openai",
+        "total_dimensions": 4,
+        "high_value_dimensions": 2
+      }
+    },
+    "expect": {
+      "preflight_enabled": true,
+      "confidence_level": "high",
+      "simulation_allowed": true,
+      "required_agent_ids": ["ai-governance-analyst", "coverage-scout"],
+      "required_verifier_statuses": {
+        "ai-provider-governance": "pass",
+        "tenant-scope": "pass",
+        "freshness": "pass"
+      },
+      "required_action_statuses": {"recommend": "requested"},
+      "required_eval_scenario_ids": ["ai-governance-posture"],
+      "required_evidence_kinds": ["scope", "source_coverage"]
+    }
+  },
+  {
     "id": "simulation-requires-graph-scope",
     "scenario_id": "simulation-bounds",
     "description": "Simulation planning stays disabled without a graph scope or fixture root.",
