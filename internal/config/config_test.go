@@ -162,7 +162,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://otel-collector.example.com:4317/v1/traces")
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "https://otel-collector.example.com:4317/v1/metrics")
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", "x-scope=security,tenant=writer")
-	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "false")
 	t.Setenv("CEREBRO_OTEL_TRACES_SAMPLE_RATE", "0.25")
 	t.Setenv("CEREBRO_OTEL_METRICS_EXPORT_INTERVAL", "15s")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
@@ -259,7 +259,7 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.OTEL.Headers["x-scope"] != "security" || cfg.OTEL.Headers["tenant"] != "writer" {
 		t.Fatalf("OTEL headers = %#v", cfg.OTEL.Headers)
 	}
-	if !cfg.OTEL.Insecure || cfg.OTEL.TraceSampleRate != 0.25 || cfg.OTEL.MetricInterval != 15*time.Second {
+	if cfg.OTEL.Insecure || cfg.OTEL.TraceSampleRate != 0.25 || cfg.OTEL.MetricInterval != 15*time.Second {
 		t.Fatalf("OTEL exporter options = %#v", cfg.OTEL)
 	}
 	if !cfg.Auth.Enabled {
@@ -401,6 +401,7 @@ func TestLoadParsesMCPOAuthJSONFiles(t *testing.T) {
 func TestLoadEnablesOTELWhenEndpointConfigured(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -408,6 +409,52 @@ func TestLoadEnablesOTELWhenEndpointConfigured(t *testing.T) {
 	}
 	if !cfg.OTEL.Enabled {
 		t.Fatal("OTEL.Enabled = false, want true when endpoint is configured")
+	}
+}
+
+func TestLoadRejectsPlainHTTPRemoteOTELEndpoint(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector.example.com:4318")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
+
+	_, err := Load()
+	if !errors.Is(err, errUnsafeOTLPTransportMode) {
+		t.Fatalf("Load() error = %v, want remote plain HTTP OTLP rejection", err)
+	}
+}
+
+func TestLoadRejectsLoopbackHTTPOTELEndpointWithoutInsecure(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+
+	_, err := Load()
+	if !errors.Is(err, errUnsafeOTLPTransportMode) {
+		t.Fatalf("Load() error = %v, want loopback HTTP to require insecure flag", err)
+	}
+}
+
+func TestLoadRejectsInsecureFlagForHTTPSOTELEndpoint(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "https://otel-collector.example.com:4318")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
+
+	_, err := Load()
+	if !errors.Is(err, errUnsafeOTLPTransportMode) {
+		t.Fatalf("Load() error = %v, want insecure HTTPS OTLP rejection", err)
+	}
+}
+
+func TestLoadRejectsMalformedOTELEndpoint(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector.example.com:4318")
+
+	_, err := Load()
+	if !errors.Is(err, errInvalidOTLPEndpoint) {
+		t.Fatalf("Load() error = %v, want malformed OTLP endpoint rejection", err)
 	}
 }
 

@@ -49,7 +49,15 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	pattern := regexp.MustCompile(`telemetry\.Field\s*\{\s*Key:\s*"` + `error"`)
+	patterns := []struct {
+		name string
+		re   *regexp.Regexp
+	}{
+		{name: `telemetry.Field Key "error"`, re: regexp.MustCompile(`telemetry\.Field\s*\{[\s\S]{0,240}?Key:\s*"error"`)},
+		{name: `withTelemetryField key "error"`, re: regexp.MustCompile(`withTelemetryField\s*\([\s\S]{0,240}?"error"\s*,`)},
+		{name: `telemetry.Field Value err.Error()`, re: regexp.MustCompile(`telemetry\.Field\s*\{[\s\S]{0,240}?Value:\s*[^}\n]*\.Error\s*\(`)},
+		{name: `withTelemetryField err.Error()`, re: regexp.MustCompile(`withTelemetryField\s*\([\s\S]{0,240}?\.Error\s*\(`)},
+	}
 	var matches []string
 	err := filepath.WalkDir(repoRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -65,16 +73,21 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 		if filepath.Ext(path) != ".go" {
 			return nil
 		}
+		if filepath.Clean(path) == filepath.Clean(currentFile) {
+			return nil
+		}
 		contents, err := os.ReadFile(path) // #nosec G304 G122 -- path comes from WalkDir under the repository root in a repository-static lint test.
 		if err != nil {
 			return err
 		}
-		if pattern.Match(contents) {
-			rel, err := filepath.Rel(repoRoot, path)
-			if err != nil {
-				rel = path
+		for _, pattern := range patterns {
+			if pattern.re.Match(contents) {
+				rel, err := filepath.Rel(repoRoot, path)
+				if err != nil {
+					rel = path
+				}
+				matches = append(matches, rel+" ("+pattern.name+")")
 			}
-			matches = append(matches, rel)
 		}
 		return nil
 	})

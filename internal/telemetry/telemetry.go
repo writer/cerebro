@@ -95,7 +95,7 @@ func RuntimeAttributes() Attributes {
 		Field{Key: "service.version", Value: buildinfo.Version},
 		Field{Key: "service.commit", Value: buildinfo.Commit},
 		Field{Key: "service.build_date", Value: buildinfo.BuildDate},
-		Field{Key: "deployment.environment", Value: "unknown"},
+		Field{Key: "deployment.environment.name", Value: "unknown"},
 		Field{Key: "host.name", Value: hostname},
 		Field{Key: "os.type", Value: runtime.GOOS},
 		Field{Key: "os.arch", Value: runtime.GOARCH},

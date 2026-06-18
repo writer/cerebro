@@ -45,6 +45,7 @@ Expected propagated dimensions include:
 - Auth: `tenant_id`, `auth.outcome`, `auth.mode`, `auth.credential_tier`, `auth.risk_level`, `auth.denial_reason`
 - MCP/OAuth: `mcp.method`, `mcp.tool`, `mcp.tool_family`, `mcp.outcome`, `oauth.operation`, `oauth.grant_type`
 - GRC/LLM: `grc.ask.llm.provider`, `grc.ask.query_plan.intent`, `grc.ask.row_count`, stage timing fields
+- Graph-agent LLM: `gen_ai.provider.name`, `gen_ai.operation.name`, `gen_ai.request.model`, `graphagent.*.count`, `graphagent.*.bytes`, refusal/plan/Cypher presence flags
 - Stores: `cache.redis.*.count`, `db.postgres.*.count`, `db.neo4j.*.count`
 - Messaging/source/graph: `messaging.jetstream.*.count`, `source_runtime.*`, `source.operation.*`, `graph.ingest.*`
 - Domain outcomes: `source_projection.*`, `finding_candidate.*`, `finding_evaluation.*`
@@ -58,12 +59,13 @@ Core runtime operations emit structured spans:
 | `source_runtime.sync`, `source_runtime.sync_with_lease` | Runtime sync and lease lifecycle |
 | `graph.ingest_runtime` | Graph ingestion runs |
 | `graphagent.http.request` | Graph-agent LLM/upstream HTTP calls |
+| `graphagent.llm.draft`, `graphagent.llm.summarize`, `graphagent.llm.probe` | Graph-agent LLM operations, model/provider metadata, counts, sizes, and safe outcomes only |
 | `postgres.ping`, `postgres.ensure_statements` | Postgres readiness and schema setup |
 | `neo4j.read`, `neo4j.write` | Graph store transactions |
 | `redis.cache.*`, `redis.ping` | Query cache operations, hits/misses, version bumps |
 | `jetstream.ping`, `jetstream.append`, `jetstream.replay` | Append-log health, publish, and replay |
 
-Outbound HTTP uses W3C `traceparent`. The source transport and graph-agent HTTP doer inject child trace context, but they do not emit full URLs, query strings, request bodies, authorization headers, or API keys.
+Outbound HTTP uses W3C `traceparent`. The source transport and graph-agent HTTP doer inject child trace context, but they do not emit full URLs, query strings, request bodies, authorization headers, or API keys. Graph-agent LLM spans also do not emit prompt text, completion text, raw Cypher, raw tool arguments, rows, or headers.
 
 ## Error Contract
 
@@ -90,10 +92,10 @@ Cerebro enables OTEL export when `CEREBRO_OTEL_ENABLED=true` or when an OTLP end
 | `CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace endpoint override |
 | `CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metric endpoint override |
 | `CEREBRO_OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated OTLP auth headers; mount from secrets only |
-| `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE` | Allow insecure transport for local collectors |
+| `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE` | Allow insecure transport only for loopback collectors |
 | `CEREBRO_OTEL_TRACES_SAMPLE_RATE` | Float from `0` to `1` |
 | `CEREBRO_OTEL_METRICS_EXPORT_INTERVAL` | Duration such as `30s` or `1m` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment=sec-dev` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment.name=sec-dev` |
 
 ## Local Verification
 
@@ -118,6 +120,8 @@ CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
 CEREBRO_OTEL_EXPORTER_OTLP_INSECURE=true \
 go run ./cmd/cerebro serve
 ```
+
+Remote OTLP endpoints must use `https://` without `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE=true`. Plain HTTP is accepted only for loopback collector endpoints such as `http://127.0.0.1:4318`.
 
 Then hit `/health` and one API route. Confirm:
 

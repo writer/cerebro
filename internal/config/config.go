@@ -36,8 +36,10 @@ const (
 )
 
 var (
-	errConfigValueConflict = errors.New("config value and file are both set")
-	errLegacyKuzuPath      = errors.New("CEREBRO_KUZU_PATH is no longer supported")
+	errConfigValueConflict     = errors.New("config value and file are both set")
+	errInvalidOTLPEndpoint     = errors.New("invalid otlp endpoint")
+	errLegacyKuzuPath          = errors.New("CEREBRO_KUZU_PATH is no longer supported")
+	errUnsafeOTLPTransportMode = errors.New("unsafe otlp transport mode")
 )
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
@@ -482,6 +484,9 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL %q", cfg.OTEL.Protocol)
 	}
+	if err := validateOpenTelemetryEndpoints(cfg.OTEL); err != nil {
+		return Config{}, err
+	}
 	if cfg.Auth.RequestOrigin.TrustedProxyCount, err = parseIntEnv("CEREBRO_TRUSTED_PROXY_COUNT", 0); err != nil {
 		return Config{}, err
 	}
@@ -729,6 +734,49 @@ func validateRequestOriginConfig(cfg RequestOriginConfig) error {
 
 func (cfg OpenTelemetryConfig) hasExporterConfig() bool {
 	return strings.TrimSpace(cfg.Endpoint) != "" || strings.TrimSpace(cfg.TracesEndpoint) != "" || strings.TrimSpace(cfg.MetricsEndpoint) != ""
+}
+
+func validateOpenTelemetryEndpoints(cfg OpenTelemetryConfig) error {
+	for _, endpoint := range []struct {
+		name  string
+		value string
+	}{
+		{name: "CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", value: cfg.Endpoint},
+		{name: "CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", value: cfg.TracesEndpoint},
+		{name: "CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", value: cfg.MetricsEndpoint},
+	} {
+		raw := strings.TrimSpace(endpoint.value)
+		if raw == "" {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Hostname() == "" {
+			return fmt.Errorf("%w: %s must be an absolute http(s) URL", errInvalidOTLPEndpoint, endpoint.name)
+		}
+		if parsed.User != nil {
+			return fmt.Errorf("%w: %s must not include user info", errInvalidOTLPEndpoint, endpoint.name)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("%w: %s must use http or https", errInvalidOTLPEndpoint, endpoint.name)
+		}
+		loopback := isLoopbackHost(parsed.Hostname())
+		if parsed.Scheme == "http" && (!cfg.Insecure || !loopback) {
+			return fmt.Errorf("%w: %s plain HTTP OTLP endpoints are only allowed for loopback collectors with CEREBRO_OTEL_EXPORTER_OTLP_INSECURE=true", errUnsafeOTLPTransportMode, endpoint.name)
+		}
+		if cfg.Insecure && (parsed.Scheme != "http" || !loopback) {
+			return fmt.Errorf("%w: CEREBRO_OTEL_EXPORTER_OTLP_INSECURE is only allowed with loopback HTTP OTLP endpoints", errUnsafeOTLPTransportMode)
+		}
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	if normalized == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(normalized)
+	return ip != nil && ip.IsLoopback()
 }
 
 func envHasValue(name string) bool {
