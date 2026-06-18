@@ -25,6 +25,7 @@ def create_web_service(
     log_group_kms_key_id: pulumi.Input[str] = None,
     environment: dict = None,
     secret_keys: list = None,
+    log_insights_log_group_arns: list[pulumi.Input[str]] = None,
     fargate_base: int = 1,
     fargate_weight: int = 1,
     fargate_spot_base: int = 0,
@@ -43,6 +44,8 @@ def create_web_service(
         kms_key_id=log_group_kms_key_id,
         tags={"Name": f"{name}-logs"},
     )
+    if log_insights_log_group_arns:
+        _attach_log_insights_policy(name, task_role, [*log_insights_log_group_arns, log_group.arn])
 
     task_definition = _create_task_definition(
         name=name,
@@ -213,6 +216,35 @@ def _create_task_role(name: str) -> aws.iam.Role:
             }],
         }),
         tags={"Name": f"{name}-task-role"},
+    )
+
+
+def _attach_log_insights_policy(name: str, role: aws.iam.Role, log_group_arns: list[pulumi.Input[str]]) -> aws.iam.RolePolicy:
+    return aws.iam.RolePolicy(
+        f"{name}-task-log-insights",
+        role=role.name,
+        policy=pulumi.Output.all(*log_group_arns).apply(lambda log_groups: json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "logs:StartQuery",
+                        "logs:StopQuery",
+                        "logs:FilterLogEvents",
+                    ],
+                    "Resource": list(log_groups),
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "logs:DescribeLogGroups",
+                        "logs:GetQueryResults",
+                    ],
+                    "Resource": "*",
+                },
+            ],
+        })),
     )
 
 

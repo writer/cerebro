@@ -16,6 +16,7 @@ from provision_otel_collector_config import bool_value, load_stack, render_colle
 
 
 READY_MARKER = "Everything is ready. Begin running and processing data."
+DEFAULT_DOCKER_PULL_RETRIES = 3
 TRANSIENT_REGISTRY_ERRORS = (
     "toomanyrequests",
     "too many requests",
@@ -35,6 +36,24 @@ def docker_logs(docker_bin: str, container_name: str) -> str:
 
 def remove_container(docker_bin: str, container_name: str) -> None:
     run_command([docker_bin, "rm", "-f", container_name])
+
+
+def image_pull_rate_limited(detail: str) -> bool:
+    normalized = detail.lower()
+    return any(marker in normalized for marker in TRANSIENT_REGISTRY_ERRORS)
+
+
+def pull_image_with_retries(*, docker_bin: str, image: str, attempts: int = DEFAULT_DOCKER_PULL_RETRIES) -> None:
+    latest_detail = ""
+    for attempt in range(1, attempts + 1):
+        completed = run_command([docker_bin, "pull", image])
+        if completed.returncode == 0:
+            return
+        latest_detail = (completed.stderr or completed.stdout or "").strip()
+        if not image_pull_rate_limited(latest_detail) or attempt == attempts:
+            break
+        time.sleep(min(2**attempt, 10))
+    raise RuntimeError(f"failed to pull collector image {image}: {latest_detail}")
 
 
 def container_running(docker_bin: str, container_name: str) -> bool:
@@ -69,6 +88,12 @@ def start_collector(
     completed = run_command(command)
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
+        if image_pull_rate_limited(detail):
+            pull_image_with_retries(docker_bin=docker_bin, image=image)
+            completed = run_command(command)
+            if completed.returncode == 0:
+                return completed.stdout.strip()
+            detail = (completed.stderr or completed.stdout or "").strip()
         raise RuntimeError(f"failed to start collector image {image}: {detail}")
     return completed.stdout.strip()
 

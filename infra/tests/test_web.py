@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -10,6 +11,14 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location("web", Path(__file__).resolve().parents[1] / "aws" / "web.py")
 web = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(web)
+
+
+class FakeOutputAll:
+    def __init__(self, values: tuple):
+        self.values = values
+
+    def apply(self, callback):
+        return callback(self.values)
 
 
 class WebAutoscalingTest(unittest.TestCase):
@@ -65,6 +74,39 @@ class WebAutoscalingTest(unittest.TestCase):
             metrics,
             {"ECSServiceAverageCPUUtilization", "ECSServiceAverageMemoryUtilization"},
         )
+
+    def test_log_insights_policy_scopes_start_query_to_configured_log_groups(self) -> None:
+        role_policies: list[dict] = []
+
+        def fake_role_policy(*args, **kwargs):
+            role_policies.append({"name": args[0], **kwargs})
+            return SimpleNamespace(name=args[0])
+
+        with (
+            patch.object(web.aws.iam, "RolePolicy", side_effect=fake_role_policy),
+            patch.object(web.pulumi.Output, "all", side_effect=lambda *values: FakeOutputAll(values)),
+        ):
+            web._attach_log_insights_policy(
+                "cerebro-sec-dev-web",
+                SimpleNamespace(name="cerebro-sec-dev-web-task-role"),
+                [
+                    "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev",
+                    "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev-web",
+                ],
+            )
+
+        self.assertEqual(len(role_policies), 1)
+        policy = json.loads(role_policies[0]["policy"])
+        start_query_statement = policy["Statement"][0]
+        self.assertIn("logs:StartQuery", start_query_statement["Action"])
+        self.assertEqual(
+            start_query_statement["Resource"],
+            [
+                "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev",
+                "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev-web",
+            ],
+        )
+        self.assertEqual(policy["Statement"][1]["Resource"], "*")
 
 
 if __name__ == "__main__":

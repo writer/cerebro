@@ -32,6 +32,7 @@ DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS = 3300
 DEFAULT_LOG_WAIT_SECONDS = 60
 DEFAULT_LOG_POLL_SECONDS = 2
 MAX_ECS_CONTAINER_OVERRIDES_BYTES = 8192
+ECS_CONTAINER_OVERRIDES_SAFE_BYTES = 3500
 MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
@@ -725,6 +726,12 @@ def _verify_current_ingest_runs(
 ) -> int:
     latest_by_runtime = _latest_ingest_runs_by_runtime(payload)
     declared_runtime_ids = declared_runtime_ids or set()
+    if declared_runtime_ids:
+        latest_by_runtime = {
+            runtime_id: run
+            for runtime_id, run in latest_by_runtime.items()
+            if runtime_id in declared_runtime_ids
+        }
     missing = sorted(declared_runtime_ids - set(latest_by_runtime))
     if missing:
         raise CurrentIngestRunsError(
@@ -836,10 +843,10 @@ def _verify_current_ingest_runs_with_retries(
     if overall_deadline is not None:
         deadline = min(deadline, overall_deadline)
     while True:
-        ingest_runs = _run_graph_command_with_retries(
+        ingest_runs = _run_batched_ingest_runs_command(
             resource_prefix,
             service,
-            ["graph", "ingest-runs", f"limit={_ingest_run_limit(declared_runtime_ids)}"],
+            declared_runtime_ids,
             wait_timeout_seconds,
             poll_seconds,
             region,
@@ -863,6 +870,144 @@ def _verify_current_ingest_runs_with_retries(
             time.sleep(min(poll_seconds, max(1, int(deadline - now))))
 
 
+def _run_batched_ingest_runs_command(
+    resource_prefix: str,
+    service: dict[str, Any],
+    declared_runtime_ids: set[str],
+    wait_timeout_seconds: int,
+    poll_seconds: int,
+    region: str,
+    graph_command_retry_seconds: int,
+    context: GraphCommandContext | None = None,
+    overall_deadline: float | None = None,
+) -> GraphCommandResult:
+    commands = _ingest_run_commands(declared_runtime_ids)
+    try:
+        results = [
+            _run_graph_command_with_retries(
+                resource_prefix,
+                service,
+                command,
+                wait_timeout_seconds,
+                poll_seconds,
+                region,
+                0 if _graph_command_has_runtime_ids(command) else graph_command_retry_seconds,
+                context,
+                overall_deadline=overall_deadline,
+            )
+            for command in commands
+        ]
+    except RuntimeError as exc:
+        if declared_runtime_ids and any(_graph_command_has_runtime_ids(command) for command in commands) and _is_unsupported_ingest_runtime_ids_error(exc):
+            return _run_legacy_scoped_ingest_runs_command(
+                resource_prefix,
+                service,
+                declared_runtime_ids,
+                wait_timeout_seconds,
+                poll_seconds,
+                region,
+                graph_command_retry_seconds,
+                context,
+                overall_deadline=overall_deadline,
+            )
+        raise
+    if len(results) == 1:
+        return results[0]
+    return GraphCommandResult(
+        command=["graph", "ingest-runs", "batched=true"],
+        task_arn=",".join(result.task_arn for result in results if result.task_arn),
+        exit_code=0 if all(result.exit_code == 0 for result in results) else 1,
+        payload={"runs": [run for result in results for run in result.payload.get("runs") or []]},
+    )
+
+
+def _is_unsupported_ingest_runtime_ids_error(exc: RuntimeError) -> bool:
+    detail = str(exc).lower()
+    return "unsupported graph ingest-runs argument" in detail and "runtime_ids" in detail
+
+
+def _run_legacy_scoped_ingest_runs_command(
+    resource_prefix: str,
+    service: dict[str, Any],
+    declared_runtime_ids: set[str],
+    wait_timeout_seconds: int,
+    poll_seconds: int,
+    region: str,
+    graph_command_retry_seconds: int,
+    context: GraphCommandContext | None = None,
+    overall_deadline: float | None = None,
+) -> GraphCommandResult:
+    base = _run_graph_command_with_retries(
+        resource_prefix,
+        service,
+        ["graph", "ingest-runs", f"limit={_ingest_run_limit(declared_runtime_ids)}"],
+        wait_timeout_seconds,
+        poll_seconds,
+        region,
+        graph_command_retry_seconds,
+        context,
+        overall_deadline=overall_deadline,
+    )
+    missing_runtime_ids = _missing_declared_ingest_runtime_ids(base.payload, declared_runtime_ids)
+    if not missing_runtime_ids:
+        return base
+
+    results = [base]
+    for runtime_id in missing_runtime_ids:
+        results.append(
+            _run_graph_command_with_retries(
+                resource_prefix,
+                service,
+                ["graph", "ingest-runs", "limit=100", f"runtime_id={runtime_id}"],
+                wait_timeout_seconds,
+                poll_seconds,
+                region,
+                graph_command_retry_seconds,
+                context,
+                overall_deadline=overall_deadline,
+            )
+        )
+
+    payload = dict(base.payload)
+    payload["runs"] = [run for result in results for run in result.payload.get("runs") or []]
+    return GraphCommandResult(
+        command=["graph", "ingest-runs", "legacy_scoped=true"],
+        task_arn=",".join(result.task_arn for result in results if result.task_arn),
+        exit_code=0 if all(result.exit_code == 0 for result in results) else 1,
+        payload=payload,
+    )
+
+
+def _ingest_run_commands(declared_runtime_ids: set[str]) -> list[list[str]]:
+    if not declared_runtime_ids:
+        return [["graph", "ingest-runs", f"limit={_ingest_run_limit(declared_runtime_ids)}"]]
+
+    def command_for(runtime_ids: list[str]) -> list[str]:
+        runtime_set = set(runtime_ids)
+        command = ["graph", "ingest-runs", f"limit={_ingest_run_limit(runtime_set)}"]
+        if runtime_ids:
+            command.append(f"runtime_ids={','.join(runtime_ids)}")
+        return command
+
+    all_runtime_ids = sorted(declared_runtime_ids)
+    all_command = command_for(all_runtime_ids)
+    if _ecs_container_overrides_size(all_command) <= ECS_CONTAINER_OVERRIDES_SAFE_BYTES:
+        return [all_command]
+
+    commands: list[list[str]] = []
+    batch: list[str] = []
+    for runtime_id in all_runtime_ids:
+        candidate = [*batch, runtime_id]
+        if batch and _ecs_container_overrides_size(command_for(candidate)) > ECS_CONTAINER_OVERRIDES_SAFE_BYTES:
+            commands.append(command_for(batch))
+            batch = [runtime_id]
+        else:
+            batch = candidate
+    if batch:
+        commands.append(command_for(batch))
+    return commands
+
+
 def _graph_health_command(
     declared_runtime_ids: set[str],
     required_relations: set[str],
@@ -881,7 +1026,7 @@ def _graph_health_command(
         command.append("allow_transient_source_failures=true")
     if declared_runtime_ids:
         runtime_ids_arg = f"runtime_ids={','.join(sorted(declared_runtime_ids))}"
-        if _ecs_container_overrides_size([*command, runtime_ids_arg]) <= MAX_ECS_CONTAINER_OVERRIDES_BYTES:
+        if _ecs_container_overrides_size([*command, runtime_ids_arg]) <= ECS_CONTAINER_OVERRIDES_SAFE_BYTES:
             command.append(runtime_ids_arg)
     return command
 
@@ -891,6 +1036,10 @@ def _ecs_container_overrides_size(command: list[str]) -> int:
 
 
 def _graph_health_command_has_runtime_ids(command: list[str]) -> bool:
+    return _graph_command_has_runtime_ids(command)
+
+
+def _graph_command_has_runtime_ids(command: list[str]) -> bool:
     return any(argument.startswith("runtime_ids=") for argument in command)
 
 
@@ -901,6 +1050,54 @@ def _graph_health_payload_with_failure(payload: dict[str, Any], failure: str) ->
         failures = [failures]
     updated["failures"] = [str(item).strip() for item in failures if str(item).strip()]
     updated["failures"].append(failure)
+    return updated
+
+
+def _is_ingest_health_failure(failure: str) -> bool:
+    normalized = failure.strip().lower()
+    return normalized.startswith(
+        (
+            "latest graph ingest run failed",
+            "latest graph ingest run is stale-running",
+            "latest graph ingest projected no graph records",
+            "missing graph ingest run history",
+        )
+    )
+
+
+def _graph_health_payload_without_ingest_failures(payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    failures = payload.get("failures") or []
+    if not isinstance(failures, list):
+        failures = [failures]
+    cleaned_failures = []
+    removed = False
+    for failure in failures:
+        text = str(failure).strip()
+        if not text:
+            continue
+        if _is_ingest_health_failure(text):
+            removed = True
+            continue
+        cleaned_failures.append(text)
+
+    if not removed:
+        return payload, False
+
+    updated = dict(payload)
+    updated["failures"] = cleaned_failures
+    if not cleaned_failures and str(updated.get("status") or "").strip() != "passed":
+        updated["status"] = "passed"
+    return updated, True
+
+
+def _graph_health_payload_with_scoped_ingest_count(payload: dict[str, Any], current_runtime_count: int) -> dict[str, Any]:
+    updated = dict(payload)
+    ingest = updated.get("ingest") or {}
+    if not isinstance(ingest, dict):
+        ingest = {}
+    ingest = dict(ingest)
+    ingest["current_runtime_count"] = current_runtime_count
+    updated["ingest"] = ingest
     return updated
 
 
@@ -956,10 +1153,19 @@ def _run_graph_health_command_with_retries(
             overall_deadline=overall_deadline,
             allow_nonzero=True,
         )
-        errors = _graph_health_errors(result.payload, result.exit_code)
-        if not errors and declared_runtime_ids and not runtime_ids_in_command:
+        if declared_runtime_ids and not runtime_ids_in_command:
+            payload, removed_unscoped_ingest_failures = _graph_health_payload_without_ingest_failures(result.payload)
+            exit_code = result.exit_code
+            if removed_unscoped_ingest_failures and not _graph_health_errors(payload, None):
+                exit_code = 0
+            result = GraphCommandResult(
+                command=result.command,
+                task_arn=result.task_arn,
+                exit_code=exit_code,
+                payload=payload,
+            )
             try:
-                _verify_current_ingest_runs_with_retries(
+                _ingest_runs, current_ingest_runtimes = _verify_current_ingest_runs_with_retries(
                     resource_prefix,
                     service,
                     declared_runtime_ids,
@@ -973,6 +1179,12 @@ def _run_graph_health_command_with_retries(
                     context,
                     overall_deadline=overall_deadline,
                 )
+                result = GraphCommandResult(
+                    command=result.command,
+                    task_arn=result.task_arn,
+                    exit_code=result.exit_code,
+                    payload=_graph_health_payload_with_scoped_ingest_count(result.payload, current_ingest_runtimes),
+                )
             except CurrentIngestRunsError as exc:
                 nonretryable_error = not exc.retryable
                 result = GraphCommandResult(
@@ -981,7 +1193,7 @@ def _run_graph_health_command_with_retries(
                     exit_code=result.exit_code or 1,
                     payload=_graph_health_payload_with_failure(result.payload, str(exc)),
                 )
-                errors = _graph_health_errors(result.payload, result.exit_code)
+        errors = _graph_health_errors(result.payload, result.exit_code)
         now = time.time()
         if not errors or nonretryable_error or ingest_health_retry_seconds <= 0 or now >= deadline:
             return result

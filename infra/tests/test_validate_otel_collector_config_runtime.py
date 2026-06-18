@@ -117,6 +117,56 @@ config:
                         timeout_seconds=1,
                     )
 
+    def test_rate_limited_image_pull_is_retried_before_failing_validation(self) -> None:
+        commands: list[list[str]] = []
+        docker_run_attempts = 0
+
+        def fake_run(command: list[str]) -> subprocess.CompletedProcess[str]:
+            nonlocal docker_run_attempts
+            commands.append(command)
+            if command[:2] == ["docker", "run"]:
+                docker_run_attempts += 1
+                if docker_run_attempts == 1:
+                    return subprocess.CompletedProcess(command, 125, stdout="", stderr="toomanyrequests: Rate exceeded\n")
+                return subprocess.CompletedProcess(command, 0, stdout="container-id\n", stderr="")
+            if command[:2] == ["docker", "pull"]:
+                return subprocess.CompletedProcess(command, 0, stdout="pulled\n", stderr="")
+            if command[:2] == ["docker", "logs"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=f"{validate_otel_collector_config_runtime.READY_MARKER}\n",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with TemporaryDirectory() as tmp:
+            stack = Path(tmp) / "Pulumi.go-prod.yaml"
+            stack.write_text(
+                """
+config:
+  cerebro:environment: go-production
+  cerebro:otelCollectorEnabled: true
+  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
+""",
+                encoding="utf-8",
+            )
+
+            with (
+                patch.object(validate_otel_collector_config_runtime, "run_command", side_effect=fake_run),
+                patch.object(validate_otel_collector_config_runtime.time, "sleep"),
+            ):
+                result = validate_otel_collector_config_runtime.validate_stack_file(
+                    stack,
+                    docker_bin="docker",
+                    region="us-east-1",
+                    timeout_seconds=1,
+                )
+
+        self.assertIn("validated:", result)
+        self.assertEqual(2, sum(1 for command in commands if command[:2] == ["docker", "run"]))
+        self.assertTrue(any(command[:2] == ["docker", "pull"] for command in commands))
+
     def test_registry_rate_limit_can_be_skipped_for_static_ci(self) -> None:
         commands: list[list[str]] = []
 

@@ -27,6 +27,7 @@ from scripts.verify_graph_health_ecs import (
     _graph_health_command,
     _graph_health_errors,
     _graph_relation_counts,
+    _ingest_run_commands,
     _run_graph_command_with_retries,
     _summary_markdown,
     _image_tag_version,
@@ -80,6 +81,20 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
     def test_ingest_run_limit_scales_with_declared_runtimes(self) -> None:
         self.assertEqual(_ingest_run_limit({"a", "b"}), 100)
         self.assertEqual(_ingest_run_limit({str(index) for index in range(40)}), 500)
+
+    def test_ingest_run_commands_scope_runtime_ids_and_batch_when_needed(self) -> None:
+        runtime_ids = {f"runtime-{index:04d}-with-a-very-long-name" for index in range(400)}
+
+        commands = _ingest_run_commands(runtime_ids)
+
+        self.assertGreater(len(commands), 1)
+        command_runtime_ids = set()
+        for command in commands:
+            self.assertEqual(command[:2], ["graph", "ingest-runs"])
+            self.assertLessEqual(verify_graph_health_ecs._ecs_container_overrides_size(command), verify_graph_health_ecs.ECS_CONTAINER_OVERRIDES_SAFE_BYTES)
+            runtime_arg = next(argument for argument in command if argument.startswith("runtime_ids="))
+            command_runtime_ids.update(runtime_arg.removeprefix("runtime_ids=").split(","))
+        self.assertEqual(command_runtime_ids, runtime_ids)
 
     def test_image_tag_version_parses_release_tags(self) -> None:
         self.assertEqual(_image_tag_version("v2.1.46"), (2, 1, 46))
@@ -772,6 +787,16 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "runtime-a:run-new.*source read failed"):
             _verify_current_ingest_runs(payload)
 
+    def test_verify_current_ingest_runs_ignores_undeclared_latest_failures_when_scoped(self) -> None:
+        payload = {
+            "runs": [
+                {"id": "run-a", "runtime_id": "runtime-a", "status": "completed"},
+                {"id": "run-disabled", "runtime_id": "runtime-disabled", "status": "failed", "error": "disabled source"},
+            ]
+        }
+
+        self.assertEqual(_verify_current_ingest_runs(payload, declared_runtime_ids={"runtime-a"}), 1)
+
     def test_verify_current_ingest_runs_allows_transient_source_failure_with_prior_success(self) -> None:
         payload = {
             "runs": [
@@ -929,6 +954,115 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertIn("missing graph ingest run history", result.payload["failures"][0])
         self.assertEqual(commands[0][:2], ["graph", "health"])
         self.assertEqual(commands[1][:2], ["graph", "ingest-runs"])
+
+    def test_run_graph_health_command_replaces_unscoped_ingest_failures_with_scoped_ingest_health(self) -> None:
+        original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
+        runtime_ids = {f"runtime-{index:04d}-with-a-very-long-name" for index in range(400)}
+        commands: list[list[str]] = []
+
+        def fake_run_graph_command_with_retries(*args, **_kwargs):
+            command = args[2]
+            commands.append(command)
+            if command[:2] == ["graph", "health"]:
+                self.assertNotIn("runtime_ids=", " ".join(command))
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=command,
+                    task_arn="task-health",
+                    exit_code=1,
+                    payload={
+                        "status": "failed",
+                        "counts": {"nodes": 1, "relations": 1},
+                        "integrity": {"passed": 1, "failed": 0},
+                        "ingest": {"current_runtime_count": 2},
+                        "failures": [
+                            "latest graph ingest run failed for 1 runtime(s): runtime-disabled:run-disabled:error=disabled source"
+                        ],
+                    },
+                )
+            if command[:2] == ["graph", "ingest-runs"]:
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=command,
+                    task_arn="task-ingest-runs",
+                    exit_code=0,
+                    payload={
+                        "runs": [
+                            {"id": f"run-{index:04d}", "runtime_id": runtime_id, "status": "completed"}
+                            for index, runtime_id in enumerate(sorted(runtime_ids))
+                        ]
+                        + [
+                            {"id": "run-disabled", "runtime_id": "runtime-disabled", "status": "failed", "error": "disabled source"},
+                        ]
+                    },
+                )
+            raise AssertionError(f"unexpected command: {command}")
+
+        verify_graph_health_ecs._run_graph_command_with_retries = fake_run_graph_command_with_retries
+        try:
+            result = _run_graph_health_command_with_retries(
+                "prefix",
+                {},
+                runtime_ids,
+                {"belongs_to"},
+                10,
+                1,
+                "us-east-1",
+                0,
+                0,
+                60,
+                False,
+            )
+        finally:
+            verify_graph_health_ecs._run_graph_command_with_retries = original_run_graph_command_with_retries
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.payload["status"], "passed")
+        self.assertEqual(result.payload["failures"], [])
+        self.assertEqual(result.payload["ingest"]["current_runtime_count"], 400)
+        self.assertEqual(commands[0][:2], ["graph", "health"])
+        self.assertEqual(commands[1][:2], ["graph", "ingest-runs"])
+
+    def test_batched_ingest_runs_falls_back_to_legacy_runtime_id_filter(self) -> None:
+        original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
+        commands: list[list[str]] = []
+
+        def fake_run_graph_command_with_retries(*args, **_kwargs):
+            command = args[2]
+            commands.append(command)
+            if any(argument.startswith("runtime_ids=") for argument in command):
+                raise RuntimeError('unsupported graph ingest-runs argument "runtime_ids"')
+            if "runtime_id=runtime-b" in command:
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=command,
+                    task_arn="task-runtime-b",
+                    exit_code=0,
+                    payload={"runs": [{"id": "run-b", "runtime_id": "runtime-b", "status": "completed"}]},
+                )
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=command,
+                task_arn="task-unscoped",
+                exit_code=0,
+                payload={"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}]},
+            )
+
+        verify_graph_health_ecs._run_graph_command_with_retries = fake_run_graph_command_with_retries
+        try:
+            result = verify_graph_health_ecs._run_batched_ingest_runs_command(
+                "prefix",
+                {},
+                {"runtime-a", "runtime-b"},
+                10,
+                1,
+                "us-east-1",
+                0,
+            )
+        finally:
+            verify_graph_health_ecs._run_graph_command_with_retries = original_run_graph_command_with_retries
+
+        self.assertEqual(result.command, ["graph", "ingest-runs", "legacy_scoped=true"])
+        self.assertEqual({run["runtime_id"] for run in result.payload["runs"]}, {"runtime-a", "runtime-b"})
+        self.assertIn("runtime_ids=runtime-a,runtime-b", commands[0])
+        self.assertNotIn("runtime_ids=", " ".join(commands[1]))
+        self.assertIn("runtime_id=runtime-b", commands[2])
 
     def test_run_graph_health_command_with_retries_recovers_after_failed_status(self) -> None:
         original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries

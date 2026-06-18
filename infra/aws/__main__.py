@@ -1036,9 +1036,11 @@ if web_enabled:
     web_secret_keys = []
     if web_api_key_secret_name:
         web_secret_keys.append({"name": "CEREBRO_API_KEYS", "source": web_api_key_secret_name})
+    web_service_name = f"cerebro-{environment}-web"
+    web_audit_log_groups = pulumi.Output.concat(ecs_stack["log_group"].name, f",/ecs/{web_service_name}")
 
     web_stack = web.create_web_service(
-        name=f"cerebro-{environment}-web",
+        name=web_service_name,
         cluster_id=ecs_stack["cluster"].id,
         cluster_name=ecs_stack["cluster"].name,
         subnet_ids=vpc_stack["private_subnet_ids"],
@@ -1056,11 +1058,14 @@ if web_enabled:
         log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
         environment={
             "CEREBRO_API_BASE": web_api_base,
+            "CEREBRO_AUDIT_LOG_GROUPS": web_audit_log_groups,
+            "CEREBRO_AUDIT_LOGS_REGION": aws_region,
             "CEREBRO_FORWARD_AUTH_HEADERS": str(web_forward_auth_headers).lower(),
             "CEREBRO_PROXY_TIMEOUT_MS": str(web_proxy_timeout_ms),
             "NEXT_TELEMETRY_DISABLED": "1",
         },
         secret_keys=web_secret_keys,
+        log_insights_log_group_arns=[ecs_stack["log_group"].arn],
         depends_on=[ecs_stack["capacity_providers"], web_alb_stack["listener"]],
     )
 
