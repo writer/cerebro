@@ -2,6 +2,52 @@
   "version": "2026-05-21",
   "detections": [
     {
+      "id": "anthropic-unmanaged-active-api-key",
+      "pack_id": "anthropic",
+      "pack_name": "Anthropic",
+      "name": "Anthropic Unmanaged Active API Key",
+      "description": "Detect active Anthropic organization API keys that have no accountable owner (no owning user or service account), leaving a live credential without a responsible identity to govern or revoke it.",
+      "source_id": "anthropic",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "anthropic.api_key"
+      ],
+      "output_kind": "finding.anthropic_unmanaged_active_api_key",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "anthropic",
+        "api-key",
+        "credential",
+        "ownership",
+        "unmanaged"
+      ],
+      "references": [
+        "https://docs.anthropic.com/en/api/administration-api"
+      ],
+      "false_positives": [
+        "Keys intentionally owned by a shared break-glass identity that is tracked outside the Anthropic ownership model."
+      ],
+      "runbook": "Identify the unmanaged Anthropic API key, assign an accountable owner, or revoke the key if it is no longer required.",
+      "required_attributes": [
+        "api_key_id"
+      ],
+      "fingerprint_fields": [
+        "anthropic_credential_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.2"
+        }
+      ]
+    },
+    {
       "id": "cloud-current-public-exposure-review-needed",
       "pack_id": "cloud",
       "pack_name": "Cloud",
@@ -3025,7 +3071,8 @@
       "source_id": "kolide",
       "evaluation_mode": "event",
       "event_kinds": [
-        "kolide.device"
+        "kolide.device",
+        "kolide.issue"
       ],
       "output_kind": "finding.kolide_host_failing_compliance_checks",
       "severity": "MEDIUM",
@@ -3048,7 +3095,17 @@
       "required_attributes": [
         "device_id"
       ],
+      "required_attributes_by_kind": {
+        "kolide.device": [
+          "device_id"
+        ],
+        "kolide.issue": [
+          "device_id",
+          "issue_id"
+        ]
+      },
       "fingerprint_fields": [
+        "kolide_issue_urn",
         "kolide_device_urn"
       ],
       "control_refs": [

@@ -1,0 +1,84 @@
+{
+  "rule_id": "anthropic-unmanaged-active-api-key",
+  "runtime": {
+    "id": "writer-anthropic-api-key",
+    "source_id": "anthropic",
+    "tenant_id": "writer",
+    "config": {
+      "family": "api_key"
+    }
+  },
+  "events": [
+    {
+      "id": "anthropic-api-key-owned",
+      "tenant_id": "writer",
+      "source_id": "anthropic",
+      "kind": "anthropic.api_key",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "anthropic/api_key/v1",
+      "attributes": {
+        "family": "api_key",
+        "api_key_id": "apikey_owned",
+        "name": "owned-key",
+        "status": "active",
+        "owner_user_id": "user_123",
+        "source_runtime_id": "writer-anthropic-api-key"
+      }
+    },
+    {
+      "id": "anthropic-api-key-unmanaged",
+      "tenant_id": "writer",
+      "source_id": "anthropic",
+      "kind": "anthropic.api_key",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "anthropic/api_key/v1",
+      "attributes": {
+        "family": "api_key",
+        "api_key_id": "apikey_unmanaged",
+        "name": "unmanaged-key",
+        "status": "active",
+        "source_runtime_id": "writer-anthropic-api-key"
+      }
+    },
+    {
+      "id": "anthropic-api-key-inactive",
+      "tenant_id": "writer",
+      "source_id": "anthropic",
+      "kind": "anthropic.api_key",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "anthropic/api_key/v1",
+      "attributes": {
+        "family": "api_key",
+        "api_key_id": "apikey_inactive",
+        "name": "inactive-key",
+        "status": "inactive",
+        "source_runtime_id": "writer-anthropic-api-key"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "anthropic-unmanaged-active-api-key",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Anthropic API key unmanaged-key is active with no accountable owner",
+      "event_ids": ["anthropic-api-key-unmanaged"],
+      "attributes": {
+        "anthropic_credential_urn": "urn:cerebro:writer:anthropic_credential:apikey_unmanaged",
+        "api_key_id": "apikey_unmanaged",
+        "primary_resource_urn": "urn:cerebro:writer:anthropic_credential:apikey_unmanaged",
+        "rule_required_attributes": "api_key_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "anthropic-api-key-owned",
+      "reason": "active key with an accountable owner is managed"
+    },
+    {
+      "event_id": "anthropic-api-key-inactive",
+      "reason": "inactive key is no longer an active credential"
+    }
+  ]
+}

@@ -33,3 +33,9 @@ runtimes:
       family: check
       per_page: "100"
       token: env:KOLIDE_API_TOKEN
+  - localId: issue
+    config:
+      base_url: env:KOLIDE_BASE_URL
+      family: issue
+      per_page: "100"
+      token: env:KOLIDE_API_TOKEN
