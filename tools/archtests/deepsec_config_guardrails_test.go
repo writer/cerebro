@@ -3,6 +3,7 @@ package archtests
 import (
 	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,6 +82,8 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 		{name: "character class includes api", ignored: "[ai]pi/**", forbidden: "api/", want: true},
 		{name: "character class includes sources", ignored: "[s]ources/**", forbidden: "sources/", want: true},
 		{name: "character range includes api", ignored: "[a-c]pi/**", forbidden: "api/", want: true},
+		{name: "question mark includes api", ignored: "a?i/**", forbidden: "api/", want: true},
+		{name: "prefix wildcard includes api", ignored: "ap*/**", forbidden: "api/", want: true},
 		{name: "character class excludes internal", ignored: "[as]pi/**", forbidden: "internal/"},
 		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
 		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
@@ -124,6 +127,9 @@ func deepsecIgnorePathTouchesSurface(ignored string, forbidden string) bool {
 		if strings.Contains(candidate, "/"+surface+"/") || strings.HasSuffix(candidate, "/"+surface) {
 			return true
 		}
+		if deepsecIgnorePathCandidateGlobMatchesSurface(candidate, surface) {
+			return true
+		}
 	}
 	return false
 }
@@ -142,6 +148,20 @@ func deepsecIgnorePathCandidateIsBlanket(candidate string) bool {
 		}
 	}
 	return hasSegment
+}
+
+func deepsecIgnorePathCandidateGlobMatchesSurface(candidate string, surface string) bool {
+	for _, segment := range strings.Split(strings.Trim(candidate, "/"), "/") {
+		segment = strings.TrimSpace(segment)
+		if segment == "" || segment == "*" || segment == "**" || !strings.ContainsAny(segment, "*?[") {
+			continue
+		}
+		matched, err := path.Match(segment, surface)
+		if err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func deepsecIgnorePathCandidates(pattern string) []string {
