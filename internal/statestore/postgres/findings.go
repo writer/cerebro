@@ -194,6 +194,12 @@ var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fi
 // runtime keeps the row addressable through the real runtime-scoped read paths
 // (Service.ListFindings, ListEvidence, reports, GRC) instead of flipping it between sources
 // every iteration.
+//
+// A resolved row reopens in place on a fresh open emit only when it was auto-resolved by the
+// lifecycle (TTL expiry or a remediation counter-event) or when the rule opts into TTL reopen
+// via $37; analyst/manual resolutions keep their stored status so deliberate closures are not
+// reverted. The 'closed_by_counter_event' literal must stay in sync with
+// workflowevents.FindingStatusReasonClosedByCounterEvent.
 const upsertFindingStatement = `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
@@ -214,7 +220,7 @@ DO UPDATE SET
   status = CASE
     WHEN findings.tombstoned THEN findings.status
     WHEN findings.status = 'suppressed' THEN findings.status
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $37::boolean) THEN EXCLUDED.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR $37::boolean) THEN EXCLUDED.status
     WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status
     ELSE EXCLUDED.status
   END,
@@ -256,13 +262,13 @@ DO UPDATE SET
   status_reason = CASE
     WHEN findings.tombstoned THEN findings.status_reason
     WHEN findings.status = 'suppressed' THEN findings.status_reason
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $37::boolean) THEN findings.status_reason
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR $37::boolean) THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
     WHEN findings.tombstoned THEN findings.status_updated_at
     WHEN findings.status = 'suppressed' THEN findings.status_updated_at
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $37::boolean) THEN findings.status_updated_at
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR $37::boolean) THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
