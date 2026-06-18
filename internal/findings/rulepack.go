@@ -229,19 +229,19 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
-			ID:          "backstage",
-			Name:        "Backstage",
-			Description: "Backstage service-catalog ownership and accountability posture findings.",
-			Rules: []Rule{
-				newBackstageCriticalComponentMissingOwnerRule(),
-			},
-		},
-		{
 			ID:          "cerebro",
 			Name:        "Cerebro",
 			Description: "Cerebro API access posture and authorization risk findings.",
 			Rules: []Rule{
 				newCerebroHighRiskAPIAccessRule(),
+			},
+		},
+		{
+			ID:          "backstage",
+			Name:        "Backstage",
+			Description: "Backstage service-catalog ownership and accountability posture findings.",
+			Rules: []Rule{
+				newBackstageCriticalComponentMissingOwnerRule(),
 			},
 		},
 		{
