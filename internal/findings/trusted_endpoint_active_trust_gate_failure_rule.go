@@ -75,16 +75,16 @@ func (r *trustedEndpointActiveTrustGateFailureRule) OpenAnchor(attributes map[st
 	return trustedEndpointActiveTrustGateFailureAnchor(attributes)
 }
 
-// CloseOnEvent resolves an open finding when a later trust-gate decision for the
-// same agent/action allows the action (posture remediated) or when the agent is
-// no longer managed (deprovisioned/offboarded), so resolved or removed agents do
-// not leave stale open findings.
+// CloseOnEvent resolves an open finding only when a later trust-gate decision
+// for the same agent/action allows the action. Endpoint-reported lifecycle
+// fields are retained as context but are not authoritative enough to close or
+// suppress a current trust-gate failure.
 func (r *trustedEndpointActiveTrustGateFailureRule) CloseOnEvent(event Event) (string, bool) {
 	if !trustedEndpointTrustGateKindMatcher(event) || !hasRequiredAttributes(event, trustedEndpointActiveTrustGateFailureDefinition.RequiredAttributes...) {
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if !trustedEndpointGateRemediated(attributes) && !trustedEndpointAgentDeprovisioned(attributes) {
+	if !trustedEndpointGateRemediated(attributes) {
 		return "", false
 	}
 	gateURN := trustedEndpointTrustGateURN(event.GetTenantId(), attributes["agent_id"], attributes["action"])
@@ -110,7 +110,7 @@ func trustedEndpointActiveTrustGateFailureFinding(event *cerebrov1.EventEnvelope
 		return nil, nil
 	}
 	decision := trustedEndpointNormalizeDecisionValue(attrs["decision"])
-	severity := firstNonEmpty(normalizeFindingSeverity(attrs["severity"]), "HIGH")
+	severity := normalizeFindingSeverity(firstNonEmpty(attrs["severity"], trustedEndpointActiveTrustGateFailureDefinition.Severity))
 	label := firstNonEmpty(strings.TrimSpace(attrs["hostname"]), agentID)
 	attributes := map[string]string{
 		"trusted_endpoint_gate_urn":  gateURN,
@@ -157,9 +157,6 @@ func trustedEndpointActiveTrustGateFailureFinding(event *cerebrov1.EventEnvelope
 }
 
 func trustedEndpointGateDenied(attributes map[string]string) bool {
-	if trustedEndpointAgentDeprovisioned(attributes) {
-		return false
-	}
 	switch trustedEndpointNormalizeDecisionValue(attributes["decision"]) {
 	case "deny", "error":
 		return true
@@ -170,30 +167,6 @@ func trustedEndpointGateDenied(attributes map[string]string) bool {
 
 func trustedEndpointGateRemediated(attributes map[string]string) bool {
 	return trustedEndpointNormalizeDecisionValue(attributes["decision"]) == "allow"
-}
-
-// trustedEndpointAgentDeprovisioned reports whether the agent is no longer
-// managed based on the normalized lifecycle state propagated by the source
-// normalizer, so offboarded agents resolve stale trust-gate findings instead of
-// relying on inconsistent raw attribute values.
-func trustedEndpointAgentDeprovisioned(attributes map[string]string) bool {
-	if managed, ok := parseOptionalBoolAttribute(attributes, "managed"); ok && !managed {
-		return true
-	}
-	return trustedEndpointNormalizeAgentStatus(attributes["agent_status"]) == "deprovisioned"
-}
-
-func trustedEndpointNormalizeAgentStatus(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "":
-		return ""
-	case "deprovisioned", "deleted", "removed", "offboarded", "off-boarded", "off boarded", "unenrolled", "un-enrolled", "deactivated", "inactive", "retired", "decommissioned", "disabled", "terminated", "revoked":
-		return "deprovisioned"
-	case "active", "enrolled", "managed", "enabled", "provisioned", "online":
-		return "active"
-	default:
-		return strings.ToLower(strings.TrimSpace(value))
-	}
 }
 
 func trustedEndpointNormalizeDecisionValue(value string) string {
