@@ -1,0 +1,102 @@
+{
+  "rule_id": "security-tooling-map-control-coverage-gap",
+  "runtime": {
+    "id": "writer-security-tooling-map-control-mapping",
+    "source_id": "security_tooling_map",
+    "tenant_id": "writer",
+    "config": {
+      "family": "control_mapping"
+    }
+  },
+  "events": [
+    {
+      "id": "stm-control-gap",
+      "tenant_id": "writer",
+      "source_id": "security_tooling_map",
+      "kind": "security_tooling_map.control_mapping",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "security_tooling_map/control_mapping/v1",
+      "attributes": {
+        "family": "control_mapping",
+        "tool_id": "agent-gateway",
+        "tool_name": "Agent Gateway",
+        "control_id": "CC6.1",
+        "control_name": "Logical access",
+        "framework": "SOC2",
+        "coverage": "partial",
+        "coverage_status": "gap",
+        "gap_reason": "no automated enforcement",
+        "source_runtime_id": "writer-security-tooling-map-control-mapping"
+      }
+    },
+    {
+      "id": "stm-control-covered",
+      "tenant_id": "writer",
+      "source_id": "security_tooling_map",
+      "kind": "security_tooling_map.control_mapping",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "security_tooling_map/control_mapping/v1",
+      "attributes": {
+        "family": "control_mapping",
+        "tool_id": "agent-gateway",
+        "control_id": "CC7.2",
+        "control_name": "System operations",
+        "framework": "SOC2",
+        "coverage": "full",
+        "coverage_status": "covered",
+        "source_runtime_id": "writer-security-tooling-map-control-mapping"
+      }
+    },
+    {
+      "id": "stm-control-retired",
+      "tenant_id": "writer",
+      "source_id": "security_tooling_map",
+      "kind": "security_tooling_map.control_mapping",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "security_tooling_map/control_mapping/v1",
+      "attributes": {
+        "family": "control_mapping",
+        "tool_id": "legacy-scanner",
+        "control_id": "CC8.1",
+        "control_name": "Change management",
+        "framework": "SOC2",
+        "coverage": "none",
+        "control_status": "retired",
+        "source_runtime_id": "writer-security-tooling-map-control-mapping"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "security-tooling-map-control-coverage-gap",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Security control Logical access has a tooling coverage gap (Agent Gateway)",
+      "event_ids": ["stm-control-gap"],
+      "attributes": {
+        "security_tool_control_coverage_urn": "urn:cerebro:writer:security_tool_control_coverage:agent-gateway:SOC2:CC6.1",
+        "tool_id": "agent-gateway",
+        "control_id": "CC6.1",
+        "control_name": "Logical access",
+        "framework": "SOC2",
+        "coverage": "partial",
+        "coverage_status": "gap",
+        "gap_reason": "no automated enforcement",
+        "control_urn": "urn:cerebro:writer:control:SOC2:CC6.1",
+        "security_tool_urn": "urn:cerebro:writer:security_tool:agent-gateway",
+        "primary_resource_urn": "urn:cerebro:writer:control:SOC2:CC6.1",
+        "rule_required_attributes": "tool_id,control_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "stm-control-covered",
+      "reason": "control mapping reported as fully covered has no active coverage gap"
+    },
+    {
+      "event_id": "stm-control-retired",
+      "reason": "retired control mapping is decommissioned so missing coverage is not an active gap"
+    }
+  ]
+}

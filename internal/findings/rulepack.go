@@ -213,6 +213,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "security_tooling_map",
+			Name:        "Security Tooling Map",
+			Description: "Security tooling inventory and control-coverage posture findings.",
+			Rules: []Rule{
+				newSecurityToolingMapControlCoverageGapRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
