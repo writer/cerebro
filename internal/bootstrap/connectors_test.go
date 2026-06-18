@@ -1338,8 +1338,14 @@ func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
-			name:       "spend limits need scoped admin key",
-			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:usage"},
+			name:       "spend limits reject unscoped admin key even with read spend scope",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:spend_limits"},
+			wantCheck:  "anthropic_spend_limit_scope",
+			wantAction: "confirm_anthropic_spend_limit_scope",
+		},
+		{
+			name:       "spend limits require read spend scope even with scoped admin key",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindScopedAdminAPIKey, "family": "spend_limit", "credential_scopes": "read:usage"},
 			wantCheck:  "anthropic_spend_limit_scope",
 			wantAction: "confirm_anthropic_spend_limit_scope",
 		},
