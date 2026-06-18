@@ -141,11 +141,18 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: "admin_role", config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"}, kind: "okta.admin_role"},
+		{family: "api_token", kind: "okta.api_token"},
 		{family: "app_assignment", config: map[string]string{"app_id": "app-prod"}, kind: "okta.app_assignment"},
 		{family: "application", kind: "okta.application"},
+		{family: "authorization_server", kind: "okta.authorization_server"},
+		{family: "brand", kind: "okta.brand"},
+		{family: "device_assurance", kind: "okta.device_assurance"},
+		{family: "event_hook", kind: "okta.event_hook"},
 		{family: "group", kind: "okta.group"},
 		{family: "group_membership", config: map[string]string{"group_id": "grp-security"}, kind: "okta.group_membership"},
 		{family: "identity_provider", kind: "okta.identity_provider"},
+		{family: "inline_hook", kind: "okta.inline_hook"},
+		{family: "log_stream", kind: "okta.log_stream"},
 		{family: "network_zone", kind: "okta.network_zone"},
 		{family: "policy_rule", kind: "okta.policy_rule"},
 		{family: "trusted_origin", kind: "okta.trusted_origin"},
@@ -927,10 +934,52 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			want:   "super_admin",
 		},
 		{
+			family: "api_token",
+			kind:   "okta.api_token",
+			attr:   "network_zone_include_ids",
+			want:   "zone-corp",
+		},
+		{
+			family: "authorization_server",
+			kind:   "okta.authorization_server",
+			attr:   "issuer_host",
+			want:   "login.example.com",
+		},
+		{
+			family: "brand",
+			kind:   "okta.brand",
+			attr:   "custom_privacy_policy_host",
+			want:   "privacy.example.com",
+		},
+		{
+			family: "device_assurance",
+			kind:   "okta.device_assurance",
+			attr:   "platform",
+			want:   "MACOS",
+		},
+		{
+			family: "event_hook",
+			kind:   "okta.event_hook",
+			attr:   "uri_host",
+			want:   "hooks.example.com",
+		},
+		{
 			family: "identity_provider",
 			kind:   "okta.identity_provider",
 			attr:   "issuer",
 			want:   "https://idp.example.com",
+		},
+		{
+			family: "inline_hook",
+			kind:   "okta.inline_hook",
+			attr:   "uri_host",
+			want:   "token-hooks.example.com",
+		},
+		{
+			family: "log_stream",
+			kind:   "okta.log_stream",
+			attr:   "splunk_host_host",
+			want:   "splunk.example.com",
 		},
 		{
 			family: "network_zone",
@@ -996,7 +1045,25 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 					t.Fatal("Read(application) leaked client_secret attribute")
 				}
 			}
+			if oktaSensitiveAssetFamily(tt.family) {
+				var payload map[string]any
+				if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+					t.Fatalf("unmarshal %s payload: %v", tt.family, err)
+				}
+				if _, ok := payload["raw"]; ok {
+					t.Fatalf("Read(%s) payload retained raw provider object", tt.family)
+				}
+			}
 		})
+	}
+}
+
+func oktaSensitiveAssetFamily(family string) bool {
+	switch family {
+	case "api_token", "event_hook", "inline_hook", "log_stream":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1861,6 +1928,82 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"lastUpdated":    "2026-04-23T00:00:00Z",
 		},
 	}
+	apiTokenRecords := []map[string]any{{
+		"id":          "tok-admin",
+		"name":        "Admin automation",
+		"clientName":  "Okta API",
+		"created":     "2026-04-20T00:00:00Z",
+		"lastUpdated": "2026-04-23T00:00:00Z",
+		"expiresAt":   "2026-05-23T00:00:00Z",
+		"userId":      "00u1",
+		"network": map[string]any{
+			"connection": "ZONE",
+			"include":    []any{"zone-corp"},
+		},
+	}}
+	authorizationServerRecords := []map[string]any{{
+		"id":          "aus-api",
+		"name":        "API Gateway",
+		"description": "Production API auth server",
+		"issuer":      "https://login.example.com/oauth2/aus-api",
+		"issuerMode":  "CUSTOM_URL",
+		"audiences":   []any{"api://prod"},
+		"status":      "ACTIVE",
+		"created":     "2026-04-20T00:00:00Z",
+		"lastUpdated": "2026-04-23T00:00:00Z",
+		"credentials": map[string]any{"signing": map[string]any{"kid": "kid-1", "rotationMode": "AUTO", "lastRotated": "2026-04-20T00:00:00Z"}},
+	}}
+	brandRecords := []map[string]any{{
+		"id":                     "brand-prod",
+		"name":                   "Writer Login",
+		"isDefault":              true,
+		"locale":                 "en",
+		"customPrivacyPolicyUrl": "https://privacy.example.com/policy",
+		"emailDomainId":          "email-domain-1",
+		"removePoweredByOkta":    true,
+	}}
+	deviceAssuranceRecords := []map[string]any{{
+		"id":                    "device-assurance-macos",
+		"name":                  "Managed macOS",
+		"platform":              "MACOS",
+		"createdDate":           "2026-04-20T00:00:00Z",
+		"lastUpdate":            "2026-04-23T00:00:00Z",
+		"createdBy":             "00u1",
+		"lastUpdatedBy":         "00u1",
+		"secureHardwarePresent": true,
+		"screenLockType":        map[string]any{"include": []any{"BIOMETRIC"}},
+	}}
+	eventHookRecords := []map[string]any{{
+		"id":                 "hook-event-prod",
+		"name":               "Security event egress",
+		"description":        "Send selected security events",
+		"status":             "ACTIVE",
+		"verificationStatus": "VERIFIED",
+		"created":            "2026-04-20T00:00:00Z",
+		"lastUpdated":        "2026-04-23T00:00:00Z",
+		"createdBy":          "00u1",
+		"events":             map[string]any{"type": "EVENT_TYPE", "items": []any{"user.lifecycle.deactivate"}},
+		"channel":            map[string]any{"type": "HTTP", "version": "1.0.0", "config": map[string]any{"uri": "https://hooks.example.com/okta/events", "method": "POST"}},
+	}}
+	inlineHookRecords := []map[string]any{{
+		"id":          "hook-inline-prod",
+		"name":        "Token transform",
+		"type":        "com.okta.oauth2.tokens.transform",
+		"status":      "ACTIVE",
+		"version":     "1.0.0",
+		"created":     "2026-04-20T00:00:00Z",
+		"lastUpdated": "2026-04-23T00:00:00Z",
+		"channel":     map[string]any{"type": "HTTP", "version": "1.0.0", "config": map[string]any{"uri": "https://token-hooks.example.com/transform", "method": "POST"}},
+	}}
+	logStreamRecords := []map[string]any{{
+		"id":          "logstream-splunk",
+		"name":        "Splunk Cloud",
+		"type":        "splunk_cloud_logstreaming",
+		"status":      "ACTIVE",
+		"created":     "2026-04-20T00:00:00Z",
+		"lastUpdated": "2026-04-23T00:00:00Z",
+		"settings":    map[string]any{"edition": "aws", "host": "https://splunk.example.com/services/collector", "token": "redacted"},
+	}}
 	idpRecords := []map[string]any{
 		{
 			"id":          "idp-saml",
@@ -1998,9 +2141,37 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {
 				t.Fatalf("encode admin roles: %v", err)
 			}
+		case "/api/v1/api-tokens":
+			if err := json.NewEncoder(w).Encode(apiTokenRecords); err != nil {
+				t.Fatalf("encode API tokens: %v", err)
+			}
+		case "/api/v1/authorizationServers":
+			if err := json.NewEncoder(w).Encode(authorizationServerRecords); err != nil {
+				t.Fatalf("encode authorization servers: %v", err)
+			}
+		case "/api/v1/brands":
+			if err := json.NewEncoder(w).Encode(brandRecords); err != nil {
+				t.Fatalf("encode brands: %v", err)
+			}
+		case "/api/v1/device-assurances":
+			if err := json.NewEncoder(w).Encode(deviceAssuranceRecords); err != nil {
+				t.Fatalf("encode device assurance policies: %v", err)
+			}
+		case "/api/v1/eventHooks":
+			if err := json.NewEncoder(w).Encode(eventHookRecords); err != nil {
+				t.Fatalf("encode event hooks: %v", err)
+			}
 		case "/api/v1/idps":
 			if err := json.NewEncoder(w).Encode(idpRecords); err != nil {
 				t.Fatalf("encode identity providers: %v", err)
+			}
+		case "/api/v1/inlineHooks":
+			if err := json.NewEncoder(w).Encode(inlineHookRecords); err != nil {
+				t.Fatalf("encode inline hooks: %v", err)
+			}
+		case "/api/v1/logStreams":
+			if err := json.NewEncoder(w).Encode(logStreamRecords); err != nil {
+				t.Fatalf("encode log streams: %v", err)
 			}
 		case "/api/v1/zones":
 			if err := json.NewEncoder(w).Encode(networkZoneRecords); err != nil {

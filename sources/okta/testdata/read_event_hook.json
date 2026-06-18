@@ -1,0 +1,36 @@
+[
+  {
+    "id": "okta-event-hook-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.event_hook",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/event_hook/v1",
+    "payload": {
+      "id": "hook-event-prod",
+      "domain": "writer.okta.com",
+      "name": "Security event egress"
+    },
+    "attributes": {
+      "channel_type": "HTTP",
+      "channel_version": "1.0.0",
+      "created_at": "2026-04-20T00:00:00Z",
+      "created_by": "00u1",
+      "description": "Send selected security events",
+      "domain": "writer.okta.com",
+      "event_count": "1",
+      "event_hook_id": "hook-event-prod",
+      "event_subscription_type": "EVENT_TYPE",
+      "family": "event_hook",
+      "last_updated_at": "2026-04-23T00:00:00Z",
+      "method": "POST",
+      "name": "Security event egress",
+      "resource_id": "hook-event-prod",
+      "resource_type": "EventHook",
+      "status": "ACTIVE",
+      "uri": "https://hooks.example.com/okta/events",
+      "uri_host": "hooks.example.com",
+      "verification_status": "VERIFIED"
+    }
+  }
+]

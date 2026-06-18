@@ -1,0 +1,35 @@
+[
+  {
+    "id": "okta-authorization-server-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authorization_server",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/authorization_server/v1",
+    "payload": {
+      "id": "aus-api",
+      "domain": "writer.okta.com",
+      "name": "API Gateway"
+    },
+    "attributes": {
+      "audience_count": "1",
+      "audiences": "api://prod",
+      "authorization_server_id": "aus-api",
+      "created_at": "2026-04-20T00:00:00Z",
+      "description": "Production API auth server",
+      "domain": "writer.okta.com",
+      "family": "authorization_server",
+      "issuer": "https://login.example.com/oauth2/aus-api",
+      "issuer_host": "login.example.com",
+      "issuer_mode": "CUSTOM_URL",
+      "kid": "kid-1",
+      "last_updated_at": "2026-04-23T00:00:00Z",
+      "name": "API Gateway",
+      "resource_id": "aus-api",
+      "resource_type": "AuthorizationServer",
+      "rotation_mode": "AUTO",
+      "signing_last_rotated_at": "2026-04-20T00:00:00Z",
+      "status": "ACTIVE"
+    }
+  }
+]

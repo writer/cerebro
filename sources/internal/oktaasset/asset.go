@@ -18,10 +18,17 @@ import (
 )
 
 const (
-	KindAuthenticator    = "authenticator"
-	KindIdentityProvider = "identity_provider"
-	KindNetworkZone      = "network_zone"
-	KindTrustedOrigin    = "trusted_origin"
+	KindAPIToken            = "api_token"
+	KindAuthorizationServer = "authorization_server"
+	KindAuthenticator       = "authenticator"
+	KindBrand               = "brand"
+	KindDeviceAssurance     = "device_assurance"
+	KindEventHook           = "event_hook"
+	KindIdentityProvider    = "identity_provider"
+	KindInlineHook          = "inline_hook"
+	KindLogStream           = "log_stream"
+	KindNetworkZone         = "network_zone"
+	KindTrustedOrigin       = "trusted_origin"
 )
 
 type Settings struct {
@@ -133,7 +140,7 @@ func pull(settings Settings, kind string, records []Record, next string) (source
 
 func Event(settings Settings, kind string, record Record) (*primitives.Event, error) {
 	occurredAt := firstRecordTime(record.Time("lastUpdated"), record.Time("created"))
-	payload, err := payload(settings, record)
+	payload, err := payload(settings, kind, record)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +156,7 @@ func Event(settings Settings, kind string, record Record) (*primitives.Event, er
 	}, nil
 }
 
-func payload(settings Settings, record Record) ([]byte, error) {
+func payload(settings Settings, kind string, record Record) ([]byte, error) {
 	raw := map[string]any{}
 	if err := json.Unmarshal(record.Raw, &raw); err != nil {
 		return nil, fmt.Errorf("decode okta asset raw payload: %w", err)
@@ -158,28 +165,56 @@ func payload(settings Settings, record Record) ([]byte, error) {
 		"domain": settings.Domain,
 		"id":     record.String("id"),
 		"name":   record.String("name"),
-		"raw":    raw,
 	}
 	for _, key := range []string{"key", "origin", "policy", "protocol", "scopes", "status", "type"} {
 		if value, ok := record.Values[key]; ok {
 			values[key] = value
 		}
 	}
+	if value, ok := record.Values["domain"]; ok {
+		values["domain_value"] = value
+	}
+	if !sensitivePayloadKind(kind) {
+		values["raw"] = raw
+	}
 	return json.Marshal(values)
 }
 
 func Attributes(settings Settings, kind string, record Record) map[string]string {
 	switch kind {
+	case KindAPIToken:
+		return apiTokenAttributes(settings, record)
+	case KindAuthorizationServer:
+		return authorizationServerAttributes(settings, record)
 	case KindAuthenticator:
 		return authenticatorAttributes(settings, record)
+	case KindBrand:
+		return brandAttributes(settings, record)
+	case KindDeviceAssurance:
+		return deviceAssuranceAttributes(settings, record)
+	case KindEventHook:
+		return eventHookAttributes(settings, record)
 	case KindIdentityProvider:
 		return identityProviderAttributes(settings, record)
+	case KindInlineHook:
+		return inlineHookAttributes(settings, record)
+	case KindLogStream:
+		return logStreamAttributes(settings, record)
 	case KindNetworkZone:
 		return networkZoneAttributes(settings, record)
 	case KindTrustedOrigin:
 		return trustedOriginAttributes(settings, record)
 	default:
 		return map[string]string{"domain": settings.Domain, "family": kind, "resource_id": record.String("id")}
+	}
+}
+
+func sensitivePayloadKind(kind string) bool {
+	switch kind {
+	case KindAPIToken, KindEventHook, KindInlineHook, KindLogStream:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -232,6 +267,127 @@ func authenticatorAttributes(settings Settings, record Record) map[string]string
 	}
 }
 
+func apiTokenAttributes(settings Settings, record Record) map[string]string {
+	network := record.mapValue("network")
+	attrs := map[string]string{
+		"api_token_id":             record.String("id"),
+		"client_name":              record.String("clientName"),
+		"created_at":               record.String("created"),
+		"domain":                   settings.Domain,
+		"expires_at":               record.String("expiresAt"),
+		"family":                   KindAPIToken,
+		"last_updated_at":          record.String("lastUpdated"),
+		"name":                     record.String("name"),
+		"network_connection":       stringMap(network, "connection"),
+		"network_zone_exclude_ids": strings.Join(valueIDs(network["exclude"]), ","),
+		"network_zone_include_ids": strings.Join(valueIDs(network["include"]), ","),
+		"resource_id":              record.String("id"),
+		"resource_type":            "ApiToken",
+		"token_id":                 record.String("id"),
+		"user_id":                  record.String("userId"),
+	}
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
+func authorizationServerAttributes(settings Settings, record Record) map[string]string {
+	signing := nestedMap(record.mapValue("credentials"), "signing")
+	audiences := nonEmptyAnyStrings(record.anySlice("audiences"))
+	attrs := map[string]string{
+		"audience_count":          strconv.Itoa(len(audiences)),
+		"audiences":               strings.Join(audiences, ","),
+		"authorization_server_id": record.String("id"),
+		"created_at":              record.String("created"),
+		"description":             record.String("description"),
+		"domain":                  settings.Domain,
+		"family":                  KindAuthorizationServer,
+		"issuer":                  record.String("issuer"),
+		"issuer_host":             urlHost(record.String("issuer")),
+		"issuer_mode":             record.String("issuerMode"),
+		"jwks_uri_host":           urlHost(record.String("jwks_uri")),
+		"kid":                     stringMap(signing, "kid"),
+		"last_updated_at":         record.String("lastUpdated"),
+		"name":                    record.String("name"),
+		"next_rotation_at":        stringMap(signing, "nextRotation"),
+		"resource_id":             record.String("id"),
+		"resource_type":           "AuthorizationServer",
+		"rotation_mode":           stringMap(signing, "rotationMode"),
+		"signing_last_rotated_at": stringMap(signing, "lastRotated"),
+		"status":                  record.String("status"),
+	}
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
+func brandAttributes(settings Settings, record Record) map[string]string {
+	attrs := map[string]string{
+		"brand_id":                   record.String("id"),
+		"custom_privacy_policy_url":  record.String("customPrivacyPolicyUrl"),
+		"custom_privacy_policy_host": urlHost(record.String("customPrivacyPolicyUrl")),
+		"domain":                     settings.Domain,
+		"email_domain_id":            record.String("emailDomainId"),
+		"family":                     KindBrand,
+		"is_default":                 boolAttribute(record.Values["isDefault"]),
+		"locale":                     record.String("locale"),
+		"name":                       record.String("name"),
+		"remove_powered_by_okta":     boolAttribute(record.Values["removePoweredByOkta"]),
+		"resource_id":                record.String("id"),
+		"resource_type":              "Brand",
+	}
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
+func deviceAssuranceAttributes(settings Settings, record Record) map[string]string {
+	attrs := map[string]string{
+		"created_at":               record.String("createdDate"),
+		"created_by":               record.String("createdBy"),
+		"device_assurance_id":      record.String("id"),
+		"display_remediation_mode": record.String("displayRemediationMode"),
+		"domain":                   settings.Domain,
+		"family":                   KindDeviceAssurance,
+		"last_updated_at":          record.String("lastUpdate"),
+		"last_updated_by":          record.String("lastUpdatedBy"),
+		"name":                     record.String("name"),
+		"platform":                 record.String("platform"),
+		"resource_id":              record.String("id"),
+		"resource_type":            "DeviceAssurance",
+		"screen_lock_required":     boolAttribute(record.Values["screenLockType"] != nil),
+		"secure_hardware_present":  boolAttribute(record.Values["secureHardwarePresent"]),
+	}
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
+func eventHookAttributes(settings Settings, record Record) map[string]string {
+	channel := record.mapValue("channel")
+	config := nestedMap(channel, "config")
+	events := record.mapValue("events")
+	attrs := map[string]string{
+		"channel_type":            stringMap(channel, "type"),
+		"channel_version":         stringMap(channel, "version"),
+		"created_at":              record.String("created"),
+		"created_by":              record.String("createdBy"),
+		"description":             record.String("description"),
+		"domain":                  settings.Domain,
+		"event_count":             strconv.Itoa(len(valueIDs(events["items"]))),
+		"event_hook_id":           record.String("id"),
+		"event_subscription_type": stringMap(events, "type"),
+		"family":                  KindEventHook,
+		"last_updated_at":         record.String("lastUpdated"),
+		"name":                    record.String("name"),
+		"resource_id":             record.String("id"),
+		"resource_type":           "EventHook",
+		"status":                  record.String("status"),
+		"uri":                     stringMap(config, "uri"),
+		"uri_host":                urlHost(stringMap(config, "uri")),
+		"verification_status":     record.String("verificationStatus"),
+	}
+	addAttribute(attrs, "method", stringMap(config, "method"))
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
 func identityProviderAttributes(settings Settings, record Record) map[string]string {
 	protocol := record.mapValue("protocol")
 	credentials := nestedMap(protocol, "credentials")
@@ -264,6 +420,55 @@ func identityProviderAttributes(settings Settings, record Record) map[string]str
 	return attrs
 }
 
+func inlineHookAttributes(settings Settings, record Record) map[string]string {
+	channel := record.mapValue("channel")
+	config := nestedMap(channel, "config")
+	attrs := map[string]string{
+		"channel_type":    stringMap(channel, "type"),
+		"channel_version": stringMap(channel, "version"),
+		"created_at":      record.String("created"),
+		"domain":          settings.Domain,
+		"family":          KindInlineHook,
+		"inline_hook_id":  record.String("id"),
+		"last_updated_at": record.String("lastUpdated"),
+		"method":          stringMap(config, "method"),
+		"name":            record.String("name"),
+		"resource_id":     record.String("id"),
+		"resource_type":   "InlineHook",
+		"status":          record.String("status"),
+		"type":            record.String("type"),
+		"uri":             stringMap(config, "uri"),
+		"uri_host":        urlHost(stringMap(config, "uri")),
+		"version":         record.String("version"),
+	}
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
+func logStreamAttributes(settings Settings, record Record) map[string]string {
+	streamSettings := record.mapValue("settings")
+	attrs := map[string]string{
+		"aws_account_id":        stringMap(streamSettings, "accountId"),
+		"aws_event_source_name": stringMap(streamSettings, "eventSourceName"),
+		"aws_region":            stringMap(streamSettings, "region"),
+		"created_at":            record.String("created"),
+		"domain":                settings.Domain,
+		"family":                KindLogStream,
+		"last_updated_at":       record.String("lastUpdated"),
+		"log_stream_id":         record.String("id"),
+		"name":                  record.String("name"),
+		"resource_id":           record.String("id"),
+		"resource_type":         "LogStream",
+		"splunk_edition":        stringMap(streamSettings, "edition"),
+		"splunk_host":           stringMap(streamSettings, "host"),
+		"splunk_host_host":      urlHost(stringMap(streamSettings, "host")),
+		"status":                record.String("status"),
+		"type":                  record.String("type"),
+	}
+	trimEmptyAttributes(attrs)
+	return attrs
+}
+
 func networkZoneAttributes(settings Settings, record Record) map[string]string {
 	gateways := record.mapSlice("gateways")
 	proxies := record.mapSlice("proxies")
@@ -292,6 +497,22 @@ func networkZoneAttributes(settings Settings, record Record) map[string]string {
 		attrs["system"] = strconv.FormatBool(value)
 	}
 	return attrs
+}
+
+func trimEmptyAttributes(attributes map[string]string) {
+	for key, value := range attributes {
+		if strings.TrimSpace(value) == "" {
+			delete(attributes, key)
+		}
+	}
+}
+
+func boolAttribute(value any) string {
+	boolean, ok := value.(bool)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatBool(boolean)
 }
 
 func trustedOriginAttributes(settings Settings, record Record) map[string]string {

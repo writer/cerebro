@@ -72,7 +72,6 @@ var oktaMFAEnrollmentFactorKinds = map[string]struct{}{
 	"webauthn":            {},
 }
 
-// Source is the live Okta source preview used by the builtin registry.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
@@ -292,7 +291,6 @@ func (e *responseError) Error() string {
 	return e.message
 }
 
-// New constructs the live Okta source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
@@ -309,22 +307,16 @@ func New() (*Source, error) {
 	return source, nil
 }
 
-// Spec returns static metadata for the Okta source.
-func (s *Source) Spec() *cerebrov1.SourceSpec {
-	return s.spec
-}
+func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
 
-// Check validates that the configured Okta family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.families.Check(ctx, cfg)
 }
 
-// Discover returns live Okta URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.families.Discover(ctx, cfg)
 }
 
-// Read pages through the configured live Okta event family.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
 }
@@ -395,6 +387,13 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:application:%s", settings.domain, app.ID), nil
 			},
 		}),
+		s.assetFamily("api_token", "okta API tokens", "/api/v1/api-tokens", "api_token", oktaasset.KindAPIToken, false),
+		s.assetFamily("authorization_server", "okta authorization servers", "/api/v1/authorizationServers", "authorization_server", oktaasset.KindAuthorizationServer, true),
+		s.assetFamily("brand", "okta brands", "/api/v1/brands", "brand", oktaasset.KindBrand, true),
+		s.assetFamily("device_assurance", "okta device assurance policies", "/api/v1/device-assurances", "device_assurance", oktaasset.KindDeviceAssurance, false),
+		s.assetFamily("event_hook", "okta event hooks", "/api/v1/eventHooks", "event_hook", oktaasset.KindEventHook, false),
+		s.assetFamily("inline_hook", "okta inline hooks", "/api/v1/inlineHooks", "inline_hook", oktaasset.KindInlineHook, false),
+		s.assetFamily("log_stream", "okta log streams", "/api/v1/logStreams", "log_stream", oktaasset.KindLogStream, true),
 		s.policyRuleFamily(),
 		s.assetFamily(familyAuthenticator, "okta authenticators", "/api/v1/authenticators", "authenticator", oktaasset.KindAuthenticator, false),
 		s.threatInsightFamily(),
@@ -555,9 +554,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin, familyUser:
+	case "api_token", "authorization_server", "brand", "device_assurance", "event_hook", "inline_hook", "log_stream", familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin, familyUser:
 	default:
-		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, authenticator, group, group_membership, identity_provider, network_zone, policy_rule, threat_insight, trusted_origin, or user")
+		return settings, fmt.Errorf("unsupported okta family")
 	}
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
@@ -608,7 +607,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		if settings.appID == "" {
 			return settings, fmt.Errorf("okta app_id is required when family=%q", familyAppAssign)
 		}
-	case familyApplication, familyAuthenticator, familyGroup, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin:
+	case "api_token", "authorization_server", "brand", "device_assurance", "event_hook", "inline_hook", "log_stream", familyApplication, familyAuthenticator, familyGroup, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin:
 		if settings.since != "" || settings.until != "" {
 			return settings, fmt.Errorf("okta since and until are only supported when family=%q", familyAudit)
 		}
