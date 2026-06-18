@@ -373,6 +373,9 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if entityType == "" {
 		return errors.New("projected entity type is required")
 	}
+	if err := ports.ValidateProjectedEntityTenantScope(entity); err != nil {
+		return err
+	}
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
@@ -506,6 +509,9 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	sourceID := strings.TrimSpace(link.SourceID)
 	if sourceID == "" {
 		return errors.New("projected link source id is required")
+	}
+	if err := ports.ValidateProjectedLinkTenantScope(link); err != nil {
+		return err
 	}
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")

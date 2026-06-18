@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -308,6 +309,119 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	}
 	if attrs["cve_id"] != "CVE-2026-0001" || attrs["package_name"] != "openssl" || attrs["fixed_version"] != "3.0.2" {
 		t.Fatalf("attrs = %#v, want CVE/package/remediation attributes", attrs)
+	}
+}
+
+func TestReadIssueFamily(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/issues" {
+			t.Fatalf("request path = %q, want /api/v1/issues", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{
+					"id":                 "issue-1",
+					"title":              "Disk encryption disabled",
+					"issue_key":          "volume",
+					"issue_value":        "Macintosh HD",
+					"resolved_at":        nil,
+					"detected_at":        "2026-05-01T12:00:00Z",
+					"last_rechecked_at":  "2026-05-01T13:00:00Z",
+					"blocks_device_at":   "2026-05-02T12:00:00Z",
+					"exempted":           false,
+					"device_information": map[string]any{"identifier": "device-1", "name": "Writer MacBook", "hostname": "writer-mbp.local", "serial_number": "SERIAL1", "location": "https://api.kolide.com/devices/device-1"},
+					"check_information":  map[string]any{"identifier": "check-1", "location": "https://api.kolide.com/checks/check-1"},
+					"value":              map[string]any{"encrypted": false},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kolide-token",
+		"family":    "issue",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if pull.Events[0].Kind != "kolide.issue" {
+		t.Fatalf("Kind = %q, want kolide.issue", pull.Events[0].Kind)
+	}
+	for key, want := range map[string]string{
+		"issue_id":         "issue-1",
+		"device_id":        "device-1",
+		"device_name":      "Writer MacBook",
+		"hostname":         "writer-mbp.local",
+		"serial_number":    "SERIAL1",
+		"check_id":         "check-1",
+		"title":            "Disk encryption disabled",
+		"exempted":         "false",
+		"blocks_device_at": "2026-05-02T12:00:00Z",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("issue attribute %q = %q, want %q", key, got, want)
+		}
+	}
+	if attrs["resolved_at"] != "" {
+		t.Fatalf("resolved_at = %q, want omitted for open issue", attrs["resolved_at"])
+	}
+}
+
+func TestReadIssueFamilyDoesNotUseBlockDeadlineAsOccurredAt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/issues" {
+			t.Fatalf("request path = %q, want /api/v1/issues", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":                 "issue-1",
+				"title":              "Disk encryption disabled",
+				"blocks_device_at":   "2099-05-02T12:00:00Z",
+				"device_information": map[string]any{"identifier": "device-1"},
+				"check_information":  map[string]any{"identifier": "check-1"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kolide-token",
+		"family":    "issue",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if pull.Events[0].Attributes["blocks_device_at"] != "2099-05-02T12:00:00Z" {
+		t.Fatalf("blocks_device_at attribute = %q, want preserved deadline", pull.Events[0].Attributes["blocks_device_at"])
+	}
+	deadline := time.Date(2099, 5, 2, 12, 0, 0, 0, time.UTC)
+	if pull.Events[0].OccurredAt == nil {
+		t.Fatal("OccurredAt is nil, want source runtime fallback timestamp")
+	}
+	if got := pull.Events[0].OccurredAt.AsTime(); !got.Before(deadline) {
+		t.Fatalf("OccurredAt = %s, want ingest fallback before block deadline %s", got, deadline)
 	}
 }
 
