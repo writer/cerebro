@@ -719,6 +719,7 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 	if err != nil {
 		return nil, fmt.Errorf("list counter-event candidates for rule %q: %w", ruleID, err)
 	}
+	findingScopedRule, _ := counterRule.(FindingScopedCounterEventRule)
 	resolved := []*ports.FindingRecord{}
 	for _, finding := range findings {
 		if finding == nil {
@@ -732,6 +733,10 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 			continue
 		}
 		latest, ok := latestByAnchor[openAnchor]
+		if scopedLatest, scopedOK := latestFindingScopedCounterClose(finding, findingScopedRule, evaluatedEvents); scopedOK && (!ok || counterAnchorEventIsNewer(scopedLatest, latest)) {
+			latest = scopedLatest
+			ok = true
+		}
 		if !ok || !latest.closes {
 			continue
 		}
@@ -754,6 +759,34 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 		resolved = append(resolved, updated)
 	}
 	return resolved, nil
+}
+
+func latestFindingScopedCounterClose(finding *ports.FindingRecord, rule FindingScopedCounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (counterAnchorLatestEvent, bool) {
+	if finding == nil || rule == nil {
+		return counterAnchorLatestEvent{}, false
+	}
+	latest := counterAnchorLatestEvent{}
+	found := false
+	for sequence, event := range evaluatedEvents {
+		if event == nil || !rule.CloseFindingOnEvent(finding, event) {
+			continue
+		}
+		eventIDs := []string(nil)
+		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+			eventIDs = []string{eventID}
+		}
+		next := counterAnchorLatestEvent{
+			observedAt: counterAnchorEventObservedAt(event),
+			sequence:   sequence,
+			closes:     true,
+			eventIDs:   eventIDs,
+		}
+		if !found || counterAnchorEventIsNewer(next, latest) {
+			latest = next
+			found = true
+		}
+	}
+	return latest, found
 }
 
 func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (map[string]counterAnchorLatestEvent, error) {

@@ -25,6 +25,13 @@ type CounterEventRule interface {
 	CloseOnEvent(event Event) (anchor string, closes bool)
 }
 
+// FindingScopedCounterEventRule is an optional extension for durable-state
+// rules where a counter event closes persisted findings by inspecting their
+// stored attributes, not only by returning the same open anchor.
+type FindingScopedCounterEventRule interface {
+	CloseFindingOnEvent(finding *ports.FindingRecord, event Event) bool
+}
+
 // CounterEventStateUpdate lets aggregate durable-state rules describe which
 // subcontrol at an anchor an event made compliant or non-compliant.
 type CounterEventStateUpdate struct {

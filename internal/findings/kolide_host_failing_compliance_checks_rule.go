@@ -123,6 +123,23 @@ func (r *kolideHostFailingComplianceChecksRule) CloseOnEvent(event Event) (strin
 	}
 }
 
+func (r *kolideHostFailingComplianceChecksRule) CloseFindingOnEvent(finding *ports.FindingRecord, event Event) bool {
+	if finding == nil || event == nil || strings.TrimSpace(event.GetKind()) != kolideDeviceEventKind {
+		return false
+	}
+	attributes := eventAttributes(event)
+	if !hasRequiredAttributes(event, kolideHostFailingComplianceChecksDefinition.RequiredAttributes...) {
+		return false
+	}
+	if !kolideHostDeprovisioned(attributes) {
+		return false
+	}
+	deviceURN := kolideHostURN(event.GetTenantId(), attributes["device_id"])
+	return deviceURN != "" &&
+		strings.TrimSpace(finding.Attributes["kolide_issue_urn"]) != "" &&
+		strings.TrimSpace(finding.Attributes["kolide_device_urn"]) == deviceURN
+}
+
 func matchesKolideHostFailingComplianceChecks(event *cerebrov1.EventEnvelope) bool {
 	if !kolideHostFailingComplianceChecksKindMatcher(event) {
 		return false

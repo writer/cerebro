@@ -108,6 +108,12 @@ func TestKolideIssueResolutionClosesSameIssue(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newKolideHostFailingComplianceChecksRule(), open, resolved, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestKolideDeviceDeprovisionClosesIssueFindings(t *testing.T) {
+	open := kolideIssueEvent("kolide-issue-open", map[string]string{"exempted": "false"}, time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC))
+	offboarded := kolideDeviceEvent("kolide-device-offboarded", map[string]string{"registered": "false", "failure_count": "2"}, time.Date(2026, 4, 23, 13, 0, 0, 0, time.UTC))
+	assertIdentityRuleRemediationTrajectory(t, newKolideHostFailingComplianceChecksRule(), open, offboarded, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestKolideIssueExemptedDoesNotOpen(t *testing.T) {
 	rule := newKolideHostFailingComplianceChecksRule()
 	runtime := &cerebrov1.SourceRuntime{
