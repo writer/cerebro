@@ -3,7 +3,9 @@ package cosmo
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -682,7 +684,7 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 }
 
 func recordURN(settings settings, family string, id string) (sourcecdk.URN, error) {
-	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, normalizeID(id)))
+	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, cosmoExternalIDKey(id)))
 }
 
 func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
@@ -732,7 +734,7 @@ func eventID(settings settings, family string, recordID string) string {
 		sourceID,
 		normalizeID(settings.tenantID),
 		family,
-		normalizeID(recordID),
+		cosmoExternalIDKey(recordID),
 	}, "-")
 }
 
@@ -1166,6 +1168,15 @@ func normalizeID(value string) string {
 	}
 	replacer := strings.NewReplacer(" ", "-", "/", "-", ":", "-", "\n", "-", "\t", "-")
 	return replacer.Replace(normalized)
+}
+
+func cosmoExternalIDKey(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "unknown"
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return "id-" + hex.EncodeToString(sum[:16])
 }
 
 func firstNonEmpty(values ...string) string {

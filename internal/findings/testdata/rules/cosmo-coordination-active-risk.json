@@ -58,7 +58,7 @@
         "risk_state": "active",
         "risk_severity": "high",
         "source_runtime_id": "writer-cosmo-fact",
-        "primary_resource_urn": "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-7",
+        "primary_resource_urn": "urn:cerebro:writer:cosmo_fact:id-873b69e0e168001720199af9fbf1b7a6",
         "rule_required_attributes": "key"
       }
     }

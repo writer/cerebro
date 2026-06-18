@@ -63,6 +63,27 @@ func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
 	}
 }
 
+func TestCosmoRecordIdentityAvoidsDelimiterCollisions(t *testing.T) {
+	settings := settings{tenantID: "writer"}
+	colonURN, err := recordURN(settings, familyFact, "coordination:risk")
+	if err != nil {
+		t.Fatalf("recordURN(colon) error = %v", err)
+	}
+	slashURN, err := recordURN(settings, familyFact, "coordination/risk")
+	if err != nil {
+		t.Fatalf("recordURN(slash) error = %v", err)
+	}
+	if colonURN == slashURN {
+		t.Fatalf("recordURN delimiter collision: %q", colonURN)
+	}
+
+	colonEventID := eventID(settings, familyFact, "coordination:risk")
+	slashEventID := eventID(settings, familyFact, "coordination/risk")
+	if colonEventID == slashEventID {
+		t.Fatalf("eventID delimiter collision: %q", colonEventID)
+	}
+}
+
 func TestParseSettingsMessageRejectsUnscopedOrUnboundedConfig(t *testing.T) {
 	base := map[string]string{
 		"tenant_id":     "writer",

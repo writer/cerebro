@@ -181,6 +181,40 @@ func TestCosmoCoordinationActiveRiskSummaryDoesNotEchoFactStrings(t *testing.T) 
 	}
 }
 
+func TestCosmoCoordinationActiveRiskResourceURNsUseGraphKeys(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}
+	event := cosmoCoordinationFactEvent("cosmo-graph-resource", map[string]string{
+		"key":    "coordination:risk:thread-7",
+		"source": "session:thread-7",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate() emitted %d findings, want 1", len(records))
+	}
+	wantFactURN := "urn:cerebro:writer:cosmo_fact:" + cosmoExternalIDKey("coordination:risk:thread-7")
+	wantSessionURN := "urn:cerebro:writer:cosmo_session:" + cosmoExternalIDKey("thread-7")
+	if got := records[0].ResourceURNs; len(got) != 2 || got[0] != wantFactURN || got[1] != wantSessionURN {
+		t.Fatalf("ResourceURNs = %#v, want [%q %q]", got, wantFactURN, wantSessionURN)
+	}
+	if got := records[0].Attributes["primary_resource_urn"]; got != wantFactURN {
+		t.Fatalf("primary_resource_urn = %q, want %q", got, wantFactURN)
+	}
+
+	colonURN := cosmoFactResourceURN("writer", "coordination:risk")
+	slashURN := cosmoFactResourceURN("writer", "coordination/risk")
+	if colonURN == "" || slashURN == "" {
+		t.Fatalf("fact URNs = %q/%q, want non-empty values", colonURN, slashURN)
+	}
+	if colonURN == slashURN {
+		t.Fatalf("fact URNs collided at %q", colonURN)
+	}
+}
+
 func TestCosmoCoordinationActiveRiskReopensOnRecurrence(t *testing.T) {
 	rule := newCosmoCoordinationActiveRiskRule()
 	runtime := &cerebrov1.SourceRuntime{

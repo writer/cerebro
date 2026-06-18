@@ -2,6 +2,8 @@ package findings
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -267,7 +269,7 @@ func cosmoFactResourceURN(tenantID string, factKey string) string {
 	if tenantID == "" || factKey == "" {
 		return ""
 	}
-	return fmt.Sprintf("urn:cerebro:%s:cosmo_fact:%s", tenantID, factKey)
+	return fmt.Sprintf("urn:cerebro:%s:cosmo_fact:%s", tenantID, cosmoExternalIDKey(factKey))
 }
 
 func cosmoSessionResourceURN(tenantID string, sessionID string) string {
@@ -276,7 +278,16 @@ func cosmoSessionResourceURN(tenantID string, sessionID string) string {
 	if tenantID == "" || sessionID == "" {
 		return ""
 	}
-	return fmt.Sprintf("urn:cerebro:%s:cosmo_session:%s", tenantID, sessionID)
+	return fmt.Sprintf("urn:cerebro:%s:cosmo_session:%s", tenantID, cosmoExternalIDKey(sessionID))
+}
+
+func cosmoExternalIDKey(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return "id-" + hex.EncodeToString(sum[:16])
 }
 
 func cosmoCoordinationActiveRiskAnchor(attributes map[string]string) string {

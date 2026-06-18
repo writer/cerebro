@@ -1,6 +1,8 @@
 package sourceprojection
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strconv"
 	"strings"
 
@@ -51,7 +53,7 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	factURN := projectionURN(tenantID, "cosmo_fact", factID)
+	factURN := projectionURN(tenantID, "cosmo_fact", cosmoExternalIDKey(factID))
 	factAttributes := map[string]string{
 		"record_id":  attrs["record_id"],
 		"key":        firstNonEmpty(attrs["key"], stringValue(payload, "key")),
@@ -85,7 +87,7 @@ func cosmoMessageProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	messageURN := projectionURN(tenantID, "cosmo_message", messageID)
+	messageURN := projectionURN(tenantID, "cosmo_message", cosmoExternalIDKey(messageID))
 	addEntity(entities, cosmoEntity(event, messageURN, "cosmo.message", firstNonEmpty(attrs["event_type"], attrs["role"], messageID), cosmoAttributes(attrs, map[string]string{
 		"record_id":  attrs["record_id"],
 		"ticket_id":  firstNonEmpty(attrs["ticket_id"], stringValue(payload, "ticket_id")),
@@ -117,7 +119,7 @@ func cosmoSurveyFeedbackProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	feedbackURN := projectionURN(tenantID, "cosmo_survey_feedback", feedbackID)
+	feedbackURN := projectionURN(tenantID, "cosmo_survey_feedback", cosmoExternalIDKey(feedbackID))
 	addEntity(entities, cosmoEntity(event, feedbackURN, "cosmo.survey_feedback", firstNonEmpty(attrs["sentiment"], attrs["reaction"], feedbackID), cosmoAttributes(attrs, map[string]string{
 		"record_id":        attrs["record_id"],
 		"ticket_id":        firstNonEmpty(attrs["ticket_id"], stringValue(payload, "ticketId")),
@@ -163,7 +165,16 @@ func cosmoSessionURN(tenantID string, sessionID string) string {
 	if strings.TrimSpace(sessionID) == "" {
 		return ""
 	}
-	return projectionURN(tenantID, "cosmo_session", sessionID)
+	return projectionURN(tenantID, "cosmo_session", cosmoExternalIDKey(sessionID))
+}
+
+func cosmoExternalIDKey(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return "id-" + hex.EncodeToString(sum[:16])
 }
 
 func addCosmoSessionLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, sessionID string) {
