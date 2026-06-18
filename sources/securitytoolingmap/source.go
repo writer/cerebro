@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/securitytooling"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
@@ -181,26 +182,10 @@ func normalizeControlMappingEvent(event *cerebrov1.EventEnvelope) bool {
 		return false
 	}
 	attrs["tool_id"] = toolID
-	if status := coverageStatus(attrs["coverage"]); status != "" {
+	if status := securitytooling.CoverageStatus(attrs["coverage"]); status != "" {
 		attrs["coverage_status"] = status
 	}
 	return true
-}
-
-// coverageStatus classifies a control-mapping coverage value into a normalized
-// posture of "covered" or "gap". Empty or unrecognized coverage values are left
-// unclassified so downstream rules do not infer a gap from unknown input.
-func coverageStatus(coverage string) string {
-	switch strings.ToLower(strings.TrimSpace(coverage)) {
-	case "":
-		return ""
-	case "full", "covered", "complete", "implemented", "operating", "met", "yes", "true":
-		return "covered"
-	case "none", "gap", "missing", "partial", "planned", "not_covered", "uncovered", "in_progress", "todo", "unmet", "no", "false":
-		return "gap"
-	default:
-		return ""
-	}
 }
 
 func firstNonEmptyAttr(attrs map[string]string, keys ...string) string {

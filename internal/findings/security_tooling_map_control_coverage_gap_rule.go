@@ -8,6 +8,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securitytooling"
 )
 
 const (
@@ -185,20 +186,7 @@ func securityToolingMapCoverageGapStatus(attributes map[string]string) string {
 			return status
 		}
 	}
-	return securityToolingMapClassifyCoverage(attributes["coverage"])
-}
-
-func securityToolingMapClassifyCoverage(coverage string) string {
-	switch strings.ToLower(strings.TrimSpace(coverage)) {
-	case "":
-		return ""
-	case "full", "covered", "complete", "implemented", "operating", "met", "yes", "true":
-		return "covered"
-	case "none", "gap", "missing", "partial", "planned", "not_covered", "uncovered", "in_progress", "todo", "unmet", "no", "false":
-		return "gap"
-	default:
-		return ""
-	}
+	return securitytooling.CoverageStatus(attributes["coverage"])
 }
 
 func securityToolingMapControlDecommissioned(attributes map[string]string) bool {

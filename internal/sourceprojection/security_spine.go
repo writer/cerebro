@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securitytooling"
 )
 
 const relationDependsOn = "depends_on"
@@ -189,7 +190,7 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 	}
 	toolURN := projectionURN(tenantID, "security_tool", toolID)
 	controlURN := projectionURN(tenantID, "control", firstNonEmpty(attrs["framework"], "security"), controlID)
-	coverageStatus := firstNonEmpty(attrs["coverage_status"], securityToolingMapCoverageStatus(attrs["coverage"]))
+	coverageStatus := firstNonEmpty(attrs["coverage_status"], securitytooling.CoverageStatus(attrs["coverage"]))
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	addEntity(entities, &ports.ProjectedEntity{URN: toolURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "security.tool", Label: toolID, Attributes: map[string]string{"tool_id": toolID}})
@@ -216,22 +217,6 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 	})))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
-}
-
-// securityToolingMapCoverageStatus normalizes a control-mapping coverage value
-// into "covered" or "gap"; unknown or empty values stay unclassified so the
-// projection does not assert a gap from ambiguous input.
-func securityToolingMapCoverageStatus(coverage string) string {
-	switch strings.ToLower(strings.TrimSpace(coverage)) {
-	case "":
-		return ""
-	case "full", "covered", "complete", "implemented", "operating", "met", "yes", "true":
-		return "covered"
-	case "none", "gap", "missing", "partial", "planned", "not_covered", "uncovered", "in_progress", "todo", "unmet", "no", "false":
-		return "gap"
-	default:
-		return ""
-	}
 }
 
 func addOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, owner string) {
