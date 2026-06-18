@@ -220,6 +220,8 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 		AnnotateMain(ctx, Attrs(Field{Key: "cache.redis.last_status", Value: "hit"}))
 		IncrementMain(ctx, "cache.redis.hit.count", 1)
 		IncrementMain(ctx, "cache.redis.hit.count", 2)
+		MaxMain(ctx, "cache.redis.max_latency_ms", 5)
+		MaxMain(ctx, "cache.redis.max_latency_ms", 3)
 		End(span, "completed", Attrs(Field{Key: "explicit_end_attr", Value: "kept"}))
 	})
 	payload := telemetrySpanEndPayloadByName(t, stderr, "test.main")
@@ -240,6 +242,9 @@ func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
 	}
 	if got := payload["cache.redis.hit.count"]; got != float64(3) {
 		t.Fatalf("incremented count = %#v, want 3; payload=%#v", got, payload)
+	}
+	if got := payload["cache.redis.max_latency_ms"]; got != float64(5) {
+		t.Fatalf("max value = %#v, want 5; payload=%#v", got, payload)
 	}
 	if got := payload["explicit_end_attr"]; got != "kept" {
 		t.Fatalf("explicit end attr missing: %#v", payload)

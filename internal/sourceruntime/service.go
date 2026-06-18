@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -409,6 +410,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 						telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
 						telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
 					))
+					emitSourceRuntimeValidation(ctx, runtime, category)
 					continue
 				}
 				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
@@ -486,6 +488,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "checkpoint_watermark", Value: watermark.Format(time.RFC3339Nano)})
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_runtime_watermark_lag_seconds", Value: lagSeconds})
 	}
+	emitSourceRuntimeContractProbe(ctx, runtime)
 	return &cerebrov1.SyncSourceRuntimeResponse{
 		Runtime:           redactRuntime(runtime),
 		Source:            source.Spec(),
@@ -649,6 +652,55 @@ func invalidEventFailureCategory(err error) string {
 	default:
 		return "invalid_event"
 	}
+}
+
+func emitSourceRuntimeValidation(ctx context.Context, runtime *cerebrov1.SourceRuntime, category string) {
+	if runtime == nil {
+		return
+	}
+	missingClass := sourcehealth.ValidationFieldClass(category)
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+		telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+		telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+		telemetry.Field{Key: "failure_category", Value: category},
+		telemetry.Field{Key: "missing_canonical_field_class", Value: missingClass},
+	)
+	telemetry.Event(ctx, "source_runtime.validation", attrs)
+	telemetry.IncrementMain(ctx, "source_runtime.validation.count", 1)
+	telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "source_runtime.validation.last_missing_canonical_field_class", Value: missingClass},
+	)))
+}
+
+func emitSourceRuntimeContractProbe(ctx context.Context, runtime *cerebrov1.SourceRuntime) {
+	if runtime == nil {
+		return
+	}
+	state := strings.TrimSpace(runtime.GetConfig()[runtimeContractProbeStateConfigKey])
+	if state == "" {
+		state = sourcehealth.RuntimeContractProbeState(runtime)
+	}
+	if strings.EqualFold(state, "not_configured") {
+		return
+	}
+	status := sourcehealth.ContractProbeStatus(state)
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+		telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+		telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+		telemetry.Field{Key: "contract_probe_state", Value: state},
+		telemetry.Field{Key: "contract_probe_status", Value: status},
+	)
+	telemetry.Event(ctx, "source_runtime.contract_probe", attrs)
+	telemetry.IncrementMain(ctx, "source_runtime.contract_probe.count", 1)
+	if status != "success" {
+		telemetry.IncrementMain(ctx, "source_runtime.contract_probe.failure.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "source_runtime.contract_probe.last_status", Value: status},
+		telemetry.Field{Key: "source_runtime.contract_probe.last_state", Value: state},
+	)))
 }
 
 func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, cause error, observedAt time.Time, contractConfigured bool) {

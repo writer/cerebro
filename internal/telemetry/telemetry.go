@@ -70,7 +70,7 @@ type RuntimeMetadata struct {
 }
 
 const maxAttributeStringLength = 1024
-const wideEventSchemaVersion = "2026-06-18"
+const wideEventSchemaVersion = "2026-06-18.1"
 
 var (
 	runtimeMetadataMu sync.RWMutex
@@ -427,6 +427,17 @@ func IncrementMain(ctx context.Context, key string, delta int64) {
 	span.increment(key, delta)
 }
 
+func MaxMain(ctx context.Context, key string, value int64) {
+	if strings.TrimSpace(key) == "" {
+		return
+	}
+	span, ok := ctx.Value(mainSpanContextKey{}).(*Span)
+	if !ok || span == nil {
+		return
+	}
+	span.max(key, value)
+}
+
 func AnnotateMainDependency(ctx context.Context, system string, component string, operation string, status string, attributes Attributes) {
 	system = boundedKeyPart(system)
 	if system == "" {
@@ -605,19 +616,8 @@ func (s *Span) increment(key string, delta int64) {
 		s.annotations = map[string]any{}
 	}
 	current := int64(0)
-	switch value := s.annotations[key].(type) {
-	case int:
-		current = int64(value)
-	case int64:
+	if value, ok := numericInt64(s.annotations[key]); ok {
 		current = value
-	case uint32:
-		current = int64(value)
-	case uint64:
-		if value <= uint64(^uint(0)>>1) {
-			current = int64(value)
-		}
-	case float64:
-		current = int64(value)
 	}
 	next := current + delta
 	s.annotations[key] = next
@@ -625,6 +625,44 @@ func (s *Span) increment(key string, delta int64) {
 	if s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
 		s.otelSpan.SetAttributes(attribute.Int64(key, next))
 	}
+}
+
+func (s *Span) max(key string, value int64) {
+	if s == nil {
+		return
+	}
+	updated := false
+	s.mu.Lock()
+	if s.annotations == nil {
+		s.annotations = map[string]any{}
+	}
+	current, ok := numericInt64(s.annotations[key])
+	if !ok || value > current {
+		s.annotations[key] = value
+		updated = true
+	}
+	s.mu.Unlock()
+	if updated && s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
+		s.otelSpan.SetAttributes(attribute.Int64(key, value))
+	}
+}
+
+func numericInt64(value any) (int64, bool) {
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case uint32:
+		return int64(v), true
+	case uint64:
+		if v <= uint64(^uint(0)>>1) {
+			return int64(v), true
+		}
+	case float64:
+		return int64(v), true
+	}
+	return 0, false
 }
 
 func (s *Span) snapshotAnnotations() map[string]any {

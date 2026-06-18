@@ -13,7 +13,8 @@ For capacity SLOs, saturation dashboards, alert templates, autoscaling signals, 
 ## Wide Event Contract
 
 Cerebro follows a wide-event model for request and job debugging. Each top-level
-unit of work emits one canonical span/event with:
+unit of work emits one canonical span/event with schema version `2026-06-18.1`
+and:
 
 - `main=true`
 - `wide_event=true`
@@ -43,6 +44,16 @@ Main spans include two generic rollup families:
 
 - `dependency.*`: counts and last-seen status for Postgres, Neo4j, Redis, JetStream, outbound HTTP, and graph-agent LLM calls. Use this when you do not yet know which dependency is guilty.
 - `phase.*`: counts and last-seen status for orchestration phases, source sync, graph ingest, GRC dashboard subtasks, and source operations. Use this when one logical job has several internal steps.
+
+Orchestrator wide events also carry interpreted source runtime health fields so
+a single `orchestrator.run` span can explain whether work is blocked by source
+sync, graph ingest, finding evaluation, or a backfill need:
+
+- `source_runtime.family`, `source_runtime.enabled_state`, `source_runtime.freshness_state`, `source_runtime.source_sync_state`, `source_runtime.graph_ingest_state`, `source_runtime.finding_evaluation_state`
+- `source_runtime.failure_class`, `source_runtime.next_action`, `source_runtime.backfill_eligible`
+- `source_runtime.sync_lag_seconds`, `source_runtime.watermark_lag_seconds`, `source_runtime.graph_lag_seconds`, `source_runtime.expected_cadence_seconds`, `source_runtime.stale_after_seconds`
+- `source_runtime.cursor_pending`, `source_runtime.checkpoint_cursor_present`, `source_runtime.contract_probe_state`, `source_runtime.contract_probe_status`
+- `orchestrator.runtime.freshness.<state>.count`, `orchestrator.runtime.backfill_eligible.count`, and per-phase `phase.<phase>.last_duration_ms` / `phase.<phase>.max_duration_ms`
 
 Inbound HTTP requests create a main OTEL `http.server` span. The route label is
 normalized before emission. Unknown or dynamic paths are collapsed to route
@@ -84,6 +95,15 @@ Core runtime operations emit structured spans and diagnostic events:
 | `neo4j.read`, `neo4j.write` | Graph store transactions |
 | `redis.cache.*`, `redis.ping` | Query cache operations, hits/misses, version bumps |
 | `jetstream.ping`, `jetstream.append`, `jetstream.replay` | Append-log health, publish, and replay |
+
+Runtime contract diagnostics emit bounded events for deployment gates and
+alarms:
+
+| Event | Coverage |
+| --- | --- |
+| `source_runtime.contract_probe` | Contract-configured runtime probe status, with `contract_probe_status` in `success`, `failure`, `stale`, or `unknown` |
+| `source_runtime.validation` | Terminal source event validation rejects, with bounded `failure_category` and `missing_canonical_field_class` |
+| `runtime.evidence.link_status` | EvidenceCAS runtime evidence link rollup, with `link_status` in `linked`, `missing_resource`, `missing_case`, or `orphan` |
 
 Outbound HTTP uses W3C `traceparent`. The source transport and graph-agent HTTP doer inject child trace context, but they do not emit full URLs, query strings, request bodies, authorization headers, or API keys. Graph-agent LLM spans also do not emit prompt text, completion text, raw Cypher, raw tool arguments, rows, or headers.
 

@@ -15,6 +15,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -393,8 +394,11 @@ func emitRuntimeEvidenceTelemetry(ctx context.Context, event *cerebrov1.EventEnv
 	if evidenceCount == 0 && outcome != "conflict" {
 		return
 	}
+	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
 	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "tenant_id", Value: event.GetTenantId()},
 		telemetry.Field{Key: "source_id", Value: boundedEvidenceSourceID(event.GetSourceId())},
+		telemetry.Field{Key: "runtime_id", Value: runtimeID},
 		telemetry.Field{Key: "event_kind", Value: boundedEvidenceEventKind(event.GetKind())},
 		telemetry.Field{Key: "outcome", Value: boundedEvidenceOutcome(outcome)},
 		telemetry.Field{Key: "conflict_category", Value: boundedConflictCategory(conflictCategory)},
@@ -412,6 +416,26 @@ func emitRuntimeEvidenceTelemetry(ctx context.Context, event *cerebrov1.EventEnv
 	}
 	telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
 		telemetry.Field{Key: "source_projection.runtime_evidence.present", Value: true},
+	)))
+	linkStatus := sourcehealth.LinkStatusRollup(resourceLinkStatus, caseLinkStatus)
+	linkAttrs := telemetry.Attrs(
+		telemetry.Field{Key: "tenant_id", Value: event.GetTenantId()},
+		telemetry.Field{Key: "source_id", Value: boundedEvidenceSourceID(event.GetSourceId())},
+		telemetry.Field{Key: "runtime_id", Value: runtimeID},
+		telemetry.Field{Key: "event_kind", Value: boundedEvidenceEventKind(event.GetKind())},
+		telemetry.Field{Key: "link_status", Value: linkStatus},
+		telemetry.Field{Key: "resource_link_status", Value: resourceLinkStatus},
+		telemetry.Field{Key: "case_link_status", Value: caseLinkStatus},
+		telemetry.Field{Key: "orphan_count", Value: orphanCount},
+		telemetry.Field{Key: "missing_case_count", Value: missingCaseCount},
+	)
+	telemetry.Event(ctx, "runtime.evidence.link_status", linkAttrs)
+	telemetry.IncrementMain(ctx, "runtime.evidence.link_status.count", 1)
+	if linkStatus != "linked" {
+		telemetry.IncrementMain(ctx, "runtime.evidence.link_status.failure.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, linkAttrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "runtime.evidence.link_status.present", Value: true},
 	)))
 }
 
