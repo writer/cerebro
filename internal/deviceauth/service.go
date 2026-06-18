@@ -395,7 +395,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	}
 	// Pin dpop_jkt in priority order: attestation-bound key (hardware
 	// proven), then an existing hardware-bound key, then agent-supplied
-	// key (software assurance), then prior non-hardware enrollment key.
+	// key (software assurance).
 	// Enrollment must produce a binding before any refresh token is minted.
 	switch {
 	case attestationJKT != "":
@@ -408,8 +408,6 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		}
 	case agentJKT != "":
 		metadata["dpop_jkt"] = agentJKT
-	case priorJKT != "":
-		metadata["dpop_jkt"] = priorJKT
 	}
 	if strings.TrimSpace(metadata["dpop_jkt"]) == "" {
 		return EnrollResponse{}, fmt.Errorf("%w: device_key or attestation is required to bind refresh tokens", ErrInvalidRequest)
