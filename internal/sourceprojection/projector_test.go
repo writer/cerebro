@@ -730,18 +730,21 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 		SourceId: "okta",
 		Kind:     "okta.application",
 		Attributes: map[string]string{
-			"app_id":       "0oa-client",
-			"app_name":     "Production Client",
-			"domain":       "writer.okta.com",
-			"status":       "ACTIVE",
-			"sign_on_mode": "OPENID_CONNECT",
+			"app_id":                         "0oa-client",
+			"app_name":                       "Production Client",
+			"client_id":                      "0oa-client-id",
+			"domain":                         "writer.okta.com",
+			"post_logout_redirect_uri_hosts": "logout.example.com",
+			"redirect_uri_hosts":             "app.example.com",
+			"status":                         "ACTIVE",
+			"sign_on_mode":                   "OPENID_CONNECT",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 2 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 2", result.EntitiesProjected)
+	if result.EntitiesProjected != 6 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 6", result.EntitiesProjected)
 	}
 
 	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
@@ -751,11 +754,14 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 		t.Fatalf("state entity %q missing", clientURN)
 	}
 	wantAttributes := map[string]string{
-		"app_id":       "0oa-client",
-		"app_name":     "Production Client",
-		"domain":       "writer.okta.com",
-		"status":       "ACTIVE",
-		"sign_on_mode": "OPENID_CONNECT",
+		"app_id":                         "0oa-client",
+		"app_name":                       "Production Client",
+		"client_id":                      "0oa-client-id",
+		"domain":                         "writer.okta.com",
+		"post_logout_redirect_uri_hosts": "logout.example.com",
+		"redirect_uri_hosts":             "app.example.com",
+		"status":                         "ACTIVE",
+		"sign_on_mode":                   "OPENID_CONNECT",
 	}
 	for key, want := range wantAttributes {
 		if got := entity.Attributes[key]; got != want {
@@ -763,6 +769,11 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 		}
 	}
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, clientURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:app.example.com")
+	assertProjectedLink(t, state, clientURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:logout.example.com")
+	assertProjectedLink(t, state, clientURN, relationContains, "urn:cerebro:writer:okta_oauth_client:0oa-client-id")
+	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:app.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:logout.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
 }
 
 func TestProjectOktaPolicyRule(t *testing.T) {
@@ -775,20 +786,30 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 		SourceId: "okta",
 		Kind:     "okta.policy_rule",
 		Attributes: map[string]string{
-			"policy_id":      "pol-1",
-			"policy_rule_id": "rul-1",
-			"policy_type":    "OKTA_SIGN_ON",
-			"name":           "Require MFA",
-			"status":         "INACTIVE",
-			"priority":       "1",
-			"system":         "false",
+			"app_exclude_ids":          "app-legacy",
+			"app_include_ids":          "app-prod",
+			"client_include_ids":       "0oa-client,ALL_CLIENTS",
+			"domain":                   "writer.okta.com",
+			"group_include_ids":        "EVERYONE,grp-security",
+			"idp_ids":                  "idp-saml",
+			"name":                     "Require MFA",
+			"network_zone_exclude_ids": "zone-untrusted",
+			"network_zone_include_ids": "zone-corp",
+			"policy_id":                "pol-1",
+			"policy_name":              "Production Sign-On",
+			"policy_rule_id":           "rul-1",
+			"policy_type":              "OKTA_SIGN_ON",
+			"priority":                 "1",
+			"status":                   "INACTIVE",
+			"system":                   "false",
+			"user_exclude_ids":         "00u-breakglass",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 1 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	if result.EntitiesProjected != 11 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 11", result.EntitiesProjected)
 	}
 
 	wantURN := "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1"
@@ -816,6 +837,26 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
 		}
 	}
+	policyURN := "urn:cerebro:writer:okta_policy:pol-1"
+	policy := state.entities[policyURN]
+	if policy == nil || policy.EntityType != "okta.policy" {
+		t.Fatalf("policy entity missing or wrong type: %#v", policy)
+	}
+	if got := policy.Label; got != "Production Sign-On" {
+		t.Fatalf("policy Label = %q, want Production Sign-On", got)
+	}
+	assertProjectedLink(t, state, wantURN, relationBelongsTo, policyURN)
+	assertProjectedLink(t, state, policyURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_application:app-prod")
+	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_application:app-legacy")
+	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_group:grp-security")
+	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_user:00u-breakglass")
+	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_identity_provider:idp-saml")
+	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_network_zone:zone-corp")
+	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_network_zone:zone-untrusted")
+	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_oauth_client:0oa-client")
+	assertProjectedLinkMissing(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_group:EVERYONE")
+	assertProjectedLinkMissing(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_oauth_client:ALL_CLIENTS")
 }
 
 func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
@@ -827,6 +868,7 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 		wantEntityType string
 		wantLabel      string
 		wantAttrs      map[string]string
+		wantEntities   uint32
 	}{
 		{
 			name: "identity provider",
@@ -844,6 +886,7 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			wantURN:        "urn:cerebro:writer:okta_identity_provider:idp-saml",
 			wantEntityType: "okta.identity_provider",
 			wantLabel:      "Partner SAML IdP",
+			wantEntities:   4,
 			wantAttrs: map[string]string{
 				"acs_type":      "HTTP-POST",
 				"idp_id":        "idp-saml",
@@ -871,6 +914,7 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			wantURN:        "urn:cerebro:writer:okta_network_zone:zone-corp",
 			wantEntityType: "okta.network_zone",
 			wantLabel:      "Corporate VPN",
+			wantEntities:   2,
 			wantAttrs: map[string]string{
 				"gateway_count":   "1",
 				"gateway_values":  "203.0.113.0/24",
@@ -899,6 +943,7 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			wantURN:        "urn:cerebro:writer:okta_trusted_origin:origin-prod",
 			wantEntityType: "okta.trusted_origin",
 			wantLabel:      "Production Console",
+			wantEntities:   4,
 			wantAttrs: map[string]string{
 				"cors":              "true",
 				"origin":            "https://app.example.com",
@@ -925,8 +970,8 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Project() error = %v", err)
 			}
-			if result.EntitiesProjected != 2 {
-				t.Fatalf("Project().EntitiesProjected = %d, want 2", result.EntitiesProjected)
+			if result.EntitiesProjected != tt.wantEntities {
+				t.Fatalf("Project().EntitiesProjected = %d, want %d", result.EntitiesProjected, tt.wantEntities)
 			}
 			entity, ok := state.entities[tt.wantURN]
 			if !ok {
@@ -944,6 +989,14 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 				}
 			}
 			assertProjectedLink(t, state, tt.wantURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+			switch tt.name {
+			case "identity provider":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:idp.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:idp.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+			case "trusted origin":
+				assertProjectedLink(t, state, tt.wantURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:app.example.com")
+				assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:app.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+			}
 		})
 	}
 }

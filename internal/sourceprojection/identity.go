@@ -367,7 +367,9 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 				"oauth_client_type":              strings.TrimSpace(attributes["oauth_client_type"]),
 				"oauth_public_client":            strings.TrimSpace(attributes["oauth_public_client"]),
 				"post_logout_redirect_uri_count": strings.TrimSpace(attributes["post_logout_redirect_uri_count"]),
+				"post_logout_redirect_uri_hosts": strings.TrimSpace(attributes["post_logout_redirect_uri_hosts"]),
 				"redirect_uri_count":             strings.TrimSpace(attributes["redirect_uri_count"]),
+				"redirect_uri_hosts":             strings.TrimSpace(attributes["redirect_uri_hosts"]),
 				"response_types":                 strings.TrimSpace(attributes["response_types"]),
 				"saml":                           strings.TrimSpace(attributes["saml"]),
 				"domain_wide":                    strings.TrimSpace(attributes["domain_wide_delegation"]),
@@ -379,6 +381,31 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+		for _, host := range splitCSV(attributes["redirect_uri_hosts"]) {
+			addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, appURN, relationHasIdentifier, host, provider+"_application_redirect_host", "0.95")
+			addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, provider+"_application_redirect_domain", "0.95")
+		}
+		for _, host := range splitCSV(attributes["post_logout_redirect_uri_hosts"]) {
+			addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, appURN, relationHasIdentifier, host, provider+"_application_post_logout_redirect_host", "0.90")
+			addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, provider+"_application_post_logout_redirect_domain", "0.90")
+		}
+		clientID := strings.TrimSpace(attributes["client_id"])
+		if clientID != "" {
+			clientAttrs := map[string]string{
+				"app_id":                         firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["id"]),
+				"app_name":                       firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
+				"client_id":                      clientID,
+				"grant_types":                    strings.TrimSpace(attributes["grant_types"]),
+				"oauth_client_type":              strings.TrimSpace(attributes["oauth_client_type"]),
+				"oauth_public_client":            strings.TrimSpace(attributes["oauth_public_client"]),
+				"post_logout_redirect_uri_hosts": strings.TrimSpace(attributes["post_logout_redirect_uri_hosts"]),
+				"redirect_uri_hosts":             strings.TrimSpace(attributes["redirect_uri_hosts"]),
+				"response_types":                 strings.TrimSpace(attributes["response_types"]),
+				"token_endpoint_auth_method":     strings.TrimSpace(attributes["token_endpoint_auth_method"]),
+			}
+			clientURN := addIdentityOAuthClient(entities, tenantID, event.GetSourceId(), profile, clientID, firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], clientID), clientAttrs)
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, clientURN, relationContains, map[string]string{"event_id": event.GetId(), "match_type": provider + "_application_oauth_client"}))
 		}
 	}
 	return identityProjectionResult(entities, links)
@@ -395,8 +422,34 @@ func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile ident
 	if policyID == "" || policyRuleID == "" {
 		return nil, nil, nil
 	}
+	domain := strings.TrimSpace(attributes["domain"])
+	orgURN := identityOrgURN(tenantID, profile.Provider, domain)
+	policyURN := projectionURN(tenantID, profile.Provider+"_policy", policyID)
 	policyRuleURN := projectionURN(tenantID, profile.Provider+"_policy_rule", policyID, policyRuleID)
 	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	addIdentityOrg(entities, tenantID, event.GetSourceId(), profile.Provider, domain, orgURN)
+	if policyURN != "" {
+		policyAttrs := map[string]string{
+			"domain":      domain,
+			"policy_id":   policyID,
+			"policy_name": strings.TrimSpace(attributes["policy_name"]),
+			"policy_type": strings.TrimSpace(attributes["policy_type"]),
+			"status":      strings.TrimSpace(attributes["policy_status"]),
+		}
+		trimEmptyProjectionAttributes(policyAttrs)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        policyURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("policy"),
+			Label:      firstNonEmpty(attributes["policy_name"], attributes["policy_type"], policyID),
+			Attributes: policyAttrs,
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
 	if policyRuleURN != "" {
 		policyRuleAttrs := map[string]string{
 			"policy_id":      policyID,
@@ -407,7 +460,7 @@ func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile ident
 			"priority":       strings.TrimSpace(attributes["priority"]),
 			"system":         strings.TrimSpace(attributes["system"]),
 		}
-		for _, key := range []string{"access", "requires_mfa", "mfa_prompt", "mfa_lifetime_minutes", "session_max_lifetime_minutes", "session_idle_minutes", "session_persistent", "network_connection", "risk_level"} {
+		for _, key := range []string{"access", "requires_mfa", "mfa_prompt", "mfa_lifetime_minutes", "session_max_lifetime_minutes", "session_idle_minutes", "session_persistent", "network_connection", "risk_level", "platform_types", "network_zone_include_ids", "network_zone_exclude_ids", "group_include_ids", "group_exclude_ids", "user_include_ids", "user_exclude_ids", "idp_ids", "idp_provider", "app_include_ids", "app_exclude_ids", "client_include_ids"} {
 			if v := strings.TrimSpace(attributes[key]); v != "" {
 				policyRuleAttrs[key] = v
 			}
@@ -420,8 +473,144 @@ func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["name"], attributes["policy_rule_name"], policyRuleID),
 			Attributes: policyRuleAttrs,
 		})
+		if policyURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), policyRuleURN, policyURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+		addIdentityPolicyRuleConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, attributes)
 	}
-	return identityProjectionResult(entities, nil)
+	return identityProjectionResult(entities, links)
+}
+
+func addIdentityOAuthClient(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, profile identityProjectionProfile, clientID string, label string, attributes map[string]string) string {
+	clientURN := identityOAuthClientURN(tenantID, profile.Provider, clientID)
+	if clientURN == "" {
+		return ""
+	}
+	trimEmptyProjectionAttributes(attributes)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        clientURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: profile.entityType("oauth_client"),
+		Label:      firstNonEmpty(label, clientID),
+		Attributes: attributes,
+	})
+	return clientURN
+}
+
+func addIdentityPolicyRuleConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, attributes map[string]string) {
+	addIdentityPolicyRuleGroupConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["group_include_ids"]), "include")
+	addIdentityPolicyRuleGroupConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["group_exclude_ids"]), "exclude")
+	addIdentityPolicyRuleUserConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["user_include_ids"]), "include")
+	addIdentityPolicyRuleUserConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["user_exclude_ids"]), "exclude")
+	addIdentityPolicyRuleApplicationConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["app_include_ids"]), "include")
+	addIdentityPolicyRuleApplicationConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["app_exclude_ids"]), "exclude")
+	addIdentityPolicyRuleNetworkZoneConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["network_zone_include_ids"]), "include")
+	addIdentityPolicyRuleNetworkZoneConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["network_zone_exclude_ids"]), "exclude")
+	addIdentityPolicyRuleIdentityProviderConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["idp_ids"]), "include")
+	addIdentityPolicyRuleOAuthClientConditionLinks(entities, links, tenantID, event, profile, orgURN, policyRuleURN, splitCSV(attributes["client_include_ids"]), "include")
+}
+
+func addIdentityPolicyRuleGroupConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, groupIDs []string, scope string) {
+	for _, groupID := range groupIDs {
+		groupID = durableIdentityConditionReferenceID(groupID)
+		if groupID == "" {
+			continue
+		}
+		groupURN := identityGroupURN(tenantID, profile.Provider, groupID, "")
+		addEntity(entities, &ports.ProjectedEntity{URN: groupURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: profile.entityType("group"), Label: groupID, Attributes: map[string]string{"group_id": groupID}})
+		addIdentityPolicyRuleConditionLink(links, tenantID, event, policyRuleURN, groupURN, relationTargeted, "group", scope)
+		addIdentityOrgMembershipLink(links, tenantID, event, groupURN, orgURN)
+	}
+}
+
+func addIdentityPolicyRuleUserConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, userIDs []string, scope string) {
+	for _, userID := range userIDs {
+		userID = durableIdentityConditionReferenceID(userID)
+		if userID == "" {
+			continue
+		}
+		userURN := identityUserURN(tenantID, profile.Provider, userID, "")
+		addEntity(entities, &ports.ProjectedEntity{URN: userURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: profile.entityType("user"), Label: userID, Attributes: map[string]string{"user_id": userID}})
+		addIdentityPolicyRuleConditionLink(links, tenantID, event, policyRuleURN, userURN, relationTargeted, "user", scope)
+		addIdentityOrgMembershipLink(links, tenantID, event, userURN, orgURN)
+	}
+}
+
+func addIdentityPolicyRuleApplicationConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, appIDs []string, scope string) {
+	for _, appID := range appIDs {
+		appID = durableIdentityConditionReferenceID(appID)
+		if appID == "" {
+			continue
+		}
+		appURN := identityApplicationURN(tenantID, profile.Provider, appID)
+		addEntity(entities, &ports.ProjectedEntity{URN: appURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: profile.entityType("application"), Label: appID, Attributes: map[string]string{"app_id": appID}})
+		addIdentityPolicyRuleConditionLink(links, tenantID, event, policyRuleURN, appURN, relationTargeted, "application", scope)
+		addIdentityOrgMembershipLink(links, tenantID, event, appURN, orgURN)
+	}
+}
+
+func addIdentityPolicyRuleNetworkZoneConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, zoneIDs []string, scope string) {
+	for _, zoneID := range zoneIDs {
+		zoneID = durableIdentityConditionReferenceID(zoneID)
+		if zoneID == "" {
+			continue
+		}
+		zoneURN := projectionURN(tenantID, profile.Provider+"_network_zone", zoneID)
+		addEntity(entities, &ports.ProjectedEntity{URN: zoneURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: profile.entityType("network_zone"), Label: zoneID, Attributes: map[string]string{"network_zone_id": zoneID, "zone_id": zoneID}})
+		addIdentityPolicyRuleConditionLink(links, tenantID, event, policyRuleURN, zoneURN, relationDependsOn, "network_zone", scope)
+		addIdentityOrgMembershipLink(links, tenantID, event, zoneURN, orgURN)
+	}
+}
+
+func addIdentityPolicyRuleIdentityProviderConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, idpIDs []string, scope string) {
+	for _, idpID := range idpIDs {
+		idpID = durableIdentityConditionReferenceID(idpID)
+		if idpID == "" {
+			continue
+		}
+		idpURN := projectionURN(tenantID, profile.Provider+"_identity_provider", idpID)
+		addEntity(entities, &ports.ProjectedEntity{URN: idpURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: profile.entityType("identity_provider"), Label: idpID, Attributes: map[string]string{"identity_provider_id": idpID, "idp_id": idpID}})
+		addIdentityPolicyRuleConditionLink(links, tenantID, event, policyRuleURN, idpURN, relationDependsOn, "identity_provider", scope)
+		addIdentityOrgMembershipLink(links, tenantID, event, idpURN, orgURN)
+	}
+}
+
+func addIdentityPolicyRuleOAuthClientConditionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, orgURN string, policyRuleURN string, clientIDs []string, scope string) {
+	for _, clientID := range clientIDs {
+		clientID = durableIdentityConditionReferenceID(clientID)
+		if clientID == "" {
+			continue
+		}
+		clientURN := addIdentityOAuthClient(entities, tenantID, event.GetSourceId(), profile, clientID, clientID, map[string]string{"client_id": clientID})
+		addIdentityPolicyRuleConditionLink(links, tenantID, event, policyRuleURN, clientURN, relationDependsOn, "oauth_client", scope)
+		addIdentityOrgMembershipLink(links, tenantID, event, clientURN, orgURN)
+	}
+}
+
+func addIdentityPolicyRuleConditionLink(links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, toURN string, relation string, referenceType string, scope string) {
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, toURN, relation, map[string]string{
+		"condition_scope": scope,
+		"event_id":        event.GetId(),
+		"match_type":      "okta_policy_rule_" + referenceType + "_condition",
+	}))
+}
+
+func addIdentityOrgMembershipLink(links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, orgURN string) {
+	if fromURN == "" || orgURN == "" {
+		return
+	}
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+}
+
+func durableIdentityConditionReferenceID(value string) string {
+	trimmed := strings.TrimSpace(value)
+	switch strings.ToUpper(trimmed) {
+	case "", "ALL", "ANY", "ANYONE", "EVERYONE", "ALL_APPS", "ALL_CLIENTS", "ALL_USERS":
+		return ""
+	default:
+		return trimmed
+	}
 }
 
 func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -1093,6 +1282,10 @@ func identityGroupURN(tenantID string, provider string, groupID string, groupEma
 
 func identityApplicationURN(tenantID string, provider string, appID string) string {
 	return projectionURN(tenantID, provider+"_application", appID)
+}
+
+func identityOAuthClientURN(tenantID string, provider string, clientID string) string {
+	return projectionURN(tenantID, provider+"_oauth_client", clientID)
 }
 
 func identityPrincipalURN(tenantID string, provider string, principalType string, principalID string, email string) string {

@@ -1894,6 +1894,10 @@ func oktaIdentityProviderProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), idpURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, idpURN, relationHasIdentifier, attributes["issuer"], "okta_identity_provider_issuer_host", "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, attributes["issuer"], "okta_identity_provider_issuer_domain", "0.95")
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, idpURN, relationHasIdentifier, attributes["sso_url_host"], "okta_identity_provider_sso_host", "0.90")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, attributes["sso_url_host"], "okta_identity_provider_sso_domain", "0.90")
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -1995,6 +1999,8 @@ func oktaTrustedOriginProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), originURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, originURN, relationHasIdentifier, firstNonEmpty(originAttrs["origin_host"], originAttrs["origin"]), "okta_trusted_origin_host", "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, firstNonEmpty(originAttrs["origin_host"], originAttrs["origin"]), "okta_trusted_origin_domain", "0.95")
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)

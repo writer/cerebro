@@ -54,6 +54,11 @@ type FamilyOptions[S any] struct {
 	QueryParams bool
 }
 
+type OAuthRedirectSettings struct {
+	RedirectURIs           []string
+	PostLogoutRedirectURIs []string
+}
+
 func Family[S any](options FamilyOptions[S]) sourcecdk.Family[S] {
 	return sourcecdk.Family[S]{
 		Name: options.Name, IncrementalWatermark: true,
@@ -176,6 +181,41 @@ func Attributes(settings Settings, kind string, record Record) map[string]string
 	default:
 		return map[string]string{"domain": settings.Domain, "family": kind, "resource_id": record.String("id")}
 	}
+}
+
+func AddOAuthRedirectAttributes(attributes map[string]string, settings OAuthRedirectSettings) {
+	addAttribute(attributes, "redirect_uri_count", strconv.Itoa(len(settings.RedirectURIs)))
+	addAttribute(attributes, "redirect_uri_hosts", strings.Join(urlHosts(settings.RedirectURIs), ","))
+	addAttribute(attributes, "post_logout_redirect_uri_count", strconv.Itoa(len(settings.PostLogoutRedirectURIs)))
+	addAttribute(attributes, "post_logout_redirect_uri_hosts", strings.Join(urlHosts(settings.PostLogoutRedirectURIs), ","))
+}
+
+func AddPolicyRuleConditionAttributes(raw json.RawMessage, attrs map[string]string) {
+	var rule map[string]any
+	if err := json.Unmarshal(raw, &rule); err != nil {
+		return
+	}
+	conditions := nestedMap(rule, "conditions")
+	network := nestedMap(conditions, "network")
+	risk := nestedMap(conditions, "risk")
+	platform := nestedMap(conditions, "platform")
+	people := nestedMap(conditions, "people")
+	identityProvider := nestedMap(conditions, "identityProvider")
+
+	addAttribute(attrs, "network_connection", strings.ToUpper(stringMap(network, "connection")))
+	addAttribute(attrs, "risk_level", strings.ToUpper(stringMap(risk, "level")))
+	addCSVAttribute(attrs, "platform_types", platformTypes(platform))
+	addCSVAttribute(attrs, "network_zone_include_ids", conditionIDs(network, "include"))
+	addCSVAttribute(attrs, "network_zone_exclude_ids", conditionIDs(network, "exclude"))
+	addCSVAttribute(attrs, "group_include_ids", append(conditionIDs(nestedMap(conditions, "groups"), "include"), conditionIDs(nestedMap(people, "groups"), "include")...))
+	addCSVAttribute(attrs, "group_exclude_ids", append(conditionIDs(nestedMap(conditions, "groups"), "exclude"), conditionIDs(nestedMap(people, "groups"), "exclude")...))
+	addCSVAttribute(attrs, "user_include_ids", append(conditionIDs(nestedMap(conditions, "users"), "include"), conditionIDs(nestedMap(people, "users"), "include")...))
+	addCSVAttribute(attrs, "user_exclude_ids", append(conditionIDs(nestedMap(conditions, "users"), "exclude"), conditionIDs(nestedMap(people, "users"), "exclude")...))
+	addCSVAttribute(attrs, "idp_ids", valueIDs(identityProvider["idpIds"]))
+	addAttribute(attrs, "idp_provider", stringMap(identityProvider, "provider"))
+	addCSVAttribute(attrs, "app_include_ids", append(conditionIDs(nestedMap(conditions, "apps"), "include"), conditionIDs(nestedMap(conditions, "app"), "include")...))
+	addCSVAttribute(attrs, "app_exclude_ids", append(conditionIDs(nestedMap(conditions, "apps"), "exclude"), conditionIDs(nestedMap(conditions, "app"), "exclude")...))
+	addCSVAttribute(attrs, "client_include_ids", conditionIDs(nestedMap(conditions, "clients"), "include"))
 }
 
 func authenticatorAttributes(settings Settings, record Record) map[string]string {
@@ -387,6 +427,10 @@ func addAttribute(attributes map[string]string, key string, value string) {
 	}
 }
 
+func addCSVAttribute(attributes map[string]string, key string, values []string) {
+	addAttribute(attributes, key, strings.Join(uniqueSortedStrings(values), ","))
+}
+
 func nestedMap(values map[string]any, key string) map[string]any {
 	value, ok := values[key]
 	if !ok {
@@ -407,6 +451,66 @@ func stringMap(values map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
+func conditionIDs(values map[string]any, key string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	return valueIDs(values[key])
+}
+
+func valueIDs(value any) []string {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case string:
+		return []string{typed}
+	case []string:
+		return typed
+	case map[string]any:
+		return []string{stringMap(typed, "id")}
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, valueIDs(item)...)
+		}
+		return values
+	default:
+		return nil
+	}
+}
+
+func platformTypes(platform map[string]any) []string {
+	items, ok := platform["include"].([]any)
+	if !ok {
+		return nil
+	}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		if entry, ok := item.(map[string]any); ok {
+			values = append(values, strings.ToUpper(stringMap(entry, "type")))
+		}
+	}
+	return values
+}
+
+func uniqueSortedStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	result := []string{}
+	for _, value := range values {
+		text := strings.TrimSpace(value)
+		if text == "" {
+			continue
+		}
+		if _, ok := seen[text]; ok {
+			continue
+		}
+		seen[text] = struct{}{}
+		result = append(result, text)
+	}
+	sort.Strings(result)
+	return result
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -416,12 +520,43 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func urlHosts(values []string) []string {
+	seen := map[string]struct{}{}
+	hosts := []string{}
+	for _, value := range values {
+		host := urlHost(value)
+		if host == "" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	return hosts
+}
+
 func urlHost(raw string) string {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Hostname() == "" {
+	value := strings.TrimSpace(raw)
+	if value == "" {
 		return ""
 	}
-	return strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	parsed, err := url.Parse(value)
+	if err == nil && parsed.Hostname() != "" {
+		return normalizeURLHost(parsed.Hostname())
+	}
+	parsed, err = url.Parse("https://" + value)
+	if err == nil && parsed.Hostname() != "" {
+		return normalizeURLHost(parsed.Hostname())
+	}
+	return ""
+}
+
+func normalizeURLHost(host string) string {
+	normalized := strings.ToLower(strings.Trim(strings.TrimSpace(host), "."))
+	return strings.TrimPrefix(normalized, "*.")
 }
 
 func wrapLookupError(label string, settings Settings, err error) error {

@@ -141,7 +141,7 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 		"system":               strings.TrimSpace(eventAttrs["system"]),
 		"source_runtime_id":    strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
 		"primary_actor_urn":    projectedContext.PrimaryActorURN,
-		"primary_resource_urn": firstNonEmpty(projectedContext.PrimaryResourceURN, policyRuleURN),
+		"primary_resource_urn": policyRuleURN,
 	}
 	for key, value := range oktaPolicyRuleLifecycleTamperingDefinition.AttributeMap() {
 		attributes["rule_"+key] = value
