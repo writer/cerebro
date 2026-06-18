@@ -102,6 +102,9 @@ func TestClientConfigurationAndRemoteErrors(t *testing.T) {
 	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: "http://access-approvals.example.com", BearerToken: "token"}); !errors.Is(err, graphactions.ErrInvalidRequest) {
 		t.Fatalf("New(plaintext non-loopback URL) error = %v, want ErrInvalidRequest", err)
 	}
+	if _, err := New(config.AccessApprovalsActionConfig{BaseURL: "https://approvals.example.com", BearerToken: "token"}); err != nil {
+		t.Fatalf("New(https URL) error = %v", err)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		if _, err := w.Write([]byte(`{"error":"missing required scopes"}`)); err != nil {
@@ -122,7 +125,7 @@ func TestClientConfigurationAndRemoteErrors(t *testing.T) {
 func TestClientLimitsSuccessResponseBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if _, err := w.Write([]byte(`{"id":"` + strings.Repeat("a", int(defaultMaxActionResponseBodyBytes)+1) + `","action":"suspend"}`)); err != nil {
+		if _, err := w.Write([]byte(`{"id":"` + strings.Repeat("a", int(defaultMaxSuccessBodyBytes)+1) + `","action":"suspend"}`)); err != nil {
 			t.Fatalf("write oversized response: %v", err)
 		}
 	}))

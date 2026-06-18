@@ -16,8 +16,10 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
-const defaultMaxErrorBodyBytes int64 = 4096
-const defaultMaxActionResponseBodyBytes int64 = 1024 * 1024
+const (
+	defaultMaxErrorBodyBytes   int64 = 4096
+	defaultMaxSuccessBodyBytes int64 = 1 << 20
+)
 
 type Client struct {
 	baseURL    *url.URL
@@ -118,7 +120,7 @@ func (c *Client) createAction(ctx context.Context, action string, request grapha
 		return nil, remoteStatusError(response)
 	}
 	var actionResponse graphactions.AccessApprovalsUserAction
-	if err := json.NewDecoder(io.LimitReader(response.Body, defaultMaxActionResponseBodyBytes)).Decode(&actionResponse); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, defaultMaxSuccessBodyBytes)).Decode(&actionResponse); err != nil {
 		return nil, fmt.Errorf("%w: decode response: %w", graphactions.ErrRemote, err)
 	}
 	if strings.TrimSpace(actionResponse.ID) == "" {
