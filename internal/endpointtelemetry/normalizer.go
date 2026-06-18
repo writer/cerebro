@@ -234,8 +234,15 @@ func trustGateAction(raw map[string]any, eventType string) string {
 	if action := firstString(raw, "action", "gated_action", "operation"); action != "" {
 		return action
 	}
-	if _, after, ok := strings.Cut(strings.TrimSpace(eventType), "."); ok && strings.TrimSpace(after) != "" {
-		return after
+	if _, after, ok := strings.Cut(strings.TrimSpace(eventType), "."); ok {
+		after = strings.TrimSpace(after)
+		switch normalizeDecision(after) {
+		case "deny", "allow", "error":
+			return "trust_gate"
+		}
+		if after != "" {
+			return after
+		}
 	}
 	return "trust_gate"
 }

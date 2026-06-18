@@ -84,6 +84,29 @@ func TestNormalizeTrustGateDecisionAttributes(t *testing.T) {
 	}
 }
 
+func TestNormalizeTrustGateDecisionTypeSuffixUsesStableFallbackAction(t *testing.T) {
+	principal := endpointtelemetry.Principal{TenantID: "writer", DeviceID: "dev_123"}
+	body := []byte(`{"events":[{"type":"trust_gate.deny","reason":"posture_failed"},{"type":"trust_gate.allow","reason":"posture_remediated"}]}`)
+	events, err := endpointtelemetry.Normalize(body, principal, time.Date(2026, 6, 4, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	for i, event := range events {
+		if got := event.GetAttributes()["action"]; got != "trust_gate" {
+			t.Fatalf("event[%d] action = %q, want trust_gate", i, got)
+		}
+	}
+	if got := events[0].GetAttributes()["decision"]; got != "deny" {
+		t.Fatalf("events[0] decision = %q, want deny", got)
+	}
+	if got := events[1].GetAttributes()["decision"]; got != "allow" {
+		t.Fatalf("events[1] decision = %q, want allow", got)
+	}
+}
+
 func TestNormalizeTrustGatePropagatesDeprovisionState(t *testing.T) {
 	principal := endpointtelemetry.Principal{TenantID: "writer", DeviceID: "dev_123"}
 	body := []byte(`{"events":[{"type":"trust_gate.deny","action":"git_push","reason":"posture_failed","agent_status":"Off-boarded","managed":false}]}`)
