@@ -485,8 +485,9 @@ func TestFactAttributesExposeCoordinationRiskContract(t *testing.T) {
 		"category":    "coordination_risk",
 		"source":      "session:thread-1",
 		"risk_reason": "agent coordinated a privileged change across sessions",
+		"severity":    "high",
 	})
-	for _, key := range []string{"key", "category", "source"} {
+	for _, key := range []string{"key", "category", "source", "risk_reason", "risk_severity"} {
 		if attrs[key] == "" {
 			t.Fatalf("fact attribute %q = empty, want populated coordination-risk contract field", key)
 		}
@@ -496,6 +497,12 @@ func TestFactAttributesExposeCoordinationRiskContract(t *testing.T) {
 	}
 	if got, want := attrs["source"], "session:thread-1"; got != want {
 		t.Fatalf("source = %q, want %q so downstream projection/finding can resolve session context", got, want)
+	}
+	if got, want := attrs["risk_reason"], "agent coordinated a privileged change across sessions"; got != want {
+		t.Fatalf("risk_reason = %q, want %q", got, want)
+	}
+	if got, want := attrs["risk_severity"], "high"; got != want {
+		t.Fatalf("risk_severity = %q, want %q", got, want)
 	}
 }
 

@@ -743,10 +743,10 @@ func attributesFor(family string, values map[string]any) map[string]string {
 		attrs["status"] = firstValueString(values, "status")
 		attrs["source"] = firstValueString(values, "source")
 	case familyFact:
-		attrs["key"] = firstValueString(values, "key")
-		attrs["category"] = firstValueString(values, "category")
-		attrs["source"] = firstValueString(values, "source")
-		attrs["confidence"] = firstValueString(values, "confidence")
+		attrs["key"], attrs["category"] = firstValueString(values, "key"), firstValueString(values, "category")
+		attrs["source"], attrs["confidence"] = firstValueString(values, "source"), firstValueString(values, "confidence")
+		attrs["risk_reason"] = firstValueString(values, "risk_reason")
+		attrs["risk_severity"] = firstValueString(values, "risk_severity", "severity")
 	case familyMessage:
 		attrs["ticket_id"] = firstValueString(values, "ticket_id")
 		attrs["event_type"] = firstValueString(values, "event_type")

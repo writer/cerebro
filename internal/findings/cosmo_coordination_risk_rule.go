@@ -35,7 +35,7 @@ type cosmoCoordinationActiveRiskRule struct {
 var cosmoCoordinationActiveRiskDefinition = RuleDefinition{
 	ID:          cosmoCoordinationActiveRiskRuleID,
 	Name:        cosmoCoordinationActiveRiskTitle,
-	Description: "Detect Cosmo agent-memory facts that record an active coordination-risk pattern in a session, so a durable finding tracks the risky condition until the agent memory records it resolved.",
+	Description: "Detect Cosmo agent-memory facts that record an active coordination-risk pattern in a session, so a durable finding tracks the risky condition until an operator reviews and resolves it.",
 	SourceID:    "cosmo",
 	EventKinds:  []string{"cosmo.fact"},
 	OutputKind:  "finding.cosmo_coordination_active_risk",
@@ -45,11 +45,11 @@ var cosmoCoordinationActiveRiskDefinition = RuleDefinition{
 	Tags:        []string{"cosmo", "agent-memory", "coordination", "posture"},
 	References:  []string{"https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"},
 	FalsePositives: []string{
-		"Memory facts that record a historical coordination-risk pattern that has already been remediated but were not updated to a resolved state in agent memory.",
-		"Resolved Cosmo memory facts can close a matching finding, but prompt-injected or otherwise agent-written resolution state must be operator-verified against session and runtime evidence.",
+		"Memory facts that record a historical coordination-risk pattern that has already been remediated but still require operator review before the finding is resolved.",
+		"Resolved Cosmo memory facts do not close a matching finding by themselves; prompt-injected or otherwise agent-written resolution state must be operator-verified against session and runtime evidence.",
 		"risk_reason and risk_severity are evidence hints from Cosmo memory when their source attributes are agent_memory_payload; validate them before treating the text as authoritative.",
 	},
-	Runbook:            "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination. Treat risk_reason and risk_severity as agent-written evidence hints when their source is agent_memory_payload, and verify resolved memory facts against session and runtime evidence before accepting automatic closure.",
+	Runbook:            "Review the coordination-risk pattern recorded for the affected session and remediate the underlying risky coordination. Treat risk_reason and risk_severity as agent-written evidence hints when their source is agent_memory_payload, verify resolved memory facts against session and runtime evidence, and resolve the finding through the reviewed finding workflow rather than Cosmo memory alone.",
 	RequiredAttributes: []string{"key"},
 	FingerprintFields:  []string{"cosmo_risk_urn"},
 	ControlRefs:        cosmoCoordinationActiveRiskControlRefs,
@@ -83,19 +83,12 @@ func (r *cosmoCoordinationActiveRiskRule) OpenAnchor(attributes map[string]strin
 	return cosmoCoordinationActiveRiskAnchor(attributes)
 }
 
-// CloseOnEvent resolves an open finding when a later memory fact records the
-// same coordination-risk pattern as resolved, so remediated coordination risk
-// does not leave stale open findings.
+// CloseOnEvent deliberately refuses to close from Cosmo memory alone. Cosmo
+// facts can be authored by the agent workflow being assessed, so accepting a
+// matching resolved fact here would let prompt-injected memory silently suppress
+// a HIGH finding before an operator reviews the remediation.
 func (r *cosmoCoordinationActiveRiskRule) CloseOnEvent(event Event) (string, bool) {
-	if !cosmoCoordinationActiveRiskKindMatcher(event) || !hasRequiredAttributes(event, cosmoCoordinationActiveRiskDefinition.RequiredAttributes...) {
-		return "", false
-	}
-	if cosmoFactRiskState(event) != "resolved" {
-		return "", false
-	}
-	riskURN := cosmoCoordinationRiskURN(event.GetTenantId(), cosmoEventRuntimeID(event, ""), cosmoFactSessionID(event), cosmoFactKey(event))
-	anchor := cosmoCoordinationActiveRiskAnchor(map[string]string{"cosmo_risk_urn": riskURN})
-	return anchor, anchor != ""
+	return "", false
 }
 
 func matchesCosmoCoordinationActiveRisk(event *cerebrov1.EventEnvelope) bool {

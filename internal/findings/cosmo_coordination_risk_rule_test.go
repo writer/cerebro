@@ -243,14 +243,7 @@ func TestCosmoCoordinationActiveRiskRequiresPositiveActiveState(t *testing.T) {
 	}
 }
 
-func TestCosmoCoordinationActiveRiskRemediationResolves(t *testing.T) {
-	runtimeID := "example-cosmo-fact"
-	open := cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active", ports.EventAttributeSourceRuntimeID: runtimeID}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
-	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved", ports.EventAttributeSourceRuntimeID: runtimeID}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
-	assertIdentityRuleRemediationTrajectory(t, newCosmoCoordinationActiveRiskRule(), open, resolved, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
-}
-
-func TestCosmoCoordinationActiveRiskCloseRequiresRuntimeAnchor(t *testing.T) {
+func TestCosmoCoordinationActiveRiskDoesNotAutoCloseFromResolvedMemory(t *testing.T) {
 	rule := newCosmoCoordinationActiveRiskRule()
 	runtime := &cerebrov1.SourceRuntime{
 		Id:       "writer-cosmo-fact",
@@ -269,18 +262,23 @@ func TestCosmoCoordinationActiveRiskCloseRequiresRuntimeAnchor(t *testing.T) {
 	if !ok {
 		t.Fatal("rule does not implement CounterEventRule")
 	}
-	openAnchor := counterRule.OpenAnchor(opened[0].Attributes)
+	if openAnchor := counterRule.OpenAnchor(opened[0].Attributes); openAnchor == "" {
+		t.Fatalf("OpenAnchor() = empty for attributes %#v", opened[0].Attributes)
+	}
+
+	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{
+		"risk_state": "resolved",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	if anchor, closes := counterRule.CloseOnEvent(resolved); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(resolved memory fact) = (%q, %v), want no close without operator review", anchor, closes)
+	}
 
 	otherRuntime := cosmoCoordinationFactEvent("cosmo-resolved-other-runtime", map[string]string{
 		"risk_state":                        "resolved",
 		ports.EventAttributeSourceRuntimeID: "writer-cosmo-fact-shadow",
 	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
-	otherAnchor, closes := counterRule.CloseOnEvent(otherRuntime)
-	if !closes || otherAnchor == "" {
-		t.Fatalf("CloseOnEvent(other runtime) = (%q, %v), want close anchor for the other runtime", otherAnchor, closes)
-	}
-	if otherAnchor == openAnchor {
-		t.Fatalf("CloseOnEvent(other runtime) anchor = %q, want distinct from open anchor", otherAnchor)
+	if anchor, closes := counterRule.CloseOnEvent(otherRuntime); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(other runtime resolved memory fact) = (%q, %v), want no close without operator review", anchor, closes)
 	}
 
 	missingRuntime := cosmoCoordinationFactEvent("cosmo-resolved-missing-runtime", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
@@ -403,13 +401,13 @@ func TestCosmoCoordinationActiveRiskReopensOnRecurrence(t *testing.T) {
 	if !ok {
 		t.Fatal("rule does not implement CounterEventRule")
 	}
+	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor == "" {
+		t.Fatalf("OpenAnchor(open finding) = empty for attributes %#v", opened.Attributes)
+	}
 	resolvedEvent := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	closeAnchor, closes := counterRule.CloseOnEvent(resolvedEvent)
-	if !closes || closeAnchor == "" {
-		t.Fatalf("CloseOnEvent(resolved) = (%q, %v), want non-empty closing anchor", closeAnchor, closes)
-	}
-	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor != closeAnchor {
-		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
+	if closes || closeAnchor != "" {
+		t.Fatalf("CloseOnEvent(resolved) = (%q, %v), want no close from agent memory", closeAnchor, closes)
 	}
 
 	reopened := emitOpen(cosmoCoordinationFactEvent("cosmo-risk-2", map[string]string{"risk_state": "active"}, time.Date(2026, 5, 1, 14, 0, 0, 0, time.UTC)))
