@@ -62,6 +62,7 @@ type AuthorizationCode struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 	Groups         []string
 	CodeChallenge  string
 	CreatedAt      time.Time
@@ -78,6 +79,7 @@ type RefreshToken struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 	Groups         []string
 	FamilyID       string
 	Generation     int
