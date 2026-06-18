@@ -150,6 +150,51 @@ func TestEvidenceCASUnresolvedLinkageOpensOnSuppliedContextWithBlankLinkStatus(t
 	}
 }
 
+func TestEvidenceCASUnresolvedLinkageOpensOnExplicitUnresolvedContextWithoutIdentifiers(t *testing.T) {
+	rule := newEvidenceCASUnresolvedLinkageRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-evidence-cas", SourceId: "evidence_cas", TenantId: "writer"}
+	occurredAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+
+	for _, tc := range []struct {
+		name  string
+		attrs map[string]string
+		scope string
+	}{
+		{
+			name: "case marker",
+			attrs: map[string]string{
+				"case_id":                 "",
+				"case_link_status":        "",
+				"unresolved_case_context": "true",
+			},
+			scope: "case",
+		},
+		{
+			name: "resource marker",
+			attrs: map[string]string{
+				"resource_id":                 "",
+				"resource_urn":                "",
+				"resource_link_status":        "",
+				"unresolved_resource_context": "true",
+			},
+			scope: "resource",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			records, err := rule.Evaluate(context.Background(), runtime, evidenceCASObjectEvent("evidence-"+strings.ReplaceAll(tc.name, " ", "-"), tc.attrs, occurredAt))
+			if err != nil {
+				t.Fatalf("Evaluate(%s) error = %v", tc.name, err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("Evaluate(%s) emitted %d findings, want 1", tc.name, len(records))
+			}
+			if got := records[0].Attributes["unresolved_linkage"]; got != tc.scope {
+				t.Fatalf("unresolved_linkage = %q, want %q", got, tc.scope)
+			}
+		})
+	}
+}
+
 func TestEvidenceCASUnresolvedLinkageContextlessFollowupKeepsFindingOpen(t *testing.T) {
 	rule := newEvidenceCASUnresolvedLinkageRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-evidence-cas", SourceId: "evidence_cas", TenantId: "writer"}
