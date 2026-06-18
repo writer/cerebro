@@ -162,6 +162,7 @@ type vulnerability struct {
 	PkgName          string            `json:"PkgName"`
 	InstalledVersion string            `json:"InstalledVersion"`
 	FixedVersion     string            `json:"FixedVersion"`
+	Status           string            `json:"Status"`
 	Severity         string            `json:"Severity"`
 	Title            string            `json:"Title"`
 	Description      string            `json:"Description"`
@@ -310,7 +311,24 @@ func vulnerabilityAttrs(report report, scan result, vuln vulnerability) map[stri
 	attrs["description"] = vuln.Description
 	attrs["primary_url"] = vuln.PrimaryURL
 	attrs["fixed_version"] = vuln.FixedVersion
+	attrs["status"] = normalizeVulnerabilityStatus(vuln.Status)
+	if strings.TrimSpace(vuln.FixedVersion) != "" {
+		attrs["fix_available"] = "true"
+	}
 	return attrs
+}
+
+// normalizeVulnerabilityStatus lowercases the Trivy DetectedVulnerability
+// Status (including VEX-derived statuses such as not_affected) so downstream
+// projection and findings can reason about current vulnerability state. An
+// unset status is reported as "affected" because Trivy only lists a finding
+// when the vulnerable package is present in the scanned image.
+func normalizeVulnerabilityStatus(status string) string {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if normalized == "" {
+		return "affected"
+	}
+	return normalized
 }
 
 func packageAttrs(report report, scan result, name string, version string, purl string) map[string]string {

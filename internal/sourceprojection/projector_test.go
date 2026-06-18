@@ -190,6 +190,13 @@ func TestProjectionRetractionReason(t *testing.T) {
 			want: "endpoint_owner_id",
 		},
 		{
+			name: "trivy resolved vulnerability",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "trivy_vulnerability_resolved"},
+			}},
+			want: "trivy_vulnerability_resolved",
+		},
+		{
 			name: "mixed",
 			links: []*ports.ProjectedLink{
 				{Attributes: map[string]string{"retraction": "endpoint_owner_id"}},

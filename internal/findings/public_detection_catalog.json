@@ -62942,6 +62942,54 @@
       ]
     },
     {
+      "id": "trivy-image-vulnerability-active",
+      "pack_id": "trivy",
+      "pack_name": "Trivy",
+      "name": "Trivy Active Unresolved Image Vulnerability",
+      "description": "Detect container images with an active, unresolved high or critical Trivy vulnerability that has not been remediated or VEX-suppressed.",
+      "source_id": "trivy",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "trivy.image_vulnerability"
+      ],
+      "output_kind": "finding.trivy_image_vulnerability_active",
+      "severity": "dynamic",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.initial-access",
+        "container",
+        "image",
+        "trivy",
+        "vulnerability"
+      ],
+      "references": [
+        "https://trivy.dev/latest/docs/scanner/vulnerability/"
+      ],
+      "false_positives": [
+        "Vulnerability suppressed by an accepted VEX not_affected statement or already remediated by a newer image build."
+      ],
+      "runbook": "Confirm the vulnerable package is present in the running image; upgrade to the fixed version or apply an accepted VEX statement, then rescan to clear the finding.",
+      "required_attributes": [
+        "image_digest",
+        "package",
+        "vulnerability_id"
+      ],
+      "fingerprint_fields": [
+        "trivy_vulnerability_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        }
+      ]
+    },
+    {
       "id": "vulnview-actionable-external-finding",
       "pack_id": "vulnview",
       "pack_name": "VulnView",

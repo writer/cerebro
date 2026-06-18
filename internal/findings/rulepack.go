@@ -133,6 +133,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "trivy",
+			Name:        "Trivy",
+			Description: "Container image vulnerability posture findings from Trivy scans.",
+			Rules: []Rule{
+				newTrivyImageVulnerabilityActiveRule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
