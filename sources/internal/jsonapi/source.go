@@ -3,6 +3,8 @@ package jsonapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -562,6 +564,8 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 			return nil
 		}
 		return setTokenHeader(req, "Authorization", "Basic", settings.token, s.options.SourceID)
+	case "duo_hmac":
+		return setDuoHMACAuth(req, settings, s.options.SourceID)
 	case "oauth_client_credentials":
 		token := settings.token
 		if token == "" {
@@ -589,6 +593,29 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 	default:
 		return fmt.Errorf("%s auth model %q is not supported by jsonapi", s.options.SourceID, authModel)
 	}
+}
+
+func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error {
+	integrationKey := firstNonEmpty(settings.clientID, settings.username)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.password)
+	if integrationKey == "" || secretKey == "" {
+		return fmt.Errorf("%s client_id and client_secret are required for Duo HMAC auth", sourceID)
+	}
+	date := time.Now().UTC().Format(time.RFC1123Z)
+	req.Header.Set("Date", date)
+	req.Header.Set("Host", req.URL.Host)
+	canonical := strings.Join([]string{
+		date,
+		strings.ToUpper(req.Method),
+		req.URL.Host,
+		req.URL.EscapedPath(),
+		req.URL.Query().Encode(),
+	}, "\n")
+	mac := hmac.New(sha1.New, []byte(secretKey))
+	_, _ = mac.Write([]byte(canonical))
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.SetBasicAuth(integrationKey, signature)
+	return nil
 }
 
 func setTokenHeader(req *http.Request, header string, scheme string, token string, sourceID string) error {
@@ -1245,7 +1272,7 @@ func normalizedAuthModel(value string) string {
 		return "bearer_token"
 	case "api_key", "api_token":
 		return "api_key"
-	case "basic", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none":
+	case "basic", "duo_hmac", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none":
 		return value
 	default:
 		return value
