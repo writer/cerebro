@@ -16,7 +16,7 @@ func tailscaleUserURN(tenantID string, userID string) string {
 }
 
 func tailscaleUserKey(attrs map[string]string) string {
-	return firstNonEmpty(attrs["login_name"], attrs["email"], attrs["owner_email"], attrs["user_id"])
+	return firstNonEmpty(attrs["user_id"], attrs["login_name"], attrs["email"], attrs["owner_email"])
 }
 
 func tailscaleDeviceURN(tenantID string, deviceID string) string {
@@ -137,9 +137,8 @@ func tailscaleUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	if userID == "" {
 		return nil, nil, nil
 	}
-	userKey := firstNonEmpty(tailscaleUserKey(attrs), userID)
 	entities := map[string]*ports.ProjectedEntity{}
-	addEntity(entities, tailscaleEntity(event, tailscaleUserURN(tenantID, userKey), "tailscale.user", firstNonEmpty(attrs["login_name"], attrs["email"], userID), tailscaleAttributes(map[string]string{
+	addEntity(entities, tailscaleEntity(event, tailscaleUserURN(tenantID, userID), "tailscale.user", firstNonEmpty(attrs["login_name"], attrs["email"], userID), tailscaleAttributes(map[string]string{
 		"user_id":      userID,
 		"login_name":   attrs["login_name"],
 		"email":        attrs["email"],

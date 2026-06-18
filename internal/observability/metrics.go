@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,6 +106,7 @@ func Middleware(next http.Handler) http.Handler {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				durationSeconds := time.Since(started).Seconds()
+				panicAttrs := panicTelemetryAttributes(recovered)
 				labels := map[string]string{
 					"method":      method,
 					"route":       route,
@@ -119,8 +121,10 @@ func Middleware(next http.Handler) http.Handler {
 					telemetry.Field{Key: "http.route", Value: route},
 					telemetry.Field{Key: "http.response.status_code", Value: http.StatusInternalServerError},
 					telemetry.Field{Key: "error_kind", Value: "panic"},
-				))
-				telemetry.End(span, "failed", httpResponseWideAttributes(recorder).WithField(telemetry.Field{Key: "error_kind", Value: "panic"}))
+				).With(panicAttrs))
+				telemetry.End(span, "failed", httpResponseWideAttributes(recorder).With(telemetry.Attrs(
+					telemetry.Field{Key: "error_kind", Value: "panic"},
+				)).With(panicAttrs))
 				if !recorder.wroteHeader {
 					http.Error(recorder, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
@@ -150,6 +154,14 @@ func Middleware(next http.Handler) http.Handler {
 		}
 		telemetry.End(span, status, httpResponseWideAttributes(recorder))
 	})
+}
+
+func panicTelemetryAttributes(recovered any) telemetry.Attributes {
+	return telemetry.Attrs(
+		telemetry.Field{Key: "exception.type", Value: fmt.Sprintf("%T", recovered)},
+		telemetry.Field{Key: "exception.message", Value: fmt.Sprint(recovered)},
+		telemetry.Field{Key: "exception.stacktrace", Value: string(debug.Stack())},
+	)
 }
 
 func recordOTELHTTPServerRequest(ctx context.Context, labels map[string]string, statusCode int, durationSeconds float64) {

@@ -178,6 +178,41 @@ func TestMiddlewareMarksServerErrorsOnOpenTelemetrySpan(t *testing.T) {
 	}
 }
 
+func TestMiddlewarePanicTelemetryIncludesPayloadAndStack(t *testing.T) {
+	_, stderr := captureObservabilityOutput(t, func() {
+		handler := Middleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+			panic("boom-panic")
+		}))
+		recorder := httptest.NewRecorder()
+
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+		if recorder.Code != http.StatusInternalServerError {
+			t.Fatalf("panic response status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+		}
+	})
+
+	event := observabilityTelemetryPayload(t, stderr, "event", "http.server.error")
+	if got := event["exception.message"]; got != "boom-panic" {
+		t.Fatalf("event exception.message = %#v, want boom-panic; event=%#v", got, event)
+	}
+	if got := event["exception.type"]; got != "string" {
+		t.Fatalf("event exception.type = %#v, want string; event=%#v", got, event)
+	}
+	stack, ok := event["exception.stacktrace"].(string)
+	if !ok || !strings.Contains(stack, "TestMiddlewarePanicTelemetryIncludesPayloadAndStack") {
+		t.Fatalf("event exception.stacktrace = %#v, want test stack frame", event["exception.stacktrace"])
+	}
+
+	spanEnd := observabilityTelemetryPayload(t, stderr, "span_end", "http.server")
+	if got := spanEnd["exception.message"]; got != "boom-panic" {
+		t.Fatalf("span exception.message = %#v, want boom-panic; span=%#v", got, spanEnd)
+	}
+	if got := spanEnd["error_kind"]; got != "panic" {
+		t.Fatalf("span error_kind = %#v, want panic; span=%#v", got, spanEnd)
+	}
+}
+
 func TestStatusRecorderPreservesFlushAndUnwrap(t *testing.T) {
 	inner := &flushResponseWriter{headers: http.Header{}}
 	recorder := &statusRecorder{ResponseWriter: inner, status: http.StatusOK}
