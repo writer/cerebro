@@ -279,6 +279,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
 | `anthropic` | Anthropic organization governance source | organization, users, invites, workspaces and members, API keys, service accounts, federation, external keys, usage/cost reports, rate/spend limits, compliance activity |
+| `archetype` | Archetype repository vulnerability scan source | scans, vulnerabilities |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
 | `auth0` | Auth0 Management API source | users, roles, audit events |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
