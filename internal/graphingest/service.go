@@ -169,7 +169,14 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 		}
 		if err != nil {
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: graphIngestTelemetryErrorKind(err)})
+			telemetry.IncrementMain(ctx, "graph.ingest.error.count", 1)
 		}
+		telemetry.IncrementMain(ctx, "graph.ingest.count", 1)
+		telemetry.AnnotateMain(ctx, spanAttributes.With(telemetry.Attrs(
+			telemetry.Field{Key: "graph.ingest.status", Value: status},
+			telemetry.Field{Key: "graph.ingest.runtime_id", Value: strings.TrimSpace(request.RuntimeID)},
+			telemetry.Field{Key: "graph.ingest.trigger", Value: strings.TrimSpace(request.Trigger)},
+		)))
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.runtimeStore == nil || s.graphStore == nil || s.projector == nil {
@@ -700,14 +707,19 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 			deleted++
 		}
 		if len(retractedLinks) != 0 {
-			telemetry.Event(ctx, "source_projection.retractions", telemetry.Attrs(
+			attrs := telemetry.Attrs(
 				telemetry.Field{Key: "tenant_id", Value: request.TenantID},
 				telemetry.Field{Key: "source_id", Value: request.SourceID},
 				telemetry.Field{Key: "runtime_id", Value: request.RuntimeID},
 				telemetry.Field{Key: "reason", Value: "endpoint_owner_id"},
 				telemetry.Field{Key: "links_matched", Value: len(retractedLinks)},
 				telemetry.Field{Key: "links_deleted", Value: deleted},
-			))
+			)
+			telemetry.Event(ctx, "source_projection.retractions", attrs)
+			telemetry.IncrementMain(ctx, "source_projection.retraction.count", 1)
+			telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+				telemetry.Field{Key: "source_projection.retraction.present", Value: true},
+			)))
 		}
 	}
 	entityKeys := sortedMapKeys(entities)

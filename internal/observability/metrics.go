@@ -2,6 +2,8 @@ package observability
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"sort"
@@ -12,7 +14,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
@@ -88,15 +89,9 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := normalizeRouteLabel(r.URL.Path)
 		method := normalizeMethodLabel(r.Method)
-		ctx, span := otel.Tracer("github.com/writer/cerebro/internal/observability").Start(r.Context(), "http.server",
+		ctx, span := telemetry.StartMain(r.Context(), "http.server", httpRequestWideAttributes(r, method, route),
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
-			oteltrace.WithAttributes(
-				attribute.String("http.request.method", method),
-				attribute.String("http.route", route),
-			),
 		)
-		defer span.End()
-		ctx = telemetry.EnsureTraceContext(ctx)
 		r = r.WithContext(ctx)
 		if traceparent := telemetry.TraceParent(ctx); traceparent != "" {
 			traceID, _, ok := telemetry.ParseTraceParent(traceparent)
@@ -107,24 +102,28 @@ func Middleware(next http.Handler) http.Handler {
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
+		durationSeconds := time.Since(started).Seconds()
 		labels := map[string]string{
 			"method":      method,
 			"route":       route,
 			"status_code": strconv.Itoa(recorder.status),
 		}
-		span.SetAttributes(attribute.Int("http.response.status_code", recorder.status))
 		if recorder.status >= http.StatusInternalServerError {
-			span.SetStatus(codes.Error, fmt.Sprintf("http_status_%d", recorder.status))
-			span.AddEvent("http.server.error", oteltrace.WithAttributes(
-				attribute.String("http.request.method", method),
-				attribute.String("http.route", route),
-				attribute.Int("http.response.status_code", recorder.status),
+			telemetry.Event(ctx, "http.server.error", telemetry.Attrs(
+				telemetry.Field{Key: "http.request.method", Value: method},
+				telemetry.Field{Key: "http.route", Value: route},
+				telemetry.Field{Key: "http.response.status_code", Value: recorder.status},
 			))
 		}
 		Default.Inc("cerebro_http_requests_total", labels)
-		Default.Add("cerebro_http_request_duration_seconds_sum", labels, time.Since(started).Seconds())
+		Default.Add("cerebro_http_request_duration_seconds_sum", labels, durationSeconds)
 		Default.Inc("cerebro_http_request_duration_seconds_count", labels)
-		recordOTELHTTPServerRequest(ctx, labels, recorder.status, time.Since(started).Seconds())
+		recordOTELHTTPServerRequest(ctx, labels, recorder.status, durationSeconds)
+		status := "completed"
+		if recorder.status >= http.StatusInternalServerError {
+			status = "failed"
+		}
+		telemetry.End(span, status, httpResponseWideAttributes(recorder))
 	})
 }
 
@@ -142,6 +141,7 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status      int
 	wroteHeader bool
+	bytes       int64
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
@@ -151,6 +151,15 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.wroteHeader = true
 	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(data []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	n, err := r.ResponseWriter.Write(data)
+	r.bytes += int64(n)
+	return n, err
 }
 
 func (r *statusRecorder) Flush() {
@@ -170,6 +179,194 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 		return nil
 	}
 	return r.ResponseWriter
+}
+
+func httpRequestWideAttributes(r *http.Request, method string, route string) telemetry.Attributes {
+	pathDepth := 0
+	if r != nil && r.URL != nil {
+		pathDepth = len(strings.Split(strings.Trim(r.URL.Path, "/"), "/"))
+		if strings.Trim(r.URL.Path, "/") == "" {
+			pathDepth = 0
+		}
+	}
+	return telemetry.RuntimeAttributes().With(telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "http-middleware"},
+		telemetry.Field{Key: "operation", Value: method},
+		telemetry.Field{Key: "http.request.method", Value: method},
+		telemetry.Field{Key: "http.route", Value: route},
+		telemetry.Field{Key: "url.path_family", Value: route},
+		telemetry.Field{Key: "url.path_depth", Value: pathDepth},
+		telemetry.Field{Key: "url.query.param_count", Value: queryParamCount(r)},
+		telemetry.Field{Key: "url.query.keys", Value: queryParamKeys(r)},
+		telemetry.Field{Key: "url.scheme", Value: requestScheme(r)},
+		telemetry.Field{Key: "server.address", Value: requestHost(r)},
+		telemetry.Field{Key: "server.port", Value: requestPort(r)},
+		telemetry.Field{Key: "network.protocol.version", Value: requestProto(r)},
+		telemetry.Field{Key: "http.request.body.size", Value: requestBodySize(r)},
+		telemetry.Field{Key: "http.request.header.traceparent.present", Value: requestHeader(r, "Traceparent") != ""},
+		telemetry.Field{Key: "http.request.header.x_request_id.present", Value: requestHeader(r, "X-Request-Id") != ""},
+		telemetry.Field{Key: "http.request.auth_header.present", Value: requestHeader(r, "Authorization") != ""},
+		telemetry.Field{Key: "http.request.header.accept", Value: requestHeader(r, "Accept")},
+		telemetry.Field{Key: "http.request.header.accept_encoding", Value: requestHeader(r, "Accept-Encoding")},
+		telemetry.Field{Key: "http.request.header.content_type", Value: requestHeader(r, "Content-Type")},
+		telemetry.Field{Key: "http.request.header.user_agent", Value: requestHeader(r, "User-Agent")},
+		telemetry.Field{Key: "user_agent.family", Value: userAgentFamily(requestHeader(r, "User-Agent"))},
+		telemetry.Field{Key: "client.address_hash", Value: remoteAddressHash(r)},
+	))
+}
+
+func httpResponseWideAttributes(recorder *statusRecorder) telemetry.Attributes {
+	if recorder == nil {
+		return telemetry.Attrs()
+	}
+	return telemetry.RuntimeAttributes().With(telemetry.Attrs(
+		telemetry.Field{Key: "http.response.status_code", Value: recorder.status},
+		telemetry.Field{Key: "http.response.body.size", Value: recorder.bytes},
+		telemetry.Field{Key: "http.response.header.cache_control", Value: recorder.Header().Get("Cache-Control")},
+		telemetry.Field{Key: "http.response.header.content_type", Value: recorder.Header().Get("Content-Type")},
+		telemetry.Field{Key: "http.response.header.retry_after", Value: recorder.Header().Get("Retry-After")},
+	))
+}
+
+func requestHeader(r *http.Request, key string) string {
+	if r == nil {
+		return ""
+	}
+	return r.Header.Get(key)
+}
+
+func requestScheme(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if r.URL != nil && strings.TrimSpace(r.URL.Scheme) != "" {
+		return r.URL.Scheme
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		return strings.ToLower(proto)
+	}
+	return "http"
+}
+
+func requestHost(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" && r.URL != nil {
+		host = r.URL.Host
+	}
+	if strings.Contains(host, ":") {
+		if hostname, _, ok := strings.Cut(host, ":"); ok {
+			return hostname
+		}
+	}
+	return host
+}
+
+func requestPort(r *http.Request) int {
+	if r == nil {
+		return 0
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" && r.URL != nil {
+		host = r.URL.Host
+	}
+	if _, port, ok := strings.Cut(host, ":"); ok {
+		parsed, err := strconv.Atoi(port)
+		if err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	if requestScheme(r) == "https" {
+		return 443
+	}
+	return 80
+}
+
+func requestProto(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if r.ProtoMajor == 0 {
+		return ""
+	}
+	if r.ProtoMinor == 0 {
+		return strconv.Itoa(r.ProtoMajor)
+	}
+	return fmt.Sprintf("%d.%d", r.ProtoMajor, r.ProtoMinor)
+}
+
+func requestBodySize(r *http.Request) int64 {
+	if r == nil || r.ContentLength < 0 {
+		return 0
+	}
+	return r.ContentLength
+}
+
+func remoteAddressHash(r *http.Request) string {
+	if r == nil || strings.TrimSpace(r.RemoteAddr) == "" {
+		return ""
+	}
+	host := r.RemoteAddr
+	if strings.Contains(host, ":") {
+		if parsedHost, _, ok := strings.Cut(host, ":"); ok {
+			host = parsedHost
+		}
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(host)))
+	return hex.EncodeToString(sum[:8])
+}
+
+func queryParamCount(r *http.Request) int {
+	if r == nil || r.URL == nil {
+		return 0
+	}
+	return len(r.URL.Query())
+}
+
+func queryParamKeys(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return ""
+	}
+	keys := make([]string, 0, len(r.URL.Query()))
+	for key := range r.URL.Query() {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if len(keys) > 12 {
+		keys = append(keys[:12], "...")
+	}
+	return strings.Join(keys, ",")
+}
+
+func userAgentFamily(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case normalized == "":
+		return "none"
+	case strings.Contains(normalized, "bot"), strings.Contains(normalized, "crawler"), strings.Contains(normalized, "spider"):
+		return "bot"
+	case strings.Contains(normalized, "edge"), strings.Contains(normalized, "edg/"):
+		return "edge"
+	case strings.Contains(normalized, "chrome"):
+		return "chrome"
+	case strings.Contains(normalized, "safari"):
+		return "safari"
+	case strings.Contains(normalized, "firefox"):
+		return "firefox"
+	case strings.Contains(normalized, "curl"):
+		return "curl"
+	default:
+		return "other"
+	}
 }
 
 func normalizeMethodLabel(method string) string {

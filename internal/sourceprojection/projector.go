@@ -113,7 +113,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		return ports.ProjectionResult{}, err
 	}
 	if len(retractedLinks) != 0 {
-		telemetry.Event(ctx, "source_projection.retractions", telemetry.Attrs(
+		attrs := telemetry.Attrs(
 			telemetry.Field{Key: "tenant_id", Value: event.GetTenantId()},
 			telemetry.Field{Key: "source_id", Value: event.GetSourceId()},
 			telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])},
@@ -121,7 +121,12 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 			telemetry.Field{Key: "reason", Value: "endpoint_owner_id"},
 			telemetry.Field{Key: "links_matched", Value: len(retractedLinks)},
 			telemetry.Field{Key: "links_deleted", Value: retractedLinksDeleted},
-		))
+		)
+		telemetry.Event(ctx, "source_projection.retractions", attrs)
+		telemetry.IncrementMain(ctx, "source_projection.retraction.count", 1)
+		telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "source_projection.retraction.present", Value: true},
+		)))
 	}
 	if conflictCategory, err := s.detectRuntimeEvidenceConflict(ctx, event, entities); err != nil {
 		emitRuntimeEvidenceTelemetry(ctx, event, entities, links, "conflict", conflictCategory)
@@ -284,7 +289,7 @@ func emitRuntimeEvidenceTelemetry(ctx context.Context, event *cerebrov1.EventEnv
 	if evidenceCount == 0 && outcome != "conflict" {
 		return
 	}
-	telemetry.Event(ctx, "source_projection.runtime_evidence", telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "source_id", Value: boundedEvidenceSourceID(event.GetSourceId())},
 		telemetry.Field{Key: "event_kind", Value: boundedEvidenceEventKind(event.GetKind())},
 		telemetry.Field{Key: "outcome", Value: boundedEvidenceOutcome(outcome)},
@@ -295,7 +300,15 @@ func emitRuntimeEvidenceTelemetry(ctx context.Context, event *cerebrov1.EventEnv
 		telemetry.Field{Key: "missing_case_count", Value: missingCaseCount},
 		telemetry.Field{Key: "entities_projected", Value: len(entities)},
 		telemetry.Field{Key: "links_projected", Value: len(links)},
-	))
+	)
+	telemetry.Event(ctx, "source_projection.runtime_evidence", attrs)
+	telemetry.IncrementMain(ctx, "source_projection.runtime_evidence.count", 1)
+	if boundedEvidenceOutcome(outcome) == "conflict" {
+		telemetry.IncrementMain(ctx, "source_projection.runtime_evidence.conflict.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, attrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "source_projection.runtime_evidence.present", Value: true},
+	)))
 }
 
 func boundedEvidenceSourceID(value string) string {

@@ -1301,6 +1301,7 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 		neo4jTelemetryError(ctx, span, "read", err)
 		return nil, err
 	}
+	neo4jAnnotateMain(ctx, s.database, "read", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return result, nil
 }
@@ -1314,6 +1315,7 @@ func (s *Store) write(ctx context.Context, work neo4jdriver.ManagedTransactionWo
 		neo4jTelemetryError(ctx, span, "write", err)
 		return nil, err
 	}
+	neo4jAnnotateMain(ctx, s.database, "write", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return result, nil
 }
@@ -1332,12 +1334,31 @@ func neo4jTelemetryAttrs(operation string, database string, timeout time.Duratio
 }
 
 func neo4jTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+	neo4jAnnotateMain(ctx, "", operation, "failed")
 	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 	telemetry.CaptureError(ctx, "neo4j.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "graphstore.neo4j"},
 		telemetry.Field{Key: "operation", Value: operation},
 	))
 	telemetry.End(span, "failed", attrs)
+}
+
+func neo4jAnnotateMain(ctx context.Context, database string, operation string, status string) {
+	telemetry.IncrementMain(ctx, "db.neo4j.operation.count", 1)
+	if operation == "read" {
+		telemetry.IncrementMain(ctx, "db.neo4j.read.count", 1)
+	}
+	if operation == "write" {
+		telemetry.IncrementMain(ctx, "db.neo4j.write.count", 1)
+	}
+	if status == "failed" {
+		telemetry.IncrementMain(ctx, "db.neo4j.error.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "db.neo4j.last_database", Value: strings.TrimSpace(database)},
+		telemetry.Field{Key: "db.neo4j.last_operation", Value: strings.TrimSpace(operation)},
+		telemetry.Field{Key: "db.neo4j.last_status", Value: strings.TrimSpace(status)},
+	))
 }
 
 func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, error) {

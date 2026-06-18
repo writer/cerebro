@@ -33,22 +33,25 @@ func (c *RedisCache) Get(ctx context.Context, key string) (Entry, error) {
 	ctx, span := telemetry.Start(ctx, "redis.cache.get", redisTelemetryAttrs("get", c.options.Namespace))
 	raw, err := c.client.Get(ctx, cacheKey(c.options.Namespace, key)).Bytes()
 	if errors.Is(err, redis.Nil) {
+		redisAnnotateMain(ctx, c.options.Namespace, "get", "miss")
 		telemetry.End(span, "miss", telemetry.Attrs())
 		return Entry{}, ErrMiss
 	}
 	if err != nil {
-		redisTelemetryError(ctx, span, "get", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "get", err)
 		return Entry{}, err
 	}
 	var entry Entry
 	if err := json.Unmarshal(raw, &entry); err != nil {
-		redisTelemetryError(ctx, span, "get", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "get", err)
 		return Entry{}, err
 	}
 	if entry.State(time.Now().UTC()) == StateMiss {
+		redisAnnotateMain(ctx, c.options.Namespace, "get", "miss")
 		telemetry.End(span, "miss", telemetry.Attrs())
 		return Entry{}, ErrMiss
 	}
+	redisAnnotateMain(ctx, c.options.Namespace, "get", "hit")
 	telemetry.End(span, "hit", telemetry.Attrs())
 	return entry, nil
 }
@@ -56,6 +59,7 @@ func (c *RedisCache) Get(ctx context.Context, key string) (Entry, error) {
 func (c *RedisCache) Set(ctx context.Context, key string, payload []byte, ttl time.Duration, staleTTL time.Duration) error {
 	ctx, span := telemetry.Start(ctx, "redis.cache.set", redisTelemetryAttrs("set", c.options.Namespace))
 	if len(payload) == 0 || len(payload) > c.options.MaxPayloadBytes {
+		redisAnnotateMain(ctx, c.options.Namespace, "set", "skipped")
 		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "status_detail", Value: "payload_size"}))
 		return nil
 	}
@@ -74,13 +78,14 @@ func (c *RedisCache) Set(ctx context.Context, key string, payload []byte, ttl ti
 	}
 	raw, err := json.Marshal(entry)
 	if err != nil {
-		redisTelemetryError(ctx, span, "set", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "set", err)
 		return err
 	}
 	if err := c.client.Set(ctx, cacheKey(c.options.Namespace, key), raw, ttl+staleTTL).Err(); err != nil {
-		redisTelemetryError(ctx, span, "set", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "set", err)
 		return err
 	}
+	redisAnnotateMain(ctx, c.options.Namespace, "set", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
@@ -89,13 +94,15 @@ func (c *RedisCache) Version(ctx context.Context, scope string) (string, error) 
 	ctx, span := telemetry.Start(ctx, "redis.cache.version", redisTelemetryAttrs("version", c.options.Namespace))
 	value, err := c.client.Get(ctx, versionKey(c.options.Namespace, scope)).Result()
 	if errors.Is(err, redis.Nil) {
+		redisAnnotateMain(ctx, c.options.Namespace, "version", "miss")
 		telemetry.End(span, "miss", telemetry.Attrs())
 		return "0", nil
 	}
 	if err != nil {
-		redisTelemetryError(ctx, span, "version", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "version", err)
 		return value, err
 	}
+	redisAnnotateMain(ctx, c.options.Namespace, "version", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return value, err
 }
@@ -104,9 +111,10 @@ func (c *RedisCache) BumpVersion(ctx context.Context, scope string) (string, err
 	ctx, span := telemetry.Start(ctx, "redis.cache.bump_version", redisTelemetryAttrs("bump_version", c.options.Namespace))
 	value, err := c.client.Incr(ctx, versionKey(c.options.Namespace, scope)).Result()
 	if err != nil {
-		redisTelemetryError(ctx, span, "bump_version", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "bump_version", err)
 		return "", err
 	}
+	redisAnnotateMain(ctx, c.options.Namespace, "bump_version", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return strconv.FormatInt(value, 10), nil
 }
@@ -114,9 +122,10 @@ func (c *RedisCache) BumpVersion(ctx context.Context, scope string) (string, err
 func (c *RedisCache) Ping(ctx context.Context) error {
 	ctx, span := telemetry.Start(ctx, "redis.ping", redisTelemetryAttrs("ping", c.options.Namespace))
 	if err := c.client.Ping(ctx).Err(); err != nil {
-		redisTelemetryError(ctx, span, "ping", err)
+		redisTelemetryError(ctx, span, c.options.Namespace, "ping", err)
 		return err
 	}
+	redisAnnotateMain(ctx, c.options.Namespace, "ping", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return nil
 }
@@ -133,11 +142,31 @@ func redisTelemetryAttrs(operation string, namespace string) telemetry.Attribute
 	)
 }
 
-func redisTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
+func redisTelemetryError(ctx context.Context, span *telemetry.Span, namespace string, operation string, err error) {
+	redisAnnotateMain(ctx, namespace, operation, "failed")
 	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 	telemetry.CaptureError(ctx, "redis.cache.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "querycache.redis"},
 		telemetry.Field{Key: "operation", Value: operation},
 	))
 	telemetry.End(span, "failed", attrs)
+}
+
+func redisAnnotateMain(ctx context.Context, namespace string, operation string, status string) {
+	telemetry.IncrementMain(ctx, "cache.redis.operation.count", 1)
+	switch status {
+	case "hit":
+		telemetry.IncrementMain(ctx, "cache.redis.hit.count", 1)
+	case "miss":
+		telemetry.IncrementMain(ctx, "cache.redis.miss.count", 1)
+	case "failed":
+		telemetry.IncrementMain(ctx, "cache.redis.error.count", 1)
+	case "skipped":
+		telemetry.IncrementMain(ctx, "cache.redis.skipped.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "cache.redis.last_namespace", Value: strings.TrimSpace(namespace)},
+		telemetry.Field{Key: "cache.redis.last_operation", Value: strings.TrimSpace(operation)},
+		telemetry.Field{Key: "cache.redis.last_status", Value: strings.TrimSpace(status)},
+	))
 }

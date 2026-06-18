@@ -711,7 +711,7 @@ func emitFindingCandidateRunTelemetry(ctx context.Context, run *ports.FindingCan
 	if !run.StartedAt.IsZero() && !run.FinishedAt.IsZero() {
 		durationMS = run.FinishedAt.Sub(run.StartedAt).Milliseconds()
 	}
-	telemetry.Event(ctx, "finding_candidate.run", telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "run_id", Value: strings.TrimSpace(run.ID)},
 		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(run.TenantID)},
 		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(run.RuntimeID)},
@@ -722,6 +722,22 @@ func emitFindingCandidateRunTelemetry(ctx context.Context, run *ports.FindingCan
 		telemetry.Field{Key: "events_matched", Value: run.EventsMatched},
 		telemetry.Field{Key: "candidates_emitted", Value: run.Candidates},
 		telemetry.Field{Key: "duration_ms", Value: durationMS},
+	)
+	telemetry.Event(ctx, "finding_candidate.run", attrs)
+	telemetry.IncrementMain(ctx, "finding_candidate.run.count", 1)
+	if !strings.EqualFold(strings.TrimSpace(run.Status), "completed") {
+		telemetry.IncrementMain(ctx, "finding_candidate.run.non_completed.count", 1)
+	}
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(run.TenantID)},
+		telemetry.Field{Key: "finding_candidate.runtime_id", Value: strings.TrimSpace(run.RuntimeID)},
+		telemetry.Field{Key: "finding_candidate.rule_id", Value: strings.TrimSpace(run.RuleID)},
+		telemetry.Field{Key: "finding_candidate.status", Value: strings.TrimSpace(run.Status)},
+		telemetry.Field{Key: "finding_candidate.event_limit", Value: run.EventLimit},
+		telemetry.Field{Key: "finding_candidate.events_evaluated", Value: run.EventsEvaluated},
+		telemetry.Field{Key: "finding_candidate.events_matched", Value: run.EventsMatched},
+		telemetry.Field{Key: "finding_candidate.candidates_emitted", Value: run.Candidates},
+		telemetry.Field{Key: "finding_candidate.duration_ms", Value: durationMS},
 	))
 }
 
@@ -745,7 +761,7 @@ func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, ca
 			staleCount++
 		}
 	}
-	telemetry.Event(ctx, "finding_candidate.list", telemetry.Attrs(
+	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(runtimeID)},
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(request.RuleID)},
 		telemetry.Field{Key: "status_filter", Value: strings.TrimSpace(request.Status)},
@@ -754,6 +770,18 @@ func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, ca
 		telemetry.Field{Key: "rejected_count", Value: rejectedCount},
 		telemetry.Field{Key: "open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
 		telemetry.Field{Key: "stale_candidate_count", Value: staleCount},
+	)
+	telemetry.Event(ctx, "finding_candidate.list", attrs)
+	telemetry.IncrementMain(ctx, "finding_candidate.list.count", 1)
+	telemetry.AnnotateMain(ctx, telemetry.Attrs(
+		telemetry.Field{Key: "finding_candidate.runtime_id", Value: strings.TrimSpace(runtimeID)},
+		telemetry.Field{Key: "finding_candidate.rule_id", Value: strings.TrimSpace(request.RuleID)},
+		telemetry.Field{Key: "finding_candidate.status_filter", Value: strings.TrimSpace(request.Status)},
+		telemetry.Field{Key: "finding_candidate.candidate_count", Value: candidateCount},
+		telemetry.Field{Key: "finding_candidate.promoted_count", Value: promotedCount},
+		telemetry.Field{Key: "finding_candidate.rejected_count", Value: rejectedCount},
+		telemetry.Field{Key: "finding_candidate.open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
+		telemetry.Field{Key: "finding_candidate.stale_candidate_count", Value: staleCount},
 	))
 }
 
@@ -774,6 +802,8 @@ func emitFindingCandidatePromotionTelemetry(ctx context.Context, outcome string,
 		attrs = attrs.WithField(telemetry.Field{Key: "finding_id", Value: strings.TrimSpace(finding.ID)})
 	}
 	telemetry.Event(ctx, "finding_candidate.promotion", attrs)
+	telemetry.IncrementMain(ctx, "finding_candidate.promotion.count", 1)
+	telemetry.AnnotateMain(ctx, findingCandidateDecisionMainAttrs("promotion", outcome, candidate, startedAt))
 }
 
 func emitFindingCandidateRejectionTelemetry(ctx context.Context, outcome string, candidate *ports.FindingCandidateRecord, decisionID string, startedAt time.Time) {
@@ -790,6 +820,24 @@ func emitFindingCandidateRejectionTelemetry(ctx context.Context, outcome string,
 		attrs = attrs.WithField(telemetry.Field{Key: "observation_count", Value: candidate.ObservationCount})
 	}
 	telemetry.Event(ctx, "finding_candidate.rejection", attrs)
+	telemetry.IncrementMain(ctx, "finding_candidate.rejection.count", 1)
+	telemetry.AnnotateMain(ctx, findingCandidateDecisionMainAttrs("rejection", outcome, candidate, startedAt))
+}
+
+func findingCandidateDecisionMainAttrs(decision string, outcome string, candidate *ports.FindingCandidateRecord, startedAt time.Time) telemetry.Attributes {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "finding_candidate.decision", Value: strings.TrimSpace(decision)},
+		telemetry.Field{Key: "finding_candidate.decision_outcome", Value: strings.TrimSpace(outcome)},
+		telemetry.Field{Key: "finding_candidate.decision_duration_ms", Value: time.Since(startedAt).Milliseconds()},
+	)
+	if candidate == nil {
+		return attrs
+	}
+	return attrs.
+		WithField(telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(candidate.TenantID)}).
+		WithField(telemetry.Field{Key: "finding_candidate.runtime_id", Value: strings.TrimSpace(candidate.RuntimeID)}).
+		WithField(telemetry.Field{Key: "finding_candidate.rule_id", Value: strings.TrimSpace(candidate.RuleID)}).
+		WithField(telemetry.Field{Key: "finding_candidate.observation_count", Value: candidate.ObservationCount})
 }
 
 func (s *Service) markCandidateEvaluationFailed(ctx context.Context, state *candidateRuleEvaluationState, evaluationErr error) error {

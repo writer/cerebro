@@ -2,8 +2,11 @@ package observability
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -71,6 +74,66 @@ func TestMiddlewareReturnsTraceIDHeader(t *testing.T) {
 
 	if got := recorder.Header().Get("X-Cerebro-Trace-Id"); len(got) != 32 {
 		t.Fatalf("X-Cerebro-Trace-Id = %q, want 32 hex chars", got)
+	}
+}
+
+func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
+	_, stderr := captureObservabilityOutput(t, func() {
+		handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			telemetry.AnnotateMain(r.Context(), telemetry.Attrs(
+				telemetry.Field{Key: "tenant_id", Value: "tenant-a"},
+				telemetry.Field{Key: "cache.redis.hit.count", Value: 1},
+			))
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		request := httptest.NewRequest(http.MethodPost, "/platform/jobs/job-123/events?cursor=abc&limit=10", strings.NewReader("body"))
+		request.Host = "api.example.test:8443"
+		request.RemoteAddr = "203.0.113.9:5678"
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("Accept-Encoding", "gzip")
+		request.Header.Set("Authorization", "Bearer definitely-not-emitted")
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+		request.Header.Set("User-Agent", "curl/8.0")
+
+		handler.ServeHTTP(httptest.NewRecorder(), request)
+	})
+
+	payload := observabilityTelemetryPayload(t, stderr, "span_end", "http.server")
+	expected := map[string]any{
+		"main":                     true,
+		"wide_event":               true,
+		"tenant_id":                "tenant-a",
+		"http.request.method":      http.MethodPost,
+		"http.route":               "/platform/jobs/{jobID}/events",
+		"url.path_depth":           float64(4),
+		"url.query.param_count":    float64(2),
+		"url.query.keys":           "cursor,limit",
+		"url.scheme":               "http",
+		"server.address":           "api.example.test",
+		"server.port":              float64(8443),
+		"network.protocol.version": "1.1",
+		"http.request.body.size":   float64(4),
+		"http.request.header.traceparent.present": true,
+		"http.request.header.accept":              "application/json",
+		"http.request.header.accept_encoding":     "gzip",
+		"http.request.header.content_type":        "application/json",
+		"http.request.header.user_agent":          "curl/8.0",
+		"http.request.auth_header.present":        true,
+		"user_agent.family":                       "curl",
+		"cache.redis.hit.count":                   float64(1),
+		"http.response.status_code":               float64(http.StatusOK),
+		"http.response.body.size":                 float64(len(`{"ok":true}`)),
+		"http.response.header.content_type":       "application/json",
+	}
+	for key, want := range expected {
+		if got := payload[key]; got != want {
+			t.Fatalf("payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if strings.Contains(stderr, "definitely-not-emitted") {
+		t.Fatalf("authorization header leaked into telemetry: %s", stderr)
 	}
 }
 
@@ -145,4 +208,59 @@ func (w *flushResponseWriter) WriteHeader(status int) {
 
 func (w *flushResponseWriter) Flush() {
 	w.flushed = true
+}
+
+func captureObservabilityOutput(t *testing.T, fn func()) (string, string) {
+	t.Helper()
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stdout: %v", err)
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+	}()
+
+	fn()
+	if err := stdoutWriter.Close(); err != nil {
+		t.Fatalf("close stdout writer: %v", err)
+	}
+	if err := stderrWriter.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	stdout, err := io.ReadAll(stdoutReader)
+	if err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	stderr, err := io.ReadAll(stderrReader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(stdout), string(stderr)
+}
+
+func observabilityTelemetryPayload(t *testing.T, stderr string, kind string, name string) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
+		}
+		if payload["kind"] == kind && payload["name"] == name {
+			return payload
+		}
+	}
+	t.Fatalf("telemetry payload kind=%q name=%q not found in stderr: %s", kind, name, stderr)
+	return nil
 }

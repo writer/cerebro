@@ -143,6 +143,50 @@ func TestStartAndEventBridgeToOpenTelemetry(t *testing.T) {
 	}
 }
 
+func TestStartMainAccumulatesWideEventAnnotations(t *testing.T) {
+	_, stderr := captureOutput(t, func() {
+		ctx, span := StartMain(context.Background(), "test.main", Attrs(
+			Field{Key: "tenant_id", Value: "tenant-1"},
+			Field{Key: "auth.credential_tier", Value: "production"},
+			Field{Key: "credential_id", Value: "cred-secret"},
+			Field{Key: "oversized", Value: strings.Repeat("x", maxAttributeStringLength+256)},
+		))
+		AnnotateMain(ctx, Attrs(Field{Key: "cache.redis.last_status", Value: "hit"}))
+		IncrementMain(ctx, "cache.redis.hit.count", 1)
+		IncrementMain(ctx, "cache.redis.hit.count", 2)
+		End(span, "completed", Attrs(Field{Key: "explicit_end_attr", Value: "kept"}))
+	})
+	payload := telemetryPayloadByKindAndName(t, stderr, "span_end", "test.main")
+	if payload["main"] != true || payload["wide_event"] != true {
+		t.Fatalf("main span flags missing: %#v", payload)
+	}
+	if got := payload["tenant_id"]; got != "tenant-1" {
+		t.Fatalf("tenant_id = %#v, want tenant-1; payload=%#v", got, payload)
+	}
+	if got := payload["auth.credential_tier"]; got != "production" {
+		t.Fatalf("credential tier was unexpectedly redacted: %#v", payload)
+	}
+	if got := payload["credential_id"]; got != "[redacted]" {
+		t.Fatalf("credential_id = %#v, want redacted; payload=%#v", got, payload)
+	}
+	if got := payload["cache.redis.last_status"]; got != "hit" {
+		t.Fatalf("late annotation missing: %#v", payload)
+	}
+	if got := payload["cache.redis.hit.count"]; got != float64(3) {
+		t.Fatalf("incremented count = %#v, want 3; payload=%#v", got, payload)
+	}
+	if got := payload["explicit_end_attr"]; got != "kept" {
+		t.Fatalf("explicit end attr missing: %#v", payload)
+	}
+	oversized, ok := payload["oversized"].(string)
+	if !ok || len(oversized) > maxAttributeStringLength+3 || !strings.HasSuffix(oversized, "...") {
+		t.Fatalf("oversized attribute was not bounded: len=%d value=%q", len(oversized), oversized)
+	}
+	if got := payload["service.name"]; got != "cerebro" {
+		t.Fatalf("runtime service attr = %#v, want cerebro; payload=%#v", got, payload)
+	}
+}
+
 func TestEndMapsErrorStatusesToOpenTelemetryErrors(t *testing.T) {
 	for _, status := range []string{"failed", "error"} {
 		t.Run(status, func(t *testing.T) {
@@ -230,6 +274,24 @@ func TestConfigureOpenTelemetryDisabledLeavesNoopProviderUsable(t *testing.T) {
 	}
 	_, span := Start(context.Background(), "noop.span", Attrs())
 	End(span, "completed", Attrs())
+}
+
+func telemetryPayloadByKindAndName(t *testing.T, stderr string, kind string, name string) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
+		}
+		if payload["kind"] == kind && payload["name"] == name {
+			return payload
+		}
+	}
+	t.Fatalf("telemetry payload kind=%q name=%q not found in stderr: %s", kind, name, stderr)
+	return nil
 }
 
 func captureOutput(t *testing.T, fn func()) (string, string) {

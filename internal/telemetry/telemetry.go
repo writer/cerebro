@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -19,9 +21,12 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/writer/cerebro/internal/buildinfo"
 )
 
 type spanContextKey struct{}
+type mainSpanContextKey struct{}
 
 type spanContext struct {
 	TraceID string
@@ -29,12 +34,15 @@ type spanContext struct {
 }
 
 type Span struct {
-	name     string
-	traceID  string
-	spanID   string
-	parentID string
-	started  time.Time
-	otelSpan oteltrace.Span
+	mu          sync.Mutex
+	name        string
+	traceID     string
+	spanID      string
+	parentID    string
+	started     time.Time
+	otelSpan    oteltrace.Span
+	main        bool
+	annotations map[string]any
 }
 
 type Attributes struct {
@@ -45,6 +53,8 @@ type Field struct {
 	Key   string
 	Value any
 }
+
+const maxAttributeStringLength = 1024
 
 func Attrs(fields ...Field) Attributes {
 	attributes := Attributes{values: map[string]any{}}
@@ -61,6 +71,13 @@ func (a Attributes) WithField(field Field) Attributes {
 	return a.with(field.Key, field.Value)
 }
 
+func (a Attributes) With(other Attributes) Attributes {
+	for key, value := range other.values {
+		a = a.with(key, value)
+	}
+	return a
+}
+
 func (a Attributes) with(key string, value any) Attributes {
 	if a.values == nil {
 		a.values = map[string]any{}
@@ -71,8 +88,41 @@ func (a Attributes) with(key string, value any) Attributes {
 	return a
 }
 
+func RuntimeAttributes() Attributes {
+	hostname, _ := os.Hostname()
+	return Attrs(
+		Field{Key: "service.name", Value: buildinfo.ServiceName},
+		Field{Key: "service.version", Value: buildinfo.Version},
+		Field{Key: "service.commit", Value: buildinfo.Commit},
+		Field{Key: "service.build_date", Value: buildinfo.BuildDate},
+		Field{Key: "deployment.environment", Value: "unknown"},
+		Field{Key: "host.name", Value: hostname},
+		Field{Key: "os.type", Value: runtime.GOOS},
+		Field{Key: "os.arch", Value: runtime.GOARCH},
+		Field{Key: "process.pid", Value: os.Getpid()},
+		Field{Key: "process.runtime.name", Value: "go"},
+		Field{Key: "process.runtime.version", Value: runtime.Version()},
+		Field{Key: "process.cpu.count", Value: runtime.NumCPU()},
+		Field{Key: "go.goroutine.count", Value: runtime.NumGoroutine()},
+		Field{Key: "cloud.provider", Value: "unknown"},
+		Field{Key: "cloud.region", Value: ""},
+		Field{Key: "container.id", Value: hostname},
+	)
+}
+
 func Start(ctx context.Context, name string, attributes Attributes) (context.Context, *Span) {
 	return StartWithOptions(ctx, name, attributes)
+}
+
+func StartMain(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
+	attributes = RuntimeAttributes().With(attributes).
+		WithField(Field{Key: "main", Value: true}).
+		WithField(Field{Key: "wide_event", Value: true})
+	ctx, span := StartWithOptions(ctx, name, attributes, options...)
+	span.main = true
+	span.annotate(attributes)
+	ctx = context.WithValue(ctx, mainSpanContextKey{}, span)
+	return ctx, span
 }
 
 func StartWithOptions(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
@@ -164,6 +214,23 @@ func Event(ctx context.Context, name string, attributes Attributes) {
 	emit("event", &Span{name: name, traceID: current.TraceID, spanID: current.SpanID}, attributes)
 }
 
+func AnnotateMain(ctx context.Context, attributes Attributes) {
+	if span, ok := ctx.Value(mainSpanContextKey{}).(*Span); ok && span != nil {
+		span.annotate(attributes)
+	}
+}
+
+func IncrementMain(ctx context.Context, key string, delta int64) {
+	if strings.TrimSpace(key) == "" || delta == 0 {
+		return
+	}
+	span, ok := ctx.Value(mainSpanContextKey{}).(*Span)
+	if !ok || span == nil {
+		return
+	}
+	span.increment(key, delta)
+}
+
 // CaptureError records a Sentry-style handled error event without serializing
 // the raw error message. Raw messages often contain DSNs, URLs, or token-shaped
 // values, so errors are grouped with a stable kind and fingerprint instead.
@@ -232,6 +299,11 @@ func End(span *Span, status string, attributes Attributes) {
 	if span == nil {
 		return
 	}
+	for key, value := range span.snapshotAnnotations() {
+		if _, exists := attributes.values[key]; !exists {
+			attributes = attributes.with(key, value)
+		}
+	}
 	if status != "" {
 		attributes = attributes.with("status", status)
 	}
@@ -248,6 +320,73 @@ func End(span *Span, status string, attributes Attributes) {
 		span.otelSpan.End()
 	}
 	emit("span_end", span, attributes)
+}
+
+func (s *Span) annotate(attributes Attributes) {
+	if s == nil || len(attributes.values) == 0 {
+		return
+	}
+	s.mu.Lock()
+	if s.annotations == nil {
+		s.annotations = map[string]any{}
+	}
+	for key, value := range attributes.values {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		s.annotations[key] = value
+	}
+	s.mu.Unlock()
+	if s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
+		s.otelSpan.SetAttributes(attributes.OTELAttributes()...)
+	}
+}
+
+func (s *Span) increment(key string, delta int64) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.annotations == nil {
+		s.annotations = map[string]any{}
+	}
+	current := int64(0)
+	switch value := s.annotations[key].(type) {
+	case int:
+		current = int64(value)
+	case int64:
+		current = value
+	case uint32:
+		current = int64(value)
+	case uint64:
+		if value <= uint64(^uint(0)>>1) {
+			current = int64(value)
+		}
+	case float64:
+		current = int64(value)
+	}
+	next := current + delta
+	s.annotations[key] = next
+	s.mu.Unlock()
+	if s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
+		s.otelSpan.SetAttributes(attribute.Int64(key, next))
+	}
+}
+
+func (s *Span) snapshotAnnotations() map[string]any {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.annotations) == 0 {
+		return nil
+	}
+	copied := make(map[string]any, len(s.annotations))
+	for key, value := range s.annotations {
+		copied[key] = value
+	}
+	return copied
 }
 
 func telemetryStatus(status string) codes.Code {
@@ -289,7 +428,7 @@ func (a Attributes) OTELAttributes() []attribute.KeyValue {
 		if strings.TrimSpace(key) == "" {
 			continue
 		}
-		attrs = append(attrs, otelAttribute(key, value))
+		attrs = append(attrs, otelAttribute(key, safeAttributeValue(key, value)))
 	}
 	return attrs
 }
@@ -395,7 +534,7 @@ func emit(kind string, span *Span, attributes Attributes) {
 		}
 	}
 	for key, value := range attributes.values {
-		payload[key] = value
+		payload[key] = safeAttributeValue(key, value)
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -406,6 +545,52 @@ func emit(kind string, span *Span, attributes Attributes) {
 	if _, err := os.Stderr.Write(encoded); err != nil {
 		log.Printf("telemetry write: %v", err)
 	}
+}
+
+func safeAttributeValue(key string, value any) any {
+	if secretLikeKey(key) {
+		return "[redacted]"
+	}
+	switch v := value.(type) {
+	case string:
+		return boundString(v, maxAttributeStringLength)
+	case fmt.Stringer:
+		return boundString(v.String(), maxAttributeStringLength)
+	default:
+		return value
+	}
+}
+
+func secretLikeKey(key string) bool {
+	lower := strings.ToLower(strings.TrimSpace(key))
+	for _, fragment := range []string{
+		"authorization",
+		"api_key",
+		"apikey",
+		"access_token",
+		"refresh_token",
+		"id_token",
+		"token_secret",
+		"secret",
+		"password",
+		"cookie",
+		"credential_id",
+		"credential_secret",
+		"credential_value",
+	} {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func boundString(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "..."
 }
 
 func randomHex(bytes int) string {

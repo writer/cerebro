@@ -333,6 +333,76 @@ func (e *askWideEvent) finish(r *http.Request, started time.Time, status int, er
 		}
 	}
 	telemetry.Event(r.Context(), "cerebro.grc.ask", attrs)
+	telemetry.IncrementMain(r.Context(), "grc.ask.count", 1)
+	if err != nil {
+		telemetry.IncrementMain(r.Context(), "grc.ask.error.count", 1)
+	}
+	mainAttrs := telemetry.Attrs(
+		telemetry.Field{Key: "grc.ask.status_code", Value: status},
+		telemetry.Field{Key: "grc.ask.outcome", Value: outcome},
+		telemetry.Field{Key: "grc.ask.duration_ms", Value: durationMs},
+		telemetry.Field{Key: "tenant_id", Value: e.tenantID},
+		telemetry.Field{Key: "grc.ask.question_len", Value: len(e.question)},
+		telemetry.Field{Key: "grc.ask.scope.present", Value: strings.TrimSpace(e.scopeURN) != ""},
+		telemetry.Field{Key: "grc.ask.model", Value: e.model},
+		telemetry.Field{Key: "grc.ask.history_len", Value: e.historyLen},
+		telemetry.Field{Key: "grc.ask.llm.provider", Value: e.provider},
+		telemetry.Field{Key: "grc.ask.llm.ok", Value: e.llmOK},
+		telemetry.Field{Key: "grc.ask.llm.pre_cached", Value: e.llmPreCached},
+		telemetry.Field{Key: "grc.ask.llm.init_ms", Value: e.llmInitMs},
+		telemetry.Field{Key: "grc.ask.graph_store.ok", Value: e.graphStoreOK},
+		telemetry.Field{Key: "grc.ask.sse_events", Value: e.sseEvents},
+		telemetry.Field{Key: "grc.ask.validator.ok", Value: e.result.validatorOK},
+		telemetry.Field{Key: "grc.ask.validator.warnings_count", Value: e.result.validatorWarningsCount},
+		telemetry.Field{Key: "grc.ask.cypher_refused", Value: e.result.cypherRefused},
+		telemetry.Field{Key: "grc.ask.row_count", Value: e.result.rowCount},
+		telemetry.Field{Key: "grc.ask.citation_count", Value: e.result.citationCount},
+		telemetry.Field{Key: "grc.ask.citation_validation.warnings_count", Value: e.result.citationWarningsCount},
+		telemetry.Field{Key: "grc.ask.graph_probe.entity_type_count", Value: e.probe.entityTypeCount},
+		telemetry.Field{Key: "grc.ask.graph_probe.relation_count", Value: e.probe.relationCount},
+		telemetry.Field{Key: "grc.ask.graph_probe.warnings_count", Value: e.probe.warningsCount},
+		telemetry.Field{Key: "grc.ask.graph_probe.scope_found", Value: e.probe.scopeFound},
+		telemetry.Field{Key: "grc.ask.stage.probe_ms", Value: e.result.timings.ProbeMS},
+		telemetry.Field{Key: "grc.ask.stage.draft_ms", Value: e.result.timings.DraftMS},
+		telemetry.Field{Key: "grc.ask.stage.conversion_ms", Value: e.result.timings.ConversionMS},
+		telemetry.Field{Key: "grc.ask.stage.validate_ms", Value: e.result.timings.ValidateMS},
+		telemetry.Field{Key: "grc.ask.stage.execute_ms", Value: e.result.timings.ExecuteMS},
+		telemetry.Field{Key: "grc.ask.stage.summarize_ms", Value: e.result.timings.SummarizeMS},
+		telemetry.Field{Key: "grc.ask.stage.citation_validation_ms", Value: e.result.timings.CitationValidationMS},
+	)
+	if e.queryPlan.intent != "" {
+		mainAttrs = mainAttrs.
+			WithField(telemetry.Field{Key: "grc.ask.query_plan.intent", Value: e.queryPlan.intent}).
+			WithField(telemetry.Field{Key: "grc.ask.query_plan.source", Value: e.queryPlan.source}).
+			WithField(telemetry.Field{Key: "grc.ask.query_plan.deterministic", Value: e.queryPlan.deterministic}).
+			WithField(telemetry.Field{Key: "grc.ask.query_plan.corrected", Value: e.queryPlan.corrected}).
+			WithField(telemetry.Field{Key: "grc.ask.query_plan.diagnostics_count", Value: e.queryPlan.diagnosticsCount})
+	}
+	if e.queryPlan.diagnosticCodes != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.query_plan.diagnostic_codes", Value: e.queryPlan.diagnosticCodes})
+	}
+	if e.result.terminalEvent != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.terminal_event", Value: e.result.terminalEvent})
+	}
+	if e.result.validatorCode != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.validator.code", Value: e.result.validatorCode})
+	}
+	if e.result.runtimeErrorCode != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.runtime_error.code", Value: e.result.runtimeErrorCode})
+	}
+	if e.result.unsupportedQueryCode != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.unsupported_query.code", Value: e.result.unsupportedQueryCode})
+	}
+	if e.failureStage != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.failure_stage", Value: e.failureStage})
+	}
+	if e.llmInitErrorKind != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.llm.init_error_kind", Value: e.llmInitErrorKind})
+	}
+	if err != nil {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "grc.ask.error_kind", Value: grcTelemetryErrorKind(err)})
+	}
+	telemetry.AnnotateMain(r.Context(), mainAttrs)
 
 	if err != nil {
 		providerDesc := strings.TrimSpace(e.provider)

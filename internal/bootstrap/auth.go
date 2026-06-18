@@ -1006,6 +1006,67 @@ func emitAccessAuditEvent(r *http.Request, origin requestOrigin, principal authP
 		attrs = attrs.WithField(telemetry.Field{Key: "denial_reason", Value: denialReason})
 	}
 	telemetry.Event(r.Context(), "cerebro.api.access", attrs)
+	telemetry.IncrementMain(r.Context(), "auth.access.count", 1)
+	if accessAuditOutcomeFailed(outcome) {
+		telemetry.IncrementMain(r.Context(), "auth.access.denied.count", 1)
+	}
+	mainAttrs := telemetry.Attrs(
+		telemetry.Field{Key: "auth.outcome", Value: outcome},
+		telemetry.Field{Key: "auth.status_code", Value: status},
+		telemetry.Field{Key: "auth.effective_status_code", Value: effectiveStatusCode},
+		telemetry.Field{Key: "auth.operation_family", Value: operation.Family},
+		telemetry.Field{Key: "auth.operation_type", Value: operation.Type},
+		telemetry.Field{Key: "auth.sensitive_action", Value: operation.SensitiveAction},
+		telemetry.Field{Key: "auth.duration_ms", Value: duration.Milliseconds()},
+		telemetry.Field{Key: "auth.principal.present", Value: strings.TrimSpace(principal.Name) != ""},
+		telemetry.Field{Key: "auth.client.present", Value: strings.TrimSpace(principal.ClientID) != ""},
+		telemetry.Field{Key: "auth.device.present", Value: strings.TrimSpace(principal.DeviceID) != ""},
+	)
+	if tenantID := firstNonEmpty(requestedTenantID, principalTenantID); tenantID != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "tenant_id", Value: tenantID})
+	}
+	if effectiveTenantID := firstNonEmpty(principalTenantID, requestedTenantID); effectiveTenantID != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.effective_tenant_id", Value: effectiveTenantID})
+	}
+	if requestedTenantID != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.requested_tenant_id", Value: requestedTenantID})
+	}
+	if principalTenantID != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.principal_tenant_id", Value: principalTenantID})
+	}
+	if requestedTenantID != "" && principalTenantID != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.tenant_mismatch", Value: requestedTenantID != principalTenantID})
+	}
+	if principal.AuthMode != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.mode", Value: principal.AuthMode})
+	}
+	if tier := accessAuditCredentialTier(principal); tier != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.credential_tier", Value: tier})
+	}
+	if principal.AssuranceLevel != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.assurance_level", Value: principal.AssuranceLevel})
+	}
+	if principal.RiskLevel != "" {
+		mainAttrs = mainAttrs.
+			WithField(telemetry.Field{Key: "auth.risk_level", Value: principal.RiskLevel}).
+			WithField(telemetry.Field{Key: "auth.risk_score", Value: principal.RiskScore})
+	}
+	if auditResult.ConnectCode != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.connect_code", Value: auditResult.ConnectCode})
+	}
+	if denialReason != "" {
+		mainAttrs = mainAttrs.WithField(telemetry.Field{Key: "auth.denial_reason", Value: denialReason})
+	}
+	telemetry.AnnotateMain(r.Context(), mainAttrs)
+}
+
+func accessAuditOutcomeFailed(outcome string) bool {
+	switch strings.TrimSpace(outcome) {
+	case "denied", "rejected", "error":
+		return true
+	default:
+		return false
+	}
 }
 
 func accessAuditEffectiveStatusCode(status int, connectCode string) int {

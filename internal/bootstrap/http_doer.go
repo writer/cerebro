@@ -32,7 +32,16 @@ func (d *stdHTTPDoer) Post(ctx context.Context, endpoint string, headers map[str
 	))
 	finish := func(statusCode int, err error) {
 		attrs := telemetry.Attrs(telemetry.Field{Key: "http.response.status_code", Value: statusCode})
+		telemetry.IncrementMain(ctx, "outbound.http.request.count", 1)
+		telemetry.AnnotateMain(ctx, telemetry.Attrs(
+			telemetry.Field{Key: "outbound.http.last_component", Value: "graphagent.http_doer"},
+			telemetry.Field{Key: "outbound.http.last_host", Value: endpointHost(endpoint)},
+			telemetry.Field{Key: "outbound.http.last_method", Value: http.MethodPost},
+			telemetry.Field{Key: "outbound.http.last_scheme", Value: endpointScheme(endpoint)},
+			telemetry.Field{Key: "outbound.http.last_status_code", Value: statusCode},
+		))
 		if err != nil {
+			telemetry.IncrementMain(ctx, "outbound.http.error.count", 1)
 			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 			telemetry.CaptureError(ctx, "graphagent.http.error", err, telemetry.Attrs(
 				telemetry.Field{Key: "component", Value: "graphagent.http_doer"},
@@ -42,9 +51,11 @@ func (d *stdHTTPDoer) Post(ctx context.Context, endpoint string, headers map[str
 			return
 		}
 		if statusCode >= http.StatusInternalServerError {
+			telemetry.IncrementMain(ctx, "outbound.http.server_error.count", 1)
 			telemetry.End(span, "failed", attrs.WithField(telemetry.Field{Key: "status_detail", Value: "server_error"}))
 			return
 		}
+		telemetry.IncrementMain(ctx, "outbound.http.success.count", 1)
 		telemetry.End(span, "completed", attrs)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
