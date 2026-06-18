@@ -23,7 +23,14 @@ func TestApplyMCPGraphActionProposalReturnsTargetErrors(t *testing.T) {
 }
 
 func TestApplyMCPGraphActionProposalPopulatesValidProposal(t *testing.T) {
-	proposal := MCPActionProposalPayload{"finding_id": "finding-1"}
+	proposal := MCPActionProposalPayload{
+		"finding_id":             "finding-1",
+		"external_id":            "ticket-123",
+		"external_url":           "https://tickets.example/ticket-123",
+		"external_status":        "open",
+		"external_status_reason": "waiting",
+		"lifecycle_owner":        "external_owned",
+	}
 	err := ApplyMCPGraphActionProposal(proposal, &ports.FindingRecord{
 		ID:         "finding-1",
 		Attributes: map[string]string{"okta_user_email": "alice@example.com"},
@@ -36,5 +43,10 @@ func TestApplyMCPGraphActionProposalPopulatesValidProposal(t *testing.T) {
 	}
 	if proposal["endpoint"] != "/platform/graph/actions" || proposal["target"] != "alice@example.com" || proposal["handoff_required"] != true {
 		t.Fatalf("proposal = %#v, want graph action proposal fields populated", proposal)
+	}
+	for _, key := range []string{"external_id", "external_url", "external_status", "external_status_reason", "lifecycle_owner"} {
+		if proposal[key] != "" {
+			t.Fatalf("proposal[%q] = %#v, want stale external ref field cleared", key, proposal[key])
+		}
 	}
 }

@@ -164,6 +164,9 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	}
 	findingID, _ := proposal["finding_id"].(string)
 	endpoint := "/platform/graph/actions"
+	for _, key := range []string{"external_id", "external_url", "external_status", "external_status_reason", "lifecycle_owner"} {
+		proposal[key] = ""
+	}
 	proposal["graph_action"] = graphAction
 	proposal["target"] = target
 	proposal["endpoint"] = endpoint

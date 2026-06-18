@@ -292,7 +292,7 @@ func candidatesFromDelimited(tenantID string, raw string) []string {
 		part = strings.TrimSpace(part)
 		if strings.HasPrefix(part, "urn:cerebro:") {
 			if candidate := candidateFromURN(tenantID, part); candidate != "" {
-				candidates = append(candidates, part, candidate)
+				candidates = append(candidates, candidate)
 			}
 			continue
 		}
