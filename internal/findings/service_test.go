@@ -1029,11 +1029,8 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Summary != "Okta policy rule Require MFA is INACTIVE" {
 		t.Fatalf("Finding.Summary = %q, want Okta policy rule Require MFA is INACTIVE", finding.Summary)
 	}
-	if len(finding.ResourceURNs) != 1 {
-		t.Fatalf("len(Finding.ResourceURNs) = %d, want 1", len(finding.ResourceURNs))
-	}
-	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
-		t.Fatalf("Finding.ResourceURNs[0] = %q, want policy rule urn", finding.ResourceURNs[0])
+	if !containsTrimmed(finding.ResourceURNs, "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1") {
+		t.Fatalf("Finding.ResourceURNs = %#v, missing policy rule urn", finding.ResourceURNs)
 	}
 	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.Attributes[primary_resource_urn] = %q, want resource urn", finding.Attributes["primary_resource_urn"])

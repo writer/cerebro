@@ -974,16 +974,19 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			}
 			if tt.family == "application" {
 				for key, want := range map[string]string{
-					"application_type":           "browser",
-					"client_id":                  "0oa-client-id",
-					"grant_types":                "authorization_code,refresh_token",
-					"oauth2":                     "true",
-					"oauth_client_type":          "PublicClientApp",
-					"oauth_public_client":        "true",
-					"redirect_uri_count":         "2",
-					"response_types":             "code",
-					"token_endpoint_auth_method": "none",
-					"wildcard_redirect":          "true",
+					"application_type":               "browser",
+					"client_id":                      "0oa-client-id",
+					"grant_types":                    "authorization_code,refresh_token",
+					"oauth2":                         "true",
+					"oauth_client_type":              "PublicClientApp",
+					"oauth_public_client":            "true",
+					"post_logout_redirect_uri_count": "1",
+					"post_logout_redirect_uri_hosts": "logout.example.com",
+					"redirect_uri_count":             "2",
+					"redirect_uri_hosts":             "app.example.com,example.com",
+					"response_types":                 "code",
+					"token_endpoint_auth_method":     "none",
+					"wildcard_redirect":              "true",
 				} {
 					if got := pull.Events[0].Attributes[key]; got != want {
 						t.Fatalf("Read(application).Events[0].Attributes[%q] = %q, want %q", key, got, want)
@@ -1046,13 +1049,26 @@ func TestCheckDiscoverAndReadLiveOktaPolicyRulePreview(t *testing.T) {
 		t.Fatalf("first.Events[0].Kind = %q, want okta.policy_rule", got)
 	}
 	for key, want := range map[string]string{
-		"policy_id":      "pol-sign-on",
-		"policy_rule_id": "rul-sign-on-inactive",
-		"policy_type":    "OKTA_SIGN_ON",
-		"name":           "Block risky sign-ons",
-		"status":         "INACTIVE",
-		"priority":       "1",
-		"system":         "false",
+		"app_exclude_ids":          "app-legacy",
+		"app_include_ids":          "app-prod",
+		"client_include_ids":       "0oa-client,ALL_CLIENTS",
+		"group_exclude_ids":        "grp-breakglass",
+		"group_include_ids":        "EVERYONE,grp-security",
+		"idp_ids":                  "idp-saml",
+		"idp_provider":             "SPECIFIC_IDP",
+		"name":                     "Block risky sign-ons",
+		"network_connection":       "ZONE",
+		"network_zone_exclude_ids": "zone-untrusted",
+		"network_zone_include_ids": "zone-corp",
+		"policy_id":                "pol-sign-on",
+		"policy_name":              "Default sign-on policy",
+		"policy_rule_id":           "rul-sign-on-inactive",
+		"policy_status":            "ACTIVE",
+		"policy_type":              "OKTA_SIGN_ON",
+		"priority":                 "1",
+		"status":                   "INACTIVE",
+		"system":                   "false",
+		"user_exclude_ids":         "00u-breakglass",
 	} {
 		if got := first.Events[0].Attributes[key]; got != want {
 			t.Fatalf("first.Events[0].Attributes[%q] = %q, want %q", key, got, want)
@@ -1454,6 +1470,33 @@ func newOktaPolicyRuleAPIHandler(t *testing.T) http.Handler {
 				"system":      false,
 				"created":     "2026-04-20T00:00:00Z",
 				"lastUpdated": "2026-04-23T01:00:00Z",
+				"conditions": map[string]any{
+					"app": map[string]any{
+						"exclude": []map[string]any{{"id": "app-legacy", "type": "APP"}},
+						"include": []map[string]any{{"id": "app-prod", "type": "APP"}},
+					},
+					"clients": map[string]any{
+						"include": []string{"ALL_CLIENTS", "0oa-client"},
+					},
+					"identityProvider": map[string]any{
+						"idpIds":   []string{"idp-saml"},
+						"provider": "SPECIFIC_IDP",
+					},
+					"network": map[string]any{
+						"connection": "ZONE",
+						"exclude":    []string{"zone-untrusted"},
+						"include":    []string{"zone-corp"},
+					},
+					"people": map[string]any{
+						"groups": map[string]any{
+							"exclude": []string{"grp-breakglass"},
+							"include": []string{"grp-security", "EVERYONE"},
+						},
+						"users": map[string]any{
+							"exclude": []string{"00u-breakglass"},
+						},
+					},
+				},
 			},
 			{
 				"id":          "rul-sign-on-active",
@@ -1775,10 +1818,11 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			},
 			"settings": map[string]any{
 				"oauthClient": map[string]any{
-					"application_type": "browser",
-					"grant_types":      []string{"authorization_code", "refresh_token"},
-					"redirect_uris":    []string{"https://app.example/callback", "https://*.example/callback"},
-					"response_types":   []string{"code"},
+					"application_type":          "browser",
+					"grant_types":               []string{"authorization_code", "refresh_token"},
+					"redirect_uris":             []string{"https://app.example.com/callback", "https://*.example.com/callback"},
+					"post_logout_redirect_uris": []string{"https://logout.example.com/complete"},
+					"response_types":            []string{"code"},
 				},
 			},
 		},

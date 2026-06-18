@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/oktaasset"
 )
 
 var policyRulePolicyTypes = []string{"OKTA_SIGN_ON", "ACCESS_POLICY", "PASSWORD", "MFA_ENROLL", "PROFILE_ENROLLMENT", "IDP_DISCOVERY"}
@@ -55,7 +56,9 @@ type policyRuleCursor struct {
 
 type policyRuleCursorPolicy struct {
 	ID              string `json:"id"`
+	Name            string `json:"name,omitempty"`
 	Type            string `json:"type"`
+	Status          string `json:"status,omitempty"`
 	NextPolicyAfter string `json:"next_policy_after,omitempty"`
 }
 
@@ -159,8 +162,10 @@ func (s *Source) readPolicyRules(ctx context.Context, settings settings, cursor 
 			}
 		}
 		policy := policyRecord{
-			ID:   strings.TrimSpace(state.Policy.ID),
-			Type: firstNonEmpty(state.Policy.Type, policyRulePolicyTypes[state.PolicyTypeIndex]),
+			ID:     strings.TrimSpace(state.Policy.ID),
+			Name:   strings.TrimSpace(state.Policy.Name),
+			Type:   firstNonEmpty(state.Policy.Type, policyRulePolicyTypes[state.PolicyTypeIndex]),
+			Status: strings.TrimSpace(state.Policy.Status),
 		}
 		rules, nextRuleAfter, err := s.listPolicyRules(ctx, settings, policy.ID, state.RuleAfter, settings.perPage-len(events))
 		if err != nil {
@@ -216,7 +221,9 @@ func (s *Source) advancePolicyRuleCursorToNextPolicy(ctx context.Context, settin
 		policy.Type = firstNonEmpty(policy.Type, policyType)
 		state.Policy = &policyRuleCursorPolicy{
 			ID:              policy.ID,
+			Name:            policy.Name,
 			Type:            policy.Type,
+			Status:          policy.Status,
 			NextPolicyAfter: nextPolicyAfter,
 		}
 		state.RuleAfter = ""
@@ -364,6 +371,8 @@ func policyRuleAttributes(settings settings, entry policyRuleEntry) map[string]s
 		"domain":             settings.domain,
 		"family":             familyPolicyRule,
 		"policy_id":          entry.Policy.ID,
+		"policy_name":        entry.Policy.Name,
+		"policy_status":      entry.Policy.Status,
 		"policy_rule_id":     entry.Rule.ID,
 		"policy_type":        firstNonEmpty(entry.Policy.Type, "UNKNOWN"),
 		"name":               entry.Rule.Name,
@@ -431,31 +440,7 @@ func policyRuleActionsAttributes(raw json.RawMessage, attrs map[string]string) {
 }
 
 func policyRuleConditionsAttributes(raw json.RawMessage, attrs map[string]string) {
-	var rule struct {
-		Conditions struct {
-			Network struct {
-				Connection string `json:"connection"`
-			} `json:"network"`
-			Risk struct {
-				Level string `json:"level"`
-			} `json:"risk"`
-			Platform struct {
-				Include []struct {
-					Type string `json:"type"`
-				} `json:"include"`
-			} `json:"platform"`
-		} `json:"conditions"`
-	}
-	if err := json.Unmarshal(raw, &rule); err != nil {
-		return
-	}
-	c := rule.Conditions
-	if c.Network.Connection != "" {
-		attrs["network_connection"] = strings.ToUpper(c.Network.Connection)
-	}
-	if c.Risk.Level != "" {
-		attrs["risk_level"] = strings.ToUpper(c.Risk.Level)
-	}
+	oktaasset.AddPolicyRuleConditionAttributes(raw, attrs)
 }
 
 func policyRuleURN(settings settings, policy policyRecord, rule policyRuleRecord) string {
