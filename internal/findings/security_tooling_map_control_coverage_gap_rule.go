@@ -21,7 +21,6 @@ const (
 
 var securityToolingMapCoverageGapControlRefs = []ports.FindingControlRef{
 	{FrameworkName: "SOC 2", ControlID: "CC4.1"},
-	{FrameworkName: "ISO 27001:2022", ControlID: "A.5.36"},
 }
 
 type securityToolingMapCoverageGapRule struct {
@@ -210,7 +209,7 @@ func securityToolingMapControlCoverageURN(tenantID string, attributes map[string
 		return ""
 	}
 	framework := firstNonEmpty(strings.TrimSpace(attributes["framework"]), "security")
-	return fmt.Sprintf("urn:cerebro:%s:security_tool_control_coverage:%s:%s:%s", tenantID, toolID, framework, controlID)
+	return securitytooling.ControlCoverageURN(tenantID, toolID, framework, controlID)
 }
 
 func securityToolingMapControlURN(tenantID string, framework string, controlID string) string {

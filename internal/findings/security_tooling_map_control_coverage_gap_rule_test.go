@@ -68,6 +68,45 @@ func TestSecurityToolingMapControlCoverageGapUnknownCoverageDoesNotResolve(t *te
 	}
 }
 
+func TestSecurityToolingMapControlCoverageGapEscapesURNPartsForCloseAnchor(t *testing.T) {
+	rule := newSecurityToolingMapControlCoverageGapRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-security-tooling-map-control-mapping",
+		SourceId: "security_tooling_map",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "control_mapping"},
+	}
+	open := securityToolingMapControlMappingEvent("stm-open-iso", map[string]string{
+		"framework":  "ISO 27001:2022",
+		"control_id": "CC6.1",
+		"coverage":   "partial",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	records, err := rule.Evaluate(context.Background(), runtime, open)
+	if err != nil {
+		t.Fatalf("Evaluate(open) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(open) emitted %d findings, want 1", len(records))
+	}
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+	openAnchor := counterRule.OpenAnchor(records[0].Attributes)
+	crafted := securityToolingMapControlMappingEvent("stm-covered-alias", map[string]string{
+		"framework":  "ISO 27001",
+		"control_id": "2022:CC6.1",
+		"coverage":   "full",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	closeAnchor, closes := counterRule.CloseOnEvent(crafted)
+	if !closes || closeAnchor == "" {
+		t.Fatalf("CloseOnEvent(crafted alias) = (%q, %v), want close for crafted tuple", closeAnchor, closes)
+	}
+	if closeAnchor == openAnchor {
+		t.Fatalf("crafted close anchor matched legitimate open anchor %q", openAnchor)
+	}
+}
+
 func TestSecurityToolingMapControlCoverageGapReopensOnRecurrence(t *testing.T) {
 	rule := newSecurityToolingMapControlCoverageGapRule()
 	runtime := &cerebrov1.SourceRuntime{
