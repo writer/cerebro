@@ -306,6 +306,23 @@ func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 			},
 		},
 		{
+			Id:         "anthropic-compliance-role-permission",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_role_permission",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"action":                 "read",
+				"family":                 "compliance_role_permission",
+				"organization_uuid":      "org-uuid-1",
+				"permission_description": "Read retained chat content.",
+				"permission_id":          "perm_read_chats",
+				"permission_name":        "Read chats",
+				"resource_type":          "chat",
+				"role_id":                "rbac_role_123",
+			},
+		},
+		{
 			Id:         "anthropic-compliance-role",
 			TenantId:   "writer",
 			SourceId:   "anthropic",
@@ -329,6 +346,8 @@ func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 	userURN := "urn:cerebro:writer:anthropic_user:user_789"
 	groupURN := "urn:cerebro:writer:anthropic_group:rbac_group_123"
 	roleURN := "urn:cerebro:writer:anthropic_role:organization:rbac_role_123"
+	entitlementURN := "urn:cerebro:writer:anthropic_entitlement:role_permission:rbac_role_123:perm_read_chats"
+	capabilityURN := "urn:cerebro:writer:privileged_capability:ai_data_read"
 	orgURN := "urn:cerebro:writer:anthropic_org:org-uuid-1"
 	identityURN := "urn:cerebro:writer:identity:email:carol@example.com"
 
@@ -338,9 +357,15 @@ func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 	if entity := state.entities[roleURN]; entity == nil || entity.EntityType != "anthropic.role" || entity.Label != "Compliance Reviewer" || entity.Attributes["role_id"] != "rbac_role_123" || entity.Attributes["scope_kind"] != "organization" {
 		t.Fatalf("role entity missing or wrong: %#v", entity)
 	}
+	if entity := state.entities[entitlementURN]; entity == nil || entity.EntityType != "anthropic.entitlement" || entity.Label != "Read chats" || entity.Attributes["permission_id"] != "perm_read_chats" {
+		t.Fatalf("entitlement entity missing or wrong: %#v", entity)
+	}
 	assertProjectedLink(t, state, groupURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, roleURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, roleURN, relationGrantsEntitlement, orgURN)
+	assertProjectedLink(t, state, roleURN, relationGrantsEntitlement, entitlementURN)
+	assertProjectedLink(t, state, entitlementURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, entitlementURN, relationConfersCapability, capabilityURN)
 	assertProjectedLink(t, state, groupURN, relationAssignedTo, roleURN)
 	assertProjectedLink(t, state, groupURN, relationCanPerform, orgURN)
 	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)

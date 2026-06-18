@@ -93,6 +93,7 @@ func anthropicFamilies() []jsonapi.Family {
 		anthropicListFamily("compliance_organization", "/compliance/organizations", "anthropic_compliance_organization", []string{"uuid", "id"}, []string{"created_at"}, map[string]string{"organization_uuid": "uuid", "organization_id": "id|organization_id", "name": "name", "created_at": "created_at"}, withoutPagination()),
 		anthropicListFamily("compliance_organization_user", "/compliance/organizations/{organization_uuid}/users", "anthropic_compliance_organization_user", []string{"id", "user_id"}, []string{"created_at"}, map[string]string{"organization_uuid": "organization_uuid", "user_id": "id|user_id", "name": "full_name|name", "email": "email", "role": "organization_role|role", "organization_role": "organization_role|role", "created_at": "created_at"}, withPathParams("organization_uuid"), withPageCursor()),
 		anthropicListFamily("compliance_role", "/compliance/organizations/{organization_uuid}/roles", "anthropic_compliance_role", []string{"id", "role_id"}, []string{"created_at", "updated_at"}, map[string]string{"organization_uuid": "organization_uuid", "role_id": "id|role_id", "name": "name", "description": "description", "created_at": "created_at", "updated_at": "updated_at"}, withPathParams("organization_uuid"), withPageCursor()),
+		anthropicListFamily("compliance_role_permission", "/compliance/organizations/{organization_uuid}/roles/{role_id}/permissions", "anthropic_compliance_role_permission", []string{"id", "permission_id", "permission", "name"}, []string{"created_at", "updated_at"}, rolePermissionAttributes(), withPathParams("organization_uuid", "role_id"), withPageCursor()),
 		anthropicListFamily("compliance_group", "/compliance/groups", "anthropic_compliance_group", []string{"id", "group_id"}, []string{"created_at", "updated_at"}, map[string]string{"group_id": "id|group_id", "group_name": "name", "name": "name", "description": "description", "source_type": "source_type", "roles": "roles", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor()),
 		anthropicListFamily("compliance_group_member", "/compliance/groups/{group_id}/members", "anthropic_compliance_group_member", []string{"user_id", "id", "email"}, []string{"created_at", "updated_at"}, map[string]string{"group_id": "group_id", "user_id": "user_id|id", "email": "email", "created_at": "created_at", "updated_at": "updated_at"}, withPathParams("group_id"), withPageCursor()),
 		anthropicListFamily("compliance_organization_setting", "/compliance/organizations/{organization_uuid}/settings", "anthropic_compliance_organization_setting", []string{"name"}, nil, map[string]string{"organization_uuid": "organization_uuid", "setting_name": "name", "setting_type": "type", "setting_value": "value"}, withPathParams("organization_uuid"), withListKeys("settings"), withoutPagination()),
@@ -159,6 +160,23 @@ func rateLimitAttributes() map[string]string {
 		"input_tokens":        "input_tokens",
 		"output_tokens":       "output_tokens",
 		"updated_at":          "updated_at",
+	}
+}
+
+func rolePermissionAttributes() map[string]string {
+	return map[string]string{
+		"organization_uuid":      "organization_uuid",
+		"role_id":                "role_id",
+		"permission_id":          "id|permission_id|permission|name",
+		"permission":             "permission|permission_id|id|name",
+		"permission_name":        "name|permission|permission_id|id",
+		"permission_description": "description",
+		"action":                 "action",
+		"resource_type":          "resource_type|resource",
+		"scope":                  "scope",
+		"category":               "category|type",
+		"created_at":             "created_at",
+		"updated_at":             "updated_at",
 	}
 }
 

@@ -24,6 +24,7 @@ emitted_kinds:
   - anthropic.compliance_organization
   - anthropic.compliance_organization_user
   - anthropic.compliance_role
+  - anthropic.compliance_role_permission
   - anthropic.compliance_group
   - anthropic.compliance_group_member
   - anthropic.compliance_organization_setting
@@ -45,8 +46,8 @@ coverage_contract:
       high_value: true
     - id: compliance_directory
       type: app_entitlement
-      title: Compliance organizations, users, roles, groups, and group members
-      families: [compliance_organization, compliance_organization_user, compliance_role, compliance_group, compliance_group_member]
+      title: Compliance organizations, users, roles, role permissions, groups, and group members
+      families: [compliance_organization, compliance_organization_user, compliance_role, compliance_role_permission, compliance_group, compliance_group_member]
       support: supported
       high_value: true
     - id: compliance_settings
@@ -185,6 +186,9 @@ event_contracts:
     schema_ref: anthropic/compliance_role/v1
     required_attributes: [organization_uuid, role_id]
     required_payload_fields: [id]
+  - kind: anthropic.compliance_role_permission
+    schema_ref: anthropic/compliance_role_permission/v1
+    required_attributes: [organization_uuid, role_id, permission_id]
   - kind: anthropic.compliance_group
     schema_ref: anthropic/compliance_group/v1
     required_attributes: [group_id]

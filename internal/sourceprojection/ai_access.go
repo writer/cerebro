@@ -84,6 +84,10 @@ func anthropicComplianceRoleProjections(event *cerebrov1.EventEnvelope) ([]*port
 	return aiScopedRoleProjections(event, anthropicAccessProfile)
 }
 
+func anthropicComplianceRolePermissionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiRolePermissionProjections(event, anthropicAccessProfile)
+}
+
 func openAIUserRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiSubjectRoleProjections(event, openAIAccessProfile, "user", "organization")
 }
@@ -446,6 +450,57 @@ func aiGroupRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile ai
 		aiLinkRoleToScope(links, tenantID, event, roleURN, orgURN, roleID, "group_role_scope")
 	}
 	aiLinkPrincipalRolesToScope(links, tenantID, event, groupURN, orgURN, roleIDs, "group_organization_role_access")
+	return identityProjectionResult(entities, links)
+}
+
+func aiRolePermissionProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	roleID := aiRoleID(attrs)
+	permissionID := aiRolePermissionID(attrs, event.GetId())
+	if roleID == "" || permissionID == "" {
+		return identityProjectionResult(entities, links)
+	}
+	scopeURN := aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, attrs)
+	roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, attrs, "organization")
+	entitlementURN := projectionURN(tenantID, profile.Provider+"_entitlement", "role_permission", roleID, permissionID)
+	entitlementAttrs := cloneAttributes(attrs)
+	entitlementAttrs["entitlement_id"] = "role_permission:" + roleID + ":" + permissionID
+	entitlementAttrs["entitlement_type"] = "role_permission"
+	entitlementAttrs["permission_id"] = permissionID
+	entitlementAttrs["role_id"] = roleID
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        entitlementURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: profile.Provider + ".entitlement",
+		Label:      firstNonEmpty(attrs["permission_name"], attrs["permission"], permissionID),
+		Attributes: entitlementAttrs,
+	})
+	linkAttrs := aiEventLinkAttributes(event, "role_permission")
+	addProjectedAttribute(linkAttrs, "role_id", roleID)
+	addProjectedAttribute(linkAttrs, "permission_id", permissionID)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, entitlementURN, relationGrantsEntitlement, linkAttrs))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, scopeURN, relationBelongsTo, aiEventLinkAttributes(event, "role_permission_scope")))
+	aiLinkRoleToScope(links, tenantID, event, roleURN, scopeURN, roleID, "role_permission_scope_access")
+	capabilityID := aiRolePermissionCapabilityID(attrs)
+	capabilityURN := projectionURN(tenantID, "privileged_capability", capabilityID)
+	if capabilityURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        capabilityURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "privileged.capability",
+			Label:      strings.ReplaceAll(capabilityID, "_", " "),
+			Attributes: map[string]string{"capability_id": capabilityID},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, capabilityURN, relationConfersCapability, aiEventLinkAttributes(event, "role_permission_capability")))
+	}
 	return identityProjectionResult(entities, links)
 }
 
@@ -959,6 +1014,32 @@ func aiAuditTargetURN(entities map[string]*ports.ProjectedEntity, tenantID strin
 
 func aiRoleID(attrs map[string]string) string {
 	return firstNonEmpty(attrs["role_id"], attrs["role"], attrs["name"], attrs["role_name"], attrs["predefined_role"])
+}
+
+func aiRolePermissionID(attrs map[string]string, fallback string) string {
+	return firstNonEmpty(attrs["permission_id"], attrs["permission"], attrs["permission_name"], attrs["name"], fallback)
+}
+
+func aiRolePermissionCapabilityID(attrs map[string]string) string {
+	normalized := normalizeIdentifier(strings.Join([]string{
+		attrs["permission_id"],
+		attrs["permission"],
+		attrs["permission_name"],
+		attrs["action"],
+		attrs["resource_type"],
+		attrs["scope"],
+		attrs["category"],
+	}, " "))
+	switch {
+	case strings.Contains(normalized, "delete") || strings.Contains(normalized, "destroy") || strings.Contains(normalized, "purge"):
+		return "ai_data_delete"
+	case strings.Contains(normalized, "admin") || strings.Contains(normalized, "manage") || strings.Contains(normalized, "write") || strings.Contains(normalized, "create") || strings.Contains(normalized, "update"):
+		return "ai_admin"
+	case strings.Contains(normalized, "read") || strings.Contains(normalized, "view") || strings.Contains(normalized, "list") || strings.Contains(normalized, "export"):
+		return "ai_data_read"
+	default:
+		return "ai_compliance_access"
+	}
 }
 
 func aiRoleIDsFromAttribute(value string) []string {

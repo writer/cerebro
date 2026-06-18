@@ -251,6 +251,98 @@ func TestReadComplianceOrganizationUsersUsesComplianceKeyAndPageCursor(t *testin
 	}
 }
 
+func TestReadComplianceRolePermissionsUsesRolePathAndPageCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/compliance/organizations/org-uuid-1/roles/rbac_role_123/permissions" {
+			t.Fatalf("request path = %q, want /compliance/organizations/org-uuid-1/roles/rbac_role_123/permissions", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("anthropic-version = %q, want 2023-06-01", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "fixture-compliance-key" {
+			t.Fatalf("x-api-key = %q, want fixture-compliance-key", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":            "perm_read_chats",
+					"name":          "Read chats",
+					"description":   "Read retained chat content.",
+					"action":        "read",
+					"resource_type": "chat",
+				}},
+				"has_more":  true,
+				"next_page": "page-2",
+			})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":            "perm_delete_files",
+					"name":          "Delete files",
+					"action":        "delete",
+					"resource_type": "file",
+				}},
+				"has_more": false,
+			})
+		default:
+			t.Fatalf("page = %q, want empty or page-2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":           "fixture-compliance-key",
+		"base_url":          server.URL,
+		"family":            "compliance_role_permission",
+		"organization_uuid": "org-uuid-1",
+		"per_page":          "2",
+		"role_id":           "rbac_role_123",
+		"tenant_id":         "writer",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("first NextCursor = %q, want page-2", first.NextCursor.GetOpaque())
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	event := first.Events[0]
+	if event.Kind != "anthropic.compliance_role_permission" {
+		t.Fatalf("Kind = %q, want anthropic.compliance_role_permission", event.Kind)
+	}
+	if got := event.Attributes["organization_uuid"]; got != "org-uuid-1" {
+		t.Fatalf("organization_uuid = %q, want org-uuid-1", got)
+	}
+	if got := event.Attributes["role_id"]; got != "rbac_role_123" {
+		t.Fatalf("role_id = %q, want rbac_role_123", got)
+	}
+	if got := event.Attributes["permission_id"]; got != "perm_read_chats" {
+		t.Fatalf("permission_id = %q, want perm_read_chats", got)
+	}
+	if got := event.Attributes["resource_type"]; got != "chat" {
+		t.Fatalf("resource_type = %q, want chat", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+}
+
 func TestReadComplianceOrganizationSettingsUsesSettingsListKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/compliance/organizations/org-uuid-1/settings" {
