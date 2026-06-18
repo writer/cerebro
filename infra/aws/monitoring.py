@@ -1887,12 +1887,14 @@ def _dashboard_body(
         if otel_collector_enabled and otel_collector_log_group_name
         else []
     )
+    otel_product_widgets = _otel_product_metric_widgets(78) if otel_widgets else []
     widgets.extend(otel_widgets)
+    widgets.extend(otel_product_widgets)
     widgets.extend(
         _source_runtime_observability_widgets(
             telemetry_namespace,
             source_runtime_observability,
-            start_y=78 if otel_widgets else 60,
+            start_y=90 if otel_product_widgets else (78 if otel_widgets else 60),
         )
     )
     return json.dumps({"widgets": widgets})
@@ -2052,6 +2054,120 @@ def _otel_collector_observability_widgets(
                             "expression": "SEARCH('{Cerebro/OTEL} MetricName=\"otelcol_receiver_refused_metric_points\"', 'Sum', 60)",
                             "label": "Receiver refused metric points",
                             "id": "e6",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+    ]
+
+
+def _otel_product_metric_widgets(y: int) -> list[dict]:
+    region = aws.get_region().region
+    return [
+        {
+            "type": "metric",
+            "x": 0,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Product Source Runtime",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured} MetricName=\"cerebro.source_runtime.sync.runs\"', 'Sum', 60)",
+                            "label": "Sync runs by source/status",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured} MetricName=\"cerebro.source_runtime.sync.duration\"', 'p95', 60)",
+                            "label": "Sync duration p95",
+                            "id": "e2",
+                            "yAxis": "right",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 12,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Source Records / Freshness",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured,record.kind} MetricName=\"cerebro.source_runtime.records\"', 'Sum', 60)",
+                            "label": "Runtime records by kind",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,status,error_kind,contract_configured} MetricName=\"cerebro.source_runtime.watermark.lag\"', 'Maximum', 60)",
+                            "label": "Watermark lag max",
+                            "id": "e2",
+                            "yAxis": "right",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 0,
+            "y": y + 6,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Projection Runs",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status} MetricName=\"cerebro.source_projection.runs\"', 'Sum', 60)",
+                            "label": "Projection runs by source/event/status",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status} MetricName=\"cerebro.source_projection.duration\"', 'p95', 60)",
+                            "label": "Projection duration p95",
+                            "id": "e2",
+                            "yAxis": "right",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 12,
+            "y": y + 6,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Projection Records",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status,record.kind} MetricName=\"cerebro.source_projection.records\"', 'Sum', 60)",
+                            "label": "Projection records by kind",
+                            "id": "e1",
                         }
                     ],
                 ],

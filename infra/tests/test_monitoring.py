@@ -234,11 +234,44 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("OTEL Collector Queue", body)
         self.assertIn("OTEL Collector Refused / Failed", body)
         self.assertIn("OTEL Collector Recent Logs", body)
+        self.assertIn("OTEL Product Source Runtime", body)
+        self.assertIn("OTEL Source Records / Freshness", body)
+        self.assertIn("OTEL Projection Runs", body)
+        self.assertIn("OTEL Projection Records", body)
         self.assertIn("ECS/ContainerInsights", body)
         self.assertIn("OtelCollectorErrors", body)
         self.assertIn("otelcol_exporter_queue_size", body)
         self.assertIn("otelcol_exporter_send_failed_spans", body)
+        self.assertIn("cerebro.source_runtime.sync.runs", body)
+        self.assertIn("cerebro.source_runtime.records", body)
+        self.assertIn("cerebro.source_runtime.watermark.lag", body)
+        self.assertIn("cerebro.source_projection.records", body)
         self.assertIn("/ecs/cerebro-test/otel-collector", body)
+
+    def test_otel_product_metric_widgets_follow_collector_widgets(self) -> None:
+        class Region:
+            region = "us-east-1"
+
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: Region()
+        try:
+            widgets = monitoring._otel_product_metric_widgets(78)
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertEqual([widget["properties"]["title"] for widget in widgets], [
+            "OTEL Product Source Runtime",
+            "OTEL Source Records / Freshness",
+            "OTEL Projection Runs",
+            "OTEL Projection Records",
+        ])
+        self.assertEqual({widget["y"] for widget in widgets}, {78, 84})
+        body = json.dumps({"widgets": widgets})
+        self.assertIn("source_id,status,error_kind,contract_configured", body)
+        self.assertIn("source_id,event_kind,status,record.kind", body)
+        self.assertNotIn("tenant_id", body)
+        self.assertNotIn("runtime_id", body)
+        self.assertNotIn("resource_urn", body)
 
     def test_otel_collector_metric_filters_roll_up_to_single_metric(self) -> None:
         calls: list[dict] = []
