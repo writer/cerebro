@@ -70,7 +70,9 @@ func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
 		{name: "glob-prefixed internal", ignored: "**/internal/**", forbidden: "internal/", want: true},
 		{name: "blanket recursive wildcard", ignored: "**", forbidden: "api/", want: true},
 		{name: "blanket recursive files", ignored: "**/*", forbidden: "internal/", want: true},
+		{name: "blanket wildcard segments", ignored: "*/**", forbidden: "tools/", want: true},
 		{name: "brace includes api", ignored: "{api,vendor}/**", forbidden: "api/", want: true},
+		{name: "brace includes sources", ignored: "{sources,vendor}/**", forbidden: "sources/", want: true},
 		{name: "brace excludes internal", ignored: "{api,vendor}/**", forbidden: "internal/"},
 		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
 		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
@@ -105,7 +107,7 @@ func deepsecIgnorePathTouchesSurface(ignored string, forbidden string) bool {
 		return false
 	}
 	for _, candidate := range deepsecIgnorePathCandidates(normalized) {
-		if candidate == "*" || candidate == "**" || candidate == "**/*" {
+		if deepsecIgnorePathCandidateIsBlanket(candidate) {
 			return true
 		}
 		if candidate == surface || strings.HasPrefix(candidate, surface+"/") {
@@ -116,6 +118,22 @@ func deepsecIgnorePathTouchesSurface(ignored string, forbidden string) bool {
 		}
 	}
 	return false
+}
+
+func deepsecIgnorePathCandidateIsBlanket(candidate string) bool {
+	segments := strings.Split(strings.Trim(candidate, "/"), "/")
+	hasSegment := false
+	for _, segment := range segments {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		hasSegment = true
+		if segment != "*" && segment != "**" {
+			return false
+		}
+	}
+	return hasSegment
 }
 
 func deepsecIgnorePathCandidates(pattern string) []string {
