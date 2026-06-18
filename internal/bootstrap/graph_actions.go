@@ -2,18 +2,14 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"connectrpc.com/connect"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/sourcehttp/accessapprovalsclient"
 )
 
 func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +23,7 @@ func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
 		writeGraphActionError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusAccepted, graphActionResponseProto(result))
+	writeProtoJSON(w, http.StatusAccepted, graphactionapi.ResponseMessage(result, findingMessage(result.Finding)))
 }
 
 func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.Request[cerebrov1.ExecuteGraphActionRequest]) (*connect.Response[cerebrov1.ExecuteGraphActionResponse], error) {
@@ -39,56 +35,22 @@ func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, graphActionConnectError(err)
 	}
-	return connect.NewResponse(graphActionResponseProto(result)), nil
+	return connect.NewResponse(graphactionapi.ResponseMessage(result, findingMessage(result.Finding))), nil
 }
 
 func (a *App) executeGraphAction(ctx context.Context, input graphactions.Input) (*graphactions.Result, error) {
-	input.FindingID = strings.TrimSpace(input.FindingID)
-	if input.FindingID == "" {
-		return nil, fmt.Errorf("%w: finding_id is required", graphactions.ErrInvalidRequest)
-	}
-	if err := authorizeFindingIDTenant(ctx, findingStore(a.deps.StateStore), input.FindingID); err != nil {
-		return nil, normalizeIDLookupError(err, ports.ErrFindingNotFound)
-	}
-	service, err := a.graphActionService()
-	if err != nil {
-		return nil, err
-	}
-	result, err := service.Execute(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	if result.Finding != nil {
-		bumpGRCCacheForFinding(ctx, a.deps.QueryCache, result.Finding)
-	}
-	return result, nil
-}
-
-func (a *App) graphActionService() (*graphactions.Service, error) {
-	if a != nil && a.services.graphActions != nil {
-		return a.services.graphActions, nil
-	}
-	return a.newGraphActionService()
-}
-
-func (a *App) newGraphActionService() (*graphactions.Service, error) {
-	client, err := accessapprovalsclient.New(a.cfg.GraphActions.AccessApprovals)
-	if err != nil {
-		return nil, err
-	}
-	return &graphactions.Service{Findings: a.findingService(), Client: client}, nil
-}
-
-func graphActionsConfigured(cfg config.AccessApprovalsActionConfig) bool {
-	return strings.TrimSpace(cfg.BaseURL) != "" && strings.TrimSpace(cfg.BearerToken) != ""
-}
-
-func graphActionResponseProto(result *graphactions.Result) *cerebrov1.ExecuteGraphActionResponse {
-	var finding *cerebrov1.Finding
-	if result != nil {
-		finding = findingMessage(result.Finding)
-	}
-	return graphactionapi.ResponseMessage(result, finding)
+	return graphactionapi.Executor{
+		Service: a.services.graphActions,
+		NewService: func() (*graphactions.Service, error) {
+			return graphactionapi.NewAccessApprovalsService(a.cfg.GraphActions.AccessApprovals, a.findingService())
+		},
+		AuthorizeFinding: func(ctx context.Context, findingID string) error {
+			return normalizeIDLookupError(authorizeFindingIDTenant(ctx, findingStore(a.deps.StateStore), findingID), ports.ErrFindingNotFound)
+		},
+		BumpFinding: func(ctx context.Context, finding *ports.FindingRecord) {
+			bumpGRCCacheForFinding(ctx, a.deps.QueryCache, finding)
+		},
+	}.Execute(ctx, input)
 }
 
 func writeGraphActionError(w http.ResponseWriter, err error) {

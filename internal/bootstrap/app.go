@@ -31,6 +31,7 @@ import (
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findingapi"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -221,8 +222,8 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
 	app.services.graphQueries = app.newGraphQueryService()
-	if graphActionsConfigured(app.cfg.GraphActions.AccessApprovals) {
-		graphActions, err := app.newGraphActionService()
+	if graphactionapi.AccessApprovalsConfigured(app.cfg.GraphActions.AccessApprovals) {
+		graphActions, err := graphactionapi.NewAccessApprovalsService(app.cfg.GraphActions.AccessApprovals, app.findingService())
 		if err != nil {
 			return nil, fmt.Errorf("graph actions bootstrap failed: %w", err)
 		}
