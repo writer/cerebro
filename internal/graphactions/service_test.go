@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -229,8 +231,8 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 
 func TestDefaultRegistryComesFromGeneratedCatalogMetadata(t *testing.T) {
 	specs := KnownActionSpecs()
-	if len(specs) != 2 {
-		t.Fatalf("KnownActionSpecs() len = %d, want 2", len(specs))
+	if len(specs) != 3 {
+		t.Fatalf("KnownActionSpecs() len = %d, want 3", len(specs))
 	}
 	spec, err := DefaultRegistry().Lookup(ActionIdentityOktaSuspendUser)
 	if err != nil {
@@ -241,6 +243,137 @@ func TestDefaultRegistryComesFromGeneratedCatalogMetadata(t *testing.T) {
 	}
 	if spec.Effect != "deny_access" || !spec.Destructive || spec.ReversibleBy != ActionIdentityOktaUnsuspendUser {
 		t.Fatalf("generated suspend metadata = %#v, want destructive deny_access with unsuspend reversal", spec)
+	}
+	deviceSpec, err := DefaultRegistry().Lookup(ActionEndpointCerebroRevokeDevice)
+	if err != nil {
+		t.Fatalf("Lookup(device) error = %v", err)
+	}
+	if deviceSpec.Provider != ProviderCerebroDeviceAuth || deviceSpec.ProviderAction != CerebroDeviceActionRevoke || deviceSpec.TargetKind != TargetKindCerebroDevice {
+		t.Fatalf("generated device spec = %#v, want cerebro-device-auth revoke Cerebro device", deviceSpec)
+	}
+	if deviceSpec.Effect != "deny_device_access" || !deviceSpec.Destructive || deviceSpec.ReversibleBy != "" {
+		t.Fatalf("generated device metadata = %#v, want destructive deny_device_access without reversal", deviceSpec)
+	}
+}
+
+func TestCerebroDeviceTargetForFindingDerivesTenantScopedDevice(t *testing.T) {
+	finding := &ports.FindingRecord{
+		TenantID:     "tenant-a",
+		ResourceURNs: []string{"urn:cerebro:tenant-a:cerebro_device:dev-1"},
+		Attributes: map[string]string{
+			"cerebro_device_id": "dev-1",
+		},
+	}
+	target, err := CerebroDeviceTargetForFinding(finding, "")
+	if err != nil {
+		t.Fatalf("CerebroDeviceTargetForFinding() error = %v", err)
+	}
+	if target != "dev-1" {
+		t.Fatalf("target = %q, want dev-1", target)
+	}
+	target, err = CerebroDeviceTargetForFinding(finding, "dev-1")
+	if err != nil {
+		t.Fatalf("CerebroDeviceTargetForFinding(explicit) error = %v", err)
+	}
+	if target != "dev-1" {
+		t.Fatalf("explicit target = %q, want dev-1", target)
+	}
+}
+
+func TestCerebroDeviceTargetForFindingRejectsCrossFindingTarget(t *testing.T) {
+	finding := &ports.FindingRecord{
+		TenantID:     "tenant-a",
+		ResourceURNs: []string{"urn:cerebro:tenant-b:cerebro_device:dev-2"},
+		Attributes: map[string]string{
+			"cerebro_device_id": "dev-1",
+		},
+	}
+	_, err := CerebroDeviceTargetForFinding(finding, "dev-2")
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("CerebroDeviceTargetForFinding() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestServiceExecuteRevokesCerebroDeviceProvider(t *testing.T) {
+	now := time.Date(2026, 6, 18, 14, 0, 0, 0, time.UTC)
+	deviceService := &stubCerebroDeviceService{devices: map[string]deviceauth.DeviceRecord{
+		"dev-1": {DeviceID: "dev-1", TenantID: "tenant-a", Status: "active", Hostname: "laptop-1"},
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		RuleID:   "rule-1",
+		Attributes: map[string]string{
+			"cerebro_device_id":     "dev-1",
+			"graph_actions_allowed": ActionEndpointCerebroRevokeDevice,
+		},
+	}}
+	result, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			ProviderCerebroDeviceAuth: CerebroDeviceProvider{Service: deviceService, Now: func() time.Time { return now }},
+		},
+	}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    ActionEndpointCerebroRevokeDevice,
+		Reason:    "compromised device",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if deviceService.revokedDeviceID != "dev-1" || deviceService.revokeReason != "compromised device" {
+		t.Fatalf("revoked device/reason = %q/%q, want dev-1/compromised device", deviceService.revokedDeviceID, deviceService.revokeReason)
+	}
+	if result == nil || result.Action == nil || result.Action.Provider != ProviderCerebroDeviceAuth || result.Action.ExternalStatus != "revoked" {
+		t.Fatalf("Execute() result = %#v, want revoked Cerebro device action", result)
+	}
+	if result.Action.ExternalID != CerebroDeviceExternalID("dev-1") || workflow.ref.ExternalID != CerebroDeviceExternalID("dev-1") {
+		t.Fatalf("external ids = result %q ref %q, want deterministic device action id", result.Action.ExternalID, workflow.ref.ExternalID)
+	}
+	if workflow.ref.System != ProviderCerebroDeviceAuth || workflow.ref.ExternalStatus != "revoked" {
+		t.Fatalf("linked ref = %#v, want cerebro-device-auth revoked ref", workflow.ref)
+	}
+}
+
+func TestServiceReconcileRefreshesCerebroDeviceStatus(t *testing.T) {
+	deviceService := &stubCerebroDeviceService{devices: map[string]deviceauth.DeviceRecord{
+		"dev-1": {DeviceID: "dev-1", TenantID: "tenant-a", Status: "revoked", RevokedAt: time.Date(2026, 6, 18, 14, 0, 0, 0, time.UTC)},
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		RuleID:   "rule-1",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     ProviderCerebroDeviceAuth,
+				Kind:       RefKind,
+				ExternalID: CerebroDeviceExternalID("dev-1"),
+			}},
+		},
+		Attributes: map[string]string{
+			"cerebro_device_id":     "dev-1",
+			"graph_actions_allowed": ActionEndpointCerebroRevokeDevice,
+		},
+	}}
+	result, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			ProviderCerebroDeviceAuth: CerebroDeviceProvider{Service: deviceService},
+		},
+	}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: CerebroDeviceExternalID("dev-1"),
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if result == nil || result.Action == nil || result.Action.Status != "succeeded" || result.Action.ExternalStatus != "revoked" {
+		t.Fatalf("Reconcile() result = %#v, want succeeded revoked action", result)
+	}
+	if workflow.ref.System != ProviderCerebroDeviceAuth || workflow.ref.ExternalStatus != "revoked" {
+		t.Fatalf("linked ref = %#v, want refreshed device ref", workflow.ref)
 	}
 }
 
@@ -441,6 +574,57 @@ func TestServiceReconcileRejectsLinkedProviderMismatch(t *testing.T) {
 	}
 	if workflow.ref.ExternalID != "" {
 		t.Fatalf("reconcile linked ref despite provider mismatch: %#v", workflow.ref)
+	}
+}
+
+func TestServiceReconcileRejectsProviderTenantMismatch(t *testing.T) {
+	const actionID = "identity.generic.lock_user"
+	provider := &stubActionProvider{getAction: &GraphAction{
+		ID:         "provider-action-1",
+		Action:     actionID,
+		Provider:   "generic-idp",
+		Target:     "generic-user-1",
+		ExternalID: "provider-action-1",
+		Metadata:   map[string]string{"tenant_id": "tenant-b"},
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		RuleID:   "rule-1",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     "generic-idp",
+				Kind:       RefKind,
+				ExternalID: "provider-action-1",
+			}},
+		},
+		Attributes: map[string]string{"graph_actions_allowed": actionID},
+	}}
+	_, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			"generic-idp": provider,
+		},
+		Registry: Registry{actions: map[string]ActionSpec{
+			actionID: {
+				ID:               actionID,
+				Provider:         "generic-idp",
+				ProviderAction:   "lock",
+				TargetKind:       "identity.generic.user",
+				ResolveTarget:    echoExplicitTarget,
+				CheckEligibility: FindingAllowsAction,
+			},
+		}},
+	}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: "provider-action-1",
+	})
+	if !errors.Is(err, ErrRemote) {
+		t.Fatalf("Reconcile() error = %v, want ErrRemote", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("reconcile linked ref despite provider tenant mismatch: %#v", workflow.ref)
 	}
 }
 
@@ -648,6 +832,33 @@ func (s *stubActionProvider) ExecuteGraphAction(_ context.Context, spec ActionSp
 
 func (s *stubActionProvider) GetGraphAction(context.Context, string) (*GraphAction, error) {
 	return s.getAction, nil
+}
+
+type stubCerebroDeviceService struct {
+	devices         map[string]deviceauth.DeviceRecord
+	revokedDeviceID string
+	revokeReason    string
+}
+
+func (s *stubCerebroDeviceService) LookupDevice(_ context.Context, deviceID string) (deviceauth.DeviceRecord, error) {
+	device, ok := s.devices[deviceID]
+	if !ok {
+		return deviceauth.DeviceRecord{}, deviceauth.ErrDeviceNotFound
+	}
+	return device, nil
+}
+
+func (s *stubCerebroDeviceService) Revoke(_ context.Context, deviceID string, reason string) error {
+	device, ok := s.devices[deviceID]
+	if !ok {
+		return deviceauth.ErrDeviceNotFound
+	}
+	s.revokedDeviceID = deviceID
+	s.revokeReason = reason
+	device.Status = "revoked"
+	device.RevokedAt = time.Date(2026, 6, 18, 14, 0, 0, 0, time.UTC)
+	s.devices[deviceID] = device
+	return nil
 }
 
 func fixedTarget(target string) TargetResolver {

@@ -109,12 +109,14 @@ ledger:
 | Plan or triage | Read findings and graph neighborhoods |
 | Investigate | Read source-runtime claims, graph paths, and finding evidence |
 | Recommend | Write `/platform/knowledge/actions` recommendation records |
-| Execute | Use the responsible actuator, such as `secheck` for local package remediation |
+| Execute | Use the responsible actuator, such as `secheck` for local package remediation, or the finding-scoped `endpoint.cerebro.revoke_device` graph action for Cerebro device-auth revocation |
 | Close loop | Write `/platform/knowledge/outcomes` and endpoint telemetry action outcomes |
 
 Agents should not directly mutate endpoint state unless the responsible endpoint
 actuator enforces its local safety model. For `secheck`, that means the MCP
-`auto_fix_vulnerability` tool still requires `user_approved: true`.
+`auto_fix_vulnerability` tool still requires `user_approved: true`; for Cerebro
+device-auth revocation, the graph action still requires an eligible finding,
+`cerebro.graph_actions.write`, and the action-ladder approval contract.
 
 ## Privacy And Retention Boundaries
 

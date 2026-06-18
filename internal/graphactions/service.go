@@ -20,10 +20,12 @@ import (
 const (
 	AccessApprovalsActionSuspend   = "suspend"
 	AccessApprovalsActionUnsuspend = "unsuspend"
+	CerebroDeviceActionRevoke      = "revoke"
 
-	ProviderAccessApprovals = "access-approvals"
-	Source                  = "cerebro:graph_action"
-	RefKind                 = "graph_action"
+	ProviderAccessApprovals   = "access-approvals"
+	ProviderCerebroDeviceAuth = "cerebro-device-auth"
+	Source                    = "cerebro:graph_action"
+	RefKind                   = "graph_action"
 
 	maxTargetLen = 512
 	maxReasonLen = 2048
@@ -292,6 +294,9 @@ func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, 
 	if err := normalizeProviderGraphAction(spec, graphAction, ""); err != nil {
 		return nil, err
 	}
+	if err := validateProviderTenant(graphAction, finding); err != nil {
+		return nil, err
+	}
 	if err := checkSpecEligibility(spec, finding); err != nil {
 		return nil, err
 	}
@@ -352,6 +357,20 @@ func normalizeProviderGraphAction(spec ActionSpec, action *GraphAction, fallback
 	}
 	if strings.TrimSpace(action.ExternalID) == "" {
 		action.ExternalID = strings.TrimSpace(action.ID)
+	}
+	return nil
+}
+
+func validateProviderTenant(action *GraphAction, finding *ports.FindingRecord) error {
+	if action == nil || finding == nil {
+		return nil
+	}
+	actionTenant := strings.TrimSpace(action.Metadata["tenant_id"])
+	if actionTenant == "" {
+		return nil
+	}
+	if actionTenant != strings.TrimSpace(finding.TenantID) {
+		return fmt.Errorf("%w: provider action tenant does not match finding tenant", ErrRemote)
 	}
 	return nil
 }
@@ -456,6 +475,111 @@ func OktaUserTargetForFinding(finding *ports.FindingRecord, explicit string) (st
 		}
 	}
 	return "", fmt.Errorf("%w: email_or_user_id is required or no Okta user target could be derived from finding", ErrInvalidRequest)
+}
+
+func CerebroDeviceTargetForFinding(finding *ports.FindingRecord, explicit string) (string, error) {
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" {
+		normalized, err := NormalizeDeviceTarget(explicit)
+		if err != nil {
+			return "", err
+		}
+		if !deviceTargetMatchesFinding(finding, normalized) {
+			return "", fmt.Errorf("%w: target does not match authorized finding device", ErrInvalidRequest)
+		}
+		return normalized, nil
+	}
+	for _, candidate := range deviceTargetCandidates(finding) {
+		normalized, err := NormalizeDeviceTarget(candidate)
+		if err == nil {
+			return normalized, nil
+		}
+	}
+	return "", fmt.Errorf("%w: device_id is required or no Cerebro device target could be derived from finding", ErrInvalidRequest)
+}
+
+func NormalizeDeviceTarget(target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("%w: device_id is required", ErrInvalidRequest)
+	}
+	if len(target) > maxTargetLen || !utf8.ValidString(target) || strings.ContainsAny(target, "\x00\r\n:") {
+		return "", fmt.Errorf("%w: device_id is invalid", ErrInvalidRequest)
+	}
+	if strings.IndexFunc(target, unicode.IsSpace) >= 0 || strings.ContainsAny(target, "<>") {
+		return "", fmt.Errorf("%w: device_id is invalid", ErrInvalidRequest)
+	}
+	return target, nil
+}
+
+func deviceTargetMatchesFinding(finding *ports.FindingRecord, target string) bool {
+	target = strings.TrimSpace(target)
+	if finding == nil || target == "" {
+		return false
+	}
+	for _, candidate := range deviceTargetCandidates(finding) {
+		normalized, err := NormalizeDeviceTarget(candidate)
+		if err == nil && normalized == target {
+			return true
+		}
+	}
+	return false
+}
+
+func deviceTargetCandidates(finding *ports.FindingRecord) []string {
+	candidates := []string{}
+	if finding == nil {
+		return candidates
+	}
+	attrs := finding.Attributes
+	for _, key := range []string{"cerebro_device_id", "deviceauth_device_id", "platform_device_id", "device_id"} {
+		candidates = append(candidates, attrs[key])
+	}
+	tenantID := strings.TrimSpace(finding.TenantID)
+	for _, key := range []string{"cerebro_device_urn", "deviceauth_device_urn", "primary_resource_urn", "endpoint_urn"} {
+		candidates = append(candidates, deviceCandidatesFromDelimited(tenantID, attrs[key])...)
+	}
+	for _, urn := range finding.ResourceURNs {
+		if candidate := deviceCandidateFromURN(tenantID, urn); candidate != "" {
+			candidates = append(candidates, candidate)
+		}
+	}
+	return candidates
+}
+
+func deviceCandidatesFromDelimited(tenantID string, raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == '\n' || r == '\t' })
+	candidates := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "urn:cerebro:") {
+			if candidate := deviceCandidateFromURN(tenantID, part); candidate != "" {
+				candidates = append(candidates, candidate)
+			}
+			continue
+		}
+		candidates = append(candidates, part)
+	}
+	return candidates
+}
+
+func deviceCandidateFromURN(tenantID string, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || (!strings.Contains(raw, ":cerebro_device:") && !strings.Contains(raw, ":deviceauth_device:") && !strings.Contains(raw, ":endpoint.cerebro.device:")) {
+		return ""
+	}
+	if urnTenantID(raw) != strings.TrimSpace(tenantID) {
+		return ""
+	}
+	index := strings.LastIndex(raw, ":")
+	if index < 0 || index == len(raw)-1 {
+		return ""
+	}
+	return raw[index+1:]
 }
 
 func targetMatchesFinding(finding *ports.FindingRecord, target string) bool {

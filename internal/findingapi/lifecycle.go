@@ -161,6 +161,10 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	if err := graphactions.ValidateActionForFinding(graphAction, finding); err != nil {
 		return err
 	}
+	spec, err := graphactions.DefaultRegistry().Lookup(graphAction)
+	if err != nil {
+		return err
+	}
 	target, err := MCPGraphActionTarget(args, finding)
 	if err != nil {
 		return err
@@ -176,9 +180,9 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	proposal["required_scope"] = requiredScope
 	proposal["approval_required"] = true
 	proposal["handoff_required"] = true
-	proposal["external_system"] = graphactions.ProviderAccessApprovals
+	proposal["external_system"] = spec.Provider
 	proposal["external_ref_kind"] = graphactions.RefKind
-	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
+	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through " + spec.Provider + "; this dry run does not mutate the provider or Cerebro."
 	return nil
 }
 

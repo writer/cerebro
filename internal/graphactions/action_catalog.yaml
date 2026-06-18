@@ -26,3 +26,15 @@ actions:
     effect: restore_access
     destructive: false
     reversible_by: identity.okta.suspend_user
+  - id: endpoint.cerebro.revoke_device
+    const_name: ActionEndpointCerebroRevokeDevice
+    provider: cerebro-device-auth
+    provider_const: ProviderCerebroDeviceAuth
+    provider_action: revoke
+    provider_action_const: CerebroDeviceActionRevoke
+    target_kind: endpoint.cerebro.device
+    target_kind_const: TargetKindCerebroDevice
+    target_resolver: CerebroDeviceTargetForFinding
+    eligibility_checker: FindingAllowsAction
+    effect: deny_device_access
+    destructive: true
