@@ -70,10 +70,7 @@ func requestOriginTrustsProxy(remoteIP net.IP, cfg config.RequestOriginConfig) b
 			return true
 		}
 	}
-	if len(cfg.TrustedProxyCIDRs) > 0 {
-		return false
-	}
-	return remoteIP.IsLoopback() || remoteIP.IsPrivate() || remoteIP.IsLinkLocalUnicast()
+	return false
 }
 
 func normalizedPublicOrigin(raw string) *url.URL {
@@ -143,7 +140,7 @@ func forwardedClientIP(header string, cfg config.RequestOriginConfig) string {
 	}
 	for i := len(parts) - 1; i >= 0; i-- {
 		ip := net.ParseIP(strings.TrimSpace(parts[i]))
-		if ip != nil && !accessAuditTrustsForwardedFor(ip) {
+		if ip != nil && !forwardedHopTrusted(ip, cfg) {
 			return ip.String()
 		}
 	}
@@ -172,8 +169,5 @@ func forwardedHopTrusted(ip net.IP, cfg config.RequestOriginConfig) bool {
 			return true
 		}
 	}
-	if len(cfg.TrustedProxyCIDRs) > 0 {
-		return false
-	}
-	return accessAuditTrustsForwardedFor(ip)
+	return false
 }

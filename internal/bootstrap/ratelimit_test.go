@@ -57,6 +57,38 @@ func TestRateLimiterExemptsHealthPaths(t *testing.T) {
 	}
 }
 
+func TestRateLimiterChargesReadinessWhenNotExempt(t *testing.T) {
+	cfg := config.RateLimitConfig{
+		Enabled:           true,
+		RequestsPerSecond: 1,
+		BurstSize:         1,
+		ExemptPaths:       []string{"/healthz", "/livez", "/metrics", "/.well-known/"},
+	}
+	rl := newRateLimiter(cfg, config.RequestOriginConfig{})
+
+	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i, want := range []int{http.StatusOK, http.StatusTooManyRequests} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/health", nil)
+		handler.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Fatalf("readiness request %d status = %d, want %d", i+1, rec.Code, want)
+		}
+	}
+
+	for i := 0; i < 10; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/healthz", nil)
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("liveness request %d status = %d, want 200", i+1, rec.Code)
+		}
+	}
+}
+
 func TestRateLimiterExemptsWellKnownPaths(t *testing.T) {
 	cfg := config.RateLimitConfig{
 		Enabled:           true,

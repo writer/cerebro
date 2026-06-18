@@ -214,7 +214,7 @@ func httpRequestWideAttributes(r *http.Request, method string, route string) tel
 		telemetry.Field{Key: "http.request.header.accept", Value: requestHeader(r, "Accept")},
 		telemetry.Field{Key: "http.request.header.accept_encoding", Value: requestHeader(r, "Accept-Encoding")},
 		telemetry.Field{Key: "http.request.header.content_type", Value: requestHeader(r, "Content-Type")},
-		telemetry.Field{Key: "http.request.header.user_agent", Value: requestHeader(r, "User-Agent")},
+		telemetry.Field{Key: "http.request.header.user_agent.present", Value: requestHeader(r, "User-Agent") != ""},
 		telemetry.Field{Key: "user_agent.family", Value: userAgentFamily(requestHeader(r, "User-Agent"))},
 		telemetry.Field{Key: "client.address_hash", Value: remoteAddressHash(r)},
 	))

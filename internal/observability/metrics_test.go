@@ -121,10 +121,11 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 		"http.request.id.present":  true,
 		"http.request.header.traceparent.present":     true,
 		"http.request.header.x_amzn_trace_id.present": false,
+		"http.request.header.x_request_id.present":    true,
 		"http.request.header.accept":                  "application/json",
 		"http.request.header.accept_encoding":         "gzip",
 		"http.request.header.content_type":            "application/json",
-		"http.request.header.user_agent":              "curl/8.0",
+		"http.request.header.user_agent.present":      true,
 		"http.request.auth_header.present":            true,
 		"user_agent.family":                           "curl",
 		"cache.redis.hit.count":                       float64(1),
@@ -143,6 +144,9 @@ func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 	}
 	if got, ok := payload["http.request.id_hash"].(string); !ok || got == "" || strings.Contains(got, "request-123") {
 		t.Fatalf("request id hash = %#v, want non-empty hash without raw id; payload=%#v", payload["http.request.id_hash"], payload)
+	}
+	if strings.Contains(stderr, "curl/8.0") {
+		t.Fatalf("raw user-agent leaked into telemetry: %s", stderr)
 	}
 }
 

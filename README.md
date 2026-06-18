@@ -159,7 +159,7 @@ Core runtime and store variables:
 | `CEREBRO_CAPABILITY_TOKEN_SECRETS` | comma-separated HMAC secrets for capability-token auth | unset |
 | `CEREBRO_CAPABILITY_TOKEN_AUDIENCE` | expected capability-token audience | `cerebro-api` |
 | `CEREBRO_PUBLIC_ORIGIN` | canonical external origin for DPoP and proxy-aware URL reconstruction | request host |
-| `CEREBRO_TRUSTED_PROXY_CIDRS` | comma-separated trusted proxy/load-balancer CIDRs for forwarded headers | private/link-local remotes |
+| `CEREBRO_TRUSTED_PROXY_CIDRS` | comma-separated trusted proxy/load-balancer CIDRs for forwarded headers | unset |
 | `CEREBRO_TRUSTED_PROXY_COUNT` | trusted trailing `X-Forwarded-For` hops | `0` |
 | `CEREBRO_RATE_LIMIT_ENABLED` | enable global API rate limiting | `true` outside acknowledged dev mode |
 | `CEREBRO_RATE_LIMIT_RPS` | global API rate-limit refill rate | `100` |
