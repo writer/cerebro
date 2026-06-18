@@ -21,6 +21,8 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	resourceURN := firstNonEmpty(attributes["resource_urn"], attributes["workload_urn"])
 	explicitResourceURN := resourceURN != ""
 	resourceLinkStatusInput := strings.ToLower(strings.TrimSpace(attributes["resource_link_status"]))
+	resourceContextSupplied := firstNonEmpty(attributes["resource_urn"], attributes["workload_urn"], attributes["resource_id"]) != "" ||
+		strings.EqualFold(strings.TrimSpace(attributes["unresolved_resource_context"]), "true")
 	resourceUnresolved := strings.EqualFold(strings.TrimSpace(attributes["unresolved_resource_context"]), "true") || resourceLinkStatusInput == "missing"
 	if resourceURN == "" && !isEvidenceCAS && !resourceUnresolved {
 		resourceURN = projectionURN(tenantID, "runtime_"+normalizeCloudType(firstNonEmpty(attributes["resource_type"], "resource")), firstNonEmpty(attributes["resource_id"], attributes["resource_name"], evidenceID))
@@ -43,7 +45,8 @@ func runtimeEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		}
 	}
 	evidenceLinkState := "linked"
-	if resourceLinkStatus == "missing" || caseLinkStatus == "missing" {
+	resourceLinkUnresolved := resourceLinkStatus == "missing" && (!isEvidenceCAS || resourceContextSupplied)
+	if resourceLinkUnresolved || caseLinkStatus == "missing" {
 		evidenceLinkState = "unresolved"
 	}
 	if evidenceURN != "" {

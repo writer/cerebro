@@ -5292,6 +5292,34 @@ func TestProjectEvidenceCASStampsNormalizedLinkState(t *testing.T) {
 	if got := unresolved.Attributes["evidence_link_state"]; got != "unresolved" {
 		t.Fatalf("unresolved evidence_link_state = %q, want unresolved", got)
 	}
+
+	bareState := &projectionRecorder{}
+	service = New(bareState, nil)
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-bare",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"evidence_cas_digest":   "sha256bare",
+			"evidence_cas_ref_type": "evidencecas.manifest.v2",
+			"evidence_cas_uri":      "evidencecas://evidence/evidence-bare",
+			"evidence_id":           "evidence-bare",
+			"resource_link_status":  "missing",
+			"source_event_id":       "iris-event-bare",
+			"source_runtime_id":     "iris-runtime",
+			"source_system":         "iris",
+		},
+	}); err != nil {
+		t.Fatalf("Project(bare) error = %v", err)
+	}
+	bare := bareState.entities["urn:cerebro:writer:runtime_evidence:evidence-bare"]
+	if bare == nil {
+		t.Fatal("bare runtime evidence entity missing")
+	}
+	if got := bare.Attributes["evidence_link_state"]; got != "linked" {
+		t.Fatalf("bare evidence_link_state = %q, want linked", got)
+	}
 }
 
 func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T) {
