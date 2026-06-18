@@ -169,6 +169,51 @@ func projectionRecorderCleanupMatches(request ports.ProjectionCleanupRequest, en
 	return false
 }
 
+func TestProjectionRetractionReason(t *testing.T) {
+	cases := []struct {
+		name  string
+		links []*ports.ProjectedLink
+		want  string
+	}{
+		{
+			name: "cloudflare dns reassignment",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "cloudflare_dns_record_zone_reassigned"},
+			}},
+			want: "cloudflare_dns_record_zone_reassigned",
+		},
+		{
+			name: "endpoint owner",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "endpoint_owner_id"},
+			}},
+			want: "endpoint_owner_id",
+		},
+		{
+			name: "mixed",
+			links: []*ports.ProjectedLink{
+				{Attributes: map[string]string{"retraction": "endpoint_owner_id"}},
+				{Attributes: map[string]string{"retraction": "cloudflare_dns_record_zone_reassigned"}},
+			},
+			want: "mixed",
+		},
+		{
+			name: "unknown",
+			links: []*ports.ProjectedLink{{
+				Attributes: map[string]string{"retraction": "legacy"},
+			}},
+			want: "unknown",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := projectionRetractionReason(tc.links); got != tc.want {
+				t.Fatalf("projectionRetractionReason() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIdentifierEvidenceAttributesMarksEmailAsGlobalCrossSource(t *testing.T) {
 	attrs := identifierEvidenceAttributes(" Alice@Writer.COM ", "identifier.email", "alice@writer.com", "event-1", nil)
 

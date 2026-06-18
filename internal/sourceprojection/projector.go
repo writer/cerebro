@@ -118,7 +118,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 			telemetry.Field{Key: "source_id", Value: event.GetSourceId()},
 			telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])},
 			telemetry.Field{Key: "event_kind", Value: event.GetKind()},
-			telemetry.Field{Key: "reason", Value: "endpoint_owner_id"},
+			telemetry.Field{Key: "reason", Value: projectionRetractionReason(retractedLinks)},
 			telemetry.Field{Key: "links_matched", Value: len(retractedLinks)},
 			telemetry.Field{Key: "links_deleted", Value: retractedLinksDeleted},
 		)
@@ -163,6 +163,39 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesDeleted:   entitiesDeleted,
 		LinksDeleted:      cleanupDeleted.LinksDeleted + retractedLinksDeleted,
 	}, nil
+}
+
+func projectionRetractionReason(links []*ports.ProjectedLink) string {
+	reason := ""
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		next := boundedProjectionRetractionReason(link.Attributes["retraction"])
+		if next == "unknown" {
+			continue
+		}
+		if reason == "" {
+			reason = next
+			continue
+		}
+		if reason != next {
+			return "mixed"
+		}
+	}
+	if reason == "" {
+		return "unknown"
+	}
+	return reason
+}
+
+func boundedProjectionRetractionReason(value string) string {
+	switch strings.TrimSpace(value) {
+	case "endpoint_owner_id", "cloudflare_dns_record_zone_reassigned":
+		return strings.TrimSpace(value)
+	default:
+		return "unknown"
+	}
 }
 
 func boundedUint32(value int) uint32 {
