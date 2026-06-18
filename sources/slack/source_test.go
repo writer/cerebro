@@ -81,6 +81,17 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 			want: map[string]string{"channel_id": "C1", "name": "general", "team_id": "T1", "is_private": "false", "creator": "U1"},
 		},
 		{
+			name:   "shared_channel",
+			family: "channel",
+			kind:   "slack.channel",
+			path:   "/conversations.list",
+			response: map[string]any{"ok": true, "channels": []map[string]any{{
+				"id": "C9", "name": "connect", "shared_team_ids": []string{"T1", "T2"},
+				"is_private": false, "creator": "U1",
+			}}},
+			want: map[string]string{"channel_id": "C9", "name": "connect", "shared_team_ids": "T1,T2", "team_id": ""},
+		},
+		{
 			name:   "user_group",
 			family: "user_group",
 			kind:   "slack.user_group",

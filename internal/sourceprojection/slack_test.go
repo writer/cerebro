@@ -96,6 +96,40 @@ func TestProjectSlackChannelAndUserGroupTeamContext(t *testing.T) {
 	assertProjectedLink(t, state, teamURN, relationContains, groupURN)
 }
 
+func TestProjectSlackSharedChannelLinksEachRealTeam(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	channel := slackEvent("slack.channel", map[string]string{
+		"channel_id":      "C9",
+		"shared_team_ids": "T1,T2",
+		"name":            "connect",
+	})
+	if _, err := service.Project(context.Background(), channel); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	channelURN := "urn:cerebro:writer:slack_channel:C9"
+	syntheticURN := "urn:cerebro:writer:slack_team:T1,T2"
+
+	for _, teamURN := range []string{
+		"urn:cerebro:writer:slack_team:T1",
+		"urn:cerebro:writer:slack_team:T2",
+	} {
+		if entity := state.entities[teamURN]; entity == nil || entity.EntityType != "slack.team" {
+			t.Fatalf("expected slack.team context entity for %q, got %#v", teamURN, entity)
+		}
+		assertProjectedLink(t, state, channelURN, relationBelongsTo, teamURN)
+		assertProjectedLink(t, state, teamURN, relationContains, channelURN)
+	}
+
+	if entity := state.entities[syntheticURN]; entity != nil {
+		t.Fatalf("comma-joined synthetic team URN must not be projected: %#v", entity)
+	}
+	assertProjectedLinkMissing(t, state, channelURN, relationBelongsTo, syntheticURN)
+	assertProjectedLinkMissing(t, state, syntheticURN, relationContains, channelURN)
+}
+
 func TestRegistryRoutesSlackDeclaredKinds(t *testing.T) {
 	cases := []struct {
 		kind       string

@@ -45,32 +45,58 @@ func slackWithTeamContext(event *cerebrov1.EventEnvelope, enrich func([]*ports.P
 	}
 	primary := entities[0]
 	tenant := primary.TenantID
-	teamID := strings.TrimSpace(event.GetAttributes()["team_id"])
-	if tenant == "" || teamID == "" {
+	teamIDs := slackTeamContextIDs(event.GetAttributes())
+	if tenant == "" || len(teamIDs) == 0 {
 		return entities, links, nil
 	}
-	teamURN := slackTeamURN(tenant, teamID)
-	if primary.URN == teamURN {
-		return entities, links, nil
-	}
-	entities = append(entities, &ports.ProjectedEntity{
-		URN:        teamURN,
-		TenantID:   tenant,
-		SourceID:   event.GetSourceId(),
-		EntityType: "slack.team",
-		Label:      teamID,
-		Attributes: map[string]string{"team_id": teamID},
-	})
 	linkAttrs := map[string]string{
 		"event_id":   event.GetId(),
 		"at":         eventObservedAt(event),
 		"match_type": "slack_team",
 	}
-	links = append(links,
-		projectedLink(tenant, event.GetSourceId(), primary.URN, teamURN, relationBelongsTo, linkAttrs),
-		projectedLink(tenant, event.GetSourceId(), teamURN, primary.URN, relationContains, linkAttrs),
-	)
+	for _, teamID := range teamIDs {
+		teamURN := slackTeamURN(tenant, teamID)
+		if primary.URN == teamURN {
+			continue
+		}
+		entities = append(entities, &ports.ProjectedEntity{
+			URN:        teamURN,
+			TenantID:   tenant,
+			SourceID:   event.GetSourceId(),
+			EntityType: "slack.team",
+			Label:      teamID,
+			Attributes: map[string]string{"team_id": teamID},
+		})
+		links = append(links,
+			projectedLink(tenant, event.GetSourceId(), primary.URN, teamURN, relationBelongsTo, linkAttrs),
+			projectedLink(tenant, event.GetSourceId(), teamURN, primary.URN, relationContains, linkAttrs),
+		)
+	}
 	return entities, links, nil
+}
+
+// slackTeamContextIDs resolves the distinct real team IDs a Slack entity is
+// scoped to. Shared (Slack Connect) channels expose multi-valued team
+// membership, which upstream normalization may collapse into a comma-joined
+// string; splitting it here keeps one team link per real team instead of one
+// synthetic comma-joined team.
+func slackTeamContextIDs(attrs map[string]string) []string {
+	seen := map[string]struct{}{}
+	ids := make([]string, 0, 2)
+	for _, raw := range []string{attrs["team_id"], attrs["shared_team_ids"]} {
+		for _, part := range strings.Split(raw, ",") {
+			id := strings.TrimSpace(part)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // enrichSlackUserPosture derives current privilege and MFA posture flags on the
