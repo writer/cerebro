@@ -94,6 +94,7 @@ func (a *App) handleGRCCustomControlEvidencePacket(w http.ResponseWriter, r *htt
 		"packet":       result.Packet,
 		"controls":     result.Controls,
 		"preview":      result.Preview,
+		"metadata":     result.Metadata,
 		"generated_at": result.Packet.GeneratedAt,
 	})
 }
@@ -114,6 +115,7 @@ func (a *App) handleGRCCustomControlEvidencePacketExport(w http.ResponseWriter, 
 			"packet":       result.Packet,
 			"controls":     result.Controls,
 			"preview":      result.Preview,
+			"metadata":     result.Metadata,
 			"generated_at": result.Packet.GeneratedAt,
 		})
 		return
@@ -130,6 +132,7 @@ func (a *App) buildGRCControlEvidencePacket(r *http.Request) (grccontrol.PacketR
 	if err != nil {
 		return grccontrol.PacketResult{}, err
 	}
+	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
 	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
 	if err != nil {
 		return grccontrol.PacketResult{}, err
@@ -145,6 +148,7 @@ func (a *App) buildGRCControlEvidencePacket(r *http.Request) (grccontrol.PacketR
 		Findings:  findings,
 		Evidence:  evidence,
 		SourceIDs: grcRuntimeSourceIDs(runtimes),
+		Runtimes:  reportScopeRuntimes,
 		Now:       time.Now().UTC(),
 	})
 }
@@ -164,6 +168,7 @@ func (a *App) buildGRCCustomControlEvidencePacket(w http.ResponseWriter, r *http
 	if err != nil {
 		return grccontrol.CustomPacketResult{}, nil, err
 	}
+	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
 	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
 	if err != nil {
 		return grccontrol.CustomPacketResult{}, nil, err
@@ -179,6 +184,7 @@ func (a *App) buildGRCCustomControlEvidencePacket(w http.ResponseWriter, r *http
 		Findings:  findings,
 		Evidence:  evidence,
 		SourceIDs: grcRuntimeSourceIDs(runtimes),
+		Runtimes:  reportScopeRuntimes,
 		Now:       time.Now().UTC(),
 	})
 }
@@ -188,6 +194,7 @@ func writeGRCControlPacketJSON(w http.ResponseWriter, result grccontrol.PacketRe
 		"profile":      result.Profile,
 		"packet":       result.Packet,
 		"controls":     result.Controls,
+		"metadata":     result.Metadata,
 		"generated_at": result.Packet.GeneratedAt,
 	})
 }

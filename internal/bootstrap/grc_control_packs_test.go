@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -89,9 +90,21 @@ func TestGRCControlPackPreviewEndpointReturnsYAMLFilesAndCoverage(t *testing.T) 
 
 func TestGRCControlEvidencePacketEndpointBuildsProfilePosture(t *testing.T) {
 	now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
+	scopePolicy, err := resourcescope.ConfigValue(resourcescope.Policy{
+		ExcludedFamilies:     []string{"okta.audit"},
+		ExcludedResourceURNs: []string{"urn:cerebro:writer:okta_user:excluded"},
+	})
+	if err != nil {
+		t.Fatalf("scope policy: %v", err)
+	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+				Config:   map[string]string{resourcescope.ConfigKey: scopePolicy},
+			},
 		},
 		findings: map[string]*ports.FindingRecord{
 			"finding-cc6": {
@@ -133,6 +146,7 @@ func TestGRCControlEvidencePacketEndpointBuildsProfilePosture(t *testing.T) {
 		Profile  grccontrol.Profile               `json:"profile"`
 		Packet   compliance.ControlEvidencePacket `json:"packet"`
 		Controls []grccontrol.ControlItem         `json:"controls"`
+		Metadata grccontrol.ReportMetadata        `json:"metadata"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode control packet: %v", err)
@@ -159,6 +173,15 @@ func TestGRCControlEvidencePacketEndpointBuildsProfilePosture(t *testing.T) {
 	}
 	if missingControl.ControlID == "" || missingControl.MissingEvidence == 0 || missingControl.Expectations == 0 {
 		t.Fatalf("missing control = %+v, want a selected control with missing required evidence", missingControl)
+	}
+	if payload.Metadata.Readiness.Status == "" || payload.Metadata.Readiness.Score == 0 {
+		t.Fatalf("metadata readiness = %#v, want packet readiness", payload.Metadata.Readiness)
+	}
+	if payload.Metadata.Scope.Exclusions.Total != 2 {
+		t.Fatalf("scope exclusions = %#v, want two configured exclusions", payload.Metadata.Scope.Exclusions)
+	}
+	if !payload.Metadata.Scope.Exclusions.AppliedToIncrementalFetch || !payload.Metadata.Scope.IncrementalFetch.PolicyAppliedBeforeRead {
+		t.Fatalf("scope incremental metadata = %#v, want exclusions carried before incremental fetch", payload.Metadata.Scope)
 	}
 }
 
