@@ -142,6 +142,14 @@ func anthropicGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*p
 	return aiGovernanceControlProjections(event, anthropicAccessProfile)
 }
 
+func openAIUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiUsageMetricProjections(event, openAIAccessProfile)
+}
+
+func anthropicUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiUsageMetricProjections(event, anthropicAccessProfile)
+}
+
 func anthropicFederationIssuerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiFederationIssuerProjections(event, anthropicAccessProfile)
 }
@@ -761,6 +769,69 @@ func aiGovernanceControlProjections(event *cerebrov1.EventEnvelope, profile aiAc
 	if userID != "" || userEmail != "" {
 		userURN := aiEnsureUser(entities, links, tenantID, event, profile, userID, userEmail, attrs["name"], "")
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), controlURN, userURN, relationAssociatedWith, aiEventLinkAttributes(event, "governance_control_principal")))
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func aiUsageMetricProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	family := aiFamily(event, profile)
+	metricID := aiUsageMetricID(family, attrs, event.GetId())
+	if metricID == "" {
+		return identityProjectionResult(entities, links)
+	}
+	metricType := aiUsageMetricType(family)
+	metricURN := projectionURN(tenantID, profile.Provider+"_"+family, strings.Split(metricID, "|")...)
+	metricAttrs := cloneAttributes(attrs)
+	metricAttrs["event_kind"] = event.GetKind()
+	metricAttrs["source_event_id"] = event.GetId()
+	addProjectedAttribute(metricAttrs, "metric_id", metricID)
+	addProjectedAttribute(metricAttrs, "metric_type", metricType)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        metricURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: profile.Provider + "." + family,
+		Label:      aiUsageMetricLabel(family, attrs, metricID),
+		Attributes: metricAttrs,
+	})
+	orgURN := aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, attrs)
+	if orgURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), metricURN, orgURN, relationBelongsTo, aiUsageMetricLinkAttributes(event, "usage_metric_organization", family, metricType)))
+	}
+	if projectID := strings.TrimSpace(attrs["project_id"]); projectID != "" {
+		projectURN := aiEnsureProject(entities, tenantID, event.GetSourceId(), profile, attrs)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), metricURN, projectURN, relationObservedOn, aiUsageMetricLinkAttributes(event, "usage_metric_project", family, metricType)))
+	}
+	if workspaceID := strings.TrimSpace(attrs["workspace_id"]); workspaceID != "" {
+		workspaceURN := aiEnsureWorkspace(entities, tenantID, event.GetSourceId(), profile, attrs)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), metricURN, workspaceURN, relationObservedOn, aiUsageMetricLinkAttributes(event, "usage_metric_workspace", family, metricType)))
+	}
+	if userID := strings.TrimSpace(attrs["user_id"]); userID != "" || strings.TrimSpace(attrs["email"]) != "" {
+		userURN := aiEnsureUser(entities, links, tenantID, event, profile, userID, attrs["email"], attrs["name"], "")
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), metricURN, userURN, relationObservedOn, aiUsageMetricLinkAttributes(event, "usage_metric_user", family, metricType)))
+	}
+	if apiKeyID := strings.TrimSpace(attrs["api_key_id"]); apiKeyID != "" {
+		credentialURN := aiEnsureCredential(entities, tenantID, event.GetSourceId(), profile, apiKeyID, attrs)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), metricURN, credentialURN, relationObservedOn, aiUsageMetricLinkAttributes(event, "usage_metric_credential", family, metricType)))
+	}
+	for _, modelID := range aiGovernanceControlModels(attrs) {
+		modelURN := projectionURN(tenantID, profile.Provider+"_model", modelID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        modelURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.Provider + ".model",
+			Label:      modelID,
+			Attributes: map[string]string{"model_id": modelID},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), metricURN, modelURN, relationAssociatedWith, aiUsageMetricLinkAttributes(event, "usage_metric_model", family, metricType)))
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -1645,6 +1716,46 @@ func aiGovernanceControlModels(attrs map[string]string) []string {
 		}
 	}
 	return models
+}
+
+func aiUsageMetricID(family string, attrs map[string]string, fallback string) string {
+	return firstNonEmpty(
+		attrs["metric_id"],
+		attrs[family+"_id"],
+		attrs["id"],
+		joinProjectionIdentity(attrs, "start_time", "end_time", "project_id", "workspace_id", "user_id", "api_key_id", "model", "line_item", "amount_currency"),
+		fallback,
+	)
+}
+
+func aiUsageMetricType(family string) string {
+	if strings.Contains(normalizeIdentifier(family), "cost") {
+		return "cost"
+	}
+	return "usage"
+}
+
+func aiUsageMetricLabel(family string, attrs map[string]string, fallback string) string {
+	return firstNonEmpty(
+		attrs["line_item"],
+		attrs["model"],
+		attrs["project_id"],
+		attrs["workspace_id"],
+		aiUsageMetricType(family)+" metric",
+		fallback,
+	)
+}
+
+func aiUsageMetricLinkAttributes(event *cerebrov1.EventEnvelope, matchType string, family string, metricType string) map[string]string {
+	attrs := event.GetAttributes()
+	linkAttrs := aiEventLinkAttributes(event, matchType)
+	addProjectedAttribute(linkAttrs, "family", family)
+	addProjectedAttribute(linkAttrs, "metric_type", metricType)
+	addProjectedAttribute(linkAttrs, "start_time", attrs["start_time"])
+	addProjectedAttribute(linkAttrs, "end_time", attrs["end_time"])
+	addProjectedAttribute(linkAttrs, "amount_value", attrs["amount_value"])
+	addProjectedAttribute(linkAttrs, "cost_usd", attrs["cost_usd"])
+	return linkAttrs
 }
 
 func aiEventLinkAttributes(event *cerebrov1.EventEnvelope, matchType string) map[string]string {
