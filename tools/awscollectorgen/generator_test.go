@@ -8,7 +8,7 @@ import (
 )
 
 func TestDeriveNames(t *testing.T) {
-	n, err := deriveNames("ec2_transit_gateway", "AWS EC2: Transit gateways", "familyEC2TransitGateway", "awsEC2TransitGateway", "listEC2TransitGateways", "ec2TransitGatewayEvent", "aws ec2 transit gateways", "record.ID", "record.Name", "")
+	n, err := deriveNames("ec2_transit_gateway", "AWS EC2: Transit gateways", "familyEC2TransitGateway", "awsEC2TransitGateway", "listEC2TransitGateways", "ec2TransitGatewayEvent", "aws ec2 transit gateways", "", "record.ID", "record.Name", "")
 	if err != nil {
 		t.Fatalf("deriveNames error = %v", err)
 	}
@@ -20,6 +20,7 @@ func TestDeriveNames(t *testing.T) {
 		"EventFunc":   "ec2TransitGatewayEvent",
 		"Kind":        "aws.ec2_transit_gateway",
 		"SchemaRef":   "aws/ec2_transit_gateway/v1",
+		"URNType":     "aws_ec2_transit_gateway",
 		"TitleYAML":   `"AWS EC2: Transit gateways"`,
 		"CursorExpr":  "record.Name",
 		"Projector":   "awsCloudResourceProjections",
@@ -27,7 +28,7 @@ func TestDeriveNames(t *testing.T) {
 	got := map[string]string{
 		"Pascal": n.Pascal, "FamilyConst": n.FamilyConst, "RecordType": n.RecordType,
 		"ListFunc": n.ListFunc, "EventFunc": n.EventFunc, "Kind": n.Kind,
-		"SchemaRef": n.SchemaRef, "TitleYAML": n.TitleYAML, "CursorExpr": n.CursorExpr,
+		"SchemaRef": n.SchemaRef, "URNType": n.URNType, "TitleYAML": n.TitleYAML, "CursorExpr": n.CursorExpr,
 		"Projector": n.Projector,
 	}
 	for field, want := range cases {
@@ -42,14 +43,16 @@ func TestDeriveNamesRejectsInvalid(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "family", args: []string{"EC2", "title", "familyEC2", "awsRecord", "listRecords", "recordEvent", "label", "record.ID", "", ""}},
-		{name: "record type", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "aws-record", "listRecords", "recordEvent", "label", "record.ID", "", ""}},
-		{name: "list func", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "awsRecord", "list-records", "recordEvent", "label", "record.ID", "", ""}},
-		{name: "urn expr", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "awsRecord", "listRecords", "recordEvent", "label", "record.ID; panic()", "", ""}},
-		{name: "title newline", args: []string{"ec2_gateway", "bad\ntitle", "familyEC2Gateway", "awsRecord", "listRecords", "recordEvent", "label", "record.ID", "", ""}},
+		{name: "family", args: []string{"EC2", "title", "familyEC2", "awsRecord", "listRecords", "recordEvent", "label", "", "record.ID", "", ""}},
+		{name: "record type", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "aws-record", "listRecords", "recordEvent", "label", "", "record.ID", "", ""}},
+		{name: "list func", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "awsRecord", "list-records", "recordEvent", "label", "", "record.ID", "", ""}},
+		{name: "urn type", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "awsRecord", "listRecords", "recordEvent", "label", "aws-ec2-gateway", "record.ID", "", ""}},
+		{name: "urn expr", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "awsRecord", "listRecords", "recordEvent", "label", "", "record.ID; panic()", "", ""}},
+		{name: "cursor expr", args: []string{"ec2_gateway", "title", "familyEC2Gateway", "awsRecord", "listRecords", "recordEvent", "label", "", "record.ID", "record.ID, record.Name", ""}},
+		{name: "title newline", args: []string{"ec2_gateway", "bad\ntitle", "familyEC2Gateway", "awsRecord", "listRecords", "recordEvent", "label", "", "record.ID", "", ""}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := deriveNames(tt.args[0], tt.args[1], tt.args[2], tt.args[3], tt.args[4], tt.args[5], tt.args[6], tt.args[7], tt.args[8], tt.args[9]); err == nil {
+			if _, err := deriveNames(tt.args[0], tt.args[1], tt.args[2], tt.args[3], tt.args[4], tt.args[5], tt.args[6], tt.args[7], tt.args[8], tt.args[9], tt.args[10]); err == nil {
 				t.Fatal("expected error, got nil")
 			}
 		})
@@ -67,7 +70,7 @@ func TestRenderRegisterSnippet(t *testing.T) {
 		"Name:  familyDemoWidget,",
 		"List:  listDemoWidgets,",
 		"Event: demoWidgetEvent,",
-		`urn:cerebro:%s:demo_widget:%s`,
+		`urn:cerebro:%s:aws_demo_widget:%s`,
 		"record.ID",
 		"CursorFallback: func(record awsDemoWidget) string { return record.Name }",
 	} {
@@ -129,7 +132,7 @@ const familyEC2Instance = "ec2_instance"
 	write(filepath.Join(awsDir, "catalog.yaml"), "")
 	write(filepath.Join(awsDir, "deploy.yaml"), "")
 	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), "package sourceprojection\n")
-	n, err := deriveNames("ec2_instance", "", "familyEc2Instance", "awsEC2Instance", "listEC2Instances", "ec2InstanceEvent", "", "record.ID", "", "")
+	n, err := deriveNames("ec2_instance", "", "familyEc2Instance", "awsEC2Instance", "listEC2Instances", "ec2InstanceEvent", "", "", "record.ID", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +163,49 @@ const familyEC2Instance = "ec2_instance"
 	write(filepath.Join(awsDir, "catalog.yaml"), "")
 	write(filepath.Join(awsDir, "deploy.yaml"), "")
 	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), "package sourceprojection\n")
-	n, err := deriveNames("ec2_gateway", "", "familyEC2", "awsEC2Gateway", "listEC2Gateways", "ec2GatewayEvent", "", "record.ID", "", "")
+	n, err := deriveNames("ec2_gateway", "", "familyEC2", "awsEC2Gateway", "listEC2Gateways", "ec2GatewayEvent", "", "", "record.ID", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureNotAlreadyWired(root, awsDir, n); err != nil {
+		t.Fatalf("ensureNotAlreadyWired error = %v, want nil", err)
+	}
+}
+
+func TestEnsureNotAlreadyWiredAllowsYAMLPrefixValues(t *testing.T) {
+	root := t.TempDir()
+	awsDir := filepath.Join(root, "sources", "aws")
+	if err := os.MkdirAll(awsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "internal", "sourceprojection"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(awsDir, "source.go"), `package aws
+const familyS3Bucket = "s3_bucket"
+`)
+	write(filepath.Join(awsDir, "fixture.go"), "package aws\n")
+	write(filepath.Join(awsDir, "catalog.yaml"), `emitted:
+  - aws.s3_bucket
+runtime:
+  - s3_bucket
+`)
+	write(filepath.Join(awsDir, "deploy.yaml"), `sources:
+  - localId: s3-bucket
+    config:
+      family: s3_bucket
+`)
+	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), `package sourceprojection
+var registry = map[string]any{
+	"aws.s3_bucket": projector,
+}`)
+	n, err := deriveNames("s3", "", "familyS3", "awsS3", "listS3", "s3Event", "", "", "record.ID", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,16 +226,35 @@ func TestValidateFixtures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("discover_demo_widget.json", `["urn:cerebro:123456789012:demo_widget:demo-1"]`)
+	write("discover_demo_widget.json", `["urn:cerebro:123456789012:aws_demo_widget:demo-1"]`)
 	write("read_demo_widget.json", `[{"id":"aws-demo-widget-demo-1","tenant_id":"123456789012","source_id":"aws","kind":"aws.demo_widget","occurred_at":"2025-01-01T00:00:00Z","schema_ref":"aws/demo_widget/v1","payload":{"id":"demo-1"},"attributes":{"resource_id":"demo-1"}}]`)
 	if err := validateFixtures(root, mustNames(t)); err != nil {
 		t.Fatalf("validateFixtures error = %v", err)
 	}
 }
 
+func TestValidateFixturesRejectsUnexpectedURNType(t *testing.T) {
+	root := t.TempDir()
+	testdata := filepath.Join(root, "sources", "aws", "testdata")
+	if err := os.MkdirAll(testdata, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(testdata, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("discover_demo_widget.json", `["urn:cerebro:123456789012:demo_widget:demo-1"]`)
+	write("read_demo_widget.json", `[{"id":"aws-demo-widget-demo-1","tenant_id":"123456789012","source_id":"aws","kind":"aws.demo_widget","occurred_at":"2025-01-01T00:00:00Z","schema_ref":"aws/demo_widget/v1","payload":{"id":"demo-1"},"attributes":{"resource_id":"demo-1"}}]`)
+	if err := validateFixtures(root, mustNames(t)); err == nil || !strings.Contains(err.Error(), "resource type") {
+		t.Fatalf("validateFixtures error = %v, want resource type", err)
+	}
+}
+
 func mustNames(t *testing.T) names {
 	t.Helper()
-	n, err := deriveNames("demo_widget", "AWS Demo: widgets", "familyDemoWidget", "awsDemoWidget", "listDemoWidgets", "demoWidgetEvent", "aws demo widgets", "record.ID", "record.Name", "")
+	n, err := deriveNames("demo_widget", "AWS Demo: widgets", "familyDemoWidget", "awsDemoWidget", "listDemoWidgets", "demoWidgetEvent", "aws demo widgets", "", "record.ID", "record.Name", "")
 	if err != nil {
 		t.Fatal(err)
 	}

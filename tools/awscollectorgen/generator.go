@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"go/parser"
 	"regexp"
 	"strconv"
 	"strings"
@@ -9,10 +10,9 @@ import (
 )
 
 var (
-	familyPattern   = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*$`)
-	goIdentPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	goTypePattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
-	goExprDenyChars = regexp.MustCompile(`[\r\n;]`)
+	familyPattern  = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*$`)
+	goIdentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	goTypePattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`)
 )
 
 const (
@@ -37,6 +37,7 @@ type names struct {
 	EventFunc   string
 	Kind        string
 	SchemaRef   string
+	URNType     string
 	Label       string
 	Title       string
 	TitleYAML   string
@@ -45,7 +46,7 @@ type names struct {
 	Projector   string
 }
 
-func deriveNames(family, title, constName, recordType, listFunc, eventFunc, label, urnExpr, cursorExpr, projector string) (names, error) {
+func deriveNames(family, title, constName, recordType, listFunc, eventFunc, label, urnType, urnExpr, cursorExpr, projector string) (names, error) {
 	family = strings.TrimSpace(family)
 	if !familyPattern.MatchString(family) {
 		return names{}, fmt.Errorf("family %q must be lower_snake_case matching %s", family, familyPattern.String())
@@ -66,14 +67,23 @@ func deriveNames(family, title, constName, recordType, listFunc, eventFunc, labe
 	if eventFunc = strings.TrimSpace(eventFunc); !goIdentPattern.MatchString(eventFunc) {
 		return names{}, fmt.Errorf("event func %q must be a Go identifier", eventFunc)
 	}
-	if urnExpr = strings.TrimSpace(urnExpr); urnExpr == "" || goExprDenyChars.MatchString(urnExpr) {
-		return names{}, fmt.Errorf("urn expr must be a non-empty single Go expression")
+	if urnType = strings.TrimSpace(urnType); urnType == "" {
+		urnType = "aws_" + family
+	}
+	if !familyPattern.MatchString(urnType) {
+		return names{}, fmt.Errorf("urn type %q must be lower_snake_case matching %s", urnType, familyPattern.String())
+	}
+	var err error
+	urnExpr, err = validateGoExpr("urn expr", urnExpr)
+	if err != nil {
+		return names{}, err
 	}
 	if cursorExpr = strings.TrimSpace(cursorExpr); cursorExpr == "" {
 		cursorExpr = urnExpr
 	}
-	if goExprDenyChars.MatchString(cursorExpr) {
-		return names{}, fmt.Errorf("cursor expr must be a single Go expression")
+	cursorExpr, err = validateGoExpr("cursor expr", cursorExpr)
+	if err != nil {
+		return names{}, err
 	}
 	if projector = strings.TrimSpace(projector); projector == "" {
 		projector = "awsCloudResourceProjections"
@@ -100,6 +110,7 @@ func deriveNames(family, title, constName, recordType, listFunc, eventFunc, labe
 		EventFunc:   eventFunc,
 		Kind:        "aws." + family,
 		SchemaRef:   "aws/" + family + "/v1",
+		URNType:     urnType,
 		Label:       label,
 		Title:       title,
 		TitleYAML:   strconv.Quote(title),
@@ -107,6 +118,17 @@ func deriveNames(family, title, constName, recordType, listFunc, eventFunc, labe
 		CursorExpr:  cursorExpr,
 		Projector:   projector,
 	}, nil
+}
+
+func validateGoExpr(name, expr string) (string, error) {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return "", fmt.Errorf("%s must be a non-empty Go expression", name)
+	}
+	if _, err := parser.ParseExpr(expr); err != nil {
+		return "", fmt.Errorf("%s must be a valid Go expression: %w", name, err)
+	}
+	return expr, nil
 }
 
 func pascalCase(family string) string {
@@ -124,7 +146,7 @@ var registerTemplate = template.Must(template.New("register").Parse(`		awsFamily
 			List:  {{.ListFunc}},
 			Event: {{.EventFunc}},
 			URN: func(settings settings, record {{.RecordType}}) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:{{.Family}}:%s", settings.accountID, {{.URNExpr}}), nil
+				return fmt.Sprintf("urn:cerebro:%s:{{.URNType}}:%s", settings.accountID, {{.URNExpr}}), nil
 			},
 			CursorFallback: func(record {{.RecordType}}) string { return {{.CursorExpr}} },
 		}),`))

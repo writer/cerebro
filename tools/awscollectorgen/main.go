@@ -42,6 +42,7 @@ func run(args []string) error {
 	recordType := flags.String("record-type", "", "record type used by awsFamilyOptions[T]")
 	listFunc := flags.String("list-func", "", "implemented list function name")
 	eventFunc := flags.String("event-func", "", "implemented event function name")
+	urnType := flags.String("urn-type", "", "URN resource type; defaults to aws_<family>")
 	urnExpr := flags.String("urn-expr", "", "Go expression that returns the record resource id string, evaluated with record/settings in scope")
 	cursorExpr := flags.String("cursor-expr", "", "Go expression for CursorFallback; defaults to --urn-expr")
 	projector := flags.String("projector", "awsCloudResourceProjections", "sourceprojection projector function")
@@ -50,7 +51,7 @@ func run(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	n, err := deriveNames(*family, *title, *constName, *recordType, *listFunc, *eventFunc, *label, *urnExpr, *cursorExpr, *projector)
+	n, err := deriveNames(*family, *title, *constName, *recordType, *listFunc, *eventFunc, *label, *urnType, *urnExpr, *cursorExpr, *projector)
 	if err != nil {
 		return err
 	}
@@ -147,9 +148,9 @@ func ensureNotAlreadyWired(root, awsDir string, n names) error {
 		{filepath.Join(awsDir, "source.go"), containsGoIdentifierMatcher(n.FamilyConst)},
 		{filepath.Join(awsDir, "fixture.go"), containsGoIdentifierMatcher(n.FamilyConst)},
 		{filepath.Join(root, "internal", "sourceprojection", "registry.go"), containsStringMatcher(strconv.Quote(n.Kind) + ":")},
-		{filepath.Join(awsDir, "catalog.yaml"), containsStringMatcher("- " + n.Kind)},
-		{filepath.Join(awsDir, "catalog.yaml"), containsStringMatcher("- " + n.Family)},
-		{filepath.Join(awsDir, "deploy.yaml"), containsStringMatcher("family: " + n.Family)},
+		{filepath.Join(awsDir, "catalog.yaml"), containsYAMLListEntryMatcher(n.Kind)},
+		{filepath.Join(awsDir, "catalog.yaml"), containsYAMLListEntryMatcher(n.Family)},
+		{filepath.Join(awsDir, "deploy.yaml"), containsYAMLMappingValueMatcher("family", n.Family)},
 	}
 	for _, check := range checks {
 		body, err := os.ReadFile(check.path)
@@ -174,6 +175,16 @@ func containsGoIdentifierMatcher(ident string) func(string) bool {
 	return re.MatchString
 }
 
+func containsYAMLListEntryMatcher(value string) func(string) bool {
+	re := regexp.MustCompile(`(?m)^\s*-\s+` + regexp.QuoteMeta(value) + `\s*(?:#.*)?$`)
+	return re.MatchString
+}
+
+func containsYAMLMappingValueMatcher(key, value string) func(string) bool {
+	re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(key) + `:\s+` + regexp.QuoteMeta(value) + `\s*(?:#.*)?$`)
+	return re.MatchString
+}
+
 func validateFixtures(root string, n names) error {
 	fsys := os.DirFS(root)
 	discoverPath := filepath.ToSlash(filepath.Join("sources", "aws", "testdata", "discover_"+n.Family+".json"))
@@ -184,6 +195,12 @@ func validateFixtures(root string, n names) error {
 	}
 	if len(urns) == 0 {
 		return fmt.Errorf("%s must contain at least one URN", discoverPath)
+	}
+	expectedURNType := ":" + n.URNType + ":"
+	for _, urn := range urns {
+		if !strings.Contains(urn.String(), expectedURNType) {
+			return fmt.Errorf("%s urn %q must use resource type %q", discoverPath, urn, n.URNType)
+		}
 	}
 	events, err := sourcecdk.LoadFixtureEvents(fsys, readPath)
 	if err != nil {
