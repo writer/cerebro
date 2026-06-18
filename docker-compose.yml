@@ -1,9 +1,7 @@
-version: "3.9"
-
 services:
   nats:
     image: nats:2.10-alpine
-    command: ["-js", "-sd", "/data"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -14,6 +12,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  nats-init:
+    image: natsio/nats-box:0.18.0
+    command:
+      - sh
+      - -lc
+      - |
+        nats --server nats://nats:4222 stream info CEREBRO_EVENTS >/dev/null 2>&1 || \
+          nats --server nats://nats:4222 stream add CEREBRO_EVENTS \
+            --subjects "events.>" \
+            --storage file \
+            --retention limits \
+            --discard old \
+            --replicas 1 \
+            --dupe-window 2m \
+            --defaults
+    depends_on:
+      nats:
+        condition: service_healthy
 
   postgres:
     image: postgres:16-alpine
@@ -64,6 +81,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       neo4j:
