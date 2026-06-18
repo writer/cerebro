@@ -44,12 +44,15 @@ func TestProjectSlackUserPostureAndTeamContext(t *testing.T) {
 	for key, want := range map[string]string{
 		"privileged":   "true",
 		"has_mfa":      "false",
-		"mfa_enforced": "false",
+		"mfa_enrolled": "false",
 		"active":       "true",
 	} {
 		if got := user.Attributes[key]; got != want {
 			t.Fatalf("user posture attribute %q = %q, want %q", key, got, want)
 		}
+	}
+	if got, ok := user.Attributes["mfa_enforced"]; ok {
+		t.Fatalf("Slack user projection must not derive workspace MFA enforcement from user 2FA enrollment; got mfa_enforced=%q", got)
 	}
 
 	team := state.entities[teamURN]

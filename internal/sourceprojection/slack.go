@@ -99,9 +99,10 @@ func slackTeamContextIDs(attrs map[string]string) []string {
 	return ids
 }
 
-// enrichSlackUserPosture derives current privilege and MFA posture flags on the
-// projected Slack user entity so the orphaned-privileged identity finding can
-// anchor on the user's current state.
+// enrichSlackUserPosture derives current privilege and MFA enrollment posture
+// flags on the projected Slack user entity so durable identity findings can
+// anchor on the user's current state. Slack user snapshots expose a user's 2FA
+// enrollment status, not workspace-level MFA enforcement policy.
 func enrichSlackUserPosture(entities []*ports.ProjectedEntity, event *cerebrov1.EventEnvelope) {
 	attrs := event.GetAttributes()
 	privileged := slackUserPrivileged(attrs)
@@ -116,7 +117,7 @@ func enrichSlackUserPosture(entities []*ports.ProjectedEntity, event *cerebrov1.
 		}
 		entity.Attributes["privileged"] = boolString(privileged)
 		entity.Attributes["has_mfa"] = boolString(hasMFA)
-		entity.Attributes["mfa_enforced"] = boolString(hasMFA)
+		entity.Attributes["mfa_enrolled"] = boolString(hasMFA)
 		entity.Attributes["active"] = boolString(active)
 	}
 }
