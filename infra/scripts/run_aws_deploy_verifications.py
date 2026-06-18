@@ -37,6 +37,8 @@ class GraphHealthResult:
 DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS = 300
 DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS = 0
 DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS = 3600
+DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS = 900
+DEFAULT_GRAPH_HEALTH_PROCESS_TIMEOUT_SECONDS = 960
 
 
 def _stack_name(path: Path) -> str:
@@ -128,7 +130,7 @@ def _graph_health_command(args: argparse.Namespace) -> list[str]:
         "--stack-file",
         str(args.stack_file),
         "--wait-timeout-seconds",
-        "3600",
+        str(args.graph_health_wait_timeout_seconds),
         "--graph-command-retry-seconds",
         str(args.graph_health_command_retry_seconds),
         "--ingest-health-retry-seconds",
@@ -146,7 +148,7 @@ def _start_process(command: list[str]) -> subprocess.Popen[str]:
     return subprocess.Popen(command, text=True)
 
 
-def _stream_graph_health(command: list[str], output_path: Path) -> GraphHealthResult:
+def _stream_graph_health(command: list[str], output_path: Path, timeout_seconds: int | None = None) -> GraphHealthResult:
     print(f"Running: {' '.join(command)}", file=sys.stderr, flush=True)
     with output_path.open("w", encoding="utf-8") as output:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -169,7 +171,19 @@ def _stream_graph_health(command: list[str], output_path: Path) -> GraphHealthRe
         stderr_thread = threading.Thread(target=stream_stderr, daemon=True)
         stdout_thread.start()
         stderr_thread.start()
-        status = process.wait()
+        try:
+            status = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            diagnostics = f"ERROR: graph health verification timed out after {timeout_seconds}s"
+            print(diagnostics, file=sys.stderr, flush=True)
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            status = 124
+            stderr_lines.append(f"{diagnostics}; command: {' '.join(command)}\n")
         stdout_thread.join()
         stderr_thread.join()
         return GraphHealthResult(status=status, diagnostics="".join(stderr_lines))
@@ -355,6 +369,7 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
         ("latest graph ingest run failed", "stale_or_transient_ingest_run"),
         ("missing graph ingest run history", "missing_ingest_run_history"),
         ("latest graph ingest projected no graph records", "zero_projection_ingest_run"),
+        ("graph health verification timed out", "graph_health_timeout"),
         ("did not emit valid json", "graph_command_no_json"),
         ("getlogevents operation: the specified log stream does not exist", "graph_command_no_logs"),
         ("graph health command exited with", "graph_command_failed"),
@@ -731,6 +746,18 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS,
         help="Retry failed/stale graph ingest health for this many seconds before using the degradation/heal path.",
     )
+    parser.add_argument(
+        "--graph-health-wait-timeout-seconds",
+        type=_positive_int,
+        default=DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS,
+        help="Bound each graph-health ECS command wait during deploy health checks.",
+    )
+    parser.add_argument(
+        "--graph-health-process-timeout-seconds",
+        type=_positive_int,
+        default=DEFAULT_GRAPH_HEALTH_PROCESS_TIMEOUT_SECONDS,
+        help="Hard timeout for the graph-health verifier subprocess so deployment jobs cannot hold environment locks indefinitely.",
+    )
     parser.add_argument("--github-output", type=Path, help="GitHub Actions output file for deployment health outputs.")
     parser.add_argument("--source-target-concurrency", type=_positive_int, default=4)
     parser.add_argument(
@@ -750,7 +777,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.source_runtime_verify:
             source_processes = [_start_process(_source_runtime_command(args, source_id)) for source_id in _source_ids(args)]
         if args.graph_health:
-            graph_result = _maybe_use_graph_health_cache(args, stack) or _stream_graph_health(_graph_health_command(args), args.graph_health_output)
+            graph_result = _maybe_use_graph_health_cache(args, stack) or _stream_graph_health(
+                _graph_health_command(args),
+                args.graph_health_output,
+                timeout_seconds=args.graph_health_process_timeout_seconds,
+            )
     finally:
         if source_processes:
             grace_seconds = args.source_runtime_grace_seconds if args.graph_health else None
@@ -762,7 +793,11 @@ def main(argv: list[str] | None = None) -> int:
     graph_diagnostics = _graph_health_diagnostics(graph_result)
     if graph_status != 0:
         if args.graph_health_heal and _attempt_graph_health_heal(args, graph_diagnostics):
-            graph_result = _stream_graph_health(_graph_health_command(args), args.graph_health_output)
+            graph_result = _stream_graph_health(
+                _graph_health_command(args),
+                args.graph_health_output,
+                timeout_seconds=args.graph_health_process_timeout_seconds,
+            )
             graph_status = _graph_health_status(graph_result)
             graph_diagnostics = _graph_health_diagnostics(graph_result)
         category = _graph_health_degradation_category(graph_status, graph_diagnostics)

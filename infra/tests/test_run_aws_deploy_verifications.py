@@ -151,10 +151,12 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             stack_file=Path("aws/Pulumi.go-prod.yaml"),
             graph_health_command_retry_seconds=run_aws_deploy_verifications.DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS,
             graph_health_ingest_retry_seconds=run_aws_deploy_verifications.DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS,
+            graph_health_wait_timeout_seconds=run_aws_deploy_verifications.DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS,
         )
 
         command = run_aws_deploy_verifications._graph_health_command(args)
 
+        self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "900")
         self.assertEqual(command[command.index("--graph-command-retry-seconds") + 1], "300")
         self.assertEqual(command[command.index("--ingest-health-retry-seconds") + 1], "0")
         self.assertIn("--require-bundled-health", command)
@@ -164,12 +166,51 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             stack_file=Path("aws/Pulumi.sec-dev.yaml"),
             graph_health_command_retry_seconds=42,
             graph_health_ingest_retry_seconds=17,
+            graph_health_wait_timeout_seconds=123,
         )
 
         command = run_aws_deploy_verifications._graph_health_command(args)
 
+        self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "123")
         self.assertEqual(command[command.index("--graph-command-retry-seconds") + 1], "42")
         self.assertEqual(command[command.index("--ingest-health-retry-seconds") + 1], "17")
+
+    def test_stream_graph_health_timeout_terminates_child(self) -> None:
+        class FakeStreamProcess:
+            def __init__(self) -> None:
+                self.stdout = io.StringIO("")
+                self.stderr = io.StringIO("")
+                self.terminated = False
+                self.killed = False
+                self.wait_calls: list[int | None] = []
+
+            def wait(self, timeout: int | None = None) -> int:
+                self.wait_calls.append(timeout)
+                if timeout == 3:
+                    raise subprocess.TimeoutExpired("fake graph health", timeout)
+                return 124
+
+            def terminate(self) -> None:
+                self.terminated = True
+
+            def kill(self) -> None:
+                self.killed = True
+
+        fake_process = FakeStreamProcess()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("scripts.run_aws_deploy_verifications.subprocess.Popen", return_value=fake_process):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result = run_aws_deploy_verifications._stream_graph_health(
+                        ["python", "scripts/verify_graph_health_ecs.py"],
+                        Path(temp_dir) / "graph.tsv",
+                        timeout_seconds=3,
+                    )
+
+        self.assertEqual(result.status, 124)
+        self.assertTrue(fake_process.terminated)
+        self.assertFalse(fake_process.killed)
+        self.assertEqual(fake_process.wait_calls, [3, 10])
+        self.assertIn("graph health verification timed out after 3s", result.diagnostics)
 
     def test_fresh_graph_health_cache_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -382,6 +423,32 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertIn("graph_health_degraded=true", outputs)
         self.assertIn("graph_health_degradation_category=graph_command_failed", outputs)
 
+    def test_graph_health_timeout_degrades_when_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "outputs.txt"
+            diagnostics = "ERROR: graph health verification timed out after 960s"
+            with patch(
+                "scripts.run_aws_deploy_verifications._stream_graph_health",
+                return_value=run_aws_deploy_verifications.GraphHealthResult(124, diagnostics),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--github-output",
+                        str(output_path),
+                    ]
+                )
+                outputs = output_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertIn("graph_health_degraded=true", outputs)
+        self.assertIn("graph_health_degradation_category=graph_health_timeout", outputs)
+
     def test_missing_ingest_run_history_degrades_when_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "outputs.txt"
@@ -531,7 +598,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 ]
             )
             with (
-                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args: next(results)) as stream,
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args, **_kwargs: next(results)) as stream,
                 patch(
                     "scripts.run_aws_deploy_verifications.subprocess.run",
                     return_value=subprocess.CompletedProcess(["repair"], 0),
@@ -569,7 +636,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 ]
             )
             with (
-                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args: next(results)) as stream,
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args, **_kwargs: next(results)) as stream,
                 patch("scripts.run_aws_deploy_verifications._attempt_graph_health_heal", return_value=True) as heal,
             ):
                 status = run_aws_deploy_verifications.main(
@@ -859,7 +926,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                         "GITHUB_RUN_ID": "27284692112",
                     },
                 ),
-                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args: next(results)),
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args, **_kwargs: next(results)),
                 patch("scripts.run_aws_deploy_verifications._attempt_graph_health_heal", return_value=True),
                 patch("scripts.run_aws_deploy_verifications.urllib.request.urlopen", side_effect=fake_urlopen),
             ):
