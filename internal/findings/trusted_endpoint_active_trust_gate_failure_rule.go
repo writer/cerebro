@@ -18,24 +18,6 @@ const (
 	trustedEndpointTrustGateEventKind              = "trusted_endpoint.trust_gate_decision"
 )
 
-var trustedEndpointAgentDeprovisionedStatuses = map[string]struct{}{
-	"deactivated":    {},
-	"decommissioned": {},
-	"deleted":        {},
-	"deprovisioned":  {},
-	"disabled":       {},
-	"inactive":       {},
-	"off-boarded":    {},
-	"off boarded":    {},
-	"offboarded":     {},
-	"removed":        {},
-	"retired":        {},
-	"revoked":        {},
-	"terminated":     {},
-	"un-enrolled":    {},
-	"unenrolled":     {},
-}
-
 var trustedEndpointActiveTrustGateFailureControlRefs = []ports.FindingControlRef{
 	{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 	{FrameworkName: "ISO 27001:2022", ControlID: "A.8.16"},
@@ -94,15 +76,15 @@ func (r *trustedEndpointActiveTrustGateFailureRule) OpenAnchor(attributes map[st
 }
 
 // CloseOnEvent resolves an open finding when a later trust-gate decision for
-// the same agent/action allows the action, or when the authenticated endpoint
-// lifecycle reports that the agent is no longer managed. This keeps offboarded
-// devices from leaving stale durable trust-gate findings open.
+// the same agent/action allows the action. Endpoint-reported lifecycle fields
+// are retained as context but are not authoritative enough to close or suppress
+// a current trust-gate failure.
 func (r *trustedEndpointActiveTrustGateFailureRule) CloseOnEvent(event Event) (string, bool) {
 	if !trustedEndpointTrustGateKindMatcher(event) || !hasRequiredAttributes(event, trustedEndpointActiveTrustGateFailureDefinition.RequiredAttributes...) {
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if !trustedEndpointGateRemediated(attributes) && !trustedEndpointAgentDeprovisioned(attributes) {
+	if !trustedEndpointGateRemediated(attributes) {
 		return "", false
 	}
 	gateURN := trustedEndpointTrustGateURN(event.GetTenantId(), attributes["agent_id"], attributes["action"])
@@ -115,9 +97,6 @@ func matchesTrustedEndpointActiveTrustGateFailure(event *cerebrov1.EventEnvelope
 		return false
 	}
 	attributes := eventAttributes(event)
-	if trustedEndpointAgentDeprovisioned(attributes) {
-		return false
-	}
 	return trustedEndpointGateDenied(attributes)
 }
 
@@ -191,15 +170,6 @@ func trustedEndpointGateDenied(attributes map[string]string) bool {
 
 func trustedEndpointGateRemediated(attributes map[string]string) bool {
 	return trustedEndpointNormalizeDecisionValue(attributes["decision"]) == "allow"
-}
-
-func trustedEndpointAgentDeprovisioned(attributes map[string]string) bool {
-	if managed, ok := parseOptionalBoolAttribute(attributes, "managed"); ok && !managed {
-		return true
-	}
-	status := strings.ToLower(strings.TrimSpace(attributes["agent_status"]))
-	_, deprovisioned := trustedEndpointAgentDeprovisionedStatuses[status]
-	return deprovisioned
 }
 
 func trustedEndpointNormalizeDecisionValue(value string) string {

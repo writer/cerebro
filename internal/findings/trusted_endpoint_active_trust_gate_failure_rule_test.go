@@ -65,21 +65,21 @@ func TestTrustedEndpointActiveTrustGateFailureDefaultsBlankSeverityToHigh(t *tes
 	}
 }
 
-func TestTrustedEndpointActiveTrustGateFailureDeprovisionResolvesAndSuppresses(t *testing.T) {
-	assertTrustedEndpointLifecycleResolvesAndSuppresses(t, map[string]string{
+func TestTrustedEndpointActiveTrustGateFailureIgnoresSelfReportedDeprovisionForCloseout(t *testing.T) {
+	assertTrustedEndpointLifecycleDoesNotResolveOrSuppress(t, map[string]string{
 		"decision":     "deny",
 		"agent_status": "deprovisioned",
 	})
 }
 
-func TestTrustedEndpointActiveTrustGateFailureUnmanagedResolvesAndSuppresses(t *testing.T) {
-	assertTrustedEndpointLifecycleResolvesAndSuppresses(t, map[string]string{
+func TestTrustedEndpointActiveTrustGateFailureIgnoresSelfReportedUnmanagedForCloseout(t *testing.T) {
+	assertTrustedEndpointLifecycleDoesNotResolveOrSuppress(t, map[string]string{
 		"decision": "deny",
 		"managed":  "false",
 	})
 }
 
-func assertTrustedEndpointLifecycleResolvesAndSuppresses(t *testing.T, attrs map[string]string) {
+func assertTrustedEndpointLifecycleDoesNotResolveOrSuppress(t *testing.T, attrs map[string]string) {
 	t.Helper()
 	rule := newTrustedEndpointActiveTrustGateFailureRule()
 	runtime := &cerebrov1.SourceRuntime{
@@ -102,19 +102,19 @@ func assertTrustedEndpointLifecycleResolvesAndSuppresses(t *testing.T, attrs map
 	if err != nil {
 		t.Fatalf("Evaluate(lifecycle) error = %v", err)
 	}
-	if len(records) != 0 {
-		t.Fatalf("Evaluate(lifecycle) emitted %d findings, want 0", len(records))
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(lifecycle) emitted %d findings, want 1", len(records))
 	}
 	counterRule, ok := rule.(CounterEventRule)
 	if !ok {
 		t.Fatal("rule does not implement CounterEventRule")
 	}
 	closeAnchor, closes := counterRule.CloseOnEvent(event)
-	if !closes || closeAnchor == "" {
-		t.Fatalf("CloseOnEvent(lifecycle) = (%q, %v), want a non-empty close", closeAnchor, closes)
+	if closes || closeAnchor != "" {
+		t.Fatalf("CloseOnEvent(lifecycle) = (%q, %v), want no close from self-reported lifecycle", closeAnchor, closes)
 	}
-	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor != closeAnchor {
-		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
+	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor == "" {
+		t.Fatalf("OpenAnchor(open finding) is empty")
 	}
 }
 
