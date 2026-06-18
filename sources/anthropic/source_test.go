@@ -343,6 +343,194 @@ func TestReadComplianceRolePermissionsUsesRolePathAndPageCursor(t *testing.T) {
 	}
 }
 
+func TestReadComplianceProjectsUsesComplianceKeyAndPageCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/compliance/apps/projects" {
+			t.Fatalf("request path = %q, want /compliance/apps/projects", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("anthropic-version = %q, want 2023-06-01", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "fixture-compliance-key" {
+			t.Fatalf("x-api-key = %q, want fixture-compliance-key", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":          "claude_proj_123",
+					"name":        "Legal review",
+					"description": "Matter review workspace",
+					"organization": map[string]any{
+						"uuid": "org-uuid-1",
+					},
+					"created_at": "2026-01-02T03:04:05Z",
+				}},
+				"has_more":  true,
+				"next_page": "page-2",
+			})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":     "claude_proj_456",
+					"name":   "Engineering docs",
+					"status": "archived",
+				}},
+				"has_more": false,
+			})
+		default:
+			t.Fatalf("page = %q, want empty or page-2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":   "fixture-compliance-key",
+		"base_url":  server.URL,
+		"family":    "compliance_project",
+		"per_page":  "2",
+		"tenant_id": "writer",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("first NextCursor = %q, want page-2", first.NextCursor.GetOpaque())
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	event := first.Events[0]
+	if event.Kind != "anthropic.compliance_project" {
+		t.Fatalf("Kind = %q, want anthropic.compliance_project", event.Kind)
+	}
+	if got := event.Attributes["project_id"]; got != "claude_proj_123" {
+		t.Fatalf("project_id = %q, want claude_proj_123", got)
+	}
+	if got := event.Attributes["organization_uuid"]; got != "org-uuid-1" {
+		t.Fatalf("organization_uuid = %q, want org-uuid-1", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+}
+
+func TestReadComplianceProjectCollaboratorsUsesProjectPathAndPageCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/compliance/apps/projects/claude_proj_123/collaborators" {
+			t.Fatalf("request path = %q, want /compliance/apps/projects/claude_proj_123/collaborators", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("anthropic-version = %q, want 2023-06-01", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "fixture-compliance-key" {
+			t.Fatalf("x-api-key = %q, want fixture-compliance-key", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id": "assignment_1",
+					"principal": map[string]any{
+						"type":  "user",
+						"id":    "user_123",
+						"email": "alice@example.com",
+						"name":  "Alice Example",
+					},
+					"role": map[string]any{
+						"id":   "project_admin",
+						"name": "Project admin",
+					},
+					"created_at": "2026-01-02T03:04:05Z",
+				}},
+				"has_more":  true,
+				"next_page": "page-2",
+			})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id": "assignment_2",
+					"principal": map[string]any{
+						"type": "group",
+						"id":   "rbac_group_123",
+						"name": "Legal",
+					},
+					"role": map[string]any{
+						"id": "project_viewer",
+					},
+				}},
+				"has_more": false,
+			})
+		default:
+			t.Fatalf("page = %q, want empty or page-2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":    "fixture-compliance-key",
+		"base_url":   server.URL,
+		"family":     "compliance_project_collaborator",
+		"per_page":   "2",
+		"project_id": "claude_proj_123",
+		"tenant_id":  "writer",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("first NextCursor = %q, want page-2", first.NextCursor.GetOpaque())
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	event := first.Events[0]
+	if event.Kind != "anthropic.compliance_project_collaborator" {
+		t.Fatalf("Kind = %q, want anthropic.compliance_project_collaborator", event.Kind)
+	}
+	if got := event.Attributes["project_id"]; got != "claude_proj_123" {
+		t.Fatalf("project_id = %q, want claude_proj_123", got)
+	}
+	if got := event.Attributes["principal_type"]; got != "user" {
+		t.Fatalf("principal_type = %q, want user", got)
+	}
+	if got := event.Attributes["principal_id"]; got != "user_123" {
+		t.Fatalf("principal_id = %q, want user_123", got)
+	}
+	if got := event.Attributes["role_id"]; got != "project_admin" {
+		t.Fatalf("role_id = %q, want project_admin", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+}
+
 func TestReadComplianceOrganizationSettingsUsesSettingsListKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/compliance/organizations/org-uuid-1/settings" {

@@ -1,6 +1,6 @@
 id: anthropic
 name: Anthropic
-description: Anthropic organization governance source covering organization identity, users, invites, workspaces, workspace members, API keys, service accounts, federation, external keys, usage and cost reports, rate limits, spend limits, compliance activity, compliance directory metadata, and effective organization settings.
+description: Anthropic organization governance source covering organization identity, users, invites, workspaces, workspace members, API keys, service accounts, federation, external keys, usage and cost reports, rate limits, spend limits, compliance activity, compliance directory metadata, project collaborators, and effective organization settings.
 emitted_kinds:
   - anthropic.organization
   - anthropic.user
@@ -27,6 +27,8 @@ emitted_kinds:
   - anthropic.compliance_role_permission
   - anthropic.compliance_group
   - anthropic.compliance_group_member
+  - anthropic.compliance_project
+  - anthropic.compliance_project_collaborator
   - anthropic.compliance_organization_setting
 coverage_contract:
   owner_domain: ai
@@ -54,6 +56,12 @@ coverage_contract:
       type: lifecycle_state
       title: Effective compliance organization settings
       families: [compliance_organization_setting]
+      support: supported
+      high_value: true
+    - id: compliance_projects
+      type: app_entitlement
+      title: Claude projects and active collaborator role assignments
+      families: [compliance_project, compliance_project_collaborator]
       support: supported
       high_value: true
     - id: external_keys
@@ -197,6 +205,13 @@ event_contracts:
     schema_ref: anthropic/compliance_group_member/v1
     required_attributes: [group_id, user_id]
     required_payload_fields: [user_id]
+  - kind: anthropic.compliance_project
+    schema_ref: anthropic/compliance_project/v1
+    required_attributes: [project_id]
+    required_payload_fields: [id]
+  - kind: anthropic.compliance_project_collaborator
+    schema_ref: anthropic/compliance_project_collaborator/v1
+    required_attributes: [project_id, principal_type, principal_id, role_id]
   - kind: anthropic.compliance_organization_setting
     schema_ref: anthropic/compliance_organization_setting/v1
     required_attributes: [organization_uuid, setting_name]

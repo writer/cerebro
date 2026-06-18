@@ -28,6 +28,14 @@ func openAIProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	return aiProjectProjections(event, openAIAccessProfile)
 }
 
+func anthropicProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiProjectProjections(event, anthropicAccessProfile)
+}
+
+func anthropicProjectCollaboratorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiProjectCollaboratorProjections(event, anthropicAccessProfile)
+}
+
 func anthropicOrganizationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiOrganizationProjections(event, anthropicAccessProfile)
 }
@@ -501,6 +509,45 @@ func aiRolePermissionProjections(event *cerebrov1.EventEnvelope, profile aiAcces
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), entitlementURN, capabilityURN, relationConfersCapability, aiEventLinkAttributes(event, "role_permission_capability")))
 	}
+	return identityProjectionResult(entities, links)
+}
+
+func aiProjectCollaboratorProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	projectURN := aiEnsureProject(entities, tenantID, event.GetSourceId(), profile, attrs)
+	orgURN := aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, attrs)
+	if projectURN != "" && orgURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), projectURN, orgURN, relationBelongsTo, aiEventLinkAttributes(event, "project_organization")))
+	}
+	roleID := aiRoleID(attrs)
+	if roleID == "" {
+		return identityProjectionResult(entities, links)
+	}
+	roleName := firstNonEmpty(attrs["role_name"], attrs["role"], roleID)
+	roleAttrs := aiScopedRoleAttributes(attrs, roleID)
+	roleAttrs["name"] = roleName
+	roleAttrs["role_name"] = roleName
+	roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, roleAttrs, "project")
+	principalType := aiProjectCollaboratorPrincipalType(attrs)
+	principalID := aiProjectCollaboratorPrincipalID(attrs, principalType)
+	principalURN := aiEnsureProjectCollaboratorPrincipal(entities, links, tenantID, event, profile, principalType, principalID, roleName)
+	if principalURN != "" && roleURN != "" {
+		linkAttrs := aiEventLinkAttributes(event, "project_collaborator_role")
+		addProjectedAttribute(linkAttrs, "principal_type", principalType)
+		addProjectedAttribute(linkAttrs, "principal_id", principalID)
+		addProjectedAttribute(linkAttrs, "role_id", roleID)
+		addProjectedAttribute(linkAttrs, "role", roleName)
+		addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(firstNonEmpty(roleName, roleID))))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), principalURN, roleURN, aiRoleAssignmentRelation(firstNonEmpty(roleName, roleID)), linkAttrs))
+	}
+	aiLinkRoleToScope(links, tenantID, event, roleURN, projectURN, firstNonEmpty(roleName, roleID), "project_collaborator_role_scope")
+	aiLinkPrincipalToScope(links, tenantID, event, principalURN, projectURN, firstNonEmpty(roleName, roleID), "project_collaborator_project_access")
 	return identityProjectionResult(entities, links)
 }
 
@@ -1039,6 +1086,77 @@ func aiRolePermissionCapabilityID(attrs map[string]string) string {
 		return "ai_data_read"
 	default:
 		return "ai_compliance_access"
+	}
+}
+
+func aiProjectCollaboratorPrincipalType(attrs map[string]string) string {
+	raw := firstNonEmpty(attrs["principal_type"], attrs["collaborator_type"], attrs["type"])
+	normalized := normalizeIdentifier(raw)
+	switch {
+	case strings.Contains(normalized, "organization") || normalized == "org" || strings.Contains(normalized, "everyone"):
+		return "organization"
+	case strings.TrimSpace(raw) != "":
+		return identityPrincipalType(raw)
+	case strings.TrimSpace(attrs["group_id"]) != "":
+		return "group"
+	case strings.TrimSpace(attrs["user_id"]) != "" || strings.TrimSpace(attrs["email"]) != "":
+		return "user"
+	case strings.TrimSpace(attrs["organization_uuid"]) != "" || strings.TrimSpace(attrs["organization_id"]) != "":
+		return "organization"
+	default:
+		return identityPrincipalType(raw)
+	}
+}
+
+func aiProjectCollaboratorPrincipalID(attrs map[string]string, principalType string) string {
+	switch principalType {
+	case "group":
+		return firstNonEmpty(attrs["group_id"], attrs["principal_id"])
+	case "organization":
+		return firstNonEmpty(attrs["organization_uuid"], attrs["organization_id"], attrs["principal_id"])
+	case "service_account":
+		return firstNonEmpty(attrs["service_account_id"], attrs["principal_id"])
+	default:
+		return firstNonEmpty(attrs["user_id"], attrs["principal_id"])
+	}
+}
+
+func aiEnsureProjectCollaboratorPrincipal(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile aiAccessProfile, principalType string, principalID string, role string) string {
+	attrs := event.GetAttributes()
+	switch principalType {
+	case "group":
+		groupAttrs := cloneAttributes(attrs)
+		groupAttrs["group_id"] = firstNonEmpty(attrs["group_id"], principalID)
+		groupAttrs["group_name"] = firstNonEmpty(attrs["group_name"], attrs["name"], principalID)
+		return aiEnsureGroup(entities, tenantID, event.GetSourceId(), profile, groupAttrs)
+	case "organization":
+		orgAttrs := cloneAttributes(attrs)
+		if strings.TrimSpace(orgAttrs["organization_uuid"]) == "" && strings.TrimSpace(orgAttrs["organization_id"]) == "" {
+			orgAttrs["organization_uuid"] = principalID
+		}
+		return aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, orgAttrs)
+	case "service_account":
+		serviceAccountID := firstNonEmpty(attrs["service_account_id"], principalID)
+		serviceAccountURN := identityPrincipalURN(tenantID, profile.Provider, "service_account", serviceAccountID, "")
+		if serviceAccountURN != "" {
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        serviceAccountURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: profile.Provider + ".service_account",
+				Label:      firstNonEmpty(attrs["name"], serviceAccountID),
+				Attributes: aiPrincipalAttributes(attrs, map[string]string{
+					"principal_type":     "service_account",
+					"service_account_id": serviceAccountID,
+					"name":               strings.TrimSpace(attrs["name"]),
+					"role":               strings.TrimSpace(role),
+					"is_admin":           boolString(aiRoleIsAdmin(role)),
+				}),
+			})
+		}
+		return serviceAccountURN
+	default:
+		return aiEnsureUser(entities, links, tenantID, event, profile, firstNonEmpty(attrs["user_id"], principalID), attrs["email"], attrs["name"], role)
 	}
 }
 

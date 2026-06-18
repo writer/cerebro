@@ -135,12 +135,12 @@ func anthropicProviderChecks(config map[string]string, policy resourcescope.Poli
 			Label:         "Anthropic compliance org-data scope",
 			Detail:        "Compliance organization, role, role-permission, and group families use x-api-key and require read:compliance_org_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_org_data.",
 		})...)
-	case "compliance_organization_user", "compliance_group_member":
+	case "compliance_organization_user", "compliance_group_member", "compliance_project", "compliance_project_collaborator":
 		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
 			RequiredScope: "read:compliance_user_data",
 			ID:            "anthropic_compliance_user_data_scope",
 			Label:         "Anthropic compliance user-data scope",
-			Detail:        "Compliance user and group-member families use x-api-key and require read:compliance_user_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_user_data.",
+			Detail:        "Compliance user, group-member, project, and project-collaborator families use x-api-key and require read:compliance_user_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_user_data.",
 		})...)
 	case "compliance_organization_setting":
 		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
