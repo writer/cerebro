@@ -1296,6 +1296,26 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	if got := strings.Join(jenkinsSchema.RequiredCredentials, ","); got != "password,username" {
 		t.Fatalf("jenkins required credentials = %q, want password,username", got)
 	}
+	openAISchema, ok := connectorSchemaForSource("openai")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(openai) = false, want builtin schema")
+	}
+	for _, key := range []string{"base_url", "credential_kind", "credential_scopes", "per_page"} {
+		if _, ok := openAISchema.ConfigKeys[key]; !ok {
+			t.Fatalf("openai config keys missing %q: %#v", key, sortedSetKeys(openAISchema.ConfigKeys))
+		}
+	}
+	err = validateConnectorConfigFields("openai", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"api_key":         "env:CEREBRO_SOURCE_OPENAI_API_KEY",
+		"credential_kind": openAICredentialKindAdminAPIKey,
+		"family":          "audit_log",
+		"per_page":        "100",
+	}, map[string]string{
+		"api_key": "env:CEREBRO_SOURCE_OPENAI_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(openai credential hints) error = %v", err)
+	}
 	anthropicSchema, ok := connectorSchemaForSource("anthropic")
 	if !ok {
 		t.Fatal("connectorSchemaForSource(anthropic) = false, want builtin schema")
@@ -1315,6 +1335,48 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("validateConnectorConfigFields(anthropic credential hints) error = %v", err)
+	}
+}
+
+func TestOpenAIProviderPreflightChecksCredentialRequirements(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]string
+	}{
+		{
+			name:   "default family needs admin key hint",
+			config: map[string]string{},
+		},
+		{
+			name:   "audit log needs admin key hint",
+			config: map[string]string{"credential_kind": "project_token", "family": "audit_log"},
+		},
+		{
+			name:   "project access needs admin key hint",
+			config: map[string]string{"credential_kind": "user_token", "family": "project_user"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			checks := connectorProviderPreflightChecks("openai", connectorAuthMethodExternalReference, test.config, resourcescope.Policy{})
+			check := findConnectorPreflightCheck(checks, "openai_admin_api_key")
+			if check == nil {
+				t.Fatalf("openai_admin_api_key check missing from %#v", checks)
+			}
+			if check.Status != "warning" || check.NextAction != "use_openai_admin_api_key" {
+				t.Fatalf("check = %#v, want warning action use_openai_admin_api_key", check)
+			}
+		})
+	}
+}
+
+func TestOpenAIProviderPreflightChecksPassWithAdminKeyHint(t *testing.T) {
+	checks := connectorProviderPreflightChecks("openai", connectorAuthMethodExternalReference, map[string]string{
+		"credential_kind": openAICredentialKindAdminAPIKey,
+		"family":          "audit_log",
+	}, resourcescope.Policy{})
+	if len(checks) != 0 {
+		t.Fatalf("checks = %#v, want none", checks)
 	}
 }
 

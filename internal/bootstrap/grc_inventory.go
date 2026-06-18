@@ -103,10 +103,25 @@ type grcInventoryScopeUpdateRequest struct {
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
+type grcInventoryAccountabilityUpdateRequest struct {
+	TenantID  string `json:"tenant_id,omitempty"`
+	AssetURN  string `json:"asset_urn"`
+	SourceID  string `json:"source_id,omitempty"`
+	RuntimeID string `json:"runtime_id,omitempty"`
+	State     string `json:"state"`
+	Owner     string `json:"owner,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
 type grcInventoryScopeUpdateResponse struct {
 	Scope       *ports.GRCInventoryScopeRecord       `json:"scope"`
 	Propagation []grcInventoryScopePropagationResult `json:"propagation,omitempty"`
 	GeneratedAt time.Time                            `json:"generated_at"`
+}
+
+type grcInventoryAccountabilityUpdateResponse struct {
+	Scope       *ports.GRCInventoryScopeRecord `json:"scope"`
+	GeneratedAt time.Time                      `json:"generated_at"`
 }
 
 type grcInventoryScopePropagationResult struct {
@@ -391,6 +406,149 @@ func (a *App) handleUpdateGRCResourceScope(w http.ResponseWriter, r *http.Reques
 	}
 	a.bumpGRCCacheVersions(r.Context(), tenantID, grcCacheScopeInventory)
 	writeJSON(w, http.StatusOK, grcInventoryScopeUpdateResponse{Scope: record, Propagation: propagation, GeneratedAt: time.Now().UTC()})
+}
+
+func (a *App) handleUpdateGRCInventoryAccountability(w http.ResponseWriter, r *http.Request) {
+	var request grcInventoryAccountabilityUpdateRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxGRCInventoryScopeBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeGRCError(w, fmt.Errorf("%w: decode inventory accountability request: %w", errInvalidHTTPRequest, err))
+		return
+	}
+	request.AssetURN = strings.TrimSpace(request.AssetURN)
+	if request.AssetURN == "" {
+		writeGRCError(w, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest))
+		return
+	}
+	if err := authorizeCerebroURNTenant(r.Context(), request.AssetURN); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		tenantID = tenantIDFromCerebroURN(request.AssetURN)
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	store := grcInventoryScopeStore(a.deps.StateStore)
+	if store == nil {
+		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
+		return
+	}
+	record, err := upsertGRCInventoryAccountability(r.Context(), store, tenantID, grcInventoryUpdatedBy(r), request)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	a.bumpGRCCacheVersions(r.Context(), tenantID, grcCacheScopeInventory)
+	writeJSON(w, http.StatusOK, grcInventoryAccountabilityUpdateResponse{Scope: record, GeneratedAt: time.Now().UTC()})
+}
+
+func upsertGRCInventoryAccountability(ctx context.Context, store ports.GRCInventoryScopeStore, tenantID string, updatedBy string, request grcInventoryAccountabilityUpdateRequest) (*ports.GRCInventoryScopeRecord, error) {
+	if store == nil {
+		return nil, graphquery.ErrRuntimeUnavailable
+	}
+	request.AssetURN = strings.TrimSpace(request.AssetURN)
+	request.SourceID = strings.TrimSpace(request.SourceID)
+	request.State = strings.TrimSpace(request.State)
+	request.Owner = strings.TrimSpace(request.Owner)
+	request.Reason = strings.TrimSpace(request.Reason)
+	if request.AssetURN == "" {
+		return nil, fmt.Errorf("%w: asset_urn is required", errInvalidHTTPRequest)
+	}
+	existing, err := loadGRCInventoryScopeRecord(ctx, store, tenantID, request.AssetURN)
+	if err != nil {
+		return nil, err
+	}
+	scopeState := grcinventory.ScopeStateInScope
+	scopeReason := ""
+	sourceID := request.SourceID
+	attributes := map[string]string{}
+	if existing != nil {
+		if strings.TrimSpace(existing.ScopeState) != "" {
+			scopeState = existing.ScopeState
+		}
+		scopeReason = existing.Reason
+		if sourceID == "" {
+			sourceID = existing.SourceID
+		}
+		for key, value := range existing.Attributes {
+			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+				attributes[key] = value
+			}
+		}
+	}
+	switch request.State {
+	case grcinventory.AccountabilityKnown:
+		if request.Owner == "" {
+			return nil, fmt.Errorf("%w: owner is required when state is known", errInvalidHTTPRequest)
+		}
+		attributes[grcinventory.AttributeAccountabilityState] = grcinventory.AccountabilityKnown
+		attributes[grcinventory.AttributeAccountabilityPrincipal] = request.Owner
+		attributes["owner"] = request.Owner
+		attributes[grcinventory.AttributeOwnerSource] = grcinventory.AttributeOwnerSourceCerebro
+		attributes["accountability_required"] = "true"
+		delete(attributes, grcinventory.AttributeOwnerNotRequired)
+	case grcinventory.AccountabilityNone:
+		attributes[grcinventory.AttributeAccountabilityState] = grcinventory.AccountabilityNone
+		attributes[grcinventory.AttributeOwnerNotRequired] = "true"
+		delete(attributes, grcinventory.AttributeAccountabilityPrincipal)
+		delete(attributes, "owner")
+		delete(attributes, grcinventory.AttributeOwnerSource)
+		delete(attributes, "accountability_required")
+	case "clear":
+		delete(attributes, grcinventory.AttributeAccountabilityState)
+		delete(attributes, grcinventory.AttributeAccountabilityPrincipal)
+		delete(attributes, grcinventory.AttributeAccountabilityReason)
+		delete(attributes, grcinventory.AttributeOwnerNotRequired)
+		delete(attributes, grcinventory.AttributeOwnerSource)
+		delete(attributes, "owner")
+		delete(attributes, "accountability_required")
+		delete(attributes, "accountability_updated_by")
+		delete(attributes, "accountability_updated_at")
+	default:
+		return nil, fmt.Errorf("%w: state must be known, not_required, or clear", errInvalidHTTPRequest)
+	}
+	if request.State != "clear" {
+		attributes[grcinventory.AttributeAccountabilityReason] = fallbackString(request.Reason, accountabilityDefaultReason(request.State))
+		attributes["accountability_updated_by"] = strings.TrimSpace(updatedBy)
+		attributes["accountability_updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	}
+	return store.UpsertGRCInventoryScope(ctx, ports.GRCInventoryScopeRecord{
+		TenantID:   tenantID,
+		AssetURN:   request.AssetURN,
+		SourceID:   sourceID,
+		ScopeState: scopeState,
+		Reason:     scopeReason,
+		UpdatedBy:  updatedBy,
+		Attributes: attributes,
+	})
+}
+
+func loadGRCInventoryScopeRecord(ctx context.Context, store ports.GRCInventoryScopeStore, tenantID string, assetURN string) (*ports.GRCInventoryScopeRecord, error) {
+	records, err := store.ListGRCInventoryScopes(ctx, ports.GRCInventoryScopeFilter{
+		TenantID:  tenantID,
+		AssetURNs: []string{assetURN},
+		Limit:     1,
+	})
+	if err != nil || len(records) == 0 {
+		return nil, err
+	}
+	return records[0], nil
+}
+
+func accountabilityDefaultReason(state string) string {
+	switch state {
+	case grcinventory.AccountabilityKnown:
+		return "Owner assigned from inventory"
+	case grcinventory.AccountabilityNone:
+		return "Owner not required for GRC review"
+	default:
+		return ""
+	}
 }
 
 func (a *App) applyGRCInventoryScopeToSourceRuntimes(ctx context.Context, tenantID string, request grcInventoryScopeUpdateRequest) ([]grcInventoryScopePropagationResult, error) {

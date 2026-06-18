@@ -2071,6 +2071,41 @@ paths:
       responses:
         '200':
           description: Updated GRC purview state for one inventory asset and propagated any concrete resource exclusion to source-runtime incremental fetch policy.
+  /grc/inventory/accountability:
+    post:
+      summary: Update inventory accountability
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset_urn, state]
+              properties:
+                tenant_id:
+                  type: string
+                asset_urn:
+                  type: string
+                source_id:
+                  type: string
+                runtime_id:
+                  type: string
+                  description: Source runtime associated with this inventory asset.
+                state:
+                  type: string
+                  enum: [known, not_required, clear]
+                  description: Owner decision to persist for derived GRC review posture.
+                owner:
+                  type: string
+                  description: Required when state is known.
+                reason:
+                  type: string
+                  description: Reviewer rationale for the accountability decision.
+      responses:
+        '200':
+          description: Updated accountability metadata for one inventory asset while preserving any existing scope exclusion.
   /grc/inventory/asset-reports:
     get:
       summary: Inventory asset reports
