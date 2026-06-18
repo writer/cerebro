@@ -22,6 +22,7 @@ import (
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/mcpoauth"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 const (
@@ -44,8 +45,33 @@ type mcpOAuthOIDCClient struct {
 func newMCPOAuthOIDCClient(cfg config.MCPOAuthUpstreamConfig) *mcpOAuthOIDCClient {
 	return &mcpOAuthOIDCClient{
 		cfg:        cfg,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
+		httpClient: newMCPOAuthOIDCHTTPClient(cfg),
 	}
+}
+
+func newMCPOAuthOIDCHTTPClient(cfg config.MCPOAuthUpstreamConfig) *http.Client {
+	return sourcehttp.NewClient(sourcehttp.ClientOptions{
+		SourceID:      "mcp-oauth-oidc",
+		Timeout:       15 * time.Second,
+		AllowLoopback: mcpOAuthOIDCAllowsLoopback(cfg),
+	})
+}
+
+func mcpOAuthOIDCAllowsLoopback(cfg config.MCPOAuthUpstreamConfig) bool {
+	for _, raw := range []string{cfg.Issuer, cfg.TokenEndpoint, cfg.JWKSURI} {
+		if mcpOAuthOIDCURLUsesLoopback(raw) {
+			return true
+		}
+	}
+	return false
+}
+
+func mcpOAuthOIDCURLUsesLoopback(raw string) bool {
+	parsed, err := url.Parse(strings.TrimRight(strings.TrimSpace(raw), "/"))
+	if err != nil {
+		return false
+	}
+	return sourcehttp.IsLoopbackHost(parsed.Hostname())
 }
 
 func (c *mcpOAuthOIDCClient) AuthorizationEndpoint(ctx context.Context) (string, error) {

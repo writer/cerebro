@@ -354,6 +354,77 @@ func TestMCPOAuthClientCredentialsIssuesMCPOnlyToken(t *testing.T) {
 	}
 }
 
+func TestMCPOAuthOIDCDiscoveryDoesNotFollowRedirects(t *testing.T) {
+	redirectTargetHit := false
+	var redirectTarget *httptest.Server
+	redirectTarget = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectTargetHit = true
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                 "placeholder",
+			"authorization_endpoint": redirectTarget.URL + "/authorize",
+			"token_endpoint":         redirectTarget.URL + "/token",
+			"jwks_uri":               redirectTarget.URL + "/jwks",
+		})
+	}))
+	defer redirectTarget.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, redirectTarget.URL+"/openid-configuration", http.StatusFound)
+	}))
+	defer upstream.Close()
+
+	client := newMCPOAuthOIDCClient(config.MCPOAuthUpstreamConfig{
+		Issuer:       upstream.URL,
+		ClientID:     "writer-client",
+		ClientSecret: "writer-secret",
+		RedirectURI:  "https://cerebro.example/oauth/callback",
+	})
+	endpoint, err := client.AuthorizationEndpoint(context.Background())
+	if err == nil {
+		t.Fatalf("AuthorizationEndpoint = %q, want upstream discovery redirect rejection", endpoint)
+	}
+	if redirectTargetHit {
+		t.Fatal("OIDC discovery followed a server-side redirect target")
+	}
+}
+
+func TestMCPOAuthOIDCTokenExchangeDoesNotFollowRedirects(t *testing.T) {
+	redirectTargetHit := false
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectTargetHit = true
+		_ = json.NewEncoder(w).Encode(map[string]any{"id_token": "redirected"})
+	}))
+	defer redirectTarget.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/token" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, redirectTarget.URL+"/capture", http.StatusFound)
+	}))
+	defer upstream.Close()
+
+	client := newMCPOAuthOIDCClient(config.MCPOAuthUpstreamConfig{
+		Issuer:        "https://writer-sso.example",
+		TokenEndpoint: upstream.URL + "/token",
+		ClientID:      "writer-client",
+		ClientSecret:  "writer-secret",
+		RedirectURI:   "https://cerebro.example/oauth/callback",
+	})
+	_, err := client.ExchangeCode(context.Background(), "upstream-code", "nonce")
+	if err == nil {
+		t.Fatal("ExchangeCode succeeded through an upstream token redirect")
+	}
+	if redirectTargetHit {
+		t.Fatal("OIDC token exchange followed a server-side redirect target")
+	}
+}
+
 func TestMCPOAuthCallbackRejectsMissingSecurityGroup(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
