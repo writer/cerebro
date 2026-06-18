@@ -53,6 +53,21 @@ func TestSecurityToolingMapControlCoverageGapRetiredResolves(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newSecurityToolingMapControlCoverageGapRule(), open, retired, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestSecurityToolingMapControlCoverageGapUnknownCoverageDoesNotResolve(t *testing.T) {
+	rule := newSecurityToolingMapControlCoverageGapRule()
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+	unknown := securityToolingMapControlMappingEvent("stm-unknown", map[string]string{
+		"coverage":        "",
+		"coverage_status": "",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	if anchor, closes := counterRule.CloseOnEvent(unknown); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(unknown coverage) = (%q, %v), want no close", anchor, closes)
+	}
+}
+
 func TestSecurityToolingMapControlCoverageGapReopensOnRecurrence(t *testing.T) {
 	rule := newSecurityToolingMapControlCoverageGapRule()
 	runtime := &cerebrov1.SourceRuntime{

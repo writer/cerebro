@@ -84,7 +84,7 @@ func (r *securityToolingMapCoverageGapRule) CloseOnEvent(event Event) (string, b
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if securityToolingMapControlCoverageGap(attributes) {
+	if !securityToolingMapControlCoverageResolved(attributes) {
 		return "", false
 	}
 	coverageURN := securityToolingMapControlCoverageURN(event.GetTenantId(), attributes)
@@ -172,6 +172,10 @@ func securityToolingMapControlCoverageGap(attributes map[string]string) bool {
 		return false
 	}
 	return securityToolingMapCoverageGapStatus(attributes) == "gap"
+}
+
+func securityToolingMapControlCoverageResolved(attributes map[string]string) bool {
+	return securityToolingMapControlDecommissioned(attributes) || securityToolingMapCoverageGapStatus(attributes) == "covered"
 }
 
 func securityToolingMapCoverageGapStatus(attributes map[string]string) string {
