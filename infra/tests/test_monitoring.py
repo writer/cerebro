@@ -550,6 +550,21 @@ class MonitoringRuntimeTest(unittest.TestCase):
             self.assertNotIn("resource_urn", spec["pattern"])
             self.assertNotIn("request_id", spec["pattern"])
             self.assertNotIn("trace_id", spec["pattern"])
+        specs_by_metric = {spec["metric_name"]: spec for spec in specs}
+        self.assertIn('$.name = "source_runtime.contract_probe"', specs_by_metric["SourceRuntimeContractProbeSuccess"]["pattern"])
+        self.assertIn('$.contract_probe_status = "success"', specs_by_metric["SourceRuntimeContractProbeSuccess"]["pattern"])
+        contract_failure_pattern = specs_by_metric["SourceRuntimeContractProbeFailure"]["pattern"]
+        self.assertIn('$.contract_probe_status = "failure"', contract_failure_pattern)
+        self.assertIn('$.contract_probe_status = "stale"', contract_failure_pattern)
+        self.assertIn('$.contract_probe_status = "unknown"', contract_failure_pattern)
+        validation_pattern = specs_by_metric["SourceRuntimeMissingCanonicalFields"]["pattern"]
+        self.assertIn('$.name = "source_runtime.validation"', validation_pattern)
+        self.assertIn("$.missing_canonical_field_class = *", validation_pattern)
+        link_pattern = specs_by_metric["SourceRuntimeOrphanMissingLink"]["pattern"]
+        self.assertIn('$.name = "runtime.evidence.link_status"', link_pattern)
+        self.assertIn('$.link_status = "orphan"', link_pattern)
+        self.assertIn('$.link_status = "missing_resource"', link_pattern)
+        self.assertIn('$.link_status = "missing_case"', link_pattern)
 
     def test_dashboard_includes_source_runtime_observability_sections(self) -> None:
         original_get_region = monitoring.aws.get_region

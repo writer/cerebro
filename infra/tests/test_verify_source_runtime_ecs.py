@@ -968,6 +968,52 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeVerificationFailedError, "contract probe status is failure"):
             _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
 
+    def test_verify_task_fails_closed_for_stale_or_unknown_contract_probe(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-evidence-cas-cases",
+            schedule_name="evidence-cas-cases",
+            rule_name="cerebro-sec-dev-orchestrator-evidence-cas-cases",
+            target={"Arn": "cluster"},
+        )
+        for status in ["stale", "unknown"]:
+            messages = [
+                {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+                {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 1, "pages_read": 1},
+                {"kind": "event", "name": "source_runtime.contract_probe", "contract_probe_status": status},
+                {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "completed"},
+            ]
+
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(RuntimeVerificationFailedError, f"contract probe status is {status}"):
+                    _verification_result_from_logs(
+                        target,
+                        "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1",
+                        0,
+                        messages,
+                        True,
+                    )
+
+    def test_verify_task_allows_successful_contract_probe_and_link_status(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-evidence-cas-cases",
+            schedule_name="evidence-cas-cases",
+            rule_name="cerebro-sec-dev-orchestrator-evidence-cas-cases",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 1, "pages_read": 1},
+            {"kind": "event", "name": "source_runtime.contract_probe", "contract_probe_status": "success"},
+            {"kind": "event", "name": "runtime.evidence.link_status", "link_status": "linked"},
+            {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "completed"},
+        ]
+
+        result = _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
+        self.assertEqual(result.runtime_status, "completed")
+        self.assertEqual(result.sync_status, "completed")
+        self.assertEqual(result.graph_ingest_status, "completed")
+
     def test_verify_task_fails_closed_for_orphan_missing_link_state(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-evidence-cas-cases",
@@ -984,6 +1030,31 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeVerificationFailedError, "link status is missing_resource"):
             _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
+
+    def test_verify_task_fails_closed_for_all_orphan_missing_link_statuses(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-evidence-cas-cases",
+            schedule_name="evidence-cas-cases",
+            rule_name="cerebro-sec-dev-orchestrator-evidence-cas-cases",
+            target={"Arn": "cluster"},
+        )
+        for status in ["orphan", "missing_case"]:
+            messages = [
+                {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+                {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 1, "pages_read": 1},
+                {"kind": "event", "name": "runtime.evidence.link_status", "link_status": status},
+                {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "completed"},
+            ]
+
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(RuntimeVerificationFailedError, f"link status is {status}"):
+                    _verification_result_from_logs(
+                        target,
+                        "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1",
+                        0,
+                        messages,
+                        True,
+                    )
 
     def test_verify_task_fails_closed_for_zero_discovered_runtimes(self) -> None:
         target = RuntimeTarget(
