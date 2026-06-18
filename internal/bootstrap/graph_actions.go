@@ -18,7 +18,7 @@ func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
 		writeGraphActionError(w, err)
 		return
 	}
-	result, err := a.executeGraphAction(r.Context(), graphactionapi.InputFromRequest(request))
+	result, err := executeGraphAction(r.Context(), graphactionapi.InputFromRequest(request), a.services.graphActions, a.deps)
 	if err != nil {
 		writeGraphActionError(w, err)
 		return
@@ -27,45 +27,32 @@ func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.Request[cerebrov1.ExecuteGraphActionRequest]) (*connect.Response[cerebrov1.ExecuteGraphActionResponse], error) {
-	app := s.app
-	if app == nil {
-		app = &App{cfg: s.cfg, deps: s.deps, sources: s.sources}
-	}
-	result, err := app.executeGraphAction(ctx, graphactionapi.InputFromRequest(req.Msg))
+	result, err := executeGraphAction(ctx, graphactionapi.InputFromRequest(req.Msg), s.graphActions, s.deps)
 	if err != nil {
-		return nil, graphActionConnectError(err)
+		return nil, graphactionapi.ConnectError(err, graphActionErrors)
 	}
 	return connect.NewResponse(graphactionapi.ResponseMessage(result, findingMessage(result.Finding))), nil
 }
 
-func (a *App) executeGraphAction(ctx context.Context, input graphactions.Input) (*graphactions.Result, error) {
+func executeGraphAction(ctx context.Context, input graphactions.Input, service *graphactions.Service, deps Dependencies) (*graphactions.Result, error) {
 	return graphactionapi.Executor{
-		Service: a.services.graphActions,
-		NewService: func() (*graphactions.Service, error) {
-			return graphactionapi.NewAccessApprovalsService(a.cfg.GraphActions.AccessApprovals, a.findingService())
-		},
+		Service: service,
 		AuthorizeFinding: func(ctx context.Context, findingID string) error {
-			return normalizeIDLookupError(authorizeFindingIDTenant(ctx, findingStore(a.deps.StateStore), findingID), ports.ErrFindingNotFound)
+			return normalizeIDLookupError(authorizeFindingIDTenant(ctx, findingStore(deps.StateStore), findingID), ports.ErrFindingNotFound)
 		},
 		BumpFinding: func(ctx context.Context, finding *ports.FindingRecord) {
-			bumpGRCCacheForFinding(ctx, a.deps.QueryCache, finding)
+			bumpGRCCacheForFinding(ctx, deps.QueryCache, finding)
 		},
 	}.Execute(ctx, input)
 }
 
 func writeGraphActionError(w http.ResponseWriter, err error) {
-	status := graphactionapi.HTTPStatus(err, graphActionErrorSentinels())
+	status := graphactionapi.HTTPStatus(err, graphActionErrors)
 	writeJSON(w, status, map[string]string{"error": safeHTTPErrorMessage(status, err)})
 }
 
-func graphActionConnectError(err error) error {
-	return graphactionapi.ConnectError(err, graphActionErrorSentinels())
-}
-
-func graphActionErrorSentinels() graphactionapi.ErrorSentinels {
-	return graphactionapi.ErrorSentinels{
-		InvalidHTTPRequest: errInvalidHTTPRequest,
-		TenantForbidden:    errTenantForbidden,
-		ScopeForbidden:     errScopeForbidden,
-	}
+var graphActionErrors = graphactionapi.ErrorSentinels{
+	InvalidHTTPRequest: errInvalidHTTPRequest,
+	TenantForbidden:    errTenantForbidden,
+	ScopeForbidden:     errScopeForbidden,
 }

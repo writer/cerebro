@@ -563,9 +563,6 @@ func Load() (Config, error) {
 	if cfg.GraphActions.AccessApprovals.Timeout, err = parseDurationEnv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", 10*time.Second); err != nil {
 		return Config{}, err
 	}
-	if cfg.GraphActions.AccessApprovals.Timeout <= 0 {
-		return Config{}, fmt.Errorf("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT must be greater than zero")
-	}
 	if cfg.Cache.DefaultTTL, err = parseDurationEnv("CEREBRO_CACHE_DEFAULT_TTL", 30*time.Second); err != nil {
 		return Config{}, err
 	}

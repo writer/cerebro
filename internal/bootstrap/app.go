@@ -99,10 +99,10 @@ type appServices struct {
 }
 
 type bootstrapService struct {
-	cfg     config.Config
-	deps    Dependencies
-	sources *sourcecdk.Registry
-	app     *App
+	cfg          config.Config
+	deps         Dependencies
+	sources      *sourcecdk.Registry
+	graphActions *graphactions.Service
 }
 
 const (
@@ -222,12 +222,8 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
 	app.services.graphQueries = app.newGraphQueryService()
-	if graphactionapi.AccessApprovalsConfigured(app.cfg.GraphActions.AccessApprovals) {
-		graphActions, err := graphactionapi.NewAccessApprovalsService(app.cfg.GraphActions.AccessApprovals, app.findingService())
-		if err != nil {
-			return nil, fmt.Errorf("graph actions bootstrap failed: %w", err)
-		}
-		app.services.graphActions = graphActions
+	if app.services.graphActions, err = graphactionapi.NewAccessApprovalsServiceIfConfigured(app.cfg.GraphActions.AccessApprovals, app.findingService()); err != nil {
+		return nil, fmt.Errorf("graph actions bootstrap failed: %w", err)
 	}
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
 	app.services.workflowReplay = app.newWorkflowReplayService()

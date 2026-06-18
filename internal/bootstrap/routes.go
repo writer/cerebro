@@ -39,7 +39,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 }
 
 func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) {
-	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, app: app}
+	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
 }
