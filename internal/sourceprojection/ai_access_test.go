@@ -185,6 +185,16 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 			SourceId:   "openai",
 			Kind:       "openai.invite",
 			OccurredAt: timestamppb.New(occurred),
+			Payload: []byte(`{
+				"id": "invite_openai_123",
+				"email": "future-owner@example.com",
+				"role": "owner",
+				"status": "pending",
+				"projects": [
+					{"id": "proj_123", "role": "owner"},
+					{"id": "proj_456", "role": "member"}
+				]
+			}`),
 			Attributes: map[string]string{
 				"email":      "future-owner@example.com",
 				"family":     "invite",
@@ -193,6 +203,29 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 				"status":     "pending",
 				"created_at": "2026-06-18T12:10:00Z",
 				"expires_at": "2026-06-25T12:10:00Z",
+			},
+		},
+		{
+			Id:         "openai-expired-invite",
+			TenantId:   "writer",
+			SourceId:   "openai",
+			Kind:       "openai.invite",
+			OccurredAt: timestamppb.New(occurred),
+			Payload: []byte(`{
+				"id": "invite_openai_expired",
+				"email": "expired-owner@example.com",
+				"role": "owner",
+				"status": "expired",
+				"projects": [
+					{"id": "proj_expired", "role": "owner"}
+				]
+			}`),
+			Attributes: map[string]string{
+				"email":     "expired-owner@example.com",
+				"family":    "invite",
+				"invite_id": "invite_openai_expired",
+				"role":      "owner",
+				"status":    "expired",
 			},
 		},
 		{
@@ -233,8 +266,14 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 	}
 
 	openAIInviteURN := "urn:cerebro:writer:openai_invite:invite_openai_123"
+	openAIExpiredInviteURN := "urn:cerebro:writer:openai_invite:invite_openai_expired"
 	openAIOrgURN := "urn:cerebro:writer:openai_org:openai"
 	openAIRoleURN := "urn:cerebro:writer:openai_role:organization:owner"
+	openAIProjectOwnerRoleURN := "urn:cerebro:writer:openai_role:project:owner"
+	openAIProjectMemberRoleURN := "urn:cerebro:writer:openai_role:project:member"
+	openAIProjectOwnerURN := "urn:cerebro:writer:openai_project:proj_123"
+	openAIProjectMemberURN := "urn:cerebro:writer:openai_project:proj_456"
+	openAIExpiredProjectURN := "urn:cerebro:writer:openai_project:proj_expired"
 	anthropicInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_123"
 	anthropicExpiredInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_expired"
 	anthropicOrgURN := "urn:cerebro:writer:anthropic_org:anthropic"
@@ -253,6 +292,13 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIRoleURN)
 	assertProjectedLink(t, state, openAIRoleURN, relationGrantsEntitlement, openAIOrgURN)
 	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIOrgURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIProjectOwnerRoleURN)
+	assertProjectedLink(t, state, openAIProjectOwnerRoleURN, relationGrantsEntitlement, openAIProjectOwnerURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIProjectOwnerURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationAssignedTo, openAIProjectMemberRoleURN)
+	assertProjectedLink(t, state, openAIProjectMemberRoleURN, relationGrantsEntitlement, openAIProjectMemberURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationCanPerform, openAIProjectMemberURN)
+	assertProjectedLinkMissing(t, state, openAIExpiredInviteURN, relationCanAdmin, openAIExpiredProjectURN)
 	assertProjectedLink(t, state, anthropicInviteURN, relationBelongsTo, anthropicOrgURN)
 	assertProjectedLink(t, state, anthropicInviteURN, relationRepresentsIdentity, anthropicIdentityURN)
 	assertProjectedLink(t, state, anthropicInviteURN, relationAssignedTo, anthropicRoleURN)

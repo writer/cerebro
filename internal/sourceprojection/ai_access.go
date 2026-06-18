@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"encoding/json"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -9,6 +10,11 @@ import (
 
 type aiAccessProfile struct {
 	Provider string
+}
+
+type aiInviteProjectMembership struct {
+	ProjectID string
+	Role      string
 }
 
 var (
@@ -254,6 +260,38 @@ func aiInviteProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), inviteURN, roleURN, aiRoleAssignmentRelation(role), linkAttrs))
 			aiLinkRoleToScope(links, tenantID, event, roleURN, orgURN, role, "invite_role_scope")
 		}
+	}
+	for _, projectMembership := range aiInviteProjectMemberships(event) {
+		projectAttrs := cloneAttributes(attrs)
+		projectAttrs["project_id"] = projectMembership.ProjectID
+		projectURN := aiEnsureProject(entities, tenantID, event.GetSourceId(), profile, projectAttrs)
+		if projectURN == "" {
+			continue
+		}
+		projectRole := firstNonEmpty(projectMembership.Role, role)
+		if projectRole != "" {
+			roleAttrs := aiScopedRoleAttributes(projectAttrs, projectRole)
+			roleAttrs["role"] = projectRole
+			roleAttrs["role_id"] = projectRole
+			roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, roleAttrs, "project")
+			if roleURN != "" {
+				linkAttrs := aiEventLinkAttributes(event, "invite_project_role")
+				addProjectedAttribute(linkAttrs, "project_id", projectMembership.ProjectID)
+				addProjectedAttribute(linkAttrs, "role", projectRole)
+				addProjectedAttribute(linkAttrs, "status", status)
+				addProjectedAttribute(linkAttrs, "access_state", aiInviteAccessState(status))
+				addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(projectRole)))
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), inviteURN, roleURN, aiRoleAssignmentRelation(projectRole), linkAttrs))
+				aiLinkRoleToScope(links, tenantID, event, roleURN, projectURN, projectRole, "invite_project_role_scope")
+			}
+		}
+		linkAttrs := aiEventLinkAttributes(event, "invite_project_access_intent")
+		addProjectedAttribute(linkAttrs, "project_id", projectMembership.ProjectID)
+		addProjectedAttribute(linkAttrs, "role", projectRole)
+		addProjectedAttribute(linkAttrs, "status", status)
+		addProjectedAttribute(linkAttrs, "access_state", aiInviteAccessState(status))
+		addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(projectRole)))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), inviteURN, projectURN, aiScopeAccessRelation([]string{projectRole}), linkAttrs))
 	}
 	linkAttrs := aiEventLinkAttributes(event, "invite_access_intent")
 	addProjectedAttribute(linkAttrs, "role", role)
@@ -1313,6 +1351,37 @@ func aiInviteAccessIntentActive(status string) bool {
 	default:
 		return false
 	}
+}
+
+func aiInviteProjectMemberships(event *cerebrov1.EventEnvelope) []aiInviteProjectMembership {
+	if len(event.GetPayload()) == 0 {
+		return nil
+	}
+	var payload struct {
+		Projects []struct {
+			ID   string `json:"id"`
+			Role string `json:"role"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(event.GetPayload(), &payload); err != nil {
+		return nil
+	}
+	memberships := make([]aiInviteProjectMembership, 0, len(payload.Projects))
+	seen := map[string]struct{}{}
+	for _, project := range payload.Projects {
+		projectID := strings.TrimSpace(project.ID)
+		if projectID == "" {
+			continue
+		}
+		role := strings.TrimSpace(project.Role)
+		key := projectID + "\x00" + role
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		memberships = append(memberships, aiInviteProjectMembership{ProjectID: projectID, Role: role})
+	}
+	return memberships
 }
 
 func aiRoleID(attrs map[string]string) string {
