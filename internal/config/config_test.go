@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -980,7 +979,7 @@ func TestLoadRejectsUnknownAPICredentialRole(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load() error = nil, want unknown role error")
 	}
-	if !strings.Contains(err.Error(), `CEREBRO_API_CREDENTIALS_JSON[0].roles contains unknown role "cerebro.viewr"`) {
+	if !errors.Is(err, errUnknownRBACRole) {
 		t.Fatalf("Load() error = %v, want unknown API credential role", err)
 	}
 }
@@ -990,18 +989,15 @@ func TestLoadRejectsUnknownMCPOAuthRoles(t *testing.T) {
 		name         string
 		clientsJSON  string
 		entitlesJSON string
-		want         string
 	}{
 		{
 			name:        "client",
 			clientsJSON: `[{"client_id":"panopticon","client_secret":"secret","grant_types":["client_credentials"],"tenant_id":"writer","roles":["cerebro.viewr"]}]`,
-			want:        `CEREBRO_MCP_OAUTH_CLIENTS_JSON[0].roles contains unknown role "cerebro.viewr"`,
 		},
 		{
 			name:         "entitlement",
 			clientsJSON:  `[{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true}]`,
 			entitlesJSON: `[{"groups":["secops"],"tenant_id":"writer","roles":["cerebro.viewr"]}]`,
-			want:         `CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[0].roles contains unknown role "cerebro.viewr"`,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1015,8 +1011,8 @@ func TestLoadRejectsUnknownMCPOAuthRoles(t *testing.T) {
 			if err == nil {
 				t.Fatal("Load() error = nil, want unknown role error")
 			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("Load() error = %v, want %q", err, tt.want)
+			if !errors.Is(err, errUnknownRBACRole) {
+				t.Fatalf("Load() error = %v, want unknown role rejection", err)
 			}
 		})
 	}

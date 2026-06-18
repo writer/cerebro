@@ -1,9 +1,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var errUnknownRBACRole = errors.New("unknown rbac role")
 
 var knownRBACRoles = map[string]struct{}{
 	"cerebro.admin":             {},
@@ -31,7 +34,7 @@ func validateKnownRBACRoles(field string, roles []string) error {
 			continue
 		}
 		if _, ok := knownRBACRoles[role]; !ok {
-			return fmt.Errorf("%s contains unknown role %q", field, role)
+			return fmt.Errorf("%w: %s contains role %q", errUnknownRBACRole, field, role)
 		}
 	}
 	return nil
