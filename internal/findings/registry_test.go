@@ -88,8 +88,8 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 13 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 13", got)
+	if got := len(packs); got != 14 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 14", got)
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {
@@ -146,6 +146,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(vulnViewActionableExternalFindingRuleID); !ok {
 		t.Fatalf("registry missing %q", vulnViewActionableExternalFindingRuleID)
+	}
+	if _, ok := registry.Get(trivyImageVulnerabilityActiveRuleID); !ok {
+		t.Fatalf("registry missing %q", trivyImageVulnerabilityActiveRuleID)
 	}
 	if _, ok := registry.Get(vulnViewExternalAssetConcentratedSignalRuleID); !ok {
 		t.Fatalf("registry missing %q", vulnViewExternalAssetConcentratedSignalRuleID)

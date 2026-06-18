@@ -41677,7 +41677,7 @@ profiles:
         selected_controls: 34
         mapped_controls: 14
         unmapped_controls: 20
-        mapped_rules: 99
+        mapped_rules: 100
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 34
@@ -42064,7 +42064,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 8
+          rule_count: 9
           mapped_rules:
             - aws-rds-auto-minor-upgrade
             - grc-isolated-target-enrichment-gap
@@ -42072,6 +42072,7 @@ profiles:
             - grc-source-integration-concentrated-open-findings
             - grc-vulnerability-sla-overdue
             - security-reviewer-reported-finding
+            - trivy-image-vulnerability-active
             - vulnview-actionable-external-finding
             - vulnview-external-asset-concentrated-signal
         - framework_name: ISO 27001:2022
@@ -42502,6 +42503,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.16
+        - rule_id: trivy-image-vulnerability-active
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.8
         - rule_id: vulnview-actionable-external-finding
           controls:
             - framework_name: ISO 27001:2022
@@ -61037,7 +61042,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 919
+        mapped_rules: 920
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -62218,7 +62223,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 47
+          rule_count: 48
           mapped_rules:
             - aws-ecr-immutable-tags
             - aws-guardduty-c2-traffic
@@ -62265,6 +62270,7 @@ profiles:
             - sentinelone-vuln-medium
             - threat-intel-malicious-domain-resolution
             - threat-intel-malicious-ip-connection
+            - trivy-image-vulnerability-active
             - vulnview-actionable-external-finding
             - vulnview-external-asset-concentrated-signal
         - framework_name: SOC 2
@@ -66109,6 +66115,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC1.1
+        - rule_id: trivy-image-vulnerability-active
+          controls:
+            - framework_name: SOC 2
+              control_id: CC7.1
         - rule_id: unknown-account-trusted
           controls:
             - framework_name: SOC 2
