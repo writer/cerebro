@@ -67,6 +67,31 @@ func TestNormalizeBuildsSecurityFindingEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizeTrustGateDecisionSuffixDoesNotBecomeAction(t *testing.T) {
+	body := []byte(`{"events":[
+		{"type":"trust_gate.deny","reason":"posture_failed"},
+		{"type":"trust_gate.allow","reason":"posture_remediated"}
+	]}`)
+	events, err := Normalize(body, Principal{TenantID: "writer", DeviceID: "dev_123"}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	for i, event := range events {
+		if got := event.GetAttributes()["action"]; got != "trust_gate" {
+			t.Fatalf("event[%d] action = %q, want stable trust_gate action", i, got)
+		}
+	}
+	if got := events[0].GetAttributes()["decision"]; got != "deny" {
+		t.Fatalf("deny event decision = %q, want deny", got)
+	}
+	if got := events[1].GetAttributes()["decision"]; got != "allow" {
+		t.Fatalf("allow event decision = %q, want allow", got)
+	}
+}
+
 func TestNormalizeRequiresTenantAndDeviceIdentity(t *testing.T) {
 	if _, err := Normalize([]byte(`{"events":[]}`), Principal{DeviceID: "dev"}, time.Now()); err == nil {
 		t.Fatal("Normalize() without tenant error = nil, want error")
