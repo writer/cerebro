@@ -219,7 +219,7 @@ func MCPActionInputProperties() MCPSchemaProperties {
 		"external_status":        map[string]any{"type": "string"},
 		"external_status_reason": map[string]any{"type": "string"},
 		"external_url":           map[string]any{"type": "string"},
-		"graph_action":           map[string]any{"type": "string", "enum": []string{"identity.okta.suspend_user", "identity.okta.unsuspend_user"}},
+		"graph_action":           map[string]any{"type": "string", "enum": graphActionEnum()},
 		"target":                 map[string]any{"type": "string"},
 		"email_or_user_id":       map[string]any{"type": "string"},
 		"idempotency_key":        map[string]any{"type": "string"},
@@ -228,6 +228,15 @@ func MCPActionInputProperties() MCPSchemaProperties {
 		"handoff_required":       map[string]any{"type": "boolean"},
 		"proposal_note":          map[string]any{"type": "string"},
 	}
+}
+
+func graphActionEnum() []string {
+	specs := graphactions.KnownActionSpecs()
+	out := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		out = append(out, spec.ID)
+	}
+	return out
 }
 
 // MCPActionOutputProperties returns the finding action proposal output schema fields.

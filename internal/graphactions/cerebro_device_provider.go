@@ -73,6 +73,10 @@ func (p CerebroDeviceProvider) GetGraphAction(ctx context.Context, externalID st
 }
 
 func (p CerebroDeviceProvider) lookupTenantDevice(ctx context.Context, deviceID string, tenantID string) (deviceauth.DeviceRecord, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return deviceauth.DeviceRecord{}, fmt.Errorf("%w: finding tenant_id is required for device graph action", ErrInvalidRequest)
+	}
 	device, err := p.Service.LookupDevice(ctx, deviceID)
 	if err != nil {
 		if errors.Is(err, deviceauth.ErrDeviceNotFound) {
@@ -80,7 +84,7 @@ func (p CerebroDeviceProvider) lookupTenantDevice(ctx context.Context, deviceID 
 		}
 		return deviceauth.DeviceRecord{}, fmt.Errorf("%w: lookup device: %w", ErrRemote, err)
 	}
-	if tenantID = strings.TrimSpace(tenantID); tenantID != "" && strings.TrimSpace(device.TenantID) != tenantID {
+	if strings.TrimSpace(device.TenantID) != tenantID {
 		return deviceauth.DeviceRecord{}, fmt.Errorf("%w: target device does not belong to finding tenant", ErrInvalidRequest)
 	}
 	return device, nil
@@ -111,9 +115,11 @@ func CerebroDeviceTargetFromExternalID(externalID string) (string, bool) {
 
 func GraphActionFromCerebroDevice(action string, device deviceauth.DeviceRecord, request ProviderActionRequest, status string, externalStatus string, statusReason string) *GraphAction {
 	target := strings.TrimSpace(device.DeviceID)
-	now := time.Now().UTC()
+	updatedAt := time.Now().UTC()
+	var completedAtUnix int64
 	if !device.RevokedAt.IsZero() {
-		now = device.RevokedAt.UTC()
+		updatedAt = device.RevokedAt.UTC()
+		completedAtUnix = updatedAt.Unix()
 	}
 	metadata := map[string]string{
 		"device_id": target,
@@ -146,9 +152,9 @@ func GraphActionFromCerebroDevice(action string, device deviceauth.DeviceRecord,
 		Source:               strings.TrimSpace(request.Source),
 		TicketURL:            strings.TrimSpace(request.TicketURL),
 		IdempotencyKey:       strings.TrimSpace(request.IdempotencyKey),
-		CreatedAtUnix:        now.Unix(),
-		UpdatedAtUnix:        now.Unix(),
-		CompletedAtUnix:      now.Unix(),
+		CreatedAtUnix:        updatedAt.Unix(),
+		UpdatedAtUnix:        updatedAt.Unix(),
+		CompletedAtUnix:      completedAtUnix,
 		LastError:            strings.TrimSpace(statusReason),
 		Metadata:             metadata,
 	}

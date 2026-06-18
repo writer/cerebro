@@ -336,6 +336,36 @@ func TestServiceExecuteRevokesCerebroDeviceProvider(t *testing.T) {
 	}
 }
 
+func TestServiceExecuteCerebroDeviceProviderRequiresFindingTenant(t *testing.T) {
+	deviceService := &stubCerebroDeviceService{devices: map[string]deviceauth.DeviceRecord{
+		"dev-1": {DeviceID: "dev-1", TenantID: "tenant-a", Status: "active"},
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:     "finding-1",
+		Status: "open",
+		Attributes: map[string]string{
+			"cerebro_device_id":     "dev-1",
+			"graph_actions_allowed": ActionEndpointCerebroRevokeDevice,
+		},
+	}}
+	_, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			ProviderCerebroDeviceAuth: CerebroDeviceProvider{Service: deviceService},
+		},
+	}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    ActionEndpointCerebroRevokeDevice,
+		Reason:    "compromised device",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Execute() error = %v, want ErrInvalidRequest", err)
+	}
+	if deviceService.revokedDeviceID != "" {
+		t.Fatalf("revoked device = %q, want no revoke without finding tenant", deviceService.revokedDeviceID)
+	}
+}
+
 func TestServiceReconcileRefreshesCerebroDeviceStatus(t *testing.T) {
 	deviceService := &stubCerebroDeviceService{devices: map[string]deviceauth.DeviceRecord{
 		"dev-1": {DeviceID: "dev-1", TenantID: "tenant-a", Status: "revoked", RevokedAt: time.Date(2026, 6, 18, 14, 0, 0, 0, time.UTC)},
@@ -374,6 +404,36 @@ func TestServiceReconcileRefreshesCerebroDeviceStatus(t *testing.T) {
 	}
 	if workflow.ref.System != ProviderCerebroDeviceAuth || workflow.ref.ExternalStatus != "revoked" {
 		t.Fatalf("linked ref = %#v, want refreshed device ref", workflow.ref)
+	}
+}
+
+func TestGraphActionFromCerebroDeviceCompletionTimestampTracksRevocation(t *testing.T) {
+	pending := GraphActionFromCerebroDevice(
+		ActionEndpointCerebroRevokeDevice,
+		deviceauth.DeviceRecord{DeviceID: "dev-1", TenantID: "tenant-a", Status: "active"},
+		ProviderActionRequest{},
+		"needs_attention",
+		"active",
+		"device is not revoked",
+	)
+	if pending.CompletedAtUnix != 0 {
+		t.Fatalf("pending CompletedAtUnix = %d, want 0", pending.CompletedAtUnix)
+	}
+	if pending.CreatedAtUnix == 0 || pending.UpdatedAtUnix == 0 {
+		t.Fatalf("pending timestamps = created %d updated %d, want non-zero activity timestamps", pending.CreatedAtUnix, pending.UpdatedAtUnix)
+	}
+
+	revokedAt := time.Date(2026, 6, 18, 14, 0, 0, 0, time.UTC)
+	completed := GraphActionFromCerebroDevice(
+		ActionEndpointCerebroRevokeDevice,
+		deviceauth.DeviceRecord{DeviceID: "dev-1", TenantID: "tenant-a", Status: "revoked", RevokedAt: revokedAt},
+		ProviderActionRequest{},
+		"succeeded",
+		"revoked",
+		"",
+	)
+	if completed.CompletedAtUnix != revokedAt.Unix() {
+		t.Fatalf("completed CompletedAtUnix = %d, want %d", completed.CompletedAtUnix, revokedAt.Unix())
 	}
 }
 

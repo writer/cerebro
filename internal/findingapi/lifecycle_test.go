@@ -98,6 +98,26 @@ func TestApplyMCPGraphActionProposalUsesCatalogProvider(t *testing.T) {
 	}
 }
 
+func TestMCPActionInputPropertiesIncludesCatalogGraphActions(t *testing.T) {
+	graphAction, ok := MCPActionInputProperties()["graph_action"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph_action schema missing or invalid")
+	}
+	enum, ok := graphAction["enum"].([]string)
+	if !ok {
+		t.Fatalf("graph_action enum missing or invalid: %#v", graphAction["enum"])
+	}
+	allowed := map[string]struct{}{}
+	for _, action := range enum {
+		allowed[action] = struct{}{}
+	}
+	for _, spec := range graphactions.KnownActionSpecs() {
+		if _, ok := allowed[spec.ID]; !ok {
+			t.Fatalf("graph_action enum missing catalog action %q", spec.ID)
+		}
+	}
+}
+
 func eligibleGraphActionFinding(attrs map[string]string) *ports.FindingRecord {
 	if attrs == nil {
 		attrs = map[string]string{}
