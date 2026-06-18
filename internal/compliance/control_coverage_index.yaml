@@ -61095,7 +61095,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 25
         unmapped_controls: 11
-        mapped_rules: 929
+        mapped_rules: 930
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -61643,7 +61643,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 433
+          rule_count: 434
           mapped_rules:
             - ai-data-governance
             - ai-model-inventory
@@ -62074,6 +62074,7 @@ profiles:
             - k8s-workload-not-default-namespace
             - kandji-endpoint-disk-encryption-disabled
             - openai-orphaned-privileged-api-key
+            - sdk-integration-active-risk
             - slack-privileged-user-without-mfa
             - tailscale-tailnet-device-approval-disabled
             - trusted-endpoint-active-trust-gate-failure
@@ -66051,6 +66052,10 @@ profiles:
               control_id: CC5.2
             - framework_name: SOC 2
               control_id: CC5.3
+        - rule_id: sdk-integration-active-risk
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: secrets-access-audit
           controls:
             - framework_name: SOC 2

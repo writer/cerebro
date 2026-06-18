@@ -1,0 +1,68 @@
+{
+  "rule_id": "sdk-integration-active-risk",
+  "runtime": {
+    "id": "writer-sdk-jira-posture",
+    "source_id": "sdk",
+    "tenant_id": "writer",
+    "config": {}
+  },
+  "events": [
+    {
+      "id": "sdk-posture-secure",
+      "tenant_id": "writer",
+      "source_id": "sdk",
+      "kind": "sdk.integration_posture",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "sdk/integration_posture/v1",
+      "attributes": {
+        "integration": "github",
+        "resource_urn": "urn:cerebro:writer:runtime:writer-sdk-github-posture:org:writerinternal",
+        "resource_label": "WriterInternal GitHub",
+        "control": "branch_protection",
+        "posture_status": "secure",
+        "source_runtime_id": "writer-sdk-github-posture"
+      }
+    },
+    {
+      "id": "sdk-posture-at-risk",
+      "tenant_id": "writer",
+      "source_id": "sdk",
+      "kind": "sdk.integration_posture",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "sdk/integration_posture/v1",
+      "attributes": {
+        "integration": "jira",
+        "resource_urn": "urn:cerebro:writer:runtime:writer-sdk-jira-posture:workspace:writer",
+        "resource_label": "Writer Jira",
+        "control": "sso_enforced",
+        "posture_status": "at_risk",
+        "risk_reason": "workspace allows password-only sign-in",
+        "source_runtime_id": "writer-sdk-jira-posture"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sdk-integration-active-risk",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "SDK integration jira reports Writer Jira at risk for control sso_enforced",
+      "event_ids": ["sdk-posture-at-risk"],
+      "attributes": {
+        "sdk_posture_urn": "urn:cerebro:writer:sdk_integration_posture:jira:sso_enforced:runtime/writer-sdk-jira-posture/workspace/writer",
+        "integration": "jira",
+        "control": "sso_enforced",
+        "resource_urn": "urn:cerebro:writer:runtime:writer-sdk-jira-posture:workspace:writer",
+        "posture_status": "at_risk",
+        "primary_resource_urn": "urn:cerebro:writer:runtime:writer-sdk-jira-posture:workspace:writer",
+        "rule_required_attributes": "integration,resource_urn,control"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "sdk-posture-secure",
+      "reason": "integration reports the resource is secure for the control so there is no active control gap"
+    }
+  ]
+}

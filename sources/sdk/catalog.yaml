@@ -1,7 +1,8 @@
 id: sdk
 name: SDK Push Source
 description: Generic push-based source used by SDK-onboarded applications.
-emitted_kinds: []
+emitted_kinds:
+  - sdk.integration_posture
 coverage_contract:
   owner_domain: platform
   authority_domain: sdk
@@ -14,9 +15,9 @@ coverage_contract:
       high_value: true
       known_unsupported_fields:
         - SDK source does not pull third-party provider APIs.
-        - SDK source does not declare built-in emitted kinds.
       notes:
         - SDK runtimes can declare inventory_urns for source discovery; durable inventory and posture evidence should still be written through SDK claims.
+        - Pushed application telemetry is normalized into sdk.integration_posture events rather than discovered by pulling provider APIs.
     - id: push_ingress
       type: lifecycle_state
       title: SDK push ingestion surface
