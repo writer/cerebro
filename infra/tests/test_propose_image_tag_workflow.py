@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -209,6 +210,26 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertLess(deploy_block.index("Verify AWS secret imports (AWS)"), deploy_block.index("Pulumi Up (AWS)"))
         self.assertLess(deploy_block.index("Pulumi Up (AWS)"), deploy_block.index("Verify AWS Bedrock task role (AWS)"))
         self.assertNotIn("Verify Cosmo source canary (AWS)", deploy_block)
+
+    def test_otel_runtime_config_validator_changes_are_static_only(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        filter_block = workflow.split("- name: Filter changed paths", 1)[1].split("\n      - name:", 1)[0]
+        static_only_pattern = next(
+            (
+                match
+                for match in re.finditer(r"grep -Ev '([^']+)' changed\.txt", filter_block)
+                if "validate_otel_collector_config_runtime" in match.group(1)
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(static_only_pattern)
+        assert static_only_pattern is not None
+        static_only_paths = re.compile(static_only_pattern.group(1))
+        self.assertRegex("infra/scripts/validate_otel_collector_config_runtime.py", static_only_paths)
+        self.assertRegex("infra/tests/test_validate_otel_collector_config_runtime.py", static_only_paths)
+        self.assertRegex("infra/tests/test_propose_image_tag_workflow.py", static_only_paths)
+        self.assertNotRegex("infra/scripts/provision_otel_collector_config.py", static_only_paths)
 
 
 if __name__ == "__main__":

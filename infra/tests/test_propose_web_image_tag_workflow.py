@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -119,8 +120,20 @@ class ProposeWebImageTagWorkflowTest(unittest.TestCase):
 
     def test_workflow_contract_test_changes_do_not_trigger_deploys(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        filter_block = workflow.split("- name: Filter changed paths", 1)[1].split("\n      - name:", 1)[0]
+        static_only_pattern = next(
+            (
+                match
+                for match in re.finditer(r"grep -Ev '([^']+)' changed\.txt", filter_block)
+                if "propose_" in match.group(1)
+            ),
+            None,
+        )
 
-        self.assertIn("propose_web_image_tag_workflow", workflow)
+        self.assertIsNotNone(static_only_pattern)
+        assert static_only_pattern is not None
+        static_only_paths = re.compile(static_only_pattern.group(1))
+        self.assertRegex("infra/tests/test_propose_web_image_tag_workflow.py", static_only_paths)
 
 
 if __name__ == "__main__":
