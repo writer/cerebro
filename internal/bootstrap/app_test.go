@@ -1946,6 +1946,65 @@ func TestBootstrapSourcePreviewEndpointsDoNotResolveEnvReferences(t *testing.T) 
 	}
 }
 
+func TestBootstrapSourcePreviewRejectsServerLocalSourceConfig(t *testing.T) {
+	kubernetes := &bootstrapTokenSource{id: "kubernetes"}
+	trivy := &bootstrapTokenSource{id: "trivy"}
+	registry, err := sourcecdk.NewRegistry(kubernetes, trivy)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, tt := range []struct {
+		name   string
+		path   string
+		config map[string]string
+	}{
+		{
+			name:   "http kubernetes in cluster",
+			path:   "/sources/kubernetes/check",
+			config: map[string]string{"tenant_id": "writer", "in_cluster": "true"},
+		},
+		{
+			name:   "http kubernetes kubeconfig path",
+			path:   "/sources/kubernetes/discover",
+			config: map[string]string{"tenant_id": "writer", "kubeconfig_path": "/var/run/cerebro/kubeconfig"},
+		},
+		{
+			name:   "http trivy report path",
+			path:   "/sources/trivy/read",
+			config: map[string]string{"tenant_id": "writer", "report_path": "/var/lib/cerebro/report.json"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := sourceGet(t, server, tt.path, tt.config)
+			if err != nil {
+				t.Fatalf("GET %s error = %v", tt.path, err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("GET %s status = %d, want %d", tt.path, resp.StatusCode, http.StatusBadRequest)
+			}
+		})
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	if _, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
+		SourceId: "kubernetes",
+		Config:   map[string]string{"tenant_id": "writer", "in_cluster": "true"},
+	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("CheckSource(kubernetes) error = %v, want InvalidArgument", err)
+	}
+	if _, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "trivy",
+		Config:   map[string]string{"tenant_id": "writer", "path": "/var/lib/cerebro/report.json"},
+	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("ReadSource(trivy) error = %v, want InvalidArgument", err)
+	}
+}
+
 func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -2567,7 +2626,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 
 func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
-	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
+	if got := httpRoutePolicyForRequest(req).Scope; got != scopeCosmoSecurityRead {
 		t.Fatalf("scopeForHTTPRequest(POST /grc/ask) = %q, want %q", got, scopeCosmoSecurityRead)
 	}
 }
@@ -2601,7 +2660,7 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/finding-candidates/candidate-1/reject", want: scopeFindingCandidatePromote},
 	} {
 		req := httptest.NewRequest(tt.method, tt.path, nil)
-		if got := scopeForHTTPRequest(req); got != tt.want {
+		if got := httpRoutePolicyForRequest(req).Scope; got != tt.want {
 			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tt.method, tt.path, got, tt.want)
 		}
 	}
@@ -2614,8 +2673,8 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 	} {
-		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
-			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		if got := connectProcedurePolicyFor(tt.procedure).Scope; got != tt.want {
+			t.Fatalf("connectProcedurePolicyFor(%s).Scope = %q, want %q", tt.procedure, got, tt.want)
 		}
 	}
 }

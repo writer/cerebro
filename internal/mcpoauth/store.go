@@ -38,16 +38,17 @@ type OAuthClient struct {
 // LoginState tracks Cerebro's upstream OIDC redirect state for one pending
 // downstream OAuth authorization request.
 type LoginState struct {
-	StateHash     [32]byte
-	ClientID      string
-	RedirectURI   string
-	ClientState   string
-	Resource      string
-	Scopes        []string
-	CodeChallenge string
-	Nonce         string
-	CreatedAt     time.Time
-	ExpiresAt     time.Time
+	StateHash      [32]byte
+	ClientID       string
+	RedirectURI    string
+	ClientState    string
+	Resource       string
+	Scopes         []string
+	ScopesExplicit bool
+	CodeChallenge  string
+	Nonce          string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
 }
 
 // AuthorizationCode is a single-use code issued by Cerebro to the MCP client
@@ -62,6 +63,7 @@ type AuthorizationCode struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 	Groups         []string
 	CodeChallenge  string
 	CreatedAt      time.Time
@@ -78,6 +80,7 @@ type RefreshToken struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 	Groups         []string
 	FamilyID       string
 	Generation     int
