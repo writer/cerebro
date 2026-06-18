@@ -4900,6 +4900,61 @@ func TestProjectEvidenceCASPreservesRuntimeIdentityAndSourceCorrelation(t *testi
 	}
 }
 
+func TestProjectRuntimeEvidenceRejectsCrossTenantCerebroContextURNs(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		attrs      map[string]string
+		wantInErr  string
+		wantInErr2 string
+	}{
+		{
+			name: "resource_urn",
+			attrs: map[string]string{
+				"evidence_id":          "evidence-cross-resource",
+				"resource_entity_type": "aws.bucket",
+				"resource_id":          "bucket-1",
+				"resource_link_status": "linked",
+				"resource_type":        "bucket",
+				"resource_urn":         "urn:cerebro:victim:aws_bucket:bucket-1",
+			},
+			wantInErr:  "urn:cerebro:victim:aws_bucket:bucket-1",
+			wantInErr2: "not projection tenant",
+		},
+		{
+			name: "case_urn",
+			attrs: map[string]string{
+				"case_id":          "case-1",
+				"case_link_status": "linked",
+				"case_urn":         "urn:cerebro:victim:case:case-1",
+				"evidence_id":      "evidence-cross-case",
+			},
+			wantInErr:  "urn:cerebro:victim:case:case-1",
+			wantInErr2: "not projection tenant",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "runtime-" + tt.name,
+				TenantId:   "writer",
+				SourceId:   "evidence_cas",
+				Kind:       "runtime.evidence",
+				Attributes: tt.attrs,
+			})
+			if err == nil {
+				t.Fatal("Project() error = nil, want cross-tenant Cerebro URN error")
+			}
+			if got := err.Error(); !strings.Contains(got, tt.wantInErr) || !strings.Contains(got, tt.wantInErr2) {
+				t.Fatalf("Project() error = %q", got)
+			}
+			if len(state.entities) != 0 || len(state.links) != 0 {
+				t.Fatalf("Project() wrote entities=%d links=%d despite cross-tenant URN", len(state.entities), len(state.links))
+			}
+		})
+	}
+}
+
 func TestProjectEvidenceCASReplayIsIdempotentAndConflictsAreRejected(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

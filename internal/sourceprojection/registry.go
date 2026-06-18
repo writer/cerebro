@@ -622,7 +622,14 @@ func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	if !ok {
 		return nil, nil, nil
 	}
-	return project(event)
+	entities, links, err := project(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := ports.ValidateProjectedTenantScopes(entities, links); err != nil {
+		return nil, nil, err
+	}
+	return entities, links, nil
 }
 
 // ProjectEvent projects one event through the built-in registry without stores.
