@@ -279,8 +279,7 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 			telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(runErr)},
 			telemetry.Field{Key: "error_fingerprint", Value: telemetry.ErrorFingerprint("platform.job.run", runErr, jobTelemetryAttrs(job))},
 		))
-		telemetry.CaptureError(ctx, "platform.job.failed", runErr, jobTelemetryAttrs(job))
-		telemetry.Event(ctx, "platform.job.failed", jobTelemetryAttrs(job).With(spanAttrs))
+		telemetry.CaptureError(ctx, "platform.job.failed", runErr, jobTelemetryAttrs(job).With(spanAttrs))
 		return runErr
 	}
 	progress := uint32(100)
