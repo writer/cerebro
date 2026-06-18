@@ -192,6 +192,26 @@ func TestGRCInventoryAssetReportRejectsInvalidStatus(t *testing.T) {
 	}
 }
 
+func TestGRCInventoryAssetReportRejectsMalformedAssetURN(t *testing.T) {
+	store := &memoryGRCInventoryAssetReportStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := bytes.NewBufferString(`{"tenant_id":"writer","asset_urn":"not-a-cerebro-urn","reason":"bad identifier"}`)
+	resp, err := server.Client().Post(server.URL+"/grc/inventory/asset-reports", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST /grc/inventory/asset-reports error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	if len(store.reports) != 0 {
+		t.Fatalf("asset reports = %#v, want malformed asset_urn rejected before persistence", store.reports)
+	}
+}
+
 func TestGRCInventoryAssetReportSummaryPreservesCountsAcrossListCap(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	store := &memoryGRCInventoryAssetReportStore{reports: map[string]*ports.GRCInventoryAssetReportRecord{}}
