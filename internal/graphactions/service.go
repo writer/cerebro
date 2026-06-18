@@ -126,16 +126,17 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 		return nil, ErrNotConfigured
 	}
 	findingID := strings.TrimSpace(input.FindingID)
+	if findingID == "" {
+		return nil, fmt.Errorf("%w: finding_id is required", ErrInvalidRequest)
+	}
 	var finding *ports.FindingRecord
 	var err error
-	if findingID != "" {
-		if s.Findings == nil {
-			return nil, ErrNotConfigured
-		}
-		finding, err = s.Findings.GetFinding(ctx, findingID)
-		if err != nil {
-			return nil, err
-		}
+	if s.Findings == nil {
+		return nil, ErrNotConfigured
+	}
+	finding, err = s.Findings.GetFinding(ctx, findingID)
+	if err != nil {
+		return nil, err
 	}
 	action := strings.TrimSpace(input.Action)
 	target, err := TargetForAction(action, finding, input.Target)
@@ -311,9 +312,11 @@ func NormalizeTarget(target string) (string, error) {
 		return "", fmt.Errorf("%w: target is invalid", ErrInvalidRequest)
 	}
 	if strings.Contains(target, "@") {
-		if _, err := mail.ParseAddress(target); err != nil {
+		address, err := mail.ParseAddress(target)
+		if err != nil {
 			return "", fmt.Errorf("%w: target email is invalid", ErrInvalidRequest)
 		}
+		target = address.Address
 	}
 	return target, nil
 }

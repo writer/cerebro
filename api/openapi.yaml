@@ -6736,17 +6736,18 @@ components:
           minLength: 1
     GraphActionRequest:
       type: object
-      required: [action]
+      required: [action, finding_id]
       properties:
         action:
           type: string
           enum: [identity.okta.suspend_user, identity.okta.unsuspend_user]
         finding_id:
           type: string
-          description: Optional finding id. When supplied, Cerebro can derive the target and link the provider action back to the finding.
+          minLength: 1
+          description: Required finding id. Cerebro authorizes the finding tenant, derives the default target, and links the provider action back to the finding.
         target:
           type: string
-          description: Optional explicit graph action target. For Okta identity actions this is an Okta user id, login, or email.
+          description: Optional explicit graph action target within the authorized finding context. For Okta identity actions this is an Okta user id, login, or email.
         reason:
           type: string
           maxLength: 2048

@@ -117,24 +117,11 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	}
 }
 
-func TestHandleExecuteGraphActionSupportsTargetOnlyUnsuspend(t *testing.T) {
-	var gotPath string
-	var gotRequest graphactions.AccessApprovalsUserActionRequest
+func TestHandleExecuteGraphActionRejectsTargetOnlyUnsuspend(t *testing.T) {
+	var called bool
 	accessApprovals := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		if err := json.NewDecoder(r.Body).Decode(&gotRequest); err != nil {
-			t.Fatalf("decode access-approvals request: %v", err)
-		}
-		writeGraphActionTestAction(t, w, graphactions.AccessApprovalsUserAction{
-			ID:             "oja-unsuspend-1",
-			Action:         graphactions.AccessApprovalsActionUnsuspend,
-			Status:         "pending",
-			Target:         gotRequest.EmailOrUserID,
-			OktaUserID:     "00u123",
-			OktaUserStatus: "SUSPENDED",
-			Source:         gotRequest.Source,
-			IdempotencyKey: gotRequest.IdempotencyKey,
-		})
+		called = true
+		http.Error(w, "unexpected action dispatch", http.StatusInternalServerError)
 	}))
 	defer accessApprovals.Close()
 
@@ -159,28 +146,11 @@ func TestHandleExecuteGraphActionSupportsTargetOnlyUnsuspend(t *testing.T) {
 		t.Fatalf("POST graph action: %v", err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202", response.StatusCode)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
 	}
-	var payload map[string]any
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if gotPath != "/admin/okta-jail/unsuspend" {
-		t.Fatalf("access-approvals path = %q, want unsuspend path", gotPath)
-	}
-	if gotRequest.EmailOrUserID != "00u123" || gotRequest.IdempotencyKey != "manual-unsuspend-1" {
-		t.Fatalf("access-approvals request = %#v", gotRequest)
-	}
-	if _, ok := payload["finding"]; ok {
-		t.Fatalf("target-only response included finding: %#v", payload["finding"])
-	}
-	if _, ok := payload["externalRef"]; ok {
-		t.Fatalf("target-only response included external ref: %#v", payload["externalRef"])
-	}
-	action, ok := payload["action"].(map[string]any)
-	if !ok || action["action"] != graphactions.ActionIdentityOktaUnsuspendUser || action["target"] != "00u123" {
-		t.Fatalf("response action = %#v", payload["action"])
+	if called {
+		t.Fatalf("target-only request reached access-approvals")
 	}
 }
 

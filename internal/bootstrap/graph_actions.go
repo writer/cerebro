@@ -2,11 +2,14 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"connectrpc.com/connect"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
@@ -28,7 +31,10 @@ func (a *App) handleExecuteGraphAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.Request[cerebrov1.ExecuteGraphActionRequest]) (*connect.Response[cerebrov1.ExecuteGraphActionResponse], error) {
-	app := &App{cfg: s.cfg, deps: s.deps, sources: s.sources}
+	app := s.app
+	if app == nil {
+		app = &App{cfg: s.cfg, deps: s.deps, sources: s.sources}
+	}
 	result, err := app.executeGraphAction(ctx, graphactionapi.InputFromRequest(req.Msg))
 	if err != nil {
 		return nil, graphActionConnectError(err)
@@ -37,16 +43,18 @@ func (s *bootstrapService) ExecuteGraphAction(ctx context.Context, req *connect.
 }
 
 func (a *App) executeGraphAction(ctx context.Context, input graphactions.Input) (*graphactions.Result, error) {
-	if input.FindingID != "" {
-		if err := authorizeFindingIDTenant(ctx, findingStore(a.deps.StateStore), input.FindingID); err != nil {
-			return nil, normalizeIDLookupError(err, ports.ErrFindingNotFound)
-		}
+	input.FindingID = strings.TrimSpace(input.FindingID)
+	if input.FindingID == "" {
+		return nil, fmt.Errorf("%w: finding_id is required", graphactions.ErrInvalidRequest)
 	}
-	client, err := accessapprovalsclient.New(a.cfg.GraphActions.AccessApprovals)
+	if err := authorizeFindingIDTenant(ctx, findingStore(a.deps.StateStore), input.FindingID); err != nil {
+		return nil, normalizeIDLookupError(err, ports.ErrFindingNotFound)
+	}
+	service, err := a.graphActionService()
 	if err != nil {
 		return nil, err
 	}
-	result, err := (graphactions.Service{Findings: a.findingService(), Client: client}).Execute(ctx, input)
+	result, err := service.Execute(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +62,25 @@ func (a *App) executeGraphAction(ctx context.Context, input graphactions.Input) 
 		bumpGRCCacheForFinding(ctx, a.deps.QueryCache, result.Finding)
 	}
 	return result, nil
+}
+
+func (a *App) graphActionService() (*graphactions.Service, error) {
+	if a != nil && a.services.graphActions != nil {
+		return a.services.graphActions, nil
+	}
+	return a.newGraphActionService()
+}
+
+func (a *App) newGraphActionService() (*graphactions.Service, error) {
+	client, err := accessapprovalsclient.New(a.cfg.GraphActions.AccessApprovals)
+	if err != nil {
+		return nil, err
+	}
+	return &graphactions.Service{Findings: a.findingService(), Client: client}, nil
+}
+
+func graphActionsConfigured(cfg config.AccessApprovalsActionConfig) bool {
+	return strings.TrimSpace(cfg.BaseURL) != "" && strings.TrimSpace(cfg.BearerToken) != ""
 }
 
 func graphActionResponseProto(result *graphactions.Result) *cerebrov1.ExecuteGraphActionResponse {
