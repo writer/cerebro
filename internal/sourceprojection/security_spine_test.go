@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +141,54 @@ func TestProjectBackstageComponentLinksKubernetesRuntime(t *testing.T) {
 	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, workloadURN, relationRunsAs, serviceAccountURN)
+}
+
+func TestRegistryRoutesBackstageDeclaredKinds(t *testing.T) {
+	declared := []string{
+		"backstage.component",
+	}
+	registered := make(map[string]struct{})
+	for _, kind := range BuiltinRegistry().Kinds() {
+		registered[kind] = struct{}{}
+	}
+	for _, kind := range declared {
+		if _, ok := registered[kind]; !ok {
+			t.Fatalf("declared Backstage kind %q is not routed in the projection registry", kind)
+		}
+	}
+}
+
+func TestProjectBackstageComponentWithoutOwnerOmitsOwnerLink(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evt-backstage-unowned",
+		TenantId:   "writer",
+		SourceId:   "backstage",
+		Kind:       "backstage.component",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"name":        "ledger",
+			"namespace":   "default",
+			"kind":        "Component",
+			"type":        "service",
+			"criticality": "tier0",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	serviceURN := "urn:cerebro:writer:service:component/default/ledger"
+	if state.entities[serviceURN] == nil {
+		t.Fatalf("component entity %q was not projected", serviceURN)
+	}
+	for key := range state.links {
+		if strings.Contains(key, "|"+relationOwnedBy+"|") {
+			t.Fatalf("unexpected ownership link %q for component without an owner", key)
+		}
+	}
 }
 
 func TestProjectSecurityToolingMapTool(t *testing.T) {

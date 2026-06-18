@@ -47,6 +47,10 @@ func (app *App) exchangeAPIClientCredentialsToken(_ context.Context, r *http.Req
 	if err != nil {
 		return mcpoauth.TokenResponse{}, err
 	}
+	roles := cloneAuthValues(credential.Roles)
+	if len(normalizeAuthList(strings.Fields(r.Form.Get("scope")))) > 0 {
+		roles = nil
+	}
 	if strings.TrimSpace(credential.TenantID) == "" && len(credential.AllowedTenants) == 0 {
 		return mcpoauth.TokenResponse{}, mcpoauthOAuthError("invalid_client", "client_credentials credential has no tenant grant", http.StatusUnauthorized)
 	}
@@ -65,6 +69,7 @@ func (app *App) exchangeAPIClientCredentialsToken(_ context.Context, r *http.Req
 		TenantID:       credential.TenantID,
 		AllowedTenants: cloneAuthValues(credential.AllowedTenants),
 		Scopes:         scopes,
+		Roles:          roles,
 		Groups:         []string{"security"},
 	}, ttl, now)
 	if err != nil {
@@ -110,7 +115,7 @@ func (app *App) apiClientCredential(clientID string, secret string) (config.APIC
 }
 
 func requestedAPICredentialScopes(form url.Values, credential config.APICredential) ([]string, error) {
-	allowed := normalizeAuthList(credential.Scopes)
+	allowed := normalizeAuthList(append(cloneAuthValues(credential.Scopes), rbacScopesForRoles(credential.Roles)...))
 	if len(allowed) == 0 {
 		return nil, mcpoauthOAuthError("invalid_client", "client_credentials credential has no scopes", http.StatusUnauthorized)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,6 +96,91 @@ func TestReadComponentFamily(t *testing.T) {
 	}
 	if event.Attributes["criticality"] != "high" || event.Attributes["data_class"] != "restricted" {
 		t.Fatalf("annotation attrs = %#v, want Backstage annotation attributes", event.Attributes)
+	}
+}
+
+func TestReadComponentFamilyEmitsOwnershipContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"kind": "Component",
+				"metadata": map[string]any{
+					"uid":       "component-9",
+					"name":      "payments",
+					"namespace": "default",
+					"annotations": map[string]any{
+						"cerebro.io/criticality": "tier0",
+					},
+				},
+				"spec": map[string]any{
+					"type":      "service",
+					"lifecycle": "production",
+					"owner":     "group:platform/payments",
+					"system":    "commerce",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "backstage-token",
+		"family":    "component",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	for _, required := range []string{"name", "kind"} {
+		if strings.TrimSpace(event.Attributes[required]) == "" {
+			t.Fatalf("required attribute %q missing, attrs = %#v", required, event.Attributes)
+		}
+	}
+	if event.Attributes["owner"] != "group:platform/payments" {
+		t.Fatalf("owner = %q, want group:platform/payments", event.Attributes["owner"])
+	}
+	if event.Attributes["criticality"] != "tier0" {
+		t.Fatalf("criticality = %q, want tier0", event.Attributes["criticality"])
+	}
+	if event.Attributes["system"] != "commerce" {
+		t.Fatalf("system = %q, want commerce", event.Attributes["system"])
+	}
+}
+
+func TestReadComponentFamilyRejectsRecordWithoutIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"kind": "Component",
+				"spec": map[string]any{"type": "service"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "backstage-token",
+		"family":    "component",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want rejection of component record without stable identity")
 	}
 }
 

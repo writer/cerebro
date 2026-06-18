@@ -166,6 +166,86 @@ func TestCheckRejectsInternalRuntimeConfigKeys(t *testing.T) {
 	}
 }
 
+func TestPreviewRejectsServerLocalSourceConfig(t *testing.T) {
+	kubernetes := &recordingSource{id: "kubernetes"}
+	trivy := &recordingSource{id: "trivy"}
+	registry, err := sourcecdk.NewRegistry(kubernetes, trivy)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry)
+
+	for _, tt := range []struct {
+		name     string
+		sourceID string
+		config   map[string]string
+	}{
+		{
+			name:     "kubernetes in cluster",
+			sourceID: "kubernetes",
+			config:   map[string]string{"tenant_id": "writer", "in_cluster": "true"},
+		},
+		{
+			name:     "kubernetes kubeconfig path",
+			sourceID: "kubernetes",
+			config:   map[string]string{"tenant_id": "writer", "kubeconfig_path": "/var/run/cerebro/kubeconfig"},
+		},
+		{
+			name:     "kubernetes kubeconfig alias",
+			sourceID: "kubernetes",
+			config:   map[string]string{"tenant_id": "writer", "kubeconfig": "/var/run/cerebro/kubeconfig"},
+		},
+		{
+			name:     "trivy path",
+			sourceID: "trivy",
+			config:   map[string]string{"tenant_id": "writer", "path": "/var/lib/cerebro/report.json"},
+		},
+		{
+			name:     "trivy report path",
+			sourceID: "trivy",
+			config:   map[string]string{"tenant_id": "writer", "report_path": "/var/lib/cerebro/report.json"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			beforeCalls := kubernetes.calls + trivy.calls
+			if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: tt.sourceID, Config: tt.config}); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("Check() error = %v, want ErrInvalidRequest", err)
+			}
+			if _, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: tt.sourceID, Config: tt.config}); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("Discover() error = %v, want ErrInvalidRequest", err)
+			}
+			if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: tt.sourceID, Config: tt.config}); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("Read() error = %v, want ErrInvalidRequest", err)
+			}
+			if got := kubernetes.calls + trivy.calls; got != beforeCalls {
+				t.Fatalf("source calls = %d, want %d", got, beforeCalls)
+			}
+		})
+	}
+}
+
+func TestPreviewAllowsServerLocalSourceConfigForInternalRuntime(t *testing.T) {
+	trivy := &recordingSource{id: "trivy"}
+	registry, err := sourcecdk.NewRegistry(trivy)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry).WithInternalConfigAllowed()
+
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
+		SourceId: "trivy",
+		Config: map[string]string{
+			"tenant_id":   "writer",
+			"report_path": "/var/lib/cerebro/report.json",
+		},
+	}); err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if trivy.calls != 1 {
+		t.Fatalf("trivy calls = %d, want 1", trivy.calls)
+	}
+}
+
 func TestCheckDiscoverAndReadOkta(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -338,6 +418,30 @@ func (s *errorSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.U
 
 func (s *errorSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return sourcecdk.Pull{}, s.err
+}
+
+type recordingSource struct {
+	id    string
+	calls int
+}
+
+func (s *recordingSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Recording " + s.id}
+}
+
+func (s *recordingSource) Check(context.Context, sourcecdk.Config) error {
+	s.calls++
+	return nil
+}
+
+func (s *recordingSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	s.calls++
+	return nil, nil
+}
+
+func (s *recordingSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.calls++
+	return sourcecdk.Pull{}, nil
 }
 
 func newFixtureRegistry() (*sourcecdk.Registry, error) {

@@ -66,7 +66,7 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 	if err != nil {
 		return nil, err
 	}
-	config, err := s.previewConfig(req.GetConfig())
+	config, err := s.previewConfig(req.GetSourceId(), req.GetConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	if err != nil {
 		return nil, err
 	}
-	config, err := s.previewConfig(req.GetConfig())
+	config, err := s.previewConfig(req.GetSourceId(), req.GetConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (_
 	if err != nil {
 		return nil, err
 	}
-	config, err := s.previewConfig(req.GetConfig())
+	config, err := s.previewConfig(req.GetSourceId(), req.GetConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -164,15 +164,38 @@ func sourceOperationError(err error) error {
 	return err
 }
 
-func (s *Service) previewConfig(values map[string]string) (map[string]string, error) {
+func (s *Service) previewConfig(sourceID string, values map[string]string) (map[string]string, error) {
 	config := make(map[string]string, len(values))
 	for key, value := range values {
-		if !s.allowInternalConfig && sourceconfig.InternalKey(key) {
-			return nil, fmt.Errorf("%w: source config %q is reserved", ErrInvalidRequest, strings.TrimSpace(key))
+		if !s.allowInternalConfig {
+			if sourceconfig.InternalKey(key) {
+				return nil, fmt.Errorf("%w: source config %q is reserved", ErrInvalidRequest, strings.TrimSpace(key))
+			}
+			if serverLocalPreviewConfigKey(sourceID, key) {
+				return nil, fmt.Errorf("%w: source config %q is not allowed for %s preview", ErrInvalidRequest, strings.TrimSpace(key), strings.TrimSpace(sourceID))
+			}
 		}
 		config[key] = value
 	}
 	return config, nil
+}
+
+func serverLocalPreviewConfigKey(sourceID string, key string) bool {
+	normalizedSourceID := strings.ToLower(strings.TrimSpace(sourceID))
+	normalizedKey := strings.ToLower(strings.TrimSpace(key))
+	switch normalizedSourceID {
+	case "kubernetes":
+		switch normalizedKey {
+		case "in_cluster", "kubeconfig", "kubeconfig_path":
+			return true
+		}
+	case "trivy":
+		switch normalizedKey {
+		case "path", "report_path":
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {

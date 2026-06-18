@@ -40,10 +40,11 @@ func New() (*Source, error) {
 		TokenScheme:     "Bearer",
 		Families: []jsonapi.Family{
 			{
-				Name:    familyComponent,
-				Path:    "/api/catalog/entities/by-query",
-				URNKind: "backstage_component",
-				IDKeys:  []string{"metadata.uid", "metadata.name", "name"},
+				Name:      familyComponent,
+				Path:      "/api/catalog/entities/by-query",
+				URNKind:   "backstage_component",
+				RequireID: true,
+				IDKeys:    []string{"metadata.uid", "metadata.name", "name"},
 				TimestampKeys: []string{
 					"updated_at", "created_at",
 				},

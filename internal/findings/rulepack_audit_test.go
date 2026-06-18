@@ -1062,10 +1062,11 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "anthropic-unmanaged-active-api-key", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "anthropic"},
 		{RuleID: "slack-privileged-user-without-mfa", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "slack"},
 		{RuleID: "pagerduty-service-without-escalation-policy", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "pagerduty"},
-		{RuleID: "trusted-endpoint-active-trust-gate-failure", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "trusted_endpoint"},
-		{RuleID: "security-tooling-map-control-coverage-gap", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_tooling_map"},
-		{RuleID: "cerebro-high-risk-api-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cerebro"},
-		{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
+	{RuleID: "trusted-endpoint-active-trust-gate-failure", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "trusted_endpoint"},
+	{RuleID: "security-tooling-map-control-coverage-gap", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "security_tooling_map"},
+	{RuleID: "cerebro-high-risk-api-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cerebro"},
+	{RuleID: "backstage-critical-component-missing-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "backstage"},
+	{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
 		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "vulnview"},
 	}
 }

@@ -184,6 +184,7 @@ type APICredential struct {
 	TenantID       string
 	AllowedTenants []string
 	Scopes         []string
+	Roles          []string
 }
 
 // AuthConfig controls optional API authentication and tenant scoping.
@@ -212,6 +213,7 @@ type MCPOAuthClient struct {
 	TenantID           string   `json:"tenant_id,omitempty"`
 	AllowedTenants     []string `json:"allowed_tenants,omitempty"`
 	Scopes             []string `json:"scopes,omitempty"`
+	Roles              []string `json:"roles,omitempty"`
 	Groups             []string `json:"groups,omitempty"`
 }
 
@@ -225,6 +227,7 @@ type MCPOAuthEntitlement struct {
 	TenantID       string   `json:"tenant_id,omitempty"`
 	AllowedTenants []string `json:"allowed_tenants,omitempty"`
 	Scopes         []string `json:"scopes,omitempty"`
+	Roles          []string `json:"roles,omitempty"`
 }
 
 // MCPOAuthConfig configures Cerebro's OAuth 2.1 authorization-server surface
@@ -916,6 +919,7 @@ func parseAPICredentials(raw string) ([]APICredential, error) {
 		TenantID       string   `json:"tenant_id"`
 		AllowedTenants []string `json:"allowed_tenants"`
 		Scopes         []string `json:"scopes"`
+		Roles          []string `json:"roles"`
 	}
 	var entries []credentialJSON
 	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
@@ -934,12 +938,16 @@ func parseAPICredentials(raw string) ([]APICredential, error) {
 			TenantID:       strings.TrimSpace(entry.TenantID),
 			AllowedTenants: normalizeStringSlice(entry.AllowedTenants),
 			Scopes:         normalizeStringSlice(entry.Scopes),
+			Roles:          normalizeStringSlice(entry.Roles),
 		}
 		if credential.Key == "" && credential.KeySHA256 == "" {
 			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] must set key or key_sha256", index)
 		}
-		if len(credential.Scopes) > 0 && credential.TenantID == "" && len(credential.AllowedTenants) == 0 {
+		if (len(credential.Scopes) > 0 || len(credential.Roles) > 0) && credential.TenantID == "" && len(credential.AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] scoped credentials must set tenant_id or allowed_tenants", index)
+		}
+		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_API_CREDENTIALS_JSON[%d].roles", index), credential.Roles); err != nil {
+			return nil, err
 		}
 		if credential.Principal == "" {
 			credential.Principal = firstNonEmpty(credential.Name, credential.ClientID, credential.ID)
