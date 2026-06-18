@@ -27,12 +27,14 @@ var ensureMCPOAuthStatements = []string{
   client_state TEXT NOT NULL DEFAULT '',
   resource TEXT NOT NULL,
   scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  scopes_explicit BOOLEAN NOT NULL DEFAULT FALSE,
   code_challenge TEXT NOT NULL,
   nonce TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   consumed_at TIMESTAMPTZ
 )`,
+	`ALTER TABLE mcp_oauth_login_states ADD COLUMN IF NOT EXISTS scopes_explicit BOOLEAN NOT NULL DEFAULT FALSE`,
 	`CREATE INDEX IF NOT EXISTS mcp_oauth_login_states_expires_idx ON mcp_oauth_login_states (expires_at)`,
 	`CREATE TABLE IF NOT EXISTS mcp_oauth_authorization_codes (
   code_hash BYTEA PRIMARY KEY,
@@ -179,15 +181,16 @@ func (s *Store) SaveLoginState(ctx context.Context, state mcpoauth.LoginState) e
 	}
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO mcp_oauth_login_states (
-  state_hash, client_id, redirect_uri, client_state, resource, scopes_json,
+  state_hash, client_id, redirect_uri, client_state, resource, scopes_json, scopes_explicit,
   code_challenge, nonce, created_at, expires_at
-) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`,
+) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)`,
 		state.StateHash[:],
 		strings.TrimSpace(state.ClientID),
 		strings.TrimSpace(state.RedirectURI),
 		strings.TrimSpace(state.ClientState),
 		strings.TrimSpace(state.Resource),
 		scopes,
+		state.ScopesExplicit,
 		strings.TrimSpace(state.CodeChallenge),
 		strings.TrimSpace(state.Nonce),
 		nullableUTC(state.CreatedAt),
@@ -206,14 +209,14 @@ func (s *Store) ConsumeLoginState(ctx context.Context, stateHash [32]byte, now t
 	var result mcpoauth.LoginState
 	err := s.runInTx(ctx, func(tx *sql.Tx) error {
 		row := tx.QueryRowContext(ctx, `
-SELECT client_id, redirect_uri, client_state, resource, scopes_json::text,
+SELECT client_id, redirect_uri, client_state, resource, scopes_json::text, scopes_explicit,
        code_challenge, nonce, created_at, expires_at, consumed_at
 FROM mcp_oauth_login_states
 WHERE state_hash = $1
 FOR UPDATE`, stateHash[:])
 		var scopesJSON string
 		var consumedAt sql.NullTime
-		if err := row.Scan(&result.ClientID, &result.RedirectURI, &result.ClientState, &result.Resource, &scopesJSON, &result.CodeChallenge, &result.Nonce, &result.CreatedAt, &result.ExpiresAt, &consumedAt); err != nil {
+		if err := row.Scan(&result.ClientID, &result.RedirectURI, &result.ClientState, &result.Resource, &scopesJSON, &result.ScopesExplicit, &result.CodeChallenge, &result.Nonce, &result.CreatedAt, &result.ExpiresAt, &consumedAt); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return mcpoauth.ErrNotFound
 			}

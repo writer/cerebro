@@ -134,6 +134,9 @@ func parseMCPOAuthClients(raw string) ([]MCPOAuthClient, error) {
 		if clients[index].ClientSecretSHA256 != "" && !validSHA256Hex(clients[index].ClientSecretSHA256) {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] client_secret_sha256 must be a SHA-256 hex digest", index)
 		}
+		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d].roles", index), clients[index].Roles); err != nil {
+			return nil, err
+		}
 		if containsString(clients[index].GrantTypes, "client_credentials") && clients[index].TenantID == "" && len(clients[index].AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires tenant_id or allowed_tenants for client_credentials", index)
 		}
@@ -172,6 +175,9 @@ func parseMCPOAuthEntitlements(raw string) ([]MCPOAuthEntitlement, error) {
 		}
 		if entitlements[index].TenantID == "" && len(entitlements[index].AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d] requires tenant_id or allowed_tenants", index)
+		}
+		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d].roles", index), entitlements[index].Roles); err != nil {
+			return nil, err
 		}
 	}
 	return entitlements, nil

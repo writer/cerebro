@@ -946,6 +946,9 @@ func parseAPICredentials(raw string) ([]APICredential, error) {
 		if (len(credential.Scopes) > 0 || len(credential.Roles) > 0) && credential.TenantID == "" && len(credential.AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] scoped credentials must set tenant_id or allowed_tenants", index)
 		}
+		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_API_CREDENTIALS_JSON[%d].roles", index), credential.Roles); err != nil {
+			return nil, err
+		}
 		if credential.Principal == "" {
 			credential.Principal = firstNonEmpty(credential.Name, credential.ClientID, credential.ID)
 		}

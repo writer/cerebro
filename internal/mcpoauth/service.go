@@ -245,6 +245,7 @@ func (s *Service) Authorize(ctx context.Context, query url.Values) (string, erro
 	if resource != s.cfg.Resource {
 		return "", oauthError("invalid_target", "resource is not this MCP server", statusBadRequest)
 	}
+	scopeExplicit := strings.TrimSpace(query.Get("scope")) != ""
 	scopes, err := normalizeRequestedScopes(query.Get("scope"))
 	if err != nil {
 		return "", err
@@ -263,16 +264,17 @@ func (s *Service) Authorize(ctx context.Context, query url.Values) (string, erro
 	}
 	now := s.now().UTC()
 	if err := s.store.SaveLoginState(ctx, LoginState{
-		StateHash:     HashToken(stateToken),
-		ClientID:      client.ClientID,
-		RedirectURI:   redirectURI,
-		ClientState:   clientState,
-		Resource:      resource,
-		Scopes:        scopes,
-		CodeChallenge: codeChallenge,
-		Nonce:         nonce,
-		CreatedAt:     now,
-		ExpiresAt:     now.Add(s.cfg.StateTTL),
+		StateHash:      HashToken(stateToken),
+		ClientID:       client.ClientID,
+		RedirectURI:    redirectURI,
+		ClientState:    clientState,
+		Resource:       resource,
+		Scopes:         scopes,
+		ScopesExplicit: scopeExplicit,
+		CodeChallenge:  codeChallenge,
+		Nonce:          nonce,
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(s.cfg.StateTTL),
 	}); err != nil {
 		return "", fmt.Errorf("mcpoauth: save login state: %w", err)
 	}
@@ -313,7 +315,7 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 	if !containsAny(identity.Groups, s.cfg.Upstream.SecurityGroups) {
 		return "", oauthError("access_denied", "authenticated user is not in an authorized security group", statusForbidden)
 	}
-	entitlement, err := s.entitlementForIdentity(identity, login.ClientID, login.Scopes)
+	entitlement, err := s.entitlementForIdentity(identity, login.ClientID, login.Scopes, login.ScopesExplicit)
 	if err != nil {
 		return "", err
 	}
@@ -478,6 +480,10 @@ func (s *Service) exchangeClientCredentials(ctx context.Context, client config.M
 	if !scopesAllowed(scopes, allowedScopes) {
 		return TokenResponse{}, oauthError("invalid_scope", "requested scope is not allowed for client", statusBadRequest)
 	}
+	roles := cloneStrings(client.Roles)
+	if strings.TrimSpace(form.Get("scope")) != "" {
+		roles = nil
+	}
 	grant := AccessGrant{
 		Subject:        "service:" + client.ClientID,
 		ClientID:       client.ClientID,
@@ -485,7 +491,7 @@ func (s *Service) exchangeClientCredentials(ctx context.Context, client config.M
 		TenantID:       strings.TrimSpace(client.TenantID),
 		AllowedTenants: cloneStrings(client.AllowedTenants),
 		Scopes:         scopes,
-		Roles:          cloneStrings(client.Roles),
+		Roles:          roles,
 		Groups:         []string{"security"},
 	}
 	if len(client.Groups) > 0 {
@@ -651,7 +657,7 @@ type grantEntitlement struct {
 	Roles          []string
 }
 
-func (s *Service) entitlementForIdentity(identity Identity, clientID string, requestedScopes []string) (grantEntitlement, error) {
+func (s *Service) entitlementForIdentity(identity Identity, clientID string, requestedScopes []string, requestedScopesExplicit bool) (grantEntitlement, error) {
 	if len(s.cfg.Entitlements) == 0 {
 		return grantEntitlement{
 			TenantID:       strings.TrimSpace(s.cfg.TenantID),
@@ -670,11 +676,15 @@ func (s *Service) entitlementForIdentity(identity Identity, clientID string, req
 		if !scopesAllowed(requestedScopes, allowedScopes) {
 			return grantEntitlement{}, oauthError("invalid_scope", "requested scope is not allowed for user", statusBadRequest)
 		}
+		roles := cloneStrings(entitlement.Roles)
+		if requestedScopesExplicit {
+			roles = nil
+		}
 		return grantEntitlement{
 			TenantID:       strings.TrimSpace(entitlement.TenantID),
 			AllowedTenants: cloneStrings(entitlement.AllowedTenants),
 			Scopes:         cloneStrings(requestedScopes),
-			Roles:          cloneStrings(entitlement.Roles),
+			Roles:          roles,
 		}, nil
 	}
 	return grantEntitlement{}, oauthError("access_denied", "authenticated user has no Cerebro tenant entitlement", statusForbidden)

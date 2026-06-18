@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -967,6 +968,57 @@ func TestLoadRejectsRoleCredentialWithoutTenant(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsUnknownAPICredentialRole(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[{"key":"token","tenant_id":"writer","roles":["cerebro.viewr"]}]`)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want unknown role error")
+	}
+	if !strings.Contains(err.Error(), `CEREBRO_API_CREDENTIALS_JSON[0].roles contains unknown role "cerebro.viewr"`) {
+		t.Fatalf("Load() error = %v, want unknown API credential role", err)
+	}
+}
+
+func TestLoadRejectsUnknownMCPOAuthRoles(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		clientsJSON  string
+		entitlesJSON string
+		want         string
+	}{
+		{
+			name:        "client",
+			clientsJSON: `[{"client_id":"panopticon","client_secret":"secret","grant_types":["client_credentials"],"tenant_id":"writer","roles":["cerebro.viewr"]}]`,
+			want:        `CEREBRO_MCP_OAUTH_CLIENTS_JSON[0].roles contains unknown role "cerebro.viewr"`,
+		},
+		{
+			name:         "entitlement",
+			clientsJSON:  `[{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true}]`,
+			entitlesJSON: `[{"groups":["secops"],"tenant_id":"writer","roles":["cerebro.viewr"]}]`,
+			want:         `CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[0].roles contains unknown role "cerebro.viewr"`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setValidMCPOAuthEnv(t)
+			t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", tt.clientsJSON)
+			if tt.entitlesJSON != "" {
+				t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", tt.entitlesJSON)
+			}
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() error = nil, want unknown role error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Load() error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
 
