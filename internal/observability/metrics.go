@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -105,6 +106,9 @@ func Middleware(next http.Handler) http.Handler {
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		defer func() {
 			if recovered := recover(); recovered != nil {
+				if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+					panic(recovered)
+				}
 				panicAttrs := panicTelemetryAttributes(recovered)
 				durationSeconds := time.Since(started).Seconds()
 				labels := map[string]string{

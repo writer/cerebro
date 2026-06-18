@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -214,6 +215,26 @@ func TestMiddlewarePanicTelemetryIncludesPayloadAndStack(t *testing.T) {
 	if got := spanEnd["http.response.status_code"]; got != float64(http.StatusInternalServerError) {
 		t.Fatalf("span http.response.status_code = %#v, want %d; span=%#v", got, http.StatusInternalServerError, spanEnd)
 	}
+}
+
+func TestMiddlewareRepanicsHTTPAbortHandler(t *testing.T) {
+	handler := Middleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic(http.ErrAbortHandler)
+	}))
+	recorder := httptest.NewRecorder()
+	defer func() {
+		recovered := recover()
+		err, _ := recovered.(error)
+		if !errors.Is(err, http.ErrAbortHandler) {
+			t.Fatalf("recovered = %#v, want http.ErrAbortHandler", recovered)
+		}
+		if recorder.Body.Len() != 0 {
+			t.Fatalf("abort handler wrote response body %q", recorder.Body.String())
+		}
+	}()
+
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	t.Fatal("expected http.ErrAbortHandler to be re-panicked")
 }
 
 func TestStatusRecorderPreservesFlushAndUnwrap(t *testing.T) {
