@@ -1,10 +1,15 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/grcinventory"
 	"github.com/writer/cerebro/internal/ports"
@@ -121,6 +126,46 @@ func TestGRCInventoryAccountabilityUpdatePreservesExistingScope(t *testing.T) {
 	}
 	if got := record.Attributes["existing"]; got != "kept" {
 		t.Fatalf("existing attribute = %q, want kept", got)
+	}
+}
+
+func TestGRCInventoryResourceScopeRejectsMalformedAssetURN(t *testing.T) {
+	store := &stubInventoryScopeStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := bytes.NewBufferString(`{"tenant_id":"writer","asset_urn":"not-a-cerebro-urn","scope_state":"out_of_scope","reason":"test"}`)
+	resp, err := server.Client().Post(server.URL+"/grc/inventory/resource-scope", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST /grc/inventory/resource-scope error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	if len(store.records) != 0 {
+		t.Fatalf("scope records = %#v, want malformed asset_urn rejected before persistence", store.records)
+	}
+}
+
+func TestGRCInventoryAccountabilityRejectsMalformedAssetURN(t *testing.T) {
+	store := &stubInventoryScopeStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := bytes.NewBufferString(`{"tenant_id":"writer","asset_urn":"not-a-cerebro-urn","state":"known","owner":"security@example.com"}`)
+	resp, err := server.Client().Post(server.URL+"/grc/inventory/accountability", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST /grc/inventory/accountability error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	if len(store.records) != 0 {
+		t.Fatalf("scope records = %#v, want malformed asset_urn rejected before persistence", store.records)
 	}
 }
 

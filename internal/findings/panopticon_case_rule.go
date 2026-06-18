@@ -315,10 +315,11 @@ func panopticonAlertEvidenceURN(tenantID string, alertID string) string {
 }
 
 // panopticonCaseEvidenceCASObjectIDs extracts stable Evidence CAS object
-// identifiers from a Panopticon case payload using the same identity precedence
-// the Evidence CAS source applies (evidence_id, then CAS URI/digest). The result
-// is deterministic (deduped, sorted) so downstream correlation and fingerprints
-// stay stable across syncs.
+// identifiers from a Panopticon case payload. EvidenceCAS may project the
+// canonical runtime evidence under legacy metadata.evidence_id or the CAS URI,
+// so keep both candidates when Panopticon supplies both values. The result is
+// deterministic (deduped, sorted) so downstream correlation stays stable across
+// syncs.
 func panopticonCaseEvidenceCASObjectIDs(event *cerebrov1.EventEnvelope, attrs map[string]string) []string {
 	if promoted := strings.TrimSpace(attrs["evidence_cas_object_ids"]); promoted != "" {
 		return panopticonDedupeSortedIDs(strings.Split(promoted, ","))
@@ -327,13 +328,13 @@ func panopticonCaseEvidenceCASObjectIDs(event *cerebrov1.EventEnvelope, attrs ma
 	var ids []string
 	for _, key := range []string{"evidence", "evidences", "evidence_pointers", "captures"} {
 		for _, evidence := range panopticonCasePayloadObjects(payload, key) {
-			id := firstNonEmpty(
+			localID := firstNonEmpty(
 				panopticonCaseMapString(evidence, "evidence_id", "id"),
-				panopticonCaseMapString(evidence, "evidence_cas", "evidence_cas_uri", "uri", "cas_uri", "pointer"),
-				panopticonCaseMapString(evidence, "sha256", "digest"),
 			)
-			if id != "" {
-				ids = append(ids, id)
+			pointer := panopticonCaseMapString(evidence, "evidence_cas", "evidence_cas_uri", "uri", "cas_uri", "pointer")
+			ids = append(ids, localID, pointer)
+			if pointer == "" {
+				ids = append(ids, panopticonCaseMapString(evidence, "sha256", "digest"))
 			}
 		}
 	}

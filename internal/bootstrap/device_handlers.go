@@ -99,8 +99,9 @@ func buildDeviceAuthService(cfg config.DeviceAuthConfig, store deviceauth.Store,
 // buildAttestationRegistry constructs the attestation registry from
 // configuration. When the operator has not configured Apple or TPM
 // verifiers, the registry runs in non-required mode -- enroll requests
-// without an attestation statement get a software-assurance result, and
-// the device gets a software-only access token (no DPoP binding).
+// without an attestation statement get a software-assurance result, but
+// still need device_key or an existing binding before refresh tokens are
+// issued.
 func buildAttestationRegistry(cfg config.DeviceAuthConfig) (*attestation.Registry, error) {
 	verifiers := make([]attestation.Verifier, 0, 2)
 	if cfg.Attestation.Apple.TeamID != "" && len(cfg.Attestation.Apple.BundleIDs) > 0 {
@@ -162,11 +163,12 @@ type enrollRequestBody struct {
 	// Windows. Required when CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true.
 	Attestation string `json:"attestation,omitempty"`
 	// DeviceKey is the agent-supplied public JWK that the agent will sign
-	// DPoP proofs with. When present, cnf.jkt on the access token is set
-	// to the RFC 7638 thumbprint of this key, and every refresh and
-	// DPoP-protected resource call must carry a proof signed by the
-	// matching private key. Allowed kty/crv values: EC P-256, EC P-384,
-	// OKP Ed25519. RSA is rejected. Maximum encoded size: 4 KiB.
+	// DPoP proofs with. It is required unless verified attestation or an
+	// existing device record supplies the binding. cnf.jkt on the access
+	// token is set to the RFC 7638 thumbprint of this key, and every
+	// refresh and DPoP-protected resource call must carry a proof signed by
+	// the matching private key. Allowed kty/crv values: EC P-256, EC
+	// P-384, OKP Ed25519. RSA is rejected. Maximum encoded size: 4 KiB.
 	DeviceKey json.RawMessage `json:"device_key,omitempty"`
 }
 

@@ -31,7 +31,7 @@ func New() (*Source, error) {
 		DefaultBaseURL:  defaultBaseURL,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
-		TokenScheme:     "Basic",
+		AuthModel:       "duo_hmac",
 		Families: []jsonapi.Family{
 			{Name: "user", Path: "/users", URNKind: "duo_user", IDKeys: []string{"user_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"created", "last_login"}, Attributes: map[string]string{"user_id": "user_id", "username": "username", "email": "email", "realname": "realname", "status": "status", "last_login_at": "last_login", "is_enrolled": "is_enrolled", "lockout_reason": "lockout_reason", "last_directory_sync": "last_directory_sync"}, StaticAttributes: map[string]string{"source_product": "duo"}},
 			{Name: "group", Path: "/groups", URNKind: "duo_group", IDKeys: []string{"group_id"}, ListKeys: []string{"response"}, TimestampKeys: []string{"created"}, Attributes: map[string]string{"group_id": "group_id", "name": "name", "description": "desc|description", "status": "status"}, StaticAttributes: map[string]string{"source_product": "duo"}},
