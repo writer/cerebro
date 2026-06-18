@@ -583,7 +583,7 @@ func (s *Service) RefreshTokenRateLimitKey(ctx context.Context, refreshToken str
 func (s *Service) verifyDPoPForRefresh(device DeviceRecord, request TokenRequest) error {
 	jkt := strings.TrimSpace(device.Metadata["dpop_jkt"])
 	if jkt == "" {
-		return fmt.Errorf("%w: device has no DPoP binding", ErrInvalidRequest)
+		return fmt.Errorf("%w: device has no DPoP binding", ErrDPoPBindingMissing)
 	}
 	if s.cfg.DPoP == nil {
 		return ErrDPoPVerifierUnavailable

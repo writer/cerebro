@@ -316,6 +316,7 @@ var (
 	ErrDPoPMissingJTI          = errors.New("deviceauth: dpop missing jti")
 	ErrDPoPReplay              = errors.New("deviceauth: dpop jti replayed")
 	ErrDPoPMissing             = errors.New("deviceauth: dpop proof header missing")
+	ErrDPoPBindingMissing      = errors.New("deviceauth: dpop binding missing")
 	ErrDPoPJKTMismatch         = errors.New("deviceauth: dpop key thumbprint does not match cnf.jkt")
 	ErrDPoPVerifierUnavailable = errors.New("deviceauth: dpop verifier unavailable")
 )

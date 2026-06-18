@@ -374,6 +374,7 @@ func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
 		{name: "invalid statement", err: attestation.ErrInvalidStatement, status: http.StatusBadRequest, code: "invalid_attestation"},
 		{name: "invalid chain", err: attestation.ErrChainInvalid, status: http.StatusBadRequest, code: "invalid_attestation"},
 		{name: "nonce mismatch", err: attestation.ErrNonceMismatch, status: http.StatusBadRequest, code: "invalid_attestation"},
+		{name: "dpop binding missing", err: deviceauth.ErrDPoPBindingMissing, status: http.StatusUnauthorized, code: "dpop_required"},
 		{name: "dpop verifier unavailable", err: deviceauth.ErrDPoPVerifierUnavailable, status: http.StatusServiceUnavailable, code: "dpop_unavailable"},
 	}
 	for _, tt := range tests {

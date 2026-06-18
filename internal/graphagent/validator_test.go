@@ -40,6 +40,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "APOC",
 		},
 		{
+			name:   "escaped apoc sleep function",
+			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `apoc.util.sleep`(5000) AS x LIMIT 1",
+			reason: "APOC",
+		},
+		{
 			name:   "missing limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn`,
 			reason: "LIMIT",

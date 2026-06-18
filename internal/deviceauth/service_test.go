@@ -202,8 +202,8 @@ func TestServiceIssueTokenRejectsLegacyUnboundDeviceRefresh(t *testing.T) {
 		RefreshToken: refresh,
 		HTTPMethod:   "POST",
 		HTTPURL:      "https://cerebro.test/platform/devices/token",
-	}); !errors.Is(err, ErrInvalidRequest) {
-		t.Fatalf("IssueToken legacy unbound err = %v, want ErrInvalidRequest", err)
+	}); !errors.Is(err, ErrDPoPBindingMissing) {
+		t.Fatalf("IssueToken legacy unbound err = %v, want ErrDPoPBindingMissing", err)
 	}
 	row, err := store.LookupRefreshToken(ctx, HashToken(refresh), now)
 	if err != nil {

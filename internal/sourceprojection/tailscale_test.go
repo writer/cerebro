@@ -122,6 +122,29 @@ func TestRegistryRoutesTailscaleCoreKinds(t *testing.T) {
 	}
 }
 
+func TestProjectTailscaleDeviceOwnerStubKeepsUserIDTyped(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-owner-email", "tailscale.device", map[string]string{
+		"device_id": "device-1", "owner_email": "alice@writer.com", "authorized": "true",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:tailscale_user:alice@writer.com"
+	entity := state.entities[userURN]
+	if entity == nil {
+		t.Fatalf("tailscale owner stub missing: %#v", state.entities)
+	}
+	if got := entity.Attributes["user_id"]; got != "" {
+		t.Fatalf("owner stub user_id = %q, want empty when event has no user_id", got)
+	}
+	if got := entity.Attributes["email"]; got != "alice@writer.com" {
+		t.Fatalf("owner stub email = %q, want alice@writer.com", got)
+	}
+}
+
 func TestProjectTailscaleDeviceDeauthorizationRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

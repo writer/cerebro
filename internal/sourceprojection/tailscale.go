@@ -182,7 +182,12 @@ func tailscaleDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	})))
 	if ownerID := tailscaleUserKey(attrs); strings.TrimSpace(ownerID) != "" {
 		ownerURN := tailscaleUserURN(tenantID, ownerID)
-		addEntity(entities, tailscaleEntity(event, ownerURN, "tailscale.user", "", map[string]string{"user_id": strings.TrimSpace(ownerID)}))
+		ownerAttrs := map[string]string{
+			"user_id":    attrs["user_id"],
+			"login_name": attrs["login_name"],
+			"email":      firstNonEmpty(attrs["email"], attrs["owner_email"]),
+		}
+		addEntity(entities, tailscaleEntity(event, ownerURN, "tailscale.user", "", tailscaleAttributes(ownerAttrs)))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), deviceURN, ownerURN, relationOwnedBy, map[string]string{
 			"event_id":   event.GetId(),
 			"at":         eventObservedAt(event),
