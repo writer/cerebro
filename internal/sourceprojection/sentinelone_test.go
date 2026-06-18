@@ -324,7 +324,7 @@ func TestProjectSentinelOneGroupSiteLink(t *testing.T) {
 	assertProjectedLink(t, state, groupURN, relationBelongsTo, siteURN)
 }
 
-func TestProjectSentinelOneActivityDoesNotMaterializeAuditEvent(t *testing.T) {
+func TestProjectSentinelOneActivityBuildsAuditEvidenceContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
@@ -344,12 +344,22 @@ func TestProjectSentinelOneActivityDoesNotMaterializeAuditEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project(activity) error = %v", err)
 	}
-	if result.EntitiesProjected != 0 || result.LinksProjected != 0 {
-		t.Fatalf("activity projection = entities %d links %d, want no graph projection", result.EntitiesProjected, result.LinksProjected)
+	if result.EntitiesProjected == 0 || result.LinksProjected == 0 {
+		t.Fatalf("activity projection = entities %d links %d, want graph evidence context", result.EntitiesProjected, result.LinksProjected)
 	}
-	if len(state.entities) != 0 || len(state.links) != 0 {
-		t.Fatalf("activity audit event should not materialize graph records: entities=%#v links=%#v", state.entities, state.links)
-	}
+	activityURN := "urn:cerebro:writer:sentinelone_activity:activity-1"
+	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
+	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
+	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
+	assertProjectedEntityType(t, state, activityURN, "sentinelone.activity")
+	assertProjectedEntityType(t, state, agentURN, "sentinelone.agent")
+	assertProjectedEntityType(t, state, threatURN, "sentinelone.threat")
+	assertProjectedEntityType(t, state, siteURN, "sentinelone.site")
+	assertProjectedLink(t, state, agentURN, relationHasEvidence, activityURN)
+	assertProjectedLink(t, state, activityURN, relationObservedOn, agentURN)
+	assertProjectedLink(t, state, threatURN, relationHasEvidence, activityURN)
+	assertProjectedLink(t, state, activityURN, relationObservedOn, threatURN)
+	assertProjectedLink(t, state, activityURN, relationBelongsTo, siteURN)
 }
 
 func TestProjectSentinelOneApplicationInventoryContainedByAgent(t *testing.T) {
