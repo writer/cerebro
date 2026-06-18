@@ -61,6 +61,7 @@ func TestRegistryRoutesKolideCoreKinds(t *testing.T) {
 		{"kolide.device", map[string]string{"device_id": "device-1", "failure_count": "2"}, "kolide.device"},
 		{"kolide.user_device", map[string]string{"device_id": "device-1", "user_email": "alice@writer.com"}, "kolide.device"},
 		{"kolide.check", map[string]string{"check_id": "check-1", "device_id": "device-1", "status": "failing"}, "kolide.check"},
+		{"kolide.issue", map[string]string{"issue_id": "issue-1", "check_id": "check-1", "device_id": "device-1", "title": "Disk encryption disabled"}, "kolide.issue"},
 		{"kolide.software", map[string]string{"device_id": "device-1", "package_name": "openssl", "installed_version": "3.0.1"}, "kolide.device"},
 		{"kolide.vulnerability", map[string]string{"device_id": "device-1", "package_name": "openssl", "cve_id": "CVE-2026-0001", "severity": "high"}, "vulnerability"},
 	}
@@ -89,4 +90,38 @@ func TestRegistryRoutesKolideCoreKinds(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProjectKolideIssueLinksDeviceCheckAndIssue(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-issue-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.issue",
+		Attributes: map[string]string{
+			"issue_id":    "issue-1",
+			"check_id":    "disk-encryption",
+			"title":       "Disk encryption disabled",
+			"device_id":   "device-1",
+			"device_name": "mba-1",
+			"exempted":    "false",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
+	checkURN := "urn:cerebro:writer:kolide_check:disk-encryption"
+	issueURN := "urn:cerebro:writer:kolide_issue:issue-1"
+	if issue := state.entities[issueURN]; issue == nil || issue.EntityType != "kolide.issue" {
+		t.Fatalf("issue entity = %#v, want kolide.issue", issue)
+	}
+	assertProjectedLink(t, state, deviceURN, relationHasEvidence, checkURN)
+	assertProjectedLink(t, state, deviceURN, relationHasEvidence, issueURN)
+	assertProjectedLink(t, state, issueURN, relationObservedOn, deviceURN)
+	assertProjectedLink(t, state, checkURN, relationHasEvidence, issueURN)
 }
