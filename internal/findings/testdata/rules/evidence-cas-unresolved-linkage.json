@@ -1,0 +1,90 @@
+{
+  "rule_id": "evidence-cas-unresolved-linkage",
+  "runtime": {
+    "id": "writer-evidence-cas",
+    "source_id": "evidence_cas",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "evidence-cas-linked",
+      "tenant_id": "writer",
+      "source_id": "evidence_cas",
+      "kind": "evidence_cas.object",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "evidence_cas/object/v1",
+      "attributes": {
+        "evidence_id": "evidence-linked",
+        "evidence_type": "evidence_cas.artifact",
+        "source_system": "iris",
+        "source_runtime_id": "writer-evidence-cas",
+        "case_id": "case-linked",
+        "case_urn": "urn:cerebro:writer:case:case-linked",
+        "case_link_status": "linked",
+        "resource_urn": "urn:cerebro:writer:case:case-linked",
+        "resource_link_status": "linked"
+      }
+    },
+    {
+      "id": "evidence-cas-unresolved",
+      "tenant_id": "writer",
+      "source_id": "evidence_cas",
+      "kind": "evidence_cas.object",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "evidence_cas/object/v1",
+      "attributes": {
+        "evidence_id": "evidence-orphan",
+        "evidence_type": "evidence_cas.artifact",
+        "source_system": "iris",
+        "source_runtime_id": "writer-evidence-cas",
+        "case_id": "case-missing",
+        "case_link_status": "missing",
+        "unresolved_case_context": "true",
+        "resource_urn": "urn:cerebro:writer:case:case-missing",
+        "resource_link_status": "missing"
+      }
+    },
+    {
+      "id": "evidence-cas-bare",
+      "tenant_id": "writer",
+      "source_id": "evidence_cas",
+      "kind": "evidence_cas.object",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "evidence_cas/object/v1",
+      "attributes": {
+        "evidence_id": "evidence-bare",
+        "evidence_type": "evidence_cas.artifact",
+        "source_system": "iris",
+        "source_runtime_id": "writer-evidence-cas",
+        "resource_link_status": "missing"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "evidence-cas-unresolved-linkage",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "Evidence CAS object evidence-orphan cannot resolve its case or resource linkage",
+      "event_ids": ["evidence-cas-unresolved"],
+      "policy_id": "evidence-orphan",
+      "attributes": {
+        "evidence_cas_evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-orphan",
+        "evidence_id": "evidence-orphan",
+        "unresolved_linkage": "resource_and_case",
+        "primary_resource_urn": "urn:cerebro:writer:runtime_evidence:evidence-orphan",
+        "rule_required_attributes": "evidence_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "evidence-cas-linked",
+      "reason": "evidence whose case and resource linkage resolves is not a chain-of-custody risk"
+    },
+    {
+      "event_id": "evidence-cas-bare",
+      "reason": "evidence that declares no case or resource context cannot have unresolved linkage"
+    }
+  ]
+}

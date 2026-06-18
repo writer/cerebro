@@ -5230,6 +5230,98 @@ func TestProjectEvidenceCASTenantScopedLinksForCollidingIdentifiers(t *testing.T
 	assertProjectedLinkMissing(t, state, "urn:cerebro:tenant-b:case:case-1", relationHasEvidence, "urn:cerebro:tenant-a:runtime_evidence:evidence-1")
 }
 
+func TestProjectEvidenceCASStampsNormalizedLinkState(t *testing.T) {
+	linkedState := &projectionRecorder{}
+	service := New(linkedState, nil)
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-linked",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"case_id":               "case-linked",
+			"case_link_status":      "linked",
+			"evidence_cas_digest":   "sha256linked",
+			"evidence_cas_ref_type": "evidencecas.manifest.v2",
+			"evidence_cas_uri":      "evidencecas://cases/case-linked/evidence/evidence-linked",
+			"evidence_id":           "evidence-linked",
+			"resource_entity_type":  "case",
+			"resource_link_status":  "linked",
+			"resource_urn":          "urn:cerebro:writer:case:case-linked",
+			"source_event_id":       "iris-event-linked",
+			"source_runtime_id":     "iris-runtime",
+			"source_system":         "iris",
+		},
+	}); err != nil {
+		t.Fatalf("Project(linked) error = %v", err)
+	}
+	linked := linkedState.entities["urn:cerebro:writer:runtime_evidence:evidence-linked"]
+	if linked == nil {
+		t.Fatal("linked runtime evidence entity missing")
+	}
+	if got := linked.Attributes["evidence_link_state"]; got != "linked" {
+		t.Fatalf("linked evidence_link_state = %q, want linked", got)
+	}
+
+	unresolvedState := &projectionRecorder{}
+	service = New(unresolvedState, nil)
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-unresolved",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"case_id":                 "case-unresolved",
+			"evidence_cas_digest":     "sha256unresolved",
+			"evidence_cas_ref_type":   "evidencecas.manifest.v2",
+			"evidence_cas_uri":        "evidencecas://cases/case-unresolved/evidence/evidence-unresolved",
+			"evidence_id":             "evidence-unresolved",
+			"resource_urn":            "urn:cerebro:writer:case:case-unresolved",
+			"source_event_id":         "iris-event-unresolved",
+			"source_runtime_id":       "iris-runtime",
+			"source_system":           "iris",
+			"unresolved_case_context": "true",
+		},
+	}); err != nil {
+		t.Fatalf("Project(unresolved) error = %v", err)
+	}
+	unresolved := unresolvedState.entities["urn:cerebro:writer:runtime_evidence:evidence-unresolved"]
+	if unresolved == nil {
+		t.Fatal("unresolved runtime evidence entity missing")
+	}
+	if got := unresolved.Attributes["evidence_link_state"]; got != "unresolved" {
+		t.Fatalf("unresolved evidence_link_state = %q, want unresolved", got)
+	}
+
+	bareState := &projectionRecorder{}
+	service = New(bareState, nil)
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "iris-evidence-bare",
+		TenantId: "writer",
+		SourceId: "evidence_cas",
+		Kind:     "evidence_cas.object",
+		Attributes: map[string]string{
+			"evidence_cas_digest":   "sha256bare",
+			"evidence_cas_ref_type": "evidencecas.manifest.v2",
+			"evidence_cas_uri":      "evidencecas://evidence/evidence-bare",
+			"evidence_id":           "evidence-bare",
+			"resource_link_status":  "missing",
+			"source_event_id":       "iris-event-bare",
+			"source_runtime_id":     "iris-runtime",
+			"source_system":         "iris",
+		},
+	}); err != nil {
+		t.Fatalf("Project(bare) error = %v", err)
+	}
+	bare := bareState.entities["urn:cerebro:writer:runtime_evidence:evidence-bare"]
+	if bare == nil {
+		t.Fatal("bare runtime evidence entity missing")
+	}
+	if got := bare.Attributes["evidence_link_state"]; got != "linked" {
+		t.Fatalf("bare evidence_link_state = %q, want linked", got)
+	}
+}
+
 func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

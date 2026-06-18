@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	cerebrov1connect "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
+	"github.com/writer/cerebro/internal/agentplatform"
 )
 
 func TestPlatformHTTPRoutesHaveAuthPolicies(t *testing.T) {
@@ -166,6 +167,24 @@ func TestRBACRolesAuthorizeRouteScopes(t *testing.T) {
 	admin := authPrincipal{Roles: []string{roleCerebroAdmin}}
 	if err := authorizePrincipalHTTPPolicy(admin, httpRoutePolicyFor(http.MethodPost, "/platform/jobs")); err != nil {
 		t.Fatalf("admin rejected for job write: %v", err)
+	}
+}
+
+func TestA2AJSONRPCHTTPRouteRequiresAdminOnly(t *testing.T) {
+	policy := httpRoutePolicyFor(http.MethodPost, agentplatform.A2AJSONRPCPath)
+	if policy.Scope != "" || !policy.AdminOnly {
+		t.Fatalf("POST %s policy = %#v, want admin-only", agentplatform.A2AJSONRPCPath, policy)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, agentplatform.A2AJSONRPCPath, nil)
+	readOnly := authContext{principal: authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}}
+	if err := authorizeHTTPRequestScope(readOnly, request); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("read-only authorizeHTTPRequestScope(%s) error = %v, want scope forbidden", agentplatform.A2AJSONRPCPath, err)
+	}
+
+	operator := authContext{principal: authPrincipal{AuthMode: "api_key"}}
+	if err := authorizeHTTPRequestScope(operator, request); err != nil {
+		t.Fatalf("operator authorizeHTTPRequestScope(%s) error = %v", agentplatform.A2AJSONRPCPath, err)
 	}
 }
 
