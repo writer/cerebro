@@ -170,6 +170,31 @@ func TestProjectTailscaleUserAndDeviceShareUserIDURN(t *testing.T) {
 	}
 }
 
+func TestProjectTailscaleUserURNPrefersStableUserID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-user-canonical", "tailscale.user", map[string]string{
+		"user_id":    "user-1",
+		"login_name": "alice@writer.com",
+		"email":      "alice@writer.com",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	entity := state.entities[userURN]
+	if entity == nil {
+		t.Fatalf("tailscale user entity missing at stable user_id URN: %#v", state.entities)
+	}
+	if got := entity.Attributes["login_name"]; got != "alice@writer.com" {
+		t.Fatalf("login_name = %q, want alice@writer.com", got)
+	}
+	if splitURN := "urn:cerebro:writer:tailscale_user:alice@writer.com"; state.entities[splitURN] != nil {
+		t.Fatalf("tailscale user projected split login_name URN %q: %#v", splitURN, state.entities[splitURN])
+	}
+}
+
 func TestProjectTailscaleDeviceDeauthorizationRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

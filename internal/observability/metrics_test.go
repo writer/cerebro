@@ -178,33 +178,41 @@ func TestMiddlewareMarksServerErrorsOnOpenTelemetrySpan(t *testing.T) {
 	}
 }
 
-func TestMiddlewareRecordsPanicPayloadAndStack(t *testing.T) {
+func TestMiddlewarePanicTelemetryIncludesPayloadAndStack(t *testing.T) {
 	stderr := captureObservabilityOutput(t, func() {
-		handler := Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			panic("boom")
+		handler := Middleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+			panic("boom-panic")
 		}))
 		recorder := httptest.NewRecorder()
 
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 		if recorder.Code != http.StatusInternalServerError {
-			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+			t.Fatalf("panic response status = %d, want %d", recorder.Code, http.StatusInternalServerError)
 		}
 	})
 
-	payload := observabilityTelemetryPayload(t, stderr, "span_end", "http.server")
-	if got := payload["error_kind"]; got != "panic" {
-		t.Fatalf("error_kind = %#v, want panic; payload=%#v", got, payload)
+	event := observabilityTelemetryPayload(t, stderr, "event", "http.server.error")
+	if got := event["exception.message"]; got != "boom-panic" {
+		t.Fatalf("event exception.message = %#v, want boom-panic; event=%#v", got, event)
 	}
-	if got := payload["exception.message"]; got != "boom" {
-		t.Fatalf("exception.message = %#v, want boom; payload=%#v", got, payload)
+	if got := event["exception.type"]; got != "string" {
+		t.Fatalf("event exception.type = %#v, want string; event=%#v", got, event)
 	}
-	if got := payload["exception.type"]; got != "string" {
-		t.Fatalf("exception.type = %#v, want string; payload=%#v", got, payload)
+	stack, ok := event["exception.stacktrace"].(string)
+	if !ok || !strings.Contains(stack, "TestMiddlewarePanicTelemetryIncludesPayloadAndStack") {
+		t.Fatalf("event exception.stacktrace = %#v, want test stack frame", event["exception.stacktrace"])
 	}
-	stack, ok := payload["exception.stacktrace"].(string)
-	if !ok || !strings.Contains(stack, "internal/observability/metrics.go") {
-		t.Fatalf("exception.stacktrace = %#v, want middleware stack; payload=%#v", payload["exception.stacktrace"], payload)
+
+	spanEnd := observabilityTelemetryPayload(t, stderr, "span_end", "http.server")
+	if got := spanEnd["exception.message"]; got != "boom-panic" {
+		t.Fatalf("span exception.message = %#v, want boom-panic; span=%#v", got, spanEnd)
+	}
+	if got := spanEnd["error_kind"]; got != "panic" {
+		t.Fatalf("span error_kind = %#v, want panic; span=%#v", got, spanEnd)
+	}
+	if got := spanEnd["http.response.status_code"]; got != float64(http.StatusInternalServerError) {
+		t.Fatalf("span http.response.status_code = %#v, want %d; span=%#v", got, http.StatusInternalServerError, spanEnd)
 	}
 }
 
