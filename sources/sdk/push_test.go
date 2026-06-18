@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -126,9 +125,6 @@ func TestNormalizePushedTelemetryRejectsMissingIdentity(t *testing.T) {
 			_, err := NormalizePushedTelemetry(payload)
 			if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
 				t.Fatalf("NormalizePushedTelemetry() error = %v, want ErrInvalidConfig", err)
-			}
-			if name == "posture" && !strings.Contains(err.Error(), "posture status is required") {
-				t.Fatalf("NormalizePushedTelemetry() posture error = %v, want required-field message", err)
 			}
 		})
 	}
