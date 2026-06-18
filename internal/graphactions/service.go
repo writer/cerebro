@@ -245,14 +245,17 @@ func targetCandidates(finding *ports.FindingRecord) []string {
 	for _, key := range []string{"okta_user_id", "okta_user_email", "okta_user_login", "okta_email", "okta_login", "principal_email", "user_email", "email", "identity_email"} {
 		candidates = append(candidates, attrs[key])
 	}
+	tenantID := strings.TrimSpace(finding.TenantID)
 	for _, key := range []string{"okta_user_urn", "primary_resource_urn", "principal_urn", "identity_urns"} {
-		candidates = append(candidates, candidatesFromDelimited(attrs[key])...)
+		candidates = append(candidates, candidatesFromDelimited(tenantID, attrs[key])...)
 	}
 	for _, key := range []string{"okta_identity_attributes_json", "okta_attributes_json", "principal_attributes_json"} {
 		candidates = append(candidates, candidatesFromJSON(attrs[key])...)
 	}
 	for _, urn := range finding.ResourceURNs {
-		candidates = append(candidates, candidateFromURN(urn))
+		if candidate := candidateFromURN(tenantID, urn); candidate != "" {
+			candidates = append(candidates, candidate)
+		}
 	}
 	return candidates
 }
@@ -278,7 +281,7 @@ func candidatesFromJSON(raw string) []string {
 	}
 }
 
-func candidatesFromDelimited(raw string) []string {
+func candidatesFromDelimited(tenantID string, raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
@@ -287,14 +290,23 @@ func candidatesFromDelimited(raw string) []string {
 	candidates := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		candidates = append(candidates, part, candidateFromURN(part))
+		if strings.HasPrefix(part, "urn:cerebro:") {
+			if candidate := candidateFromURN(tenantID, part); candidate != "" {
+				candidates = append(candidates, part, candidate)
+			}
+			continue
+		}
+		candidates = append(candidates, part)
 	}
 	return candidates
 }
 
-func candidateFromURN(raw string) string {
+func candidateFromURN(tenantID string, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || (!strings.Contains(raw, ":okta.user:") && !strings.Contains(raw, ":okta_user:") && !strings.Contains(raw, ":identity:email:")) {
+		return ""
+	}
+	if urnTenantID(raw) != strings.TrimSpace(tenantID) {
 		return ""
 	}
 	index := strings.LastIndex(raw, ":")
@@ -302,6 +314,14 @@ func candidateFromURN(raw string) string {
 		return ""
 	}
 	return raw[index+1:]
+}
+
+func urnTenantID(raw string) string {
+	parts := strings.Split(strings.TrimSpace(raw), ":")
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
 }
 
 func stringFromMap(values map[string]any, key string) string {

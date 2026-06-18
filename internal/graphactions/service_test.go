@@ -80,6 +80,31 @@ func TestServiceExecuteRejectsExplicitTargetOutsideFinding(t *testing.T) {
 	}
 }
 
+func TestServiceExecuteRejectsExplicitTargetFromCrossTenantURN(t *testing.T) {
+	client := &stubAccessApprovalsClient{}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:           "finding-1",
+		TenantID:     "tenant-a",
+		ResourceURNs: []string{"urn:cerebro:tenant-b:okta_user:00uvictim"},
+		Attributes: map[string]string{
+			"identity_urns": "urn:cerebro:tenant-b:identity:email:victim@tenant-b.example",
+		},
+	}}
+	for _, target := range []string{"00uvictim", "victim@tenant-b.example"} {
+		_, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
+			FindingID: "finding-1",
+			Action:    ActionIdentityOktaSuspendUser,
+			Target:    target,
+		})
+		if !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("Execute(%q) error = %v, want ErrInvalidRequest", target, err)
+		}
+	}
+	if client.called {
+		t.Fatalf("cross-tenant URN-derived target reached access-approvals client")
+	}
+}
+
 func TestServiceExecuteDerivesTargetFromOktaUserURN(t *testing.T) {
 	client := &stubAccessApprovalsClient{}
 	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{

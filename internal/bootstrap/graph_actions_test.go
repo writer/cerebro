@@ -157,6 +157,7 @@ func TestHandleExecuteGraphActionRejectsTargetOnlyUnsuspend(t *testing.T) {
 
 func TestGraphActionTargetForFindingAllowsMatchingExplicitTarget(t *testing.T) {
 	finding := &ports.FindingRecord{
+		TenantID: "writer",
 		Attributes: map[string]string{
 			"okta_user_urn": "urn:cerebro:writer:okta.user:alice@writer.com",
 		},
