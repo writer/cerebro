@@ -27,6 +27,14 @@ class Client:
         result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id, safe='')}")
         return result
 
+    def list_source_runtimes(self, filters: Optional[Dict[str, Any]] = None) -> Any:
+        query = _query_params(filters or {})
+        path = "/source-runtimes"
+        if query:
+            path = f"{path}?{parse.urlencode(query)}"
+        result, _ = self._request_json("GET", path)
+        return result
+
     def write_claims(
         self,
         runtime_id: str,
@@ -123,6 +131,20 @@ class Client:
                 raise APIError(exc.code, decoded.get("error", payload), decoded.get("code", "")) from exc
             except json.JSONDecodeError:
                 raise APIError(exc.code, payload or exc.reason, "") from exc
+
+
+def _query_params(filters: Dict[str, Any]) -> Dict[str, str]:
+    query: Dict[str, str] = {}
+    for key, value in filters.items():
+        if value in (None, ""):
+            continue
+        if isinstance(value, (list, tuple)):
+            parts = [str(item) for item in value if item not in (None, "")]
+            if parts:
+                query[key] = ",".join(parts)
+            continue
+        query[key] = str(value)
+    return query
 
 
 @dataclass

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -22,6 +22,8 @@ APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 COVER_PACKAGES ?= ./internal/runtimeresponse ./internal/graphagent ./internal/deviceauth ./internal/sourceprojection ./internal/findings
 COVERAGE_OUT ?= tmp/coverage.out
 SDK_PYTHON_VENV ?= tmp/sdk-python-test-venv
+SDK_PYTHON_BUILD_VENV ?= tmp/sdk-python-build-venv
+SDK_PYTHON_DIST ?= tmp/sdk-python-dist
 SDK_AUDIT_VENV ?= tmp/sdk-audit-venv
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -106,7 +108,7 @@ cover: ## Run Go coverage for high-stakes packages.
 
 test-coverage: cover ## Alias for coverage validation.
 
-sdk-test: sdk-go-test sdk-python-test sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
+sdk-test: sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check ## Run all SDK tests and type checks.
 
 sdk-go-test: ## Run Go SDK unit tests and vet.
 	go -C sdk/go/cerebroapi test ./...
@@ -115,8 +117,15 @@ sdk-go-test: ## Run Go SDK unit tests and vet.
 sdk-python-test: ## Run Python SDK unit tests.
 	$(PYTHON) -m venv "$(SDK_PYTHON_VENV)"
 	"$(SDK_PYTHON_VENV)/bin/python" -m pip install --upgrade pip
-	"$(SDK_PYTHON_VENV)/bin/python" -m pip install 'protobuf>=5.29.5,<6'
+	"$(SDK_PYTHON_VENV)/bin/python" -m pip install 'protobuf>=5.29.5,<8'
 	PYTHONPATH=sdk/python "$(SDK_PYTHON_VENV)/bin/python" -m unittest discover -s sdk/python/tests
+
+sdk-python-build-check: ## Build and validate the Python SDK package artifacts.
+	rm -rf "$(SDK_PYTHON_DIST)"
+	$(PYTHON) -m venv "$(SDK_PYTHON_BUILD_VENV)"
+	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m pip install --upgrade pip build twine
+	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m build --sdist --wheel --outdir "$(SDK_PYTHON_DIST)" sdk/python
+	"$(SDK_PYTHON_BUILD_VENV)/bin/python" -m twine check "$(SDK_PYTHON_DIST)"/*
 
 sdk-typescript-test: ## Run TypeScript SDK tests.
 	cd sdk/typescript && npm test
