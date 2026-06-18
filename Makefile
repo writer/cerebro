@@ -36,6 +36,7 @@ GITHUB_FINDINGS_REPO ?=
 GITHUB_FINDINGS_GRAPH_PREVIEW ?= tmp/github-findings-graph-preview.json
 GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW ?= tmp/github-audit-findings-graph-preview.json
 CEREBRO_BASE_URL ?= http://127.0.0.1:8080
+export CEREBRO_BASE_URL
 WORKFLOW_REPLAY_KIND_PREFIX ?= workflow.v1.
 WORKFLOW_REPLAY_KIND ?= knowledge_decision
 WORKFLOW_REPLAY_TENANT ?= writer
@@ -339,7 +340,7 @@ release-smoke: ## Validate GoReleaser configuration.
 	$(GORELEASER) check
 
 load-smoke: ## Run bounded capacity/load smoke checks against CEREBRO_BASE_URL.
-	CEREBRO_BASE_URL="$(CEREBRO_BASE_URL)" $(PYTHON) scripts/load_smoke.py \
+	$(PYTHON) scripts/load_smoke.py \
 		$(foreach path,$(LOAD_SMOKE_PATHS),--path "$(path)") \
 		--duration "$(LOAD_SMOKE_DURATION)" \
 		--rps "$(LOAD_SMOKE_RPS)" \
