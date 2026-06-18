@@ -1620,6 +1620,27 @@ def validate_stack(path: Path) -> list[Finding]:
         or "prod" in str(config.get("environment", stack)).lower()
         or stack.endswith("prod")
     )
+    nats_cpu = config.get("natsCpu", 512)
+    nats_memory = config.get("natsMemory", 1024)
+    if in_active_env:
+        if not isinstance(nats_cpu, int) or nats_cpu < 2048:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:natsCpu",
+                    "active Cerebro environments must allocate at least 2048 CPU units to NATS JetStream for wide-event headroom",
+                )
+            )
+        if not isinstance(nats_memory, int) or nats_memory < 4096:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:natsMemory",
+                    "active Cerebro environments must allocate at least 4096 MiB to NATS JetStream for wide-event headroom",
+                )
+            )
     if in_active_env and not device_auth_enabled and (
         not isinstance(api_max_instances, int) or api_max_instances < 2
     ):

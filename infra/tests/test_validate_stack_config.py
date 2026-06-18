@@ -108,6 +108,8 @@ config:
   cerebro:ecrBaseUri: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v2.1.36
   cerebro:apiMaxInstances: 2
+  cerebro:natsCpu: 2048
+  cerebro:natsMemory: 4096
   cerebro:postgresDeletionProtection: true
   cerebro:postgresBackupRetentionDays: 14
   cerebro:apiAuthEnabled: true
@@ -951,6 +953,15 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_active_environments_require_api_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2", "  cerebro:apiMaxInstances: 1")
         self.assertTrue(any("at least two API tasks" in message for message in self._messages(content)))
+
+    def test_active_environments_require_nats_headroom(self) -> None:
+        content = BASE_STACK.replace("  cerebro:natsCpu: 2048", "  cerebro:natsCpu: 1024").replace(
+            "  cerebro:natsMemory: 4096",
+            "  cerebro:natsMemory: 2048",
+        )
+        messages = self._messages(content)
+        self.assertTrue(any("at least 2048 CPU units" in message for message in messages))
+        self.assertTrue(any("at least 4096 MiB" in message for message in messages))
 
     def test_device_auth_enabled_exempts_api_headroom_rule(self) -> None:
         # When deviceAuthEnabled=true the in-process DPoP replay cache forces
