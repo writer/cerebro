@@ -93,6 +93,38 @@ class DroidSastContextTests(unittest.TestCase):
         self.assertEqual(findings[0]["line"], 7)
         self.assertIn("spans changed line(s): 42", findings[0]["message"])
 
+    def test_collect_deepsec_scan_context_does_not_over_dedupe_slugless_candidates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / ".deepsec"
+            files_dir = workspace / "data" / "cerebro" / "files" / "internal"
+            files_dir.mkdir(parents=True)
+            (files_dir / "handler.go.json").write_text(
+                json.dumps(
+                    {
+                        "filePath": "internal/handler.go",
+                        "lastScannedRunId": "run-1",
+                        "candidates": [
+                            {"lineNumbers": [41], "matchedPattern": "first(source)"},
+                            {"lineNumbers": [42], "matchedPattern": "second(source)"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            findings, _ = ctx.collect_deepsec_scan_context(
+                workspace,
+                "cerebro",
+                "run-1",
+                ["internal/handler.go"],
+                {"internal/handler.go": {41, 42}},
+            )
+
+        self.assertEqual(len(findings), 2)
+        rules = {finding["rule"] for finding in findings}
+        self.assertEqual(len(rules), 2)
+        self.assertTrue(all(str(rule).startswith("candidate-") for rule in rules))
+
     def test_collect_deepsec_scan_context_filters_unchanged_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / ".deepsec"

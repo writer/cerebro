@@ -10,6 +10,7 @@ import re
 import subprocess
 import tempfile
 import urllib.request
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -478,9 +479,17 @@ def deepsec_candidate_message(candidate: dict[str, object]) -> str:
 
 
 def deepsec_rule_id(candidate: dict[str, object]) -> str:
-    value = compact_text(str(candidate.get("vulnSlug") or "candidate"))
+    slug = compact_text(str(candidate.get("vulnSlug") or ""))
+    if not slug:
+        return f"candidate-{deepsec_candidate_fingerprint(candidate)}"
+    value = slug
     value = re.sub(r"[^A-Za-z0-9_.:-]+", "-", value).strip("-")
     return value[:80] if value else "candidate"
+
+
+def deepsec_candidate_fingerprint(candidate: dict[str, object]) -> str:
+    encoded = json.dumps(candidate, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+    return f"{zlib.crc32(encoded) & 0xFFFFFFFF:08x}"
 
 
 def compact_text(value: str) -> str:

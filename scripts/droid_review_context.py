@@ -231,8 +231,14 @@ def format_sast_finding(finding: dict[str, object]) -> str:
 def safe_sast_message(finding: dict[str, object]) -> str:
     if str(finding.get("tool") or "").lower() == "deepsec":
         rule = sanitize_deepsec_rule(str(finding.get("rule") or "candidate"))
-        return f"DeepSec candidate signal for `{rule}`; source snippets withheld from AI context."
+        suffix = safe_deepsec_span_suffix(str(finding.get("message") or ""))
+        return f"DeepSec candidate signal for `{rule}`; source snippets withheld from AI context.{suffix}"
     return compact_text(str(finding.get("message") or ""))[:180]
+
+
+def safe_deepsec_span_suffix(message: str) -> str:
+    match = re.search(r"\(spans changed line\(s\): [0-9][0-9, .]*\)", message)
+    return f" {match.group(0)}" if match else ""
 
 
 def sanitize_deepsec_rule(value: str) -> str:

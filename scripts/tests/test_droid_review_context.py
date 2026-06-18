@@ -38,6 +38,22 @@ class DroidReviewContextTests(unittest.TestCase):
         memories = ctx.relevant_memories(memory_doc, ["internal/graphagent/ask.go"])
         self.assertEqual([item["id"] for item in memories], ["ask"])
 
+    def test_format_sast_finding_preserves_safe_deepsec_span_suffix(self):
+        finding = {
+            "tool": "deepsec",
+            "rule": "go-ssrf",
+            "file": "internal/graphagent/ask.go",
+            "line": 7,
+            "severity": "INFO",
+            "confidence": "SIGNAL",
+            "message": "DeepSec candidate signal for `go-ssrf`; source snippets withheld from AI context. (spans changed line(s): 42)",
+        }
+
+        rendered = ctx.format_sast_finding(finding)
+
+        self.assertIn("spans changed line(s): 42", rendered)
+        self.assertIn("source snippets withheld", rendered)
+
     def test_assemble_writes_markdown_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
