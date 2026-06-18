@@ -131,6 +131,35 @@ func TestServiceUsesDeterministicFastPathForCommonTopRiskAsk(t *testing.T) {
 	}
 }
 
+func TestValidateRequestRejectsUnsupportedModel(t *testing.T) {
+	err := ValidateRequest(AskRequest{
+		TenantID: "writer",
+		Question: "Show risky assets",
+		Model:    "openrouter/private-model",
+	})
+	if err == nil {
+		t.Fatal("ValidateRequest() error = nil, want unsupported model error")
+	}
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("ValidateRequest() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestValidateRequestAllowsConfiguredModelAliases(t *testing.T) {
+	for _, model := range []string{"", DefaultModel, "claude-opus-4-7", "claude-haiku-4-5-20251001"} {
+		t.Run(model, func(t *testing.T) {
+			err := ValidateRequest(AskRequest{
+				TenantID: "writer",
+				Question: "Show risky assets",
+				Model:    model,
+			})
+			if err != nil {
+				t.Fatalf("ValidateRequest() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestCollectGraphProbeCachesTenantCounts(t *testing.T) {
 	resetGraphProbeCountsCacheForTest()
 	defer resetGraphProbeCountsCacheForTest()

@@ -1923,6 +1923,33 @@ LIMIT 25`,
 	}
 }
 
+func TestMCPGraphReasonRejectsUnsupportedModelBeforeLLM(t *testing.T) {
+	llm := &graphagent.StubLLMClient{}
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, llm)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.reason",
+			"arguments": map[string]any{
+				"question": "Which asset should I review first?",
+				"model":    "attacker-selected-provider-model",
+			},
+		},
+	})
+	result := response["result"].(map[string]any)
+	content := result["content"].([]any)[0].(map[string]any)["text"].(string)
+	if result["isError"] != true || !strings.Contains(content, "unsupported graph agent model") {
+		t.Fatalf("graph.reason unsupported model response = %#v", response)
+	}
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("draft requests = %#v, want unsupported model rejected before LLM", llm.DraftRequests)
+	}
+}
+
 func TestMCPGraphReasonMissingTenantWithoutAuthReportsInvalidRequest(t *testing.T) {
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",

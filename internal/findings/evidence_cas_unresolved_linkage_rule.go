@@ -201,11 +201,13 @@ func evidenceCASCaseLinkUnresolved(attributes map[string]string) bool {
 }
 
 func evidenceCASResourceContextSupplied(attributes map[string]string) bool {
-	return firstNonEmpty(attributes["resource_urn"], attributes["resource_id"]) != ""
+	return firstNonEmpty(attributes["resource_urn"], attributes["resource_id"]) != "" ||
+		parseBoolAttribute(attributes, "unresolved_resource_context")
 }
 
 func evidenceCASCaseContextSupplied(attributes map[string]string) bool {
-	return firstNonEmpty(attributes["case_id"], attributes["case_urn"]) != ""
+	return firstNonEmpty(attributes["case_id"], attributes["case_urn"]) != "" ||
+		parseBoolAttribute(attributes, "unresolved_case_context")
 }
 
 func evidenceCASUnresolvedLinkageScope(attributes map[string]string) string {

@@ -161,6 +161,25 @@ func TestHandleAgentPlatformGraphReasonMissingTenantWithoutAuthIsBadRequest(t *t
 	}
 }
 
+func TestHandleAgentPlatformGraphReasonRejectsUnsupportedModelBeforeLLM(t *testing.T) {
+	llm := &graphagent.StubLLMClient{}
+	app := New(graphReasoningAuthConfig(), Dependencies{
+		GraphStore:    &stubGraphStore{},
+		GraphAgentLLM: llm,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp := postAgentGraphReason(t, server, `{"question":"hello","model":"attacker-selected-provider-model"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("draft requests = %#v, want unsupported model rejected before LLM", llm.DraftRequests)
+	}
+}
+
 func TestHandleAgentPlatformGraphReasonRequiresLLM(t *testing.T) {
 	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: &stubGraphStore{}}, nil)
 	server := httptest.NewServer(app.Handler())

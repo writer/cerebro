@@ -39,7 +39,7 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 			family:   "tailnet",
 			kind:     "tailscale.tailnet",
 			path:     "/tailnet/-/settings",
-			response: map[string]any{"id": "writer.com", "devicesApprovalOn": false, "usersApprovalOn": true, "networkFlowLoggingOn": true, "regionalRoutingOn": false, "maxKeyDurationDays": 90},
+			response: map[string]any{"devicesApprovalOn": false, "usersApprovalOn": true, "networkFlowLoggingOn": true, "regionalRoutingOn": false, "maxKeyDurationDays": 90},
 			want:     map[string]string{"tailnet": "writer.com", "devices_approval_on": "false", "users_approval_on": "true", "regional_routing_on": "false", "max_key_duration_days": "90"},
 		},
 		{
@@ -105,7 +105,7 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "token": "token-1"}
+			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "tailnet": "writer.com", "token": "token-1"}
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
@@ -123,5 +123,38 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReadTailscaleTailnetSettingsFallsBackToTenantID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/tailnet/-/settings" {
+			t.Fatalf("request path = %q, want /tailnet/-/settings", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"devicesApprovalOn": true,
+			"usersApprovalOn":   false,
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := map[string]string{"base_url": server.URL, "family": "tailnet", "tenant_id": "writer", "token": "token-1"}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["tailnet"]; got != "writer" {
+		t.Fatalf("tailnet = %q, want tenant_id fallback writer", got)
+	}
+	if got := pull.Events[0].Attributes["external_id"]; got != "writer" {
+		t.Fatalf("external_id = %q, want tenant_id fallback writer", got)
 	}
 }

@@ -3587,15 +3587,15 @@ func TestAuthMiddlewareEnforcesTenantOnReportRunLookups(t *testing.T) {
 		t.Fatalf("GET /report-runs/other-report-run error = %v", err)
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("GET /report-runs/other-report-run status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /report-runs/other-report-run status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	getReq := connect.NewRequest(&cerebrov1.GetReportRunRequest{Id: "other-report-run"})
 	getReq.Header().Set("Authorization", "Bearer writer-key")
-	if _, err := client.GetReportRun(context.Background(), getReq); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("GetReportRun(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	if _, err := client.GetReportRun(context.Background(), getReq); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetReportRun(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodeNotFound, err)
 	}
 }
 
@@ -3909,6 +3909,53 @@ func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 	listReq.Header().Set("Authorization", "Bearer writer-key")
 	if _, err := client.ListGraphIngestRuns(context.Background(), listReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("ListGraphIngestRuns(unscoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestAuthMiddlewareNormalizesForeignGraphIngestRunLookup(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	store := &stubGraphStore{ingestRuns: map[string]graphstore.IngestRun{
+		"other-run": {
+			ID:        "other-run",
+			RuntimeID: "runtime-other",
+			SourceID:  "okta",
+			TenantID:  "other",
+			Status:    graphstore.IngestRunStatusCompleted,
+		},
+	}}
+	app := New(cfg, Dependencies{GraphStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/ingest-runs/other-run", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer writer-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /platform/graph/ingest-runs/other-run error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /platform/graph/ingest-runs/other-run status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	getReq := connect.NewRequest(&cerebrov1.GetGraphIngestRunRequest{Id: "other-run"})
+	getReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.GetGraphIngestRun(context.Background(), getReq); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetGraphIngestRun(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodeNotFound, err)
 	}
 }
 

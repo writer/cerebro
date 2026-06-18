@@ -6,6 +6,25 @@ import (
 	"time"
 )
 
+func TestLoadReportAcceptsMetadataImageID(t *testing.T) {
+	source := &Source{
+		readFile: func(string) ([]byte, error) {
+			return []byte(`{
+				"ArtifactName": "registry.example/app:latest",
+				"Metadata": {"ImageID": "sha256:cccc"},
+				"Results": []
+			}`), nil
+		},
+	}
+	report, err := source.loadReport(settings{tenantID: "writer", family: familyImageScan, path: "report.json"})
+	if err != nil {
+		t.Fatalf("loadReport() error = %v", err)
+	}
+	if got := imageDigest(report); got != "sha256:cccc" {
+		t.Fatalf("imageDigest() = %q, want sha256:cccc", got)
+	}
+}
+
 func TestFixEventIDsIncludeImageDigest(t *testing.T) {
 	source := &Source{now: func() time.Time { return time.Unix(0, 0).UTC() }}
 	st := settings{tenantID: "writer", family: familyFix}

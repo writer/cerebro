@@ -22,6 +22,7 @@ import (
 
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/agentplatform"
+	"github.com/writer/cerebro/internal/authz"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
@@ -652,10 +653,7 @@ func authorizePrincipalScope(principal authPrincipal, required string) error {
 }
 
 func principalHasAdminRole(principal authPrincipal) bool {
-	roles := normalizeAuthList(principal.Roles)
-	return containsAuthValue(roles, roleCerebroAdmin) ||
-		containsAuthValue(roles, "admin") ||
-		containsAuthValue(roles, "owner")
+	return authz.HasAdminRole(principal.Roles)
 }
 
 func hasRuntimeResponseTrustedScope(ctx context.Context) bool {

@@ -85,7 +85,7 @@ func NewBedrockLLMClient(ctx context.Context, llmConfig BedrockConfig) (*Bedrock
 		}
 		client = bedrockruntime.NewFromConfig(awsConfig)
 	}
-	if llmConfig.DefaultModel == "" {
+	if strings.TrimSpace(llmConfig.DefaultModel) == "" {
 		llmConfig.DefaultModel = DefaultModel
 	}
 	if llmConfig.MaxTokens <= 0 {
@@ -104,7 +104,11 @@ func NewBedrockLLMClient(ctx context.Context, llmConfig BedrockConfig) (*Bedrock
 
 func (c *BedrockLLMClient) DraftCypher(ctx context.Context, req DraftRequest) (*DraftResponse, error) {
 	prompt := draftPrompt(req)
-	text, err := c.invokeMessages(ctx, c.modelID(req.Model), prompt, c.maxTokens)
+	modelID, err := c.modelID(req.Model)
+	if err != nil {
+		return nil, err
+	}
+	text, err := c.invokeMessages(ctx, modelID, prompt, c.maxTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +129,11 @@ func (c *BedrockLLMClient) DraftCypher(ctx context.Context, req DraftRequest) (*
 }
 
 func (c *BedrockLLMClient) Summarize(ctx context.Context, req SummarizeRequest) (string, error) {
-	return c.invokeMessages(ctx, c.modelID(req.Model), summarizePrompt(req), c.maxTokens)
+	modelID, err := c.modelID(req.Model)
+	if err != nil {
+		return "", err
+	}
+	return c.invokeMessages(ctx, modelID, summarizePrompt(req), c.maxTokens)
 }
 
 func (c *BedrockLLMClient) Probe(ctx context.Context) error {
@@ -133,20 +141,8 @@ func (c *BedrockLLMClient) Probe(ctx context.Context) error {
 	return err
 }
 
-func (c *BedrockLLMClient) modelID(requested string) string {
-	switch normalizeModel(requested) {
-	case "claude-sonnet-4-6":
-		return firstNonEmpty(c.sonnetModel, c.defaultModel)
-	case "claude-opus-4-7":
-		return firstNonEmpty(c.opusModel, c.defaultModel)
-	case "claude-haiku-4-5-20251001":
-		return firstNonEmpty(c.haikuModel, c.defaultModel)
-	default:
-		if strings.TrimSpace(requested) != "" {
-			return strings.TrimSpace(requested)
-		}
-		return c.defaultModel
-	}
+func (c *BedrockLLMClient) modelID(requested string) (string, error) {
+	return configuredModelID(requested, c.defaultModel, c.sonnetModel, c.opusModel, c.haikuModel)
 }
 
 func (c *BedrockLLMClient) invokeMessages(ctx context.Context, modelID string, prompt string, maxTokens int) (string, error) {

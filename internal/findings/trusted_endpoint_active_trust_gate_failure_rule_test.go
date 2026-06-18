@@ -65,21 +65,21 @@ func TestTrustedEndpointActiveTrustGateFailureDefaultsBlankSeverityToHigh(t *tes
 	}
 }
 
-func TestTrustedEndpointActiveTrustGateFailureSelfReportedDeprovisionDoesNotResolveOrSuppress(t *testing.T) {
-	assertTrustedEndpointSelfReportedLifecycleDoesNotResolveOrSuppress(t, map[string]string{
+func TestTrustedEndpointActiveTrustGateFailureIgnoresSelfReportedDeprovisionForCloseout(t *testing.T) {
+	assertTrustedEndpointLifecycleDoesNotResolveOrSuppress(t, map[string]string{
 		"decision":     "deny",
 		"agent_status": "deprovisioned",
 	})
 }
 
-func TestTrustedEndpointActiveTrustGateFailureSelfReportedUnmanagedDoesNotResolveOrSuppress(t *testing.T) {
-	assertTrustedEndpointSelfReportedLifecycleDoesNotResolveOrSuppress(t, map[string]string{
+func TestTrustedEndpointActiveTrustGateFailureIgnoresSelfReportedUnmanagedForCloseout(t *testing.T) {
+	assertTrustedEndpointLifecycleDoesNotResolveOrSuppress(t, map[string]string{
 		"decision": "deny",
 		"managed":  "false",
 	})
 }
 
-func assertTrustedEndpointSelfReportedLifecycleDoesNotResolveOrSuppress(t *testing.T, attrs map[string]string) {
+func assertTrustedEndpointLifecycleDoesNotResolveOrSuppress(t *testing.T, attrs map[string]string) {
 	t.Helper()
 	rule := newTrustedEndpointActiveTrustGateFailureRule()
 	runtime := &cerebrov1.SourceRuntime{
@@ -87,20 +87,34 @@ func assertTrustedEndpointSelfReportedLifecycleDoesNotResolveOrSuppress(t *testi
 		SourceId: "trusted_endpoint",
 		TenantId: "writer",
 	}
-	event := trustedEndpointGateEvent("te-self-reported-lifecycle", attrs, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
-	records, err := rule.Evaluate(context.Background(), runtime, event)
+	open := trustedEndpointGateEvent("te-open", map[string]string{"decision": "deny"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	records, err := rule.Evaluate(context.Background(), runtime, open)
 	if err != nil {
-		t.Fatalf("Evaluate() error = %v", err)
+		t.Fatalf("Evaluate(open) error = %v", err)
 	}
 	if len(records) != 1 {
-		t.Fatalf("Evaluate() emitted %d findings, want 1", len(records))
+		t.Fatalf("Evaluate(open) emitted %d findings, want 1", len(records))
+	}
+	opened := records[0]
+
+	event := trustedEndpointGateEvent("te-lifecycle", attrs, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	records, err = rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(lifecycle) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(lifecycle) emitted %d findings, want 1", len(records))
 	}
 	counterRule, ok := rule.(CounterEventRule)
 	if !ok {
 		t.Fatal("rule does not implement CounterEventRule")
 	}
-	if closeAnchor, closes := counterRule.CloseOnEvent(event); closes || closeAnchor != "" {
-		t.Fatalf("CloseOnEvent(self-reported lifecycle) = (%q, %v), want no close", closeAnchor, closes)
+	closeAnchor, closes := counterRule.CloseOnEvent(event)
+	if closes || closeAnchor != "" {
+		t.Fatalf("CloseOnEvent(lifecycle) = (%q, %v), want no close from self-reported lifecycle", closeAnchor, closes)
+	}
+	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor == "" {
+		t.Fatalf("OpenAnchor(open finding) is empty")
 	}
 }
 
