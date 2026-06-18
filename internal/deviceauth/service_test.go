@@ -176,6 +176,50 @@ func TestServiceEnrollRejectsUnboundRefreshTokenMinting(t *testing.T) {
 	}
 }
 
+func TestServiceReenrollRequiresPresentedBindingForSoftwareDevice(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	deviceJWK, _ := makeEd25519JWK(t, pub)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-software", TenantID: "writer"})
+	first, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: firstBootstrap.Token,
+		HardwareUUID:   "hw-software",
+		OSType:         "darwin",
+		DeviceJWK:      deviceJWK,
+	})
+	if err != nil {
+		t.Fatalf("first Enroll: %v", err)
+	}
+	device, err := service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	priorJKT := strings.TrimSpace(device.Metadata["dpop_jkt"])
+	if priorJKT == "" {
+		t.Fatal("first enrollment did not bind DPoP JKT")
+	}
+
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-software", TenantID: "writer"})
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: secondBootstrap.Token,
+		HardwareUUID:   "hw-software",
+		OSType:         "darwin",
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("second Enroll without presented binding err = %v, want ErrInvalidRequest", err)
+	}
+	device, err = service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice after rejected reenroll: %v", err)
+	}
+	if got := strings.TrimSpace(device.Metadata["dpop_jkt"]); got != priorJKT {
+		t.Fatalf("dpop_jkt after rejected reenroll = %q, want preserved %q", got, priorJKT)
+	}
+}
+
 func TestServiceIssueTokenRejectsLegacyUnboundDeviceRefresh(t *testing.T) {
 	ctx := context.Background()
 	service, store, now := newServiceForTest(t)
