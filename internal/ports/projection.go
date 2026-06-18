@@ -2,9 +2,13 @@ package ports
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
+
+const cerebroURNPrefix = "urn:cerebro:"
 
 // ProjectedEntity is the normalized current-state and graph entity shape.
 type ProjectedEntity struct {
@@ -26,6 +30,61 @@ type ProjectedLink struct {
 	ToURN      string
 	Relation   string
 	Attributes map[string]string
+}
+
+// ValidateProjectedTenantScopes rejects Cerebro-owned projection URNs that do
+// not belong to the projection tenant. Provider-native identifiers remain valid.
+func ValidateProjectedTenantScopes(entities []*ProjectedEntity, links []*ProjectedLink) error {
+	for _, entity := range entities {
+		if err := ValidateProjectedEntityTenantScope(entity); err != nil {
+			return err
+		}
+	}
+	for _, link := range links {
+		if err := ValidateProjectedLinkTenantScope(link); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateProjectedEntityTenantScope enforces that a Cerebro-owned entity URN
+// cannot be projected under a different tenant_id.
+func ValidateProjectedEntityTenantScope(entity *ProjectedEntity) error {
+	if entity == nil {
+		return nil
+	}
+	return validateProjectedCerebroURNScope("projected entity urn", entity.URN, entity.TenantID)
+}
+
+// ValidateProjectedLinkTenantScope enforces that Cerebro-owned link endpoints
+// cannot be projected under a different tenant_id.
+func ValidateProjectedLinkTenantScope(link *ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if err := validateProjectedCerebroURNScope("projected link from urn", link.FromURN, link.TenantID); err != nil {
+		return err
+	}
+	return validateProjectedCerebroURNScope("projected link to urn", link.ToURN, link.TenantID)
+}
+
+func validateProjectedCerebroURNScope(field string, rawURN string, rawTenantID string) error {
+	urn := strings.TrimSpace(rawURN)
+	tenantID := strings.TrimSpace(rawTenantID)
+	if urn == "" || tenantID == "" || !strings.HasPrefix(urn, cerebroURNPrefix) {
+		return nil
+	}
+	remainder := strings.TrimPrefix(urn, cerebroURNPrefix)
+	urnTenantID, _, ok := strings.Cut(remainder, ":")
+	urnTenantID = strings.TrimSpace(urnTenantID)
+	if !ok || urnTenantID == "" {
+		return fmt.Errorf("%s %q is missing a Cerebro tenant scope", field, urn)
+	}
+	if urnTenantID != tenantID {
+		return fmt.Errorf("%s %q is scoped to tenant %q, not projection tenant %q", field, urn, urnTenantID, tenantID)
+	}
+	return nil
 }
 
 // ProjectionResult reports how many workflow events, entities, and links were materialized or pruned.

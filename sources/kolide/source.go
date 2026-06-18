@@ -20,6 +20,7 @@ const (
 
 	familyCheck         = "check"
 	familyDevice        = "device"
+	familyIssue         = "issue"
 	familySoftware      = "software"
 	familyUserDevice    = "user_device"
 	familyVulnerability = "vulnerability"
@@ -99,6 +100,35 @@ func New() (*Source, error) {
 					"remediation":       "remediation",
 					"last_observed_at":  "last_run_at",
 					"compliance_status": "compliance_status",
+				},
+				StaticAttributes: map[string]string{"source_product": "kolide"},
+			},
+			{
+				Name:    familyIssue,
+				Path:    "/issues",
+				URNKind: "kolide_issue",
+				IDKeys:  []string{"id", "issue_id"},
+				TimestampKeys: []string{
+					"last_rechecked_at", "detected_at", "resolved_at",
+				},
+				Attributes: map[string]string{
+					"issue_id":           "id|issue_id",
+					"issue_key":          "issue_key",
+					"issue_value":        "issue_value",
+					"title":              "title",
+					"check_id":           "check_id|check_information.identifier",
+					"check_url":          "check_information.location",
+					"device_id":          "device_id|device_information.identifier",
+					"device_name":        "device_name|device.name|device_information.name|device_information.display_name",
+					"hostname":           "hostname|device.hostname|device_information.hostname",
+					"serial_number":      "serial_number|device.serial_number|device_information.serial_number",
+					"device_url":         "device_information.location",
+					"resolved_at":        "resolved_at",
+					"detected_at":        "detected_at",
+					"last_rechecked_at":  "last_rechecked_at",
+					"blocks_device_at":   "blocks_device_at",
+					"exempted":           "exempted",
+					"check_result_value": "value",
 				},
 				StaticAttributes: map[string]string{"source_product": "kolide"},
 			},
