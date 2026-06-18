@@ -84,7 +84,7 @@ func (r *slackPrivilegedUserWithoutMFARule) CloseOnEvent(event Event) (string, b
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if slackUserMFANotEnforced(attributes) {
+	if !slackUserMFAFindingResolved(attributes) {
 		return "", false
 	}
 	userURN := slackUserFindingURN(event.GetTenantId(), attributes["user_id"])
@@ -161,7 +161,19 @@ func slackUserMFANotEnforced(attributes map[string]string) bool {
 	if !slackUserAccountPrivileged(attributes) {
 		return false
 	}
-	return !slackUserMFAEnabled(attributes)
+	enabled, observed := slackUserMFAObserved(attributes)
+	return observed && !enabled
+}
+
+func slackUserMFAFindingResolved(attributes map[string]string) bool {
+	if slackUserAccountDeactivated(attributes) || parseBoolAttribute(attributes, "is_bot") {
+		return true
+	}
+	if !slackUserAccountPrivileged(attributes) {
+		return true
+	}
+	enabled, observed := slackUserMFAObserved(attributes)
+	return observed && enabled
 }
 
 func slackUserAccountPrivileged(attributes map[string]string) bool {
@@ -171,7 +183,20 @@ func slackUserAccountPrivileged(attributes map[string]string) bool {
 }
 
 func slackUserMFAEnabled(attributes map[string]string) bool {
-	return parseBoolAttribute(attributes, "has_2fa") || parseBoolAttribute(attributes, "has_mfa")
+	enabled, _ := slackUserMFAObserved(attributes)
+	return enabled
+}
+
+func slackUserMFAObserved(attributes map[string]string) (bool, bool) {
+	has2FA, observed2FA := parseOptionalBoolAttribute(attributes, "has_2fa")
+	hasMFA, observedMFA := parseOptionalBoolAttribute(attributes, "has_mfa")
+	if (observed2FA && has2FA) || (observedMFA && hasMFA) {
+		return true, true
+	}
+	if observed2FA || observedMFA {
+		return false, true
+	}
+	return false, false
 }
 
 func slackUserAccountDeactivated(attributes map[string]string) bool {
