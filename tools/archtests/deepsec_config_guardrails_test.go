@@ -420,3 +420,19 @@ func deepsecCharacterClassOptions(group string) []string {
 	}
 	return options
 }
+
+func ignorePathCoversDeepSecSurface(pattern string, surface string) bool {
+	return deepsecIgnorePathTouchesSurface(pattern, surface)
+}
+
+func TestIgnorePathCoversDeepSecSurfaceDetectsGlobBypass(t *testing.T) {
+	if !ignorePathCoversDeepSecSurface("**/internal/**", "internal/") {
+		t.Fatal("glob-prefixed internal ignore path was not detected")
+	}
+	if !ignorePathCoversDeepSecSurface("foo/tools/**", "tools/") {
+		t.Fatal("nested tools ignore path was not detected")
+	}
+	if ignorePathCoversDeepSecSurface("tmp/internal-not-surface/**", "internal/") {
+		t.Fatal("non-surface segment was treated as ignored internal surface")
+	}
+}
