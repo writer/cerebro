@@ -220,6 +220,13 @@ def _create_task_role(name: str) -> aws.iam.Role:
 
 
 def _attach_log_insights_policy(name: str, role: aws.iam.Role, log_group_arns: list[pulumi.Input[str]]) -> aws.iam.RolePolicy:
+    def log_group_resources(log_groups: list[str]) -> list[str]:
+        resources: list[str] = []
+        for log_group in log_groups:
+            resources.append(log_group)
+            resources.append(f"{log_group}:*")
+        return resources
+
     return aws.iam.RolePolicy(
         f"{name}-task-log-insights",
         role=role.name,
@@ -231,9 +238,15 @@ def _attach_log_insights_policy(name: str, role: aws.iam.Role, log_group_arns: l
                     "Action": [
                         "logs:StartQuery",
                         "logs:StopQuery",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
                         "logs:FilterLogEvents",
                     ],
-                    "Resource": list(log_groups),
+                    "Resource": log_group_resources(list(log_groups)),
                 },
                 {
                     "Effect": "Allow",
