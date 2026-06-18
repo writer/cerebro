@@ -99,6 +99,18 @@ config:
     - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
   cerebro:sourceRuntimeServiceBootstrapIds: []
   cerebro:sourceRuntimeRollouts:
+    - sourceId: archetype
+      enabled: false
+      runtimePrefix: writer-archetype
+      tokenKey: CEREBRO_SOURCE_ARCHETYPE_TOKEN
+      commonConfig:
+        base_url: env:CEREBRO_SOURCE_ARCHETYPE_BASE_URL
+        api_prefix: /api/v1
+      schedule:
+        cadenceHours: 1
+        name: archetype-vulnerability-sync
+      families:
+        - vulnerability
     - sourceId: aws
       runtimePrefix: writer-aws-devops
       commonConfig:
