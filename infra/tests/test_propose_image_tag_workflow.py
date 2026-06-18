@@ -119,6 +119,21 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('--output "deploy-preflight-${STACK_NAME}.json"', workflow)
         self.assertIn('--output "deploy-preflight-sec-dev.json"', workflow)
 
+    def test_runtime_contract_download_uses_stack_specific_assets(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        contract_step = workflow.split("- name: Download and verify runtime deploy contract", 1)[1].split(
+            "\n      - name:",
+            1,
+        )[0]
+
+        self.assertIn('contract_base="cerebro-runtime-contract-${STACK_NAME}"', contract_step)
+        self.assertIn('contract_base="cerebro-runtime-contract"', contract_step)
+        self.assertIn('destination="runtime-contract/cerebro-runtime-contract.${suffix}"', contract_step)
+        self.assertIn("Using runtime deploy contract assets ${contract_base}.* for ${STACK_NAME}.", contract_step)
+        self.assertIn("--certificate runtime-contract/cerebro-runtime-contract.json.pem", contract_step)
+        self.assertIn("--signature runtime-contract/cerebro-runtime-contract.json.sig", contract_step)
+        self.assertIn("runtime-contract/cerebro-runtime-contract.json", contract_step)
+
     def test_go_prod_auto_merge_rechecks_latest_and_sec_dev_success(self) -> None:
         apply_step = self._apply_step()
         auto_merge_block = apply_step.split("auto_merge_trusted_pr() {", 1)[1].split(

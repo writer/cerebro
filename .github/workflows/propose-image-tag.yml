@@ -212,7 +212,15 @@ jobs:
           fi
           mkdir -p runtime-contract
           release_json="$(gh api "repos/writer/cerebro/releases/tags/${IMAGE_TAG}")"
-          for asset in cerebro-runtime-contract.json cerebro-runtime-contract.json.sig cerebro-runtime-contract.json.pem; do
+          contract_base="cerebro-runtime-contract-${STACK_NAME}"
+          if ! jq -e --arg name "${contract_base}.json" '.assets[]? | select(.name == $name)' <<<"${release_json}" >/dev/null; then
+            contract_base="cerebro-runtime-contract"
+          fi
+          echo "Using runtime deploy contract assets ${contract_base}.* for ${STACK_NAME}."
+
+          for suffix in json json.sig json.pem; do
+            asset="${contract_base}.${suffix}"
+            destination="runtime-contract/cerebro-runtime-contract.${suffix}"
             asset_id="$(jq -r --arg name "${asset}" '.assets[]? | select(.name == $name) | .id' <<<"${release_json}" | head -n 1)"
             if [ -z "${asset_id}" ] || [ "${asset_id}" = "null" ]; then
               echo "Release ${IMAGE_TAG} is missing ${asset}" >&2
@@ -220,7 +228,7 @@ jobs:
             fi
             gh api \
               -H "Accept: application/octet-stream" \
-              "repos/writer/cerebro/releases/assets/${asset_id}" > "runtime-contract/${asset}"
+              "repos/writer/cerebro/releases/assets/${asset_id}" > "${destination}"
           done
 
           cosign verify-blob \
