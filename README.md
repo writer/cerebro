@@ -278,7 +278,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
-| `anthropic` | Anthropic organization source | users, workspaces, API keys |
+| `anthropic` | Anthropic organization governance source | organization, users, invites, workspaces and members, API keys, service accounts, federation, external keys, usage/cost reports, rate/spend limits, compliance activity |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
 | `auth0` | Auth0 Management API source | users, roles, audit events |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
@@ -298,7 +298,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `kolide` | Kolide device posture source | configured catalog families |
 | `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
-| `openai` | OpenAI organization source | users, projects, service accounts, API keys, admin API keys |
+| `openai` | OpenAI organization governance source | audit logs, users, invites, groups, roles, projects, project access, service accounts, API keys, usage/costs, retention, spend alerts, certificates, rate limits, model/tool permissions |
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
 | `panopticon` | Panopticon security operations API source | cases by default; alerts and IOCs explicitly |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; optional declared inventory URN discovery; preview reads are empty |

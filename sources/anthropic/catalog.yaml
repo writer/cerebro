@@ -1,10 +1,26 @@
 id: anthropic
 name: Anthropic
-description: Anthropic organization user, workspace, and API key source.
+description: Anthropic organization governance source covering organization identity, users, invites, workspaces, workspace members, API keys, service accounts, federation, external keys, usage and cost reports, rate limits, spend limits, and compliance activity.
 emitted_kinds:
+  - anthropic.organization
   - anthropic.user
+  - anthropic.invite
   - anthropic.workspace
+  - anthropic.workspace_member
   - anthropic.api_key
+  - anthropic.external_key
+  - anthropic.service_account
+  - anthropic.federation_issuer
+  - anthropic.federation_rule
+  - anthropic.usage_report_message
+  - anthropic.usage_report_claude_code
+  - anthropic.cost_report
+  - anthropic.analytics_cost
+  - anthropic.rate_limit
+  - anthropic.workspace_rate_limit
+  - anthropic.spend_limit
+  - anthropic.spend_limit_increase_request
+  - anthropic.compliance_activity
 coverage_contract:
   owner_domain: ai
   authority_domain: anthropic
@@ -15,10 +31,52 @@ coverage_contract:
       families: [api_key]
       support: supported
       high_value: true
-    - id: users
+    - id: compliance_activity
+      type: audit_event
+      title: Compliance activity feed
+      families: [compliance_activity]
+      support: supported
+      high_value: true
+    - id: external_keys
+      type: lifecycle_state
+      title: External key configurations
+      families: [external_key]
+      support: supported
+      high_value: true
+    - id: organization_profile
       type: entity_family
-      title: Organization users
-      families: [user]
+      title: Current organization
+      families: [organization]
+      support: supported
+      high_value: true
+    - id: rate_limits
+      type: lifecycle_state
+      title: Organization and workspace rate limits
+      families: [rate_limit, workspace_rate_limit]
+      support: supported
+      high_value: true
+    - id: spend_limits
+      type: lifecycle_state
+      title: Effective spend limits and increase requests
+      families: [spend_limit, spend_limit_increase_request]
+      support: supported
+      high_value: true
+    - id: usage_and_costs
+      type: entity_family
+      title: Usage, Claude Code analytics, and cost report buckets
+      families: [usage_report_message, usage_report_claude_code, cost_report, analytics_cost]
+      support: supported
+      high_value: true
+    - id: users_and_access
+      type: app_entitlement
+      title: Organization users, invites, and workspace membership
+      families: [user, invite, workspace_member]
+      support: supported
+      high_value: true
+    - id: workload_identity
+      type: app_entitlement
+      title: Service accounts and workload identity federation
+      families: [service_account, federation_issuer, federation_rule]
       support: supported
       high_value: true
     - id: workspaces
@@ -28,21 +86,72 @@ coverage_contract:
       support: supported
       high_value: true
 event_contracts:
+  - kind: anthropic.organization
+    schema_ref: anthropic/organization/v1
+    required_attributes: [organization_id]
+    required_payload_fields: [id]
   - kind: anthropic.user
     schema_ref: anthropic/user/v1
-    required_attributes:
-      - user_id
-    required_payload_fields:
-      - id
+    required_attributes: [user_id]
+    required_payload_fields: [id]
+  - kind: anthropic.invite
+    schema_ref: anthropic/invite/v1
+    required_attributes: [invite_id]
+    required_payload_fields: [id]
   - kind: anthropic.workspace
     schema_ref: anthropic/workspace/v1
-    required_attributes:
-      - workspace_id
-    required_payload_fields:
-      - id
+    required_attributes: [workspace_id]
+    required_payload_fields: [id]
+  - kind: anthropic.workspace_member
+    schema_ref: anthropic/workspace_member/v1
+    required_attributes: [user_id, workspace_id]
+    required_payload_fields: [id]
   - kind: anthropic.api_key
     schema_ref: anthropic/api_key/v1
-    required_attributes:
-      - api_key_id
-    required_payload_fields:
-      - id
+    required_attributes: [api_key_id]
+    required_payload_fields: [id]
+  - kind: anthropic.external_key
+    schema_ref: anthropic/external_key/v1
+    required_attributes: [external_key_id]
+    required_payload_fields: [id]
+  - kind: anthropic.service_account
+    schema_ref: anthropic/service_account/v1
+    required_attributes: [service_account_id]
+    required_payload_fields: [id]
+  - kind: anthropic.federation_issuer
+    schema_ref: anthropic/federation_issuer/v1
+    required_attributes: [federation_issuer_id]
+    required_payload_fields: [id]
+  - kind: anthropic.federation_rule
+    schema_ref: anthropic/federation_rule/v1
+    required_attributes: [federation_rule_id]
+    required_payload_fields: [id]
+  - kind: anthropic.usage_report_message
+    schema_ref: anthropic/usage_report_message/v1
+    required_attributes: [external_id]
+  - kind: anthropic.usage_report_claude_code
+    schema_ref: anthropic/usage_report_claude_code/v1
+    required_attributes: [external_id]
+  - kind: anthropic.cost_report
+    schema_ref: anthropic/cost_report/v1
+    required_attributes: [external_id]
+  - kind: anthropic.analytics_cost
+    schema_ref: anthropic/analytics_cost/v1
+    required_attributes: [external_id]
+  - kind: anthropic.rate_limit
+    schema_ref: anthropic/rate_limit/v1
+    required_attributes: [external_id]
+  - kind: anthropic.workspace_rate_limit
+    schema_ref: anthropic/workspace_rate_limit/v1
+    required_attributes: [external_id, workspace_id]
+  - kind: anthropic.spend_limit
+    schema_ref: anthropic/spend_limit/v1
+    required_attributes: [external_id]
+  - kind: anthropic.spend_limit_increase_request
+    schema_ref: anthropic/spend_limit_increase_request/v1
+    required_attributes: [request_id]
+    required_payload_fields: [id]
+  - kind: anthropic.compliance_activity
+    schema_ref: anthropic/compliance_activity/v1
+    required_attributes: [activity_id]
+    required_payload_fields: [id]

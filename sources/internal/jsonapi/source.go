@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -40,6 +41,8 @@ type Family struct {
 	DetailPath           string
 	PathParams           []string
 	CursorParam          string
+	NextCursorKeys       []string
+	HasMoreKey           string
 	URNKind              string
 	IDKeys               []string
 	TimestampKeys        []string
@@ -48,6 +51,7 @@ type Family struct {
 	StaticQuery          map[string]string
 	ConfigQuery          map[string]string
 	PageSizeParams       []string
+	DisablePageSize      bool
 	ListKeys             []string
 	MapRecords           map[string]string
 	Singleton            bool
@@ -68,6 +72,7 @@ type Options struct {
 	OAuthScopes                       []string
 	OAuthTokenParams                  map[string]string
 	OAuthTokenRequestAuthMethod       string
+	ConfigurableAuthModels            []string
 	StaticHeaders                     map[string]string
 	DiscoverURNScope                  string
 	PrivateEndpointAllowlistConfigKey string
@@ -245,6 +250,13 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
 	}
+	if rawAuthModel := strings.TrimSpace(configValue(cfg, "auth_model")); rawAuthModel != "" {
+		authModel := normalizedAuthModel(rawAuthModel)
+		if !authModelAllowed(authModel, s.options.ConfigurableAuthModels) {
+			return resolved, fmt.Errorf("%s auth_model %q is not supported", s.options.SourceID, rawAuthModel)
+		}
+		resolved.authModel = authModel
+	}
 	family, ok := familyByName(s.options, resolved.family)
 	if !ok {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
@@ -339,8 +351,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Add(key, value)
 		}
 	}
-	for _, param := range pageSizeParams(family) {
-		query.Set(param, strconv.Itoa(pageSize))
+	if !family.DisablePageSize {
+		for _, param := range pageSizeParams(family) {
+			query.Set(param, strconv.Itoa(pageSize))
+		}
 	}
 	if cursor := strings.TrimSpace(cursor); cursor != "" {
 		query.Set(cursorParam(family), cursor)
@@ -438,10 +452,33 @@ func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Va
 			continue
 		}
 		if value := strings.TrimSpace(configValue(cfg, configKey)); value != "" {
-			query.Set(queryKey, value)
+			for _, item := range queryValues(value, strings.HasSuffix(queryKey, "[]")) {
+				query.Add(queryKey, item)
+			}
 		}
 	}
 	return query
+}
+
+func queryValues(value string, split bool) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if !split {
+		return []string{value}
+	}
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			values = append(values, part)
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	return values
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, query url.Values, target any) error {
@@ -510,8 +547,10 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 	switch authModel {
 	case "none":
 		return nil
-	case "legacy_token", "bearer_token":
+	case "legacy_token":
 		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Bearer"), settings.token, s.options.SourceID)
+	case "bearer_token":
+		return setTokenHeader(req, "Authorization", "Bearer", settings.token, s.options.SourceID)
 	case "api_key", "api_token":
 		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Token"), settings.token, s.options.SourceID)
 	case "basic":
@@ -731,12 +770,12 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		if err != nil {
 			return nil, "", err
 		}
-		return []json.RawMessage{item}, responseCursor(object), nil
+		return []json.RawMessage{item}, responseCursor(family, object), nil
 	}
 	for _, key := range responseListKeys(family) {
 		if value, ok := object[key]; ok {
 			if err := json.Unmarshal(value, &items); err == nil {
-				return items, responseCursor(object), nil
+				return items, responseCursor(family, object), nil
 			}
 		}
 	}
@@ -746,7 +785,7 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 			if err != nil {
 				return nil, "", err
 			}
-			return items, responseCursor(object), nil
+			return items, responseCursor(family, object), nil
 		}
 	}
 	return nil, "", fmt.Errorf("response did not contain a record list")
@@ -805,8 +844,11 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 	return json.Marshal(object)
 }
 
-func responseCursor(object map[string]json.RawMessage) string {
-	for _, key := range []string{"nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token"} {
+func responseCursor(family Family, object map[string]json.RawMessage) string {
+	if !responseHasMore(family, object) {
+		return ""
+	}
+	for _, key := range responseCursorKeys(family) {
 		if value := rawString(object[key]); value != "" {
 			return value
 		}
@@ -816,7 +858,7 @@ func responseCursor(object map[string]json.RawMessage) string {
 		if err := json.Unmarshal(object[key], &nested); err != nil {
 			continue
 		}
-		for _, nestedKey := range []string{"nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token"} {
+		for _, nestedKey := range responseCursorKeys(family) {
 			if value := valueString(nested[nestedKey]); value != "" {
 				return value
 			}
@@ -826,6 +868,30 @@ func responseCursor(object map[string]json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+func responseHasMore(family Family, object map[string]json.RawMessage) bool {
+	key := strings.TrimSpace(family.HasMoreKey)
+	if key == "" {
+		return true
+	}
+	value, ok := object[key]
+	if !ok {
+		return false
+	}
+	raw := strings.ToLower(rawString(value))
+	return raw == "true" || raw == "1" || raw == "yes"
+}
+
+func responseCursorKeys(family Family) []string {
+	keys := make([]string, 0, len(family.NextCursorKeys)+8)
+	for _, key := range family.NextCursorKeys {
+		if key = strings.TrimSpace(key); key != "" {
+			keys = append(keys, key)
+		}
+	}
+	keys = append(keys, "nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token", "next_page")
+	return keys
 }
 
 func nextPageCursor(values map[string]any) string {
@@ -1025,6 +1091,13 @@ func parseTime(raw string) (time.Time, bool) {
 	if value == "" {
 		return time.Time{}, false
 	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds > 0 {
+		return time.Unix(seconds, 0).UTC(), true
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
+		whole, fraction := math.Modf(seconds)
+		return time.Unix(int64(whole), int64(fraction*1_000_000_000)).UTC(), true
+	}
 	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
@@ -1166,6 +1239,8 @@ func normalizedAuthModel(value string) string {
 	switch value {
 	case "", "token":
 		return ""
+	case "legacy", "legacy_token":
+		return "legacy_token"
 	case "bearer", "bearer_token":
 		return "bearer_token"
 	case "api_key", "api_token":
@@ -1175,6 +1250,15 @@ func normalizedAuthModel(value string) string {
 	default:
 		return value
 	}
+}
+
+func authModelAllowed(authModel string, allowed []string) bool {
+	for _, candidate := range allowed {
+		if normalizedAuthModel(candidate) == authModel {
+			return true
+		}
+	}
+	return false
 }
 
 func oauthCacheKey(settings settings, grantType string) string {

@@ -1,26 +1,84 @@
 id: openai
 name: OpenAI
-description: OpenAI organization, project, user, service account, and API key source.
+description: OpenAI organization governance source covering audit logs, users, groups, roles, projects, API keys, service accounts, usage, costs, retention, spend controls, certificates, rate limits, and model/tool permissions.
 emitted_kinds:
   - openai.user
   - openai.project
   - openai.service_account
   - openai.api_key
   - openai.admin_api_key
+  - openai.audit_log
+  - openai.invite
+  - openai.role
+  - openai.user_role
+  - openai.group
+  - openai.group_user
+  - openai.group_role
+  - openai.data_retention
+  - openai.spend_alert
+  - openai.certificate
+  - openai.usage_audio_speech
+  - openai.usage_audio_transcription
+  - openai.usage_code_interpreter_session
+  - openai.usage_completion
+  - openai.usage_embedding
+  - openai.usage_image
+  - openai.usage_moderation
+  - openai.usage_vector_store
+  - openai.usage_file_search_call
+  - openai.usage_web_search_call
+  - openai.cost
+  - openai.project_user
+  - openai.project_user_role
+  - openai.project_service_account
+  - openai.project_api_key
+  - openai.project_rate_limit
+  - openai.project_model_permission
+  - openai.project_hosted_tool_permission
+  - openai.project_group
+  - openai.project_group_role
+  - openai.project_role
+  - openai.project_data_retention
+  - openai.project_spend_alert
+  - openai.project_certificate
 coverage_contract:
   owner_domain: ai
   authority_domain: openai
   dimensions:
-    - id: admin_api_keys
-      type: app_entitlement
-      title: Organization admin API keys
-      families: [admin_api_key]
+    - id: audit_logs
+      type: audit_event
+      title: Organization audit logs
+      families: [audit_log]
       support: supported
       high_value: true
-    - id: api_keys
+    - id: certificates
+      type: lifecycle_state
+      title: Organization and project certificates
+      families: [certificate, project_certificate]
+      support: supported
+      high_value: true
+    - id: data_retention
+      type: lifecycle_state
+      title: Organization and project data-retention settings
+      families: [data_retention, project_data_retention]
+      support: supported
+      high_value: true
+    - id: identity_access
       type: app_entitlement
-      title: Project API keys
-      families: [api_key]
+      title: Organization users, groups, roles, and assignments
+      families: [user, invite, group, group_user, role, user_role, group_role]
+      support: supported
+      high_value: true
+    - id: project_access
+      type: app_entitlement
+      title: Project users, groups, roles, and assignments
+      families: [project_user, project_user_role, project_group, project_group_role, project_role]
+      support: supported
+      high_value: true
+    - id: project_controls
+      type: lifecycle_state
+      title: Project rate limits and model/tool permissions
+      families: [project_rate_limit, project_model_permission, project_hosted_tool_permission]
       support: supported
       high_value: true
     - id: projects
@@ -31,44 +89,166 @@ coverage_contract:
       high_value: true
     - id: service_accounts
       type: entity_family
-      title: Service accounts
-      families: [service_account]
+      title: Organization and project service accounts
+      families: [service_account, project_service_account]
       support: supported
       high_value: true
-    - id: users
+    - id: spend_controls
+      type: lifecycle_state
+      title: Organization and project spend alerts
+      families: [spend_alert, project_spend_alert]
+      support: supported
+      high_value: true
+    - id: tokens_and_keys
+      type: app_entitlement
+      title: Organization, project, and admin API keys
+      families: [api_key, admin_api_key, project_api_key]
+      support: supported
+      high_value: true
+    - id: usage_and_costs
       type: entity_family
-      title: Organization users
-      families: [user]
+      title: Usage and cost report buckets
+      families: [usage_audio_speech, usage_audio_transcription, usage_code_interpreter_session, usage_completion, usage_embedding, usage_image, usage_moderation, usage_vector_store, usage_file_search_call, usage_web_search_call, cost]
       support: supported
       high_value: true
 event_contracts:
   - kind: openai.user
     schema_ref: openai/user/v1
-    required_attributes:
-      - user_id
-    required_payload_fields:
-      - id
+    required_attributes: [user_id]
+    required_payload_fields: [id]
   - kind: openai.project
     schema_ref: openai/project/v1
-    required_attributes:
-      - project_id
-    required_payload_fields:
-      - id
+    required_attributes: [project_id]
+    required_payload_fields: [id]
   - kind: openai.service_account
     schema_ref: openai/service_account/v1
-    required_attributes:
-      - service_account_id
-    required_payload_fields:
-      - id
+    required_attributes: [service_account_id]
+    required_payload_fields: [id]
   - kind: openai.api_key
     schema_ref: openai/api_key/v1
-    required_attributes:
-      - api_key_id
-    required_payload_fields:
-      - id
+    required_attributes: [api_key_id]
+    required_payload_fields: [id]
   - kind: openai.admin_api_key
     schema_ref: openai/admin_api_key/v1
-    required_attributes:
-      - api_key_id
-    required_payload_fields:
-      - id
+    required_attributes: [api_key_id]
+    required_payload_fields: [id]
+  - kind: openai.audit_log
+    schema_ref: openai/audit_log/v1
+    required_attributes: [audit_log_id]
+    required_payload_fields: [id]
+  - kind: openai.invite
+    schema_ref: openai/invite/v1
+    required_attributes: [invite_id]
+    required_payload_fields: [id]
+  - kind: openai.role
+    schema_ref: openai/role/v1
+    required_attributes: [role_id]
+    required_payload_fields: [id]
+  - kind: openai.user_role
+    schema_ref: openai/user_role/v1
+    required_attributes: [role_id, user_id]
+    required_payload_fields: [id]
+  - kind: openai.group
+    schema_ref: openai/group/v1
+    required_attributes: [group_id]
+    required_payload_fields: [id]
+  - kind: openai.group_user
+    schema_ref: openai/group_user/v1
+    required_attributes: [group_id, user_id]
+    required_payload_fields: [id]
+  - kind: openai.group_role
+    schema_ref: openai/group_role/v1
+    required_attributes: [group_id, role_id]
+    required_payload_fields: [id]
+  - kind: openai.data_retention
+    schema_ref: openai/data_retention/v1
+    required_attributes: [external_id]
+  - kind: openai.spend_alert
+    schema_ref: openai/spend_alert/v1
+    required_attributes: [spend_alert_id]
+    required_payload_fields: [id]
+  - kind: openai.certificate
+    schema_ref: openai/certificate/v1
+    required_attributes: [certificate_id]
+    required_payload_fields: [id]
+  - kind: openai.usage_audio_speech
+    schema_ref: openai/usage_audio_speech/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_audio_transcription
+    schema_ref: openai/usage_audio_transcription/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_code_interpreter_session
+    schema_ref: openai/usage_code_interpreter_session/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_completion
+    schema_ref: openai/usage_completion/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_embedding
+    schema_ref: openai/usage_embedding/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_image
+    schema_ref: openai/usage_image/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_moderation
+    schema_ref: openai/usage_moderation/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_vector_store
+    schema_ref: openai/usage_vector_store/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_file_search_call
+    schema_ref: openai/usage_file_search_call/v1
+    required_attributes: [external_id]
+  - kind: openai.usage_web_search_call
+    schema_ref: openai/usage_web_search_call/v1
+    required_attributes: [external_id]
+  - kind: openai.cost
+    schema_ref: openai/cost/v1
+    required_attributes: [external_id]
+  - kind: openai.project_user
+    schema_ref: openai/project_user/v1
+    required_attributes: [project_id, user_id]
+    required_payload_fields: [id]
+  - kind: openai.project_user_role
+    schema_ref: openai/project_user_role/v1
+    required_attributes: [project_id, role_id, user_id]
+    required_payload_fields: [id]
+  - kind: openai.project_service_account
+    schema_ref: openai/project_service_account/v1
+    required_attributes: [project_id, service_account_id]
+    required_payload_fields: [id]
+  - kind: openai.project_api_key
+    schema_ref: openai/project_api_key/v1
+    required_attributes: [api_key_id, project_id]
+    required_payload_fields: [id]
+  - kind: openai.project_rate_limit
+    schema_ref: openai/project_rate_limit/v1
+    required_attributes: [external_id, project_id]
+  - kind: openai.project_model_permission
+    schema_ref: openai/project_model_permission/v1
+    required_attributes: [external_id, project_id]
+  - kind: openai.project_hosted_tool_permission
+    schema_ref: openai/project_hosted_tool_permission/v1
+    required_attributes: [external_id, project_id]
+  - kind: openai.project_group
+    schema_ref: openai/project_group/v1
+    required_attributes: [group_id, project_id]
+    required_payload_fields: [id]
+  - kind: openai.project_group_role
+    schema_ref: openai/project_group_role/v1
+    required_attributes: [group_id, project_id, role_id]
+    required_payload_fields: [id]
+  - kind: openai.project_role
+    schema_ref: openai/project_role/v1
+    required_attributes: [project_id, role_id]
+    required_payload_fields: [id]
+  - kind: openai.project_data_retention
+    schema_ref: openai/project_data_retention/v1
+    required_attributes: [external_id, project_id]
+  - kind: openai.project_spend_alert
+    schema_ref: openai/project_spend_alert/v1
+    required_attributes: [project_id, spend_alert_id]
+    required_payload_fields: [id]
+  - kind: openai.project_certificate
+    schema_ref: openai/project_certificate/v1
+    required_attributes: [certificate_id, project_id]
+    required_payload_fields: [id]
