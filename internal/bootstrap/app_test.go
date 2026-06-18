@@ -2614,8 +2614,8 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 	} {
-		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
-			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		if got := connectProcedurePolicyFor(tt.procedure).Scope; got != tt.want {
+			t.Fatalf("connectProcedurePolicyFor(%s).Scope = %q, want %q", tt.procedure, got, tt.want)
 		}
 	}
 }

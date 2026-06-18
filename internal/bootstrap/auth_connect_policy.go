@@ -25,10 +25,6 @@ type connectProcedureAuthPolicy struct {
 	AdminOnly bool
 }
 
-func scopeForConnectProcedure(procedure string) string {
-	return connectProcedurePolicyFor(procedure).Scope
-}
-
 func connectProcedurePolicyKnown(procedure string) bool {
 	policy := connectProcedurePolicyFor(procedure)
 	return policy.Scope != "" || policy.AdminOnly
