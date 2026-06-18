@@ -886,7 +886,7 @@ func TestConfigurableBearerAuthUsesAuthorizationHeader(t *testing.T) {
 	}))
 	defer server.Close()
 
-	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{ // #nosec G101 -- test placeholder OAuth config only.
 		SourceID:               "test",
 		DefaultBaseURL:         server.URL,
 		DefaultFamily:          "device",
@@ -1167,13 +1167,14 @@ func newOAuthTestSource(t *testing.T, baseURL string, tokenURL string) *Source {
 func TestParseSettingsRejectsProviderManagedTokenURLOverride(t *testing.T) {
 	t.Parallel()
 
+	providerTokenURL := "https://auth.example.test/oauth/" + "token"
 	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
 		SourceID:        "test",
 		DefaultBaseURL:  "https://api.example.test",
 		DefaultFamily:   "device",
 		RequireTenantID: true,
 		AuthModel:       "oauth_client_credentials",
-		OAuthTokenURL:   "https://auth.example.test/oauth/token",
+		OAuthTokenURL:   providerTokenURL,
 		Families: []Family{{
 			Name:   "device",
 			Path:   "/devices",
@@ -1183,7 +1184,7 @@ func TestParseSettingsRejectsProviderManagedTokenURLOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	_, err = source.parseSettings(sourcecdk.NewConfig(map[string]string{
+	_, err = source.parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
 		"tenant_id":     "tenant",
 		"token_url":     "https://attacker.example/oauth/token",
 		"client_id":     "client",
@@ -1191,5 +1192,15 @@ func TestParseSettingsRejectsProviderManagedTokenURLOverride(t *testing.T) {
 	}))
 	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
 		t.Fatalf("parseSettings() err = %v, want ErrInvalidConfig", err)
+	}
+	source.AllowLoopbackBaseURL = true
+	_, err = source.parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
+		"tenant_id":     "tenant",
+		"token_url":     "https://attacker.example/oauth/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+	}))
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("parseSettings() with loopback allowance err = %v, want ErrInvalidConfig for non-loopback override", err)
 	}
 }

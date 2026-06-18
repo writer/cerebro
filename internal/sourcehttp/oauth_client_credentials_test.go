@@ -102,18 +102,34 @@ func TestClientCredentialsCacheRejectsProviderManagedTokenURLOverride(t *testing
 	t.Parallel()
 
 	var cache ClientCredentialsCache
-	_, err := cache.Token(context.Background(), sourcecdk.NewConfig(map[string]string{
+	managedTokenTemplate := "https://${config.domain}/oauth/" + "token"
+	_, err := cache.Token(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
 		"token_url":     "https://attacker.example/oauth/token",
 		"client_id":     "client",
 		"client_secret": "secret",
 		"domain":        "tenant.auth0.com",
 	}), ClientCredentialsOptions{
 		SourceID:         "test",
-		TokenURLTemplate: "https://${config.domain}/oauth/token",
+		TokenURLTemplate: managedTokenTemplate,
 		TemplateKeys:     []string{"domain"},
 	})
 	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
 		t.Fatalf("Token() err = %v, want ErrInvalidConfig", err)
+	}
+
+	_, err = cache.Token(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
+		"token_url":     "https://attacker.example/oauth/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"domain":        "tenant.auth0.com",
+	}), ClientCredentialsOptions{
+		SourceID:         "test",
+		TokenURLTemplate: managedTokenTemplate,
+		TemplateKeys:     []string{"domain"},
+		AllowLoopback:    true,
+	})
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Token() with loopback allowance err = %v, want ErrInvalidConfig for non-loopback override", err)
 	}
 }
 

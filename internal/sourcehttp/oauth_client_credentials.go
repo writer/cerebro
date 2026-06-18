@@ -45,7 +45,7 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 		return "", fmt.Errorf("%s oauth token cache is required", sourceID(options.SourceID))
 	}
 	configuredTokenURL := configValue(cfg, "token_url")
-	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(options.TokenURLTemplate) != "" && !options.AllowLoopback {
+	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(options.TokenURLTemplate) != "" && !providerManagedTokenURLOverrideAllowed(configuredTokenURL, options.AllowLoopback) {
 		return "", fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID))
 	}
 	tokenURL, err := renderTemplate(firstNonEmpty(configuredTokenURL, options.TokenURLTemplate), cfg, options)
@@ -126,6 +126,17 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 	}
 	c.entries[cacheKey] = entry
 	return entry.value, nil
+}
+
+func providerManagedTokenURLOverrideAllowed(raw string, allowLoopback bool) bool {
+	if !allowLoopback {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil || strings.TrimSpace(parsed.Host) == "" {
+		return false
+	}
+	return IsLoopbackHost(parsed.Hostname())
 }
 
 func clientCredentialsCacheKey(sourceID string, tokenURL string, form url.Values) string {

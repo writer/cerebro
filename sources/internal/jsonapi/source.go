@@ -274,7 +274,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.baseURL == "" {
 		return resolved, fmt.Errorf("%s base_url is required", s.options.SourceID)
 	}
-	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(s.options.OAuthTokenURL) != "" && !s.AllowLoopbackBaseURL {
+	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(s.options.OAuthTokenURL) != "" && !providerManagedTokenURLOverrideAllowed(configuredTokenURL, s.AllowLoopbackBaseURL) {
 		return resolved, fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, s.options.SourceID)
 	}
 	resolved.baseURL, err = resolveConfigTemplate(s.options.SourceID, resolved.baseURL, cfg)
@@ -344,6 +344,17 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	resolved.query = queryFromConfig(cfg, family.ConfigQuery)
 	return resolved, nil
+}
+
+func providerManagedTokenURLOverrideAllowed(raw string, allowLoopback bool) bool {
+	if !allowLoopback {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil || strings.TrimSpace(parsed.Host) == "" {
+		return false
+	}
+	return sourcehttp.IsLoopbackHost(parsed.Hostname())
 }
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
