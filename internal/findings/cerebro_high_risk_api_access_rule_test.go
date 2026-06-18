@@ -48,6 +48,47 @@ func TestCerebroHighRiskAPIAccessFixture(t *testing.T) {
 	assertRuleFixture(t, newCerebroHighRiskAPIAccessRule(), "testdata/rules/cerebro-high-risk-api-access.json")
 }
 
+func TestCerebroHighRiskAPIAccessDeniedDoesNotOpen(t *testing.T) {
+	rule := newCerebroHighRiskAPIAccessRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-cerebro-access",
+		SourceId: "cerebro",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "access"},
+	}
+
+	cases := []struct {
+		name  string
+		attrs map[string]string
+	}{
+		{
+			name:  "denied outcome with cross-tenant risk and 2xx status",
+			attrs: map[string]string{"outcome_result": "denied", "tenant_mismatch": "true", "requested_tenant_id": "tenant-b", "status_code": "200", "effective_status_code": "200"},
+		},
+		{
+			name:  "blocked outcome with high risk level and 2xx status",
+			attrs: map[string]string{"outcome_result": "blocked", "risk_level": "critical", "status_code": "204"},
+		},
+		{
+			name:  "denial reason set with 2xx status and high risk score",
+			attrs: map[string]string{"outcome_result": "", "denial_reason": "insufficient_scope", "risk_score": "95", "status_code": "200"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			event := cerebroAPIAccessEvent("cerebro-access-denied", tc.attrs, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+			records, err := rule.Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate error = %v", err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate emitted %d findings for a denied access, want 0", len(records))
+			}
+		})
+	}
+}
+
 func TestCerebroHighRiskAPIAccessResolvesOnCleanAccess(t *testing.T) {
 	open := cerebroAPIAccessEvent("cerebro-access-open", map[string]string{"requested_tenant_id": "tenant-b", "tenant_mismatch": "true"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	clean := cerebroAPIAccessEvent("cerebro-access-clean", map[string]string{"requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))

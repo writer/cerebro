@@ -206,12 +206,27 @@ func cerebroAPIAccessRiskReason(attributes map[string]string) string {
 }
 
 func cerebroAPIAccessAllowed(attributes map[string]string) bool {
+	if cerebroAPIAccessDenied(attributes) {
+		return false
+	}
 	switch strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["outcome_result"], attributes["status"]))) {
 	case "allowed", "allow", "success", "succeeded", "ok":
 		return true
 	}
 	status := strings.TrimSpace(firstNonEmpty(attributes["effective_status_code"], attributes["status_code"]))
 	return strings.HasPrefix(status, "2")
+}
+
+// cerebroAPIAccessDenied reports whether telemetry carries an explicit deny
+// signal. An explicit deny takes precedence over a 2xx status-code fallback so a
+// blocked attempt is never misread as a granted access just because a status
+// field happens to be present.
+func cerebroAPIAccessDenied(attributes map[string]string) bool {
+	switch strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["outcome_result"], attributes["status"]))) {
+	case "denied", "deny", "blocked", "block", "forbidden", "unauthorized", "rejected", "reject", "failed", "failure", "error":
+		return true
+	}
+	return strings.TrimSpace(attributes["denial_reason"]) != ""
 }
 
 func cerebroAccessSubject(attributes map[string]string) string {
