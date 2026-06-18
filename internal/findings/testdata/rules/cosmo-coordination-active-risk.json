@@ -21,7 +21,8 @@
         "category": "coordination_risk",
         "source": "session:thread-3",
         "risk_state": "resolved",
-        "risk_reason": "agent coordination guardrail re-enabled"
+        "risk_reason": "agent coordination guardrail re-enabled",
+        "source_runtime_id": "writer-cosmo-fact"
       }
     },
     {
@@ -37,7 +38,8 @@
         "source": "session:thread-7",
         "risk_state": "active",
         "risk_reason": "agent coordinated a privileged change across multiple sessions without approval",
-        "risk_severity": "high"
+        "risk_severity": "high",
+        "source_runtime_id": "writer-cosmo-fact"
       }
     }
   ],
@@ -46,15 +48,16 @@
       "rule_id": "cosmo-coordination-active-risk",
       "severity": "HIGH",
       "status": "open",
-      "summary": "Cosmo agent memory records active coordination risk for fact coordination:risk:thread-7 in session thread-7",
+      "summary": "Cosmo agent memory records active coordination risk",
       "event_ids": ["cosmo-fact-active"],
       "attributes": {
-        "cosmo_risk_urn": "urn:cerebro:writer:cosmo_coordination_risk:thread-7:coordination:risk:thread-7",
+        "cosmo_risk_urn": "urn:cerebro:writer:cosmo_coordination_risk:f0d02223cee7f854f41a2083eee9907e8d1f3672e6bee4bc2b86d17a8a2e4016",
         "fact_key": "coordination:risk:thread-7",
         "session_id": "thread-7",
         "category": "coordination_risk",
         "risk_state": "active",
         "risk_severity": "high",
+        "source_runtime_id": "writer-cosmo-fact",
         "primary_resource_urn": "urn:cerebro:writer:cosmo_fact:coordination:risk:thread-7",
         "rule_required_attributes": "key"
       }

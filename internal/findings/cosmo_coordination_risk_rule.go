@@ -88,7 +88,7 @@ func (r *cosmoCoordinationActiveRiskRule) CloseOnEvent(event Event) (string, boo
 	if cosmoFactRiskState(event) != "resolved" {
 		return "", false
 	}
-	riskURN := cosmoCoordinationRiskURN(event.GetTenantId(), cosmoFactSessionID(event), cosmoFactKey(event))
+	riskURN := cosmoCoordinationRiskURN(event.GetTenantId(), cosmoEventRuntimeID(event, ""), cosmoFactSessionID(event), cosmoFactKey(event))
 	anchor := cosmoCoordinationActiveRiskAnchor(map[string]string{"cosmo_risk_urn": riskURN})
 	return anchor, anchor != ""
 }
@@ -104,7 +104,8 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 	tenantID := strings.TrimSpace(event.GetTenantId())
 	factKey := cosmoFactKey(event)
 	sessionID := cosmoFactSessionID(event)
-	riskURN := cosmoCoordinationRiskURN(tenantID, sessionID, factKey)
+	sourceRuntimeID := cosmoEventRuntimeID(event, runtimeID)
+	riskURN := cosmoCoordinationRiskURN(tenantID, sourceRuntimeID, sessionID, factKey)
 	if riskURN == "" {
 		return nil, nil
 	}
@@ -123,7 +124,7 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 		"risk_reason":          firstNonEmpty(strings.TrimSpace(attrs["risk_reason"]), cosmoFactPayloadString(event, "risk_reason", "reason", "summary")),
 		"risk_severity":        firstNonEmpty(strings.TrimSpace(attrs["risk_severity"]), cosmoFactPayloadString(event, "risk_severity", "severity")),
 		"event_id":             strings.TrimSpace(event.GetId()),
-		"source_runtime_id":    strings.TrimSpace(attrs[ports.EventAttributeSourceRuntimeID]),
+		"source_runtime_id":    sourceRuntimeID,
 		"primary_resource_urn": factURN,
 	}
 	for key, value := range cosmoCoordinationActiveRiskDefinition.AttributeMap() {
@@ -144,7 +145,7 @@ func cosmoCoordinationActiveRiskFinding(event *cerebrov1.EventEnvelope, runtimeI
 		Title:           cosmoCoordinationActiveRiskTitle,
 		Severity:        cosmoCoordinationActiveRiskSeverity,
 		Status:          cosmoCoordinationActiveRiskStatus,
-		Summary:         cosmoCoordinationActiveRiskSummary(factKey, sessionID),
+		Summary:         cosmoCoordinationActiveRiskSummary(),
 		ResourceURNs:    resourceURNs,
 		EventIDs:        []string{strings.TrimSpace(event.GetId())},
 		CheckID:         cosmoCoordinationActiveRiskCheckID,
@@ -238,17 +239,26 @@ func cosmoScalarString(value any) string {
 	}
 }
 
-func cosmoCoordinationRiskURN(tenantID string, sessionID string, factKey string) string {
+func cosmoEventRuntimeID(event *cerebrov1.EventEnvelope, fallback string) string {
+	if event == nil {
+		return strings.TrimSpace(fallback)
+	}
+	return firstNonEmpty(strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]), strings.TrimSpace(fallback))
+}
+
+func cosmoCoordinationRiskURN(tenantID string, runtimeID string, sessionID string, factKey string) string {
 	tenantID = strings.TrimSpace(tenantID)
+	runtimeID = strings.TrimSpace(runtimeID)
 	factKey = strings.TrimSpace(factKey)
-	if tenantID == "" || factKey == "" {
+	if tenantID == "" || runtimeID == "" || factKey == "" {
 		return ""
 	}
 	session := strings.TrimSpace(sessionID)
 	if session == "" {
 		session = "memory"
 	}
-	return fmt.Sprintf("urn:cerebro:%s:cosmo_coordination_risk:%s:%s", tenantID, session, factKey)
+	key := hashFindingFingerprint("cosmo_coordination_risk", tenantID, runtimeID, session, factKey)
+	return fmt.Sprintf("urn:cerebro:%s:cosmo_coordination_risk:%s", tenantID, key)
 }
 
 func cosmoFactResourceURN(tenantID string, factKey string) string {
@@ -275,6 +285,6 @@ func cosmoCoordinationActiveRiskAnchor(attributes map[string]string) string {
 	}, "cosmo_risk_urn")
 }
 
-func cosmoCoordinationActiveRiskSummary(factKey string, sessionID string) string {
-	return fmt.Sprintf("Cosmo agent memory records active coordination risk for fact %s in session %s", firstNonEmpty(factKey, "unknown"), firstNonEmpty(sessionID, "memory"))
+func cosmoCoordinationActiveRiskSummary() string {
+	return "Cosmo agent memory records active coordination risk"
 }

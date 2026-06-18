@@ -14,12 +14,13 @@ import (
 
 func cosmoCoordinationFactEvent(id string, attrs map[string]string, occurredAt time.Time) *cerebrov1.EventEnvelope {
 	base := map[string]string{
-		"key":           "coordination:risk:thread-7",
-		"category":      "coordination_risk",
-		"source":        "session:thread-7",
-		"risk_state":    "active",
-		"risk_reason":   "agent coordinated a privileged change across multiple sessions without approval",
-		"risk_severity": "high",
+		"key":                               "coordination:risk:thread-7",
+		"category":                          "coordination_risk",
+		"source":                            "session:thread-7",
+		"risk_state":                        "active",
+		"risk_reason":                       "agent coordinated a privileged change across multiple sessions without approval",
+		"risk_severity":                     "high",
+		ports.EventAttributeSourceRuntimeID: "writer-cosmo-fact",
 	}
 	for key, value := range attrs {
 		base[key] = value
@@ -115,6 +116,69 @@ func TestCosmoCoordinationActiveRiskRemediationResolves(t *testing.T) {
 	open := cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
 	resolved := cosmoCoordinationFactEvent("cosmo-resolved", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	assertIdentityRuleRemediationTrajectory(t, newCosmoCoordinationActiveRiskRule(), open, resolved, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestCosmoCoordinationActiveRiskCloseRequiresRuntimeAnchor(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-cosmo-fact",
+		SourceId: "cosmo",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "fact"},
+	}
+	opened, err := rule.Evaluate(context.Background(), runtime, cosmoCoordinationFactEvent("cosmo-open", map[string]string{"risk_state": "active"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)))
+	if err != nil {
+		t.Fatalf("Evaluate(open) error = %v", err)
+	}
+	if len(opened) != 1 {
+		t.Fatalf("Evaluate(open) emitted %d findings, want 1", len(opened))
+	}
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("rule does not implement CounterEventRule")
+	}
+	openAnchor := counterRule.OpenAnchor(opened[0].Attributes)
+
+	otherRuntime := cosmoCoordinationFactEvent("cosmo-resolved-other-runtime", map[string]string{
+		"risk_state":                        "resolved",
+		ports.EventAttributeSourceRuntimeID: "writer-cosmo-fact-shadow",
+	}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	otherAnchor, closes := counterRule.CloseOnEvent(otherRuntime)
+	if !closes || otherAnchor == "" {
+		t.Fatalf("CloseOnEvent(other runtime) = (%q, %v), want close anchor for the other runtime", otherAnchor, closes)
+	}
+	if otherAnchor == openAnchor {
+		t.Fatalf("CloseOnEvent(other runtime) anchor = %q, want distinct from open anchor", otherAnchor)
+	}
+
+	missingRuntime := cosmoCoordinationFactEvent("cosmo-resolved-missing-runtime", map[string]string{"risk_state": "resolved"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	delete(missingRuntime.Attributes, ports.EventAttributeSourceRuntimeID)
+	if anchor, closes := counterRule.CloseOnEvent(missingRuntime); closes || anchor != "" {
+		t.Fatalf("CloseOnEvent(missing runtime) = (%q, %v), want no close", anchor, closes)
+	}
+}
+
+func TestCosmoCoordinationActiveRiskSummaryDoesNotEchoFactStrings(t *testing.T) {
+	rule := newCosmoCoordinationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-fact", SourceId: "cosmo", TenantId: "writer", Config: map[string]string{"family": "fact"}}
+	event := cosmoCoordinationFactEvent("cosmo-hostile-summary", map[string]string{
+		"key":    "coordination:risk:<script>alert(1)</script>\n",
+		"source": "session:<script>alert(2)</script>\r",
+	}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(hostile summary) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(hostile summary) emitted %d findings, want 1", len(records))
+	}
+	if got, want := records[0].Summary, "Cosmo agent memory records active coordination risk"; got != want {
+		t.Fatalf("Summary = %q, want %q", got, want)
+	}
+	if strings.Contains(records[0].Summary, "<script>") || strings.ContainsAny(records[0].Summary, "\r\n\t") {
+		t.Fatalf("Summary echoed unsafe fact/session text: %q", records[0].Summary)
+	}
 }
 
 func TestCosmoCoordinationActiveRiskReopensOnRecurrence(t *testing.T) {
