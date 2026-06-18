@@ -1300,7 +1300,7 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	if !ok {
 		t.Fatal("connectorSchemaForSource(anthropic) = false, want builtin schema")
 	}
-	for _, key := range []string{"credential_kind", "credential_scopes"} {
+	for _, key := range []string{"credential_kind", "credential_scopes", "group_id", "organization_uuid", "per_page"} {
 		if _, ok := anthropicSchema.ConfigKeys[key]; !ok {
 			t.Fatalf("anthropic config keys missing %q: %#v", key, sortedSetKeys(anthropicSchema.ConfigKeys))
 		}
@@ -1335,6 +1335,24 @@ func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
 			name:       "compliance activity needs read compliance scope",
 			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "compliance_activity"},
 			wantCheck:  "anthropic_compliance_scope",
+			wantAction: "confirm_anthropic_compliance_scope",
+		},
+		{
+			name:       "compliance directory needs org data scope",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindAdminAPIKey, "family": "compliance_group", "credential_scopes": "read:compliance_activities"},
+			wantCheck:  "anthropic_compliance_org_data_scope",
+			wantAction: "confirm_anthropic_compliance_scope",
+		},
+		{
+			name:       "compliance members need user data scope",
+			config:     map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "family": "compliance_group_member", "credential_scopes": "read:compliance_org_data"},
+			wantCheck:  "anthropic_compliance_user_data_scope",
+			wantAction: "confirm_anthropic_compliance_scope",
+		},
+		{
+			name:       "compliance settings need settings scope",
+			config:     map[string]string{"auth_model": "bearer_token", "credential_kind": anthropicCredentialKindOrgAdminOAuth, "family": "compliance_organization_setting", "credential_scopes": "org:admin"},
+			wantCheck:  "anthropic_compliance_org_settings_scope",
 			wantAction: "confirm_anthropic_compliance_scope",
 		},
 		{
@@ -1376,6 +1394,18 @@ func TestAnthropicProviderPreflightChecksPassWithCredentialHints(t *testing.T) {
 		{
 			name:   "compliance activity scoped key",
 			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_activities", "family": "compliance_activity"},
+		},
+		{
+			name:   "compliance directory scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_org_data", "family": "compliance_group"},
+		},
+		{
+			name:   "compliance user data scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_user_data", "family": "compliance_organization_user"},
+		},
+		{
+			name:   "compliance settings scoped key",
+			config: map[string]string{"credential_kind": anthropicCredentialKindComplianceAccessKey, "credential_scopes": "read:compliance_org_settings", "family": "compliance_organization_setting"},
 		},
 		{
 			name:   "spend limit scoped key",

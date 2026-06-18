@@ -52,6 +52,14 @@ func anthropicWorkspaceMemberProjections(event *cerebrov1.EventEnvelope) ([]*por
 	return aiScopedUserAccessProjections(event, anthropicAccessProfile, "workspace")
 }
 
+func anthropicComplianceGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiGroupProjections(event, anthropicAccessProfile)
+}
+
+func anthropicComplianceGroupMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiGroupMembershipProjections(event, anthropicAccessProfile)
+}
+
 func openAIServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiServiceAccountProjections(event, openAIAccessProfile, "project")
 }

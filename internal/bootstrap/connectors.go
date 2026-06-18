@@ -1594,12 +1594,15 @@ var connectorSchemas = map[string]connectorSchema{
 			"credential_scopes",
 			"ending_at",
 			"family",
+			"group_id",
 			"group_by",
 			"include_archived",
 			"inference_geos",
 			"model",
 			"models",
+			"organization_uuid",
 			"organization_ids",
+			"per_page",
 			"periods",
 			"service_tiers",
 			"speeds",
@@ -2511,6 +2514,27 @@ func anthropicProviderPreflightChecks(config map[string]string, policy resources
 				NextAction: "confirm_anthropic_compliance_scope",
 			})
 		}
+	case "compliance_organization", "compliance_role", "compliance_group":
+		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
+			RequiredScope: "read:compliance_org_data",
+			ID:            "anthropic_compliance_org_data_scope",
+			Label:         "Anthropic compliance org-data scope",
+			Detail:        "Compliance organization, role, and group families use x-api-key and require read:compliance_org_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_org_data.",
+		})...)
+	case "compliance_organization_user", "compliance_group_member":
+		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
+			RequiredScope: "read:compliance_user_data",
+			ID:            "anthropic_compliance_user_data_scope",
+			Label:         "Anthropic compliance user-data scope",
+			Detail:        "Compliance user and group-member families use x-api-key and require read:compliance_user_data on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_user_data.",
+		})...)
+	case "compliance_organization_setting":
+		checks = append(checks, anthropicComplianceAccessKeyCheck(authModel, credentialKind, scopes, anthropicCompliancePreflight{
+			RequiredScope: "read:compliance_org_settings",
+			ID:            "anthropic_compliance_org_settings_scope",
+			Label:         "Anthropic compliance settings scope",
+			Detail:        "Compliance organization settings use x-api-key and require read:compliance_org_settings on a Compliance Access Key; record credential_kind=compliance_access_key and credential_scopes=read:compliance_org_settings.",
+		})...)
 	case "spend_limit", "spend_limit_increase_request":
 		if authModel == "bearer_token" || (credentialKind != "" && credentialKind != anthropicCredentialKindScopedAdminAPIKey) || !setContains(scopes, "read:spend_limits") {
 			checks = append(checks, connectorPreflightCheckView{
@@ -2524,6 +2548,27 @@ func anthropicProviderPreflightChecks(config map[string]string, policy resources
 		}
 	}
 	return checks
+}
+
+type anthropicCompliancePreflight struct {
+	RequiredScope string
+	ID            string
+	Label         string
+	Detail        string
+}
+
+func anthropicComplianceAccessKeyCheck(authModel string, credentialKind string, scopes map[string]struct{}, preflight anthropicCompliancePreflight) []connectorPreflightCheckView {
+	if authModel != "bearer_token" && (credentialKind == "" || credentialKind == anthropicCredentialKindComplianceAccessKey) && setContains(scopes, preflight.RequiredScope) {
+		return nil
+	}
+	return []connectorPreflightCheckView{{
+		ID:         preflight.ID,
+		Label:      preflight.Label,
+		Status:     "warning",
+		Severity:   "warning",
+		Detail:     preflight.Detail,
+		NextAction: "confirm_anthropic_compliance_scope",
+	}}
 }
 
 func normalizedCredentialHint(value string) string {

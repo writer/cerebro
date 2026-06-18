@@ -1,6 +1,6 @@
 id: anthropic
 name: Anthropic
-description: Anthropic organization governance source covering organization identity, users, invites, workspaces, workspace members, API keys, service accounts, federation, external keys, usage and cost reports, rate limits, spend limits, and compliance activity.
+description: Anthropic organization governance source covering organization identity, users, invites, workspaces, workspace members, API keys, service accounts, federation, external keys, usage and cost reports, rate limits, spend limits, compliance activity, compliance directory metadata, and effective organization settings.
 emitted_kinds:
   - anthropic.organization
   - anthropic.user
@@ -21,6 +21,12 @@ emitted_kinds:
   - anthropic.spend_limit
   - anthropic.spend_limit_increase_request
   - anthropic.compliance_activity
+  - anthropic.compliance_organization
+  - anthropic.compliance_organization_user
+  - anthropic.compliance_role
+  - anthropic.compliance_group
+  - anthropic.compliance_group_member
+  - anthropic.compliance_organization_setting
 coverage_contract:
   owner_domain: ai
   authority_domain: anthropic
@@ -35,6 +41,18 @@ coverage_contract:
       type: audit_event
       title: Compliance activity feed
       families: [compliance_activity]
+      support: supported
+      high_value: true
+    - id: compliance_directory
+      type: app_entitlement
+      title: Compliance organizations, users, roles, groups, and group members
+      families: [compliance_organization, compliance_organization_user, compliance_role, compliance_group, compliance_group_member]
+      support: supported
+      high_value: true
+    - id: compliance_settings
+      type: lifecycle_state
+      title: Effective compliance organization settings
+      families: [compliance_organization_setting]
       support: supported
       high_value: true
     - id: external_keys
@@ -155,3 +173,27 @@ event_contracts:
     schema_ref: anthropic/compliance_activity/v1
     required_attributes: [activity_id]
     required_payload_fields: [id]
+  - kind: anthropic.compliance_organization
+    schema_ref: anthropic/compliance_organization/v1
+    required_attributes: [organization_uuid]
+    required_payload_fields: [uuid]
+  - kind: anthropic.compliance_organization_user
+    schema_ref: anthropic/compliance_organization_user/v1
+    required_attributes: [organization_uuid, user_id]
+    required_payload_fields: [id]
+  - kind: anthropic.compliance_role
+    schema_ref: anthropic/compliance_role/v1
+    required_attributes: [organization_uuid, role_id]
+    required_payload_fields: [id]
+  - kind: anthropic.compliance_group
+    schema_ref: anthropic/compliance_group/v1
+    required_attributes: [group_id]
+    required_payload_fields: [id]
+  - kind: anthropic.compliance_group_member
+    schema_ref: anthropic/compliance_group_member/v1
+    required_attributes: [group_id, user_id]
+    required_payload_fields: [user_id]
+  - kind: anthropic.compliance_organization_setting
+    schema_ref: anthropic/compliance_organization_setting/v1
+    required_attributes: [organization_uuid, setting_name]
+    required_payload_fields: [name]

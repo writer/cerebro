@@ -90,6 +90,12 @@ func anthropicFamilies() []jsonapi.Family {
 		anthropicListFamily("spend_limit", "/organizations/spend_limits/effective", "anthropic_spend_limit", []string{"spend_limit_id", "id", "scope.user_id", "actor.user_id"}, []string{"created_at", "updated_at"}, map[string]string{"spend_limit_id": "spend_limit_id|id", "scope_type": "scope.type", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "amount": "amount", "currency": "currency", "period": "period", "source_type": "source.type", "period_to_date_spend": "period_to_date_spend", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor(), withQuery(map[string]string{"actor_ids[]": "actor_ids", "period[]": "periods", "user_ids[]": "user_ids"})),
 		anthropicListFamily("spend_limit_increase_request", "/organizations/spend_limit_increase_requests", "anthropic_spend_limit_increase_request", []string{"id"}, []string{"created_at", "updated_at"}, map[string]string{"request_id": "id", "user_id": "scope.user_id|actor.user_id", "actor_email": "actor.email_address|actor.email", "status": "status", "amount": "amount", "currency": "currency", "period": "period", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor(), withQuery(map[string]string{"actor_ids[]": "actor_ids", "status[]": "status"})),
 		anthropicListFamily("compliance_activity", "/compliance/activities", "anthropic_compliance_activity", []string{"id"}, []string{"created_at"}, map[string]string{"activity_id": "id", "activity_type": "type", "organization_id": "organization_id", "organization_uuid": "organization_uuid", "actor_type": "actor.type", "actor_user_id": "actor.user_id", "actor_api_key_id": "actor.api_key_id", "actor_email": "actor.email_address|actor.email", "created_at": "created_at"}, withQuery(map[string]string{"activity_types[]": "activity_types", "actor_ids[]": "actor_ids", "created_at.gt": "created_at_gt", "created_at.gte": "created_at_gte", "created_at.lt": "created_at_lt", "created_at.lte": "created_at_lte", "organization_ids[]": "organization_ids"})),
+		anthropicListFamily("compliance_organization", "/compliance/organizations", "anthropic_compliance_organization", []string{"uuid", "id"}, []string{"created_at"}, map[string]string{"organization_uuid": "uuid", "organization_id": "id|organization_id", "name": "name", "created_at": "created_at"}, withoutPagination()),
+		anthropicListFamily("compliance_organization_user", "/compliance/organizations/{organization_uuid}/users", "anthropic_compliance_organization_user", []string{"id", "user_id"}, []string{"created_at"}, map[string]string{"organization_uuid": "organization_uuid", "user_id": "id|user_id", "name": "full_name|name", "email": "email", "role": "organization_role|role", "organization_role": "organization_role|role", "created_at": "created_at"}, withPathParams("organization_uuid"), withPageCursor()),
+		anthropicListFamily("compliance_role", "/compliance/organizations/{organization_uuid}/roles", "anthropic_compliance_role", []string{"id", "role_id"}, []string{"created_at", "updated_at"}, map[string]string{"organization_uuid": "organization_uuid", "role_id": "id|role_id", "name": "name", "description": "description", "created_at": "created_at", "updated_at": "updated_at"}, withPathParams("organization_uuid"), withPageCursor()),
+		anthropicListFamily("compliance_group", "/compliance/groups", "anthropic_compliance_group", []string{"id", "group_id"}, []string{"created_at", "updated_at"}, map[string]string{"group_id": "id|group_id", "group_name": "name", "name": "name", "description": "description", "source_type": "source_type", "roles": "roles", "created_at": "created_at", "updated_at": "updated_at"}, withPageCursor()),
+		anthropicListFamily("compliance_group_member", "/compliance/groups/{group_id}/members", "anthropic_compliance_group_member", []string{"user_id", "id", "email"}, []string{"created_at", "updated_at"}, map[string]string{"group_id": "group_id", "user_id": "user_id|id", "email": "email", "created_at": "created_at", "updated_at": "updated_at"}, withPathParams("group_id"), withPageCursor()),
+		anthropicListFamily("compliance_organization_setting", "/compliance/organizations/{organization_uuid}/settings", "anthropic_compliance_organization_setting", []string{"name"}, nil, map[string]string{"organization_uuid": "organization_uuid", "setting_name": "name", "setting_type": "type", "setting_value": "value"}, withPathParams("organization_uuid"), withListKeys("settings"), withoutPagination()),
 	}
 }
 
@@ -172,6 +178,21 @@ func withPageCursor() familyOption {
 	return func(f *jsonapi.Family) {
 		f.CursorParam = "page"
 		f.NextCursorKeys = []string{"next_page"}
+		f.HasMoreKey = ""
+	}
+}
+
+func withListKeys(keys ...string) familyOption {
+	return func(f *jsonapi.Family) {
+		f.ListKeys = append([]string{}, keys...)
+	}
+}
+
+func withoutPagination() familyOption {
+	return func(f *jsonapi.Family) {
+		f.DisablePageSize = true
+		f.CursorParam = ""
+		f.NextCursorKeys = nil
 		f.HasMoreKey = ""
 	}
 }

@@ -157,3 +157,160 @@ func TestReadServiceAccountCanUseBearerToken(t *testing.T) {
 		t.Fatalf("service_account_id = %q, want svac_1", got)
 	}
 }
+
+func TestReadComplianceOrganizationUsersUsesComplianceKeyAndPageCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/compliance/organizations/org-uuid-1/users" {
+			t.Fatalf("request path = %q, want /compliance/organizations/org-uuid-1/users", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("anthropic-version = %q, want 2023-06-01", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "fixture-compliance-key" {
+			t.Fatalf("x-api-key = %q, want fixture-compliance-key", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q, want empty", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":                "user_1",
+					"full_name":         "Alice Example",
+					"email":             "alice@example.com",
+					"organization_role": "admin",
+					"created_at":        "2025-06-01T10:00:00Z",
+				}},
+				"has_more":  true,
+				"next_page": "page-2",
+			})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":                "user_2",
+					"full_name":         "Bob Example",
+					"email":             "bob@example.com",
+					"organization_role": "user",
+					"created_at":        "2025-06-02T10:00:00Z",
+				}},
+				"has_more":  false,
+				"next_page": nil,
+			})
+		default:
+			t.Fatalf("page = %q, want empty or page-2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":           "fixture-compliance-key",
+		"base_url":          server.URL,
+		"family":            "compliance_organization_user",
+		"organization_uuid": "org-uuid-1",
+		"per_page":          "2",
+		"tenant_id":         "writer",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("first NextCursor = %q, want page-2", first.NextCursor.GetOpaque())
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	event := first.Events[0]
+	if event.Kind != "anthropic.compliance_organization_user" {
+		t.Fatalf("Kind = %q, want anthropic.compliance_organization_user", event.Kind)
+	}
+	if got := event.Attributes["organization_uuid"]; got != "org-uuid-1" {
+		t.Fatalf("organization_uuid = %q, want org-uuid-1", got)
+	}
+	if got := event.Attributes["user_id"]; got != "user_1" {
+		t.Fatalf("user_id = %q, want user_1", got)
+	}
+	if got := event.Attributes["role"]; got != "admin" {
+		t.Fatalf("role = %q, want admin", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+}
+
+func TestReadComplianceOrganizationSettingsUsesSettingsListKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/compliance/organizations/org-uuid-1/settings" {
+			t.Fatalf("request path = %q, want /compliance/organizations/org-uuid-1/settings", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "" {
+			t.Fatalf("limit = %q, want empty", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "fixture-compliance-key" {
+			t.Fatalf("x-api-key = %q, want fixture-compliance-key", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"type":            "effective_organization_settings",
+			"organization_id": "org-uuid-1",
+			"settings": []map[string]any{
+				{
+					"name":  "content_redaction_enabled",
+					"type":  "boolean",
+					"value": true,
+				},
+				{
+					"name":  "ip_allowlist_ip_ranges",
+					"type":  "string_list",
+					"value": []string{"10.0.0.0/8", "203.0.113.0/24"},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":           "fixture-compliance-key",
+		"base_url":          server.URL,
+		"family":            "compliance_organization_setting",
+		"organization_uuid": "org-uuid-1",
+		"per_page":          "2",
+		"tenant_id":         "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want 2", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "anthropic.compliance_organization_setting" {
+		t.Fatalf("Kind = %q, want anthropic.compliance_organization_setting", event.Kind)
+	}
+	if got := event.Attributes["organization_uuid"]; got != "org-uuid-1" {
+		t.Fatalf("organization_uuid = %q, want org-uuid-1", got)
+	}
+	if got := event.Attributes["setting_name"]; got != "content_redaction_enabled" {
+		t.Fatalf("setting_name = %q, want content_redaction_enabled", got)
+	}
+	if got := event.Attributes["setting_value"]; got != "true" {
+		t.Fatalf("setting_value = %q, want true", got)
+	}
+}
