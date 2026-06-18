@@ -20,6 +20,7 @@ import (
 	otelmetric "go.opentelemetry.io/otel/metric"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -107,7 +108,7 @@ func Middleware(next http.Handler) http.Handler {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
-					panic(recovered)
+					panicsafe.Repanic(panicsafe.Payload{Value: recovered})
 				}
 				panicAttrs := panicTelemetryAttributes(recovered)
 				durationSeconds := time.Since(started).Seconds()
