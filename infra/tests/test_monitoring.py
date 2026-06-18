@@ -248,6 +248,33 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("cerebro.source_projection.records", body)
         self.assertIn("/ecs/cerebro-test/otel-collector", body)
 
+    def test_dashboard_includes_tenant_runtime_diagnostic_logs_when_app_log_group_is_set(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            body = monitoring._dashboard_body(
+                "cerebro-test",
+                "alb",
+                "tg",
+                "cluster",
+                "service",
+                None,
+                "CEREBRO_EVENTS",
+                app_log_group_name="/ecs/cerebro-test/api",
+            )
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("Tenant Runtime Failures", body)
+        self.assertIn("Tenant Runtime Failure Groups", body)
+        self.assertIn("/ecs/cerebro-test/api", body)
+        self.assertIn('name = \\"source_runtime.sync\\"', body)
+        self.assertIn('name = \\"source_projection.project\\"', body)
+        self.assertIn("tenant_id", body)
+        self.assertIn("source_id", body)
+        self.assertIn("runtime_id", body)
+        self.assertIn("stats count(*) as events by tenant_id, source_id, runtime_id, event_kind, error_kind", body)
+
     def test_otel_product_metric_widgets_follow_collector_widgets(self) -> None:
         class Region:
             region = "us-east-1"

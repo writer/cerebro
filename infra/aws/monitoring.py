@@ -1070,6 +1070,7 @@ def create_monitoring(
             ecs_service_name,
             postgres_identifier,
             otel_collector_log_group_name or "",
+            log_group_name or "",
         ).apply(
             lambda args: _dashboard_body(
                 name,
@@ -1078,6 +1079,7 @@ def create_monitoring(
                 source_runtime_observability,
                 otel_collector_enabled=otel_collector_enabled,
                 otel_collector_log_group_name=args[5],
+                app_log_group_name=args[6],
             )
         ),
     )
@@ -1607,6 +1609,7 @@ def _dashboard_body(
     source_runtime_observability: list[dict] = None,
     otel_collector_enabled: bool = False,
     otel_collector_log_group_name: str | None = None,
+    app_log_group_name: str | None = None,
 ) -> str:
     import json
     telemetry_namespace = f"Cerebro/{name}"
@@ -1876,28 +1879,77 @@ def _dashboard_body(
                 },
             },
         ])
+    tenant_diagnostic_widgets = _tenant_runtime_diagnostic_widgets(app_log_group_name, 60) if app_log_group_name else []
+    next_y = 66 if tenant_diagnostic_widgets else 60
     otel_widgets = (
         _otel_collector_observability_widgets(
             name,
             cluster,
             telemetry_namespace,
             otel_collector_log_group_name,
-            60,
+            next_y,
         )
         if otel_collector_enabled and otel_collector_log_group_name
         else []
     )
-    otel_product_widgets = _otel_product_metric_widgets(78) if otel_widgets else []
+    if otel_widgets:
+        next_y += 18
+    otel_product_widgets = _otel_product_metric_widgets(next_y) if otel_widgets else []
+    if otel_product_widgets:
+        next_y += 12
+    widgets.extend(tenant_diagnostic_widgets)
     widgets.extend(otel_widgets)
     widgets.extend(otel_product_widgets)
     widgets.extend(
         _source_runtime_observability_widgets(
             telemetry_namespace,
             source_runtime_observability,
-            start_y=90 if otel_product_widgets else (78 if otel_widgets else 60),
+            start_y=next_y,
         )
     )
     return json.dumps({"widgets": widgets})
+
+
+def _tenant_runtime_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
+    region = aws.get_region().region
+    base_filter = '(name = "source_runtime.sync" or name = "source_projection.project")'
+    return [
+        {
+            "type": "log",
+            "x": 0,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "Tenant Runtime Failures",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields @timestamp, name, trace_id, tenant_id, source_id, runtime_id, event_kind, status, error_kind "
+                    f"| filter {base_filter} and status = \"failed\" "
+                    "| sort @timestamp desc | limit 50"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "Tenant Runtime Failure Groups",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields name, tenant_id, source_id, runtime_id, event_kind, status, error_kind "
+                    f"| filter {base_filter} and status = \"failed\" "
+                    "| stats count(*) as events by tenant_id, source_id, runtime_id, event_kind, error_kind "
+                    "| sort events desc | limit 50"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+    ]
 
 
 def _otel_collector_observability_widgets(
