@@ -75,12 +75,22 @@ type grcFindingItem struct {
 	PolicyName   string          `json:"policy_name,omitempty"`
 	Controls     []grcControlRef `json:"controls,omitempty"`
 	GRCFindingRisk
+	GRCFindingWorkflowMetadata
 	EvidenceCount   int        `json:"evidence_count"`
 	Owner           string     `json:"owner"`
 	SLAStatus       string     `json:"sla_status"`
-	DueAt           *time.Time `json:"due_at,omitempty"`
 	FirstObservedAt *time.Time `json:"first_observed_at,omitempty"`
 	LastObservedAt  *time.Time `json:"last_observed_at,omitempty"`
+}
+
+type GRCFindingWorkflowMetadata struct {
+	StatusReason    string                     `json:"status_reason,omitempty"`
+	Assignee        string                     `json:"assignee,omitempty"`
+	DueAt           *time.Time                 `json:"due_at,omitempty"`
+	StatusUpdatedAt *time.Time                 `json:"status_updated_at,omitempty"`
+	Notes           []ports.FindingNote        `json:"notes,omitempty"`
+	Tickets         []ports.FindingTicket      `json:"tickets,omitempty"`
+	ExternalRefs    []ports.FindingExternalRef `json:"external_refs,omitempty"`
 }
 
 type GRCFindingRisk struct {
@@ -1204,10 +1214,18 @@ func grcFindingItems(findings []*ports.FindingRecord, sourceIDs map[string]strin
 				RiskReasons:     append([]string(nil), finding.RiskReasons...),
 				RiskModel:       finding.RiskModelVersion,
 			},
+			GRCFindingWorkflowMetadata: GRCFindingWorkflowMetadata{
+				StatusReason:    finding.StatusReason,
+				Assignee:        finding.Assignee,
+				DueAt:           timePtr(finding.DueAt),
+				StatusUpdatedAt: timePtr(finding.StatusUpdatedAt),
+				Notes:           append([]ports.FindingNote(nil), finding.Notes...),
+				Tickets:         append([]ports.FindingTicket(nil), finding.Tickets...),
+				ExternalRefs:    append([]ports.FindingExternalRef(nil), finding.ExternalRefs...),
+			},
 			EvidenceCount:   evidenceCounts[finding.ID],
 			Owner:           fallbackString(finding.Assignee, "Unassigned"),
 			SLAStatus:       grcSLAStatus(finding),
-			DueAt:           timePtr(finding.DueAt),
 			FirstObservedAt: timePtr(finding.FirstObservedAt),
 			LastObservedAt:  timePtr(finding.LastObservedAt),
 		})

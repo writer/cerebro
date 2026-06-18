@@ -222,6 +222,7 @@ var exactRouteLabels = map[string]struct{}{
 	"/grc/inventory/assets":                                               {},
 	"/grc/inventory/assets/detail":                                        {},
 	"/grc/inventory/resource-scope":                                       {},
+	"/grc/inventory/accountability":                                       {},
 	"/finding-rules":                                                      {},
 	"/endpoint-vulnerability-findings":                                    {},
 	"/sources":                                                            {},
