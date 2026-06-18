@@ -297,7 +297,7 @@ func hasForbiddenAPOCCall(tokens []cypherToken) bool {
 
 func hasAPOCInvocation(tokens []cypherToken) bool {
 	for i, token := range tokens {
-		if token.kind == cypherTokenIdentifier && strings.HasPrefix(strings.ToLower(token.text), "apoc.") && symbolTokenAt(tokens, i+1, "(") {
+		if functionNameToken(token) && strings.HasPrefix(strings.ToLower(token.text), "apoc.") && symbolTokenAt(tokens, i+1, "(") {
 			return true
 		}
 	}
