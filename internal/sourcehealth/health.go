@@ -144,7 +144,7 @@ func RuntimeContractProbeState(runtime *cerebrov1.SourceRuntime) string {
 	if strings.TrimSpace(runtime.GetSourceId()) != "evidence_cas" {
 		return "not_configured"
 	}
-	if runtime.GetLastSyncedAt() == nil {
+	if timestampValue(runtime.GetLastSyncedAt()).IsZero() {
 		return "unknown"
 	}
 	return "passing"
@@ -186,6 +186,12 @@ func Evaluate(record Record) State {
 
 func timestampValue(value *timestamppb.Timestamp) time.Time {
 	if value == nil {
+		return time.Time{}
+	}
+	if value.GetSeconds() == 0 && value.GetNanos() == 0 {
+		return time.Time{}
+	}
+	if err := value.CheckValid(); err != nil {
 		return time.Time{}
 	}
 	timestamp := value.AsTime()

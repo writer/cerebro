@@ -1,6 +1,12 @@
 package sourcehealth
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
 
 func TestEvaluateClassifiesRuntimeFreshness(t *testing.T) {
 	staleAfter := int64(3600)
@@ -129,6 +135,29 @@ func TestContractProbeStatus(t *testing.T) {
 		if got := ContractProbeStatus(input); got != want {
 			t.Fatalf("ContractProbeStatus(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestRecordFromRuntimeTreatsZeroProtoTimestampAsUnset(t *testing.T) {
+	now := time.Date(2026, 6, 18, 20, 0, 0, 0, time.UTC)
+	runtime := &cerebrov1.SourceRuntime{
+		Id:           "writer-evidence-cas",
+		SourceId:     "evidence_cas",
+		TenantId:     "writer",
+		LastSyncedAt: &timestamppb.Timestamp{},
+		Config:       map[string]string{StaleAfterSecondsConfigKey: "3600"},
+	}
+
+	record := RecordFromRuntime(runtime, now)
+
+	if record.Status != "unknown" {
+		t.Fatalf("Status = %q, want unknown for zero proto timestamp", record.Status)
+	}
+	if record.SyncLagSeconds != nil {
+		t.Fatalf("SyncLagSeconds = %v, want nil for zero proto timestamp", *record.SyncLagSeconds)
+	}
+	if got := RuntimeContractProbeState(runtime); got != "unknown" {
+		t.Fatalf("RuntimeContractProbeState = %q, want unknown for zero proto timestamp", got)
 	}
 }
 
