@@ -173,6 +173,93 @@ func TestProjectOpenAIAuditDeepAccessEvidence(t *testing.T) {
 	}
 }
 
+func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 18, 12, 10, 0, 0, time.UTC)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "openai-pending-invite",
+			TenantId:   "writer",
+			SourceId:   "openai",
+			Kind:       "openai.invite",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"email":      "future-owner@example.com",
+				"family":     "invite",
+				"invite_id":  "invite_openai_123",
+				"role":       "owner",
+				"status":     "pending",
+				"created_at": "2026-06-18T12:10:00Z",
+				"expires_at": "2026-06-25T12:10:00Z",
+			},
+		},
+		{
+			Id:         "anthropic-pending-invite",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.invite",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"email":      "future-dev@example.com",
+				"family":     "invite",
+				"invite_id":  "invite_anthropic_123",
+				"role":       "developer",
+				"status":     "pending",
+				"created_at": "2026-06-18T12:10:00Z",
+				"expires_at": "2026-06-25T12:10:00Z",
+			},
+		},
+		{
+			Id:         "anthropic-expired-invite",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.invite",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"email":     "expired@example.com",
+				"family":    "invite",
+				"invite_id": "invite_anthropic_expired",
+				"role":      "admin",
+				"status":    "expired",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	openAIInviteURN := "urn:cerebro:writer:openai_invite:invite_openai_123"
+	openAIOrgURN := "urn:cerebro:writer:openai_org:openai"
+	openAIRoleURN := "urn:cerebro:writer:openai_role:organization:owner"
+	anthropicInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_123"
+	anthropicExpiredInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_expired"
+	anthropicOrgURN := "urn:cerebro:writer:anthropic_org:anthropic"
+	anthropicRoleURN := "urn:cerebro:writer:anthropic_role:organization:developer"
+	openAIIdentityURN := "urn:cerebro:writer:identity:email:future-owner@example.com"
+	anthropicIdentityURN := "urn:cerebro:writer:identity:email:future-dev@example.com"
+
+	if entity := state.entities[openAIInviteURN]; entity == nil || entity.EntityType != "openai.invite" || entity.Attributes["access_state"] != "invited" {
+		t.Fatalf("openai invite entity missing or wrong: %#v", entity)
+	}
+	if entity := state.entities[anthropicExpiredInviteURN]; entity == nil || entity.Attributes["access_state"] != "expired" {
+		t.Fatalf("expired invite entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, openAIInviteURN, relationBelongsTo, openAIOrgURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationRepresentsIdentity, openAIIdentityURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIRoleURN)
+	assertProjectedLink(t, state, openAIRoleURN, relationGrantsEntitlement, openAIOrgURN)
+	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIOrgURN)
+	assertProjectedLink(t, state, anthropicInviteURN, relationBelongsTo, anthropicOrgURN)
+	assertProjectedLink(t, state, anthropicInviteURN, relationRepresentsIdentity, anthropicIdentityURN)
+	assertProjectedLink(t, state, anthropicInviteURN, relationAssignedTo, anthropicRoleURN)
+	assertProjectedLink(t, state, anthropicInviteURN, relationCanPerform, anthropicOrgURN)
+	assertProjectedLinkMissing(t, state, anthropicExpiredInviteURN, relationCanAdmin, anthropicOrgURN)
+}
+
 func TestProjectAnthropicProjectCollaboratorAccessEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
