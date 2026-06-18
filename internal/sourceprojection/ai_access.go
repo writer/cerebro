@@ -53,7 +53,7 @@ func anthropicWorkspaceMemberProjections(event *cerebrov1.EventEnvelope) ([]*por
 }
 
 func anthropicComplianceGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupProjections(event, anthropicAccessProfile)
+	return aiGroupRoleAssignmentProjections(event, anthropicAccessProfile)
 }
 
 func anthropicComplianceGroupMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -78,6 +78,10 @@ func anthropicCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 
 func openAIRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiRoleProjections(event, openAIAccessProfile)
+}
+
+func anthropicComplianceRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return aiScopedRoleProjections(event, anthropicAccessProfile)
 }
 
 func openAIUserRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -367,6 +371,24 @@ func aiRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) 
 	return identityProjectionResult(entities, nil)
 }
 
+func aiScopedRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	scopeKind := aiRoleScopeKind(attrs, event.GetKind())
+	scopeURN := aiEnsureScope(entities, tenantID, event.GetSourceId(), profile, scopeKind, attrs)
+	roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, attrs, scopeKind)
+	aiLinkRoleToScope(links, tenantID, event, roleURN, scopeURN, aiRoleID(attrs), "role_scope")
+	if roleURN != "" && scopeURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, scopeURN, relationBelongsTo, aiEventLinkAttributes(event, "role_scope_container")))
+	}
+	return identityProjectionResult(entities, links)
+}
+
 func aiSubjectRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile, subjectKind string, scopeKind string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -392,10 +414,38 @@ func aiSubjectRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessPr
 		}
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, aiEventLinkAttributes(event, subjectKind+"_role")))
 	}
-	if roleURN != "" && scopeURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, scopeURN, relationGrantsEntitlement, aiEventLinkAttributes(event, "role_scope")))
-	}
+	aiLinkRoleToScope(links, tenantID, event, roleURN, scopeURN, aiRoleID(attrs), "role_scope")
 	aiLinkPrincipalToScope(links, tenantID, event, subjectURN, scopeURN, aiRoleID(attrs), subjectKind+"_"+scopeKind+"_role_access")
+	return identityProjectionResult(entities, links)
+}
+
+func aiGroupRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	orgURN := aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, attrs)
+	groupURN := aiEnsureGroup(entities, tenantID, event.GetSourceId(), profile, attrs)
+	if groupURN != "" && orgURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), groupURN, orgURN, relationBelongsTo, aiEventLinkAttributes(event, "group_organization")))
+	}
+	roleIDs := aiRoleIDsFromAttribute(attrs["roles"])
+	for _, roleID := range roleIDs {
+		roleAttrs := aiScopedRoleAttributes(attrs, roleID)
+		roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, roleAttrs, "organization")
+		if groupURN != "" && roleURN != "" {
+			linkAttrs := aiEventLinkAttributes(event, "group_role")
+			addProjectedAttribute(linkAttrs, "role", roleID)
+			addProjectedAttribute(linkAttrs, "role_id", roleID)
+			addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(roleID)))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), groupURN, roleURN, aiRoleAssignmentRelation(roleID), linkAttrs))
+		}
+		aiLinkRoleToScope(links, tenantID, event, roleURN, orgURN, roleID, "group_role_scope")
+	}
+	aiLinkPrincipalRolesToScope(links, tenantID, event, groupURN, orgURN, roleIDs, "group_organization_role_access")
 	return identityProjectionResult(entities, links)
 }
 
@@ -842,14 +892,47 @@ func aiLinkPrincipalToScope(links map[string]*ports.ProjectedLink, tenantID stri
 	if principalURN == "" || scopeURN == "" {
 		return
 	}
-	relation := relationCanPerform
-	if aiRoleIsAdmin(role) {
-		relation = relationCanAdmin
+	linkAttrs := aiEventLinkAttributes(event, matchType)
+	addProjectedAttribute(linkAttrs, "role", role)
+	addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(role)))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), principalURN, scopeURN, aiScopeAccessRelation([]string{role}), linkAttrs))
+}
+
+func aiLinkPrincipalRolesToScope(links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, principalURN string, scopeURN string, roles []string, matchType string) {
+	if principalURN == "" || scopeURN == "" || len(roles) == 0 {
+		return
+	}
+	linkAttrs := aiEventLinkAttributes(event, matchType)
+	addProjectedAttribute(linkAttrs, "roles", strings.Join(roles, ","))
+	if len(roles) == 1 {
+		addProjectedAttribute(linkAttrs, "role", roles[0])
+	}
+	addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRolesIncludeAdmin(roles)))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), principalURN, scopeURN, aiScopeAccessRelation(roles), linkAttrs))
+}
+
+func aiLinkRoleToScope(links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, roleURN string, scopeURN string, role string, matchType string) {
+	if roleURN == "" || scopeURN == "" {
+		return
 	}
 	linkAttrs := aiEventLinkAttributes(event, matchType)
 	addProjectedAttribute(linkAttrs, "role", role)
 	addProjectedAttribute(linkAttrs, "is_admin", boolString(aiRoleIsAdmin(role)))
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), principalURN, scopeURN, relation, linkAttrs))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, scopeURN, relationGrantsEntitlement, linkAttrs))
+}
+
+func aiScopeAccessRelation(roles []string) string {
+	if aiRolesIncludeAdmin(roles) {
+		return relationCanAdmin
+	}
+	return relationCanPerform
+}
+
+func aiRoleAssignmentRelation(role string) string {
+	if aiRoleIsAdmin(role) {
+		return relationCanAdmin
+	}
+	return relationAssignedTo
 }
 
 func aiAuditTargetURN(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, profile aiAccessProfile, attrs map[string]string) string {
@@ -878,11 +961,50 @@ func aiRoleID(attrs map[string]string) string {
 	return firstNonEmpty(attrs["role_id"], attrs["role"], attrs["name"], attrs["role_name"], attrs["predefined_role"])
 }
 
+func aiRoleIDsFromAttribute(value string) []string {
+	seen := map[string]struct{}{}
+	roles := []string{}
+	for _, roleID := range splitAttributeList(value) {
+		if _, ok := seen[roleID]; ok {
+			continue
+		}
+		seen[roleID] = struct{}{}
+		roles = append(roles, roleID)
+	}
+	return roles
+}
+
+func aiScopedRoleAttributes(source map[string]string, roleID string) map[string]string {
+	return compactAttributes(map[string]string{
+		"role_id":                           roleID,
+		"role":                              roleID,
+		"organization_id":                   source["organization_id"],
+		"organization_uuid":                 source["organization_uuid"],
+		"project_id":                        source["project_id"],
+		"workspace_id":                      source["workspace_id"],
+		ports.EventAttributeSourceRuntimeID: source[ports.EventAttributeSourceRuntimeID],
+		"external_id":                       source["external_id"],
+		"family":                            source["family"],
+		"provider":                          source["provider"],
+		"source_product":                    source["source_product"],
+		"source_provider":                   source["source_provider"],
+	})
+}
+
 func aiRoleIsAdmin(role string) bool {
 	normalized := normalizeIdentifier(role)
 	return strings.Contains(normalized, "admin") ||
 		strings.Contains(normalized, "owner") ||
 		strings.Contains(normalized, "administrator")
+}
+
+func aiRolesIncludeAdmin(roles []string) bool {
+	for _, role := range roles {
+		if aiRoleIsAdmin(role) {
+			return true
+		}
+	}
+	return false
 }
 
 func aiActorTypeIsCredential(actorType string) bool {

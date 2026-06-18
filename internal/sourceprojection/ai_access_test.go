@@ -305,6 +305,20 @@ func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 				"user_id":  "user_789",
 			},
 		},
+		{
+			Id:         "anthropic-compliance-role",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_role",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"description":       "Read-only access to retained content for legal review.",
+				"family":            "compliance_role",
+				"name":              "Compliance Reviewer",
+				"organization_uuid": "org-uuid-1",
+				"role_id":           "rbac_role_123",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -314,13 +328,21 @@ func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 
 	userURN := "urn:cerebro:writer:anthropic_user:user_789"
 	groupURN := "urn:cerebro:writer:anthropic_group:rbac_group_123"
+	roleURN := "urn:cerebro:writer:anthropic_role:organization:rbac_role_123"
 	orgURN := "urn:cerebro:writer:anthropic_org:org-uuid-1"
 	identityURN := "urn:cerebro:writer:identity:email:carol@example.com"
 
 	if entity := state.entities[groupURN]; entity == nil || entity.EntityType != "anthropic.group" {
 		t.Fatalf("group entity missing or wrong: %#v", entity)
 	}
+	if entity := state.entities[roleURN]; entity == nil || entity.EntityType != "anthropic.role" || entity.Label != "Compliance Reviewer" || entity.Attributes["role_id"] != "rbac_role_123" || entity.Attributes["scope_kind"] != "organization" {
+		t.Fatalf("role entity missing or wrong: %#v", entity)
+	}
 	assertProjectedLink(t, state, groupURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, roleURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, roleURN, relationGrantsEntitlement, orgURN)
+	assertProjectedLink(t, state, groupURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, groupURN, relationCanPerform, orgURN)
 	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
 	assertProjectedLink(t, state, userURN, relationMemberOf, groupURN)
 }
