@@ -38,11 +38,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pulumi", specifier = ">=3.100.0" },
-    { name = "pulumi-aws", specifier = ">=6.20.0" },
-    { name = "pulumi-gcp", specifier = ">=8.0.0" },
-    { name = "pulumi-random", specifier = ">=4.16.0" },
-    { name = "pulumi-tailscale", specifier = ">=0.17.0" },
+    { name = "pulumi", specifier = "==3.224.0" },
+    { name = "pulumi-aws", specifier = "==7.16.0" },
+    { name = "pulumi-gcp", specifier = "==9.21.0" },
+    { name = "pulumi-random", specifier = "==4.18.5" },
+    { name = "pulumi-tailscale", specifier = "==0.24.0" },
 ]
 
 [[package]]

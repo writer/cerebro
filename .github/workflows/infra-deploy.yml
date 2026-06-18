@@ -202,7 +202,8 @@ jobs:
           uv run python scripts/validate_otel_collector_config_runtime.py \
             --stack-file aws/Pulumi.sec-dev.yaml \
             --stack-file aws/Pulumi.go-prod.yaml \
-            --region "${AWS_REGION}"
+            --region "${AWS_REGION}" \
+            --allow-registry-unavailable
           uv run python scripts/validate_gcp_config.py
           uv run python -m unittest discover -s tests
 

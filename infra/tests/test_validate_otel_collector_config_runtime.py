@@ -117,6 +117,66 @@ config:
                         timeout_seconds=1,
                     )
 
+    def test_registry_rate_limit_can_be_skipped_for_static_ci(self) -> None:
+        commands: list[list[str]] = []
+
+        def fake_run(command: list[str]) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            if command[:2] == ["docker", "run"]:
+                return subprocess.CompletedProcess(command, 1, stdout="", stderr="toomanyrequests: Rate exceeded\n")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with TemporaryDirectory() as tmp:
+            stack = Path(tmp) / "Pulumi.sec-dev.yaml"
+            stack.write_text(
+                """
+config:
+  cerebro:environment: sec-dev
+  cerebro:otelCollectorEnabled: true
+  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
+""",
+                encoding="utf-8",
+            )
+
+            with patch.object(validate_otel_collector_config_runtime, "run_command", side_effect=fake_run):
+                result = validate_otel_collector_config_runtime.validate_stack_file(
+                    stack,
+                    docker_bin="docker",
+                    region="us-east-1",
+                    timeout_seconds=1,
+                    allow_registry_unavailable=True,
+                )
+
+        self.assertIn("registry-unavailable:", result)
+        self.assertTrue(any(command[:3] == ["docker", "rm", "-f"] for command in commands))
+
+    def test_registry_rate_limit_fails_by_default(self) -> None:
+        def fake_run(command: list[str]) -> subprocess.CompletedProcess[str]:
+            if command[:2] == ["docker", "run"]:
+                return subprocess.CompletedProcess(command, 1, stdout="", stderr="docker: Error response from daemon: 429 Too Many Requests")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with TemporaryDirectory() as tmp:
+            stack = Path(tmp) / "Pulumi.sec-dev.yaml"
+            stack.write_text(
+                """
+config:
+  cerebro:environment: sec-dev
+  cerebro:otelCollectorEnabled: true
+  cerebro:otelCollectorImage: public.ecr.aws/aws-observability/aws-otel-collector:v0.48.0
+""",
+                encoding="utf-8",
+            )
+
+            with patch.object(validate_otel_collector_config_runtime, "run_command", side_effect=fake_run):
+                with self.assertRaisesRegex(RuntimeError, "429 Too Many Requests"):
+                    validate_otel_collector_config_runtime.validate_stack_file(
+                        stack,
+                        docker_bin="docker",
+                        region="us-east-1",
+                        timeout_seconds=1,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
