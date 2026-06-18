@@ -1,0 +1,143 @@
+{
+  "rule_id": "slack-privileged-user-without-mfa",
+  "runtime": {
+    "id": "writer-slack-user",
+    "source_id": "slack",
+    "tenant_id": "writer",
+    "config": {
+      "family": "user"
+    }
+  },
+  "events": [
+    {
+      "id": "slack-user-admin-no-mfa",
+      "tenant_id": "writer",
+      "source_id": "slack",
+      "kind": "slack.user",
+      "occurred_at": "2026-05-01T12:00:00Z",
+      "schema_ref": "slack/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "U-admin",
+        "team_id": "T1",
+        "name": "alice",
+        "real_name": "Alice Admin",
+        "email": "alice@writer.com",
+        "is_admin": "true",
+        "has_2fa": "false",
+        "deleted": "false",
+        "source_runtime_id": "writer-slack-user"
+      }
+    },
+    {
+      "id": "slack-user-owner-with-mfa",
+      "tenant_id": "writer",
+      "source_id": "slack",
+      "kind": "slack.user",
+      "occurred_at": "2026-05-01T12:05:00Z",
+      "schema_ref": "slack/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "U-owner",
+        "team_id": "T1",
+        "name": "bob",
+        "is_owner": "true",
+        "has_2fa": "true",
+        "deleted": "false",
+        "source_runtime_id": "writer-slack-user"
+      }
+    },
+    {
+      "id": "slack-user-member-no-mfa",
+      "tenant_id": "writer",
+      "source_id": "slack",
+      "kind": "slack.user",
+      "occurred_at": "2026-05-01T12:10:00Z",
+      "schema_ref": "slack/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "U-member",
+        "team_id": "T1",
+        "name": "carol",
+        "is_admin": "false",
+        "is_owner": "false",
+        "has_2fa": "false",
+        "deleted": "false",
+        "source_runtime_id": "writer-slack-user"
+      }
+    },
+    {
+      "id": "slack-user-bot-no-mfa",
+      "tenant_id": "writer",
+      "source_id": "slack",
+      "kind": "slack.user",
+      "occurred_at": "2026-05-01T12:15:00Z",
+      "schema_ref": "slack/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "U-bot",
+        "team_id": "T1",
+        "name": "deploybot",
+        "is_admin": "true",
+        "is_bot": "true",
+        "has_2fa": "false",
+        "deleted": "false",
+        "source_runtime_id": "writer-slack-user"
+      }
+    },
+    {
+      "id": "slack-user-admin-deleted",
+      "tenant_id": "writer",
+      "source_id": "slack",
+      "kind": "slack.user",
+      "occurred_at": "2026-05-01T12:20:00Z",
+      "schema_ref": "slack/user/v1",
+      "attributes": {
+        "family": "user",
+        "user_id": "U-deleted",
+        "team_id": "T1",
+        "name": "dave",
+        "is_admin": "true",
+        "has_2fa": "false",
+        "deleted": "true",
+        "source_runtime_id": "writer-slack-user"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "slack-privileged-user-without-mfa",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "Slack privileged user Alice Admin can sign in without MFA",
+      "event_ids": ["slack-user-admin-no-mfa"],
+      "attributes": {
+        "slack_user_urn": "urn:cerebro:writer:slack_user:U-admin",
+        "user_id": "U-admin",
+        "team_id": "T1",
+        "privilege_role": "admin",
+        "has_mfa": "false",
+        "primary_resource_urn": "urn:cerebro:writer:slack_user:U-admin",
+        "rule_required_attributes": "user_id"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "slack-user-owner-with-mfa",
+      "reason": "privileged owner with MFA enabled is protected"
+    },
+    {
+      "event_id": "slack-user-member-no-mfa",
+      "reason": "non-privileged member without MFA is not in scope for this privileged-access control"
+    },
+    {
+      "event_id": "slack-user-bot-no-mfa",
+      "reason": "bot identities do not authenticate interactively with MFA"
+    },
+    {
+      "event_id": "slack-user-admin-deleted",
+      "reason": "deactivated account cannot sign in so a missing factor is not an active risk"
+    }
+  ]
+}

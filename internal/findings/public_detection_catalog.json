@@ -63126,6 +63126,52 @@
       ]
     },
     {
+      "id": "slack-privileged-user-without-mfa",
+      "pack_id": "slack",
+      "pack_name": "Slack",
+      "name": "Slack Privileged User Without MFA",
+      "description": "Detect active Slack workspace administrators or owners that can sign in without multi-factor authentication, leaving a privileged collaboration identity protected only by a password.",
+      "source_id": "slack",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "slack.user"
+      ],
+      "output_kind": "finding.slack_privileged_user_without_mfa",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "authentication",
+        "identity",
+        "mfa",
+        "privileged-access",
+        "slack"
+      ],
+      "references": [
+        "https://slack.com/help/articles/204509068-Manage-two-factor-authentication-for-your-workspace"
+      ],
+      "false_positives": [
+        "Break-glass admin identities that authenticate through enterprise SSO with MFA enforced upstream and are risk-accepted in Slack."
+      ],
+      "runbook": "Confirm whether the privileged Slack identity should retain admin or owner access; if so, require two-factor authentication (or enforce SSO/MFA at the workspace), otherwise remove the elevated role.",
+      "required_attributes": [
+        "user_id"
+      ],
+      "fingerprint_fields": [
+        "slack_user_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        }
+      ]
+    },
+    {
       "id": "tailscale-tailnet-device-approval-disabled",
       "pack_id": "tailscale",
       "pack_name": "Tailscale",

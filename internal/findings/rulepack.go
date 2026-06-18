@@ -181,6 +181,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "slack",
+			Name:        "Slack",
+			Description: "Slack workspace identity and privileged-access posture findings.",
+			Rules: []Rule{
+				newSlackPrivilegedUserWithoutMFARule(),
+			},
+		},
+		{
 			ID:          "policy",
 			Name:        "Policy",
 			Description: "Generated compliance policy checks and evidence mappings.",
