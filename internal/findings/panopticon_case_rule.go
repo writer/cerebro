@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -179,6 +180,10 @@ func buildPanopticonCuratedCaseFinding(ctx context.Context, runtime *cerebrov1.S
 	if url != "" {
 		findingAttributes["case_url"] = url
 	}
+	evidenceObjectIDs := panopticonCaseEvidenceCASObjectIDs(event, attrs)
+	if len(evidenceObjectIDs) != 0 {
+		findingAttributes["evidence_cas_object_ids"] = strings.Join(evidenceObjectIDs, ",")
+	}
 	mergePanopticonCaseFindingAttributes(findingAttributes, panopticonCaseSignalAttributes(event, attrs))
 	for key, value := range attrs {
 		if _, exists := findingAttributes[key]; !exists {
@@ -202,8 +207,10 @@ func buildPanopticonCuratedCaseFinding(ctx context.Context, runtime *cerebrov1.S
 	for _, key := range panopticonCaseSignalAttributeKeys {
 		graphEvidenceAttributes[key] = findingAttributes[key]
 	}
+	casePaths := panopticonCaseAlertEvidencePaths(event, caseID, title, projectedContext.PrimaryResourceURN, findingAttributes)
+	casePaths = append(casePaths, panopticonCaseEvidenceCASPaths(event, caseID, title, projectedContext.PrimaryResourceURN, evidenceObjectIDs)...)
 	graphRows := []*cerebrov1.GraphEvidenceRow{
-		newGraphEvidenceRow("panopticon_case", graphEvidenceAttributes, panopticonCaseAlertEvidencePaths(event, caseID, title, projectedContext.PrimaryResourceURN, findingAttributes)...),
+		newGraphEvidenceRow("panopticon_case", graphEvidenceAttributes, casePaths...),
 	}
 	return &ports.FindingRecord{
 		ID:                fingerprint,
@@ -305,6 +312,134 @@ func panopticonCaseAlertEvidencePaths(event *cerebrov1.EventEnvelope, caseID str
 
 func panopticonAlertEvidenceURN(tenantID string, alertID string) string {
 	return fmt.Sprintf("urn:cerebro:%s:panopticon_alert:%s", strings.TrimSpace(tenantID), strings.TrimSpace(alertID))
+}
+
+// panopticonCaseEvidenceCASObjectIDs extracts stable Evidence CAS object
+// identifiers from a Panopticon case payload using the same identity precedence
+// the Evidence CAS source applies (evidence_id, then CAS URI/digest). The result
+// is deterministic (deduped, sorted) so downstream correlation and fingerprints
+// stay stable across syncs.
+func panopticonCaseEvidenceCASObjectIDs(event *cerebrov1.EventEnvelope, attrs map[string]string) []string {
+	if promoted := strings.TrimSpace(attrs["evidence_cas_object_ids"]); promoted != "" {
+		return panopticonDedupeSortedIDs(strings.Split(promoted, ","))
+	}
+	payload := panopticonCasePayloadObject(event)
+	var ids []string
+	for _, key := range []string{"evidence", "evidences", "evidence_pointers", "captures"} {
+		for _, evidence := range panopticonCasePayloadObjects(payload, key) {
+			id := firstNonEmpty(
+				panopticonCaseMapString(evidence, "evidence_id", "id"),
+				panopticonCaseMapString(evidence, "evidence_cas", "evidence_cas_uri", "uri", "cas_uri", "pointer"),
+				panopticonCaseMapString(evidence, "sha256", "digest"),
+			)
+			if id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return panopticonDedupeSortedIDs(ids)
+}
+
+func panopticonDedupeSortedIDs(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func panopticonCasePayloadObjects(payload map[string]interface{}, key string) []map[string]interface{} {
+	switch typed := payload[key].(type) {
+	case []map[string]interface{}:
+		return typed
+	case []interface{}:
+		objects := make([]map[string]interface{}, 0, len(typed))
+		for _, item := range typed {
+			if object, ok := item.(map[string]interface{}); ok {
+				objects = append(objects, object)
+			}
+		}
+		return objects
+	case map[string]interface{}:
+		return []map[string]interface{}{typed}
+	default:
+		return nil
+	}
+}
+
+// panopticonCaseEvidenceCASPaths emits graph-visible correlation paths from a
+// Panopticon case to the canonical Evidence CAS object projections so the case
+// finding deterministically joins its evidence references to Evidence CAS state.
+func panopticonCaseEvidenceCASPaths(event *cerebrov1.EventEnvelope, caseID string, caseTitle string, caseURN string, objectIDs []string) []*cerebrov1.GraphEvidencePath {
+	caseURN = strings.TrimSpace(caseURN)
+	if caseURN == "" || len(objectIDs) == 0 {
+		return nil
+	}
+	tenantID := ""
+	if event != nil {
+		tenantID = strings.TrimSpace(event.GetTenantId())
+	}
+	if tenantID == "" {
+		return nil
+	}
+	observedAt := ""
+	if event != nil && event.GetOccurredAt() != nil {
+		observedAt = event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339Nano)
+	}
+	seen := map[string]struct{}{}
+	paths := []*cerebrov1.GraphEvidencePath{}
+	for _, objectID := range objectIDs {
+		objectID = strings.TrimSpace(objectID)
+		if objectID == "" {
+			continue
+		}
+		if len(paths) >= maxPanopticonCaseAlertEvidencePaths {
+			break
+		}
+		objectURN := panopticonEvidenceCASObjectURN(tenantID, objectID)
+		if objectURN == "" {
+			continue
+		}
+		if _, ok := seen[objectURN]; ok {
+			continue
+		}
+		seen[objectURN] = struct{}{}
+		paths = append(paths, newGraphEvidencePath(
+			caseURN,
+			firstNonEmpty(caseTitle, caseID),
+			"panopticon.case",
+			"has_evidence",
+			objectURN,
+			objectID,
+			"runtime.evidence",
+			map[string]string{
+				"case_id":                 strings.TrimSpace(caseID),
+				"evidence_cas_object_id":  objectID,
+				"evidence_cas_object_urn": objectURN,
+				"observed_at":             observedAt,
+			},
+		))
+	}
+	return paths
+}
+
+func panopticonEvidenceCASObjectURN(tenantID string, objectID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	objectID = strings.TrimSpace(objectID)
+	if tenantID == "" || objectID == "" {
+		return ""
+	}
+	return fmt.Sprintf("urn:cerebro:%s:runtime_evidence:%s", tenantID, objectID)
 }
 
 func panopticonCaseSourceOpen(status string) bool {
