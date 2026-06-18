@@ -110,7 +110,6 @@ import (
 var catalogFS embed.FS
 
 var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
-var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
 	defaultFamily                            = familyCloudTrail
@@ -2706,6 +2705,9 @@ func awsFamily[T any](clientFactory awsClientFactory, options awsFamilyOptions[T
 }
 
 func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
+	if err := sourceconfig.ValidateAWSCredentialSource(settings.profile, settings.accessKeyID, settings.secretAccessKey, settings.sessionToken, settings.roleARN); err != nil {
+		return awsClients{}, err
+	}
 	options := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(settings.region)}
 	if settings.profile != "" {
 		options = append(options, awsconfig.WithSharedConfigProfile(settings.profile))
@@ -2858,7 +2860,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
 	if settings.roleARN != "" {
-		if err := validateAssumeRoleConfig(settings); err != nil {
+		if err := sourceconfig.ValidateAWSAssumeRoleBinding(settings.accountID, settings.tenantID, settings.roleARN, settings.assumeRoleARNs); err != nil {
 			return settings, err
 		}
 	} else if settings.externalID != "" {
@@ -2896,44 +2898,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("unsupported aws family %q", settings.family)
 	}
 	return settings, nil
-}
-
-func validateAssumeRoleConfig(settings settings) error {
-	matches := awsRoleARNPattern.FindStringSubmatch(settings.roleARN)
-	if len(matches) != 3 {
-		return fmt.Errorf("aws role_arn must be an IAM role ARN")
-	}
-	if matches[2] != settings.accountID {
-		return fmt.Errorf("aws role_arn account must match account_id")
-	}
-	if settings.tenantID == "" {
-		return fmt.Errorf("aws role_arn requires runtime tenant_id")
-	}
-	if !assumeRoleARNAllowed(settings.tenantID, settings.roleARN, settings.assumeRoleARNs) {
-		return fmt.Errorf("aws role_arn is not allowed")
-	}
-	return nil
-}
-
-func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) bool {
-	tenantID = strings.TrimSpace(tenantID)
-	roleARN = strings.TrimSpace(roleARN)
-	if tenantID == "" || roleARN == "" {
-		return false
-	}
-	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
-	}) {
-		value = strings.TrimSpace(value)
-		tenant, arn, ok := strings.Cut(value, "=")
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {
-			return true
-		}
-	}
-	return false
 }
 
 func listAccessKeys(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamtypes.AccessKeyMetadata, string, error) {

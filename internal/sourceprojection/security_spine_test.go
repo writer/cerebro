@@ -65,6 +65,36 @@ func TestProjectBackstageComponent(t *testing.T) {
 	assertProjectedLinkMissing(t, state, ownerURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:security")
 }
 
+func TestProjectBackstageComponentCanonicalizesEntityRef(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "evt-backstage-canonical",
+		TenantId: "writer",
+		SourceId: "backstage",
+		Kind:     "backstage.component",
+		Attributes: map[string]string{
+			"name":       "payments",
+			"namespace":  "default",
+			"kind":       "Component",
+			"entity_ref": "component:default/payments",
+			"type":       "service",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	serviceURN := "urn:cerebro:writer:service:component/default/payments"
+	entity := state.entities[serviceURN]
+	if entity == nil {
+		t.Fatalf("service entity %q missing from %#v", serviceURN, state.entities)
+	}
+	if got := entity.Attributes["backstage_entity_ref"]; got != "component/default/payments" {
+		t.Fatalf("backstage_entity_ref = %q, want canonical component/default/payments", got)
+	}
+}
+
 func TestProjectBackstageComponentLinksClassificationAndCriticality(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

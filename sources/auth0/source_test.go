@@ -3,6 +3,7 @@ package auth0
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -51,7 +52,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret", "domain": "example.test"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret", "domain": "tenant.auth0.com"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -98,7 +99,7 @@ func TestReadWithCheckpointUsesIncrementalWatermark(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret", "domain": "example.test"})
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret", "domain": "tenant.auth0.com"})
 	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("ReadWithCheckpoint() first error = %v", err)
@@ -119,5 +120,21 @@ func TestReadWithCheckpointUsesIncrementalWatermark(t *testing.T) {
 	}
 	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
 		t.Fatalf("second short circuit = %q, want %q", second.ShortCircuitReason, sourcecdk.PullShortCircuitReasonWatermarkReached)
+	}
+}
+
+func TestSourceRejectsNonAuth0Domain(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	err = source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"domain":        "attacker.example",
+		"client_id":     "client-id",
+		"client_secret": "client-secret",
+	}))
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Check() err = %v, want ErrInvalidConfig", err)
 	}
 }

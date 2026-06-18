@@ -223,7 +223,7 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 }
 
-func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
+func TestDeviceAuthRevokeNormalizesForeignDeviceLookup(t *testing.T) {
 	app := newAppForDeviceTest(t)
 	handler := app.Handler()
 	ctx := context.Background()
@@ -250,11 +250,11 @@ func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
-	if resp.Code != http.StatusForbidden {
+	if resp.Code != http.StatusNotFound {
 		t.Fatalf("revoke status = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	if !strings.Contains(resp.Body.String(), "tenant_forbidden") {
-		t.Fatalf("revoke body = %s, want tenant_forbidden", resp.Body.String())
+	if !strings.Contains(resp.Body.String(), "device_not_found") {
+		t.Fatalf("revoke body = %s, want device_not_found", resp.Body.String())
 	}
 	device, err := app.deviceService.LookupDevice(ctx, enroll.DeviceID)
 	if err != nil {

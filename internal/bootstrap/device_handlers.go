@@ -377,7 +377,7 @@ func (h *deviceAuthHTTPHandler) handleRevoke(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := authorizeTenantScopeRequired(r.Context(), device.TenantID); err != nil {
-		writeDeviceAuthError(w, http.StatusForbidden, "tenant_forbidden", err.Error())
+		writeDeviceAuthServiceError(w, deviceauth.ErrDeviceNotFound)
 		return
 	}
 	if err := h.service.Revoke(r.Context(), deviceID, body.Reason); err != nil {

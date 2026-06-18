@@ -25,7 +25,7 @@ func backstageComponentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	}
 	kind := firstNonEmpty(attrs["kind"], nestedString(payload, "kind"), "Component")
 	namespace := firstNonEmpty(attrs["namespace"], nestedString(payload, "metadata.namespace"), "default")
-	entityRef := firstNonEmpty(attrs["entity_ref"], backstageEntityRef(kind, namespace, name))
+	entityRef := canonicalBackstageEntityRef(firstNonEmpty(attrs["entity_ref"], backstageEntityRef(kind, namespace, name)), kind, namespace, name)
 	componentURN := projectionURN(tenantID, "service", strings.ToLower(entityRef))
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -432,6 +432,29 @@ func backstageComponentEntityType(componentType string) string {
 
 func backstageEntityRef(kind string, namespace string, name string) string {
 	return strings.ToLower(firstNonEmpty(kind, "Component")) + "/" + strings.ToLower(firstNonEmpty(namespace, "default")) + "/" + strings.ToLower(strings.TrimSpace(name))
+}
+
+func canonicalBackstageEntityRef(entityRef string, kind string, namespace string, name string) string {
+	value := strings.ToLower(strings.TrimSpace(entityRef))
+	if value == "" {
+		return backstageEntityRef(kind, namespace, name)
+	}
+	if colon := strings.Index(value, ":"); colon > 0 {
+		refKind := strings.TrimSpace(value[:colon])
+		remainder := strings.TrimSpace(value[colon+1:])
+		if slash := strings.Index(remainder, "/"); slash > 0 {
+			return refKind + "/" + strings.TrimSpace(remainder[:slash]) + "/" + strings.TrimSpace(remainder[slash+1:])
+		}
+		return refKind + "/default/" + remainder
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) == 3 {
+		return strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1]) + "/" + strings.TrimSpace(parts[2])
+	}
+	if len(parts) == 2 {
+		return strings.ToLower(firstNonEmpty(kind, "Component")) + "/" + strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1])
+	}
+	return value
 }
 
 func backstageAnnotation(payload map[string]any, key string) string {

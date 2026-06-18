@@ -94,6 +94,52 @@
       ]
     },
     {
+      "id": "cerebro-high-risk-api-access",
+      "pack_id": "cerebro",
+      "pack_name": "Cerebro",
+      "name": "Cerebro Active High-Risk API Access Posture",
+      "description": "Detect Cerebro principals that currently hold a granted, high-risk API access posture, such as a successful cross-tenant access or an access classified as high or critical risk, so the responsible credential or identity can be scoped down or revoked.",
+      "source_id": "cerebro",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "cerebro.api_access"
+      ],
+      "output_kind": "finding.cerebro_high_risk_api_access",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "access",
+        "api",
+        "authorization",
+        "cerebro",
+        "tenant-isolation"
+      ],
+      "references": [
+        "https://github.com/writer/cerebro/blob/main/docs/ARCHITECTURE.md"
+      ],
+      "false_positives": [
+        "Authorized administrative or support principals that intentionally hold elevated cross-tenant access under a documented, risk-accepted exception."
+      ],
+      "runbook": "Review the Cerebro principal and credential behind the high-risk access; revoke or scope down the credential, correct the tenant binding, or document a risk-accepted exception if the access is authorized.",
+      "required_attributes": [
+        "event_type"
+      ],
+      "fingerprint_fields": [
+        "cerebro_principal_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.3"
+        }
+      ]
+    },
+    {
       "id": "cloud-current-public-exposure-review-needed",
       "pack_id": "cloud",
       "pack_name": "Cloud",

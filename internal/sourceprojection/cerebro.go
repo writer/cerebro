@@ -86,7 +86,7 @@ func cerebroPrincipalLabel(attrs map[string]string) string {
 
 func cerebroPrincipalAttributes(attrs map[string]string) map[string]string {
 	out := map[string]string{"source_product": "cerebro"}
-	for _, key := range []string{"auth_mode", "client_id", "credential_id", "device_id", "effective_tenant_id", "principal", "principal_tenant_id", "risk_level", "risk_score", "scopes"} {
+	for _, key := range []string{"auth_mode", "client_id", "credential_id", "device_id", "effective_tenant_id", "principal", "principal_tenant_id", "requested_tenant_id", "risk_level", "risk_score", "scopes", "tenant_mismatch"} {
 		addProjectedAttribute(out, key, attrs[key])
 	}
 	return out
@@ -249,12 +249,25 @@ func cerebroEventLinkAttributes(event *cerebrov1.EventEnvelope, matchType string
 }
 
 func cerebroAccessAllowed(attrs map[string]string) bool {
+	if cerebroAccessDenied(attrs) {
+		return false
+	}
 	outcome := normalizeIdentifier(firstNonEmpty(attrs["outcome_result"], attrs["status"]))
-	if outcome == "allowed" || outcome == "allow" || outcome == "success" || outcome == "ok" {
+	if outcome == "allowed" || outcome == "allow" || outcome == "success" || outcome == "succeeded" || outcome == "ok" {
 		return true
 	}
 	status := strings.TrimSpace(firstNonEmpty(attrs["effective_status_code"], attrs["status_code"]))
 	return strings.HasPrefix(status, "2")
+}
+
+func cerebroAccessDenied(attrs map[string]string) bool {
+	outcome := normalizeIdentifier(firstNonEmpty(attrs["outcome_result"], attrs["status"]))
+	switch outcome {
+	case "denied", "deny", "blocked", "block", "forbidden", "unauthorized", "rejected", "reject", "failed", "failure", "error":
+		return true
+	default:
+		return strings.TrimSpace(attrs["denial_reason"]) != ""
+	}
 }
 
 func normalizeCerebroRouteID(value string) string {

@@ -99,6 +99,9 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 	if hasProcedureCall(tokens) {
 		return validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden"), 0, nil
 	}
+	if hasForbiddenExpansion(tokens) {
+		return validatorRefusal("expansion_not_allowed", "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden"), 0, nil
+	}
 	limit, ok := queryLimit(tokens)
 	if !ok {
 		return validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause"), 0, nil
@@ -414,6 +417,22 @@ func allNodePatternsTenantScoped(query string) bool {
 func hasProcedureCall(tokens []cypherToken) bool {
 	for i, token := range tokens {
 		if keywordToken(token, "CALL") && !symbolTokenAt(tokens, i+1, "{") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasForbiddenExpansion(tokens []cypherToken) bool {
+	for i, token := range tokens {
+		if keywordToken(token, "UNWIND") {
+			return true
+		}
+		if token.kind != cypherTokenIdentifier || !symbolTokenAt(tokens, i+1, "(") {
+			continue
+		}
+		switch strings.ToLower(token.text) {
+		case "range", "collect":
 			return true
 		}
 	}

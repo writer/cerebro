@@ -792,6 +792,41 @@ func TestSanitizeInternalAttributesKeepsOnlyBoundedScalars(t *testing.T) {
 	}
 }
 
+func TestSanitizeInternalAttributesDropsRawGraphAttributes(t *testing.T) {
+	type projectedNode struct {
+		Props map[string]any
+	}
+	rows := []map[string]any{{
+		"attributes_json":                  `{"secret":"raw"}`,
+		"finding_attributes_json":          `{"secret":"raw"}`,
+		"finding_attributes_json_internal": `{"severity":"HIGH"}`,
+		"node":                             projectedNode{Props: map[string]any{"urn": "urn:cerebro:writer:asset:alpha", "attributes_json": `{"secret":"raw"}`}},
+		"nested":                           map[string]any{"safe": "value", "attributes_json": `{"secret":"raw"}`},
+	}}
+
+	sanitizeInternalRowFields(rows)
+
+	row := rows[0]
+	for _, key := range []string{"attributes_json", "finding_attributes_json", "finding_attributes_json_internal"} {
+		if _, exists := row[key]; exists {
+			t.Fatalf("%s leaked in row: %#v", key, row)
+		}
+	}
+	if got := row["severity"]; got != "HIGH" {
+		t.Fatalf("severity = %q, want HIGH", got)
+	}
+	if got := row["node"]; got != redactedGraphRowValue {
+		t.Fatalf("node = %#v, want redacted graph value", got)
+	}
+	nested, ok := row["nested"].(map[string]any)
+	if !ok || nested["safe"] != "value" {
+		t.Fatalf("nested = %#v, want sanitized map", row["nested"])
+	}
+	if _, exists := nested["attributes_json"]; exists {
+		t.Fatalf("nested raw attributes leaked: %#v", nested)
+	}
+}
+
 func TestServiceRequiresTenantID(t *testing.T) {
 	service := NewService(&askStore{}, NewStubLLMClient(), ValidatorOptions{})
 	err := service.Stream(context.Background(), AskRequest{Question: "hello"}, func(Event) error { return nil })
