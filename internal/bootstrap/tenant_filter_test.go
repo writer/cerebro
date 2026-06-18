@@ -47,7 +47,7 @@ func TestScopeForHTTPRequestCoversPlatformJobAndRuntimeResponseReads(t *testing.
 		if err != nil {
 			t.Fatalf("NewRequest(%q) error = %v", path, err)
 		}
-		if got := scopeForHTTPRequest(request); got != scopeCosmoSecurityRead {
+		if got := httpRoutePolicyForRequest(request).Scope; got != scopeCosmoSecurityRead {
 			t.Fatalf("scopeForHTTPRequest(%s) = %q, want %q", path, got, scopeCosmoSecurityRead)
 		}
 	}
@@ -59,7 +59,7 @@ func TestPersonAccessPathsRouteUsesGraphReadScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest(%q) error = %v", path, err)
 	}
-	if got := scopeForHTTPRequest(request); got != scopeCosmoSecurityRead {
+	if got := httpRoutePolicyForRequest(request).Scope; got != scopeCosmoSecurityRead {
 		t.Fatalf("scopeForHTTPRequest(%s) = %q, want %q", path, got, scopeCosmoSecurityRead)
 	}
 	if !isKnownStaticAccessPath(path) {
@@ -72,7 +72,7 @@ func TestRuntimeResponseTrustedScopeIsServerDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest error = %v", err)
 	}
-	if got := scopeForHTTPRequest(request); got != scopeRuntimeResponseWrite {
+	if got := httpRoutePolicyForRequest(request).Scope; got != scopeRuntimeResponseWrite {
 		t.Fatalf("scopeForHTTPRequest(runtime response action) = %q, want %q", got, scopeRuntimeResponseWrite)
 	}
 
@@ -105,7 +105,7 @@ func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewRequest error = %v", err)
 		}
-		if got := scopeForHTTPRequest(request); got != scopeGRCInventoryWrite {
+		if got := httpRoutePolicyForRequest(request).Scope; got != scopeGRCInventoryWrite {
 			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tc.method, tc.path, got, scopeGRCInventoryWrite)
 		}
 	}
