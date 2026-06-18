@@ -674,10 +674,6 @@ func isConnectProcedurePath(path string) bool {
 	return strings.HasPrefix(path, "/cerebro.v1.BootstrapService/")
 }
 
-func scopeForHTTPRequest(r *http.Request) string {
-	return httpRoutePolicyForRequest(r).Scope
-}
-
 func tenantIDFromMetadata(metadata map[string]any) string {
 	if len(metadata) == 0 {
 		return ""
