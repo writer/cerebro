@@ -311,10 +311,19 @@ def run_deepsec_scan(files: list[str], lines_by_file: dict[str, set[int]]) -> To
     run = latest_deepsec_scan_run(workspace, project_id, run_id)
     if not run:
         return ToolResult("deepsec", scope, "error", [], ["DeepSec scan completed but no scan run record was found."])
+    effective_run_id = str(run.get("runId") or run_id or "").strip()
+    if not effective_run_id:
+        return ToolResult(
+            "deepsec",
+            scope,
+            "error",
+            [],
+            ["DeepSec scan completed but no concrete scan run id was found; refusing to mix historical candidates."],
+        )
     findings, notes = collect_deepsec_scan_context(
         workspace,
         project_id,
-        str(run.get("runId") or run_id or ""),
+        effective_run_id,
         files,
         lines_by_file,
         context_limit,
@@ -358,6 +367,9 @@ def collect_deepsec_scan_context(
     limit: int = DEFAULT_DEEPSEC_CONTEXT_LIMIT,
 ) -> tuple[list[dict[str, object]], list[str]]:
     files_dir = workspace / "data" / project_id / "files"
+    run_id = str(run_id).strip()
+    if not run_id:
+        return [], ["DeepSec scan run id is missing; no historical candidates were included."]
     changed_files = {normalize_repo_path(path) for path in files}
     total_candidates = 0
     files_with_candidates = 0
@@ -367,7 +379,7 @@ def collect_deepsec_scan_context(
         record = read_json_object(path)
         if not record:
             continue
-        if run_id and record.get("lastScannedRunId") != run_id:
+        if record.get("lastScannedRunId") != run_id:
             continue
         file_path = normalize_repo_path(str(record.get("filePath") or ""))
         candidates = record.get("candidates") if isinstance(record.get("candidates"), list) else []
@@ -384,7 +396,7 @@ def collect_deepsec_scan_context(
             changed_candidate_lines = sorted(set(candidate_lines).intersection(lines_by_file.get(file_path, set())))
             line = min(candidate_lines) if candidate_lines else None
             changed_line = bool(changed_candidate_lines)
-            rule = str(candidate.get("vulnSlug") or "candidate")
+            rule = deepsec_rule_id(candidate)
             base_message = deepsec_candidate_message(candidate)
             message = base_message
             if changed_candidate_lines and line not in changed_candidate_lines:
@@ -456,11 +468,14 @@ def deepsec_candidate_lines(candidate: dict[str, object]) -> list[int]:
 
 
 def deepsec_candidate_message(candidate: dict[str, object]) -> str:
-    matched = compact_text(str(candidate.get("matchedPattern") or ""))
-    if matched:
-        return matched[:240]
-    snippet = compact_text(str(candidate.get("snippet") or ""))
-    return snippet[:240] if snippet else "DeepSec candidate signal"
+    rule = deepsec_rule_id(candidate)
+    return f"DeepSec candidate signal for `{rule}`; source snippets withheld from AI context."
+
+
+def deepsec_rule_id(candidate: dict[str, object]) -> str:
+    value = compact_text(str(candidate.get("vulnSlug") or "candidate"))
+    value = re.sub(r"[^A-Za-z0-9_.:-]+", "-", value).strip("-")
+    return value[:80] if value else "candidate"
 
 
 def compact_text(value: str) -> str:
