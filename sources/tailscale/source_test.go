@@ -38,8 +38,8 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 			name:     "tailnet",
 			family:   "tailnet",
 			kind:     "tailscale.tailnet",
-			path:     "/tailnet/-/settings",
-			response: map[string]any{"id": "writer.com", "devicesApprovalOn": false, "usersApprovalOn": true, "networkFlowLoggingOn": true, "regionalRoutingOn": false, "maxKeyDurationDays": 90},
+			path:     "/tailnet/writer.com/settings",
+			response: map[string]any{"devicesApprovalOn": false, "usersApprovalOn": true, "networkFlowLoggingOn": true, "regionalRoutingOn": false, "maxKeyDurationDays": 90},
 			want:     map[string]string{"tailnet": "writer.com", "devices_approval_on": "false", "users_approval_on": "true", "regional_routing_on": "false", "max_key_duration_days": "90"},
 		},
 		{
@@ -105,7 +105,7 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "token": "token-1"}
+			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "writer", "tailnet": "writer.com", "token": "token-1"}
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
