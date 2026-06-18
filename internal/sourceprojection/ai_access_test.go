@@ -192,3 +192,57 @@ func TestProjectAnthropicWorkspaceCredentialFederationAndComplianceEdges(t *test
 	assertProjectedLink(t, state, ruleURN, relationCanImpersonate, serviceAccountURN)
 	assertProjectedLink(t, state, userURN, relationActedOn, orgURN)
 }
+
+func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.June, 18, 14, 0, 0, 0, time.UTC)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "anthropic-compliance-group",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_group",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":            "compliance_group",
+				"group_id":          "rbac_group_123",
+				"group_name":        "Engineering",
+				"organization_uuid": "org-uuid-1",
+				"source_type":       "scim",
+				"roles":             "rbac_role_123",
+			},
+		},
+		{
+			Id:         "anthropic-compliance-group-member",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.compliance_group_member",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"email":    "carol@example.com",
+				"family":   "compliance_group_member",
+				"group_id": "rbac_group_123",
+				"user_id":  "user_789",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	userURN := "urn:cerebro:writer:anthropic_user:user_789"
+	groupURN := "urn:cerebro:writer:anthropic_group:rbac_group_123"
+	orgURN := "urn:cerebro:writer:anthropic_org:org-uuid-1"
+	identityURN := "urn:cerebro:writer:identity:email:carol@example.com"
+
+	if entity := state.entities[groupURN]; entity == nil || entity.EntityType != "anthropic.group" {
+		t.Fatalf("group entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, groupURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, userURN, relationMemberOf, groupURN)
+}
