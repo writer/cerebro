@@ -68,6 +68,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -95,6 +99,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 {
 		t.Fatalf("GraphAgentLLM = %#v, want empty/default", cfg.GraphAgentLLM)
+	}
+	if cfg.GraphActions.AccessApprovals.Timeout != 10*time.Second || cfg.GraphActions.AccessApprovals.BaseURL != "" || cfg.GraphActions.AccessApprovals.BearerToken != "" {
+		t.Fatalf("GraphActions.AccessApprovals defaults = %#v", cfg.GraphActions.AccessApprovals)
 	}
 	if cfg.OTEL.Enabled || cfg.OTEL.Protocol != "http/protobuf" || cfg.OTEL.TraceSampleRate != 1 || cfg.OTEL.MetricInterval != time.Minute {
 		t.Fatalf("OTEL defaults = %#v", cfg.OTEL)
@@ -200,6 +207,10 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "limited preview")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "https://access.example.com/request?source={source_id}&tenant={tenant_id}")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "Request in Access Hub")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL", "https://access-approvals.example.com/")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "graph-action-token")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", "7s")
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "aws_secrets_manager,infisical")
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "us-east-1")
@@ -318,6 +329,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.ConnectorAccess.RequestAccessAction != "Request in Access Hub" {
 		t.Fatalf("ConnectorAccess.RequestAccessAction = %q, want configured request action", cfg.ConnectorAccess.RequestAccessAction)
+	}
+	if cfg.GraphActions.AccessApprovals.BaseURL != "https://access-approvals.example.com" || cfg.GraphActions.AccessApprovals.BearerToken != "graph-action-token" || cfg.GraphActions.AccessApprovals.Timeout != 7*time.Second {
+		t.Fatalf("GraphActions.AccessApprovals = %#v, want configured access-approvals target", cfg.GraphActions.AccessApprovals)
 	}
 	if cfg.ConnectorSecretStores.AWSSecretsManager.Region != "us-east-1" ||
 		cfg.ConnectorSecretStores.AWSSecretsManager.Profile != "cerebro-security" ||
@@ -537,6 +551,10 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CONNECTOR_RESTRICTION_REASON", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_URL", "")
 	t.Setenv("CEREBRO_CONNECTOR_REQUEST_ACCESS_ACTION", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
+	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "")

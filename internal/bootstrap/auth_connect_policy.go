@@ -10,6 +10,7 @@ const (
 	scopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
 	scopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
 	scopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
+	scopeGraphActionsWrite         = "cerebro.graph_actions.write"
 )
 
 type connectProcedureAuthPolicy struct {
@@ -60,6 +61,8 @@ func connectProcedurePolicyFor(procedure string) connectProcedureAuthPolicy {
 		cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure,
 		cerebrov1connect.BootstrapServiceLinkFindingExternalRefProcedure:
 		return connectProcedureAuthPolicy{Scope: scopeFindingLifecycleWrite}
+	case cerebrov1connect.BootstrapServiceExecuteGraphActionProcedure:
+		return connectProcedureAuthPolicy{Scope: scopeGraphActionsWrite}
 	case cerebrov1connect.BootstrapServiceRunReportProcedure,
 		cerebrov1connect.BootstrapServiceCheckSourceProcedure,
 		cerebrov1connect.BootstrapServiceDiscoverSourceProcedure,

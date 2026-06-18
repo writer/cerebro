@@ -173,6 +173,7 @@ Current route scopes include:
 | `cerebro.findings.write` | Resolve, suppress, assign, set due dates, add notes, and link tickets on findings. |
 | `cerebro.grc.inventory.write` | Mutate GRC inventory scope, reports, and triage state. |
 | `cerebro.runtime_response.write` | Execute runtime response actions and revoke runtime blocklist entries. |
+| `cerebro.graph_actions.write` | Execute provider-backed graph actions such as access-approvals Okta user suspend/unsuspend. |
 
 ## Public origin
 

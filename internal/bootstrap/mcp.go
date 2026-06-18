@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
@@ -1668,12 +1669,50 @@ func (app *App) mcpProposeFindingAction(r *http.Request, args map[string]any) (a
 		if mcpStringArg(args, "ticket_url") == "" && mcpStringArg(args, "ticket_id") == "" {
 			return nil, fmt.Errorf("%w: ticket_url or ticket_id is required for link_ticket", errInvalidHTTPRequest)
 		}
+	case "execute_graph_action":
+		graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+		target := strings.TrimSpace(mcpStringArg(args, "target"))
+		if target == "" {
+			target = mcpStringArg(args, "email_or_user_id")
+		}
+		if _, err := graphactions.TargetForAction(graphAction, finding, target); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("%w: unsupported action %q", errInvalidHTTPRequest, action)
 	}
 	proposal := findingapi.NewMCPActionProposal(findingapi.MCPArguments(args), findingID, action)
 	mcpApplyExternalLifecycleProposal(proposal, finding, action)
+	mcpApplyGraphActionProposal(proposal, finding, action, args)
 	return proposal, nil
+}
+
+func mcpApplyGraphActionProposal(proposal findingapi.MCPActionProposalPayload, finding *ports.FindingRecord, action string, args map[string]any) {
+	if action != "execute_graph_action" {
+		return
+	}
+	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+	targetArg := strings.TrimSpace(mcpStringArg(args, "target"))
+	if targetArg == "" {
+		targetArg = mcpStringArg(args, "email_or_user_id")
+	}
+	target, err := graphactions.TargetForAction(graphAction, finding, targetArg)
+	if err != nil {
+		return
+	}
+	findingID := strings.TrimSpace(proposal["finding_id"].(string))
+	endpoint := "/platform/graph/actions"
+	proposal["graph_action"] = graphAction
+	proposal["target"] = target
+	proposal["endpoint"] = endpoint
+	proposal["idempotency_key"] = graphactions.IdempotencyKey(graphAction, findingID, target)
+	proposal["recommended_action"] = "POST " + endpoint
+	proposal["required_scope"] = scopeGraphActionsWrite
+	proposal["approval_required"] = true
+	proposal["handoff_required"] = true
+	proposal["external_system"] = graphactions.ProviderAccessApprovals
+	proposal["external_ref_kind"] = graphactions.RefKind
+	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
 }
 
 func mcpApplyExternalLifecycleProposal(proposal findingapi.MCPActionProposalPayload, finding *ports.FindingRecord, action string) {
