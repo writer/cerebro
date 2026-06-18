@@ -25,16 +25,8 @@ func TestDeepSecConfigKeepsSecurityCriticalSurfacesInScope(t *testing.T) {
 		if normalized == "" {
 			continue
 		}
-		for _, forbidden := range []string{
-			".github/",
-			"api/",
-			"docs/",
-			"internal/",
-			"policies/",
-			"sources/",
-			"tools/",
-		} {
-			if ignorePathCoversDeepSecSurface(normalized, forbidden) {
+		for _, forbidden := range deepsecSecurityCriticalSurfaces() {
+			if deepsecIgnorePathTouchesSurface(normalized, forbidden) {
 				t.Fatalf("deepsec ignorePaths excludes security-critical surface %q via %q", forbidden, normalized)
 			}
 		}
@@ -67,32 +59,49 @@ func TestDeepSecConfigKeepsSecurityCriticalSurfacesInScope(t *testing.T) {
 	}
 }
 
-func ignorePathCoversDeepSecSurface(pattern string, surface string) bool {
-	normalized := strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(pattern)), "./")
-	surface = filepath.ToSlash(strings.TrimSpace(surface))
+func TestDeepSecIgnorePathSurfaceDetectionCatchesGlobBypasses(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		ignored   string
+		forbidden string
+		want      bool
+	}{
+		{name: "direct internal", ignored: "internal/**", forbidden: "internal/", want: true},
+		{name: "glob-prefixed internal", ignored: "**/internal/**", forbidden: "internal/", want: true},
+		{name: "nested api", ignored: "foo/api/**", forbidden: "api/", want: true},
+		{name: "root github", ignored: "/.github/workflows/**", forbidden: ".github/", want: true},
+		{name: "allowed vendor", ignored: "vendor/**", forbidden: "internal/"},
+		{name: "allowed data", ignored: ".deepsec/data/**", forbidden: "docs/"},
+		{name: "substring is not segment", ignored: "notinternal/**", forbidden: "internal/"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deepsecIgnorePathTouchesSurface(tt.ignored, tt.forbidden); got != tt.want {
+				t.Fatalf("deepsecIgnorePathTouchesSurface(%q, %q) = %v, want %v", tt.ignored, tt.forbidden, got, tt.want)
+			}
+		})
+	}
+}
+
+func deepsecSecurityCriticalSurfaces() []string {
+	return []string{
+		".github/",
+		"api/",
+		"docs/",
+		"internal/",
+		"policies/",
+		"sources/",
+		"tools/",
+	}
+}
+
+func deepsecIgnorePathTouchesSurface(ignored string, forbidden string) bool {
+	normalized := strings.Trim(strings.ReplaceAll(strings.TrimSpace(ignored), "\\", "/"), "/")
+	surface := strings.Trim(strings.TrimSpace(forbidden), "/")
 	if normalized == "" || surface == "" {
 		return false
 	}
-	if strings.HasPrefix(normalized, surface) {
+	if normalized == surface || strings.HasPrefix(normalized, surface+"/") {
 		return true
 	}
-	for strings.HasPrefix(normalized, "**/") {
-		normalized = strings.TrimPrefix(normalized, "**/")
-		if strings.HasPrefix(normalized, surface) {
-			return true
-		}
-	}
-	return strings.Contains(normalized, "/"+surface)
-}
-
-func TestIgnorePathCoversDeepSecSurfaceDetectsGlobBypass(t *testing.T) {
-	if !ignorePathCoversDeepSecSurface("**/internal/**", "internal/") {
-		t.Fatal("glob-prefixed internal ignore path was not detected")
-	}
-	if !ignorePathCoversDeepSecSurface("foo/tools/**", "tools/") {
-		t.Fatal("nested tools ignore path was not detected")
-	}
-	if ignorePathCoversDeepSecSurface("tmp/internal-not-surface/**", "internal/") {
-		t.Fatal("non-surface segment was treated as ignored internal surface")
-	}
+	return strings.Contains(normalized, "/"+surface+"/") || strings.HasSuffix(normalized, "/"+surface)
 }
