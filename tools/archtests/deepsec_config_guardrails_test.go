@@ -112,6 +112,16 @@ func TestDeepSecCharacterClassOptionsExpandsWideRanges(t *testing.T) {
 			t.Fatalf("deepsecCharacterClassOptions(%q) missing %q in %v", "0-z", want, options)
 		}
 	}
+
+	maxByteOptions := deepsecCharacterClassOptions(string([]byte{'a', '-', 0xff}))
+	maxByte := string(rune(0xff))
+	seen = map[string]bool{}
+	for _, option := range maxByteOptions {
+		seen[option] = true
+	}
+	if !seen["a"] || !seen[maxByte] {
+		t.Fatalf("deepsecCharacterClassOptions(a-0xff) missing range endpoints; has a=%v has 0xff=%v len=%d", seen["a"], seen[maxByte], len(maxByteOptions))
+	}
 }
 
 func deepsecSecurityCriticalSurfaces() []string {
@@ -302,8 +312,8 @@ func deepsecCharacterClassOptions(group string) []string {
 	}
 	for i := 0; i < len(group); i++ {
 		if i+2 < len(group) && group[i+1] == '-' && group[i] <= group[i+2] {
-			for value := group[i]; value <= group[i+2]; value++ {
-				add(value)
+			for value := int(group[i]); value <= int(group[i+2]); value++ {
+				add(byte(value))
 			}
 			i += 2
 			continue
