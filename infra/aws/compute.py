@@ -471,6 +471,9 @@ def _source_runtime_environment(environment: dict, source_runtimes: list[dict]) 
     role_entries = _source_runtime_aws_role_entries(source_runtimes or [])
     if role_entries and not merged.get("CEREBRO_AWS_ASSUME_ROLE_ARNS"):
         merged["CEREBRO_AWS_ASSUME_ROLE_ARNS"] = ",".join(role_entries)
+    wif_entries = _source_runtime_gcp_wif_entries(source_runtimes or [])
+    if wif_entries and not merged.get("CEREBRO_GCP_WIF_BINDINGS"):
+        merged["CEREBRO_GCP_WIF_BINDINGS"] = ",".join(wif_entries)
     return merged
 
 
@@ -500,6 +503,22 @@ def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
         if role_arn:
             role_entries.add(f"{tenant_id}={role_arn}")
     return sorted(role_entries)
+
+
+def _source_runtime_gcp_wif_entries(source_runtimes: list[dict]) -> list[str]:
+    wif_entries = set()
+    for runtime in source_runtimes:
+        tenant_id = _runtime_field(runtime, "tenantId", "tenant_id")
+        if not tenant_id:
+            continue
+        runtime_config = runtime.get("config") or {}
+        if not isinstance(runtime_config, dict):
+            continue
+        audience = str(runtime_config.get("wif_audience", "")).strip()
+        service_account = str(runtime_config.get("wif_service_account_email", "")).strip()
+        if audience and service_account:
+            wif_entries.add(f"{tenant_id}={audience}|{service_account}")
+    return sorted(wif_entries)
 
 
 def _source_runtime_aws_role_arns(source_runtimes: list[dict]) -> list[str]:

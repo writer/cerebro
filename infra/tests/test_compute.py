@@ -38,6 +38,31 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
         )
         self.assertEqual(env["CEREBRO_AWS_ASSUME_ROLE_ARNS"], "custom=arn:aws:iam::999999999999:role/custom")
 
+    def test_adds_gcp_wif_bindings_from_source_runtimes(self) -> None:
+        audience = "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws"
+        service_account = "scanner@writer-iam.iam.gserviceaccount.com"
+        env = compute._source_runtime_environment(
+            {"CEREBRO_ENVIRONMENT": "sec-dev"},
+            [
+                {"sourceId": "gcp", "tenantId": "writer", "config": {"wif_audience": audience, "wif_service_account_email": service_account}},
+                {"sourceId": "gcp", "tenantId": "writer", "config": {"wif_audience": audience, "wif_service_account_email": service_account}},
+                {"sourceId": "gcp", "tenantId": "other", "config": {"wif_audience": "aud-other", "wif_service_account_email": "scanner@other.example"}},
+                {"sourceId": "gcp", "config": {"wif_audience": "ignored-without-tenant", "wif_service_account_email": service_account}},
+            ],
+        )
+        self.assertEqual(
+            env["CEREBRO_GCP_WIF_BINDINGS"],
+            "other=aud-other|scanner@other.example,writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com",
+        )
+        self.assertEqual(env["CEREBRO_ENVIRONMENT"], "sec-dev")
+
+    def test_preserves_explicit_gcp_wif_bindings(self) -> None:
+        env = compute._source_runtime_environment(
+            {"CEREBRO_GCP_WIF_BINDINGS": "writer=aud|scanner@example.com"},
+            [{"sourceId": "gcp", "tenantId": "writer", "config": {"wif_audience": "other-aud", "wif_service_account_email": "other@example.com"}}],
+        )
+        self.assertEqual(env["CEREBRO_GCP_WIF_BINDINGS"], "writer=aud|scanner@example.com")
+
     def test_extracts_distinct_role_arns_from_source_runtimes(self) -> None:
         self.assertEqual(
             compute._source_runtime_aws_role_arns(
