@@ -47,6 +47,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"auth0.audit_events":                            auth0AuditEventsProjections,
 	"auth0.roles":                                   auth0RolesProjections,
 	"auth0.users":                                   auth0UsersProjections,
+	"archetype.scan":                                archetypeScanProjections,
+	"archetype.vulnerability":                       archetypeVulnerabilityProjections,
 	"aurelius.catalog_promotion":                    aureliusCatalogPromotionProjections,
 	"aurelius.finding":                              aureliusFindingProjections,
 	"aurelius.image_scan":                           aureliusImageScanProjections,

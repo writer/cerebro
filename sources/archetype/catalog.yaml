@@ -1,0 +1,31 @@
+id: archetype
+name: Archetype
+description: Archetype code security scan lifecycle and vulnerability findings.
+emitted_kinds:
+  - archetype.scan
+  - archetype.vulnerability
+coverage_contract:
+  owner_domain: code_security
+  authority_domain: archetype
+  dimensions:
+    - id: scans
+      type: lifecycle_state
+      title: Archetype scan lifecycle
+      families: [scan]
+      support: supported
+      high_value: true
+    - id: vulnerabilities
+      type: entity_family
+      title: Archetype code vulnerabilities
+      families: [vulnerability]
+      support: supported
+      high_value: true
+event_contracts:
+  - kind: archetype.scan
+    schema_ref: archetype/scan/v1
+    required_attributes: [scan_id, repository_id, status]
+    required_payload_fields: [id, repository_id, status]
+  - kind: archetype.vulnerability
+    schema_ref: archetype/vulnerability/v1
+    required_attributes: [vulnerability_id, scan_id, severity, category, file_path]
+    required_payload_fields: [id, scan_id, severity, category, file_path]
