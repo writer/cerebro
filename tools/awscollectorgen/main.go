@@ -70,7 +70,7 @@ func run(args []string) error {
 		return nil
 	}
 	for _, update := range updates {
-		if err := os.WriteFile(update.path, update.content, 0o644); err != nil {
+		if err := os.WriteFile(update.path, update.content, 0o644); err != nil { // #nosec G306 -- generated source/catalog files use normal repository permissions.
 			return fmt.Errorf("write %s: %w", update.path, err)
 		}
 	}
@@ -109,7 +109,11 @@ func readAWSImplementationFiles(awsDir string) (string, error) {
 		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(awsDir, name))
+		path, err := safeChildPath(awsDir, name)
+		if err != nil {
+			return "", err
+		}
+		body, err := os.ReadFile(path) // #nosec G304,G703 -- name comes from os.ReadDir and safeChildPath rejects escapes.
 		if err != nil {
 			return "", fmt.Errorf("read %s: %w", name, err)
 		}
@@ -117,6 +121,21 @@ func readAWSImplementationFiles(awsDir string) (string, error) {
 		b.WriteByte('\n')
 	}
 	return b.String(), nil
+}
+
+func safeChildPath(dir, name string) (string, error) {
+	if name == "" || name != filepath.Base(name) || filepath.IsAbs(name) {
+		return "", fmt.Errorf("unsafe child path %q", name)
+	}
+	path := filepath.Join(dir, name)
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return "", fmt.Errorf("relativize %s: %w", path, err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("unsafe child path %q", name)
+	}
+	return path, nil
 }
 
 func ensureNotAlreadyWired(root, awsDir string, n names) error {
