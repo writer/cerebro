@@ -61,6 +61,7 @@ This repository is intentionally narrow: it deploys and operates Cerebro for Wri
 | `.github/workflows/source-runtime-drift.yml` | Scheduled/manual source runtime coverage and drift checks. |
 | `.github/workflows/graph-health-insight.yml` | Runs deep graph health insight after successful infra deploys or manual dispatch. |
 | `.github/workflows/closeout.yml` | Dispatches audited bulk closeout ECS tasks. |
+| `docs/OBSERVABILITY.md` | OTEL deployment config, secret mounting, validation, and post-deploy checks. |
 | `docs/SOURCE_ONBOARDING.md` | Canonical runbook for adding or changing source runtime instances. |
 | `docs/EVIDENCE_CAS_REFERENCES.md` | Integration contract for carrying EvidenceCAS pointers as source evidence without materializing payloads. |
 | `infra/aws` | AWS Pulumi program for networking, compute, storage, auth, monitoring, and runtime bootstrap. |
@@ -105,6 +106,7 @@ NDJSON archives only; legacy claims-NDJSON import is not supported.
 | Change AWS stack config | Edit `infra/aws/Pulumi.<stack>.yaml`. | Run stack validation and review Pulumi preview for only intended resources. |
 | Change GCP WIF/scanner IAM | Edit `infra/gcp/Pulumi.<stack>.yaml` or `infra/gcp`. | Run GCP config validation and the relevant Pulumi preview. |
 | Add or change a source runtime | Follow `docs/SOURCE_ONBOARDING.md`. | Run stack validation, preview the target stack, then verify source runtime and graph health after deploy. |
+| Enable OTEL export | Follow `docs/OBSERVABILITY.md` and provision the OTLP header secret first. | Run stack validation, preview ECS task definition env/secrets, then verify trace ids in CloudWatch and collector spans. |
 | Update Panopticon exports | Coordinate with the Panopticon Pulumi export outputs, then update `cerebro:s3Sources`, source runtimes, and schedules for the target stack. | Run stack validation plus the Panopticon cross-repo contract test before deploy. |
 | Investigate source runtime drift | Dispatch `.github/workflows/source-runtime-drift.yml`. | Review coverage/drift artifacts and reconcile stack config or runtime state. |
 | Investigate graph health | Dispatch `.github/workflows/graph-health-insight.yml` or use deploy verification outputs. | Treat regressions as deploy blockers until explained or intentionally accepted. |

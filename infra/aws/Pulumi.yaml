@@ -29,6 +29,50 @@ config:
     type: string
     default: v1.0.0
     description: Container image tag deployed to ECS
+  cerebro:otelEnabled:
+    type: boolean
+    default: false
+    description: Enable OTLP trace and metric export for the Cerebro API task
+  cerebro:otelServiceName:
+    type: string
+    default: cerebro-api
+    description: OTEL service.name for the Cerebro API task
+  cerebro:otelExporterOtlpProtocol:
+    type: string
+    default: http/protobuf
+    description: OTLP exporter protocol; supported values are http/protobuf and grpc
+  cerebro:otelExporterOtlpEndpoint:
+    type: string
+    default: ""
+    description: Base OTLP endpoint for trace and metric export
+  cerebro:otelExporterOtlpTracesEndpoint:
+    type: string
+    default: ""
+    description: Optional OTLP traces endpoint override
+  cerebro:otelExporterOtlpMetricsEndpoint:
+    type: string
+    default: ""
+    description: Optional OTLP metrics endpoint override
+  cerebro:otelExporterOtlpHeadersSecretName:
+    type: string
+    default: ""
+    description: Infisical/AWS Secrets Manager key mounted as CEREBRO_OTEL_EXPORTER_OTLP_HEADERS; use for collector/vendor auth headers
+  cerebro:otelExporterOtlpInsecure:
+    type: boolean
+    default: false
+    description: Allow insecure OTLP exporter transport
+  cerebro:otelTracesSampleRate:
+    type: number
+    default: 1
+    description: OTEL trace sample rate from 0 to 1
+  cerebro:otelMetricsExportInterval:
+    type: string
+    default: 60s
+    description: OTEL metric export interval duration
+  cerebro:otelResourceAttributes:
+    type: string
+    default: ""
+    description: Additional OTEL_RESOURCE_ATTRIBUTES appended after deployment.environment
   cerebro:webEnabled:
     type: boolean
     default: false

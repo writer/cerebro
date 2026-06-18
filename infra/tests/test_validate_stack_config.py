@@ -534,6 +534,33 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK + "  cerebro:monthlyCostBudgetLimitUsd: -1\n"
         self.assertTrue(any("monthlyCostBudgetLimitUsd" in finding.path for finding in self._validate(content)))
 
+    def test_otel_enabled_requires_exporter_endpoint(self) -> None:
+        content = BASE_STACK + "  cerebro:otelEnabled: true\n"
+        self.assertTrue(any("otelEnabled requires an OTLP endpoint" in message for message in self._messages(content)))
+
+    def test_otel_rejects_inline_headers_and_bad_sample_rate(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:otelExporterOtlpProtocol: zipkin\n"
+            "  cerebro:otelTracesSampleRate: 1.5\n"
+            "  cerebro:otelExporterOtlpHeadersSecretName: api-key=secret\n"
+            "  cerebro:otelExporterOtlpHeaders: api-key=secret\n"
+        )
+        messages = self._messages(content)
+        self.assertTrue(any("OTLP protocol must be http/protobuf or grpc" in message for message in messages))
+        self.assertTrue(any("sample rate must be a number from 0 to 1" in message for message in messages))
+        self.assertTrue(any("provided by secret name" in message for message in messages))
+        self.assertTrue(any("plain OTLP header config is forbidden" in message for message in messages))
+
+    def test_otel_accepts_endpoint_secret_and_fractional_sample_rate(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:otelEnabled: true\n"
+            "  cerebro:otelExporterOtlpProtocol: http/protobuf\n"
+            "  cerebro:otelExporterOtlpEndpoint: https://otel-collector.example.test\n"
+            "  cerebro:otelExporterOtlpHeadersSecretName: CEREBRO_OTEL_EXPORTER_OTLP_HEADERS\n"
+            "  cerebro:otelTracesSampleRate: 0.25\n"
+        )
+        self.assertFalse(any("otel" in finding.path and finding.severity == "error" for finding in self._validate(content)))
+
     def test_orchestrator_buffer_requires_step_functions(self) -> None:
         content = BASE_STACK + "  cerebro:orchestratorSqsBufferEnabled: true\n"
         self.assertTrue(any("requires orchestratorStepFunctionsEnabled" in message for message in self._messages(content)))

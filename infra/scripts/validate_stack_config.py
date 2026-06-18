@@ -191,6 +191,7 @@ PANOPTICON_FORBIDDEN_CONFIG_RE = re.compile(
 )
 OBSERVABILITY_STATUS_MODEL = ["success", "failure", "stale", "disabled", "unknown", "not_configured"]
 OBSERVABILITY_SOURCE_SYSTEMS = {"evidence_cas", "okta", "panopticon"}
+OTEL_EXPORTER_PROTOCOLS = {"http/protobuf", "grpc"}
 NEO4J_GENERATED_RUNTIME_SECRET_KEYS = {
     "CEREBRO_NEO4J_URI",
     "CEREBRO_NEO4J_USERNAME",
@@ -1386,6 +1387,70 @@ def _validate_mcp_oauth_contract(stack: str, config: dict[str, Any], findings: l
         )
 
 
+def _validate_otel_config(stack: str, config: dict[str, Any], findings: list[Finding]) -> None:
+    protocol = str(config.get("otelExporterOtlpProtocol") or "").strip()
+    if protocol and protocol not in OTEL_EXPORTER_PROTOCOLS:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:otelExporterOtlpProtocol",
+                "OTLP protocol must be http/protobuf or grpc",
+            )
+        )
+
+    endpoints = [
+        str(config.get("otelExporterOtlpEndpoint") or "").strip(),
+        str(config.get("otelExporterOtlpTracesEndpoint") or "").strip(),
+        str(config.get("otelExporterOtlpMetricsEndpoint") or "").strip(),
+    ]
+    if config.get("otelEnabled") is True and not any(endpoints):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:otelEnabled",
+                "otelEnabled requires an OTLP endpoint, traces endpoint, or metrics endpoint",
+            )
+        )
+
+    sample_rate = config.get("otelTracesSampleRate")
+    if sample_rate is not None and (
+        isinstance(sample_rate, bool)
+        or not isinstance(sample_rate, int | float)
+        or sample_rate < 0
+        or sample_rate > 1
+    ):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:otelTracesSampleRate",
+                "OTEL trace sample rate must be a number from 0 to 1",
+            )
+        )
+
+    headers_secret_name = str(config.get("otelExporterOtlpHeadersSecretName") or "").strip()
+    if headers_secret_name and ("=" in headers_secret_name or "," in headers_secret_name):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:otelExporterOtlpHeadersSecretName",
+                "OTLP headers must be provided by secret name, not inline header material",
+            )
+        )
+    if str(config.get("otelExporterOtlpHeaders") or "").strip():
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:otelExporterOtlpHeaders",
+                "plain OTLP header config is forbidden; use cerebro:otelExporterOtlpHeadersSecretName",
+            )
+        )
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -1400,6 +1465,8 @@ def validate_stack(path: Path) -> list[Finding]:
         findings.append(_finding("error", stack, "cerebro:imageTag", "image tag is required"))
     elif _parse_image_tag(image_tag) is None:
         findings.append(_finding("error", stack, "cerebro:imageTag", f"image tag {image_tag!r} must look like vX.Y.Z"))
+
+    _validate_otel_config(stack, config, findings)
 
     api_max_instances = config.get("apiMaxInstances", 1)
     if isinstance(api_max_instances, int) and api_max_instances > 1 and not _supports_cross_task_sync_lock(image_tag):

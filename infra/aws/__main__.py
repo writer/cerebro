@@ -140,6 +140,18 @@ ecr_base_uri = config.require("ecrBaseUri")
 image_tag = config.get("imageTag") or "v1.0.0"
 container_image = f"{ecr_base_uri}:{image_tag}"
 
+otel_enabled = _config_bool("otelEnabled", False)
+otel_service_name = config.get("otelServiceName") or "cerebro-api"
+otel_exporter_otlp_protocol = config.get("otelExporterOtlpProtocol") or ""
+otel_exporter_otlp_endpoint = config.get("otelExporterOtlpEndpoint") or ""
+otel_exporter_otlp_traces_endpoint = config.get("otelExporterOtlpTracesEndpoint") or ""
+otel_exporter_otlp_metrics_endpoint = config.get("otelExporterOtlpMetricsEndpoint") or ""
+otel_exporter_otlp_headers_secret_name = config.get("otelExporterOtlpHeadersSecretName") or ""
+otel_exporter_otlp_insecure = _config_bool("otelExporterOtlpInsecure", False)
+otel_traces_sample_rate = config.get_float("otelTracesSampleRate")
+otel_metrics_export_interval = config.get("otelMetricsExportInterval") or ""
+otel_resource_attributes = config.get("otelResourceAttributes") or ""
+
 web_enabled = _config_bool("webEnabled", False)
 web_ecr_base_uri = config.get("webEcrBaseUri") or ecr_base_uri
 web_image_tag = config.get("webImageTag") or ""
@@ -751,6 +763,8 @@ if mcp_oauth_enabled:
     secret_keys.append(_infisical_secret("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", mcp_oauth_upstream_client_secret_name))
 if cache_stack:
     secret_keys.append("CEREBRO_CACHE_URL")
+if otel_exporter_otlp_headers_secret_name:
+    secret_keys.append(_infisical_secret("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", otel_exporter_otlp_headers_secret_name))
 secret_keys.extend(_infisical_source_secret(secret_key) for secret_key in source_secret_keys)
 
 app_environment = {
@@ -768,6 +782,39 @@ app_environment = {
     "CEREBRO_STATE_STORE_DRIVER": "postgres",
     "CEREBRO_GRAPH_STORE_DRIVER": "neo4j",
 }
+otel_configured = any([
+    otel_enabled,
+    otel_exporter_otlp_endpoint,
+    otel_exporter_otlp_traces_endpoint,
+    otel_exporter_otlp_metrics_endpoint,
+    otel_exporter_otlp_headers_secret_name,
+])
+if otel_configured:
+    if otel_enabled:
+        app_environment["CEREBRO_OTEL_ENABLED"] = "true"
+    app_environment["CEREBRO_OTEL_SERVICE_NAME"] = otel_service_name
+    app_environment["OTEL_RESOURCE_ATTRIBUTES"] = ",".join(
+        attr
+        for attr in [
+            f"deployment.environment={environment}",
+            otel_resource_attributes,
+        ]
+        if str(attr).strip()
+    )
+    if otel_exporter_otlp_protocol:
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL"] = otel_exporter_otlp_protocol
+    if otel_exporter_otlp_endpoint:
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT"] = otel_exporter_otlp_endpoint
+    if otel_exporter_otlp_traces_endpoint:
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = otel_exporter_otlp_traces_endpoint
+    if otel_exporter_otlp_metrics_endpoint:
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"] = otel_exporter_otlp_metrics_endpoint
+    if otel_exporter_otlp_insecure:
+        app_environment["CEREBRO_OTEL_EXPORTER_OTLP_INSECURE"] = "true"
+    if otel_traces_sample_rate is not None:
+        app_environment["CEREBRO_OTEL_TRACES_SAMPLE_RATE"] = str(otel_traces_sample_rate)
+    if otel_metrics_export_interval:
+        app_environment["CEREBRO_OTEL_METRICS_EXPORT_INTERVAL"] = otel_metrics_export_interval
 if not api_auth_enabled:
     app_environment["ALLOW_INSECURE_API"] = "true"
 if device_auth_enabled:
