@@ -65,6 +65,9 @@ func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope
 	if !strings.HasPrefix(resourceURN, "urn:cerebro:"+tenantID+":") {
 		return nil, fmt.Errorf("%w: sdk telemetry resource urn must belong to tenant %q", sourcecdk.ErrInvalidConfig, tenantID)
 	}
+	if hasUnsafeCharacters(resourceURN) {
+		return nil, fmt.Errorf("%w: sdk telemetry resource urn contains unsafe characters", sourcecdk.ErrInvalidConfig)
+	}
 	postureStatus := normalizePostureStatus(payload.PostureStatus)
 	if postureStatus == "" {
 		return nil, fmt.Errorf("%w: sdk telemetry posture status %q is not recognized", sourcecdk.ErrInvalidConfig, payload.PostureStatus)
@@ -92,6 +95,9 @@ func NormalizePushedTelemetry(payload PushedTelemetry) (*cerebrov1.EventEnvelope
 	}
 
 	runtimeID := strings.TrimSpace(payload.RuntimeID)
+	if hasUnsafeCharacters(runtimeID) {
+		return nil, fmt.Errorf("%w: sdk telemetry runtime id contains unsafe characters", sourcecdk.ErrInvalidConfig)
+	}
 	setAttribute(attributes, "integration", integration)
 	setAttribute(attributes, "resource_urn", resourceURN)
 	setAttribute(attributes, "resource_type", resourceType)
@@ -122,6 +128,9 @@ func safeRequiredToken(field string, value string) (string, error) {
 	}
 	if hasUnsafeCharacters(trimmed) {
 		return "", fmt.Errorf("%w: sdk telemetry %s contains unsafe characters", sourcecdk.ErrInvalidConfig, field)
+	}
+	if strings.Contains(trimmed, ":") {
+		return "", fmt.Errorf("%w: sdk telemetry %s contains reserved ':' character", sourcecdk.ErrInvalidConfig, field)
 	}
 	return trimmed, nil
 }

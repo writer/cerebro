@@ -111,7 +111,26 @@ func TestNormalizePushedTelemetryRejectsUnsafeControlCharacters(t *testing.T) {
 	cases := map[string]func(p *PushedTelemetry){
 		"integration":     func(p *PushedTelemetry) { p.Integration = "jira\nrm -rf" },
 		"control":         func(p *PushedTelemetry) { p.Control = "sso\tenforced" },
+		"runtime_id":      func(p *PushedTelemetry) { p.RuntimeID = "writer-sdk\njira" },
+		"resource_urn":    func(p *PushedTelemetry) { p.ResourceURN = "urn:cerebro:writer:workspace:name\x01" },
 		"attribute_value": func(p *PushedTelemetry) { p.Attributes = map[string]string{"owner": "sec\x00urity"} },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			payload := validPushedTelemetry()
+			mutate(&payload)
+			_, err := NormalizePushedTelemetry(payload)
+			if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+				t.Fatalf("NormalizePushedTelemetry() error = %v, want ErrInvalidConfig", err)
+			}
+		})
+	}
+}
+
+func TestNormalizePushedTelemetryRejectsReservedTokenDelimiter(t *testing.T) {
+	cases := map[string]func(p *PushedTelemetry){
+		"integration": func(p *PushedTelemetry) { p.Integration = "jira:prod" },
+		"control":     func(p *PushedTelemetry) { p.Control = "sso:enforced" },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

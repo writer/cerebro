@@ -168,6 +168,9 @@ func sdkIntegrationPostureFindingURN(tenantID string, integration string, contro
 	if tenantID == "" || integration == "" || control == "" || resourceURN == "" {
 		return ""
 	}
+	if strings.Contains(integration, ":") || strings.Contains(control, ":") {
+		return ""
+	}
 	key := strings.TrimPrefix(resourceURN, "urn:cerebro:"+tenantID+":")
 	key = strings.TrimPrefix(key, "urn:cerebro:")
 	key = strings.ReplaceAll(key, ":", "/")

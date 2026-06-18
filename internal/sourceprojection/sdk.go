@@ -19,6 +19,9 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	if integration == "" || resourceURN == "" || control == "" {
 		return nil, nil, nil
 	}
+	if strings.Contains(integration, ":") || strings.Contains(control, ":") {
+		return nil, nil, nil
+	}
 
 	integrationURN := projectionURN(tenantID, "sdk_integration", integration)
 	postureURN := projectionURN(tenantID, "sdk_integration_posture", integration, control, sdkPostureResourceKey(tenantID, resourceURN))
@@ -33,9 +36,7 @@ func sdkIntegrationPostureProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		EntityType: firstNonEmpty(attrs["resource_type"], "resource"),
 		Label:      firstNonEmpty(attrs["resource_label"], resourceURN),
 		Attributes: compactAttributes(map[string]string{
-			"resource_urn":   resourceURN,
-			"posture_status": attrs["posture_status"],
-			"control":        control,
+			"resource_urn": resourceURN,
 		}),
 	})
 	addEntity(entities, &ports.ProjectedEntity{

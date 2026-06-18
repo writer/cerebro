@@ -95,3 +95,21 @@ func TestSDKIntegrationActiveRiskReopensOnRecurrence(t *testing.T) {
 		t.Fatalf("recurrence finding id = %q, want stable %q", got, strings.TrimSpace(opened.ID))
 	}
 }
+
+func TestSDKIntegrationActiveRiskRejectsReservedTokenDelimiter(t *testing.T) {
+	rule := newSDKIntegrationActiveRiskRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-sdk-jira-posture",
+		SourceId: "sdk",
+		TenantId: "writer",
+	}
+	event := sdkIntegrationPostureEvent("sdk-risk-colon", map[string]string{"integration": "jira:prod"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate() emitted %d findings, want 0", len(records))
+	}
+}

@@ -60,6 +60,9 @@ func TestProjectSDKIntegrationPosture(t *testing.T) {
 	if resource == nil || resource.EntityType != "workspace" {
 		t.Fatalf("resource entity = %#v, want workspace", resource)
 	}
+	if resource.Attributes["control"] != "" || resource.Attributes["posture_status"] != "" {
+		t.Fatalf("resource attributes carry per-control posture fields: %#v", resource.Attributes)
+	}
 	integration := state.entities[integrationURN]
 	if integration == nil || integration.EntityType != "sdk.integration" || integration.Label != "jira" {
 		t.Fatalf("integration entity = %#v, want sdk.integration jira", integration)
@@ -75,6 +78,21 @@ func TestProjectSDKIntegrationPosture(t *testing.T) {
 	assertProjectedLink(t, state, resourceURN, relationHasEvidence, postureURN)
 	assertProjectedLink(t, state, postureURN, relationObservedOn, resourceURN)
 	assertProjectedLink(t, state, postureURN, relationBelongsTo, integrationURN)
+}
+
+func TestProjectSDKIntegrationPostureRejectsReservedTokenDelimiter(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := sdkIntegrationPostureEvent()
+	event.Attributes["integration"] = "jira:prod"
+
+	result, err := service.Project(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected != 0 || result.LinksProjected != 0 {
+		t.Fatalf("Project() with colon token = entities %d links %d, want 0/0", result.EntitiesProjected, result.LinksProjected)
+	}
 }
 
 func TestProjectSDKIntegrationPostureIsIdempotent(t *testing.T) {
