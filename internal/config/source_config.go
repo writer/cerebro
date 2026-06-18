@@ -12,6 +12,7 @@ import (
 const (
 	sourceConfigEnvAllowlistEnv = "CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"
 	awsAssumeRoleARNsEnv        = "CEREBRO_AWS_ASSUME_ROLE_ARNS"
+	gcpWIFBindingsEnv           = "CEREBRO_GCP_WIF_BINDINGS" // #nosec G101 -- env var name, not credential material.
 )
 
 func ResolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
@@ -51,6 +52,9 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 	}
 	if injectRuntimeAllowlist && (strings.EqualFold(strings.TrimSpace(sourceID), "aws") || strings.TrimSpace(values["role_arn"]) != "") {
 		resolved[sourceconfig.AWSAssumeRoleAllowlistKey] = strings.TrimSpace(os.Getenv(awsAssumeRoleARNsEnv))
+	}
+	if injectRuntimeAllowlist && (strings.EqualFold(strings.TrimSpace(sourceID), "gcp") || strings.TrimSpace(values["wif_audience"]) != "" || strings.TrimSpace(values["wif_service_account_email"]) != "") {
+		resolved[sourceconfig.GCPWIFAllowlistKey] = strings.TrimSpace(os.Getenv(gcpWIFBindingsEnv))
 	}
 	return resolved, nil
 }

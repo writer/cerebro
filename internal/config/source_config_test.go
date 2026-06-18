@@ -143,8 +143,44 @@ func TestResolveSourceRuntimeConfigInjectsAssumeRoleAllowlistForRoleARN(t *testi
 	}
 }
 
+func TestResolveSourceRuntimeConfigInjectsGCPWIFAllowlist(t *testing.T) {
+	binding := "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com"
+	t.Setenv(gcpWIFBindingsEnv, binding)
+	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "gcp", map[string]string{
+		"wif_audience":                  "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
+		"wif_service_account_email":     "scanner@writer-iam.iam.gserviceaccount.com",
+		sourceconfig.GCPWIFAllowlistKey: "caller-controlled",
+		sourceconfig.RuntimeTenantIDKey: "writer",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.GCPWIFAllowlistKey]; got != binding {
+		t.Fatalf("resolved gcp wif allowlist = %q, want deployment env value", got)
+	}
+	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+		t.Fatalf("resolved runtime tenant = %q, want writer", got)
+	}
+}
+
+func TestResolveSourceRuntimeConfigInjectsGCPWIFAllowlistForWIFConfig(t *testing.T) {
+	binding := "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com"
+	t.Setenv(gcpWIFBindingsEnv, binding)
+	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "custom-gcp-wrapper", map[string]string{
+		"wif_audience":              "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
+		"wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.GCPWIFAllowlistKey]; got != binding {
+		t.Fatalf("resolved gcp wif allowlist = %q", got)
+	}
+}
+
 func TestResolveSourceConfigDoesNotInjectRuntimeAWSAllowlist(t *testing.T) {
 	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
+	t.Setenv(gcpWIFBindingsEnv, "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com")
 	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "aws", map[string]string{
 		"account_id": "123456789012",
 	})
@@ -153,5 +189,8 @@ func TestResolveSourceConfigDoesNotInjectRuntimeAWSAllowlist(t *testing.T) {
 	}
 	if _, ok := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
 		t.Fatal("direct source config injected runtime AWS assume-role allowlist")
+	}
+	if _, ok := resolved[sourceconfig.GCPWIFAllowlistKey]; ok {
+		t.Fatal("direct source config injected runtime GCP WIF allowlist")
 	}
 }
