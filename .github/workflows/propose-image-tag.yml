@@ -247,6 +247,7 @@ jobs:
             changed_paths+=("${sec_dev_config}")
             uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
           fi
+          uv run --project infra python infra/scripts/validate_pulumi_project_config.py
           uv run --project infra python infra/scripts/validate_stack_config.py
           if [ -n "${CONTRACT_PATH}" ]; then
             uv run --project infra python infra/scripts/verify_runtime_contract.py \
@@ -374,6 +375,7 @@ jobs:
               uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
             fi
 
+            uv run --project infra python infra/scripts/validate_pulumi_project_config.py
             uv run --project infra python infra/scripts/validate_stack_config.py
             if [ -n "${CONTRACT_PATH}" ]; then
               uv run --project infra python infra/scripts/verify_runtime_contract.py \

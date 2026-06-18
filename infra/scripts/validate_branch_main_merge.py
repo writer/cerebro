@@ -9,6 +9,7 @@ from pathlib import Path
 
 VALIDATION_COMMANDS = (
     ("uv", "run", "python", "-m", "compileall", "aws", "gcp", "scripts", "tests"),
+    ("uv", "run", "python", "scripts/validate_pulumi_project_config.py"),
     ("uv", "run", "python", "scripts/validate_stack_config.py"),
     ("uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"),
 )

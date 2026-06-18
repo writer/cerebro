@@ -102,16 +102,23 @@ def is_superseded(body: str) -> bool:
 def suggested_checks(comment: DroidComment) -> list[str]:
     text = f"{comment.path}\n{comment.body}".lower()
     checks: list[str] = []
+
+    def append_check(command: str) -> None:
+        if command not in checks:
+            checks.append(command)
+
     if ".github/workflows" in text or "workflow" in text or "permission" in text or "token" in text:
-        checks.append("make droid-review-preflight")
-        checks.append("python3 -m unittest discover -s infra/tests")
+        append_check("make droid-review-preflight")
+        append_check("python3 -m unittest discover -s infra/tests")
     if "iam" in text or "policy" in text or "pulumi" in text or "aws" in text:
-        checks.append("python3 -m compileall -q infra/aws infra/scripts infra/tests")
-        checks.append("python3 infra/scripts/validate_stack_config.py infra/aws/Pulumi.sec-dev.yaml infra/aws/Pulumi.go-prod.yaml")
+        append_check("python3 -m compileall -q infra/aws infra/scripts infra/tests")
+        append_check("python3 infra/scripts/validate_pulumi_project_config.py")
+        append_check("python3 infra/scripts/validate_stack_config.py infra/aws/Pulumi.sec-dev.yaml infra/aws/Pulumi.go-prod.yaml")
     if "gcp" in text or "workload identity" in text:
-        checks.append("python3 infra/scripts/validate_gcp_config.py")
+        append_check("python3 infra/scripts/validate_pulumi_project_config.py")
+        append_check("python3 infra/scripts/validate_gcp_config.py")
     if not checks:
-        checks.append("add or update a focused regression test near the changed infra/script surface")
+        append_check("add or update a focused regression test near the changed infra/script surface")
     return checks
 
 

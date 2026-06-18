@@ -39,6 +39,7 @@ PASS_RULES = [
         "why": "AWS infrastructure changes can affect IAM, network exposure, storage, or deployment safety.",
         "commands": [
             "python3 -m compileall -q infra/aws infra/scripts infra/tests",
+            "python3 infra/scripts/validate_pulumi_project_config.py",
             "python3 infra/scripts/validate_stack_config.py infra/aws/Pulumi.sec-dev.yaml infra/aws/Pulumi.go-prod.yaml",
         ],
     },
@@ -46,7 +47,7 @@ PASS_RULES = [
         "name": "gcp-infra-safety",
         "path_globs": ["infra/gcp/**"],
         "why": "GCP infrastructure changes can affect workload identity, IAM, or scanner access.",
-        "commands": ["python3 infra/scripts/validate_gcp_config.py"],
+        "commands": ["python3 infra/scripts/validate_pulumi_project_config.py", "python3 infra/scripts/validate_gcp_config.py"],
     },
     {
         "name": "script-regression",

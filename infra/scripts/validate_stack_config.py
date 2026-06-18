@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+import math
 import re
 import sys
 from dataclasses import dataclass
@@ -1415,11 +1416,22 @@ def _validate_otel_config(stack: str, config: dict[str, Any], findings: list[Fin
         )
 
     sample_rate = config.get("otelTracesSampleRate")
+    parsed_sample_rate: float | None = None
+    if isinstance(sample_rate, bool):
+        parsed_sample_rate = None
+    elif isinstance(sample_rate, int | float):
+        parsed_sample_rate = float(sample_rate)
+    elif isinstance(sample_rate, str) and sample_rate.strip():
+        try:
+            parsed_sample_rate = float(sample_rate.strip())
+        except ValueError:
+            parsed_sample_rate = None
+
     if sample_rate is not None and (
-        isinstance(sample_rate, bool)
-        or not isinstance(sample_rate, int | float)
-        or sample_rate < 0
-        or sample_rate > 1
+        parsed_sample_rate is None
+        or not math.isfinite(parsed_sample_rate)
+        or parsed_sample_rate < 0
+        or parsed_sample_rate > 1
     ):
         findings.append(
             _finding(

@@ -269,6 +269,8 @@ jobs:
             echo "Unexpected changed files: ${changed_files}" >&2
             exit 1
           fi
+          uv run --project infra python infra/scripts/validate_pulumi_project_config.py
+          uv run --project infra python infra/scripts/validate_stack_config.py
           git add "${expected_file}"
 
           if [ "${APPLY_MODE}" != "pull_request" ] && [ "${APPLY_MODE}" != "trusted_sec_dev_release" ]; then

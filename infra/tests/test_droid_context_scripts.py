@@ -20,6 +20,7 @@ def load_script(name: str):
 
 
 ci = load_script("droid_ci_context")
+feedback = load_script("droid_feedback_harness")
 preflight = load_script("droid_preflight_context")
 review_context = load_script("droid_review_context")
 sast = load_script("droid_sast_context")
@@ -37,6 +38,8 @@ class DroidContextScriptTest(unittest.TestCase):
         pass_names = [item["name"] for item in preflight.selected_passes(files)]
         self.assertIn("aws-infra-safety", pass_names)
         self.assertIn("workflow-permissions", pass_names)
+        aws_pass = next(item for item in preflight.selected_passes(files) if item["name"] == "aws-infra-safety")
+        self.assertIn("python3 infra/scripts/validate_pulumi_project_config.py", aws_pass["commands"])
 
     def test_preflight_skips_deploy_automation_prs(self) -> None:
         files = ["infra/aws/Pulumi.sec-dev.yaml"]
@@ -53,6 +56,19 @@ class DroidContextScriptTest(unittest.TestCase):
         self.assertNotIn("abc", redacted)
         self.assertNotIn("xyz", redacted)
         self.assertIn("[redacted]", redacted)
+
+    def test_feedback_suggests_pulumi_project_validator_for_pulumi_comments(self) -> None:
+        comment = feedback.DroidComment(
+            "inline",
+            "https://example.test",
+            "infra/aws/Pulumi.yaml",
+            1,
+            "Pulumi config changed",
+        )
+
+        checks = feedback.suggested_checks(comment)
+
+        self.assertIn("python3 infra/scripts/validate_pulumi_project_config.py", checks)
 
     def test_sast_changed_line_parser_tracks_added_lines(self) -> None:
         diff = """diff --git a/.github/workflows/demo.yml b/.github/workflows/demo.yml

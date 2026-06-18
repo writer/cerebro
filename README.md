@@ -145,6 +145,7 @@ Run local validators:
 cd infra
 uv lock --check
 uv run python -m compileall aws gcp scripts tests
+uv run python scripts/validate_pulumi_project_config.py
 uv run python scripts/validate_stack_config.py
 uv run python scripts/validate_gcp_config.py
 uv run python -m unittest discover -s tests
@@ -155,8 +156,9 @@ Choose validators by change type:
 | Change type | Minimum local validation |
 | --- | --- |
 | README-only | `git diff --check README.md` |
-| AWS stack config | `uv run python scripts/validate_stack_config.py` plus `uv run pulumi preview --stack <stack>` from `infra/aws` |
-| GCP stack config | `uv run python scripts/validate_gcp_config.py` plus `uv run pulumi preview --stack <stack>` from `infra/gcp` |
+| Pulumi project config | `uv run python scripts/validate_pulumi_project_config.py` plus the affected stack validators |
+| AWS stack config | `uv run python scripts/validate_pulumi_project_config.py` and `uv run python scripts/validate_stack_config.py` plus `uv run pulumi preview --stack <stack>` from `infra/aws` |
+| GCP stack config | `uv run python scripts/validate_pulumi_project_config.py` and `uv run python scripts/validate_gcp_config.py` plus `uv run pulumi preview --stack <stack>` from `infra/gcp` |
 | Infra Python code or scripts | `uv run python -m compileall aws gcp scripts tests` and `uv run python -m unittest discover -s tests` |
 | Source runtime config | Stack validation, target AWS Pulumi preview, and post-deploy source runtime verification |
 | Workflow or promotion logic | Relevant unit tests under `infra/tests`, static validation, and careful review of changed workflow paths |

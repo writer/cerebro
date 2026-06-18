@@ -561,6 +561,10 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         self.assertFalse(any("otel" in finding.path and finding.severity == "error" for finding in self._validate(content)))
 
+    def test_otel_accepts_string_sample_rate_from_pulumi_config(self) -> None:
+        content = BASE_STACK + '  cerebro:otelTracesSampleRate: "0.25"\n'
+        self.assertFalse(any("otelTracesSampleRate" in finding.path for finding in self._validate(content)))
+
     def test_orchestrator_buffer_requires_step_functions(self) -> None:
         content = BASE_STACK + "  cerebro:orchestratorSqsBufferEnabled: true\n"
         self.assertTrue(any("requires orchestratorStepFunctionsEnabled" in message for message in self._messages(content)))

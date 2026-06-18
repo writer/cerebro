@@ -39,6 +39,7 @@ class ValidateBranchMainMergeTest(unittest.TestCase):
     def test_validation_commands_include_static_checks_and_tests(self) -> None:
         commands = validate_branch_main_merge.VALIDATION_COMMANDS
 
+        self.assertIn(("uv", "run", "python", "scripts/validate_pulumi_project_config.py"), commands)
         self.assertIn(("uv", "run", "python", "scripts/validate_stack_config.py"), commands)
         self.assertIn(("uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"), commands)
 
