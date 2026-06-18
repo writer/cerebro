@@ -138,6 +138,37 @@ const familyEC2Instance = "ec2_instance"
 	}
 }
 
+func TestEnsureNotAlreadyWiredAllowsConstNamePrefix(t *testing.T) {
+	root := t.TempDir()
+	awsDir := filepath.Join(root, "sources", "aws")
+	if err := os.MkdirAll(awsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "internal", "sourceprojection"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(awsDir, "source.go"), `package aws
+const familyEC2Instance = "ec2_instance"
+`)
+	write(filepath.Join(awsDir, "fixture.go"), "package aws\n")
+	write(filepath.Join(awsDir, "catalog.yaml"), "")
+	write(filepath.Join(awsDir, "deploy.yaml"), "")
+	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), "package sourceprojection\n")
+	n, err := deriveNames("ec2_gateway", "", "familyEC2", "awsEC2Gateway", "listEC2Gateways", "ec2GatewayEvent", "", "record.ID", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureNotAlreadyWired(root, awsDir, n); err != nil {
+		t.Fatalf("ensureNotAlreadyWired error = %v, want nil", err)
+	}
+}
+
 func TestValidateFixtures(t *testing.T) {
 	root := t.TempDir()
 	testdata := filepath.Join(root, "sources", "aws", "testdata")

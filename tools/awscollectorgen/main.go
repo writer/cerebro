@@ -140,27 +140,38 @@ func safeChildPath(dir, name string) (string, error) {
 
 func ensureNotAlreadyWired(root, awsDir string, n names) error {
 	checks := []struct {
-		path string
-		want string
+		path  string
+		match func(string) bool
 	}{
-		{filepath.Join(awsDir, "source.go"), "= " + strconv.Quote(n.Family)},
-		{filepath.Join(awsDir, "source.go"), n.FamilyConst},
-		{filepath.Join(awsDir, "fixture.go"), n.FamilyConst},
-		{filepath.Join(root, "internal", "sourceprojection", "registry.go"), strconv.Quote(n.Kind) + ":"},
-		{filepath.Join(awsDir, "catalog.yaml"), "- " + n.Kind},
-		{filepath.Join(awsDir, "catalog.yaml"), "- " + n.Family},
-		{filepath.Join(awsDir, "deploy.yaml"), "family: " + n.Family},
+		{filepath.Join(awsDir, "source.go"), containsStringMatcher("= " + strconv.Quote(n.Family))},
+		{filepath.Join(awsDir, "source.go"), containsGoIdentifierMatcher(n.FamilyConst)},
+		{filepath.Join(awsDir, "fixture.go"), containsGoIdentifierMatcher(n.FamilyConst)},
+		{filepath.Join(root, "internal", "sourceprojection", "registry.go"), containsStringMatcher(strconv.Quote(n.Kind) + ":")},
+		{filepath.Join(awsDir, "catalog.yaml"), containsStringMatcher("- " + n.Kind)},
+		{filepath.Join(awsDir, "catalog.yaml"), containsStringMatcher("- " + n.Family)},
+		{filepath.Join(awsDir, "deploy.yaml"), containsStringMatcher("family: " + n.Family)},
 	}
 	for _, check := range checks {
 		body, err := os.ReadFile(check.path)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", check.path, err)
 		}
-		if strings.Contains(string(body), check.want) {
+		if check.match(string(body)) {
 			return fmt.Errorf("family %q already appears in %s", n.Family, check.path)
 		}
 	}
 	return nil
+}
+
+func containsStringMatcher(want string) func(string) bool {
+	return func(body string) bool {
+		return strings.Contains(body, want)
+	}
+}
+
+func containsGoIdentifierMatcher(ident string) func(string) bool {
+	re := regexp.MustCompile(`\b` + regexp.QuoteMeta(ident) + `\b`)
+	return re.MatchString
 }
 
 func validateFixtures(root string, n names) error {
