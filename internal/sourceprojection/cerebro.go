@@ -253,7 +253,7 @@ func cerebroAccessAllowed(attrs map[string]string) bool {
 		return false
 	}
 	outcome := normalizeIdentifier(firstNonEmpty(attrs["outcome_result"], attrs["status"]))
-	if outcome == "allowed" || outcome == "allow" || outcome == "success" || outcome == "ok" {
+	if outcome == "allowed" || outcome == "allow" || outcome == "success" || outcome == "succeeded" || outcome == "ok" {
 		return true
 	}
 	status := strings.TrimSpace(firstNonEmpty(attrs["effective_status_code"], attrs["status_code"]))

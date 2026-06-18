@@ -91,7 +91,7 @@ func TestCerebroHighRiskAPIAccessDeniedDoesNotOpen(t *testing.T) {
 
 func TestCerebroHighRiskAPIAccessResolvesOnCleanAccess(t *testing.T) {
 	open := cerebroAPIAccessEvent("cerebro-access-open", map[string]string{"requested_tenant_id": "tenant-b", "tenant_mismatch": "true"}, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
-	clean := cerebroAPIAccessEvent("cerebro-access-clean", map[string]string{"requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
+	clean := cerebroAPIAccessEvent("cerebro-access-clean", map[string]string{"connect_procedure": "", "requested_tenant_id": "writer", "route": ""}, time.Date(2026, 5, 1, 13, 0, 0, 0, time.UTC))
 	assertIdentityRuleRemediationTrajectory(t, newCerebroHighRiskAPIAccessRule(), open, clean, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
@@ -169,6 +169,14 @@ func TestCerebroHighRiskAPIAccessReopensOnRecurrence(t *testing.T) {
 	}
 	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor != closeAnchor {
 		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
+	}
+	otherCleanEvent := cerebroAPIAccessEvent("cerebro-access-other-cleaned", map[string]string{"principal": "other@example.com", "requested_tenant_id": "writer"}, time.Date(2026, 5, 1, 13, 30, 0, 0, time.UTC))
+	otherCloseAnchor, otherCloses := counterRule.CloseOnEvent(otherCleanEvent)
+	if !otherCloses || otherCloseAnchor == "" {
+		t.Fatalf("CloseOnEvent(other clean) = (%q, %v), want a non-empty closing anchor", otherCloseAnchor, otherCloses)
+	}
+	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor == otherCloseAnchor {
+		t.Fatalf("OpenAnchor(open finding) = %q, should not match other principal close anchor", openAnchor)
 	}
 
 	reopened := emitOpen(cerebroAPIAccessEvent("cerebro-access-risky-2", map[string]string{"tenant_mismatch": "true", "requested_tenant_id": "tenant-b"}, time.Date(2026, 5, 1, 14, 0, 0, 0, time.UTC)))

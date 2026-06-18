@@ -160,6 +160,37 @@ func TestProjectCerebroAPIAccessDeniedDoesNotGrantRoute(t *testing.T) {
 	assertProjectedLinkMissing(t, state, principalURN, relationCanPerform, routeURN)
 }
 
+func TestProjectCerebroAPIAccessSucceededOutcomeGrantsRoute(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "cerebro-api-access-succeeded",
+		TenantId:   "writer",
+		SourceId:   "cerebro",
+		Kind:       "cerebro.api_access",
+		OccurredAt: timestamppb.New(time.Date(2026, 6, 9, 12, 4, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"auth_mode":        "api_key",
+			"credential_id":    "cred-succeeded",
+			"method":           "GET",
+			"operation_family": "finding",
+			"operation_type":   "read",
+			"outcome_result":   "succeeded",
+			"principal":        "ci@example.com",
+			"request_id":       "succeeded-request-1",
+			"route":            "GET /findings",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	principalURN := "urn:cerebro:writer:cerebro_principal:ci@example.com"
+	credentialURN := "urn:cerebro:writer:cerebro_credential:cred-succeeded" // #nosec G101 -- test graph URN, not credential material.
+	routeURN := "urn:cerebro:writer:cerebro_route:get:/findings"
+	assertProjectedLink(t, state, principalURN, relationCanPerform, routeURN)
+	assertProjectedLink(t, state, credentialURN, relationCanPerform, routeURN)
+}
+
 func TestProjectCerebroAPIAccessDenied2xxDoesNotGrantRoute(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
