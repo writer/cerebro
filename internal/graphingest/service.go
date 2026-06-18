@@ -363,9 +363,10 @@ func (s *Service) ListRuns(ctx context.Context, filter graphstore.IngestRunFilte
 		return nil, err
 	}
 	failed, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
-		RuntimeID: normalized.RuntimeID,
-		Status:    graphstore.IngestRunStatusFailed,
-		Limit:     MaxStatusLimit,
+		RuntimeID:  normalized.RuntimeID,
+		RuntimeIDs: normalized.RuntimeIDs,
+		Status:     graphstore.IngestRunStatusFailed,
+		Limit:      MaxStatusLimit,
 	})
 	if err != nil {
 		return nil, err

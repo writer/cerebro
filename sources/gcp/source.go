@@ -104,19 +104,12 @@ type Source struct {
 }
 
 type settings struct {
-	family                                              string
-	projectID                                           string
-	customerID                                          string
-	groupKey                                            string
-	serviceAccountEmail                                 string
-	location                                            string
-	keyRing                                             string
-	artifactRepository                                  string
-	token, wifAudience, wifServiceAccount, wifAWSRegion string
-	tenantID, wifBindings                               string
-	baseURL                                             string
-	filter                                              string
-	perPage                                             int
+	family, projectID, customerID, groupKey                    string
+	serviceAccountEmail, location, keyRing, artifactRepository string
+	token, wifAudience, wifServiceAccount, wifAWSRegion        string
+	tenantID, wifBindings                                      string
+	baseURL, filter                                            string
+	perPage                                                    int
 }
 
 type pageResponse = gcpcloud.GenericPageResponse
