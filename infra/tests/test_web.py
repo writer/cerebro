@@ -75,7 +75,7 @@ class WebAutoscalingTest(unittest.TestCase):
             {"ECSServiceAverageCPUUtilization", "ECSServiceAverageMemoryUtilization"},
         )
 
-    def test_log_insights_policy_scopes_start_query_to_configured_log_groups(self) -> None:
+    def test_log_insights_policy_allows_query_lifecycle_and_scopes_event_reads(self) -> None:
         role_policies: list[dict] = []
 
         def fake_role_policy(*args, **kwargs):
@@ -97,16 +97,22 @@ class WebAutoscalingTest(unittest.TestCase):
 
         self.assertEqual(len(role_policies), 1)
         policy = json.loads(role_policies[0]["policy"])
-        start_query_statement = policy["Statement"][0]
-        self.assertIn("logs:StartQuery", start_query_statement["Action"])
+        query_statement = policy["Statement"][0]
+        self.assertIn("logs:StartQuery", query_statement["Action"])
+        self.assertIn("logs:StopQuery", query_statement["Action"])
+        self.assertEqual(query_statement["Resource"], "*")
+        filter_statement = policy["Statement"][1]
+        self.assertEqual(filter_statement["Action"], ["logs:FilterLogEvents"])
         self.assertEqual(
-            start_query_statement["Resource"],
+            filter_statement["Resource"],
             [
                 "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev",
+                "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev:*",
                 "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev-web",
+                "arn:aws:logs:us-east-1:123456789012:log-group:/ecs/cerebro-sec-dev-web:*",
             ],
         )
-        self.assertEqual(policy["Statement"][1]["Resource"], "*")
+        self.assertEqual(policy["Statement"][2]["Resource"], "*")
 
 
 if __name__ == "__main__":
