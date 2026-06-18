@@ -1867,7 +1867,7 @@ func oktaIdentityProviderProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 			"status":               strings.TrimSpace(attributes["status"]),
 			"type":                 strings.TrimSpace(firstNonEmpty(attributes["type"], attributes["idp_type"])),
 		}
-		for _, key := range []string{"audience", "client_id", "issuer", "kid", "protocol_type", "sso_binding", "sso_url_host"} {
+		for _, key := range []string{"acs_type", "audience", "client_id", "issuer", "kid", "protocol_type", "sso_binding", "sso_url_host"} {
 			addProjectedAttribute(idpAttrs, key, attributes[key])
 		}
 		addEntity(entities, &ports.ProjectedEntity{
