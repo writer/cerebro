@@ -262,7 +262,7 @@ type MCPOAuthUpstreamConfig struct {
 }
 
 // RequestOriginConfig controls how bootstrap reconstructs client IPs and public
-// request URLs when requests traverse reverse proxies.
+// request URLs when requests traverse explicitly trusted reverse proxies.
 type RequestOriginConfig struct {
 	PublicOrigin      string
 	TrustedProxyCIDRs []string

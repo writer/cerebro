@@ -526,12 +526,12 @@ func TestRemoteIPForRateLimitIgnoresClientForwardedFor(t *testing.T) {
 	}
 }
 
-func TestRemoteIPForRateLimitTrustsForwardedForFromPrivateProxy(t *testing.T) {
+func TestRemoteIPForRateLimitIgnoresForwardedForFromPrivateRemote(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", nil)
 	req.RemoteAddr = "10.0.1.20:443"
 	req.Header.Set("X-Forwarded-For", "203.0.113.200, 10.0.1.20")
-	if got := remoteIPForRateLimit(req); got != "203.0.113.200" {
-		t.Fatalf("remoteIPForRateLimit = %q, want forwarded client IP", got)
+	if got := remoteIPForRateLimit(req); got != "10.0.1.20" {
+		t.Fatalf("remoteIPForRateLimit = %q, want RemoteAddr host", got)
 	}
 }
 
@@ -539,8 +539,8 @@ func TestRemoteIPForRateLimitIgnoresSpoofedLeftmostForwardedFor(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", nil)
 	req.RemoteAddr = "10.0.1.20:443"
 	req.Header.Set("X-Forwarded-For", "198.51.100.99, 203.0.113.200, 10.0.1.20")
-	if got := remoteIPForRateLimit(req); got != "203.0.113.200" {
-		t.Fatalf("remoteIPForRateLimit = %q, want rightmost untrusted client IP", got)
+	if got := remoteIPForRateLimit(req); got != "10.0.1.20" {
+		t.Fatalf("remoteIPForRateLimit = %q, want RemoteAddr host", got)
 	}
 }
 
