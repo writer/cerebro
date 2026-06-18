@@ -941,3 +941,133 @@ func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
 	assertProjectedLink(t, state, userURN, relationMemberOf, groupURN)
 }
+
+func TestProjectAnthropicInventoryEntitiesDeterministic(t *testing.T) {
+	occurred := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
+
+	t.Run("user", func(t *testing.T) {
+		state := projectAnthropicInventoryEvent(t, &cerebrov1.EventEnvelope{
+			Id:         "anthropic-user",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.user",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":  "user",
+				"user_id": "user_123",
+				"email":   "alice@example.com",
+				"name":    "Alice Example",
+				"role":    "admin",
+				"status":  "active",
+			},
+		})
+		userURN := "urn:cerebro:writer:anthropic_user:user_123"
+		entity := state.entities[userURN]
+		if entity == nil || entity.EntityType != "anthropic.user" || entity.Attributes["user_id"] != "user_123" || entity.Attributes["is_admin"] != "true" {
+			t.Fatalf("anthropic user entity missing or wrong: %#v", entity)
+		}
+		assertProjectedLink(t, state, userURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	})
+
+	t.Run("workspace", func(t *testing.T) {
+		state := projectAnthropicInventoryEvent(t, &cerebrov1.EventEnvelope{
+			Id:         "anthropic-workspace",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.workspace",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":          "workspace",
+				"workspace_id":    "ws_123",
+				"name":            "Research",
+				"organization_id": "org_123",
+			},
+		})
+		workspaceURN := "urn:cerebro:writer:anthropic_workspace:ws_123"
+		entity := state.entities[workspaceURN]
+		if entity == nil || entity.EntityType != "anthropic.workspace" || entity.Attributes["workspace_id"] != "ws_123" {
+			t.Fatalf("anthropic workspace entity missing or wrong: %#v", entity)
+		}
+		assertProjectedLink(t, state, workspaceURN, relationBelongsTo, "urn:cerebro:writer:anthropic_org:org_123")
+	})
+
+	t.Run("api_key", func(t *testing.T) {
+		inventoryID := "fixture-key-id"
+		state := projectAnthropicInventoryEvent(t, &cerebrov1.EventEnvelope{
+			Id:         "anthropic-api-key",
+			TenantId:   "writer",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.api_key",
+			OccurredAt: timestamppb.New(occurred),
+			Attributes: map[string]string{
+				"family":        "api_key",
+				"api_key_id":    inventoryID,
+				"name":          "prod-key",
+				"status":        "active",
+				"owner_user_id": "user_123",
+			},
+		})
+		authMethodURN := "urn:cerebro:writer:anthropic_credential:" + inventoryID
+		userURN := "urn:cerebro:writer:anthropic_user:user_123"
+		entity := state.entities[authMethodURN]
+		if entity == nil || entity.EntityType != "anthropic.credential" || entity.Attributes["api_key_id"] != inventoryID || entity.Attributes["status"] != "active" {
+			t.Fatalf("anthropic api key entity missing or wrong: %#v", entity)
+		}
+		assertProjectedLink(t, state, userURN, relationAssignedTo, authMethodURN)
+	})
+}
+
+func projectAnthropicInventoryEvent(t *testing.T, event *cerebrov1.EventEnvelope) *projectionRecorder {
+	t.Helper()
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project(%q) replay error = %v", event.GetId(), err)
+	}
+	return state
+}
+
+func TestRegistryRoutesAnthropicDeclaredKinds(t *testing.T) {
+	declared := []string{
+		"anthropic.organization",
+		"anthropic.user",
+		"anthropic.invite",
+		"anthropic.workspace",
+		"anthropic.workspace_member",
+		"anthropic.api_key",
+		"anthropic.external_key",
+		"anthropic.service_account",
+		"anthropic.federation_issuer",
+		"anthropic.federation_rule",
+		"anthropic.usage_report_message",
+		"anthropic.usage_report_claude_code",
+		"anthropic.cost_report",
+		"anthropic.analytics_cost",
+		"anthropic.rate_limit",
+		"anthropic.workspace_rate_limit",
+		"anthropic.spend_limit",
+		"anthropic.spend_limit_increase_request",
+		"anthropic.compliance_activity",
+		"anthropic.compliance_organization",
+		"anthropic.compliance_organization_user",
+		"anthropic.compliance_role",
+		"anthropic.compliance_role_permission",
+		"anthropic.compliance_group",
+		"anthropic.compliance_group_member",
+		"anthropic.compliance_project",
+		"anthropic.compliance_project_collaborator",
+		"anthropic.compliance_organization_setting",
+	}
+	registered := make(map[string]struct{})
+	for _, kind := range BuiltinRegistry().Kinds() {
+		registered[kind] = struct{}{}
+	}
+	for _, kind := range declared {
+		if _, ok := registered[kind]; !ok {
+			t.Fatalf("declared Anthropic kind %q is not routed in the projection registry", kind)
+		}
+	}
+}
