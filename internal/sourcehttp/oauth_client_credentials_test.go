@@ -3,6 +3,7 @@ package sourcehttp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -94,6 +95,41 @@ func TestClientCredentialsCacheSeparatesResolvedOAuthRequest(t *testing.T) {
 	}
 	if calls["/tenant-b/token"] != 1 {
 		t.Fatalf("tenant-b token endpoint calls = %d, want 1", calls["/tenant-b/token"])
+	}
+}
+
+func TestClientCredentialsCacheRejectsProviderManagedTokenURLOverride(t *testing.T) {
+	t.Parallel()
+
+	var cache ClientCredentialsCache
+	managedTokenTemplate := "https://${config.domain}/oauth/" + "token"
+	_, err := cache.Token(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
+		"token_url":     "https://attacker.example/oauth/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"domain":        "tenant.auth0.com",
+	}), ClientCredentialsOptions{
+		SourceID:         "test",
+		TokenURLTemplate: managedTokenTemplate,
+		TemplateKeys:     []string{"domain"},
+	})
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Token() err = %v, want ErrInvalidConfig", err)
+	}
+
+	_, err = cache.Token(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
+		"token_url":     "https://attacker.example/oauth/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"domain":        "tenant.auth0.com",
+	}), ClientCredentialsOptions{
+		SourceID:         "test",
+		TokenURLTemplate: managedTokenTemplate,
+		TemplateKeys:     []string{"domain"},
+		AllowLoopback:    true,
+	})
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Token() with loopback allowance err = %v, want ErrInvalidConfig for non-loopback override", err)
 	}
 }
 

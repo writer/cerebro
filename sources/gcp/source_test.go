@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/gcpcloud"
 )
 
@@ -232,12 +233,14 @@ func TestReadLiveGCPUsesWIFTokenSource(t *testing.T) {
 		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), nil
 	}
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"base_url":                  server.URL,
-		"family":                    familyServiceAcct,
-		"project_id":                "writer-prod",
-		"wif_audience":              "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
-		"wif_service_account_email": "scanner@writer-iam.iam.gserviceaccount.com",
-		"wif_aws_region":            "us-east-1",
+		"base_url":                      server.URL,
+		"family":                        familyServiceAcct,
+		"project_id":                    "writer-prod",
+		"wif_audience":                  "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws",
+		"wif_service_account_email":     "scanner@writer-iam.iam.gserviceaccount.com",
+		"wif_aws_region":                "us-east-1",
+		sourceconfig.RuntimeTenantIDKey: "writer",
+		sourceconfig.GCPWIFAllowlistKey: "writer=//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/aws|scanner@writer-iam.iam.gserviceaccount.com",
 	})
 	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {

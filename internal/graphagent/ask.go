@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -27,6 +28,7 @@ var (
 const (
 	maxInternalAttributeValueBytes = 4096
 	maxInternalAttributesJSONBytes = 64 << 10
+	redactedGraphRowValue          = "[graph value omitted]"
 )
 
 var summaryURNPattern = regexp.MustCompile(`urn:cerebro:[A-Za-z0-9_:@./#%+-]+`)
@@ -374,7 +376,7 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			values[key] = row.Values[key]
+			values[key] = sanitizeCypherRowValue(row.Values[key])
 		}
 		result = append(result, values)
 	}
@@ -386,7 +388,109 @@ func sanitizeInternalRowFields(rows []map[string]any) {
 		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
+		removeRawAttributeJSONFields(row)
 	}
+}
+
+func removeRawAttributeJSONFields(row map[string]any) {
+	for key, value := range row {
+		if rawAttributeJSONKey(key) {
+			delete(row, key)
+			continue
+		}
+		row[key] = sanitizeCypherRowValue(value)
+	}
+}
+
+func sanitizeCypherRowValue(value any) any {
+	switch typed := value.(type) {
+	case nil, string, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+		return typed
+	case time.Time:
+		return typed.Format(time.RFC3339Nano)
+	case map[string]any:
+		return sanitizeStringMapValue(typed)
+	case map[string]string:
+		result := make(map[string]any, len(typed))
+		for key, value := range typed {
+			if rawAttributeJSONKey(key) {
+				continue
+			}
+			result[key] = value
+		}
+		return result
+	case []any:
+		result := make([]any, 0, len(typed))
+		for _, item := range typed {
+			result = append(result, sanitizeCypherRowValue(item))
+		}
+		return result
+	default:
+		return sanitizeReflectRowValue(reflect.ValueOf(value))
+	}
+}
+
+func sanitizeStringMapValue(values map[string]any) map[string]any {
+	result := make(map[string]any, len(values))
+	for key, value := range values {
+		if rawAttributeJSONKey(key) {
+			continue
+		}
+		result[key] = sanitizeCypherRowValue(value)
+	}
+	return result
+}
+
+func sanitizeReflectRowValue(value reflect.Value) any {
+	if !value.IsValid() {
+		return nil
+	}
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+		value = value.Elem()
+	}
+	if !value.CanInterface() {
+		return redactedGraphRowValue
+	}
+	switch value.Kind() {
+	case reflect.String:
+		return value.String()
+	case reflect.Bool:
+		return value.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return value.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return value.Uint()
+	case reflect.Float32, reflect.Float64:
+		return value.Float()
+	case reflect.Slice, reflect.Array:
+		result := make([]any, 0, value.Len())
+		for i := 0; i < value.Len(); i++ {
+			result = append(result, sanitizeReflectRowValue(value.Index(i)))
+		}
+		return result
+	case reflect.Map:
+		if value.Type().Key().Kind() != reflect.String {
+			return redactedGraphRowValue
+		}
+		result := make(map[string]any, value.Len())
+		for _, key := range value.MapKeys() {
+			keyText := key.String()
+			if rawAttributeJSONKey(keyText) {
+				continue
+			}
+			result[keyText] = sanitizeReflectRowValue(value.MapIndex(key))
+		}
+		return result
+	default:
+		return redactedGraphRowValue
+	}
+}
+
+func rawAttributeJSONKey(key string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(key)), "attributes_json")
 }
 
 func postProcessAskRows(conversion conversionResult, rows []map[string]any) []map[string]any {

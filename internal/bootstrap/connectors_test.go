@@ -1296,10 +1296,13 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	if !ok {
 		t.Fatal("connectorSchemaForSource(auth0) = false, want catalog-derived schema")
 	}
-	for _, key := range []string{"domain", "family", "health_path", "token_url", "per_page", "take", "from", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"} {
+	for _, key := range []string{"domain", "family", "health_path", "per_page", "take", "from", "failure_modes", "expected_cadence_seconds", "stale_after_seconds"} {
 		if _, ok := schema.ConfigKeys[key]; !ok {
 			t.Fatalf("auth0 config keys missing %q: %#v", key, sortedSetKeys(schema.ConfigKeys))
 		}
+	}
+	if _, ok := schema.ConfigKeys["token_url"]; ok {
+		t.Fatalf("auth0 config keys include provider-managed token_url: %#v", sortedSetKeys(schema.ConfigKeys))
 	}
 	if got := strings.Join(schema.RequiredConfig, ","); got != "domain" {
 		t.Fatalf("auth0 required config = %q, want domain", got)
