@@ -6,6 +6,7 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
+| `akeyless` | Akeyless secrets management source | items, auth methods, roles, audit events |
 | `anthropic` | Anthropic organization governance source | organization, users, invites, workspaces and members, API keys, service accounts, federation, external keys, usage/cost reports, rate/spend limits, compliance activity |
 | `archetype` | Archetype repository vulnerability scan source | scans, vulnerabilities |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
@@ -16,6 +17,7 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
+| `doppler` | Doppler secrets management source | secrets, projects, audit events |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
 | `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
 | `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
@@ -23,6 +25,7 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests; repository and optional org-inventory audit-log freshness probes |
 | `google_workspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
 | `grc` | Governance/risk/compliance source | configured GRC families |
+| `hashicorp_vault` | HashiCorp Vault secrets management source | users, secrets, audit events |
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
 | `kolide` | Kolide device posture source | configured catalog families |
 | `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
