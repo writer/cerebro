@@ -1,0 +1,38 @@
+package sourceprojection
+
+import (
+	"strings"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+func hashicorpVaultUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, identityProjectionProfile{Provider: "hashicorp_vault"})
+}
+
+func hashicorpVaultSecretsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return hashicorpVaultSecretProjections(event)
+}
+
+func hashicorpVaultAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, identityProjectionProfile{Provider: "hashicorp_vault"})
+}
+
+func hashicorpVaultSecretProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	secretID := firstNonEmpty(attributes["secret_id"], event.GetId())
+	secretURN := projectionURN(tenantID, "secret", secretID)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	addEntity(entities, &ports.ProjectedEntity{URN: secretURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "secret", Label: firstNonEmpty(attributes["secret_name"], secretID), Attributes: map[string]string{"secret_id": secretID, "secret_type": strings.TrimSpace(attributes["secret_type"]), "secret_status": strings.TrimSpace(attributes["secret_status"]), "secret_rotation_enabled": strings.TrimSpace(attributes["secret_rotation_enabled"]), "secret_last_rotated_at": strings.TrimSpace(attributes["secret_last_rotated_at"]), "source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})
+	if evidenceID := strings.TrimSpace(attributes["evidence_id"]); evidenceID != "" {
+		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), secretURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
+	}
+	return identityProjectionResult(entities, links)
+}

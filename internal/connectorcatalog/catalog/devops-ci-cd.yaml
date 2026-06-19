@@ -1070,6 +1070,102 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-postman
+      tenant_id: builtin_catalog
+      source_id: postman
+      display_name: "Postman"
+      description: "Postman connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - api
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.getpostman.com"
+        verification:
+          method: GET
+          path: /me
+          expect_status: [200]
+      resource_families:
+        - id: collections
+          label: Collections
+          path: /collections
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: uid
+          event:
+            kind: postman.collections
+            schema_ref: postman/collections/v1
+          projection:
+            template: asset
+          coverage:
+            - id: collections
+              type: entity_family
+              title: Collections
+              families: [collections]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: environments
+          label: Environments
+          path: /environments
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: uid
+          event:
+            kind: postman.environments
+            schema_ref: postman/environments/v1
+          projection:
+            template: secret
+          coverage:
+            - id: environments
+              type: entity_family
+              title: Environments
+              families: [environments]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: postman.audit_events
+            schema_ref: postman/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-pulumi_cloud
       tenant_id: builtin_catalog
       source_id: pulumi_cloud
@@ -1436,6 +1532,102 @@ entries:
           event:
             kind: terraform_cloud.audit_events
             schema_ref: terraform_cloud/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-vercel
+      tenant_id: builtin_catalog
+      source_id: vercel
+      display_name: "Vercel"
+      description: "Vercel connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - dev
+        - cloud
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.vercel.com"
+        verification:
+          method: GET
+          path: /v2/user
+          expect_status: [200]
+      resource_families:
+        - id: projects
+          label: Projects
+          path: /v9/projects
+          method: GET
+          record_selector: "$.projects[*]"
+          id_field: id
+          event:
+            kind: vercel.projects
+            schema_ref: vercel/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: Projects
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: deployments
+          label: Deployments
+          path: /v6/deployments
+          method: GET
+          record_selector: "$.deployments[*]"
+          id_field: uid
+          event:
+            kind: vercel.deployments
+            schema_ref: vercel/deployments/v1
+          projection:
+            template: asset
+          coverage:
+            - id: deployments
+              type: entity_family
+              title: Deployments
+              families: [deployments]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: "Audit events"
+          path: /v1/audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: vercel.audit_events
+            schema_ref: vercel/audit_events/v1
           projection:
             template: audit_event
           coverage:

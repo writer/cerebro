@@ -725,6 +725,10 @@ func executableProjectionClass(resource connectordefinitions.ResourceFamily) (st
 		return "asset", nil
 	case "finding", "vulnerability":
 		return "finding", nil
+	case "secret":
+		return "secret", nil
+	case "policy", "compliance_control":
+		return "policy", nil
 	case "identity_user", "identity_group", "group_membership", "audit_event", "evidence_cas_reference":
 		return template, nil
 	default:
@@ -746,6 +750,10 @@ func requiredAttributesForClass(class string) []string {
 		return []string{"tenant_id", "source_event_id", "event_type", "actor_id"}
 	case "evidence_cas_reference":
 		return []string{"tenant_id", "source_event_id", "evidence_id", "evidence_type", "evidence_cas_uri", "evidence_cas_digest"}
+	case "secret":
+		return []string{"tenant_id", "source_event_id", "secret_id", "secret_name"}
+	case "policy":
+		return []string{"tenant_id", "source_event_id", "policy_id", "policy_name"}
 	default:
 		return []string{"tenant_id", "source_event_id", "resource_urn", "resource_type", "resource_id"}
 	}
@@ -1021,6 +1029,10 @@ func idKeysForFamily(family familyData) []string {
 		base = append(base, "membership_id", "id", "group_id", "member_id", "user_id", "email")
 	case "audit_event":
 		base = append(base, "event_id", "id", "uuid", "request_id")
+	case "secret":
+		base = append(base, "secret_id", "id", "name", "key", "sid")
+	case "policy":
+		base = append(base, "policy_id", "id", "name", "key", "control_id")
 	default:
 		base = append(base, "id", "urn", "resource_urn", "name")
 	}
@@ -1093,6 +1105,22 @@ func attributePathsForFamily(family familyData) map[string]string {
 		base["evidence_cas_uri"] = "uri|evidence_cas_uri|evidence_cas.uri"
 		base["evidence_cas_digest"] = "digest|evidence_cas_digest|evidence_cas.digest"
 		base["evidence_cas_manifest_version"] = "manifest_version|evidence_cas_manifest_version"
+	case "secret":
+		base["secret_id"] = "secret_id|id|key|sid|name"
+		base["secret_name"] = "secret_name|name|display_name|label|title"
+		base["secret_type"] = "secret_type|type|kind"
+		base["secret_status"] = "secret_status|status|state"
+		base["secret_rotation_enabled"] = "secret_rotation_enabled|rotation_enabled|auto_rotate"
+		base["secret_last_rotated_at"] = "secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at"
+		base["secret_created_at"] = "created_at|created|date_created"
+	case "policy":
+		base["policy_id"] = "policy_id|id|control_id|key|sid"
+		base["policy_name"] = "policy_name|name|display_name|title|label"
+		base["policy_type"] = "policy_type|type|kind|category"
+		base["policy_status"] = "policy_status|status|state|enabled"
+		base["policy_description"] = "description|summary|body"
+		base["policy_severity"] = "severity|risk|priority"
+		base["policy_created_at"] = "created_at|created|date_created"
 	}
 	return base
 }
@@ -1252,6 +1280,10 @@ func renderProjectionGo(request normalizedRequest) string {
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sAssetProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
 		case "finding":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sFindingProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+		case "secret":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sSecretProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+		case "policy":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sPolicyProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
 		case "identity_user":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityUserProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
 		case "identity_group":
@@ -1272,16 +1304,29 @@ func renderProjectionGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "func %sFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tfindingID := firstNonEmpty(attributes[\"finding_id\"], event.GetId())\n\tfindingURN := projectionURN(tenantID, \"finding\", findingID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: findingURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"finding\", Label: firstNonEmpty(attributes[\"title\"], findingID), Attributes: map[string]string{\"finding_id\": findingID, \"severity\": strings.TrimSpace(attributes[\"severity\"]), \"status\": strings.TrimSpace(attributes[\"status\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif resourceURN := strings.TrimSpace(attributes[\"resource_urn\"]); resourceURN != \"\" {\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), findingURN, resourceURN, relationAffects, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, findingURN, relationSupports, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
+	if firstFamilyClass(request.Families, "secret").Name != "" {
+		fmt.Fprintf(&b, "func %sSecretProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tsecretID := firstNonEmpty(attributes[\"secret_id\"], event.GetId())\n\tsecretURN := projectionURN(tenantID, \"secret\", secretID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: secretURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"secret\", Label: firstNonEmpty(attributes[\"secret_name\"], secretID), Attributes: map[string]string{\"secret_id\": secretID, \"secret_type\": strings.TrimSpace(attributes[\"secret_type\"]), \"secret_status\": strings.TrimSpace(attributes[\"secret_status\"]), \"secret_rotation_enabled\": strings.TrimSpace(attributes[\"secret_rotation_enabled\"]), \"secret_last_rotated_at\": strings.TrimSpace(attributes[\"secret_last_rotated_at\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), secretURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n\n")
+	}
+	if firstFamilyClass(request.Families, "policy").Name != "" {
+		fmt.Fprintf(&b, "func %sPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tpolicyID := firstNonEmpty(attributes[\"policy_id\"], event.GetId())\n\tpolicyURN := projectionURN(tenantID, \"policy\", policyID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: policyURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"policy\", Label: firstNonEmpty(attributes[\"policy_name\"], policyID), Attributes: map[string]string{\"policy_id\": policyID, \"policy_type\": strings.TrimSpace(attributes[\"policy_type\"]), \"policy_status\": strings.TrimSpace(attributes[\"policy_status\"]), \"policy_severity\": strings.TrimSpace(attributes[\"policy_severity\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
+	}
 	return b.String()
 }
 
 func projectionNeedsStrings(families []familyData) bool {
-	return firstFamilyClass(families, "asset").Name != "" || firstFamilyClass(families, "finding").Name != ""
+	return firstFamilyClass(families, "asset").Name != "" ||
+		firstFamilyClass(families, "finding").Name != "" ||
+		firstFamilyClass(families, "secret").Name != "" ||
+		firstFamilyClass(families, "policy").Name != ""
 }
 
 func renderProjectionTestGo(request normalizedRequest) string {
 	assetFamily := firstFamilyClass(request.Families, "asset")
 	findingFamily := firstFamilyClass(request.Families, "finding")
+	secretFamily := firstFamilyClass(request.Families, "secret")
+	policyFamily := firstFamilyClass(request.Families, "policy")
 	userFamily := firstFamilyClass(request.Families, "identity_user")
 	groupFamily := firstFamilyClass(request.Families, "identity_group")
 	membershipFamily := firstFamilyClass(request.Families, "group_membership")
@@ -1299,6 +1344,16 @@ func renderProjectionTestGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "func Test%sFindingProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
 		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"finding_id\": \"finding-1\", \"title\": \"Finding One\", \"severity\": \"high\", \"status\": \"open\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:asset-1\", \"evidence_id\": \"evidence-1\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(findingFamily.EventKind))
 		fmt.Fprintf(&b, "\tentities, links, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected finding\")\n\t}\n\tif len(links) == 0 {\n\t\tt.Fatal(\"expected projected finding links\")\n\t}\n}\n\n", findingFamily.ProjectorName)
+	}
+	if secretFamily.Class == "secret" {
+		fmt.Fprintf(&b, "func Test%sSecretProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"secret_id\": \"secret-1\", \"secret_name\": \"DB Password\", \"secret_type\": \"password\", \"secret_status\": \"active\", \"evidence_id\": \"evidence-1\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(secretFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, links, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected secret\")\n\t}\n\tif len(links) == 0 {\n\t\tt.Fatal(\"expected projected evidence links\")\n\t}\n}\n\n", secretFamily.ProjectorName)
+	}
+	if policyFamily.Class == "policy" {
+		fmt.Fprintf(&b, "func Test%sPolicyProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
+		fmt.Fprintf(&b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"policy_id\": \"policy-1\", \"policy_name\": \"Require MFA\", \"policy_type\": \"access\", \"policy_status\": \"enabled\", \"evidence_id\": \"evidence-1\"}}\n", strconv.Quote(request.SourceID), strconv.Quote(policyFamily.EventKind))
+		fmt.Fprintf(&b, "\tentities, links, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected policy\")\n\t}\n\tif len(links) == 0 {\n\t\tt.Fatal(\"expected projected evidence links\")\n\t}\n}\n\n", policyFamily.ProjectorName)
 	}
 	if userFamily.Class == "identity_user" {
 		fmt.Fprintf(&b, "func Test%sIdentityUserProjection(t *testing.T) {\n", pascalIdentifier(request.SourceID))
