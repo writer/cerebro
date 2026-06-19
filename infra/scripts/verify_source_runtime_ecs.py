@@ -1453,6 +1453,12 @@ def _non_negative_int(value: str) -> int:
     return parsed
 
 
+def _effective_source_id(source_id: str | None, requested_runtime_ids: set[str]) -> str:
+    if source_id is not None:
+        return source_id
+    return "" if requested_runtime_ids else "cosmo"
+
+
 def _print_dry_run_plan(
     stack: str,
     environment: str,
@@ -1548,7 +1554,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify ECS source runtime executions from GitOps-declared schedules.")
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--region", default="us-east-1")
-    parser.add_argument("--source-id", default="cosmo")
+    parser.add_argument("--source-id")
     parser.add_argument("--runtime-id", action="append", default=[])
     parser.add_argument("--family", action="append", default=[], help="Restrict verification to source runtimes with this config family.")
     parser.add_argument("--observability-targets", action="store_true", help="Select enabled sourceRuntimeObservability runtimes instead of all sourceRuntimes for the source-id/family scope.")
@@ -1584,13 +1590,14 @@ def main(argv: list[str] | None = None) -> int:
     resource_prefix = f"cerebro-{environment}"
     requested = set(args.runtime_id or [])
     families = set(args.family or [])
+    source_id = _effective_source_id(args.source_id, requested)
     if args.observability_targets:
-        runtime_ids = _observability_runtime_ids(config, args.source_id, requested, families)
+        runtime_ids = _observability_runtime_ids(config, source_id, requested, families)
     else:
-        runtime_ids = _declared_runtime_ids(config, args.source_id, requested, families)
+        runtime_ids = _declared_runtime_ids(config, source_id, requested, families)
     if not runtime_ids:
         disabled_runtime_ids = (
-            _disabled_observability_runtime_ids(config, args.source_id, requested, families)
+            _disabled_observability_runtime_ids(config, source_id, requested, families)
             if args.observability_targets and args.dry_run
             else []
         )
@@ -1614,7 +1621,7 @@ def main(argv: list[str] | None = None) -> int:
             _print_dry_run_plan(
                 stack,
                 environment,
-                args.source_id,
+                source_id,
                 families,
                 requested,
                 disabled_runtime_ids,
@@ -1626,9 +1633,9 @@ def main(argv: list[str] | None = None) -> int:
                 disabled_runtime_ids,
             )
             return 0
-        scope = f" source {args.source_id!r}"
+        scope = f" source {source_id!r}" if source_id else ""
         if families:
-            scope += f" and family {', '.join(sorted(families))!r}"
+            scope += f"{' and' if scope else ''} family {', '.join(sorted(families))!r}"
         source = "sourceRuntimeObservability runtimes" if args.observability_targets else "source runtimes"
         raise RuntimeError(f"no enabled declared {source} found for{scope}")
 
@@ -1655,7 +1662,7 @@ def main(argv: list[str] | None = None) -> int:
             _print_dry_run_plan(
                 stack,
                 environment,
-                args.source_id,
+                source_id,
                 families,
                 requested,
                 runtime_ids,
@@ -1664,7 +1671,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.target_concurrency,
                 args.observability_targets,
                 args.allow_missing_targets,
-                _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
+                _disabled_observability_runtime_ids(config, source_id, requested, families) if args.observability_targets else [],
             )
             return 0
         if args.allow_missing_targets and not args.observability_targets:
@@ -1692,7 +1699,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_dry_run_plan(
             stack,
             environment,
-            args.source_id,
+            source_id,
             families,
             requested,
             runtime_ids,
@@ -1701,7 +1708,7 @@ def main(argv: list[str] | None = None) -> int:
             args.target_concurrency,
             args.observability_targets,
             args.allow_missing_targets,
-            _disabled_observability_runtime_ids(config, args.source_id, requested, families) if args.observability_targets else [],
+            _disabled_observability_runtime_ids(config, source_id, requested, families) if args.observability_targets else [],
         )
         return 0
     _verify_bootstrap_payload_targets(targets, args.region)

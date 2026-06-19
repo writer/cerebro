@@ -1365,6 +1365,81 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertIn("run_event_limit\t3", output)
         self.assertIn("allow_missing_targets\tfalse", output)
 
+    def test_runtime_id_without_source_id_selects_runtime_globally(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {"id": "writer-cosmo-session", "sourceId": "cosmo"},
+                {"id": "writer-okta-audit", "sourceId": "okta"},
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="writer-okta-audit",
+                schedule_name="okta-audit-live",
+                rule_name="cerebro-sec-dev-orchestrator-okta-audit-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+
+        stdout = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets) as runtime_targets,
+            redirect_stdout(stdout),
+        ):
+            status = main(
+                [
+                    "--stack-file",
+                    str(stack_file),
+                    "--runtime-id",
+                    "writer-okta-audit",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(runtime_targets.call_args.args[1], ["writer-okta-audit"])
+        output = stdout.getvalue()
+        self.assertIn("source_id\t", output)
+        self.assertIn("requested_runtime_ids\twriter-okta-audit", output)
+        self.assertIn("writer-okta-audit\tokta-audit-live", output)
+
+    def test_default_source_id_remains_cosmo_without_runtime_scope(self) -> None:
+        stack_file = Path("aws/Pulumi.sec-dev.yaml")
+        config = {
+            "environment": "sec-dev",
+            "sourceRuntimes": [
+                {"id": "writer-cosmo-session", "sourceId": "cosmo"},
+                {"id": "writer-okta-audit", "sourceId": "okta"},
+            ],
+        }
+        targets = [
+            RuntimeTarget(
+                runtime_id="writer-cosmo-session",
+                schedule_name="cosmo-session-live",
+                rule_name="cerebro-sec-dev-orchestrator-cosmo-session-live",
+                target={"Arn": "cluster", "EcsParameters": {"TaskDefinitionArn": "task-def"}},
+            )
+        ]
+
+        stdout = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._load_config", return_value=config),
+            patch("scripts.verify_source_runtime_ecs._verify_account"),
+            patch("scripts.verify_source_runtime_ecs._runtime_targets", return_value=targets) as runtime_targets,
+            redirect_stdout(stdout),
+        ):
+            status = main(["--stack-file", str(stack_file), "--dry-run"])
+
+        self.assertEqual(status, 0)
+        self.assertEqual(runtime_targets.call_args.args[1], ["writer-cosmo-session"])
+        output = stdout.getvalue()
+        self.assertIn("source_id\tcosmo", output)
+        self.assertIn("writer-cosmo-session\tcosmo-session-live", output)
+
     def test_go_prod_panopticon_observability_can_run_live_api_tasks(self) -> None:
         stack_file = Path("aws/Pulumi.go-prod.yaml")
         config = {
