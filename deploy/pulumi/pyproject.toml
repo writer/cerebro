@@ -1,0 +1,16 @@
+[project]
+name = "cerebro-cloud-pulumi"
+version = "0.1.0"
+description = "Multi-cloud Pulumi templates for Cerebro"
+requires-python = ">=3.11"
+dependencies = [
+    "pulumi>=3.150.0,<4.0.0",
+    "pulumi-aws>=7.0.0,<8.0.0",
+    "pulumi-azure-native>=3.0.0,<4.0.0",
+    "pulumi-gcp>=9.0.0,<10.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0,<9.0.0",
+]
