@@ -39115,7 +39115,7 @@
       "pack_id": "policy",
       "pack_name": "Policy",
       "name": "Okta Privileged Accounts Without MFA",
-      "description": "Flags failed query-result evidence for okta user: Okta Privileged Accounts Without MFA. Detects privileged okta accounts missing MFA protections. Audit impact: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.",
+      "description": "Flags failed query-result evidence for okta user: Okta Privileged Accounts Without MFA. Detects privileged okta accounts missing MFA protections. Audit impact: Privileged accounts without MFA weaken identity control enforcement and increase the likelihood of unauthorized administrative access.",
       "source_id": "policy",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -39128,7 +39128,8 @@
       "maturity": "candidate",
       "tags": [
         "assessment:examine",
-        "evidence:identity_governance",
+        "assessment:test",
+        "evidence:identity_configuration",
         "identity",
         "mfa",
         "okta",
@@ -39136,12 +39137,30 @@
         "privileged-access",
         "query"
       ],
+      "references": [
+        "crown_jewel_distance",
+        "owner",
+        "principal_urn",
+        "privileged_access_path",
+        "resource_urn"
+      ],
       "false_positives": [
         "A compensating control satisfies the mapped control objective and is documented for auditor review.",
         "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "The account is disabled, deprovisioned, or outside the privileged access population.",
         "The subject is outside the assessment scope or has a documented exception for the audit period."
       ],
-      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence. Immediately enforce MFA on privileged identities and suspend privileged actions until compliant. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Privileged users are required to have MFA enabled before they can access administrative SaaS functions. Immediately enforce MFA on privileged identities and suspend privileged actions until compliant. Action plan: Require MFA enrollment; Remove unnecessary privileged role assignments; Re-run identity sync. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "required_attributes": [
+        "mfa_enrolled",
+        "observed_at",
+        "policy_id",
+        "privilege_level",
+        "resource_id",
+        "resource_urn",
+        "subject_urn",
+        "tenant_id"
+      ],
       "fingerprint_fields": [
         "tenant_id",
         "policy_id",
@@ -39152,6 +39171,10 @@
         {
           "framework_name": "SOC 2",
           "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-2"
         },
         {
           "framework_name": "ISO 27001:2022",

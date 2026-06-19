@@ -37,9 +37,15 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 		RemediationIntent: "Restore expected control state.",
 		ExceptionGuidance: []string{"Documented exception."},
 		ControlFamilies:   []string{"SOC 2 CC6 Logical and Physical Access"},
-		Category:          "compliance",
-		Query:             "SELECT id FROM resources WHERE failing = true",
-		Enabled:           true,
+		ContractAttributes: map[string]string{
+			"policy_input_freshness_sla":          "24h",
+			"policy_context_graph_enrich":         "owner,privileged_access_path",
+			"policy_verification_mutation_checks": "missing_required_field,stale_evidence",
+			"policy_action_effort":                "low",
+		},
+		Category: "compliance",
+		Query:    "SELECT id FROM resources WHERE failing = true",
+		Enabled:  true,
 	})
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-policy", SourceId: policyRuleSourceID}
 	event := &cerebrov1.EventEnvelope{
@@ -103,6 +109,18 @@ func TestPolicyCatalogRuleEmitsFindingForFailedEvidence(t *testing.T) {
 	}
 	if got := finding.Attributes["policy_control_families"]; got != "SOC 2 CC6 Logical and Physical Access" {
 		t.Fatalf("policy_control_families = %q, want SOC 2 family", got)
+	}
+	if got := finding.Attributes["policy_input_freshness_sla"]; got != "24h" {
+		t.Fatalf("policy_input_freshness_sla = %q, want 24h", got)
+	}
+	if got := finding.Attributes["policy_context_graph_enrich"]; got != "owner,privileged_access_path" {
+		t.Fatalf("policy_context_graph_enrich = %q, want graph context", got)
+	}
+	if got := finding.Attributes["policy_verification_mutation_checks"]; got != "missing_required_field,stale_evidence" {
+		t.Fatalf("policy_verification_mutation_checks = %q, want mutation checks", got)
+	}
+	if got := finding.Attributes["policy_action_effort"]; got != "low" {
+		t.Fatalf("policy_action_effort = %q, want low", got)
 	}
 }
 
@@ -192,13 +210,7 @@ func TestPolicyCatalogRuleDisabledDoesNotSupportRuntimeOrEmit(t *testing.T) {
 }
 
 func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
-	var config *policyRuleConfig
-	for i := range generatedPolicyRuleCatalog {
-		if generatedPolicyRuleCatalog[i].Definition.ID == "identity-okta-vendor-app-broad-group-access" {
-			config = &generatedPolicyRuleCatalog[i]
-			break
-		}
-	}
+	config := generatedPolicyRuleConfigByID("identity-okta-vendor-app-broad-group-access")
 	if config == nil {
 		t.Fatal("identity-okta-vendor-app-broad-group-access missing from generated policy catalog")
 	}
@@ -208,4 +220,55 @@ func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
 	if strings.Contains(config.Query, "SELECT a.assignee_id AS id") {
 		t.Fatalf("query = %q, must not fingerprint broad group rows by assignee_id", config.Query)
 	}
+}
+
+func TestOktaPrivilegedNoMFAPolicyCarriesDSLContractMetadata(t *testing.T) {
+	config := generatedPolicyRuleConfigByID("identity-okta-privileged-no-mfa")
+	if config == nil {
+		t.Fatal("identity-okta-privileged-no-mfa missing from generated policy catalog")
+	}
+	definition := config.Definition
+	for _, want := range []string{"tenant_id", "policy_id", "resource_urn", "resource_id", "privilege_level", "mfa_enrolled", "observed_at", "subject_urn"} {
+		if !policyRuleTestContainsString(definition.RequiredAttributes, want) {
+			t.Fatalf("RequiredAttributes = %v, missing %q", definition.RequiredAttributes, want)
+		}
+	}
+	if !policyRuleTestContainsString(definition.FingerprintFields, "resource_urn") {
+		t.Fatalf("FingerprintFields = %v, missing resource_urn", definition.FingerprintFields)
+	}
+	if !policyRuleTestContainsString(definition.References, "crown_jewel_distance") {
+		t.Fatalf("References = %v, missing graph enrichment", definition.References)
+	}
+	if got := config.EvidenceType; got != "identity_configuration" {
+		t.Fatalf("EvidenceType = %q, want identity_configuration", got)
+	}
+	for key, want := range map[string]string{
+		"policy_input_freshness_sla":               "24h",
+		"policy_evidence_required_for_audit":       "true",
+		"policy_audit_exception_requires_approval": "true",
+		"policy_action_owner_from":                 "graph.owner",
+		"policy_action_effort":                     "low",
+	} {
+		if got := config.ContractAttributes[key]; got != want {
+			t.Fatalf("ContractAttributes[%s] = %q, want %q; attrs=%#v", key, got, want, config.ContractAttributes)
+		}
+	}
+}
+
+func generatedPolicyRuleConfigByID(ruleID string) *policyRuleConfig {
+	for i := range generatedPolicyRuleCatalog {
+		if generatedPolicyRuleCatalog[i].Definition.ID == ruleID {
+			return &generatedPolicyRuleCatalog[i]
+		}
+	}
+	return nil
+}
+
+func policyRuleTestContainsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

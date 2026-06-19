@@ -18,21 +18,22 @@ const (
 )
 
 type policyRuleConfig struct {
-	Definition        RuleDefinition
-	Conditions        []string
-	Query             string
-	Resource          string
-	ResourceType      string
-	Category          string
-	EvidenceMode      string
-	EvidenceType      string
-	AssessmentMethods []string
-	AuditorGuidance   string
-	RiskStatement     string
-	RemediationIntent string
-	ExceptionGuidance []string
-	ControlFamilies   []string
-	Enabled           bool
+	Definition         RuleDefinition
+	Conditions         []string
+	Query              string
+	Resource           string
+	ResourceType       string
+	Category           string
+	EvidenceMode       string
+	EvidenceType       string
+	AssessmentMethods  []string
+	AuditorGuidance    string
+	RiskStatement      string
+	RemediationIntent  string
+	ExceptionGuidance  []string
+	ControlFamilies    []string
+	ContractAttributes map[string]string
+	Enabled            bool
 }
 
 type policyCatalogRule struct {
@@ -66,6 +67,7 @@ func newPolicyCatalogRule(config policyRuleConfig) Rule {
 	config.AssessmentMethods = cloneStringSlice(config.AssessmentMethods)
 	config.ExceptionGuidance = cloneStringSlice(config.ExceptionGuidance)
 	config.ControlFamilies = cloneStringSlice(config.ControlFamilies)
+	config.ContractAttributes = cloneStringMap(config.ContractAttributes)
 	return &policyCatalogRule{config: config}
 }
 
@@ -151,6 +153,11 @@ func (r *policyCatalogRule) buildFinding(runtime *cerebrov1.SourceRuntime, event
 		"policy_risk_statement":   r.config.RiskStatement,
 		"policy_remediation":      r.config.RemediationIntent,
 		"policy_status":           firstNonEmpty(attributes["policy_status"], attributes["compliance_status"], attributes["result"], attributes["status"], attributes["outcome"]),
+	}
+	for key, value := range r.config.ContractAttributes {
+		if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
+			findingAttributes[trimmedKey] = strings.TrimSpace(value)
+		}
 	}
 	for key, value := range attributes {
 		if _, exists := findingAttributes[key]; !exists {

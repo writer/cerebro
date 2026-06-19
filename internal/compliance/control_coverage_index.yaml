@@ -7,7 +7,7 @@ profiles:
         selected_controls: 31
         mapped_controls: 31
         unmapped_controls: 0
-        mapped_rules: 471
+        mapped_rules: 472
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 31
@@ -962,7 +962,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 109
+          rule_count: 110
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -1034,6 +1034,7 @@ profiles:
             - github-secret-scanning-alert
             - gke-secrets-access
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
@@ -2290,7 +2291,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 109
+          rule_count: 110
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -2362,6 +2363,7 @@ profiles:
             - github-secret-scanning-alert
             - gke-secrets-access
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
@@ -6266,6 +6268,12 @@ profiles:
           controls:
             - framework_name: CJIS Security Policy
               control_id: PA-9
+        - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: CJIS Security Policy
+              control_id: 5.6.2.2
+            - framework_name: CJIS Security Policy
+              control_id: PA-6
         - rule_id: identity-saas-mfa-enforced
           controls:
             - framework_name: CJIS Security Policy
@@ -11940,7 +11948,7 @@ profiles:
         selected_controls: 52
         mapped_controls: 52
         unmapped_controls: 0
-        mapped_rules: 459
+        mapped_rules: 460
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 52
@@ -13635,7 +13643,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 36
+          rule_count: 37
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -13660,6 +13668,7 @@ profiles:
             - github-admin-without-2fa
             - github-org-2fa-disabled
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -13691,7 +13700,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 36
+          rule_count: 37
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -13716,6 +13725,7 @@ profiles:
             - github-admin-without-2fa
             - github-org-2fa-disabled
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -13874,7 +13884,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 109
+          rule_count: 110
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -13946,6 +13956,7 @@ profiles:
             - github-secret-scanning-alert
             - gke-secrets-access
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
@@ -21481,6 +21492,14 @@ profiles:
               control_id: PE.L1-3.10.5
             - framework_name: CMMC 2.0
               control_id: PE.L2
+        - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: IA.L1
+            - framework_name: CMMC 2.0
+              control_id: IA.L1-3.5.1
+            - framework_name: CMMC 2.0
+              control_id: IA.L2
         - rule_id: identity-saas-mfa-enforced
           controls:
             - framework_name: CMMC 2.0
@@ -24150,7 +24169,7 @@ profiles:
         selected_controls: 23
         mapped_controls: 23
         unmapped_controls: 0
-        mapped_rules: 366
+        mapped_rules: 367
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 23
@@ -25055,7 +25074,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 36
+          rule_count: 37
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -25080,6 +25099,7 @@ profiles:
             - github-admin-without-2fa
             - github-org-2fa-disabled
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -25111,7 +25131,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 36
+          rule_count: 37
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -25136,6 +25156,7 @@ profiles:
             - github-admin-without-2fa
             - github-org-2fa-disabled
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -28979,6 +29000,12 @@ profiles:
               control_id: PE.L1-3.10.4
             - framework_name: CMMC 2.0
               control_id: PE.L1-3.10.5
+        - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: IA.L1
+            - framework_name: CMMC 2.0
+              control_id: IA.L1-3.5.1
         - rule_id: identity-saas-mfa-enforced
           controls:
             - framework_name: CMMC 2.0
@@ -36037,7 +36064,7 @@ profiles:
         selected_controls: 48
         mapped_controls: 48
         unmapped_controls: 0
-        mapped_rules: 475
+        mapped_rules: 476
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 48
@@ -37092,7 +37119,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 36
+          rule_count: 37
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -37117,6 +37144,7 @@ profiles:
             - github-admin-without-2fa
             - github-org-2fa-disabled
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -40534,6 +40562,10 @@ profiles:
           controls:
             - framework_name: FedRAMP Rev. 5
               control_id: PS-4
+        - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: FedRAMP Rev. 5
+              control_id: IA-2
         - rule_id: identity-saas-mfa-enforced
           controls:
             - framework_name: FedRAMP Rev. 5
@@ -42681,7 +42713,7 @@ profiles:
         selected_controls: 22
         mapped_controls: 22
         unmapped_controls: 0
-        mapped_rules: 464
+        mapped_rules: 465
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 22
@@ -43546,7 +43578,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
           coverage_status: mapped
-          rule_count: 110
+          rule_count: 111
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -43619,6 +43651,7 @@ profiles:
             - github-secret-scanning-alert
             - gke-secrets-access
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
@@ -43736,7 +43769,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 226
+          rule_count: 227
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -43880,6 +43913,7 @@ profiles:
             - iam-unknown-account-trusted
             - identity-account-deprovision
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - identity-stale-accounts-disabled
             - internal-vm-cross-account-keys
@@ -46294,6 +46328,12 @@ profiles:
               control_id: Art.20
             - framework_name: NIS2
               control_id: Art.21(2)(a)
+        - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: NIS2
+              control_id: Art.21(2)(j)
+            - framework_name: NIS2
+              control_id: CIR-2024-2690-11
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: NIS2
@@ -47431,7 +47471,7 @@ profiles:
         selected_controls: 53
         mapped_controls: 53
         unmapped_controls: 0
-        mapped_rules: 511
+        mapped_rules: 512
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 53
@@ -48874,7 +48914,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 265
+          rule_count: 266
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -49047,6 +49087,7 @@ profiles:
             - iam-unknown-account-trusted
             - identity-account-deprovision
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - identity-stale-accounts-disabled
             - internal-vm-cross-account-keys
@@ -49161,7 +49202,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 216
+          rule_count: 217
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -49302,6 +49343,7 @@ profiles:
             - iam-unknown-account-trusted
             - identity-account-deprovision
             - identity-google-workspace-mfa
+            - identity-okta-privileged-no-mfa
             - identity-saas-mfa-enforced
             - identity-stale-accounts-disabled
             - internal-vm-cross-account-keys
@@ -54031,6 +54073,12 @@ profiles:
               control_id: GV.RR
             - framework_name: NIST CSF 2.0
               control_id: GV.RR-02
+        - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: NIST CSF 2.0
+              control_id: PR.AA
+            - framework_name: NIST CSF 2.0
+              control_id: PR.AA-01
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: NIST CSF 2.0

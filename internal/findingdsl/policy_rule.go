@@ -42,19 +42,26 @@ type PolicyRuleMetadata struct {
 }
 
 type PolicyFindingRuleSpec struct {
-	Severity       string                `json:"severity" yaml:"severity"`
-	Category       string                `json:"category,omitempty" yaml:"category,omitempty"`
-	Effect         string                `json:"effect,omitempty" yaml:"effect,omitempty"`
-	Principal      string                `json:"principal,omitempty" yaml:"principal,omitempty"`
-	Action         string                `json:"action,omitempty" yaml:"action,omitempty"`
-	Resource       string                `json:"resource,omitempty" yaml:"resource,omitempty"`
-	ResourceType   string                `json:"resourceType,omitempty" yaml:"resourceType,omitempty"`
-	Match          PolicyRuleMatch       `json:"match" yaml:"match"`
-	Remediation    PolicyRuleRemediation `json:"remediation,omitempty" yaml:"remediation,omitempty"`
-	RiskCategories []string              `json:"riskCategories,omitempty" yaml:"riskCategories,omitempty"`
-	Frameworks     []PolicyFramework     `json:"frameworks,omitempty" yaml:"frameworks,omitempty"`
-	MITREAttack    []PolicyMITREAttack   `json:"mitreAttack,omitempty" yaml:"mitreAttack,omitempty"`
-	Enabled        *bool                 `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Severity       string                 `json:"severity" yaml:"severity"`
+	Category       string                 `json:"category,omitempty" yaml:"category,omitempty"`
+	Effect         string                 `json:"effect,omitempty" yaml:"effect,omitempty"`
+	Principal      string                 `json:"principal,omitempty" yaml:"principal,omitempty"`
+	Action         string                 `json:"action,omitempty" yaml:"action,omitempty"`
+	Resource       string                 `json:"resource,omitempty" yaml:"resource,omitempty"`
+	ResourceType   string                 `json:"resourceType,omitempty" yaml:"resourceType,omitempty"`
+	Match          PolicyRuleMatch        `json:"match" yaml:"match"`
+	Remediation    PolicyRuleRemediation  `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+	RiskCategories []string               `json:"riskCategories,omitempty" yaml:"riskCategories,omitempty"`
+	Frameworks     []PolicyFramework      `json:"frameworks,omitempty" yaml:"frameworks,omitempty"`
+	MITREAttack    []PolicyMITREAttack    `json:"mitreAttack,omitempty" yaml:"mitreAttack,omitempty"`
+	Input          PolicyRuleInput        `json:"input,omitempty" yaml:"input,omitempty"`
+	Assert         PolicyRuleAssert       `json:"assert,omitempty" yaml:"assert,omitempty"`
+	Context        PolicyRuleContext      `json:"context,omitempty" yaml:"context,omitempty"`
+	Evidence       PolicyRuleEvidence     `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+	Audit          PolicyRuleAudit        `json:"audit,omitempty" yaml:"audit,omitempty"`
+	Verification   PolicyRuleVerification `json:"verification,omitempty" yaml:"verification,omitempty"`
+	Actions        PolicyRuleActions      `json:"actions,omitempty" yaml:"actions,omitempty"`
+	Enabled        *bool                  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 }
 
 type PolicyRuleMatch struct {
@@ -66,6 +73,119 @@ type PolicyRuleMatch struct {
 type PolicyRuleRemediation struct {
 	Summary string   `json:"summary,omitempty" yaml:"summary,omitempty"`
 	Steps   []string `json:"steps,omitempty" yaml:"steps,omitempty"`
+}
+
+type PolicyRuleInput struct {
+	SourceKinds          []string            `json:"sourceKinds,omitempty" yaml:"sourceKinds,omitempty"`
+	EventKinds           []string            `json:"eventKinds,omitempty" yaml:"eventKinds,omitempty"`
+	RequiredClaims       []string            `json:"requiredClaims,omitempty" yaml:"requiredClaims,omitempty"`
+	RequiredFields       []string            `json:"requiredFields,omitempty" yaml:"requiredFields,omitempty"`
+	RequiredFieldsByKind map[string][]string `json:"requiredFieldsByKind,omitempty" yaml:"requiredFieldsByKind,omitempty"`
+	FreshnessSLA         string              `json:"freshnessSLA,omitempty" yaml:"freshnessSLA,omitempty"`
+}
+
+type PolicyRuleAssert struct {
+	All []PolicyRuleAssertion `json:"all,omitempty" yaml:"all,omitempty"`
+	Any []PolicyRuleAssertion `json:"any,omitempty" yaml:"any,omitempty"`
+}
+
+type PolicyRuleAssertion struct {
+	Field string `json:"field,omitempty" yaml:"field,omitempty"`
+	Op    string `json:"op,omitempty" yaml:"op,omitempty"`
+	Value any    `json:"value,omitempty" yaml:"value,omitempty"`
+}
+
+type PolicyRuleContext struct {
+	Graph               PolicyRuleGraphContext         `json:"graph,omitempty" yaml:"graph,omitempty"`
+	SeverityAdjustments []PolicyRuleSeverityAdjustment `json:"severityAdjustments,omitempty" yaml:"severityAdjustments,omitempty"`
+}
+
+type PolicyRuleGraphContext struct {
+	Anchors []string `json:"anchors,omitempty" yaml:"anchors,omitempty"`
+	Enrich  []string `json:"enrich,omitempty" yaml:"enrich,omitempty"`
+}
+
+type PolicyRuleSeverityAdjustment struct {
+	When  string `json:"when,omitempty" yaml:"when,omitempty"`
+	Set   string `json:"set,omitempty" yaml:"set,omitempty"`
+	Delta string `json:"delta,omitempty" yaml:"delta,omitempty"`
+}
+
+type PolicyRuleEvidence struct {
+	Type              string   `json:"type,omitempty" yaml:"type,omitempty"`
+	AssessmentMethods []string `json:"assessmentMethods,omitempty" yaml:"assessmentMethods,omitempty"`
+	RequiredForAudit  bool     `json:"requiredForAudit,omitempty" yaml:"requiredForAudit,omitempty"`
+	FreshnessSLA      string   `json:"freshnessSLA,omitempty" yaml:"freshnessSLA,omitempty"`
+	AcceptableSources []string `json:"acceptableSources,omitempty" yaml:"acceptableSources,omitempty"`
+	RequiredFields    []string `json:"requiredFields,omitempty" yaml:"requiredFields,omitempty"`
+	FingerprintFields []string `json:"fingerprintFields,omitempty" yaml:"fingerprintFields,omitempty"`
+}
+
+type PolicyRuleAudit struct {
+	EvidenceType       string                         `json:"evidenceType,omitempty" yaml:"evidenceType,omitempty"`
+	AssessmentMethods  []string                       `json:"assessmentMethods,omitempty" yaml:"assessmentMethods,omitempty"`
+	FreshnessSLA       string                         `json:"freshnessSLA,omitempty" yaml:"freshnessSLA,omitempty"`
+	AuditorStatement   string                         `json:"auditorStatement,omitempty" yaml:"auditorStatement,omitempty"`
+	AuditorGuidance    string                         `json:"auditorGuidance,omitempty" yaml:"auditorGuidance,omitempty"`
+	RiskStatement      string                         `json:"riskStatement,omitempty" yaml:"riskStatement,omitempty"`
+	RemediationIntent  string                         `json:"remediationIntent,omitempty" yaml:"remediationIntent,omitempty"`
+	AcceptableEvidence []PolicyRuleAcceptableEvidence `json:"acceptableEvidence,omitempty" yaml:"acceptableEvidence,omitempty"`
+	ExceptionPolicy    PolicyRuleExceptionPolicy      `json:"exceptionPolicy,omitempty" yaml:"exceptionPolicy,omitempty"`
+	ExceptionGuidance  []string                       `json:"exceptionGuidance,omitempty" yaml:"exceptionGuidance,omitempty"`
+	FalsePositives     []string                       `json:"falsePositives,omitempty" yaml:"falsePositives,omitempty"`
+}
+
+type PolicyRuleAcceptableEvidence struct {
+	Source string   `json:"source,omitempty" yaml:"source,omitempty"`
+	Fields []string `json:"fields,omitempty" yaml:"fields,omitempty"`
+}
+
+type PolicyRuleExceptionPolicy struct {
+	MaxAge           string `json:"maxAge,omitempty" yaml:"maxAge,omitempty"`
+	RequiresApproval bool   `json:"requiresApproval,omitempty" yaml:"requiresApproval,omitempty"`
+}
+
+type PolicyRuleVerification struct {
+	Fixtures         []PolicyRuleVerificationFixture `json:"fixtures,omitempty" yaml:"fixtures,omitempty"`
+	MutationChecks   []string                        `json:"mutationChecks,omitempty" yaml:"mutationChecks,omitempty"`
+	RemediationCheck PolicyRuleRemediationCheck      `json:"remediationCheck,omitempty" yaml:"remediationCheck,omitempty"`
+}
+
+type PolicyRuleVerificationFixture struct {
+	Name        string `json:"name,omitempty" yaml:"name,omitempty"`
+	Expect      string `json:"expect,omitempty" yaml:"expect,omitempty"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+type PolicyRuleRemediationCheck struct {
+	RerunAfter     string `json:"rerunAfter,omitempty" yaml:"rerunAfter,omitempty"`
+	ExpectedStatus string `json:"expectedStatus,omitempty" yaml:"expectedStatus,omitempty"`
+}
+
+type PolicyRuleActions struct {
+	Owner        PolicyRuleActionOwner        `json:"owner,omitempty" yaml:"owner,omitempty"`
+	Remediation  PolicyRuleActionRemediation  `json:"remediation,omitempty" yaml:"remediation,omitempty"`
+	Effort       string                       `json:"effort,omitempty" yaml:"effort,omitempty"`
+	BlastRadius  PolicyRuleActionBlastRadius  `json:"blastRadius,omitempty" yaml:"blastRadius,omitempty"`
+	Verification PolicyRuleActionVerification `json:"verification,omitempty" yaml:"verification,omitempty"`
+}
+
+type PolicyRuleActionOwner struct {
+	From     string `json:"from,omitempty" yaml:"from,omitempty"`
+	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+}
+
+type PolicyRuleActionRemediation struct {
+	Type  string   `json:"type,omitempty" yaml:"type,omitempty"`
+	Steps []string `json:"steps,omitempty" yaml:"steps,omitempty"`
+}
+
+type PolicyRuleActionBlastRadius struct {
+	EstimateFrom string `json:"estimateFrom,omitempty" yaml:"estimateFrom,omitempty"`
+}
+
+type PolicyRuleActionVerification struct {
+	RerunPolicy bool `json:"rerunPolicy,omitempty" yaml:"rerunPolicy,omitempty"`
 }
 
 type PolicyFramework struct {
@@ -216,8 +336,9 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 	}
 	hasConditions := len(trimStrings(rule.Spec.Match.Conditions)) != 0
 	hasQuery := strings.TrimSpace(rule.Spec.Match.Query) != ""
-	if !hasConditions && !hasQuery {
-		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions or spec.match.query is required"})
+	hasAssert := policyAssertConfigured(rule.Spec.Assert)
+	if !hasConditions && !hasQuery && !hasAssert {
+		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions, spec.match.query, or spec.assert is required"})
 	}
 	if hasConditions {
 		if strings.TrimSpace(rule.Spec.Effect) == "" {
@@ -230,6 +351,122 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 	issues = append(issues, validateStringArray(path, "metadata.tags", rule.Metadata.Tags)...)
 	issues = append(issues, validateStringArray(path, "spec.riskCategories", rule.Spec.RiskCategories)...)
 	issues = append(issues, validateFrameworks(path, rule.Spec.Frameworks)...)
+	issues = append(issues, validatePolicyRuleContract(path, rule.Spec)...)
+	return issues
+}
+
+func validatePolicyRuleContract(path string, spec PolicyFindingRuleSpec) []Issue {
+	var issues []Issue
+	issues = append(issues, validateStringArray(path, "spec.input.sourceKinds", spec.Input.SourceKinds)...)
+	issues = append(issues, validateStringArray(path, "spec.input.eventKinds", spec.Input.EventKinds)...)
+	issues = append(issues, validateStringArray(path, "spec.input.requiredClaims", spec.Input.RequiredClaims)...)
+	issues = append(issues, validateStringArray(path, "spec.input.requiredFields", spec.Input.RequiredFields)...)
+	issues = append(issues, validateStringArrayMap(path, "spec.input.requiredFieldsByKind", spec.Input.RequiredFieldsByKind)...)
+	issues = append(issues, validateDurationField(path, "spec.input.freshnessSLA", spec.Input.FreshnessSLA)...)
+	issues = append(issues, validateAssertions(path, "spec.assert.all", spec.Assert.All)...)
+	issues = append(issues, validateAssertions(path, "spec.assert.any", spec.Assert.Any)...)
+	issues = append(issues, validateStringArray(path, "spec.context.graph.anchors", spec.Context.Graph.Anchors)...)
+	issues = append(issues, validateStringArray(path, "spec.context.graph.enrich", spec.Context.Graph.Enrich)...)
+	issues = append(issues, validateSeverityAdjustments(path, spec.Context.SeverityAdjustments)...)
+	issues = append(issues, validatePolicyRuleEvidence(path, spec.Evidence)...)
+	issues = append(issues, validatePolicyRuleAudit(path, spec.Audit)...)
+	issues = append(issues, validatePolicyRuleVerification(path, spec.Verification)...)
+	issues = append(issues, validatePolicyRuleActions(path, spec.Actions)...)
+	return issues
+}
+
+func policyAssertConfigured(assert PolicyRuleAssert) bool {
+	return len(assert.All) != 0 || len(assert.Any) != 0
+}
+
+func validateAssertions(path string, field string, assertions []PolicyRuleAssertion) []Issue {
+	var issues []Issue
+	for idx, assertion := range assertions {
+		if strings.TrimSpace(assertion.Field) == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d].field is required", field, idx)})
+		}
+		op := strings.ToLower(strings.TrimSpace(assertion.Op))
+		if op == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d].op is required", field, idx)})
+			continue
+		}
+		if !stringSetContains([]string{"eq", "ne", "in", "not_in", "gt", "gte", "lt", "lte", "exists", "is_true", "is_false"}, op) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d].op must be one of eq, ne, in, not_in, gt, gte, lt, lte, exists, is_true, is_false", field, idx)})
+		}
+	}
+	return issues
+}
+
+func validateSeverityAdjustments(path string, adjustments []PolicyRuleSeverityAdjustment) []Issue {
+	var issues []Issue
+	for idx, adjustment := range adjustments {
+		if strings.TrimSpace(adjustment.When) == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.context.severityAdjustments[%d].when is required", idx)})
+		}
+		if strings.TrimSpace(adjustment.Set) == "" && strings.TrimSpace(adjustment.Delta) == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.context.severityAdjustments[%d].set or delta is required", idx)})
+		}
+		if set := strings.ToUpper(strings.TrimSpace(adjustment.Set)); set != "" && !stringSetContains([]string{"INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"}, set) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.context.severityAdjustments[%d].set must be one of info, low, medium, high, critical", idx)})
+		}
+	}
+	return issues
+}
+
+func validatePolicyRuleEvidence(path string, evidence PolicyRuleEvidence) []Issue {
+	var issues []Issue
+	issues = append(issues, validateAssessmentMethods(path, "spec.evidence.assessmentMethods", evidence.AssessmentMethods)...)
+	issues = append(issues, validateDurationField(path, "spec.evidence.freshnessSLA", evidence.FreshnessSLA)...)
+	issues = append(issues, validateStringArray(path, "spec.evidence.acceptableSources", evidence.AcceptableSources)...)
+	issues = append(issues, validateStringArray(path, "spec.evidence.requiredFields", evidence.RequiredFields)...)
+	issues = append(issues, validateFingerprintFields(path, "spec.evidence.fingerprintFields", evidence.FingerprintFields)...)
+	return issues
+}
+
+func validatePolicyRuleAudit(path string, audit PolicyRuleAudit) []Issue {
+	var issues []Issue
+	issues = append(issues, validateAssessmentMethods(path, "spec.audit.assessmentMethods", audit.AssessmentMethods)...)
+	issues = append(issues, validateDurationField(path, "spec.audit.freshnessSLA", audit.FreshnessSLA)...)
+	issues = append(issues, validateDurationField(path, "spec.audit.exceptionPolicy.maxAge", audit.ExceptionPolicy.MaxAge)...)
+	issues = append(issues, validateStringArray(path, "spec.audit.exceptionGuidance", audit.ExceptionGuidance)...)
+	issues = append(issues, validateStringArray(path, "spec.audit.falsePositives", audit.FalsePositives)...)
+	for idx, evidence := range audit.AcceptableEvidence {
+		if strings.TrimSpace(evidence.Source) == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.audit.acceptableEvidence[%d].source is required", idx)})
+		}
+		issues = append(issues, validateStringArray(path, fmt.Sprintf("spec.audit.acceptableEvidence[%d].fields", idx), evidence.Fields)...)
+	}
+	return issues
+}
+
+func validatePolicyRuleVerification(path string, verification PolicyRuleVerification) []Issue {
+	var issues []Issue
+	issues = append(issues, validateStringArray(path, "spec.verification.mutationChecks", verification.MutationChecks)...)
+	for idx, fixture := range verification.Fixtures {
+		if strings.TrimSpace(fixture.Name) == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.verification.fixtures[%d].name is required", idx)})
+		}
+		expect := strings.ToLower(strings.TrimSpace(fixture.Expect))
+		if expect == "" {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.verification.fixtures[%d].expect is required", idx)})
+			continue
+		}
+		if !stringSetContains([]string{"finding", "pass"}, expect) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.verification.fixtures[%d].expect must be finding or pass", idx)})
+		}
+	}
+	if status := strings.TrimSpace(verification.RemediationCheck.ExpectedStatus); status != "" && !stringSetContains([]string{"pass", "finding", "closed", "open"}, strings.ToLower(status)) {
+		issues = append(issues, Issue{Path: path, Message: "spec.verification.remediationCheck.expectedStatus must be pass, finding, closed, or open"})
+	}
+	return issues
+}
+
+func validatePolicyRuleActions(path string, actions PolicyRuleActions) []Issue {
+	var issues []Issue
+	issues = append(issues, validateStringArray(path, "spec.actions.remediation.steps", actions.Remediation.Steps)...)
+	if effort := strings.ToLower(strings.TrimSpace(actions.Effort)); effort != "" && !stringSetContains([]string{"low", "medium", "high"}, effort) {
+		issues = append(issues, Issue{Path: path, Message: "spec.actions.effort must be low, medium, or high"})
+	}
 	return issues
 }
 
@@ -333,6 +570,73 @@ func validateStringArray(path string, field string, values []string) []Issue {
 		}
 	}
 	return nil
+}
+
+func validateStringArrayMap(path string, field string, values map[string][]string) []Issue {
+	var issues []Issue
+	for key, entries := range values {
+		if strings.TrimSpace(key) == "" {
+			issues = append(issues, Issue{Path: path, Message: field + " keys must be non-empty"})
+			continue
+		}
+		issues = append(issues, validateStringArray(path, field+"."+key, entries)...)
+	}
+	return issues
+}
+
+func validateAssessmentMethods(path string, field string, values []string) []Issue {
+	var issues []Issue
+	issues = append(issues, validateStringArray(path, field, values)...)
+	for idx, value := range values {
+		method := strings.ToLower(strings.TrimSpace(value))
+		if method == "" {
+			continue
+		}
+		if !stringSetContains([]string{"examine", "test", "interview", "observe"}, method) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d] must be one of examine, test, interview, observe", field, idx)})
+		}
+	}
+	return issues
+}
+
+func validateDurationField(path string, field string, value string) []Issue {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	digitEnd := 0
+	for digitEnd < len(trimmed) && trimmed[digitEnd] >= '0' && trimmed[digitEnd] <= '9' {
+		digitEnd++
+	}
+	if digitEnd == 0 || digitEnd == len(trimmed) {
+		return []Issue{{Path: path, Message: field + " must use a duration like 24h, 14d, or 2w"}}
+	}
+	switch strings.ToLower(strings.TrimSpace(trimmed[digitEnd:])) {
+	case "s", "m", "h", "d", "w":
+		return nil
+	default:
+		return []Issue{{Path: path, Message: field + " must use units s, m, h, d, or w"}}
+	}
+}
+
+func validateFingerprintFields(path string, field string, values []string) []Issue {
+	var issues []Issue
+	issues = append(issues, validateStringArray(path, field, values)...)
+	for idx, value := range values {
+		if unstableFingerprintField(value) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d] must not use event IDs, timestamps, run IDs, cursors, display names, or labels", field, idx)})
+		}
+	}
+	return issues
+}
+
+func unstableFingerprintField(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "event_id", "event_ids", "occurred_at", "observed_at", "timestamp", "ts", "run_id", "cursor", "page_token", "display_name", "name", "label":
+		return true
+	default:
+		return false
+	}
 }
 
 func trimStrings(values []string) []string {
