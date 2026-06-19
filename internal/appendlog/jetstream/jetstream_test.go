@@ -294,16 +294,27 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	}
 }
 
-func TestAppendDoesNotRetryWithoutMessageID(t *testing.T) {
-	pub := &fakePublisher{publishErr: errors.New("nats: no response from stream")}
+func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
+	pub := &fakePublisher{
+		publishErrs: []error{
+			errors.New("nats: no response from stream"),
+			nil,
+		},
+	}
 	log := &Log{js: pub, subjectPrefix: "events"}
 
-	err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: "entity.upsert"})
-	if err == nil {
-		t.Fatal("Append() error = nil, want non-nil")
+	event := &cerebrov1.EventEnvelope{Kind: "entity.upsert", TenantId: "tenant-1", SourceId: "source-1"}
+	if err := log.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append() error = %v", err)
 	}
-	if pub.publishCalls != 1 {
-		t.Fatalf("publish calls = %d, want 1", pub.publishCalls)
+	if pub.publishCalls != 2 {
+		t.Fatalf("publish calls = %d, want 2", pub.publishCalls)
+	}
+	if event.Id != "" {
+		t.Fatalf("event id mutated = %q, want empty", event.Id)
+	}
+	if got := pub.published.Header.Get(nats.MsgIdHdr); !strings.HasPrefix(got, "sha256:") {
+		t.Fatalf("derived msg id = %q, want sha256 fallback", got)
 	}
 }
 
