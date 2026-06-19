@@ -1,0 +1,9 @@
+config:
+  cerebro:cloud: gcp
+  cerebro:name: cerebro-gcp-example
+  cerebro:image: ghcr.io/writer/cerebro:latest
+  cerebro:apiAuthEnabled: "false"
+  cerebro:publicOrigin: https://cerebro.example.com
+  cerebro:gcpProject: example-project
+  cerebro:gcpRegion: us-central1
+encryptionsalt: v1:Ub8wb+km/ko=:v1:gllA9zVlSEqpeOFk:M1pniv5iw93gORvAoitE6WON7TiH6Q==

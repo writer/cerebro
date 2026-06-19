@@ -5,6 +5,7 @@ This guide gives portable deployment patterns for OSS users. All names, hosts, i
 Use it with:
 
 - [`docs/HOSTING.md`](./HOSTING.md) for the hosting contract.
+- [`docs/CLOUD_DEPLOYMENT.md`](./CLOUD_DEPLOYMENT.md) for AWS, GCP, Azure, and Pulumi templates.
 - [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for rollout and operations.
 - [`docs/AUTH_TENANCY.md`](./AUTH_TENANCY.md) for auth and proxy-aware origin settings.
 - [`.env.example`](../.env.example) for a local environment template.
@@ -55,6 +56,22 @@ It starts:
 - Docker volumes for local persistence.
 
 Do not copy local compose credentials into a shared deployment.
+
+## Multi-cloud Pulumi templates
+
+Use [`deploy/pulumi`](../deploy/pulumi) when you want a validated starting point for AWS, GCP, or Azure. The templates share one Cerebro config model and deploy the API container to ECS Fargate, Cloud Run, or Azure Container Apps. Postgres, NATS JetStream, Neo4j/Aura, and optional cache endpoints are passed as Pulumi secrets so each deployment can choose its own managed or self-hosted backing services.
+
+Start with [`docs/CLOUD_DEPLOYMENT.md`](./CLOUD_DEPLOYMENT.md), then preview before deploying:
+
+```bash
+cd deploy/pulumi
+uv sync
+pulumi preview --stack aws --refresh=false
+pulumi preview --stack gcp --refresh=false
+pulumi preview --stack azure --refresh=false
+```
+
+The checked-in example stacks are validation examples, not production stack files.
 
 ## Production-like environment variables
 

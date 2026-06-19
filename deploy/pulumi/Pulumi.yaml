@@ -1,0 +1,58 @@
+name: cerebro
+runtime:
+  name: python
+  options:
+    toolchain: uv
+description: Multi-cloud Pulumi templates for hosting the Cerebro runtime
+
+config:
+  cerebro:cloud:
+    type: string
+    description: Cloud target. Supported values are aws, gcp, and azure.
+  cerebro:name:
+    type: string
+    default: cerebro
+    description: Resource name prefix.
+  cerebro:image:
+    type: string
+    description: Cerebro runtime image to deploy.
+  cerebro:containerPort:
+    type: integer
+    default: 8080
+    description: Cerebro container port.
+  cerebro:minReplicas:
+    type: integer
+    default: 1
+    description: Minimum number of API replicas.
+  cerebro:maxReplicas:
+    type: integer
+    default: 1
+    description: Maximum number of API replicas.
+  cerebro:cpu:
+    type: integer
+    default: 1
+    description: API container vCPU count. AWS converts this to ECS CPU units.
+  cerebro:memoryMiB:
+    type: integer
+    default: 2048
+    description: API container memory in MiB.
+  cerebro:publicOrigin:
+    type: string
+    default: ""
+    description: Public HTTPS origin for Cerebro.
+  cerebro:trustedProxyCIDRs:
+    type: string
+    default: ""
+    description: Comma-separated CIDRs whose forwarded headers may be trusted.
+  cerebro:trustedProxyCount:
+    type: integer
+    default: 1
+    description: Number of trusted trailing X-Forwarded-For hops.
+  cerebro:apiAuthEnabled:
+    type: boolean
+    default: true
+    description: Require bearer/API-key auth for protected routes.
+  cerebro:allowedTenants:
+    type: string
+    default: ""
+    description: Optional comma-separated tenant allowlist.

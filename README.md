@@ -119,7 +119,7 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, Neo4j, and a loc
 | --- | --- | --- |
 | Run the lightweight server | `make serve-dev` | Starts the API without external stores using an acknowledged local-only auth/rate-limit opt-out; useful for health, source catalog, and OpenAPI checks. |
 | Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key`. |
-| Host Cerebro | `docs/HOSTING.md`, `docs/DEPLOYMENT_EXAMPLES.md`, and `docs/OPERATIONS_RUNBOOK.md` | Deployment guidance, example platform shapes, health checks, operations, and rollout. |
+| Host Cerebro | `docs/HOSTING.md`, `docs/CLOUD_DEPLOYMENT.md`, `docs/DEPLOYMENT_EXAMPLES.md`, and `docs/OPERATIONS_RUNBOOK.md` | Deployment guidance, AWS/GCP/Azure Pulumi templates, example platform shapes, health checks, operations, and rollout. |
 | Preserve production headroom | `docs/HEADROOM.md`, `docs/OBSERVABILITY.md`, and `make load-smoke` | Capacity SLOs, saturation alerts, autoscaling signals, wide-event incident queries, and bounded live load smoke checks. |
 | Try a local end-to-end path | `docs/GETTING_STARTED.md` | Creates an SDK source runtime, writes a synthetic claim, and reads it back. |
 | Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
@@ -436,6 +436,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
 | [Configuration](docs/CONFIGURATION.md) | configuration and deployment notes |
 | [Hosting](docs/HOSTING.md) | hosting guide for containers, backing stores, proxy/TLS, operations, and rollout |
+| [Cloud deployment](docs/CLOUD_DEPLOYMENT.md) | AWS, GCP, Azure, and Pulumi template guidance |
 | [Deployment examples](docs/DEPLOYMENT_EXAMPLES.md) | portable examples for Docker Compose, Kubernetes, ECS-style tasks, systemd, and scheduled jobs |
 | [Operations runbook](docs/OPERATIONS_RUNBOOK.md) | startup, health, dependency, rollout, rollback, and incident triage guidance |
 | [Observability](docs/OBSERVABILITY.md) | OTEL, structured span logs, trace propagation, error capture, and verification |
