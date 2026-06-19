@@ -46,6 +46,7 @@ from scripts.verify_source_runtime_ecs import (
     _verify_bootstrap_payload_targets,
     _verify_runtime_target,
     _verify_task,
+    _verify_task_until_graph_ingested,
     _verification_result_from_logs,
     _verify_runtime_targets,
     _verification_command,
@@ -1222,6 +1223,59 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertNotIn("do-not-print", message)
         self.assertNotIn("123456789012", message)
         self.assertNotIn("arn:aws", message)
+
+    def test_verify_task_until_graph_ingested_waits_for_stopped_task_log_delivery(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-sec-dev-us2-securityhub-finding",
+            schedule_name="aws-sec-dev-us2-securityhub",
+            rule_name="cerebro-sec-dev-orchestrator-securityhub",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-arn",
+            "lastStatus": "STOPPED",
+            "containers": [
+                {"name": "source-runtime-bootstrap", "lastStatus": "STOPPED", "exitCode": 0},
+                {"name": "cerebro", "lastStatus": "STOPPED", "exitCode": 0},
+            ],
+        }
+        incomplete_messages = [
+            {"kind": "span_start", "name": "source_runtime.sync", "runtime_id": target.runtime_id},
+            {"kind": "event", "name": "source_runtime.page_read", "runtime_id": target.runtime_id, "events_read": 100},
+        ]
+        complete_messages = [
+            *incomplete_messages,
+            {
+                "kind": "span_end",
+                "name": "source_runtime.sync",
+                "status": "completed",
+                "runtime_id": target.runtime_id,
+                "source_id": "aws",
+                "events_appended": 100,
+                "pages_read": 1,
+            },
+            {"kind": "span_end", "name": "orchestrator.graph_ingest", "status": "completed"},
+            {
+                "kind": "span_end",
+                "name": "orchestrator.runtime",
+                "status": "completed",
+                "runtime_id": target.runtime_id,
+                "source_id": "aws",
+            },
+        ]
+
+        stderr = StringIO()
+        with (
+            patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
+            patch("scripts.verify_source_runtime_ecs._task_logs", side_effect=[incomplete_messages, complete_messages]),
+            redirect_stderr(stderr),
+        ):
+            result = _verify_task_until_graph_ingested(target, task["taskArn"], 1, 0.01, "us-east-1")
+
+        self.assertEqual(result.sync_status, "completed")
+        self.assertEqual(result.graph_ingest_status, "completed")
+        self.assertEqual(result.events_appended, 100)
+        self.assertIn("log_delivery_wait", stderr.getvalue())
 
     def test_task_logs_caches_log_options_by_task_definition(self) -> None:
         task = {

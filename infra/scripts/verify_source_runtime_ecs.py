@@ -1132,6 +1132,14 @@ def _verification_result_from_logs(
     )
 
 
+def _is_retryable_log_delivery_gap(exc: Exception) -> bool:
+    message = str(exc)
+    return (
+        " status is missing" in message
+        or "verification did not produce source sync and graph ingest spans" in message
+    )
+
+
 def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> VerificationResult:
     task = _describe_tasks(target.target["Arn"], [task_arn], region)[0]
     containers = task.get("containers") or []
@@ -1192,7 +1200,9 @@ def _verify_task_until_graph_ingested(
         status = str(task.get("lastStatus") or "UNKNOWN")
         containers = task.get("containers") or []
         cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
+        bootstrap_container = next((container for container in containers if container.get("name") == BOOTSTRAP_CONTAINER_NAME), None)
         exit_code = cerebro_container.get("exitCode") if cerebro_container else None
+        bootstrap_exit_code = bootstrap_container.get("exitCode") if bootstrap_container else None
         messages: list[dict[str, Any]] = []
         if task and status in {"RUNNING", "STOPPED"}:
             try:
@@ -1209,15 +1219,36 @@ def _verify_task_until_graph_ingested(
                 )
                 return result
         if status == "STOPPED":
+            if exit_code not in (None, 0) or bootstrap_exit_code not in (None, 0):
+                return _verify_task(target, task_arn, region)
+            stopped_gap: Exception | None = None
             if messages:
-                result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True, task=task, region=region)
-                if result is not None:
-                    return result
+                try:
+                    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True, task=task, region=region)
+                    if result is not None:
+                        return result
+                except RuntimeError as exc:
+                    if not _is_retryable_log_delivery_gap(exc):
+                        raise
+                    stopped_gap = exc
             if last_log_error is not None:
-                raise RuntimeError(
+                stopped_gap = RuntimeError(
                     f"unable to fetch stopped task logs for {target.runtime_id}: {last_log_error}; "
                     f"ECS task stop: {_task_stop_summary(task)}"
-                ) from last_log_error
+                )
+            remaining = deadline - time.time()
+            if remaining > poll_seconds:
+                reason = stopped_gap or RuntimeError(f"{target.runtime_id} stopped before completion spans reached CloudWatch")
+                print(
+                    f"WAIT source runtime graph ingest task={task_id} status=STOPPED "
+                    f"log_delivery_wait reason={_sanitize_text(str(reason))[:240]}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(poll_seconds)
+                continue
+            if stopped_gap is not None:
+                raise stopped_gap
             return _verify_task(target, task_arn, region)
         now = time.time()
         if now >= next_progress:
