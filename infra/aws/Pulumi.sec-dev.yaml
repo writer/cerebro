@@ -69,8 +69,8 @@ config:
   cerebro:cacheDefaultTTL: 30s
   cerebro:cacheStaleTTL: 5m
   cerebro:cacheMaxPayloadBytes: 1048576
-  cerebro:natsCpu: 4096
-  cerebro:natsMemory: 8192
+  cerebro:natsCpu: 8192
+  cerebro:natsMemory: 16384
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
   cerebro:jetstreamMaxBytes: "549755813888"
