@@ -163,9 +163,10 @@ func TestProjectPanopticonCaseBuildsLinkedGraphAndEvidencePointers(t *testing.T)
 		Kind:       "panopticon.case",
 		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
-			"case_id": "case-1",
-			"status":  "investigating",
-			"title":   "Credential exposure investigation",
+			"case_id":   "case-1",
+			"status":    "investigating",
+			"title":     "Credential exposure investigation",
+			"alert_ids": "alert-4",
 		},
 		Payload: mustJSON(t, map[string]any{
 			"case_id": "case-1",
@@ -257,6 +258,40 @@ func TestProjectPanopticonCaseBuildsLinkedGraphAndEvidencePointers(t *testing.T)
 		if strings.Contains(strings.ToLower(entity.EntityType), "finding") || strings.Contains(strings.ToLower(urn), ":finding") || strings.Contains(strings.ToLower(urn), "timeline") {
 			t.Fatalf("raw Panopticon temporal data should not be promoted into findings/timeline entities: %s %#v", urn, entity)
 		}
+	}
+}
+
+func TestProjectPanopticonCaseLinksScalarAlertIDs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-scalar-alerts",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id":   "case-1",
+			"status":    "investigating",
+			"title":     "Credential exposure investigation",
+			"alert_ids": "alert-4",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id":            "case-1",
+			"upstream_alert_ids": []any{"alert-1", "alert-2", 12345},
+			"related_alert_ids":  "alert-2, alert-3",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	caseURN := "urn:cerebro:writer:panopticon_case:case-1"
+	for _, alertID := range []string{"alert-1", "alert-2", "alert-3", "alert-4", "12345"} {
+		alertURN := "urn:cerebro:writer:panopticon_alert:" + alertID
+		assertProjectedEntityType(t, state, alertURN, "panopticon.alert")
+		assertProjectedLink(t, state, caseURN, relationContains, alertURN)
+		assertProjectedLink(t, state, alertURN, relationBelongsTo, caseURN)
 	}
 }
 

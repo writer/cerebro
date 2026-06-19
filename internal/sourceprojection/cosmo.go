@@ -35,6 +35,7 @@ func cosmoSessionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	if user := firstNonEmpty(attrs["user"], stringValue(payload, "user")); user != "" {
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), sessionURN, user, event.GetOccurredAt())
 	}
+	addCosmoThreadLink(entities, links, event, tenantID, sessionURN, firstNonEmpty(attrs["thread_key"], stringValue(payload, "thread_key")))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -69,6 +70,9 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, factAttributes)))
 	if sessionID := cosmoFactSessionID(source); sessionID != "" {
 		addCosmoSessionLink(entities, links, event, tenantID, factURN, sessionID)
+	}
+	if category := firstNonEmpty(attrs["category"], stringValue(payload, "category")); category != "" {
+		addCosmoCategoryLink(entities, links, event, tenantID, factURN, category)
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -179,6 +183,26 @@ func addCosmoSessionLink(entities map[string]*ports.ProjectedEntity, links map[s
 	}
 	addEntity(entities, cosmoEntity(event, sessionURN, "cosmo.session", sessionID, map[string]string{"ticket_id": strings.TrimSpace(sessionID)}))
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, sessionURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+}
+
+func addCosmoThreadLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, threadID string) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return
+	}
+	threadURN := projectionURN(tenantID, "cosmo_thread", cosmoExternalIDKey(threadID))
+	addEntity(entities, cosmoEntity(event, threadURN, "cosmo.thread", threadID, map[string]string{"thread_key": threadID}))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, threadURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+}
+
+func addCosmoCategoryLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, category string) {
+	category = strings.TrimSpace(category)
+	if category == "" {
+		return
+	}
+	categoryURN := projectionURN(tenantID, "cosmo_fact_category", cosmoExternalIDKey(category))
+	addEntity(entities, cosmoEntity(event, categoryURN, "cosmo.fact.category", category, map[string]string{"category": category}))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, categoryURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": "category"}))
 }
 
 func addCosmoMessageUserLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, messageURN string, attrs map[string]string, payload map[string]any) {

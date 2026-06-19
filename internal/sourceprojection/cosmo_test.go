@@ -25,9 +25,34 @@ func TestProjectCosmoSession(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 	sessionURN := cosmoTestURN("cosmo_session", "ticket-1")
+	threadURN := cosmoTestURN("cosmo_thread", "thread-1")
 	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	assertCosmoProjectedEntity(t, entities, threadURN, "cosmo.thread")
 	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:identity:email:alice@example.com", "identity.email")
 	assertCosmoProjectedLink(t, links, sessionURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedLink(t, links, sessionURN, relationBelongsTo, threadURN)
+}
+
+func TestProjectCosmoSessionDoesNotLinkTicketIDAsThread(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-session-ticket-only",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.session",
+		Attributes: map[string]string{
+			"record_id": "ticket-1",
+			"ticket_id": "ticket-1",
+			"status":    "open",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	sessionURN := cosmoTestURN("cosmo_session", "ticket-1")
+	threadURN := cosmoTestURN("cosmo_thread", "ticket-1")
+	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	assertCosmoProjectedEntityMissing(t, entities, threadURN)
+	assertCosmoProjectedLinkMissing(t, links, sessionURN, relationBelongsTo, threadURN)
 }
 
 func TestProjectCosmoFact(t *testing.T) {
@@ -50,9 +75,9 @@ func TestProjectCosmoFact(t *testing.T) {
 	if got := fact.Attributes["key"]; got != "risk:key" {
 		t.Fatalf("fact key attribute = %q, want raw key", got)
 	}
-	if len(links) != 0 {
-		t.Fatalf("len(links) = %d, want 0", len(links))
-	}
+	categoryURN := cosmoTestURN("cosmo_fact_category", "risk")
+	assertCosmoProjectedEntity(t, entities, categoryURN, "cosmo.fact.category")
+	assertCosmoProjectedLink(t, links, fact.URN, relationTaggedAs, categoryURN)
 }
 
 func TestProjectCosmoFactLinksSourceSession(t *testing.T) {
@@ -105,6 +130,29 @@ func TestProjectCosmoFactLinksPayloadSourceSession(t *testing.T) {
 		t.Fatalf("session ticket_id attribute = %q, want raw payload session id", got)
 	}
 	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
+}
+
+func TestProjectCosmoFactLinksHashedCategory(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-risk-category",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"key":      "risk:key",
+			"category": "security:risk/high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	factURN := cosmoTestURN("cosmo_fact", "risk:key")
+	categoryURN := cosmoTestURN("cosmo_fact_category", "security:risk/high")
+	category := cosmoProjectedEntity(t, entities, categoryURN, "cosmo.fact.category")
+	if got := category.Attributes["category"]; got != "security:risk/high" {
+		t.Fatalf("category attribute = %q, want raw category", got)
+	}
+	assertCosmoProjectedLink(t, links, factURN, relationTaggedAs, categoryURN)
 }
 
 func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {
@@ -405,6 +453,15 @@ func assertCosmoProjectedEntity(t *testing.T, entities []*ports.ProjectedEntity,
 	_ = cosmoProjectedEntity(t, entities, urn, entityType)
 }
 
+func assertCosmoProjectedEntityMissing(t *testing.T, entities []*ports.ProjectedEntity, urn string) {
+	t.Helper()
+	for _, entity := range entities {
+		if entity.URN == urn {
+			t.Fatalf("projected entity %q unexpectedly present: %#v", urn, entity)
+		}
+	}
+}
+
 func cosmoTestURN(kind string, id string) string {
 	return projectionURN("writer", kind, cosmoExternalIDKey(id))
 }
@@ -428,4 +485,13 @@ func assertCosmoProjectedLink(t *testing.T, links []*ports.ProjectedLink, from s
 		}
 	}
 	t.Fatalf("projected link %q %q %q missing from %#v", from, relation, to, links)
+}
+
+func assertCosmoProjectedLinkMissing(t *testing.T, links []*ports.ProjectedLink, from string, relation string, to string) {
+	t.Helper()
+	for _, link := range links {
+		if link.FromURN == from && link.Relation == relation && link.ToURN == to {
+			t.Fatalf("projected link %q %q %q unexpectedly present in %#v", from, relation, to, links)
+		}
+	}
 }

@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -153,7 +154,7 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := panopticonProjectionAttributes(event, "case_id", "status", "title")
+	attrs := panopticonProjectionAttributes(event, "case_id", "status", "title", "upstream_alert_ids", "alert_ids", "source_alert_ids", "related_alert_ids")
 	payload := payloadMap(event)
 	caseID := firstAttribute(attrs, "case_id")
 	if caseID == "" {
@@ -162,8 +163,8 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	caseURN := panopticonAddCaseEntity(entities, tenantID, event.GetSourceId(), event.GetId(), attrs)
-	for _, alert := range panopticonObjects(payload, "alerts", "linked_alerts") {
-		alertURN := panopticonAddAlertEntity(entities, tenantID, event.GetSourceId(), event.GetId(), panopticonAttributesFromObject(alert, "alert_id", "id", "severity", "status", "title"))
+	for _, alertAttrs := range panopticonCaseAlertAttributes(attrs, payload) {
+		alertURN := panopticonAddAlertEntity(entities, tenantID, event.GetSourceId(), event.GetId(), alertAttrs)
 		if alertURN == "" {
 			continue
 		}
@@ -1820,6 +1821,75 @@ func panopticonObjects(payload map[string]any, keys ...string) []map[string]any 
 		}
 	}
 	return objects
+}
+
+func panopticonCaseAlertAttributes(attrs map[string]string, payload map[string]any) []map[string]string {
+	seen := map[string]struct{}{}
+	var results []map[string]string
+	add := func(values map[string]string) {
+		alertID := strings.TrimSpace(values["alert_id"])
+		if alertID == "" {
+			return
+		}
+		if _, ok := seen[alertID]; ok {
+			return
+		}
+		seen[alertID] = struct{}{}
+		results = append(results, values)
+	}
+	for _, alert := range panopticonObjects(payload, "alerts", "linked_alerts", "source_alerts", "upstream_alerts", "related_alerts") {
+		add(panopticonAttributesFromObject(alert, "alert_id", "id", "severity", "status", "title"))
+	}
+	for _, key := range []string{"upstream_alert_ids", "alert_ids", "source_alert_ids", "related_alert_ids"} {
+		panopticonCollectAlertIDs(attrs[key], func(alertID string) {
+			add(map[string]string{"alert_id": alertID})
+		})
+		panopticonCollectAlertIDs(payload[key], func(alertID string) {
+			add(map[string]string{"alert_id": alertID})
+		})
+	}
+	return results
+}
+
+func panopticonCollectAlertIDs(value any, add func(string)) {
+	switch typed := value.(type) {
+	case nil:
+		return
+	case string:
+		for _, part := range strings.FieldsFunc(typed, func(r rune) bool {
+			return r == ',' || r == ';' || r == '\n' || r == '\t'
+		}) {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				add(trimmed)
+			}
+		}
+	case float64:
+		if alertID := strings.TrimSpace(strconv.FormatFloat(typed, 'f', -1, 64)); alertID != "" {
+			add(alertID)
+		}
+	case int:
+		if alertID := strings.TrimSpace(strconv.Itoa(typed)); alertID != "" {
+			add(alertID)
+		}
+	case int64:
+		if alertID := strings.TrimSpace(strconv.FormatInt(typed, 10)); alertID != "" {
+			add(alertID)
+		}
+	case []string:
+		for _, item := range typed {
+			if trimmed := strings.TrimSpace(item); trimmed != "" {
+				add(trimmed)
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			panopticonCollectAlertIDs(item, add)
+		}
+	case map[string]any:
+		if alertID := panopticonString(typed, "alert_id", "id"); alertID != "" {
+			add(alertID)
+		}
+	}
 }
 
 func panopticonAttributesFromObject(object map[string]any, keys ...string) map[string]string {
