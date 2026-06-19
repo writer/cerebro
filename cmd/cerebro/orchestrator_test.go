@@ -268,6 +268,13 @@ func TestAnnotateOrchestratorRuntimeMainAddsHealthFields(t *testing.T) {
 
 	payload := lastCommandTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
+		"runtime_id":                                      "runtime-1",
+		"source_runtime_id":                               "runtime-1",
+		"source_id":                                       "github",
+		"tenant_id":                                       "writer",
+		"job.runtime.status":                              "completed",
+		"job_runtime_status":                              "completed",
+		"orchestrator.runtime.last_status":                "completed",
 		"source_runtime.family":                           "code",
 		"source_runtime.enabled_state":                    "enabled",
 		"source_runtime.freshness_state":                  "healthy",

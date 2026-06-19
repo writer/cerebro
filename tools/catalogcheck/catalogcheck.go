@@ -333,6 +333,7 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 	for _, rule := range rules {
 		issues = append(issues, validatePolicyRuleControls(rule, controlCatalog)...)
 	}
+	issues = append(issues, checkPolicyAssetContracts(rules)...)
 	return issues, nil
 }
 

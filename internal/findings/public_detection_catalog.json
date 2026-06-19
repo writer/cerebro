@@ -69221,7 +69221,7 @@
       "pack_id": "policy",
       "pack_name": "Policy",
       "name": "Graph Orphan Non-Finding Node",
-      "description": "Flags failed graph-state evidence for graph entity: Graph Orphan Non-Finding Node. Detect non-finding graph nodes with no relationships, indicating source projection or enrichment gaps. Audit impact: Orphan graph nodes can hide projection gaps and weaken graph-backed finding context.",
+      "description": "Flags failed graph-state evidence for graph entity: Graph Orphan Non-Finding Node. Detect durable non-finding graph nodes with no relationships, indicating source projection or enrichment gaps while ignoring intentionally standalone inventory streams. Audit impact: Orphan durable graph nodes can hide projection gaps and weaken graph-backed finding context.",
       "source_id": "graph",
       "evaluation_mode": "graph",
       "event_kinds": [
@@ -69236,6 +69236,7 @@
         "enrichment",
         "evidence:graph_state",
         "graph",
+        "graph-backed",
         "graph-hygiene",
         "orphan",
         "policy"
@@ -69246,10 +69247,11 @@
       "false_positives": [
         "A compensating control satisfies the mapped control objective and is documented for auditor review.",
         "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "Panopticon alerts/cases, SentinelOne installed applications, and Cosmo session/fact records are currently intentionally standalone inventory and are excluded from this broad hygiene check.",
         "Some source records may intentionally be inventory-only and not yet connected to the rest of the graph.",
         "The subject is outside the assessment scope or has a documented exception for the audit period."
       ],
-      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Graph entities should have meaningful relationships unless they are intentionally inventory-only. Review the source projection for the entity type and add ownership, source, identity, or resource relations where appropriate. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Durable graph entities should have meaningful relationships unless they are intentionally inventory-only. Review the source projection for the entity type and add ownership, source, identity, or resource relations where appropriate. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
       "fingerprint_fields": [
         "orphan_urn"
       ],

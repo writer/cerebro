@@ -473,6 +473,21 @@ func TestEvaluatePolicyConditions(t *testing.T) {
 	}
 }
 
+func TestPolicyConditionsResourceFields(t *testing.T) {
+	fields, err := PolicyConditionsResourceFields([]string{
+		`cmp_eq(path(resource, "public"), true)`,
+		`exists_path(resource, "settings.password.min_length")`,
+		`list_value(path(resource, "rules")).exists(item, (cmp_eq(path(item, "port"), "22")) && (cmp_eq(path(item, "source"), "0.0.0.0/0")))`,
+	})
+	if err != nil {
+		t.Fatalf("PolicyConditionsResourceFields() error = %v", err)
+	}
+	want := []string{"public", "rules", "settings.password.min_length"}
+	if strings.Join(fields, ",") != strings.Join(want, ",") {
+		t.Fatalf("fields = %v, want %v", fields, want)
+	}
+}
+
 func TestRunPolicyRuleTestSuite(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "policies/aws/example.yaml", `

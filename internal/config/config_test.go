@@ -21,6 +21,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "")
@@ -143,6 +144,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "4s")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "12")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
 	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "20")
@@ -242,6 +244,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.AppendLog.JetStreamDrainTimeout != 4*time.Second {
 		t.Fatalf("JetStreamDrainTimeout = %v, want 4s", cfg.AppendLog.JetStreamDrainTimeout)
+	}
+	if cfg.AppendLog.JetStreamPublishMaxInFlight != 12 {
+		t.Fatalf("JetStreamPublishMaxInFlight = %d, want 12", cfg.AppendLog.JetStreamPublishMaxInFlight)
 	}
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
@@ -1159,6 +1164,16 @@ func TestLoadRejectsMissingNeo4jPassword(t *testing.T) {
 
 func TestLoadRejectsInvalidDuration(t *testing.T) {
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "not-a-duration")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsNegativeJetStreamPublishMaxInFlight(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "-1")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}

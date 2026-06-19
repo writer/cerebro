@@ -3,9 +3,10 @@ kind: PolicyFindingRule
 metadata:
     id: graph-orphan-nonfinding-node
     name: Graph Orphan Non-Finding Node
-    description: Detect non-finding graph nodes with no relationships, indicating source projection or enrichment gaps.
+    description: Detect durable non-finding graph nodes with no relationships, indicating source projection or enrichment gaps while ignoring intentionally standalone inventory streams.
     tags:
         - graph
+        - graph-backed
         - graph-hygiene
         - orphan
         - enrichment
@@ -39,15 +40,37 @@ spec:
         evidenceType: graph_state
         assessmentMethods:
             - examine
-        auditorStatement: Graph entities should have meaningful relationships unless they are intentionally inventory-only.
-        riskStatement: Orphan graph nodes can hide projection gaps and weaken graph-backed finding context.
+        auditorStatement: Durable graph entities should have meaningful relationships unless they are intentionally inventory-only.
+        riskStatement: Orphan durable graph nodes can hide projection gaps and weaken graph-backed finding context.
         remediationIntent: Add the missing projection relationship or document why the entity should remain standalone inventory.
         falsePositives:
             - Some source records may intentionally be inventory-only and not yet connected to the rest of the graph.
+            - Panopticon alerts/cases, SentinelOne installed applications, and Cosmo session/fact records are currently intentionally standalone inventory and are excluded from this broad hygiene check.
+    verification:
+        fixtures:
+            - name: orphan graph entity
+              expect: finding
+              description: A projected non-finding graph entity with no relationships is returned as the primary finding asset.
+            - name: related graph entity
+              expect: pass
+              description: A projected non-finding graph entity with at least one relationship is not returned.
+        mutationChecks:
+            - add_graph_relationship
+            - mark_inventory_only_exception
+        remediationCheck:
+            rerunAfter: 1h
+            expectedStatus: closed
     graph:
         query: |-
             MATCH (entity:Entity {tenant_id: $tenant_id})
             WHERE entity.entity_type <> 'finding'
+              AND NOT (coalesce(entity.entity_type, '') IN [
+                'cosmo.fact',
+                'cosmo.session',
+                'panopticon.alert',
+                'panopticon.case',
+                'sentinelone.installed_application'
+              ])
               AND NOT (entity)-[:RELATION]-()
             RETURN entity.urn AS primary_urn,
                    entity.label AS primary_label,
@@ -65,3 +88,4 @@ spec:
             - primary_urn
             - fingerprint_key
             - summary
+            - resource_urns

@@ -21,6 +21,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -32,14 +33,18 @@ const (
 	defaultReplayLimit         = 100
 	maxReplayLimit             = 1000
 	maxReplayCandidates        = 5000
-	publishRetryAttempts       = 4
-	publishRetryInitialBackoff = 50 * time.Millisecond
-	publishClientRetryAttempts = 2
-	publishClientRetryWait     = 250 * time.Millisecond
-	publishAttemptTimeout      = 15 * time.Second
+	publishRetryAttempts       = 10
+	publishRetryInitialBackoff = 250 * time.Millisecond
+	publishRetryMaxBackoff     = 5 * time.Second
+	publishClientRetryAttempts = 5
+	publishClientRetryWait     = 500 * time.Millisecond
+	publishAttemptTimeout      = 30 * time.Second
+	publishRetryMaxElapsed     = 90 * time.Second
 	jetstreamCanaryKind        = "cerebro.health.jetstream_canary"
 	jetstreamCanaryMinInterval = time.Minute
 )
+
+var waitBeforePublishRetryFunc = waitBeforePublishRetry
 
 type publisher interface {
 	AccountInfo(context.Context) (*jetstream.AccountInfo, error)
@@ -62,6 +67,15 @@ type publishTelemetry struct {
 	LastBackoff    time.Duration
 	LastRetryable  bool
 	Duration       time.Duration
+	RetryBudget    time.Duration
+	AttemptTimeout time.Duration
+	MaxBackoff     time.Duration
+	ClientRetries  int
+	ClientWait     time.Duration
+	RetryExhausted bool
+	MaxExhausted   bool
+	BulkheadWait   time.Duration
+	BulkheadLimit  int
 	AckStream      string
 	AckSequence    uint64
 	AckDuplicate   bool
@@ -98,6 +112,7 @@ type Log struct {
 	js            publisher
 	replay        replayManager
 	subjectPrefix string
+	publishSlots  chan struct{}
 	canaryMu      sync.Mutex
 	lastCanary    time.Time
 }
@@ -140,12 +155,16 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 		nc.Close()
 		return nil, fmt.Errorf("new jetstream client: %w", err)
 	}
-	return &Log{
+	log := &Log{
 		conn:          nc,
 		js:            js,
 		replay:        &jetStreamReplayManager{js: js},
 		subjectPrefix: prefix,
-	}, nil
+	}
+	if cfg.JetStreamPublishMaxInFlight > 0 {
+		log.publishSlots = make(chan struct{}, cfg.JetStreamPublishMaxInFlight)
+	}
+	return log, nil
 }
 
 // Close closes the underlying NATS connection.
@@ -274,9 +293,11 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	endAttrs := publishAttrs().With(publishResult.attrs())
 	if err != nil {
 		err = fmt.Errorf("publish event: %w", err)
+		recordJetStreamPublish(ctx, "append", subject, "failed", err, publishResult)
 		jetstreamTelemetryError(ctx, span, "append", err, endAttrs)
 		return err
 	}
+	recordJetStreamPublish(ctx, "append", subject, "completed", nil, publishResult)
 	if publishResult.RetryCount > 0 {
 		telemetry.IncrementMain(ctx, "messaging.jetstream.publish.recovered.count", 1)
 		telemetry.Event(ctx, "jetstream.publish.recovered", endAttrs)
@@ -287,19 +308,64 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 }
 
 func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
-	result := publishTelemetry{Attempts: 0, MaxAttempts: publishRetryAttempts}
+	result := publishTelemetry{
+		Attempts:       0,
+		MaxAttempts:    publishRetryAttempts,
+		RetryBudget:    publishRetryMaxElapsed,
+		AttemptTimeout: publishAttemptTimeout,
+		MaxBackoff:     publishRetryMaxBackoff,
+		ClientRetries:  publishClientRetryAttempts,
+		ClientWait:     publishClientRetryWait,
+	}
 	backoff := publishRetryInitialBackoff
 	started := time.Now()
+	retryCtx, cancelRetry := context.WithTimeout(ctx, publishRetryMaxElapsed)
+	defer cancelRetry()
 	var err error
 	for attempt := 1; attempt <= result.MaxAttempts; attempt++ {
 		result.Attempts = attempt
-		attemptCtx, cancel := context.WithTimeout(ctx, publishAttemptTimeout)
+		attemptCtx, cancel := context.WithTimeout(retryCtx, publishAttemptTimeout)
+		wait, release, acquireErr := l.acquirePublishSlot(attemptCtx)
+		result.BulkheadWait += wait
+		result.BulkheadLimit = l.publishLimit()
+		if acquireErr != nil {
+			cancel()
+			err = acquireErr
+			result.LastRetryable = retryablePublishError(err)
+			if attempt == result.MaxAttempts || !result.LastRetryable || retryCtx.Err() != nil {
+				result.Duration = time.Since(started)
+				result.RetryExhausted = result.RetryCount > 0
+				result.MaxExhausted = attempt == result.MaxAttempts
+				if result.RetryExhausted {
+					telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry_exhausted.count", 1)
+					telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, err)))
+				}
+				return result, err
+			}
+			result.RetryCount++
+			result.LastBackoff = backoff
+			telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry.count", 1)
+			telemetry.Event(ctx, "jetstream.publish.retry", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, err)).With(telemetry.Attrs(
+				telemetry.Field{Key: "messaging.jetstream.publish.next_attempt", Value: attempt + 1},
+				telemetry.Field{Key: "messaging.jetstream.publish.next_backoff_ms", Value: backoff.Milliseconds()},
+			)))
+			if waitErr := waitBeforePublishRetryFunc(retryCtx, backoff); waitErr != nil {
+				result.Duration = time.Since(started)
+				result.RetryExhausted = result.RetryCount > 0
+				telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry_exhausted.count", 1)
+				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, waitErr)))
+				return result, waitErr
+			}
+			backoff = minDuration(backoff*2, publishRetryMaxBackoff)
+			continue
+		}
 		ack, publishErr := l.js.PublishMsg(
 			attemptCtx,
 			msg,
 			jetstream.WithRetryAttempts(publishClientRetryAttempts),
 			jetstream.WithRetryWait(publishClientRetryWait),
 		)
+		release()
 		cancel()
 		if publishErr == nil {
 			result.Duration = time.Since(started)
@@ -308,9 +374,12 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 		}
 		err = publishErr
 		result.LastRetryable = retryablePublishError(err)
-		if attempt == result.MaxAttempts || !result.LastRetryable || ctx.Err() != nil {
+		if attempt == result.MaxAttempts || !result.LastRetryable || retryCtx.Err() != nil {
 			result.Duration = time.Since(started)
+			result.RetryExhausted = result.RetryCount > 0
+			result.MaxExhausted = attempt == result.MaxAttempts
 			if result.RetryCount > 0 {
+				telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry_exhausted.count", 1)
 				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, err)))
 			}
 			return result, err
@@ -322,15 +391,40 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 			telemetry.Field{Key: "messaging.jetstream.publish.next_attempt", Value: attempt + 1},
 			telemetry.Field{Key: "messaging.jetstream.publish.next_backoff_ms", Value: backoff.Milliseconds()},
 		)))
-		if waitErr := waitBeforePublishRetry(ctx, backoff); waitErr != nil {
+		if waitErr := waitBeforePublishRetryFunc(retryCtx, backoff); waitErr != nil {
 			result.Duration = time.Since(started)
+			result.RetryExhausted = result.RetryCount > 0
+			telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry_exhausted.count", 1)
 			telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, waitErr)))
 			return result, waitErr
 		}
-		backoff *= 2
+		backoff = minDuration(backoff*2, publishRetryMaxBackoff)
 	}
 	result.Duration = time.Since(started)
 	return result, err
+}
+
+func (l *Log) acquirePublishSlot(ctx context.Context) (time.Duration, func(), error) {
+	limit := l.publishLimit()
+	if limit <= 0 || l.publishSlots == nil {
+		return 0, func() {}, nil
+	}
+	started := time.Now()
+	select {
+	case l.publishSlots <- struct{}{}:
+		return time.Since(started), func() {
+			<-l.publishSlots
+		}, nil
+	case <-ctx.Done():
+		return time.Since(started), func() {}, ctx.Err()
+	}
+}
+
+func (l *Log) publishLimit() int {
+	if l == nil || l.publishSlots == nil {
+		return 0
+	}
+	return cap(l.publishSlots)
 }
 
 func publishMessageID(event *cerebrov1.EventEnvelope, payload []byte) string {
@@ -359,9 +453,23 @@ func (r publishTelemetry) attrs() telemetry.Attributes {
 		telemetry.Field{Key: "messaging.jetstream.publish.max_attempts", Value: r.MaxAttempts},
 		telemetry.Field{Key: "messaging.jetstream.publish.retry_count", Value: r.RetryCount},
 		telemetry.Field{Key: "messaging.jetstream.publish.retryable_last_error", Value: r.LastRetryable},
+		telemetry.Field{Key: "messaging.jetstream.publish.retry_exhausted", Value: r.RetryExhausted},
+		telemetry.Field{Key: "messaging.jetstream.publish.max_attempts_exhausted", Value: r.MaxExhausted},
 		telemetry.Field{Key: "messaging.jetstream.publish.last_backoff_ms", Value: r.LastBackoff.Milliseconds()},
 		telemetry.Field{Key: "messaging.jetstream.publish.duration_ms", Value: r.Duration.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.retry_budget_ms", Value: r.RetryBudget.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.attempt_timeout_ms", Value: r.AttemptTimeout.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.max_backoff_ms", Value: r.MaxBackoff.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.client_retry_attempts", Value: r.ClientRetries},
+		telemetry.Field{Key: "messaging.jetstream.publish.client_retry_wait_ms", Value: r.ClientWait.Milliseconds()},
 	)
+	if r.BulkheadLimit > 0 {
+		attrs = attrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.enabled", Value: true},
+			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.max_in_flight", Value: r.BulkheadLimit},
+			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.wait_ms", Value: r.BulkheadWait.Milliseconds()},
+		))
+	}
 	if r.AckUnavailable {
 		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.unavailable", Value: true})
 	}
@@ -403,6 +511,22 @@ func retryablePublishError(err error) bool {
 	return false
 }
 
+func recordJetStreamPublish(ctx context.Context, operation string, subject string, status string, err error, result publishTelemetry) {
+	errorCategory := "none"
+	if err != nil {
+		errorCategory = jetstreamErrorCategory(err)
+	}
+	observability.RecordJetStreamPublish(ctx, observability.JetStreamPublishMetrics{
+		Subject:              subject,
+		Operation:            operation,
+		Status:               status,
+		ErrorCategory:        errorCategory,
+		Duration:             result.Duration,
+		RetryCount:           result.RetryCount,
+		MaxAttemptsExhausted: result.MaxExhausted,
+	})
+}
+
 func waitBeforePublishRetry(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -412,6 +536,13 @@ func waitBeforePublishRetry(ctx context.Context, delay time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func minDuration(left, right time.Duration) time.Duration {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 // Replay returns the newest matching stored envelopes in append order.
@@ -580,11 +711,13 @@ func (l *Log) runCanary(ctx context.Context, stream *jetstream.StreamInfo) (tele
 		telemetry.Field{Key: "messaging.jetstream.canary.publish.duration_ms", Value: publishResult.Duration.Milliseconds()},
 	))
 	if err != nil {
+		recordJetStreamPublish(ctx, "canary", subject, "failed", err, publishResult)
 		return finish(canaryAttrs), fmt.Errorf("publish canary event: %w", err)
 	}
 	if publishResult.AckSequence == 0 {
 		return finish(canaryAttrs), errors.New("publish canary event: ack sequence unavailable")
 	}
+	recordJetStreamPublish(ctx, "canary", subject, "completed", nil, publishResult)
 	streamName := strings.TrimSpace(publishResult.AckStream)
 	if streamName == "" && stream != nil {
 		streamName = strings.TrimSpace(stream.Config.Name)

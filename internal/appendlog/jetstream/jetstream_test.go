@@ -138,6 +138,22 @@ func jetstreamTelemetryPayloads(t *testing.T, stderr string, kind string, name s
 	return payloads
 }
 
+func skipPublishRetryWaits(t *testing.T) {
+	t.Helper()
+	original := waitBeforePublishRetryFunc
+	waitBeforePublishRetryFunc = func(ctx context.Context, _ time.Duration) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	t.Cleanup(func() {
+		waitBeforePublishRetryFunc = original
+	})
+}
+
 func TestAppendPublishesEnvelope(t *testing.T) {
 	pub := &fakePublisher{}
 	log := &Log{js: pub, subjectPrefix: "events"}
@@ -170,6 +186,7 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 }
 
 func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
+	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
 		publishErrs: []error{
 			errors.New("nats: no response from stream"),
@@ -191,6 +208,7 @@ func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
 }
 
 func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
+	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
 		publishErrs: []error{
 			errors.New("nats: no response from stream"),
@@ -226,6 +244,21 @@ func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
 	if retry["messaging.jetstream.publish.next_attempt"] != float64(2) {
 		t.Fatalf("next attempt = %v, want 2", retry["messaging.jetstream.publish.next_attempt"])
 	}
+	if retry["messaging.jetstream.publish.retry_budget_ms"] != float64(publishRetryMaxElapsed.Milliseconds()) {
+		t.Fatalf("retry budget = %v, want %d", retry["messaging.jetstream.publish.retry_budget_ms"], publishRetryMaxElapsed.Milliseconds())
+	}
+	if retry["messaging.jetstream.publish.attempt_timeout_ms"] != float64(publishAttemptTimeout.Milliseconds()) {
+		t.Fatalf("attempt timeout = %v, want %d", retry["messaging.jetstream.publish.attempt_timeout_ms"], publishAttemptTimeout.Milliseconds())
+	}
+	if retry["messaging.jetstream.publish.max_backoff_ms"] != float64(publishRetryMaxBackoff.Milliseconds()) {
+		t.Fatalf("max backoff = %v, want %d", retry["messaging.jetstream.publish.max_backoff_ms"], publishRetryMaxBackoff.Milliseconds())
+	}
+	if retry["messaging.jetstream.publish.client_retry_attempts"] != float64(publishClientRetryAttempts) {
+		t.Fatalf("client retry attempts = %v, want %d", retry["messaging.jetstream.publish.client_retry_attempts"], publishClientRetryAttempts)
+	}
+	if retry["messaging.jetstream.publish.client_retry_wait_ms"] != float64(publishClientRetryWait.Milliseconds()) {
+		t.Fatalf("client retry wait = %v, want %d", retry["messaging.jetstream.publish.client_retry_wait_ms"], publishClientRetryWait.Milliseconds())
+	}
 
 	recoveredEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.publish.recovered")
 	if len(recoveredEvents) != 1 {
@@ -248,13 +281,13 @@ func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
 }
 
 func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
+	skipPublishRetryWaits(t)
+	errs := make([]error, publishRetryAttempts)
+	for i := range errs {
+		errs[i] = errors.New("nats: no response from stream")
+	}
 	pub := &fakePublisher{
-		publishErrs: []error{
-			errors.New("nats: no response from stream"),
-			errors.New("nats: no response from stream"),
-			errors.New("nats: no response from stream"),
-			errors.New("nats: no response from stream"),
-		},
+		publishErrs: errs,
 	}
 	log := &Log{js: pub, subjectPrefix: "events"}
 
@@ -285,6 +318,21 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	if exhausted["messaging.jetstream.publish.max_attempts"] != float64(publishRetryAttempts) {
 		t.Fatalf("exhausted max attempts = %v, want %d", exhausted["messaging.jetstream.publish.max_attempts"], publishRetryAttempts)
 	}
+	if exhausted["messaging.jetstream.publish.retry_budget_ms"] != float64(publishRetryMaxElapsed.Milliseconds()) {
+		t.Fatalf("retry budget = %v, want %d", exhausted["messaging.jetstream.publish.retry_budget_ms"], publishRetryMaxElapsed.Milliseconds())
+	}
+	if exhausted["messaging.jetstream.publish.last_backoff_ms"] != float64(publishRetryMaxBackoff.Milliseconds()) {
+		t.Fatalf("last backoff = %v, want capped %d", exhausted["messaging.jetstream.publish.last_backoff_ms"], publishRetryMaxBackoff.Milliseconds())
+	}
+	if exhausted["messaging.jetstream.publish.retry_exhausted"] != true {
+		t.Fatalf("exhausted retry flag = %v, want true", exhausted["messaging.jetstream.publish.retry_exhausted"])
+	}
+	if exhausted["messaging.jetstream.publish.max_attempts_exhausted"] != true {
+		t.Fatalf("max attempts exhausted = %v, want true", exhausted["messaging.jetstream.publish.max_attempts_exhausted"])
+	}
+	if exhausted["messaging.jetstream.error.category"] != "no_response" {
+		t.Fatalf("exhausted error category = %v, want no_response", exhausted["messaging.jetstream.error.category"])
+	}
 	errorEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.error")
 	if len(errorEvents) != 1 {
 		t.Fatalf("jetstream.error events = %d, want 1; stderr=%s", len(errorEvents), stderr)
@@ -292,9 +340,13 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	if errorEvents[0]["messaging.jetstream.publish.retry_count"] != float64(publishRetryAttempts-1) {
 		t.Fatalf("jetstream.error retry count = %v, want %d", errorEvents[0]["messaging.jetstream.publish.retry_count"], publishRetryAttempts-1)
 	}
+	if errorEvents[0]["messaging.jetstream.publish.max_attempts_exhausted"] != true {
+		t.Fatalf("jetstream.error max attempts exhausted = %v, want true", errorEvents[0]["messaging.jetstream.publish.max_attempts_exhausted"])
+	}
 }
 
 func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
+	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
 		publishErrs: []error{
 			errors.New("nats: no response from stream"),
@@ -315,6 +367,52 @@ func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
 	}
 	if got := pub.published.Header.Get(nats.MsgIdHdr); !strings.HasPrefix(got, "sha256:") {
 		t.Fatalf("derived msg id = %q, want sha256 fallback", got)
+	}
+}
+
+func TestAppendEmitsPublishBulkheadTelemetry(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events", publishSlots: make(chan struct{}, 1)}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-bulkhead-telemetry",
+			Kind: "entity.upsert",
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	end := spanEnds[0]
+	if end["messaging.jetstream.publish.bulkhead.enabled"] != true {
+		t.Fatalf("bulkhead enabled = %v, want true", end["messaging.jetstream.publish.bulkhead.enabled"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(1) {
+		t.Fatalf("bulkhead max in flight = %v, want 1", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
+	}
+}
+
+func TestAcquirePublishSlotRespectsContextDeadline(t *testing.T) {
+	log := &Log{publishSlots: make(chan struct{}, 1)}
+	log.publishSlots <- struct{}{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+
+	_, release, err := log.acquirePublishSlot(ctx)
+	if err == nil {
+		release()
+		t.Fatal("acquirePublishSlot() error = nil, want deadline error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("acquirePublishSlot() error = %v, want deadline exceeded", err)
+	}
+	if len(log.publishSlots) != 1 {
+		t.Fatalf("publishSlots len = %d, want 1", len(log.publishSlots))
 	}
 }
 
