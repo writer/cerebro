@@ -100,6 +100,7 @@ Core runtime operations emit structured spans and diagnostic events:
 | `platform.job.run` | Durable `/platform/jobs` execution envelope and lifecycle |
 | `source_runtime.sync`, `source_runtime.sync_with_lease` | Runtime sync and lease lifecycle |
 | `source_projection.project` | Per-event projection attempt, status, projected/deleted counts, and tenant/source/runtime drill-down fields |
+| `graph_action.recorded` | Provider-backed graph action workflow linkage, provider/action identity, status, and reconciliation pivots |
 | `graph.ingest_runtime` | Graph ingestion runs |
 | `graphagent.http.request` | Graph-agent LLM/upstream HTTP calls |
 | `graphagent.llm.draft`, `graphagent.llm.summarize`, `graphagent.llm.probe` | Graph-agent LLM operations, model/provider metadata, counts, sizes, and safe outcomes only |
@@ -136,18 +137,20 @@ safe to aggregate in CloudWatch, Prometheus, or a vendor backend.
 | `cerebro.source_projection.runs` | `{projection}` | `source_id`, `event_kind`, `status` | Projection success/failure rate |
 | `cerebro.source_projection.duration` | `s` | `source_id`, `event_kind`, `status` | Projection latency distribution |
 | `cerebro.source_projection.records` | `{record}` | `source_id`, `event_kind`, `status`, `record.kind` | Graph/current-state records projected or deleted |
+| `cerebro.graph_action.recorded` | `{action}` | `provider`, `action`, `status`, `external_status`, `dry_run` | Provider-backed graph actions successfully recorded into the workflow/event path |
 
 Metric attributes deliberately exclude `tenant_id`, `runtime_id`, `resource_urn`,
 `evidence_id`, `request_id`, and `trace_id`. Those identifiers remain available
 in spans and wide events for drill-down, while metrics stay safe for aggregation
 and alerting.
 
-For source runtime and projection incidents, use the low-cardinality metrics to
-find the failing `source_id`, `event_kind`, `status`, or `error_kind`, then pivot
-to structured telemetry on `name="source_runtime.sync"` or
-`name="source_projection.project"`. Those diagnostic events carry `tenant_id`,
-`runtime_id`, and namespaced `source_runtime.*` / `source_projection.*` fields
-for per-tenant triage without turning tenant IDs into metric dimensions.
+For source runtime, projection, and graph-action incidents, use the
+low-cardinality metrics to find the failing `source_id`, `event_kind`,
+`provider`, `action`, `status`, or `error_kind`, then pivot to structured
+telemetry on `name="source_runtime.sync"`, `name="source_projection.project"`,
+or workflow `graph_action.recorded` events. Those diagnostic events carry
+`tenant_id`, `runtime_id`, finding IDs, and namespaced source/action fields for
+per-tenant triage without turning tenant IDs into metric dimensions.
 
 ## Error Contract
 

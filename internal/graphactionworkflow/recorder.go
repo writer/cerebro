@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graphactions"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
@@ -35,11 +36,12 @@ func Record(ctx context.Context, appendLog ports.AppendLog, finding *ports.Findi
 		externalID = strings.TrimSpace(action.ID)
 	}
 	actionID := canonicalActionID(finding.TenantID, action.Provider, action.Action, externalID)
+	status := strings.TrimSpace(firstNonEmpty(action.ExternalStatus, action.Status, "queued"))
 	event, err := workflowevents.NewActionRecordedEvent(workflowevents.ActionRecorded{
 		TenantID:      strings.TrimSpace(finding.TenantID),
 		ActionID:      actionID,
 		ActionType:    strings.TrimSpace(action.Action),
-		Status:        strings.TrimSpace(firstNonEmpty(action.ExternalStatus, action.Status, "queued")),
+		Status:        status,
 		Title:         "Graph action " + strings.TrimSpace(action.Action),
 		Summary:       strings.TrimSpace(action.Reason),
 		TargetIDs:     targets(finding, action, target),
@@ -63,7 +65,17 @@ func Record(ctx context.Context, appendLog ports.AppendLog, finding *ports.Findi
 	if err != nil {
 		return err
 	}
-	return appendLog.Append(ctx, event)
+	if err := appendLog.Append(ctx, event); err != nil {
+		return err
+	}
+	observability.RecordGraphAction(ctx, observability.GraphActionMetrics{
+		Provider:       action.Provider,
+		Action:         action.Action,
+		Status:         status,
+		ExternalStatus: action.ExternalStatus,
+		DryRun:         action.Metadata != nil && strings.EqualFold(action.Metadata["dry_run"], "true"),
+	})
+	return nil
 }
 
 func targets(finding *ports.FindingRecord, action *graphactions.GraphAction, target string) []string {
