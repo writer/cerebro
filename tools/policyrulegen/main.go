@@ -2,17 +2,16 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/format"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/writer/cerebro/internal/findingdsl"
 	"gopkg.in/yaml.v3"
 )
 
@@ -174,37 +173,21 @@ func generate(root string) ([]byte, error) {
 }
 
 func loadPolicies(root string) ([]policyFile, error) {
-	policiesRoot := filepath.Join(root, "policies")
-	var policies []policyFile
-	err := filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || filepath.Ext(path) != ".json" {
-			return nil
-		}
-		rel := slashRel(root, path)
-		if rel == "policies/cerebro/control-mapping.json" {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%s: symlinked policy files are not allowed", rel)
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", rel, err)
-		}
-		var policy policyFile
-		if err := json.Unmarshal(content, &policy); err != nil {
-			return fmt.Errorf("decode %s: %w", rel, err)
-		}
-		policy.relPath = rel
-		policy.domain = policyDomain(rel)
-		policies = append(policies, policy)
-		return nil
-	})
+	dslRules, issues, err := findingdsl.LoadPolicyRules(root)
 	if err != nil {
 		return nil, err
+	}
+	if len(issues) != 0 {
+		messages := make([]string, 0, len(issues))
+		for _, issue := range issues {
+			messages = append(messages, issue.Path+": "+issue.Message)
+		}
+		return nil, fmt.Errorf("policy DSL validation failed: %s", strings.Join(messages, "; "))
+	}
+	var policies []policyFile
+	for _, rule := range dslRules {
+		policy := policyFromDSL(rule)
+		policies = append(policies, policy)
 	}
 	sort.Slice(policies, func(i, j int) bool {
 		if policies[i].ID == policies[j].ID {
@@ -213,6 +196,40 @@ func loadPolicies(root string) ([]policyFile, error) {
 		return policies[i].ID < policies[j].ID
 	})
 	return policies, nil
+}
+
+func policyFromDSL(rule findingdsl.PolicyFindingRule) policyFile {
+	legacy := rule.LegacyPolicy()
+	return policyFile{
+		ID:               legacy.ID,
+		Name:             legacy.Name,
+		Description:      legacy.Description,
+		Severity:         legacy.Severity,
+		Category:         legacy.Category,
+		Resource:         legacy.Resource,
+		ResourceType:     legacy.ResourceType,
+		Conditions:       legacy.Conditions,
+		ConditionFormat:  legacy.ConditionFormat,
+		Query:            legacy.Query,
+		Tags:             legacy.Tags,
+		Remediation:      legacy.Remediation,
+		RemediationSteps: legacy.RemediationSteps,
+		Frameworks:       policyFrameworksFromDSL(legacy.Frameworks),
+		Enabled:          legacy.Enabled,
+		relPath:          rule.RelPath,
+		domain:           rule.Domain,
+	}
+}
+
+func policyFrameworksFromDSL(frameworks []findingdsl.PolicyFramework) []policyFramework {
+	out := make([]policyFramework, 0, len(frameworks))
+	for _, framework := range frameworks {
+		out = append(out, policyFramework{
+			Name:     framework.Name,
+			Controls: append([]string(nil), framework.Controls...),
+		})
+	}
+	return out
 }
 
 func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {

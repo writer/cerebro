@@ -1,0 +1,33 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-gke-no-alpha-clusters
+    name: GKE Clusters No Alpha Features
+    description: GKE clusters should not have alpha features enabled as they are not covered by GKE SLA and may have stability issues
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gke
+        - kubernetes
+        - alpha
+        - stability
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp_container_clusters
+    match:
+        conditions:
+            - cmp_eq(path(resource, "enable_kubernetes_alpha"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Alpha clusters cannot be upgraded to standard clusters. Create a new cluster without alpha features and migrate workloads
+        steps:
+            - Create a new GKE cluster without alpha features
+            - Migrate workloads to the new cluster
+            - Delete the alpha cluster
+            - 'Note: Alpha clusters cannot be converted to standard clusters'
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS GKE Benchmark v1.4
+          controls:
+            - 5.1.1

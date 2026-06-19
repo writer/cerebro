@@ -1,0 +1,56 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: threat-intel-malicious-domain-resolution
+    name: DNS Resolution of Threat Intelligence Domain
+    description: DNS query detected for domain in threat intelligence feeds
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - runtime
+        - threat-intel
+        - dns
+        - malware
+        - dga
+spec:
+    severity: high
+    effect: forbid
+    resource: network::dns_query
+    match:
+        conditions:
+            - in_list(path(resource, "domain"), ["threat_intel.malicious_domains"])
+        conditionFormat: cel
+    remediation:
+        summary: Block the domain in DNS firewall and investigate the querying instance.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.2
+            - CC7.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.8.16
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: SOC 2
+          controls:
+            - CC7.3
+            - CC7.4
+            - CC7.5
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.5.26
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - IR-5
+            - IR-8

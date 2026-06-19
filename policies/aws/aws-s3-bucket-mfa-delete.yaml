@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-s3-bucket-mfa-delete
+    name: S3 Bucket MFA Delete
+    description: S3 bucket should have MFA delete enabled for versioned objects
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - s3
+        - data-protection
+        - mfa
+        - versioning
+spec:
+    severity: low
+    effect: forbid
+    resource: aws::s3::bucket
+    match:
+        conditions:
+            - cmp_eq(path(resource, "versioning.status"), "Enabled")
+            - cmp_ne(path(resource, "versioning.mfa_delete"), "Enabled")
+        conditionFormat: cel
+    remediation:
+        summary: Enable MFA delete on the bucket to require MFA for permanent deletion of versioned objects.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

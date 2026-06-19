@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: vm-kernel-vuln-container
+    name: VM with kernel vulnerabilities is running a container
+    description: A VM with kernel vulnerabilities is running containers, risking container escape
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - compute
+        - vulnerability
+        - kernel
+        - container
+spec:
+    severity: high
+    effect: forbid
+    resource: compute::instance
+    match:
+        conditions:
+            - list_value(path(resource, "vulnerabilities")).exists(item, (cmp_eq(path(item, "component"), "kernel")) && (in_list(path(item, "severity"), ["CRITICAL","HIGH"])))
+            - cmp_gt(path(resource, "running_containers_count"), 0)
+        conditionFormat: cel
+    remediation:
+        summary: Patch kernel vulnerabilities. Consider migrating containers to patched nodes.
+    riskCategories:
+        - VULNERABILITY
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5
+            - SI-2
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "11.3"
+        - name: CIS Controls v8
+          controls:
+            - "7"

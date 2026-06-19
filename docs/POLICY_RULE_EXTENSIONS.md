@@ -1,6 +1,6 @@
 # Policy Rule Extensions
 
-`policies/` remains the policy authoring catalog. `internal/compliance/policy_rule_extensions.yaml` is the enrichment layer used by `tools/policyrulegen` to turn those policies into clearer, auditor-facing Go finding rules.
+`policies/` remains the policy authoring catalog, now as validated `PolicyFindingRule` YAML DSL documents. `internal/compliance/policy_rule_extensions.yaml` is the enrichment layer used by `tools/policyrulegen` to turn those policies into clearer, auditor-facing Go finding rules.
 
 The extension file lets us improve generated rule copy and evidence semantics without hand-editing `internal/findings/policy_rule_catalog_gen.go`.
 

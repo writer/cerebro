@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-create
+    name: User/service accounts with the privileges to create pods
+    description: An identity can create pods in Kubernetes, which could be used for privilege escalation
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - kubernetes
+        - rbac
+        - pods
+spec:
+    severity: medium
+    effect: forbid
+    resource: k8s::cluster_role|k8s::role|k8s::rbac::risky_binding
+    match:
+        conditions:
+            - (contains_value(path(resource, "risk_reasons"), "pod_create_access")) || (list_value(path(resource, "rules")).exists(item, (contains_value(path(item, "resources"), "pods")) && (contains_value(path(item, "verbs"), "create"))))
+        conditionFormat: cel
+    remediation:
+        summary: Restrict pod creation privileges. Implement admission controllers to validate pod specs.
+    riskCategories:
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

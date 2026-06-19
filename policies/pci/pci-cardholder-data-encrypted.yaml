@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: pci-cardholder-data-encrypted
+    name: Cardholder Data Encrypted at Rest
+    description: Ensures cardholder data is encrypted at rest using strong cryptography (PCI DSS 3.4)
+    tags:
+        - pci
+        - encryption
+        - cardholder-data
+        - requirement-3
+spec:
+    severity: CRITICAL
+    category: pci
+    resourceType: database
+    match:
+        query: SELECT id, name, engine, encryption_enabled, data_classification FROM databases WHERE data_classification = 'cardholder_data' AND (encryption_enabled = false OR encryption_enabled IS NULL)
+    remediation:
+        summary: Enable encryption at rest for all databases containing cardholder data. Use AES-256 or stronger encryption.
+    frameworks:
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+    enabled: true

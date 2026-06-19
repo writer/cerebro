@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-sql-transparent-data-encryption
+    name: Azure SQL Transparent Data Encryption
+    description: Azure SQL databases should have Transparent Data Encryption enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-azure-4.1.2
+        - sql
+        - database
+        - encryption
+spec:
+    severity: high
+    effect: forbid
+    resource: azure::sql::database
+    match:
+        conditions:
+            - cmp_ne(path(resource, "transparent_data_encryption.status"), "Enabled")
+        conditionFormat: cel
+    remediation:
+        summary: Enable Transparent Data Encryption on the database.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

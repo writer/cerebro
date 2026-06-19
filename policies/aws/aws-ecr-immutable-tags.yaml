@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-ecr-immutable-tags
+    name: ECR Immutable Image Tags
+    description: ECR repositories should use immutable image tags to prevent overwrites
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ecr
+        - container
+        - supply-chain
+        - immutability
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::ecr::repository
+    match:
+        conditions:
+            - cmp_ne(path(resource, "image_tag_mutability"), "IMMUTABLE")
+        conditionFormat: cel
+    remediation:
+        summary: Set image tag mutability to IMMUTABLE to prevent image tag overwrites.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - CM-5
+            - CM-7
+            - SI-7
+            - SR-11
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "6.5"
+        - name: CIS Controls v8
+          controls:
+            - "2"
+            - "7"
+            - "16"

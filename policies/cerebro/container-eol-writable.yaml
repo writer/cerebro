@@ -1,0 +1,36 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: container-eol-writable
+    name: Container with end-of-life software on the writable layer
+    description: A running container has end-of-life software installed on the writable layer
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - container
+        - eol
+        - drift
+spec:
+    severity: medium
+    effect: forbid
+    resource: container::pod|container::deployment
+    match:
+        conditions:
+            - list_value(path(resource, "writable_layer_packages")).exists(item, cmp_eq(path(item, "end_of_life"), true))
+        conditionFormat: cel
+    remediation:
+        summary: Update base images and rebuild containers. Remove EOL software from container runtime.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5
+            - SI-2
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "11.3"
+        - name: CIS Controls v8
+          controls:
+            - "7"

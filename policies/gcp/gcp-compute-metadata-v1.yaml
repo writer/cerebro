@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-compute-metadata-v1
+    name: GCP Instance Metadata v1 Enabled
+    description: GCP Compute instance does not block legacy metadata endpoint (v1), making it vulnerable to SSRF attacks
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-4.4
+        - ssrf
+        - metadata
+        - compute
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::compute::instance
+    match:
+        conditions:
+            - cmp_ne(path(resource, "metadata.enable-legacy-endpoints"), "false")
+        conditionFormat: cel
+    remediation:
+        summary: Set metadata key 'enable-legacy-endpoints' to 'false' to block the v1 metadata endpoint.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: CIS Benchmarks
+          controls:
+            - "4.4"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-6
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

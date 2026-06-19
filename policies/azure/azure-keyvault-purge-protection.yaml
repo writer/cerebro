@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-keyvault-purge-protection
+    name: Azure Key Vault Purge Protection
+    description: Azure Key Vaults should have purge protection enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-azure-8.5
+        - keyvault
+        - data-protection
+spec:
+    severity: medium
+    effect: forbid
+    resource: azure::keyvault::vault
+    match:
+        conditions:
+            - cmp_ne(path(resource, "properties.enable_purge_protection"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable purge protection on the Key Vault to prevent permanent deletion.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "8.6"
+    mitreAttack:
+        - tactic: Credential Access
+          technique: T1552
+        - tactic: Collection
+          technique: T1530

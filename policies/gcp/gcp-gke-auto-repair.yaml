@@ -1,0 +1,35 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-gke-auto-repair
+    name: GKE Node Pool Auto-Repair Enabled
+    description: GKE node pools should have auto-repair enabled to automatically repair unhealthy nodes
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gke
+        - kubernetes
+        - node-pools
+        - auto-repair
+        - availability
+spec:
+    severity: low
+    effect: forbid
+    resource: gcp_container_node_pools
+    match:
+        conditions:
+            - cmp_ne(path(resource, "management.auto_repair"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable auto-repair for the node pool
+        steps:
+            - 'Use gcloud: gcloud container node-pools update POOL_NAME --cluster=CLUSTER_NAME --enable-autorepair'
+            - 'Or via Console: Navigate to cluster, select node pool, edit, and enable auto-repair'
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS GKE Benchmark v1.4
+          controls:
+            - 5.5.2
+        - name: SOC 2
+          controls:
+            - A1.1

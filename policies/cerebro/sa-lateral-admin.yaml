@@ -1,0 +1,48 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: sa-lateral-admin
+    name: Service account with lateral movement to admin in another account
+    description: A service account has an attack path that leads to admin privileges in another cloud account
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - identity
+        - lateral-movement
+        - admin
+        - cross-account
+        - service-account
+spec:
+    severity: critical
+    effect: forbid
+    resource: iam::service_account
+    match:
+        conditions:
+            - list_value(path(resource, "attack_paths")).exists(item, (cmp_eq(path(item, "target.is_admin"), true)) && (cmp_eq(path(item, "target.is_cross_account"), true)))
+        conditionFormat: cel
+    remediation:
+        summary: Break the attack path by removing cross-account trust relationships or reducing source privileges.
+    riskCategories:
+        - IDENTITY_RISK
+        - LATERAL_MOVEMENT
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078
+        - tactic: Lateral Movement
+          technique: T1021

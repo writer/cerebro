@@ -1,0 +1,51 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-cloudtrail-s3-data-events
+    name: CloudTrail S3 Data Events Logging
+    description: CloudTrail should be configured to log S3 object-level data events (read and write) for comprehensive audit logging of bucket access
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-aws-3.10
+        - cis-aws-3.11
+        - cloudtrail
+        - s3
+        - data-events
+        - logging
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws_cloudtrail_trails
+    match:
+        conditions:
+            - cmp_eq(path(resource, "is_multi_region_trail"), true)
+            - cmp_eq(path(resource, "has_s3_data_events"), false)
+        conditionFormat: cel
+    remediation:
+        summary: Configure S3 data event logging in CloudTrail to capture object-level API activity for all S3 buckets
+        steps:
+            - Navigate to CloudTrail in AWS Console
+            - Select the multi-region trail
+            - Go to 'Data events' section
+            - Add data event selector for S3
+            - Select 'All current and future S3 buckets'
+            - Enable both Read and Write events
+            - Save the configuration
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "3.10"
+            - "3.11"
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: SOC 2
+          controls:
+            - CC4.1
+            - CC7.2
+        - name: PCI DSS v4.0.1
+          controls:
+            - 10.2.1

@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-appsync-no-authorization
+    name: AWS AppSync No Authorization
+    description: AppSync GraphQL API has no authorization configured
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - api
+        - appsync
+        - graphql
+        - authentication
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::appsync::graphql_api
+    match:
+        conditions:
+            - cmp_eq(path(resource, "authentication_type"), "API_KEY")
+            - cmp_eq(path(resource, "additional_authentication_providers.length"), 0)
+        conditionFormat: cel
+    remediation:
+        summary: Configure Cognito, IAM, or OIDC authentication for the AppSync API.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"

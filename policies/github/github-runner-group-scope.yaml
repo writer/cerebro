@@ -1,0 +1,52 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: github-runner-group-scope
+    name: GitHub Runner Group with Broad Repository Access
+    description: Self-hosted runner group is accessible to all repositories or allows public repositories
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - github
+        - runners
+        - supply-chain
+        - ci-cd
+        - least-privilege
+spec:
+    severity: high
+    effect: forbid
+    resource: github::runner_group
+    match:
+        conditions:
+            - (cmp_eq(path(resource, "visibility"), "all")) || (cmp_eq(path(resource, "allows_public_repositories"), true)) || (cmp_eq(path(resource, "selected_repositories_count"), 0))
+        conditionFormat: cel
+    remediation:
+        summary: Restrict runner groups to specific repositories. Disable public repository access for self-hosted runners. Create separate runner groups for different security boundaries.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Privilege Escalation
+          technique: T1078

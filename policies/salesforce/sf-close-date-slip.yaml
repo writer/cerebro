@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: sf-close-date-slip
+    name: Close Date Pushed More Than Twice
+    description: Flags opportunities with repeated close-date slips while still open.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - forecasting
+        - pipeline-hygiene
+        - salesforce
+spec:
+    severity: medium
+    effect: forbid
+    resource: salesforce::opportunity
+    match:
+        conditions:
+            - cmp_gt(path(resource, "close_date_push_count"), 2)
+            - cmp_ne(path(resource, "StageName"), "Closed Won")
+        conditionFormat: cel
+    frameworks:
+        - name: Cerebro Revenue Operations
+          controls:
+            - REV-6

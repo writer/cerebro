@@ -1,0 +1,30 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: compliance-background-checks
+    name: Background Checks on New Hires
+    description: Ensures background checks are completed for all new employees
+    tags:
+        - compliance
+        - hr
+        - background-check
+        - onboarding
+spec:
+    severity: HIGH
+    category: compliance
+    resourceType: employee
+    match:
+        query: SELECT id, name, work_email, start_date FROM employees WHERE status = 'active' AND (background_check_completed = false OR background_check_date IS NULL)
+    remediation:
+        summary: Complete background checks for all employees before or shortly after their start date.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.1
+        - name: HIPAA
+          controls:
+            - "164.312"
+    enabled: true

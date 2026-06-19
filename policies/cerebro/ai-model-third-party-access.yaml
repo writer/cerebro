@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-model-third-party-access
+    name: 3rd party access to AI model in bucket
+    description: A third party has access to AI model artifacts stored in a bucket
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - ai
+        - third-party
+        - model-security
+spec:
+    severity: high
+    effect: forbid
+    resource: storage::bucket
+    match:
+        conditions:
+            - cmp_eq(path(resource, "contains_ml_model"), true)
+            - list_value(path(resource, "iam_policy.principals")).exists(item, cmp_eq(path(item, "is_third_party"), true))
+        conditionFormat: cel
+    remediation:
+        summary: Review and restrict third-party access to AI model artifacts. Implement proper model governance.
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

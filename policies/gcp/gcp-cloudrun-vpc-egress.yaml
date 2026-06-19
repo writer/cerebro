@@ -1,0 +1,32 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-cloudrun-no-vpc-connector
+    name: Cloud Run Service Without VPC Connector
+    description: Cloud Run service is not configured with a VPC connector, allowing direct egress to the public internet
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - cloudrun
+        - serverless
+        - vpc
+        - network
+spec:
+    severity: low
+    effect: forbid
+    resource: gcp::cloudrun::revision
+    match:
+        conditions:
+            - (!exists_path(resource, "vpc_access")) || (cmp_eq(path(resource, "vpc_access.connector"), ""))
+        conditionFormat: cel
+    remediation:
+        summary: Configure a VPC connector for the Cloud Run service to control egress traffic and enable access to VPC resources.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-7
+        - name: CIS Controls v8
+          controls:
+            - "12"

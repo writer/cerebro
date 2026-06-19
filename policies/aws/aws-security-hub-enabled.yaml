@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-security-hub-enabled
+    name: AWS Security Hub Enabled
+    description: AWS Security Hub should be enabled in all regions to provide centralized security findings and compliance checks
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - security-hub
+        - centralized-security
+        - compliance
+        - monitoring
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws_securityhub_hubs
+    match:
+        conditions:
+            - cmp_eq(path(resource, "hub_arn"), null)
+        conditionFormat: cel
+    remediation:
+        summary: 'Enable AWS Security Hub in all active regions. Use: aws securityhub enable-security-hub --region <region>'
+        steps:
+            - Navigate to Security Hub in AWS Console
+            - Click 'Go to Security Hub'
+            - Review and accept the service-linked role
+            - Enable desired security standards (CIS, AWS Foundational)
+            - Repeat for all active regions or use AWS Organizations integration
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "4.16"
+        - name: NIST 800-53 r5
+          controls:
+            - CA-7
+            - SI-4
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.2

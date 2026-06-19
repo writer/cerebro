@@ -1,0 +1,55 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-guardduty-crypto-mining
+    name: AWS GuardDuty Crypto Mining Detection
+    description: GuardDuty detected cryptocurrency mining activity
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - runtime
+        - crypto-mining
+        - guardduty
+        - resource-abuse
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::guardduty::finding
+    match:
+        conditions:
+            - contains_value(path(resource, "type"), "CryptoCurrency")
+        conditionFormat: cel
+    remediation:
+        summary: Terminate compromised resources and investigate unauthorized access.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.2
+            - CC7.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.8.16
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: SOC 2
+          controls:
+            - CC7.3
+            - CC7.4
+            - CC7.5
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.5.26
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - IR-5
+            - IR-8

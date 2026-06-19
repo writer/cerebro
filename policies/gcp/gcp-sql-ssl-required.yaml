@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-sql-ssl-required
+    name: GCP Cloud SQL SSL Required
+    description: Cloud SQL instances should require SSL/TLS for all connections
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-6.1
+        - cloudsql
+        - database
+        - encryption
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::sql::database_instance
+    match:
+        conditions:
+            - cmp_ne(path(resource, "settings.ip_configuration.require_ssl"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable 'Require SSL' in the Cloud SQL instance settings.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

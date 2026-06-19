@@ -1,0 +1,23 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: pci-penetration-test-annual
+    name: Annual Penetration Testing
+    description: Ensures penetration testing is performed at least annually and after significant changes (PCI DSS 11.3)
+    tags:
+        - pci
+        - penetration-test
+        - requirement-11
+spec:
+    severity: HIGH
+    category: pci
+    resourceType: penetration_test
+    match:
+        query: SELECT id, scope, last_test_date, test_provider FROM penetration_tests WHERE cde_scope = true AND (last_test_date IS NULL OR last_test_date < NOW() - INTERVAL '365 days')
+    remediation:
+        summary: Schedule and complete annual penetration testing of the CDE. Retest after significant infrastructure changes.
+    frameworks:
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+    enabled: true

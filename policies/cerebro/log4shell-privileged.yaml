@@ -1,0 +1,51 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: log4shell-privileged
+    name: VM/serverless with high privileges vulnerable to CVE-2021-44228 (Log4Shell)
+    description: A privileged resource is vulnerable to Log4Shell
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - compute
+        - vulnerability
+        - log4shell
+        - privileged
+spec:
+    severity: critical
+    effect: forbid
+    resource: compute::instance|serverless::function
+    match:
+        conditions:
+            - (cmp_eq(path(resource, "service_account.has_high_privilege"), true)) || (cmp_eq(path(resource, "attached_role.has_high_privilege"), true))
+            - list_value(path(resource, "vulnerabilities")).exists(item, cmp_eq(path(item, "cve_id"), "CVE-2021-44228"))
+        conditionFormat: cel
+    remediation:
+        summary: Patch Log4j immediately. Reduce privileges until patch is applied.
+    riskCategories:
+        - IDENTITY_RISK
+        - VULNERABILITY
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+            - RA-5
+            - SI-2
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+            - "6.3"
+            - "11.3"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+            - "7"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

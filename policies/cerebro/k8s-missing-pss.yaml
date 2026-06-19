@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-missing-pss
+    name: Kubernetes clusters with at least one namespace missing PSS policy
+    description: A namespace in the cluster is missing Pod Security Standards enforcement
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - pss
+        - pod-security
+spec:
+    severity: medium
+    effect: forbid
+    resource: k8s::namespace
+    match:
+        conditions:
+            - '!(contains_value(path(resource, "labels"), "pod-security.kubernetes.io/enforce"))'
+        conditionFormat: cel
+    remediation:
+        summary: Apply Pod Security Standards labels to all namespaces. Use 'restricted' or 'baseline' policy.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.1
+            - 5.2.2
+            - 5.2.3
+            - 5.2.4
+            - 5.2.5
+            - 5.2.6
+            - 5.2.7
+            - 5.2.8
+        - name: NIST 800-53 r5
+          controls:
+            - AC-6
+            - CM-7
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6

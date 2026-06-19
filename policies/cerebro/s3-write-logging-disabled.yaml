@@ -1,0 +1,47 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: s3-write-logging-disabled
+    name: S3 Bucket with object-level write data events logging disabled
+    description: An S3 bucket does not have CloudTrail data event logging enabled for write operations
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - aws
+        - s3
+        - logging
+        - cloudtrail
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::s3::bucket
+    match:
+        conditions:
+            - cmp_eq(path(resource, "cloudtrail_data_events.write_enabled"), false)
+        conditionFormat: cel
+    remediation:
+        summary: Enable CloudTrail data events for write operations on the bucket.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562
+        - tactic: Collection
+          technique: T1530

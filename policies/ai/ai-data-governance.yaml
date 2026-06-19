@@ -1,0 +1,36 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-data-governance
+    name: AI Training Data Governance
+    description: Ensures AI training data has documented lineage and usage rights (ISO 42001)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - ml
+        - data
+        - governance
+        - privacy
+        - iso42001
+spec:
+    severity: high
+    effect: forbid
+    resource: ai_datasets
+    match:
+        conditions:
+            - (cmp_eq(path(resource, "consent_documented"), false)) || (cmp_eq(path(resource, "lineage_documented"), false))
+        conditionFormat: cel
+    remediation:
+        summary: Document data lineage and usage rights for all AI training datasets. Ensure consent is obtained where required.
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - "7.3"
+            - "10.2"
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: GDPR
+          controls:
+            - Art.5
+            - Art.30

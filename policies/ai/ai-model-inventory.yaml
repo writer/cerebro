@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-model-inventory
+    name: AI Model Inventory Maintained
+    description: Ensures all AI/ML models are documented in a central inventory (ISO 42001)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - ml
+        - inventory
+        - governance
+        - iso42001
+spec:
+    severity: medium
+    effect: forbid
+    resource: ai_models
+    match:
+        conditions:
+            - (!exists_path(resource, "last_inventory_update")) || (cmp_lt(path(resource, "last_inventory_update"), "NOW() - INTERVAL '90 days'"))
+        conditionFormat: cel
+    remediation:
+        summary: Update AI model inventory with all deployed models. Document model purpose, inputs, outputs, and risk assessment.
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - "7.1"
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6.1

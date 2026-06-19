@@ -1,0 +1,32 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: org-customer-relationship-health-low
+    name: Customer Relationship Structural Health Low
+    description: Customer relationship topology health has dropped below the acceptable threshold.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - org-topology
+        - customer-health
+        - churn-risk
+spec:
+    severity: high
+    effect: forbid
+    resource: org::customer_relationship
+    match:
+        conditions:
+            - cmp_lt(path(resource, "health_score"), 60)
+            - (cmp_eq(path(resource, "touchpoint_trend"), "declining")) || (cmp_eq(path(resource, "frequency_trend"), "decreasing"))
+        conditionFormat: cel
+    remediation:
+        summary: Assign additional account coverage, restore interaction cadence, and schedule an executive check-in.
+    riskCategories:
+        - CUSTOMER_HEALTH_RISK
+        - CHURN_RISK
+    frameworks:
+        - name: Cerebro Organizational Resilience
+          controls:
+            - ORG-2
+        - name: Cerebro Revenue Operations
+          controls:
+            - REV-5

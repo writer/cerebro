@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-guardduty-disabled
+    name: GuardDuty Not Enabled
+    description: AWS GuardDuty threat detection is not enabled in the region
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - guardduty
+        - threat-detection
+        - cis-aws-4.15
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::guardduty::detector
+    match:
+        conditions:
+            - cmp_ne(path(resource, "status"), "ENABLED")
+        conditionFormat: cel
+    remediation:
+        summary: Enable GuardDuty in all regions. Consider enabling S3 protection, EKS protection, and Malware Protection features.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "4.15"
+        - name: NIST 800-53 r5
+          controls:
+            - SI-4

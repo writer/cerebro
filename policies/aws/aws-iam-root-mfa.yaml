@@ -1,0 +1,53 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-iam-root-mfa-enabled
+    name: Root Account MFA Enabled
+    description: Root account should have MFA enabled for additional security
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-aws-1.5
+        - iam
+        - root
+        - mfa
+        - authentication
+spec:
+    severity: critical
+    effect: forbid
+    resource: aws::iam::account_summary
+    match:
+        conditions:
+            - cmp_ne(path(resource, "account_mfa_enabled"), 1)
+        conditionFormat: cel
+    remediation:
+        summary: Enable MFA for the root account using a hardware MFA device for maximum security.
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "1.5"
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+            - "7.2"
+        - name: CIS Controls v8
+          controls:
+            - "6"
+            - "5"
+        - name: SOC 2
+          controls:
+            - CC6
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078

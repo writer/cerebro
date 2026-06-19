@@ -1,0 +1,25 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-transmission-security
+    name: HIPAA Transmission Security
+    description: Ensures PHI is encrypted during transmission (HIPAA 164.312(e)(2)(ii))
+    tags:
+        - hipaa
+        - transmission
+        - tls
+        - encryption
+        - healthcare
+spec:
+    severity: CRITICAL
+    category: hipaa
+    resourceType: network_endpoint
+    match:
+        query: SELECT id, hostname, port, tls_enabled, phi_transmitted FROM network_endpoints WHERE phi_transmitted = true AND tls_enabled = false
+    remediation:
+        summary: Enable TLS 1.2 or higher for all endpoints transmitting PHI. Disable unencrypted protocols.
+    frameworks:
+        - name: HIPAA
+          controls:
+            - "164.312"
+    enabled: true

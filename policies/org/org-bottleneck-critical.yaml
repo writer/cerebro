@@ -1,0 +1,30 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: org-bottleneck-critical
+    name: Single Person Bridges Multiple Teams
+    description: One person is the sole communication link between multiple teams.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - org-topology
+        - bottleneck
+        - knowledge-flow
+spec:
+    severity: medium
+    effect: forbid
+    resource: org::person
+    match:
+        conditions:
+            - cmp_gt(path(resource, "betweenness_centrality"), 0.8)
+            - cmp_gt(path(resource, "bridged_teams"), 1)
+        conditionFormat: cel
+    remediation:
+        summary: Establish backup communication channels and cross-team coverage.
+    riskCategories:
+        - BOTTLENECK_RISK
+        - RESILIENCE_RISK
+    frameworks:
+        - name: Cerebro Organizational Resilience
+          controls:
+            - ORG-1
+            - ORG-3

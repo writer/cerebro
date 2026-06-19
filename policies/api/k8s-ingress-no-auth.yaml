@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-ingress-no-authentication
+    name: Kubernetes Ingress No Authentication
+    description: Kubernetes Ingress lacks authentication annotations
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - api
+        - kubernetes
+        - ingress
+        - authentication
+spec:
+    severity: medium
+    effect: forbid
+    resource: kubernetes::networking::ingress
+    match:
+        conditions:
+            - '!(contains_value(path(resource, "annotations"), "nginx.ingress.kubernetes.io/auth-url"))'
+            - '!(contains_value(path(resource, "annotations"), "nginx.ingress.kubernetes.io/auth-signin"))'
+            - '!(contains_value(path(resource, "annotations"), "traefik.ingress.kubernetes.io/router.middlewares"))'
+        conditionFormat: cel
+    remediation:
+        summary: Configure external authentication via ingress annotations or use a service mesh.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"

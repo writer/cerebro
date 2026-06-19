@@ -197,6 +197,8 @@
       "change_reason": "policy definitions or detection catalog generation changed",
       "triggers": [
         "policies/**",
+        "internal/findingdsl/**",
+        "tools/findingdsl/**",
         "tools/detectioncatalog/**"
       ],
       "generator": {
@@ -217,6 +219,15 @@
             "detection-catalog-check"
           ],
           "include_in_pr_generated_step": true
+        },
+        {
+          "key": "finding-dsl-check",
+          "summary": "Validate PolicyFindingRule DSL files",
+          "make_target": "finding-dsl-check",
+          "command": [
+            "make",
+            "finding-dsl-check"
+          ]
         },
         {
           "key": "catalog-check",

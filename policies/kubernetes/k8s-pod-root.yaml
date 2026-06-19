@@ -1,0 +1,34 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-no-run-as-root
+    name: K8s Pod No Run As Root
+    description: Pods should not run containers as root user
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-k8s-5.2.6
+        - pod-security
+        - root
+spec:
+    severity: high
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_ne(path(resource, "spec.security_context.run_as_non_root"), true)
+            - cmp_eq(path(resource, "spec.containers.security_context.run_as_user"), 0)
+        conditionFormat: cel
+    remediation:
+        summary: 'Set runAsNonRoot: true and specify a non-zero runAsUser.'
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.6
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078

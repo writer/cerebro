@@ -1,0 +1,25 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: stripe-trial-no-payment-method
+    name: Trial Ending Without Payment Method
+    description: Flags trial subscriptions nearing expiration without a default payment method.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - conversion
+        - revenue
+        - stripe
+spec:
+    severity: medium
+    effect: forbid
+    resource: stripe::subscription
+    match:
+        conditions:
+            - cmp_eq(path(resource, "status"), "trialing")
+            - cmp_lt(path(resource, "days_until_trial_end"), 7)
+            - cmp_eq(path(resource, "default_payment_method"), null)
+        conditionFormat: cel
+    frameworks:
+        - name: Cerebro Revenue Operations
+          controls:
+            - REV-3

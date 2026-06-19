@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-vm-disk-encryption
+    name: Azure VM Disk Encryption
+    description: Azure VMs should have disk encryption enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-azure-7.2
+        - compute
+        - encryption
+        - disk
+spec:
+    severity: high
+    effect: forbid
+    resource: azure::compute::virtual_machine
+    match:
+        conditions:
+            - cmp_ne(path(resource, "storage_profile.os_disk.encryption_settings.enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable Azure Disk Encryption using BitLocker (Windows) or DM-Crypt (Linux).
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"

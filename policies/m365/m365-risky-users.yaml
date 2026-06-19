@@ -1,0 +1,28 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: m365-risky-users
+    name: M365 Users with High Risk Level
+    description: Identifies users flagged as high risk by Entra ID Identity Protection
+    tags:
+        - m365
+        - entra
+        - risk
+        - identity-protection
+        - security
+spec:
+    severity: HIGH
+    category: m365
+    resourceType: entra_risky_user
+    match:
+        query: SELECT id, user_principal_name, user_display_name, risk_level, risk_state, risk_detail FROM entra_risky_users WHERE risk_level = 'high'
+    remediation:
+        summary: Investigate high-risk users immediately. Require password reset and MFA re-registration. Review sign-in logs for suspicious activity.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

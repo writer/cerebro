@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-phi-encryption
+    name: PHI Data Encrypted at Rest
+    description: Ensures Protected Health Information is encrypted at rest (HIPAA 164.312(a)(2)(iv))
+    tags:
+        - hipaa
+        - phi
+        - encryption
+        - healthcare
+spec:
+    severity: CRITICAL
+    category: hipaa
+    resourceType: database
+    match:
+        query: SELECT id, name, data_classification, encryption_enabled FROM databases WHERE data_classification = 'phi' AND encryption_enabled = false
+    remediation:
+        summary: Enable encryption at rest for all systems containing PHI. Use AES-256 or stronger encryption.
+    frameworks:
+        - name: HIPAA
+          controls:
+            - "164.312"
+    enabled: true

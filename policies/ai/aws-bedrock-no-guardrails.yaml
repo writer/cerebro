@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-bedrock-model-no-guardrails
+    name: Bedrock Model Without Guardrails
+    description: Amazon Bedrock custom model deployed without content guardrails
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - bedrock
+        - llm
+        - content-safety
+        - guardrails
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::bedrock::provisioned_model_throughput
+    match:
+        conditions:
+            - cmp_eq(path(resource, "guardrail_identifier"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Configure Bedrock Guardrails to filter harmful content and protect against prompt injection.
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - "6.1"
+            - "6.2"
+            - "8.4"
+            - "9.1"
+        - name: SOC 2
+          controls:
+            - CC7.2
+        - name: Cerebro AI Governance
+          controls:
+            - AI-4
+            - AI-5

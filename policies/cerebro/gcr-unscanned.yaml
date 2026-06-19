@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcr-unscanned
+    name: GCP container registry contains an unscanned image that is used by a container
+    description: An unscanned container image from GCR is in use
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - container-registry
+        - scanning
+spec:
+    severity: medium
+    effect: forbid
+    resource: container::image
+    match:
+        conditions:
+            - cmp_eq(path(resource, "registry_type"), "gcr")
+            - cmp_eq(path(resource, "scanned"), false)
+        conditionFormat: cel
+    remediation:
+        summary: Enable vulnerability scanning for all container registries. Review unscanned images.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5
+            - SI-2
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "11.3"
+        - name: CIS Controls v8
+          controls:
+            - "7"

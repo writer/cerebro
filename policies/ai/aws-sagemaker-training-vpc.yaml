@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-sagemaker-training-no-vpc
+    name: SageMaker Training Job Without VPC
+    description: SageMaker training job runs without VPC isolation
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - sagemaker
+        - network
+        - isolation
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::sagemaker::training_job
+    match:
+        conditions:
+            - cmp_eq(path(resource, "vpc_config"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Configure VPC for the training job to ensure network isolation.
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-4
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+        - name: PCI DSS v4.0.1
+          controls:
+            - 1.3.1
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"

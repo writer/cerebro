@@ -1,0 +1,39 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-rds-encryption-enabled
+    name: RDS Encryption Enabled
+    description: RDS instances should have encryption at rest enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-aws-2.3.1
+        - security
+        - rds
+        - encryption
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::rds::instance
+    match:
+        conditions:
+            - cmp_ne(path(resource, "storage_encrypted"), true)
+        conditionFormat: cel
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - 2.3.1
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"

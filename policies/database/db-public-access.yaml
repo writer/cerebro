@@ -1,0 +1,30 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: db-public-access
+    name: Database Public Access Disabled
+    description: Ensures databases are not publicly accessible from the internet
+    tags:
+        - database
+        - public-access
+        - network
+        - security
+spec:
+    severity: CRITICAL
+    category: database
+    resourceType: database
+    match:
+        query: SELECT id, name, engine, publicly_accessible FROM databases WHERE publicly_accessible = true
+    remediation:
+        summary: Disable public accessibility for databases. Use VPC endpoints or private subnets for database access.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+        - name: CIS Benchmarks
+          controls:
+            - "1.1"
+    enabled: true

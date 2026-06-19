@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcr-excessive-privileges
+    name: Google Container Registry allows excessive high privileges to user/service accounts
+    description: GCR grants excessive privileges that could allow supply chain attacks
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - gcp
+        - container-registry
+        - excessive-privileges
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::artifact_registry::repository|gcp::container_registry::registry
+    match:
+        conditions:
+            - list_value(path(resource, "iam_policy.bindings")).exists(item, (in_list(path(item, "role"), ["roles/artifactregistry.admin","roles/artifactregistry.repoAdmin","roles/artifactregistry.writer","roles/storage.admin","roles/storage.objectAdmin"])) && ((contains_value(path(item, "members"), "user:")) || (contains_value(path(item, "members"), "serviceAccount:"))))
+        conditionFormat: cel
+    remediation:
+        summary: Restrict registry write access. Implement CI/CD-only push policies.
+    riskCategories:
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

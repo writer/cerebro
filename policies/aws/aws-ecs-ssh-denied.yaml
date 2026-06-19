@@ -1,0 +1,47 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-ecs-ssh-denied
+    name: ECS Services Deny Public SSH Access
+    description: ECS services should not allow public SSH access (port 22) through their associated security groups
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ecs
+        - ssh
+        - security-groups
+        - network-security
+spec:
+    severity: critical
+    effect: forbid
+    resource: aws_ecs_services
+    match:
+        conditions:
+            - cmp_eq(path(resource, "allows_public_ssh"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Remove security group rules that allow inbound SSH (port 22) from 0.0.0.0/0 or ::/0 for ECS services
+        steps:
+            - Identify security groups attached to the ECS service
+            - Find rules allowing port 22 from 0.0.0.0/0
+            - Remove or modify these rules
+            - Use SSM Session Manager or bastion hosts for administrative access instead
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - EXTERNAL_ATTACK_SURFACE
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "5.2"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-17
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Lateral Movement
+          technique: T1021.004

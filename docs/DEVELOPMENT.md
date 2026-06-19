@@ -65,7 +65,7 @@ make graph-rebuild-dryrun
 - Append-log-backed sync and replay use NATS JetStream.
 - Graph projection and query operations use Neo4j/Aura.
 - Runtime finding behavior lives in Go rule packages under `internal/findings/`.
-- JSON policy files under `policies/` are the authoring catalog for generated policy rules. Run `make policy-rule-generate` after policy edits, then `make detection-catalog-generate`.
+- `PolicyFindingRule` YAML files under `policies/` are the authoring DSL for generated policy rules. Run `make finding-dsl-check`, `make policy-rule-generate`, and `make detection-catalog-generate` after policy edits.
 
 ## Before Opening A PR
 

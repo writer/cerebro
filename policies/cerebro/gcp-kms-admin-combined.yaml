@@ -1,0 +1,48 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-kms-admin-combined
+    name: User account with both 'Cloud KMS Admin' and 'Cloud CryptoKey Encrypter/Decrypter' roles assigned
+    description: A user can both manage KMS keys and use them for encryption, bypassing separation of duties
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - gcp
+        - kms
+        - identity
+        - separation-of-duties
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::iam::member
+    match:
+        conditions:
+            - list_value(path(resource, "roles")).exists(item, cmp_eq(path(item, "name"), "roles/cloudkms.admin"))
+            - list_value(path(resource, "roles")).exists(item, in_list(path(item, "name"), ["roles/cloudkms.cryptoKeyEncrypterDecrypter","roles/cloudkms.cryptoKeyEncrypter","roles/cloudkms.cryptoKeyDecrypter"]))
+        conditionFormat: cel
+    remediation:
+        summary: Separate KMS administration from key usage. Apply separation of duties for cryptographic operations.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+            - "8.6"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Credential Access
+          technique: T1552

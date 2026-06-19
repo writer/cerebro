@@ -43,7 +43,7 @@ docker compose up --build
 - Built-in source integrations for cloud, SaaS, identity, endpoint, vulnerability, compliance, and workflow signals.
 - Source runtime sync, append-log replay, claim/finding/report workflows, compliance control coverage, and optional graph projection/query tooling.
 - Optional MCP, graph-agent, and device-authenticated telemetry surfaces.
-- Policy catalogs, generated detection catalogs, SDK helpers, OpenAPI/Connect contracts, release artifacts, and local validation tooling.
+- PolicyFindingRule YAML DSL catalogs, generated detection catalogs, SDK helpers, OpenAPI/Connect contracts, release artifacts, and local validation tooling.
 
 ## Choose A Path
 
@@ -62,7 +62,7 @@ docker compose up --build
 | Work on graph behavior | [Graph operations](docs/GRAPH_OPERATIONS.md) |
 | Integrate MCP clients | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) |
 | Integrate endpoint telemetry | [Endpoint security platform integration](docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md) |
-| Author policies, control mappings, or finding rules | [Policies](docs/POLICIES.md), [compliance controls](docs/COMPLIANCE_CONTROLS.md), `policies/`, and `internal/findings` |
+| Author policies, control mappings, or finding rules | [Policies](docs/POLICIES.md), [compliance controls](docs/COMPLIANCE_CONTROLS.md), `policies/`, `internal/findingdsl`, and `internal/findings` |
 | Contribute code or docs | [Development](docs/DEVELOPMENT.md), [non-goals](docs/NON_GOALS.md), and the Makefile |
 
 ## Optional Docs Site
@@ -101,7 +101,7 @@ make oss-audit      # public repository hygiene scan
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
-For compliance-control work, run `make control-index-check`, `make policy-rule-check`, and `make detection-catalog-check`. Control extension packs are documented in [Compliance controls](docs/COMPLIANCE_CONTROLS.md) and use `--init-extension`, `--extension`, `--profile`, `--output`, and `--write` workflows.
+For policy or compliance-control work, run `make finding-dsl-check`, `make policy-rule-check`, `make detection-catalog-check`, and `make control-index-check` as applicable. Control extension packs are documented in [Compliance controls](docs/COMPLIANCE_CONTROLS.md) and use `--init-extension`, `--extension`, `--profile`, `--output`, and `--write` workflows.
 
 ## Stack
 

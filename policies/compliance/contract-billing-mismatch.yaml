@@ -1,0 +1,26 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: contract-billing-mismatch
+    name: Contract and Billing Mismatch
+    description: Flags records where contractual and billed amounts are inconsistent.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - financial-controls
+        - revops
+        - billing
+spec:
+    severity: high
+    effect: forbid
+    resource: billing::contract
+    match:
+        conditions:
+            - cmp_ne(path(resource, "contract_amount"), path(resource, "billed_amount"))
+        conditionFormat: cel
+    frameworks:
+        - name: SOC 2
+          controls:
+            - PI1.4
+        - name: Cerebro Financial Controls
+          controls:
+            - FIN-2

@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: backup-rpo-compliance
+    name: Recovery Point Objective (RPO) Compliance
+    description: Ensures backup frequency meets defined RPO requirements
+    tags:
+        - backup
+        - rpo
+        - frequency
+        - bcdr
+spec:
+    severity: HIGH
+    category: backup
+    resourceType: backup
+    match:
+        query: SELECT id, backup_name, target_system, backup_frequency_hours, rpo_hours FROM backups WHERE backup_frequency_hours > rpo_hours
+    remediation:
+        summary: Increase backup frequency to meet RPO requirements. Consider continuous replication for critical systems.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.1
+    enabled: true

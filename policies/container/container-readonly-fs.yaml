@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: container-readonly-fs
+    name: Container Read-Only Filesystem
+    description: Ensures container root filesystems are mounted read-only where possible
+    tags:
+        - container
+        - filesystem
+        - readonly
+        - security
+        - kubernetes
+spec:
+    severity: MEDIUM
+    category: container
+    resourceType: container
+    match:
+        query: SELECT id, name, image, namespace, read_only_root_filesystem FROM containers WHERE read_only_root_filesystem = false AND environment = 'production'
+    remediation:
+        summary: 'Set readOnlyRootFilesystem: true in security context. Use emptyDir volumes for writable paths.'
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: CIS Benchmarks
+          controls:
+            - "1.1"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

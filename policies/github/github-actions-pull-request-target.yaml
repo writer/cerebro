@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: github-actions-dangerous-trigger
+    name: GitHub Actions Dangerous Trigger
+    description: Workflow uses pull_request_target trigger which can expose secrets to forked PRs
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - devsecops
+        - github-actions
+        - supply-chain
+        - cicd-security
+spec:
+    severity: high
+    effect: forbid
+    resource: github::actions_workflow
+    match:
+        conditions:
+            - contains_value(path(resource, "content"), "pull_request_target")
+            - contains_value(path(resource, "content"), "secrets.")
+        conditionFormat: cel
+    remediation:
+        summary: Review workflow for secret exposure. Use pull_request instead and avoid checkout of PR code with secrets.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "8.6"
+    mitreAttack:
+        - tactic: Credential Access
+          technique: T1552

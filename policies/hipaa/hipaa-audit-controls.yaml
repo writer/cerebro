@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-audit-controls
+    name: HIPAA Audit Controls
+    description: Ensures audit controls are implemented for PHI systems (HIPAA 164.312(b))
+    tags:
+        - hipaa
+        - audit
+        - logging
+        - healthcare
+spec:
+    severity: HIGH
+    category: hipaa
+    resourceType: system
+    match:
+        query: SELECT id, name, contains_phi, audit_logging_enabled FROM systems WHERE contains_phi = true AND audit_logging_enabled = false
+    remediation:
+        summary: Enable comprehensive audit logging on all systems containing PHI. Log access, modifications, and deletions.
+    frameworks:
+        - name: HIPAA
+          controls:
+            - "164.312"
+    enabled: true

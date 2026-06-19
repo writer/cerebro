@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-storage-network-default-deny
+    name: Azure Storage Network Default Deny
+    description: Storage accounts should deny access by default
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-azure-3.8
+        - storage
+        - network
+spec:
+    severity: medium
+    effect: forbid
+    resource: azure::storage::account
+    match:
+        conditions:
+            - cmp_ne(path(resource, "network_rule_set.default_action"), "Deny")
+        conditionFormat: cel
+    remediation:
+        summary: Set default network action to Deny and add specific allow rules.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

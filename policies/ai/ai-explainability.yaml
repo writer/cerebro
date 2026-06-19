@@ -1,0 +1,34 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-explainability
+    name: AI Model Explainability Documentation
+    description: Ensures AI models have documented explanations of how decisions are made (ISO 42001)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - ml
+        - explainability
+        - transparency
+        - iso42001
+spec:
+    severity: medium
+    effect: forbid
+    resource: ai_models
+    match:
+        conditions:
+            - in_list(path(resource, "model_type"), ["classification","recommendation","scoring"])
+            - '!exists_path(resource, "explainability_doc")'
+        conditionFormat: cel
+    remediation:
+        summary: Document how AI models make decisions. Provide explanations appropriate to the model's use case and affected users.
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - "9.4"
+        - name: EU AI Act
+          controls:
+            - Art.13
+        - name: SOC 2
+          controls:
+            - CC1.4
