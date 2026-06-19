@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 import ipaddress
 import math
 import re
@@ -14,6 +14,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 import yaml
+
+UTC = timezone.utc
 
 try:
     from aws import source_runtime_scope
@@ -80,12 +82,30 @@ COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
 COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
 SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
+    "writer-aws-sec-dev-us1-asset-metadata",
+    "writer-aws-sec-dev-us1-cloudtrail",
+    "writer-aws-sec-dev-us2-asset-metadata",
+    "writer-aws-sec-dev-us2-cloudtrail",
+    "writer-aurelius-image-scans",
     "writer-github-audit",
     "writer-github-audit-writerinternal",
+    "writer-gcp-dev-devops-asset-metadata",
+    "writer-gcp-dev-devops-audit",
+    "writer-gcp-dev-networking-asset-metadata",
+    "writer-gcp-dev-networking-audit",
+    "writer-gcp-dev-qordoba-devel-asset-metadata",
+    "writer-gcp-dev-qordoba-devel-audit",
+    "writer-gcp-dev-writer-iam-asset-metadata",
+    "writer-gcp-dev-writer-iam-audit",
     "writer-okta-audit",
     "writer-okta-audit-2026-04",
     "writer-okta-audit-2026-q1",
+    "writer-panopticon-alerts",
+    "writer-panopticon-cases",
+    "writer-panopticon-iocs",
+    "writer-sentinelone-application",
     "writer-aurelius-findings",
+    "writer-aurelius-verdicts",
 }
 SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 5
 SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 5

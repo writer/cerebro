@@ -362,6 +362,8 @@ config:
       schedule:
         cadenceHours: 6
         nameMaxLength: 35
+        pageLimit: 5
+        graphPageLimit: 5
       families: &gcp_dev_wif_families
         - asset_metadata
         - audit
@@ -390,6 +392,8 @@ config:
       schedule:
         cadenceHours: 6
         nameMaxLength: 35
+        pageLimit: 5
+        graphPageLimit: 5
       families: *gcp_dev_wif_families
     - sourceId: gcp
       runtimePrefix: writer-gcp-dev-networking
@@ -401,6 +405,8 @@ config:
       schedule:
         cadenceHours: 6
         nameMaxLength: 35
+        pageLimit: 5
+        graphPageLimit: 5
       families: *gcp_dev_wif_families
     - sourceId: gcp
       runtimePrefix: writer-gcp-dev-devops
@@ -412,6 +418,8 @@ config:
       schedule:
         cadenceHours: 6
         nameMaxLength: 35
+        pageLimit: 5
+        graphPageLimit: 5
       families: *gcp_dev_wif_families
   cerebro:sourceRuntimeObservability:
     - environment: sec-dev
@@ -570,8 +578,8 @@ config:
   cerebro:orchestratorEnabled: true
   # Source-runtime drain tasks handle bursty graph writes and JetStream publish
   # retry budgets; keep them sized above the API plane for stream recovery.
-  cerebro:orchestratorCpu: 8192
-  cerebro:orchestratorMemory: 16384
+  cerebro:orchestratorCpu: 16384
+  cerebro:orchestratorMemory: 32768
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:
     - orchestrator
@@ -610,6 +618,16 @@ config:
         - page_limit=100
         - graph_page_limit=100
         - event_limit=1000
+    - name: trusted-endpoint-telemetry
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=trusted-endpoint
+        - page_limit=1
+        - graph_page_limit=1
+        - event_limit=500
     - name: okta-audit-live
       scheduleExpression: cron(0,10,20,30,40,50 * * * ? *)
       taskCount: 1
@@ -739,9 +757,9 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-sentinelone-application
-        - page_limit=10
-        - graph_page_limit=100
-        - event_limit=1000
+        - page_limit=1
+        - graph_page_limit=1
+        - event_limit=500
     - name: sentinelone-exclusion-inventory
       scheduleExpression: rate(1 hour)
       taskCount: 1
@@ -879,8 +897,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aws-sec-dev-us1-asset-metadata
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: aws-sec-dev-us2-asset-metadata
       scheduleExpression: cron(44 0/2 * * ? *)
@@ -889,8 +907,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aws-sec-dev-us2-asset-metadata
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: aws-sec-dev-us1-cloudtrail
       scheduleExpression: cron(8,38 * * * ? *)
@@ -899,8 +917,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aws-sec-dev-us1-cloudtrail
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: aws-sec-dev-us2-cloudtrail
       scheduleExpression: cron(18,48 * * * ? *)
@@ -909,8 +927,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aws-sec-dev-us2-cloudtrail
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: aws-sec-dev-us1-ec2
       scheduleExpression: cron(24 0/2 * * ? *)
@@ -1179,8 +1197,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aurelius-verdicts
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: aurelius-findings-live
       scheduleExpression: rate(15 minutes)
@@ -1199,8 +1217,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aurelius-image-scans
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: aurelius-catalog-promotions-live
       scheduleExpression: rate(30 minutes)
@@ -1229,8 +1247,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-panopticon-alerts
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: panopticon-cases-live
       scheduleExpression: rate(15 minutes)
@@ -1239,8 +1257,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-panopticon-cases
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: panopticon-iocs-live
       scheduleExpression: rate(15 minutes)
@@ -1249,8 +1267,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-panopticon-iocs
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
   cerebro:s3Sources:
     # Aurelius NDJSON exporter archives. The bucket lives in account
@@ -1363,6 +1381,11 @@ config:
         per_page: "100"
         private_endpoint_allowlist: env:EVIDENCE_CAS_BASE_URL
         token: env:EVIDENCE_CAS_TOKEN
+    - id: trusted-endpoint
+      sourceId: trusted_endpoint
+      tenantId: writer
+      config:
+        integration: trusted_endpoint
     - id: writer-okta-audit
       sourceId: okta
       tenantId: writer
