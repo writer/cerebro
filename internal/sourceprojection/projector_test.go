@@ -5620,10 +5620,13 @@ func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T
 	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
 	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
 	workloadURN := "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
 	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
 	imageURN := "urn:cerebro:writer:trivy_image:sha256:abc123"
 	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, workloadURN, relationAssociatedWith, nodeURN)
 	assertProjectedLink(t, state, workloadURN, relationDependsOn, imageURN)
 	if got := state.entities[clusterURN].EntityType; got != "kubernetes.cluster" {
@@ -5669,6 +5672,8 @@ func TestProjectKubernetesContainerLinksWorkloadNodeAndImage(t *testing.T) {
 	assertProjectedLink(t, state, containerURN, relationBelongsTo, workloadURN)
 	assertProjectedLink(t, state, containerURN, relationBelongsTo, namespaceURN)
 	assertProjectedLink(t, state, workloadURN, relationContains, containerURN)
+	assertProjectedLink(t, state, workloadURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, "urn:cerebro:writer:kubernetes_cluster:prod-cluster")
 	assertProjectedLink(t, state, containerURN, relationAssociatedWith, nodeURN)
 	assertProjectedLink(t, state, containerURN, relationDependsOn, imageURN)
 }
@@ -5714,8 +5719,10 @@ func TestProjectKubernetesPodLinksNamespaceServiceAccountNodeAndImage(t *testing
 	}
 	assertProjectedLink(t, state, podURN, relationBelongsTo, namespaceURN)
 	assertProjectedLink(t, state, podURN, relationRunsAs, serviceAccountURN)
+	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
 	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, podURN, relationAssociatedWith, nodeURN)
 	assertProjectedLink(t, state, podURN, relationDependsOn, imageURN)
 }
@@ -6062,6 +6069,21 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 			},
 		},
 		{
+			Id:       "k8s-workload-no-node",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"name":           "payments-api-abc123",
+				"namespace":      "payments",
+				"resource_name":  "payments-api-abc123",
+				"workload_name":  "payments-api",
+				"workload_uid":   "workload-1",
+				"workload_image": "api",
+			},
+		},
+		{
 			Id:       "k8s-pod-no-pod-id",
 			TenantId: "writer",
 			SourceId: "kubernetes",
@@ -6088,6 +6110,7 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 		"urn:cerebro:writer:kubernetes_service_account:payments:api",
 		"urn:cerebro:writer:kubernetes_namespace:payments",
 		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:payments-api:api",
+		"urn:cerebro:writer:kubernetes_node:prod-cluster:payments-api-abc123",
 		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:payments-api-abc123",
 	} {
 		if _, ok := state.entities[urn]; ok {

@@ -217,6 +217,9 @@ func kubernetesWorkloadProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	if workloadURN != "" && serviceAccountURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, serviceAccountURN, relationRunsAs, map[string]string{"event_id": event.GetId()}))
 	}
+	if serviceAccountURN != "" && namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), serviceAccountURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	}
 	if workloadURN != "" && namespaceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 	}
@@ -268,6 +271,9 @@ func kubernetesPodProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
 	if podURN != "" && serviceAccountURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), podURN, serviceAccountURN, relationRunsAs, map[string]string{"event_id": event.GetId()}))
+	}
+	if serviceAccountURN != "" && namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), serviceAccountURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 	}
 	if podURN != "" && namespaceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), podURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
@@ -334,6 +340,9 @@ func kubernetesContainerProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 		linkAttrs := map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_container_workload"}
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), containerURN, workloadURN, relationBelongsTo, linkAttrs))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, containerURN, relationContains, linkAttrs))
+	}
+	if workloadURN != "" && namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_container_workload_namespace"}))
 	}
 	if containerURN != "" && namespaceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), containerURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_container_namespace"}))
@@ -560,8 +569,13 @@ func addKubernetesClusterLinks(entities map[string]*ports.ProjectedEntity, links
 }
 
 func addKubernetesNodeLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, attributes map[string]string, matchType string) {
+	nodeName := strings.TrimSpace(attributes["node_name"])
+	if fromURN == "" || nodeName == "" {
+		return
+	}
 	nodeURN := kubernetesNodeURN(tenantID, attributes)
-	if fromURN == "" || nodeURN == "" {
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
+	if nodeURN == "" {
 		return
 	}
 	addEntity(entities, &ports.ProjectedEntity{
@@ -569,13 +583,16 @@ func addKubernetesNodeLink(entities map[string]*ports.ProjectedEntity, links map
 		TenantID:   tenantID,
 		SourceID:   event.GetSourceId(),
 		EntityType: "kubernetes.node",
-		Label:      firstNonEmpty(attributes["node_name"], attributes["resource_name"], attributes["name"]),
+		Label:      nodeName,
 		Attributes: map[string]string{
 			"cluster_id":   strings.TrimSpace(attributes["cluster_id"]),
 			"cluster_name": strings.TrimSpace(attributes["cluster_name"]),
-			"node_name":    firstNonEmpty(attributes["node_name"], attributes["resource_name"], attributes["name"]),
+			"node_name":    nodeName,
 		},
 	})
+	if clusterURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), nodeURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_node_cluster"}))
+	}
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, nodeURN, relationAssociatedWith, map[string]string{
 		"event_id":   event.GetId(),
 		"match_type": matchType,

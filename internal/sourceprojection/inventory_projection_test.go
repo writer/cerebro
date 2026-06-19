@@ -79,6 +79,35 @@ func TestGenericInventoryProjectionIgnoresKubernetesClusterExternalIDForPods(t *
 	}
 }
 
+func TestGenericInventoryProjectionScopesCloudflareWorkerScriptsByAccount(t *testing.T) {
+	base := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "writer",
+		SourceId: "cloudflare",
+		Kind:     "cloudflare.worker_script",
+		Attributes: map[string]string{
+			"script_id": "edge-router",
+		},
+	}
+	first := cloneEvent(base)
+	first.Attributes["account_id"] = "acct-1"
+	second := cloneEvent(base)
+	second.Id = "event-2"
+	second.Attributes["account_id"] = "acct-2"
+
+	firstEntities, _, err := genericInventoryProjections(first)
+	if err != nil {
+		t.Fatalf("genericInventoryProjections(first) error = %v", err)
+	}
+	secondEntities, _, err := genericInventoryProjections(second)
+	if err != nil {
+		t.Fatalf("genericInventoryProjections(second) error = %v", err)
+	}
+	if firstEntities[0].URN == secondEntities[0].URN {
+		t.Fatalf("URNs both = %q, want account-scoped worker script identities", firstEntities[0].URN)
+	}
+}
+
 func cloneEvent(event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
 	clone := &cerebrov1.EventEnvelope{
 		Id:         event.GetId(),

@@ -66,7 +66,7 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 	case "cloudflare.load_balancer_pool":
 		return joinProjectionIdentity(attrs, "pool_id", "id")
 	case "cloudflare.worker_script":
-		return joinProjectionIdentity(attrs, "script_id", "id")
+		return joinProjectionIdentity(attrs, "account_id", "script_id", "id")
 	case "trivy.image_scan":
 		return joinProjectionIdentity(attrs, "image_digest")
 	case "trivy.image_package":
