@@ -91,7 +91,9 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 		"target_environment: go-prod",
 		"apply_mode: pull_request",
 		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
-		"RUNTIME_CONTRACT_BASE: cerebro-runtime-contract-${{ matrix.target_environment }}",
+		`payload_keys="$(jq '.client_payload | length' <<<"${payload}")"`,
+		"GitHub allows at most 10",
+		`gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input - <<<"${payload}"`,
 		`target_environment: [sec-dev, go-prod]`,
 		`-env "${TARGET_ENVIRONMENT}"`,
 		"cerebro-runtime-contract-sec-dev.json",
@@ -99,6 +101,18 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
+		}
+	}
+	for _, stale := range []string{
+		`--arg runtime_contract `,
+		`--arg runtime_contract_signature `,
+		`--arg runtime_contract_certificate `,
+		`runtime_contract: $runtime_contract`,
+		`runtime_contract_signature: $runtime_contract_signature`,
+		`runtime_contract_certificate: $runtime_contract_certificate`,
+	} {
+		if strings.Contains(release, stale) {
+			t.Fatalf("release dispatch payload contains stale contract marker %q", stale)
 		}
 	}
 	if strings.Contains(release, "-env sec-dev") {
