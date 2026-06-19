@@ -52,6 +52,12 @@ actions:
 		"ResolveTarget:    OktaUserTargetForFinding",
 		"CheckEligibility: FindingAllowsAction",
 		"ReversibleBy:     \"identity.okta.unsuspend_user\"",
+		"func KnownActionMetadata() []ActionMetadata",
+		"func KnownActionIDs() []string",
+		"func KnownProviderIDs() []string",
+		"func KnownTargetKinds() []string",
+		"generatedProviderIDs = []string",
+		"ProviderAccessApprovals",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated registry missing %q:\n%s", want, text)

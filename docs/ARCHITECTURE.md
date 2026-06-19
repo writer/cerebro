@@ -154,11 +154,16 @@ target selection, provider request shaping, idempotency, provider dispatch, and
 external reference mapping stay behind `internal/graphactions` and
 `internal/graphactionapi`. Supported actions are cataloged in
 `internal/graphactions/action_catalog.yaml` and generated into the registry with
-`make graph-action-generate`; new providers add an `ActionProvider` adapter
-rather than branching in bootstrap or handler code. First-party providers, such
-as Cerebro device-auth revocation, use the same adapter boundary as external
-providers so target derivation, tenant checks, workflow events, and
-reconciliation remain shared.
+`make graph-action-generate`. The generated registry also exposes serializable
+action metadata plus action id, provider id, and target-kind lists so API
+schemas, agent tools, and future codegen can consume the same provider-neutral
+contract without reaching into resolver hooks. Action lifecycle strings are
+defined in `internal/graphactions` and cover queued/running, terminal, and
+needs-attention states across external and first-party providers. New providers
+add an `ActionProvider` adapter rather than branching in bootstrap or handler
+code. First-party providers, such as Cerebro device-auth revocation, use the
+same adapter boundary as external providers so target derivation, tenant checks,
+workflow events, and reconciliation remain shared.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
