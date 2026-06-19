@@ -32,14 +32,18 @@ const (
 	defaultReplayLimit         = 100
 	maxReplayLimit             = 1000
 	maxReplayCandidates        = 5000
-	publishRetryAttempts       = 4
-	publishRetryInitialBackoff = 50 * time.Millisecond
-	publishClientRetryAttempts = 2
-	publishClientRetryWait     = 250 * time.Millisecond
-	publishAttemptTimeout      = 15 * time.Second
+	publishRetryAttempts       = 10
+	publishRetryInitialBackoff = 250 * time.Millisecond
+	publishRetryMaxBackoff     = 5 * time.Second
+	publishClientRetryAttempts = 5
+	publishClientRetryWait     = 500 * time.Millisecond
+	publishAttemptTimeout      = 30 * time.Second
+	publishRetryMaxElapsed     = 90 * time.Second
 	jetstreamCanaryKind        = "cerebro.health.jetstream_canary"
 	jetstreamCanaryMinInterval = time.Minute
 )
+
+var waitBeforePublishRetryFunc = waitBeforePublishRetry
 
 type publisher interface {
 	AccountInfo(context.Context) (*jetstream.AccountInfo, error)
@@ -62,6 +66,11 @@ type publishTelemetry struct {
 	LastBackoff    time.Duration
 	LastRetryable  bool
 	Duration       time.Duration
+	RetryBudget    time.Duration
+	AttemptTimeout time.Duration
+	MaxBackoff     time.Duration
+	ClientRetries  int
+	ClientWait     time.Duration
 	AckStream      string
 	AckSequence    uint64
 	AckDuplicate   bool
@@ -287,13 +296,23 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 }
 
 func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
-	result := publishTelemetry{Attempts: 0, MaxAttempts: publishRetryAttempts}
+	result := publishTelemetry{
+		Attempts:       0,
+		MaxAttempts:    publishRetryAttempts,
+		RetryBudget:    publishRetryMaxElapsed,
+		AttemptTimeout: publishAttemptTimeout,
+		MaxBackoff:     publishRetryMaxBackoff,
+		ClientRetries:  publishClientRetryAttempts,
+		ClientWait:     publishClientRetryWait,
+	}
 	backoff := publishRetryInitialBackoff
 	started := time.Now()
+	retryCtx, cancelRetry := context.WithTimeout(ctx, publishRetryMaxElapsed)
+	defer cancelRetry()
 	var err error
 	for attempt := 1; attempt <= result.MaxAttempts; attempt++ {
 		result.Attempts = attempt
-		attemptCtx, cancel := context.WithTimeout(ctx, publishAttemptTimeout)
+		attemptCtx, cancel := context.WithTimeout(retryCtx, publishAttemptTimeout)
 		ack, publishErr := l.js.PublishMsg(
 			attemptCtx,
 			msg,
@@ -308,7 +327,7 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 		}
 		err = publishErr
 		result.LastRetryable = retryablePublishError(err)
-		if attempt == result.MaxAttempts || !result.LastRetryable || ctx.Err() != nil {
+		if attempt == result.MaxAttempts || !result.LastRetryable || retryCtx.Err() != nil {
 			result.Duration = time.Since(started)
 			if result.RetryCount > 0 {
 				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, err)))
@@ -322,12 +341,12 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 			telemetry.Field{Key: "messaging.jetstream.publish.next_attempt", Value: attempt + 1},
 			telemetry.Field{Key: "messaging.jetstream.publish.next_backoff_ms", Value: backoff.Milliseconds()},
 		)))
-		if waitErr := waitBeforePublishRetry(ctx, backoff); waitErr != nil {
+		if waitErr := waitBeforePublishRetryFunc(retryCtx, backoff); waitErr != nil {
 			result.Duration = time.Since(started)
 			telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, waitErr)))
 			return result, waitErr
 		}
-		backoff *= 2
+		backoff = minDuration(backoff*2, publishRetryMaxBackoff)
 	}
 	result.Duration = time.Since(started)
 	return result, err
@@ -361,6 +380,11 @@ func (r publishTelemetry) attrs() telemetry.Attributes {
 		telemetry.Field{Key: "messaging.jetstream.publish.retryable_last_error", Value: r.LastRetryable},
 		telemetry.Field{Key: "messaging.jetstream.publish.last_backoff_ms", Value: r.LastBackoff.Milliseconds()},
 		telemetry.Field{Key: "messaging.jetstream.publish.duration_ms", Value: r.Duration.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.retry_budget_ms", Value: r.RetryBudget.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.attempt_timeout_ms", Value: r.AttemptTimeout.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.max_backoff_ms", Value: r.MaxBackoff.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.client_retry_attempts", Value: r.ClientRetries},
+		telemetry.Field{Key: "messaging.jetstream.publish.client_retry_wait_ms", Value: r.ClientWait.Milliseconds()},
 	)
 	if r.AckUnavailable {
 		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.unavailable", Value: true})
@@ -412,6 +436,13 @@ func waitBeforePublishRetry(ctx context.Context, delay time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func minDuration(left, right time.Duration) time.Duration {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 // Replay returns the newest matching stored envelopes in append order.

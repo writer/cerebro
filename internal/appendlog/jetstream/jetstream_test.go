@@ -138,6 +138,22 @@ func jetstreamTelemetryPayloads(t *testing.T, stderr string, kind string, name s
 	return payloads
 }
 
+func skipPublishRetryWaits(t *testing.T) {
+	t.Helper()
+	original := waitBeforePublishRetryFunc
+	waitBeforePublishRetryFunc = func(ctx context.Context, _ time.Duration) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	t.Cleanup(func() {
+		waitBeforePublishRetryFunc = original
+	})
+}
+
 func TestAppendPublishesEnvelope(t *testing.T) {
 	pub := &fakePublisher{}
 	log := &Log{js: pub, subjectPrefix: "events"}
@@ -170,6 +186,7 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 }
 
 func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
+	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
 		publishErrs: []error{
 			errors.New("nats: no response from stream"),
@@ -191,6 +208,7 @@ func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
 }
 
 func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
+	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
 		publishErrs: []error{
 			errors.New("nats: no response from stream"),
@@ -226,6 +244,21 @@ func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
 	if retry["messaging.jetstream.publish.next_attempt"] != float64(2) {
 		t.Fatalf("next attempt = %v, want 2", retry["messaging.jetstream.publish.next_attempt"])
 	}
+	if retry["messaging.jetstream.publish.retry_budget_ms"] != float64(publishRetryMaxElapsed.Milliseconds()) {
+		t.Fatalf("retry budget = %v, want %d", retry["messaging.jetstream.publish.retry_budget_ms"], publishRetryMaxElapsed.Milliseconds())
+	}
+	if retry["messaging.jetstream.publish.attempt_timeout_ms"] != float64(publishAttemptTimeout.Milliseconds()) {
+		t.Fatalf("attempt timeout = %v, want %d", retry["messaging.jetstream.publish.attempt_timeout_ms"], publishAttemptTimeout.Milliseconds())
+	}
+	if retry["messaging.jetstream.publish.max_backoff_ms"] != float64(publishRetryMaxBackoff.Milliseconds()) {
+		t.Fatalf("max backoff = %v, want %d", retry["messaging.jetstream.publish.max_backoff_ms"], publishRetryMaxBackoff.Milliseconds())
+	}
+	if retry["messaging.jetstream.publish.client_retry_attempts"] != float64(publishClientRetryAttempts) {
+		t.Fatalf("client retry attempts = %v, want %d", retry["messaging.jetstream.publish.client_retry_attempts"], publishClientRetryAttempts)
+	}
+	if retry["messaging.jetstream.publish.client_retry_wait_ms"] != float64(publishClientRetryWait.Milliseconds()) {
+		t.Fatalf("client retry wait = %v, want %d", retry["messaging.jetstream.publish.client_retry_wait_ms"], publishClientRetryWait.Milliseconds())
+	}
 
 	recoveredEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.publish.recovered")
 	if len(recoveredEvents) != 1 {
@@ -248,13 +281,13 @@ func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
 }
 
 func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
+	skipPublishRetryWaits(t)
+	errs := make([]error, publishRetryAttempts)
+	for i := range errs {
+		errs[i] = errors.New("nats: no response from stream")
+	}
 	pub := &fakePublisher{
-		publishErrs: []error{
-			errors.New("nats: no response from stream"),
-			errors.New("nats: no response from stream"),
-			errors.New("nats: no response from stream"),
-			errors.New("nats: no response from stream"),
-		},
+		publishErrs: errs,
 	}
 	log := &Log{js: pub, subjectPrefix: "events"}
 
@@ -285,6 +318,12 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	if exhausted["messaging.jetstream.publish.max_attempts"] != float64(publishRetryAttempts) {
 		t.Fatalf("exhausted max attempts = %v, want %d", exhausted["messaging.jetstream.publish.max_attempts"], publishRetryAttempts)
 	}
+	if exhausted["messaging.jetstream.publish.retry_budget_ms"] != float64(publishRetryMaxElapsed.Milliseconds()) {
+		t.Fatalf("retry budget = %v, want %d", exhausted["messaging.jetstream.publish.retry_budget_ms"], publishRetryMaxElapsed.Milliseconds())
+	}
+	if exhausted["messaging.jetstream.publish.last_backoff_ms"] != float64(publishRetryMaxBackoff.Milliseconds()) {
+		t.Fatalf("last backoff = %v, want capped %d", exhausted["messaging.jetstream.publish.last_backoff_ms"], publishRetryMaxBackoff.Milliseconds())
+	}
 	errorEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.error")
 	if len(errorEvents) != 1 {
 		t.Fatalf("jetstream.error events = %d, want 1; stderr=%s", len(errorEvents), stderr)
@@ -295,6 +334,7 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 }
 
 func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
+	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
 		publishErrs: []error{
 			errors.New("nats: no response from stream"),
