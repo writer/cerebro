@@ -66,12 +66,8 @@ jobs:
           !contains(github.event.pull_request.title || '', '@droid scaffold source'))
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
     steps:
       - name: Verify trusted target
         id: target
@@ -138,6 +134,6 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           # Keep manual @droid reviews as the escalation path after the fast
           # preflight-backed automatic pass has already run.
-          review_model: claude-sonnet-4-6
+          review_model: glm-5.2
           security_model: gpt-5.4
           reasoning_effort: high
