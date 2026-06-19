@@ -55,23 +55,32 @@ func checkPolicyRules(root string) error {
 }
 
 func migratePolicyFiles(root string, write bool) error {
-	policiesRoot := filepath.Join(root, "policies")
+	cleanRoot := filepath.Clean(root)
+	repoRoot, err := os.OpenRoot(cleanRoot)
+	if err != nil {
+		return fmt.Errorf("open repository root: %w", err)
+	}
+	defer repoRoot.Close()
+	policiesRoot := filepath.Join(cleanRoot, "policies")
 	converted := 0
-	err := filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
+	err = filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() || filepath.Ext(path) != ".json" {
 			return nil
 		}
-		rel := slashRel(root, path)
+		rel, err := policyRel(cleanRoot, path)
+		if err != nil {
+			return err
+		}
 		if rel == findingdsl.ControlMappingRelPath {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%s: symlinked policy files are not allowed", rel)
 		}
-		content, err := os.ReadFile(path)
+		content, err := repoRoot.ReadFile(rel)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}
@@ -91,20 +100,19 @@ func migratePolicyFiles(root string, write bool) error {
 		if err != nil {
 			return fmt.Errorf("marshal %s: %w", rel, err)
 		}
-		target := strings.TrimSuffix(path, ".json") + ".yaml"
-		targetRel := slashRel(root, target)
+		targetRel := strings.TrimSuffix(rel, ".json") + ".yaml"
 		if !write {
 			fmt.Fprintf(os.Stdout, "would convert %s -> %s\n", rel, targetRel)
 			converted++
 			return nil
 		}
-		if err := rejectSymlink(target); err != nil {
+		if err := rejectSymlink(repoRoot, targetRel); err != nil {
 			return fmt.Errorf("write %s: %w", targetRel, err)
 		}
-		if err := os.WriteFile(target, yamlContent, 0o644); err != nil {
+		if err := repoRoot.WriteFile(targetRel, yamlContent, 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", targetRel, err)
 		}
-		if err := os.Remove(path); err != nil {
+		if err := repoRoot.Remove(rel); err != nil {
 			return fmt.Errorf("remove %s: %w", rel, err)
 		}
 		converted++
@@ -128,8 +136,8 @@ func migratePolicyFiles(root string, write bool) error {
 	return nil
 }
 
-func rejectSymlink(path string) error {
-	info, err := os.Lstat(path)
+func rejectSymlink(root *os.Root, rel string) error {
+	info, err := root.Lstat(rel)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -142,10 +150,17 @@ func rejectSymlink(path string) error {
 	return nil
 }
 
-func slashRel(root string, path string) string {
+func policyRel(root string, path string) (string, error) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
-		return filepath.ToSlash(path)
+		return "", fmt.Errorf("resolve policy path: %w", err)
 	}
-	return filepath.ToSlash(rel)
+	rel = filepath.ToSlash(rel)
+	if strings.HasPrefix(rel, "../") || rel == ".." || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("policy path %q escapes repository root", path)
+	}
+	if !strings.HasPrefix(rel, "policies/") {
+		return "", fmt.Errorf("policy path %q is outside policies/", rel)
+	}
+	return rel, nil
 }
