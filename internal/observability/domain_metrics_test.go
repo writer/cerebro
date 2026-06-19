@@ -99,6 +99,39 @@ func TestRecordGraphActionMetricsAreLowCardinality(t *testing.T) {
 	assertMetricHasBoolAttribute(t, metric, "dry_run", false)
 }
 
+func TestRecordJetStreamPublishMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordJetStreamPublish(context.Background(), JetStreamPublishMetrics{
+		Subject:              "sec.findings.v1.recorded",
+		Operation:            "append",
+		Status:               "failed",
+		ErrorCategory:        "no_response",
+		Duration:             250 * time.Millisecond,
+		RetryCount:           3,
+		MaxAttemptsExhausted: true,
+	})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	for _, name := range []string{
+		"cerebro.jetstream.publish.requests",
+		"cerebro.jetstream.publish.retries",
+		"cerebro.jetstream.publish.duration",
+		"cerebro.jetstream.publish.max_attempts_exhausted",
+	} {
+		if _, ok := metrics[name]; !ok {
+			t.Fatalf("metric %q missing from %#v", name, metricNames(metrics))
+		}
+	}
+	metric := metrics["cerebro.jetstream.publish.requests"]
+	assertNoForbiddenMetricAttributes(t, metric)
+	assertMetricHasAttribute(t, metric, "subject", "sec.findings.v1.recorded")
+	assertMetricHasAttribute(t, metric, "operation", "append")
+	assertMetricHasAttribute(t, metric, "status", "failed")
+	assertMetricHasAttribute(t, metric, "error_category", "no_response")
+	assertMetricHasBoolAttribute(t, metric, "max_attempts_exhausted", true)
+}
+
 func TestBoundedMetricValueNormalizesAndBoundsLabels(t *testing.T) {
 	got := boundedMetricValue("Runtime ID With Spaces And / Weird # Chars", "unknown")
 	if got != "runtime_id_with_spaces_and___weird___chars" {
@@ -109,6 +142,18 @@ func TestBoundedMetricValueNormalizesAndBoundsLabels(t *testing.T) {
 	}
 	if got := boundedMetricValue("source-"+strings.Repeat("x", 200), "unknown"); len(got) > 96 {
 		t.Fatalf("bounded metric value length = %d, want <= 96", len(got))
+	}
+}
+
+func TestBoundedJetStreamMetricSubjectCollapsesUnknownFindingsSubjects(t *testing.T) {
+	if got := boundedJetStreamMetricSubject("sec.findings.v1.recorded"); got != "sec.findings.v1.recorded" {
+		t.Fatalf("recorded subject = %q, want exact finding subject", got)
+	}
+	if got := boundedJetStreamMetricSubject("sec.findings.v1.some_new_subject"); got != "sec.findings.v1._other" {
+		t.Fatalf("other finding subject = %q, want collapsed finding family", got)
+	}
+	if got := boundedJetStreamMetricSubject("events.some.dynamic.identifier.value"); got != "events.some.dynamic._other" {
+		t.Fatalf("dynamic event subject = %q, want bounded event family", got)
 	}
 }
 

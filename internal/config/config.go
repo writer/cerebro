@@ -73,10 +73,11 @@ type RateLimitConfig struct {
 
 // AppendLogConfig selects and configures the append-log driver.
 type AppendLogConfig struct {
-	Driver                 string
-	JetStreamURL           string
-	JetStreamSubjectPrefix string
-	JetStreamDrainTimeout  time.Duration
+	Driver                      string
+	JetStreamURL                string
+	JetStreamSubjectPrefix      string
+	JetStreamDrainTimeout       time.Duration
+	JetStreamPublishMaxInFlight int
 }
 
 // StateStoreConfig selects and configures the current-state store driver.
@@ -547,6 +548,9 @@ func Load() (Config, error) {
 	if cfg.AppendLog.JetStreamDrainTimeout, err = parseDurationEnv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", 0); err != nil {
 		return Config{}, err
 	}
+	if cfg.AppendLog.JetStreamPublishMaxInFlight, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", 0); err != nil {
+		return Config{}, err
+	}
 	if cfg.StateStore.PostgresMaxOpenConns, err = parseIntEnv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", 0); err != nil {
 		return Config{}, err
 	}
@@ -627,6 +631,9 @@ func Load() (Config, error) {
 		}
 		if cfg.AppendLog.JetStreamSubjectPrefix == "" {
 			cfg.AppendLog.JetStreamSubjectPrefix = defaultJetStreamSubjectPrefix
+		}
+		if cfg.AppendLog.JetStreamPublishMaxInFlight < 0 {
+			return Config{}, errors.New("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT must be greater than or equal to 0")
 		}
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_APPEND_LOG_DRIVER %q", cfg.AppendLog.Driver)

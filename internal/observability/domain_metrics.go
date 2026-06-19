@@ -77,6 +77,39 @@ func otelGraphActionRecorded() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelJetStreamPublishRequests() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.jetstream.publish.requests",
+		otelmetric.WithDescription("Total JetStream publish requests by bounded subject, operation, status, and error category."),
+	)
+	return instrument
+}
+
+func otelJetStreamPublishRetries() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.jetstream.publish.retries",
+		otelmetric.WithDescription("Total JetStream publish retry attempts by bounded subject, operation, status, and error category."),
+	)
+	return instrument
+}
+
+func otelJetStreamPublishDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.jetstream.publish.duration",
+		otelmetric.WithDescription("JetStream publish duration by bounded subject, operation, status, and error category."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
+func otelJetStreamPublishMaxAttemptsExhausted() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.jetstream.publish.max_attempts_exhausted",
+		otelmetric.WithDescription("Total JetStream publish requests that exhausted all configured attempts."),
+	)
+	return instrument
+}
+
 // SourceRuntimeSyncMetrics is intentionally shaped for low-cardinality OTEL
 // metrics. Runtime IDs, tenant IDs, resource URNs, evidence IDs, request IDs,
 // and trace IDs belong in spans/wide events, not metric labels.
@@ -118,6 +151,19 @@ type GraphActionMetrics struct {
 	Status         string
 	ExternalStatus string
 	DryRun         bool
+}
+
+// JetStreamPublishMetrics is intentionally scoped to bounded operational
+// dimensions. Message IDs, tenant IDs, runtime IDs, and resource identifiers
+// belong in spans/wide events rather than metric labels.
+type JetStreamPublishMetrics struct {
+	Subject              string
+	Operation            string
+	Status               string
+	ErrorCategory        string
+	Duration             time.Duration
+	RetryCount           int
+	MaxAttemptsExhausted bool
 }
 
 func RecordSourceRuntimeSync(ctx context.Context, metrics SourceRuntimeSyncMetrics) {
@@ -171,6 +217,26 @@ func RecordGraphAction(ctx context.Context, metrics GraphActionMetrics) {
 	otelGraphActionRecorded().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 }
 
+func RecordJetStreamPublish(ctx context.Context, metrics JetStreamPublishMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("subject", boundedJetStreamMetricSubject(metrics.Subject)),
+		attribute.String("operation", boundedMetricValue(metrics.Operation, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.String("error_category", boundedMetricValue(metrics.ErrorCategory, "none")),
+		attribute.Bool("max_attempts_exhausted", metrics.MaxAttemptsExhausted),
+	}
+	otelJetStreamPublishRequests().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelJetStreamPublishDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+	if metrics.RetryCount > 0 {
+		otelJetStreamPublishRetries().Add(ctx, int64(metrics.RetryCount), otelmetric.WithAttributes(attrs...))
+	}
+	if metrics.MaxAttemptsExhausted {
+		otelJetStreamPublishMaxAttemptsExhausted().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	}
+}
+
 func recordSourceRuntimeRecordCount(ctx context.Context, base []attribute.KeyValue, kind string, count int64) {
 	if count <= 0 {
 		return
@@ -219,6 +285,32 @@ func boundedMetricValue(value string, fallback string) string {
 		return fallback
 	}
 	return out.String()
+}
+
+func boundedJetStreamMetricSubject(subject string) string {
+	subject = boundedMetricValue(subject, "unknown")
+	switch {
+	case subject == "sec.findings.v1.recorded":
+		return subject
+	case strings.HasPrefix(subject, "sec.findings.v1."):
+		return "sec.findings.v1._other"
+	case strings.HasPrefix(subject, "sec."):
+		return boundedMetricSubjectPrefix(subject, 4)
+	case strings.HasPrefix(subject, "events.workflow.v1."):
+		return boundedMetricSubjectPrefix(subject, 5)
+	case strings.HasPrefix(subject, "events."):
+		return boundedMetricSubjectPrefix(subject, 3)
+	default:
+		return subject
+	}
+}
+
+func boundedMetricSubjectPrefix(subject string, maxTokens int) string {
+	tokens := strings.Split(subject, ".")
+	if len(tokens) <= maxTokens || maxTokens <= 0 {
+		return subject
+	}
+	return strings.Join(tokens[:maxTokens], ".") + "._other"
 }
 
 func maxInt64(value int64, minimum int64) int64 {
