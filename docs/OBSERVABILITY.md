@@ -13,7 +13,7 @@ For capacity SLOs, saturation dashboards, alert templates, autoscaling signals, 
 ## Wide Event Contract
 
 Cerebro follows a wide-event model for request and job debugging. Each top-level
-unit of work emits one canonical span/event with schema version `2026-06-18.1`
+unit of work emits one canonical span/event with schema version `2026-06-18.2`
 and:
 
 - `main=true`
@@ -106,7 +106,7 @@ Core runtime operations emit structured spans and diagnostic events:
 | `postgres.ping`, `postgres.ensure_statements` | Postgres readiness and schema setup |
 | `neo4j.read`, `neo4j.write` | Graph store transactions |
 | `redis.cache.*`, `redis.ping` | Query cache operations, hits/misses, version bumps |
-| `jetstream.ping`, `jetstream.append`, `jetstream.replay` | Append-log health, publish, and replay |
+| `jetstream.ping`, `jetstream.append`, `jetstream.replay` | Append-log health, publish attempts/retries/acks, and replay |
 
 Runtime contract diagnostics emit bounded events for deployment gates and
 alarms:
