@@ -7,6 +7,8 @@ cases:
         primary_label: orphan-1
         primary_type: graph.node
         fingerprint_key: urn:cerebro:writer:graph_node:orphan-1
+        resource_urns:
+          - urn:cerebro:writer:graph_node:orphan-1
         severity: LOW
         summary: Graph entity orphan-1 has no relationships
         action: Add projection relationships or document why the entity is intentionally inventory-only
