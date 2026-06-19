@@ -956,6 +956,61 @@ def create_monitoring(
             description="A JetStream publish exhausted all idempotent retry attempts; inspect jetstream.publish.retry_exhausted and correlated wide events immediately.",
             alarm_actions=alarm_actions,
         )
+        _custom_metric_alarm(
+            resource_name=f"{name}-jetstream-canary-failures-alarm",
+            alarm_name=f"{name}-jetstream-canary-failures",
+            namespace=telemetry_namespace,
+            metric_name="JetStreamCanaryFailures",
+            threshold=0,
+            description="The app-level JetStream publish+replay canary failed; inspect jetstream.canary.failed and NATS stream state before trusting health checks.",
+            alarm_actions=alarm_actions,
+        )
+        if jetstream_app_error_alarm_threshold > 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-jetstream-append-errors-alarm",
+                alarm_name=f"{name}-jetstream-append-errors",
+                namespace=telemetry_namespace,
+                metric_name="JetStreamAppendErrors",
+                threshold=jetstream_app_error_alarm_threshold,
+                description="JetStream append errors exceeded the configured threshold; inspect operation=append wide events and publish retry detail.",
+                alarm_actions=alarm_actions,
+            )
+            _custom_metric_alarm(
+                resource_name=f"{name}-jetstream-replay-errors-alarm",
+                alarm_name=f"{name}-jetstream-replay-errors",
+                namespace=telemetry_namespace,
+                metric_name="JetStreamReplayErrors",
+                threshold=jetstream_app_error_alarm_threshold,
+                description="JetStream replay errors exceeded the configured threshold; inspect operation=replay wide events, replay scan counts, and timeout budgets.",
+                alarm_actions=alarm_actions,
+            )
+        _custom_metric_alarm(
+            resource_name=f"{name}-platform-job-failures-alarm",
+            alarm_name=f"{name}-platform-job-failures",
+            namespace=telemetry_namespace,
+            metric_name="PlatformJobFailed",
+            threshold=0,
+            description="A platform or orchestrator job emitted a terminal failed event.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-platform-job-phase-failures-alarm",
+            alarm_name=f"{name}-platform-job-phase-failures",
+            namespace=telemetry_namespace,
+            metric_name="PlatformJobPhaseFailed",
+            threshold=0,
+            description="A platform job phase failed; inspect platform.job.phase.failed for phase, runtime, source, and bounded error kind.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-platform-job-runtime-failures-alarm",
+            alarm_name=f"{name}-platform-job-runtime-failures",
+            namespace=telemetry_namespace,
+            metric_name="PlatformJobRuntimeFailed",
+            threshold=0,
+            description="A platform job runtime failed; inspect platform.job.runtime.failed for runtime/source/tenant and phase counters.",
+            alarm_actions=alarm_actions,
+        )
     otel_collector_filters = {}
     if otel_collector_enabled and otel_collector_log_group_name:
         otel_collector_filters = _create_otel_collector_metric_filters(name, otel_collector_log_group_name, telemetry_namespace)
@@ -1569,6 +1624,162 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 default_value=0,
             ),
         ),
+        "jetstream_canary_completed": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-canary-completed-filter",
+            name=f"{name}-jetstream-canary-completed",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.canary.completed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamCanaryCompleted",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_canary_failures": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-canary-failures-filter",
+            name=f"{name}-jetstream-canary-failures",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.canary.failed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamCanaryFailures",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_canary_latency": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-canary-latency-filter",
+            name=f"{name}-jetstream-canary-latency",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.canary.completed" && $.canary_duration_ms = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamCanaryLatencyMs",
+                namespace=namespace,
+                value="$.canary_duration_ms",
+                default_value=0,
+            ),
+        ),
+        "jetstream_append_errors": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-append-errors-filter",
+            name=f"{name}-jetstream-append-errors",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.error" && $.operation = "append" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamAppendErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_replay_errors": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-replay-errors-filter",
+            name=f"{name}-jetstream-replay-errors",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.error" && $.operation = "replay" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamReplayErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_replay_latency": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-replay-latency-filter",
+            name=f"{name}-jetstream-replay-latency",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "jetstream.replay" && $.duration_ms = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamReplayLatencyMs",
+                namespace=namespace,
+                value="$.duration_ms",
+                default_value=0,
+            ),
+        ),
+        "platform_job_started": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-started-filter",
+            name=f"{name}-platform-job-started",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.started" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobStarted",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "platform_job_completed": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-completed-filter",
+            name=f"{name}-platform-job-completed",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.completed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobCompleted",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "platform_job_failed": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-failed-filter",
+            name=f"{name}-platform-job-failed",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.failed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobFailed",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "platform_job_heartbeat": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-heartbeat-filter",
+            name=f"{name}-platform-job-heartbeat",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.heartbeat" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobHeartbeats",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "platform_job_phase_failed": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-phase-failed-filter",
+            name=f"{name}-platform-job-phase-failed",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.phase.failed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobPhaseFailed",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "platform_job_phase_failed_by_phase": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-phase-failed-by-phase-filter",
+            name=f"{name}-platform-job-phase-failed-by-phase",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.phase.failed" && $.job_phase_key = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobPhaseFailedByPhase",
+                namespace=namespace,
+                value="1",
+                dimensions={"Phase": "$.job_phase_key"},
+            ),
+        ),
+        "platform_job_runtime_failed": aws.cloudwatch.LogMetricFilter(
+            f"{name}-platform-job-runtime-failed-filter",
+            name=f"{name}-platform-job-runtime-failed",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "platform.job.runtime.failed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="PlatformJobRuntimeFailed",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
         "orchestrator_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
             f"{name}-orchestrator-completed-by-runtime-filter",
             name=f"{name}-orchestrator-completed-by-runtime",
@@ -1958,13 +2169,43 @@ def _dashboard_body(
                         [telemetry_namespace, "JetStreamAppErrors", {"stat": "Sum", "label": "App errors"}],
                         [".", "JetStreamJSErrors", {"stat": "Sum", "label": "JS errors"}],
                         [".", "JetStreamTimeouts", {"stat": "Sum", "label": "Timeouts/cancels"}],
+                        [".", "JetStreamAppendErrors", {"stat": "Sum", "label": "Append errors"}],
+                        [".", "JetStreamReplayErrors", {"stat": "Sum", "label": "Replay errors"}],
                         [".", "JetStreamPublishRetries", {"stat": "Sum", "label": "Publish retries"}],
                         [".", "JetStreamPublishRecovered", {"stat": "Sum", "label": "Recovered after retry"}],
                         [".", "JetStreamPublishRetryExhausted", {"stat": "Sum", "label": "Retry exhausted"}],
+                        [".", "JetStreamCanaryFailures", {"stat": "Sum", "label": "Canary failures"}],
+                        [".", "JetStreamCanaryLatencyMs", {"stat": "p95", "label": "Canary p95 ms", "yAxis": "right"}],
+                        [".", "JetStreamReplayLatencyMs", {"stat": "p95", "label": "Replay p95 ms", "yAxis": "right"}],
                         [
                             {
                                 "expression": f"SEARCH('{{{telemetry_namespace},ErrorKind,Operation}} MetricName=\"JetStreamAppErrorsByKind\"', 'Sum', 300)",
                                 "label": "Errors by kind/op",
+                                "id": "e1",
+                                "yAxis": "right",
+                            }
+                        ],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 48, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Platform Job Lifecycle",
+                    "metrics": [
+                        [telemetry_namespace, "PlatformJobStarted", {"stat": "Sum", "label": "Started"}],
+                        [".", "PlatformJobCompleted", {"stat": "Sum", "label": "Completed"}],
+                        [".", "PlatformJobFailed", {"stat": "Sum", "label": "Failed"}],
+                        [".", "PlatformJobHeartbeats", {"stat": "Sum", "label": "Heartbeats"}],
+                        [".", "PlatformJobPhaseFailed", {"stat": "Sum", "label": "Phase failed"}],
+                        [".", "PlatformJobRuntimeFailed", {"stat": "Sum", "label": "Runtime failed"}],
+                        [
+                            {
+                                "expression": f"SEARCH('{{{telemetry_namespace},Phase}} MetricName=\"PlatformJobPhaseFailedByPhase\"', 'Sum', 300)",
+                                "label": "Phase failures by phase",
                                 "id": "e1",
                                 "yAxis": "right",
                             }
@@ -2130,7 +2371,9 @@ def _dashboard_body(
     jetstream_diagnostic_widgets = _jetstream_diagnostic_widgets(app_log_group_name, 66) if app_log_group_name else []
     tenant_y = 72 if jetstream_diagnostic_widgets else 66
     tenant_diagnostic_widgets = _tenant_runtime_diagnostic_widgets(app_log_group_name, tenant_y) if app_log_group_name else []
-    next_y = tenant_y + 6 if tenant_diagnostic_widgets else (72 if jetstream_diagnostic_widgets else 66)
+    job_y = tenant_y + 6 if tenant_diagnostic_widgets else (72 if jetstream_diagnostic_widgets else 66)
+    job_diagnostic_widgets = _job_diagnostic_widgets(app_log_group_name, job_y) if app_log_group_name else []
+    next_y = job_y + 6 if job_diagnostic_widgets else job_y
     otel_widgets = (
         _otel_collector_observability_widgets(
             name,
@@ -2149,6 +2392,7 @@ def _dashboard_body(
         next_y += 12
     widgets.extend(jetstream_diagnostic_widgets)
     widgets.extend(tenant_diagnostic_widgets)
+    widgets.extend(job_diagnostic_widgets)
     widgets.extend(otel_widgets)
     widgets.extend(otel_product_widgets)
     widgets.extend(
@@ -2165,7 +2409,8 @@ def _jetstream_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
     region = aws.get_region().region
     event_filter = (
         'kind = "event" and (name = "jetstream.error" or name = "jetstream.publish.retry" '
-        'or name = "jetstream.publish.retry_exhausted" or name = "jetstream.publish.recovered")'
+        'or name = "jetstream.publish.retry_exhausted" or name = "jetstream.publish.recovered" '
+        'or name = "jetstream.canary.completed" or name = "jetstream.canary.failed")'
     )
     return [
         {
@@ -2178,6 +2423,8 @@ def _jetstream_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
                 "title": "JetStream App Events",
                 "query": (
                     f"SOURCE '{log_group_name}' | fields @timestamp, name, operation, error_kind, error_fingerprint, "
+                    "`messaging.jetstream.error.category`, canary_duration_ms, "
+                    "`messaging.jetstream.canary.replayed`, `messaging.jetstream.ack.stream`, `messaging.jetstream.ack.sequence`, "
                     "`messaging.jetstream.subject`, `messaging.jetstream.publish.retry_count`, "
                     "`messaging.jetstream.publish.attempts`, trace_id, runtime_id, source_id, tenant_id "
                     f"| filter {event_filter} "
@@ -2197,9 +2444,57 @@ def _jetstream_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
                 "title": "JetStream App Event Groups",
                 "query": (
                     f"SOURCE '{log_group_name}' | fields name, operation, error_kind, error_fingerprint, "
-                    "`messaging.jetstream.subject`, `messaging.jetstream.publish.retry_count` "
+                    "`messaging.jetstream.error.category`, `messaging.jetstream.subject`, `messaging.jetstream.publish.retry_count` "
                     f"| filter {event_filter} "
-                    "| stats count(*) as events, max(@timestamp) as last_seen by name, operation, error_kind, error_fingerprint, `messaging.jetstream.subject` "
+                    "| stats count(*) as events, max(@timestamp) as last_seen by name, operation, error_kind, error_fingerprint, `messaging.jetstream.error.category`, `messaging.jetstream.subject` "
+                    "| sort events desc | limit 50"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+    ]
+
+
+def _job_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
+    region = aws.get_region().region
+    job_filter = 'kind = "event" and name like /platform\\.job/'
+    failure_filter = (
+        'kind = "event" and (name = "platform.job.failed" or name = "platform.job.phase.failed" '
+        'or name = "platform.job.runtime.failed")'
+    )
+    return [
+        {
+            "type": "log",
+            "x": 0,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "Platform Job Events",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields @timestamp, name, job_id, job_kind, job_phase, "
+                    "job_phase_status, job_heartbeat_stage, job_runtime_status, runtime_id, source_id, tenant_id, "
+                    f"error_kind, duration_ms, trace_id | filter {job_filter} "
+                    "| sort @timestamp desc | limit 50"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "Platform Job Failure Groups",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields name, job_kind, job_phase_key, job_runtime_status, "
+                    "runtime_id, source_id, tenant_id, error_kind, error_fingerprint "
+                    f"| filter {failure_filter} "
+                    "| stats count(*) as events, max(@timestamp) as last_seen by name, job_kind, job_phase_key, job_runtime_status, runtime_id, source_id, tenant_id, error_kind, error_fingerprint "
                     "| sort events desc | limit 50"
                 ),
                 "region": region,

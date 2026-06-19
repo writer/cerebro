@@ -220,9 +220,21 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("App JetStream Reliability", body)
         self.assertIn("JetStreamAppErrors", body)
         self.assertIn("JetStreamJSErrors", body)
+        self.assertIn("JetStreamAppendErrors", body)
+        self.assertIn("JetStreamReplayErrors", body)
         self.assertIn("JetStreamPublishRetries", body)
         self.assertIn("JetStreamPublishRetryExhausted", body)
+        self.assertIn("JetStreamCanaryFailures", body)
+        self.assertIn("JetStreamCanaryLatencyMs", body)
+        self.assertIn("JetStreamReplayLatencyMs", body)
         self.assertIn("JetStreamAppErrorsByKind", body)
+        self.assertIn("Platform Job Lifecycle", body)
+        self.assertIn("PlatformJobStarted", body)
+        self.assertIn("PlatformJobCompleted", body)
+        self.assertIn("PlatformJobFailed", body)
+        self.assertIn("PlatformJobHeartbeats", body)
+        self.assertIn("PlatformJobPhaseFailed", body)
+        self.assertIn("PlatformJobRuntimeFailed", body)
 
     def test_dashboard_includes_postgres_metrics_when_identifier_is_set(self) -> None:
         original_get_region = monitoring.aws.get_region
@@ -308,10 +320,16 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("Tenant Runtime Failure Groups", body)
         self.assertIn("JetStream App Events", body)
         self.assertIn("JetStream App Event Groups", body)
+        self.assertIn("Platform Job Events", body)
+        self.assertIn("Platform Job Failure Groups", body)
         self.assertIn("/ecs/cerebro-test/api", body)
         self.assertIn('name = \\"jetstream.error\\"', body)
         self.assertIn('name = \\"jetstream.publish.retry_exhausted\\"', body)
+        self.assertIn('name = \\"jetstream.canary.failed\\"', body)
         self.assertIn("messaging.jetstream.subject", body)
+        self.assertIn("canary_duration_ms", body)
+        self.assertIn("platform.job.phase.failed", body)
+        self.assertIn("job_phase_key", body)
         self.assertIn('name = \\"source_runtime.sync\\"', body)
         self.assertIn('name = \\"source_projection.project\\"', body)
         self.assertIn("tenant_id", body)
@@ -345,6 +363,8 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(by_title["JetStream App Event Groups"]["y"], 66)
         self.assertEqual(by_title["Tenant Runtime Failures"]["y"], 72)
         self.assertEqual(by_title["Tenant Runtime Failure Groups"]["y"], 72)
+        self.assertEqual(by_title["Platform Job Events"]["y"], 78)
+        self.assertEqual(by_title["Platform Job Failure Groups"]["y"], 78)
 
     def test_otel_product_metric_widgets_follow_collector_widgets(self) -> None:
         class Region:
@@ -489,6 +509,52 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(grc_call["metric_transformation"].name, "GRCDashboardLatencyMs")
         self.assertEqual(grc_call["metric_transformation"].value, "$.duration_ms")
         self.assertEqual(grc_call["metric_transformation"].dimensions, {"Dashboard": "$.dashboard"})
+
+    def test_telemetry_metric_filters_include_jetstream_canary_and_platform_jobs(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            monitoring._create_telemetry_metric_filters("cerebro-test", "logs")
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        by_metric = {call["metric_transformation"].name: call for call in calls}
+        for metric_name in {
+            "JetStreamCanaryCompleted",
+            "JetStreamCanaryFailures",
+            "JetStreamCanaryLatencyMs",
+            "JetStreamAppendErrors",
+            "JetStreamReplayErrors",
+            "JetStreamReplayLatencyMs",
+            "PlatformJobStarted",
+            "PlatformJobCompleted",
+            "PlatformJobFailed",
+            "PlatformJobHeartbeats",
+            "PlatformJobPhaseFailed",
+            "PlatformJobPhaseFailedByPhase",
+            "PlatformJobRuntimeFailed",
+        }:
+            self.assertIn(metric_name, by_metric)
+
+        self.assertIn('$.name = "jetstream.canary.completed"', by_metric["JetStreamCanaryCompleted"]["pattern"])
+        self.assertEqual(by_metric["JetStreamCanaryLatencyMs"]["metric_transformation"].value, "$.canary_duration_ms")
+        self.assertEqual(by_metric["JetStreamReplayLatencyMs"]["metric_transformation"].value, "$.duration_ms")
+        self.assertEqual(
+            by_metric["PlatformJobPhaseFailedByPhase"]["metric_transformation"].dimensions,
+            {"Phase": "$.job_phase_key"},
+        )
 
     def test_otel_collector_metric_filters_preserve_error_alarm_inputs(self) -> None:
         calls: list[dict] = []
