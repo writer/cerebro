@@ -190,7 +190,11 @@ func validatePolicyRuleTestCaseAgainstRule(path string, rule PolicyFindingRule, 
 		for _, column := range requiredColumns {
 			value, ok := row[column]
 			if !ok {
-				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].%s is required by spec.graph.requiredColumns", idx, testCase.Name, rowIdx, column)})
+				if graphFixtureSystemRequiredColumn(column) {
+					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].%s is a required graph return alias", idx, testCase.Name, rowIdx, column)})
+				} else {
+					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].%s is required by spec.graph.requiredColumns", idx, testCase.Name, rowIdx, column)})
+				}
 				continue
 			}
 			if graphFixtureColumnRequiresValue(column) && !testFixtureValuePresent(value) {
@@ -242,6 +246,15 @@ func graphFixtureColumnRequiresValue(column string) bool {
 	default:
 		return false
 	}
+}
+
+func graphFixtureSystemRequiredColumn(column string) bool {
+	for _, required := range requiredGraphReturnAliases() {
+		if column == required {
+			return true
+		}
+	}
+	return false
 }
 
 func testFixtureValuePresent(value any) bool {
