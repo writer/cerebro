@@ -2012,7 +2012,7 @@ func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.Finding
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
-	emitFindingEvaluationRunTelemetry(ctx, run)
+	emitFindingEvaluationRunTelemetry(ctx, run, nil)
 	return nil
 }
 
@@ -2030,7 +2030,7 @@ func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEva
 			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
 		)
 	}
-	emitFindingEvaluationRunTelemetry(ctx, run)
+	emitFindingEvaluationRunTelemetry(ctx, run, evaluationErr)
 	return evaluationErr
 }
 
@@ -2049,7 +2049,7 @@ func (s *Service) finishCompletedGraphRun(ctx context.Context, run *cerebrov1.Fi
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
-	emitFindingEvaluationRunTelemetry(ctx, run)
+	emitFindingEvaluationRunTelemetry(ctx, run, nil)
 	return nil
 }
 
@@ -2071,7 +2071,7 @@ func (s *Service) finishFailedGraphRun(ctx context.Context, run *cerebrov1.Findi
 			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
 		)
 	}
-	emitFindingEvaluationRunTelemetry(ctx, run)
+	emitFindingEvaluationRunTelemetry(ctx, run, evaluationErr)
 	return evaluationErr
 }
 
@@ -2090,7 +2090,7 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
 		)
 	}
-	emitFindingEvaluationRunTelemetry(ctx, run)
+	emitFindingEvaluationRunTelemetry(ctx, run, evaluationErr)
 	state.failed = true
 	return nil
 }
@@ -2122,15 +2122,24 @@ func setGraphFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, gr
 	run.FindingIds = append([]string(nil), findingIDs...)
 }
 
-func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.FindingEvaluationRun) {
+func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.FindingEvaluationRun, evaluationErr error) {
 	if run == nil {
 		return
 	}
+	stage := findingEvaluationTelemetryStage(evaluationErr)
+	failureStage := ""
+	if evaluationErr != nil {
+		failureStage = stage
+	}
+	ruleType := findingEvaluationRuleType(run)
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "run_id", Value: strings.TrimSpace(run.GetId())},
 		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(run.GetRuntimeId())},
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(run.GetRuleId())},
 		telemetry.Field{Key: "status", Value: strings.TrimSpace(run.GetStatus())},
+		telemetry.Field{Key: "finding_evaluation.stage", Value: stage},
+		telemetry.Field{Key: "finding_evaluation.failure_stage", Value: failureStage},
+		telemetry.Field{Key: "finding_evaluation.rule_type", Value: ruleType},
 		telemetry.Field{Key: "event_limit", Value: run.GetEventLimit()},
 		telemetry.Field{Key: "events_processed", Value: run.GetEventsProcessed()},
 		telemetry.Field{Key: "events_matched", Value: run.GetEventsMatched()},
@@ -2138,15 +2147,34 @@ func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.Findi
 		telemetry.Field{Key: "graph_rule", Value: run.GetGraphRule()},
 		telemetry.Field{Key: "graph_rows_read", Value: run.GetGraphRowsRead()},
 	)
+	if evaluationErr != nil {
+		attrs = attrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(evaluationErr)},
+			telemetry.Field{Key: "error_fingerprint", Value: telemetry.ErrorFingerprint("finding_evaluation.run", evaluationErr, attrs)},
+		))
+	}
 	telemetry.Event(ctx, "finding_evaluation.run", attrs)
 	telemetry.IncrementMain(ctx, "finding_evaluation.run.count", 1)
-	if !strings.EqualFold(strings.TrimSpace(run.GetStatus()), "completed") {
+	status := strings.TrimSpace(run.GetStatus())
+	if strings.EqualFold(status, "completed") {
+		telemetry.IncrementMain(ctx, "finding_evaluation."+ruleType+".completed.count", 1)
+	} else {
 		telemetry.IncrementMain(ctx, "finding_evaluation.run.non_completed.count", 1)
+		telemetry.IncrementMain(ctx, "finding_evaluation."+ruleType+".failed.count", 1)
+	}
+	if run.GetFindingsEmitted() > 0 {
+		telemetry.IncrementMain(ctx, "finding_evaluation.findings_emitted.count", int64(run.GetFindingsEmitted()))
+	}
+	if run.GetGraphRowsRead() > 0 {
+		telemetry.IncrementMain(ctx, "finding_evaluation.graph_rows_read.count", int64(run.GetGraphRowsRead()))
 	}
 	telemetry.AnnotateMain(ctx, telemetry.Attrs(
 		telemetry.Field{Key: "finding_evaluation.runtime_id", Value: strings.TrimSpace(run.GetRuntimeId())},
 		telemetry.Field{Key: "finding_evaluation.rule_id", Value: strings.TrimSpace(run.GetRuleId())},
-		telemetry.Field{Key: "finding_evaluation.status", Value: strings.TrimSpace(run.GetStatus())},
+		telemetry.Field{Key: "finding_evaluation.status", Value: status},
+		telemetry.Field{Key: "finding_evaluation.stage", Value: stage},
+		telemetry.Field{Key: "finding_evaluation.failure_stage", Value: failureStage},
+		telemetry.Field{Key: "finding_evaluation.rule_type", Value: ruleType},
 		telemetry.Field{Key: "finding_evaluation.event_limit", Value: run.GetEventLimit()},
 		telemetry.Field{Key: "finding_evaluation.events_processed", Value: run.GetEventsProcessed()},
 		telemetry.Field{Key: "finding_evaluation.events_matched", Value: run.GetEventsMatched()},
@@ -2154,6 +2182,52 @@ func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.Findi
 		telemetry.Field{Key: "finding_evaluation.graph_rule", Value: run.GetGraphRule()},
 		telemetry.Field{Key: "finding_evaluation.graph_rows_read", Value: run.GetGraphRowsRead()},
 	))
+}
+
+func findingEvaluationRuleType(run *cerebrov1.FindingEvaluationRun) string {
+	if run != nil && run.GetGraphRule() {
+		return "graph_rule"
+	}
+	return "event_rule"
+}
+
+func findingEvaluationTelemetryStage(err error) string {
+	if err == nil {
+		return "finalize_run"
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(message, "persist finding evaluation run"):
+		return "persist_run"
+	case strings.Contains(message, "replay runtime"):
+		return "replay"
+	case strings.Contains(message, "execute graph rule"):
+		return "graph_query"
+	case strings.Contains(message, "evaluate graph rule"):
+		return "graph_evaluate_rows"
+	case strings.Contains(message, "evaluate finding rule"):
+		return "evaluate_rule"
+	case strings.Contains(message, "reconcile finding identity"):
+		return "reconcile_identity"
+	case strings.Contains(message, "persist finding"):
+		return "upsert_finding"
+	case strings.Contains(message, "build evidence"):
+		return "build_evidence"
+	case strings.Contains(message, "persist evidence"):
+		return "persist_evidence"
+	case strings.Contains(message, "action recommendations"):
+		return "project_action_recommendations"
+	case strings.Contains(message, "graph anchor") || strings.Contains(message, " finding ") && strings.Contains(message, " anchor"):
+		return "project_anchor"
+	case strings.Contains(message, "external refs"):
+		return "project_external_refs"
+	case strings.Contains(message, "resolve stale") || strings.Contains(message, "resolve retired"):
+		return "resolve_stale"
+	case strings.Contains(message, "counter-event close evidence"):
+		return "persist_close_evidence"
+	default:
+		return "unknown"
+	}
 }
 
 func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleEvaluationState, evaluationErr error) error {

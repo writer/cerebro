@@ -716,12 +716,14 @@ func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRu
 	}
 	healthRecord := normalizedOrchestratorRuntimeHealth(result)
 	healthState := sourcehealth.Evaluate(healthRecord)
+	healthGate := orchestratorRuntimeHealthGate(healthRecord, healthState, status)
 	if healthState.FreshnessState != "" {
 		telemetry.IncrementMain(ctx, "orchestrator.runtime.freshness."+orchestratorPhaseTelemetryKey(healthState.FreshnessState)+".count", 1)
 	}
 	if healthState.BackfillEligible {
 		telemetry.IncrementMain(ctx, "orchestrator.runtime.backfill_eligible.count", 1)
 	}
+	annotateOrchestratorHealthGateMain(ctx, healthRecord, healthState, healthGate)
 	mainAttrs := attrs.With(telemetry.Attrs(
 		telemetryField("orchestrator.runtime.last_status", status),
 		telemetryField("orchestrator.runtime.last_runtime_id", result.RuntimeID),
@@ -758,8 +760,66 @@ func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRu
 		telemetryField("source_runtime.checkpoint_cursor_present", healthRecord.CheckpointCursorPresent),
 		telemetryField("source_runtime.contract_probe_state", healthRecord.ContractProbeState),
 		telemetryField("source_runtime.contract_probe_status", sourcehealth.ContractProbeStatus(healthRecord.ContractProbeState)),
+		telemetryField("orchestrator.runtime_health_gate.status", healthGate.Status),
+		telemetryField("orchestrator.runtime_health_gate.blocking_state", healthGate.BlockingState),
+		telemetryField("orchestrator.runtime_health_gate.needs_attention", healthGate.NeedsAttention),
 	))
 	telemetry.AnnotateMainPhase(ctx, "orchestrator.runtime", status, mainAttrs)
+}
+
+type orchestratorHealthGate struct {
+	Status         string
+	BlockingState  string
+	NeedsAttention bool
+}
+
+func orchestratorRuntimeHealthGate(record sourcehealth.Record, state sourcehealth.State, runtimeStatus string) orchestratorHealthGate {
+	if strings.EqualFold(strings.TrimSpace(runtimeStatus), "failed") {
+		return orchestratorHealthGate{Status: "blocked", BlockingState: "runtime_failed", NeedsAttention: true}
+	}
+	if state.FindingEvaluationState == "failed" {
+		return orchestratorHealthGate{Status: "blocked", BlockingState: "finding_failed", NeedsAttention: true}
+	}
+	switch strings.TrimSpace(state.FreshnessState) {
+	case "healthy":
+		return orchestratorHealthGate{Status: "pass", BlockingState: "none"}
+	case "source_failed", "graph_failed":
+		return orchestratorHealthGate{Status: "blocked", BlockingState: state.FreshnessState, NeedsAttention: true}
+	case "disabled":
+		return orchestratorHealthGate{Status: "degraded", BlockingState: "disabled", NeedsAttention: true}
+	case "source_stale", "graph_missing", "graph_behind":
+		return orchestratorHealthGate{Status: "degraded", BlockingState: state.FreshnessState, NeedsAttention: true}
+	}
+	if strings.EqualFold(strings.TrimSpace(record.Status), "healthy") {
+		return orchestratorHealthGate{Status: "degraded", BlockingState: "graph_missing", NeedsAttention: true}
+	}
+	return orchestratorHealthGate{Status: "degraded", BlockingState: "unknown", NeedsAttention: true}
+}
+
+func annotateOrchestratorHealthGateMain(ctx context.Context, record sourcehealth.Record, state sourcehealth.State, gate orchestratorHealthGate) {
+	telemetry.IncrementMain(ctx, "orchestrator.runtime_health_gate.total_count", 1)
+	telemetry.IncrementMain(ctx, "orchestrator.runtime_health_gate."+orchestratorPhaseTelemetryKey(gate.Status)+"_count", 1)
+	if !gate.NeedsAttention {
+		telemetry.IncrementMain(ctx, "orchestrator.runtime_health_gate.healthy_count", 1)
+	} else {
+		telemetry.IncrementMain(ctx, "orchestrator.runtime_health_gate.needs_attention_count", 1)
+	}
+	if state.BackfillEligible {
+		telemetry.IncrementMain(ctx, "orchestrator.runtime_health_gate.backfill_eligible_count", 1)
+	}
+	if gate.BlockingState != "" && gate.BlockingState != "none" {
+		telemetry.IncrementMain(ctx, "orchestrator.runtime_health_gate."+orchestratorPhaseTelemetryKey(gate.BlockingState)+".count", 1)
+	}
+	maxOptionalMain(ctx, "orchestrator.runtime_health_gate.max_sync_lag_seconds", record.SyncLagSeconds)
+	maxOptionalMain(ctx, "orchestrator.runtime_health_gate.max_watermark_lag_seconds", record.WatermarkLagSeconds)
+	maxOptionalMain(ctx, "orchestrator.runtime_health_gate.max_graph_lag_seconds", record.GraphLagSeconds)
+}
+
+func maxOptionalMain(ctx context.Context, key string, value *int64) {
+	if value == nil {
+		return
+	}
+	telemetry.MaxMain(ctx, key, *value)
 }
 
 func normalizedOrchestratorRuntimeHealth(result *orchestratorRuntimeResult) sourcehealth.Record {
@@ -881,7 +941,27 @@ func captureOrchestratorError(ctx context.Context, name string, iteration uint32
 			WithField(telemetryField("source_id", runtime.GetSourceId())).
 			WithField(telemetryField("tenant_id", runtime.GetTenantId()))
 	}
+	telemetry.AnnotateMainIfAbsent(ctx, orchestratorFirstFailureAttrs(name, attrs, iteration, runtime, stage, err))
 	telemetry.CaptureError(ctx, name, err, attrs)
+}
+
+func orchestratorFirstFailureAttrs(name string, attrs telemetry.Attributes, iteration uint32, runtime *cerebrov1.SourceRuntime, stage string, err error) telemetry.Attributes {
+	firstFailure := telemetry.Attrs(
+		telemetryField("orchestrator.first_failure.present", true),
+		telemetryField("orchestrator.first_failure.event_name", strings.TrimSpace(name)),
+		telemetryField("orchestrator.first_failure.stage", strings.TrimSpace(stage)),
+		telemetryField("orchestrator.first_failure.error_kind", telemetry.ErrorKind(err)),
+		telemetryField("orchestrator.first_failure.error_fingerprint", telemetry.ErrorFingerprint(name, err, attrs)),
+		telemetryField("orchestrator.first_failure.iteration", iteration),
+	)
+	if runtime != nil {
+		firstFailure = firstFailure.With(telemetry.Attrs(
+			telemetryField("orchestrator.first_failure.runtime_id", runtime.GetId()),
+			telemetryField("orchestrator.first_failure.source_id", runtime.GetSourceId()),
+			telemetryField("orchestrator.first_failure.tenant_id", runtime.GetTenantId()),
+		))
+	}
+	return firstFailure
 }
 
 func applyGraphIngestCounters(runtimeResult *orchestratorRuntimeResult, graphResult *graphingest.RunResult, attrs telemetry.Attributes) telemetry.Attributes {

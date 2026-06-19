@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -231,7 +232,9 @@ func (a *App) handleGetConnectorCoverage(w http.ResponseWriter, r *http.Request)
 		writeSourceRuntimeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, sourcecoverage.BuildScopedReport(health.Coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt))
+	report := sourcecoverage.BuildScopedReport(health.Coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt)
+	emitSourceCoverageGateTelemetry(r.Context(), report)
+	writeJSON(w, http.StatusOK, report)
 }
 func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthResponse, error) {
 	limit, err := uint32QueryParam(r, "limit")
@@ -364,6 +367,40 @@ func (a *App) sourceCoverageRecords(runtimes []*cerebrov1.SourceRuntime, filter 
 		TenantID: strings.TrimSpace(filter.TenantID),
 		SourceID: strings.TrimSpace(filter.SourceID),
 	})
+}
+
+func emitSourceCoverageGateTelemetry(ctx context.Context, report sourcecoverage.Report) {
+	gate := report.Gate
+	if strings.TrimSpace(gate.Status) == "" {
+		gate = sourcecoverage.GateForTotals(report.Totals)
+		report.Gate = gate
+	}
+	attrs := sourceCoverageGateTelemetryAttributes(report)
+	telemetry.Event(ctx, "source_coverage.release_gate", attrs)
+	telemetry.IncrementMain(ctx, "source_coverage.release_gate.count", 1)
+	telemetry.IncrementMain(ctx, "source_coverage.release_gate."+gate.Status+".count", 1)
+	telemetry.AnnotateMain(ctx, attrs)
+}
+
+func sourceCoverageGateTelemetryAttributes(report sourcecoverage.Report) telemetry.Attributes {
+	gate := report.Gate
+	if strings.TrimSpace(gate.Status) == "" {
+		gate = sourcecoverage.GateForTotals(report.Totals)
+	}
+	return telemetry.Attrs(
+		telemetry.Field{Key: "source_coverage.gate.status", Value: gate.Status},
+		telemetry.Field{Key: "source_coverage.gate.blocking_reason", Value: gate.BlockingReason},
+		telemetry.Field{Key: "source_coverage.dimensions.total", Value: report.Totals.Dimensions},
+		telemetry.Field{Key: "source_coverage.high_value_dimensions.total", Value: report.Totals.HighValueDimensions},
+		telemetry.Field{Key: "source_coverage.healthy_count", Value: report.Totals.Healthy},
+		telemetry.Field{Key: "source_coverage.partial_count", Value: report.Totals.Partial},
+		telemetry.Field{Key: "source_coverage.unsupported_count", Value: report.Totals.Unsupported},
+		telemetry.Field{Key: "source_coverage.unconfigured_count", Value: report.Totals.Unconfigured},
+		telemetry.Field{Key: "source_coverage.stale_count", Value: report.Totals.Stale},
+		telemetry.Field{Key: "source_coverage.failed_count", Value: report.Totals.Failed},
+		telemetry.Field{Key: "source_coverage.unknown_count", Value: report.Totals.Unknown},
+		telemetry.Field{Key: "source_coverage.blind_spot_count", Value: report.Totals.BlindSpots},
+	)
 }
 
 func runtimeFreshnessRecordFromHealth(record sourceRuntimeHealthRecord) runtimeFreshnessRecord {

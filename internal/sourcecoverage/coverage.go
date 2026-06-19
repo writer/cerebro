@@ -76,6 +76,7 @@ type Report struct {
 	TenantID           string    `json:"tenant_id,omitempty"`
 	SourceID           string    `json:"source_id,omitempty"`
 	Totals             Totals    `json:"totals"`
+	Gate               Gate      `json:"gate"`
 	Records            []Record  `json:"records"`
 	BlindSpots         []Record  `json:"blind_spots"`
 	Summaries          []Summary `json:"summaries"`
@@ -93,6 +94,11 @@ type Totals struct {
 	Failed              int `json:"failed"`
 	Unknown             int `json:"unknown"`
 	BlindSpots          int `json:"blind_spots"`
+}
+
+type Gate struct {
+	Status         string `json:"status"`
+	BlockingReason string `json:"blocking_reason"`
 }
 
 func ContractsFromRegistry(registry *sourcecdk.Registry) []sourcecdk.CoverageContract {
@@ -181,12 +187,14 @@ func BuildReport(records []Record, options Options, generatedAt time.Time) Repor
 	options.SourceID = strings.TrimSpace(options.SourceID)
 	clonedRecords := cloneRecords(records)
 	blindSpots := BlindSpots(clonedRecords)
+	totals := TotalsFor(clonedRecords)
 	return Report{
 		Version:            "source-coverage/v1",
 		GeneratedAt:        generatedAt.UTC().Format(time.RFC3339Nano),
 		TenantID:           options.TenantID,
 		SourceID:           options.SourceID,
-		Totals:             TotalsFor(clonedRecords),
+		Totals:             totals,
+		Gate:               GateForTotals(totals),
 		Records:            clonedRecords,
 		BlindSpots:         blindSpots,
 		Summaries:          Summaries(clonedRecords),
@@ -234,6 +242,27 @@ func TotalsFor(records []Record) Totals {
 		}
 	}
 	return totals
+}
+
+func GateForTotals(totals Totals) Gate {
+	switch {
+	case totals.Failed > 0:
+		return Gate{Status: "fail", BlockingReason: "failed"}
+	case totals.BlindSpots > 0:
+		return Gate{Status: "fail", BlockingReason: "blind_spot"}
+	case totals.Stale > 0:
+		return Gate{Status: "warn", BlockingReason: "stale"}
+	case totals.Unconfigured > 0:
+		return Gate{Status: "warn", BlockingReason: "unconfigured"}
+	case totals.Unsupported > 0:
+		return Gate{Status: "warn", BlockingReason: "unsupported"}
+	case totals.Partial > 0:
+		return Gate{Status: "warn", BlockingReason: "partial"}
+	case totals.Unknown > 0:
+		return Gate{Status: "warn", BlockingReason: "unknown"}
+	default:
+		return Gate{Status: "pass", BlockingReason: "none"}
+	}
 }
 
 func Summaries(records []Record) []Summary {

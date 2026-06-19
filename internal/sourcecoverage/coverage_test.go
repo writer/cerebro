@@ -73,11 +73,34 @@ func TestBuildReportSummarizesRecordsAndBlindSpots(t *testing.T) {
 	if report.Totals.Healthy != 1 || report.Totals.Unconfigured != 1 || report.Totals.Failed != 1 || report.Totals.Partial != 1 {
 		t.Fatalf("report state totals = %#v", report.Totals)
 	}
+	if report.Gate.Status != "fail" || report.Gate.BlockingReason != "failed" {
+		t.Fatalf("report gate = %#v, want failed release gate", report.Gate)
+	}
 	if len(report.BlindSpots) != 2 || len(report.BlindSpotSummaries) != 2 {
 		t.Fatalf("blind spot report = %#v", report)
 	}
 	if len(report.Summaries) != 2 {
 		t.Fatalf("summary count = %d, want 2", len(report.Summaries))
+	}
+}
+
+func TestGateForTotalsUsesBoundedReleaseGateReasons(t *testing.T) {
+	cases := []struct {
+		name   string
+		totals Totals
+		want   Gate
+	}{
+		{name: "pass", totals: Totals{Healthy: 2}, want: Gate{Status: "pass", BlockingReason: "none"}},
+		{name: "blind spot", totals: Totals{BlindSpots: 1, Unconfigured: 1}, want: Gate{Status: "fail", BlockingReason: "blind_spot"}},
+		{name: "stale", totals: Totals{Stale: 1}, want: Gate{Status: "warn", BlockingReason: "stale"}},
+		{name: "partial", totals: Totals{Partial: 1}, want: Gate{Status: "warn", BlockingReason: "partial"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := GateForTotals(tc.totals); got != tc.want {
+				t.Fatalf("GateForTotals() = %#v, want %#v", got, tc.want)
+			}
+		})
 	}
 }
 

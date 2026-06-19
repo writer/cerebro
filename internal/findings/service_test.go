@@ -2130,16 +2130,19 @@ func TestFindingEvaluationRunFinalizersEmitTelemetry(t *testing.T) {
 	})
 	payload := decodeTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"kind":             "event",
-		"name":             "finding_evaluation.run",
-		"run_id":           "run-1",
-		"runtime_id":       "runtime-okta",
-		"rule_id":          "rule-a",
-		"status":           "completed",
-		"event_limit":      float64(25),
-		"events_processed": float64(7),
-		"events_matched":   float64(3),
-		"findings_emitted": float64(2),
+		"kind":                             "event",
+		"name":                             "finding_evaluation.run",
+		"run_id":                           "run-1",
+		"runtime_id":                       "runtime-okta",
+		"rule_id":                          "rule-a",
+		"status":                           "completed",
+		"finding_evaluation.stage":         "finalize_run",
+		"finding_evaluation.failure_stage": "",
+		"finding_evaluation.rule_type":     "event_rule",
+		"event_limit":                      float64(25),
+		"events_processed":                 float64(7),
+		"events_matched":                   float64(3),
+		"findings_emitted":                 float64(2),
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry[%s] = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -2173,6 +2176,19 @@ func TestFailedFindingEvaluationRunFinalizerEmitsTelemetry(t *testing.T) {
 	}
 	if got := payload["findings_emitted"]; got != float64(1) {
 		t.Fatalf("telemetry findings_emitted = %#v, want 1; payload=%#v", got, payload)
+	}
+	for key, want := range map[string]any{
+		"finding_evaluation.stage":         "unknown",
+		"finding_evaluation.failure_stage": "unknown",
+		"finding_evaluation.rule_type":     "event_rule",
+		"error_kind":                       "error",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got, ok := payload["error_fingerprint"].(string); !ok || got == "" {
+		t.Fatalf("telemetry error_fingerprint missing: %#v", payload)
 	}
 }
 
