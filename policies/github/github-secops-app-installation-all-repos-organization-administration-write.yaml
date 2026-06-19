@@ -1,0 +1,162 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-app-installation-all-repos-organization-administration-write
+  name: GitHub App Installation All Repos Organization Administration Write
+  description: GitHub Apps installed on all repositories with organization_administration:write can change high-impact repository or organization state across the graph.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - github-app
+  - installation
+  - permissions
+  - organization_administration
+spec:
+  severity: critical
+  effect: forbid
+  resource: github.org_installation
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.org_installation
+    requiredFields:
+    - installation_id
+    - app_slug
+    - repository_selection
+    - permissions
+    - events
+    freshnessSLA: 12h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "repository_selection"), "all")
+    - contains_value(path(resource, "permissions"), "organization_administration:write")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: installation_id
+      op: exists
+    - field: app_slug
+      op: exists
+    - field: repository_selection
+      op: exists
+    - field: permissions
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - organization
+      - repository_selection
+      - permissions
+      - subscribed_events
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_app_installation_permissions
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 12h
+    acceptableSources:
+    - github
+    requiredFields:
+    - installation_id
+    - app_slug
+    - repository_selection
+    - permissions
+    - events
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - installation_id
+  audit:
+    evidenceType: github_app_installation_permissions
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 12h
+    auditorStatement: GitHub App installation permissions and subscribed events are projected from organization inventory.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: GitHub Apps installed on all repositories with organization_administration:write can change high-impact repository or organization state across the graph.
+    remediationIntent: Reduce the GitHub App permission from write to read where possible.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - installation_id
+      - app_slug
+      - repository_selection
+      - permissions
+      - events
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-app-installation-all-repos-organization-administration-write-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-app-installation-all-repos-organization-administration-write-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Reduce the GitHub App permission from write to read where possible.
+      - Scope the installation to selected repositories instead of all repositories.
+      - Document app owner approval and rerun organization inventory ingestion.
+    effort: medium
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Reduce the GitHub App permission from write to read where possible.
+    steps:
+    - Reduce the GitHub App permission from write to read where possible.
+    - Scope the installation to selected repositories instead of all repositories.
+    - Document app owner approval and rerun organization inventory ingestion.
+  riskCategories:
+  - PRIVILEGE_ESCALATION
+  - WEAK_AUTHENTICATION
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC6.1
+    - CC7.1
+  - name: ISO 27001:2022
+    controls:
+    - A.5.15
+    - A.8.8
+  - name: NIST 800-53 r5
+    controls:
+    - AC-2
+    - AC-3
+    - IA-2

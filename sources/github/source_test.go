@@ -953,6 +953,60 @@ func TestOrgInventoryAuditLogCanaryShortCircuitsWhenAuthorizedUnchanged(t *testi
 	}
 }
 
+func TestOrgInstallationEventIncludesPolicyEvidenceFields(t *testing.T) {
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	createdAt := time.Date(2026, 4, 22, 0, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 4, 23, 0, 0, 0, 0, time.UTC)
+
+	event, err := orgInstallationEvent(settings{owner: "writer"}, &gogithub.Installation{
+		ID:                  gogithub.Int64(123),
+		AppSlug:             gogithub.String("security-bot"),
+		TargetType:          gogithub.String("Organization"),
+		RepositorySelection: gogithub.String("all"),
+		Events:              []string{"push", "pull_request"},
+		Permissions: &gogithub.InstallationPermissions{
+			Administration: gogithub.String("write"),
+			Contents:       gogithub.String("write"),
+			Members:        gogithub.String("read"),
+			Metadata:       gogithub.String("read"),
+			Secrets:        gogithub.String("write"),
+			Workflows:      gogithub.String("write"),
+		},
+		CreatedAt: &gogithub.Timestamp{Time: createdAt},
+		UpdatedAt: &gogithub.Timestamp{Time: updatedAt},
+	}, now)
+	if err != nil {
+		t.Fatalf("orgInstallationEvent() error = %v", err)
+	}
+
+	wantAttrs := map[string]string{
+		"app_slug":             "security-bot",
+		"created_at":           createdAt.Format(time.RFC3339),
+		"events":               "push,pull_request",
+		"installation_id":      "123",
+		"permissions":          "administration:write,contents:write,members:read,metadata:read,secrets:write,workflows:write",
+		"repository_selection": "all",
+		"target_type":          "Organization",
+		"updated_at":           updatedAt.Format(time.RFC3339),
+	}
+	for key, want := range wantAttrs {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+
+	var payload orgInstallationPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal org installation payload: %v", err)
+	}
+	if len(payload.Permissions) != 6 || payload.Permissions[0] != "administration:write" {
+		t.Fatalf("payload permissions = %#v, want populated GitHub App permissions", payload.Permissions)
+	}
+	if len(payload.Events) != 2 || payload.Events[0] != "push" {
+		t.Fatalf("payload events = %#v, want populated GitHub App events", payload.Events)
+	}
+}
+
 func TestOrgInventoryAuditLogCanaryFallsThroughWhenAuthorizedChanged(t *testing.T) {
 	var auditRequests int
 	var memberRequests int

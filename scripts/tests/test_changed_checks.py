@@ -51,6 +51,17 @@ class ChangedChecksTests(unittest.TestCase):
             self.assertEqual(len(go_tests), 1)
             self.assertIn("./internal/demo", go_tests[0].argv)
 
+    def test_go_files_under_nested_modules_do_not_select_root_package_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "tools" / "linters"
+            package_dir = nested / "maxfields"
+            package_dir.mkdir(parents=True)
+            (nested / "go.mod").write_text("module example.com/linters\n", encoding="utf-8")
+            (package_dir / "maxfields.go").write_text("package maxfields\n", encoding="utf-8")
+            commands = changed.select_commands(["tools/linters/maxfields/maxfields.go"], root)
+            self.assertNotIn("go-test-changed-packages", [command.name for command in commands])
+
 
 if __name__ == "__main__":
     unittest.main()

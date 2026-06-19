@@ -993,10 +993,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			entityType = "github.code.repository"
 			label = firstNonEmpty(repo, resourceID)
 		}
-		resourceAttrs := map[string]string{
-			"resource_id":   resourceID,
-			"resource_type": resourceType,
-		}
+		resourceAttrs := githubAuditResourceAttributes(attributes, resourceID, resourceType)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
@@ -1229,6 +1226,36 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func githubAuditResourceAttributes(attributes map[string]string, resourceID string, resourceType string) map[string]string {
+	resourceAttrs := map[string]string{
+		"resource_id":   resourceID,
+		"resource_type": resourceType,
+	}
+	for key, value := range attributes {
+		if !githubAuditResourceAttributeKey(key) {
+			continue
+		}
+		addProjectedAttribute(resourceAttrs, key, value)
+	}
+	return resourceAttrs
+}
+
+func githubAuditResourceAttributeKey(key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+	}
+	if strings.HasPrefix(key, "actor") || strings.HasPrefix(key, "external_identity") {
+		return false
+	}
+	switch key {
+	case "family", "resource_id", "resource_type", "source_runtime_id", "token_id", "user", "user_id":
+		return false
+	default:
+		return true
+	}
 }
 
 func isGitHubPublicKeyCredential(programmaticAccessType string) bool {
@@ -1533,15 +1560,19 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 			EntityType: "github.dependabot_alert",
 			Label:      label,
 			Attributes: map[string]string{
-				"alert_number":       alertNumber,
-				"ecosystem":          ecosystem,
-				"html_url":           strings.TrimSpace(attributes["html_url"]),
-				"package":            packageName,
-				"repository":         repository,
-				"severity":           strings.TrimSpace(attributes["severity"]),
-				"state":              strings.TrimSpace(attributes["state"]),
-				"vulnerability_id":   vulnerabilityID,
-				"vulnerability_type": "dependabot",
+				"alert_number":             alertNumber,
+				"dependency_scope":         strings.TrimSpace(attributes["dependency_scope"]),
+				"ecosystem":                ecosystem,
+				"first_patched_version":    strings.TrimSpace(attributes["first_patched_version"]),
+				"html_url":                 strings.TrimSpace(attributes["html_url"]),
+				"manifest_path":            manifestPath,
+				"package":                  packageName,
+				"repository":               repository,
+				"severity":                 strings.TrimSpace(attributes["severity"]),
+				"state":                    strings.TrimSpace(attributes["state"]),
+				"vulnerability_id":         vulnerabilityID,
+				"vulnerability_type":       "dependabot",
+				"vulnerable_version_range": strings.TrimSpace(attributes["vulnerable_version_range"]),
 			},
 		})
 		if repoURN != "" {
@@ -1896,10 +1927,14 @@ func githubOrgInstallationProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 			URN: installURN, TenantID: tenantID, SourceID: event.GetSourceId(),
 			EntityType: "github.org_installation", Label: firstNonEmpty(appSlug, installID),
 			Attributes: map[string]string{
+				"created_at":           strings.TrimSpace(attributes["created_at"]),
+				"events":               strings.TrimSpace(attributes["events"]),
 				"app_slug":             appSlug,
 				"installation_id":      installID,
+				"permissions":          strings.TrimSpace(attributes["permissions"]),
 				"repository_selection": strings.TrimSpace(attributes["repository_selection"]),
 				"target_type":          strings.TrimSpace(attributes["target_type"]),
+				"updated_at":           strings.TrimSpace(attributes["updated_at"]),
 			},
 		})
 		if orgURN != "" {

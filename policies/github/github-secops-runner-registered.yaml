@@ -1,0 +1,163 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-runner-registered
+  name: GitHub Self-hosted Runner Registered
+  description: Self-hosted Runner Registered can execute repository code and should meet hardened GitHub Actions runner controls.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - actions
+  - runner
+  - self-hosted
+  - registered
+spec:
+  severity: medium
+  effect: forbid
+  resource: github.runner
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.audit
+    requiredFields:
+    - runner_id
+    - runner_scope
+    - runner_scope_type
+    - runner_status
+    - action
+    freshnessSLA: 24h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "runner_registered"), "true")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: runner_id
+      op: exists
+    - field: runner_scope
+      op: exists
+    - field: runner_scope_type
+      op: exists
+    - field: runner_status
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - organization
+      - repository
+      - runner_group
+      - workflow_jobs
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_self_hosted_runner
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 24h
+    acceptableSources:
+    - github
+    requiredFields:
+    - runner_id
+    - runner_scope
+    - runner_scope_type
+    - runner_status
+    - action
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - runner_id
+  audit:
+    evidenceType: github_self_hosted_runner
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 24h
+    auditorStatement: Self-hosted runner evidence is projected from GitHub audit events into github.runner assets.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: Self-hosted Runner Registered can execute repository code and should meet hardened GitHub Actions runner controls.
+    remediationIntent: Review the runner owner, host trust, scope, and group membership.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - runner_id
+      - runner_scope
+      - runner_scope_type
+      - runner_status
+      - action
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-runner-registered-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-runner-registered-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Review the runner owner, host trust, scope, and group membership.
+      - Move privileged jobs to hardened ephemeral runners or reduce runner scope.
+      - Rerun GitHub audit ingestion and verify runner posture.
+    effort: medium
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Review the runner owner, host trust, scope, and group membership.
+    steps:
+    - Review the runner owner, host trust, scope, and group membership.
+    - Move privileged jobs to hardened ephemeral runners or reduce runner scope.
+    - Rerun GitHub audit ingestion and verify runner posture.
+  riskCategories:
+  - SUPPLY_CHAIN
+  - UNTRUSTED_EXECUTION
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC6.1
+    - CC7.1
+    - CC8.1
+  - name: ISO 27001:2022
+    controls:
+    - A.5.15
+    - A.8.8
+    - A.8.25
+  - name: NIST 800-53 r5
+    controls:
+    - RA-5
+    - SA-10
+    - SR-4

@@ -357,6 +357,58 @@ func TestProjectGitHubOrgMemberLinksLoginIdentity(t *testing.T) {
 	assertProjectedLink(t, graph, identifierURN, relationRepresentsIdentity, identityURN)
 }
 
+func TestProjectGitHubOrgInstallationPreservesPolicyEvidenceFields(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-org-installation-1",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.org_installation",
+		OccurredAt: timestamppb.New(time.Date(
+			2026, 4, 23, 12, 0, 0, 0, time.UTC,
+		)),
+		Attributes: map[string]string{
+			"app_slug":             "security-bot",
+			"created_at":           "2026-04-22T00:00:00Z",
+			"events":               "push,pull_request",
+			"installation_id":      "123",
+			"owner":                "writer",
+			"permissions":          "administration:write,contents:write,members:read,metadata:read",
+			"repository_selection": "all",
+			"target_type":          "Organization",
+			"updated_at":           "2026-04-23T00:00:00Z",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	installationURN := "urn:cerebro:writer:github_installation:123"
+	entity := graph.entities[installationURN]
+	if entity == nil || entity.EntityType != "github.org_installation" {
+		t.Fatalf("github org installation entity missing: %#v", entity)
+	}
+	wantAttrs := map[string]string{
+		"app_slug":             "security-bot",
+		"created_at":           "2026-04-22T00:00:00Z",
+		"events":               "push,pull_request",
+		"installation_id":      "123",
+		"permissions":          "administration:write,contents:write,members:read,metadata:read",
+		"repository_selection": "all",
+		"target_type":          "Organization",
+		"updated_at":           "2026-04-23T00:00:00Z",
+	}
+	for key, want := range wantAttrs {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+	assertProjectedLink(t, graph, installationURN, relationBelongsTo, "urn:cerebro:writer:github_org:writer")
+}
+
 func TestProjectGitHubCodeRepositoryLinksOwnerAndLegacyRepo(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -494,27 +546,31 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 		SourceId: "github",
 		Kind:     "github.dependabot_alert",
 		Attributes: map[string]string{
-			"advisory_cve_id":    "CVE-2025-12345",
-			"advisory_ghsa_id":   "GHSA-xxxx-yyyy-zzzz",
-			"alert_number":       "7",
-			"ecosystem":          "go",
-			"owner":              "writer",
-			"package":            "golang.org/x/crypto",
-			"repo":               "cerebro",
-			"repository":         "writer/cerebro",
-			"severity":           "high",
-			"state":              "open",
-			"vulnerability_type": "dependabot",
+			"advisory_cve_id":          "CVE-2025-12345",
+			"advisory_ghsa_id":         "GHSA-xxxx-yyyy-zzzz",
+			"alert_number":             "7",
+			"dependency_scope":         "runtime",
+			"ecosystem":                "go",
+			"first_patched_version":    "v0.36.0",
+			"manifest_path":            "go.mod",
+			"owner":                    "writer",
+			"package":                  "golang.org/x/crypto",
+			"repo":                     "cerebro",
+			"repository":               "writer/cerebro",
+			"severity":                 "high",
+			"state":                    "open",
+			"vulnerable_version_range": "< v0.36.0",
+			"vulnerability_type":       "dependabot",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 7 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 7", result.EntitiesProjected)
+	if result.EntitiesProjected != 9 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 9", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 8 {
-		t.Fatalf("Project().LinksProjected = %d, want 8", result.LinksProjected)
+	if result.LinksProjected != 18 {
+		t.Fatalf("Project().LinksProjected = %d, want 18", result.LinksProjected)
 	}
 
 	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
@@ -528,6 +584,16 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	}
 	if _, ok := graph.entities[alertURN]; !ok {
 		t.Fatalf("graph entity %q missing", alertURN)
+	}
+	for key, want := range map[string]string{
+		"dependency_scope":         "runtime",
+		"first_patched_version":    "v0.36.0",
+		"manifest_path":            "go.mod",
+		"vulnerable_version_range": "< v0.36.0",
+	} {
+		if got := graph.entities[alertURN].Attributes[key]; got != want {
+			t.Fatalf("alert attributes[%q] = %q, want %q", key, got, want)
+		}
 	}
 	if _, ok := state.links[alertURN+"|"+relationBelongsTo+"|"+repoURN]; !ok {
 		t.Fatal("alert repository link missing")
@@ -2017,11 +2083,22 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 			if _, ok := graph.entities[actorURN]; !ok {
 				t.Fatalf("graph actor %q missing", actorURN)
 			}
-			if _, ok := graph.entities[tt.resource]; !ok {
+			entity, ok := graph.entities[tt.resource]
+			if !ok {
 				t.Fatalf("graph resource %q missing", tt.resource)
 			}
+			if got := entity.Attributes["action"]; got != tt.attrs["action"] {
+				t.Fatalf("resource attributes[action] = %q, want %q", got, tt.attrs["action"])
+			}
+			for _, key := range []string{"branch", "hook_id", "ruleset_id", "ruleset_name"} {
+				if want := tt.attrs[key]; want != "" {
+					if got := entity.Attributes[key]; got != want {
+						t.Fatalf("resource attributes[%q] = %q, want %q", key, got, want)
+					}
+				}
+			}
 			if strings.Contains(tt.resource, "github_code_repository") {
-				attrs := graph.entities[tt.resource].Attributes
+				attrs := entity.Attributes
 				if attrs["repository"] != "writer/cerebro" || attrs["resource_type"] != tt.attrs["resource_type"] {
 					t.Fatalf("repo attributes = %#v, want repository and resource_type", attrs)
 				}

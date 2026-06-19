@@ -1,0 +1,171 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-dependabot-terraform-low-open
+  name: GitHub Dependabot Terraform Low Alert Open
+  description: Open low Dependabot alerts in the terraform ecosystem should be triaged quickly because vulnerable dependencies remain linked to repository package assets.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - dependabot
+  - vulnerability
+  - dependency
+  - terraform
+  - low
+spec:
+  severity: low
+  effect: forbid
+  resource: github.dependabot_alert
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.dependabot_alert
+    requiredFields:
+    - repository
+    - alert_number
+    - state
+    - severity
+    - ecosystem
+    - package
+    freshnessSLA: 12h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "state"), "open")
+    - cmp_eq(path(resource, "severity"), "low")
+    - cmp_eq(path(resource, "ecosystem"), "terraform")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: repository
+      op: exists
+    - field: alert_number
+      op: exists
+    - field: state
+      op: exists
+    - field: severity
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - repository
+      - package
+      - security_advisory
+      - dependency_manifest
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_dependabot_alert
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 12h
+    acceptableSources:
+    - github
+    requiredFields:
+    - repository
+    - alert_number
+    - state
+    - severity
+    - ecosystem
+    - package
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - repository
+    - alert_number
+    - package
+  audit:
+    evidenceType: github_dependabot_alert
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 12h
+    auditorStatement: Dependabot alert evidence is projected as a GitHub alert asset linked to repository, package, advisory, and vulnerability nodes.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: Open low Dependabot alerts in the terraform ecosystem should be triaged quickly because vulnerable dependencies remain linked to repository package assets.
+    remediationIntent: Upgrade or replace the vulnerable terraform dependency.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - repository
+      - alert_number
+      - state
+      - severity
+      - ecosystem
+      - package
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-dependabot-terraform-low-open-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-dependabot-terraform-low-open-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Upgrade or replace the vulnerable terraform dependency.
+      - Confirm Dependabot or a human maintainer closes the alert.
+      - Rerun the Dependabot alert source and verify state is no longer open.
+    effort: low
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Upgrade or replace the vulnerable terraform dependency.
+    steps:
+    - Upgrade or replace the vulnerable terraform dependency.
+    - Confirm Dependabot or a human maintainer closes the alert.
+    - Rerun the Dependabot alert source and verify state is no longer open.
+  riskCategories:
+  - SUPPLY_CHAIN
+  - CHANGE_CONTROL
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC6.1
+    - CC7.1
+    - CC8.1
+  - name: ISO 27001:2022
+    controls:
+    - A.5.15
+    - A.8.8
+    - A.8.25
+  - name: NIST 800-53 r5
+    controls:
+    - RA-5
+    - SA-10
+    - SR-4

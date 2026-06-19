@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	gogithub "github.com/google/go-github/v66/github"
@@ -13,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapp"
 	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
@@ -162,21 +164,7 @@ func orgInstallationEvent(settings settings, install *gogithub.Installation, now
 	if install == nil {
 		return nil, fmt.Errorf("org installation is required")
 	}
-	var permissions []string
-	if p := install.GetPermissions(); p != nil {
-		if p.Administration != nil {
-			permissions = append(permissions, "administration:"+*p.Administration)
-		}
-		if p.Contents != nil {
-			permissions = append(permissions, "contents:"+*p.Contents)
-		}
-		if p.Members != nil {
-			permissions = append(permissions, "members:"+*p.Members)
-		}
-		if p.Metadata != nil {
-			permissions = append(permissions, "metadata:"+*p.Metadata)
-		}
-	}
+	permissions := githubapp.InstallationPermissionPairs(install.GetPermissions())
 	payload := orgInstallationPayload{
 		ID:                  install.GetID(),
 		AppSlug:             install.GetAppSlug(),
@@ -206,11 +194,15 @@ func orgInstallationEvent(settings settings, install *gogithub.Installation, now
 		Payload:    payloadBytes,
 		Attributes: map[string]string{
 			"app_slug":             install.GetAppSlug(),
+			"events":               strings.Join(install.Events, ","),
 			"family":               familyOrgInventory,
 			"installation_id":      strconv.FormatInt(install.GetID(), 10),
 			"owner":                settings.owner,
+			"permissions":          strings.Join(permissions, ","),
 			"repository_selection": install.GetRepositorySelection(),
 			"target_type":          install.GetTargetType(),
+			"created_at":           payload.CreatedAt,
+			"updated_at":           payload.UpdatedAt,
 		},
 	}, nil
 }
