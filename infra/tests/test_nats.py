@@ -45,8 +45,10 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         self.assertEqual(bootstrap_env["NATS_TIMEOUT"], "120s")
         self.assertEqual(bootstrap_env["STREAM_MAX_BYTES"], "128849018880")
         self.assertEqual(bootstrap_env["STREAM_MAX_AGE"], "168h")
+        self.assertEqual(bootstrap_env["STREAM_SUBJECTS"], "events.> sec.>")
         bootstrap_command = " ".join(by_name["jetstream-bootstrap"]["command"])
         self.assertIn('nats_js() { nats --server "$NATS_URL" --timeout "$NATS_TIMEOUT" "$@"; }', bootstrap_command)
+        self.assertIn('for subject in $STREAM_SUBJECTS; do set -- "$@" --subjects "$subject"; done', bootstrap_command)
         self.assertIn("stream edit", bootstrap_command)
         self.assertIn("stream add", bootstrap_command)
         self.assertIn("nats_js stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits", bootstrap_command)
@@ -56,6 +58,10 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         self.assertNotIn("stream edit \"$STREAM_NAME\" \"$@\" --storage", bootstrap_command)
         self.assertEqual(by_name["jetstream-lag-probe"]["user"], "10001")
         self.assertIs(by_name["jetstream-lag-probe"]["readonlyRootFilesystem"], True)
+
+    def test_stream_subjects_cover_canonical_security_events_without_duplicates(self) -> None:
+        self.assertEqual(nats._stream_subjects("events"), ["events.>", "sec.>"])
+        self.assertEqual(nats._stream_subjects("sec"), ["sec.>"])
 
     def test_cloudmap_health_check_threshold_is_preserved(self) -> None:
         health_check_args: list[dict] = []

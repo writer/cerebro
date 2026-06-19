@@ -222,6 +222,14 @@ caused long startup recovery in sec-dev. Keep the threshold below the point
 where a single NATS restart would exceed the acceptable restore window, and
 revisit it after restore drills or retention changes.
 
+The NATS bootstrap stream must bind both `events.>` and `sec.>`. Runtime events
+use the configured `CEREBRO_JETSTREAM_SUBJECT_PREFIX`, while canonical security
+events such as `sec.findings.v1.recorded` publish directly on the `sec.*`
+taxonomy so replay and audit-log queries can preserve security-platform subject
+names. If `sec.>` is missing, finding writes fail as JetStream publish
+`no_response` retries even when NATS CPU, memory, EFS throughput, and consumer
+lag look healthy.
+
 ## Live Rollout
 
 Use AWS SSO profiles that match the stack accounts:

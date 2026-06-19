@@ -9,6 +9,8 @@ import pulumi_aws as aws
 
 import storage
 
+CANONICAL_SECURITY_SUBJECTS = ("sec.>",)
+
 
 def create_nats_service(
     name: str,
@@ -204,6 +206,7 @@ def _build_container_definitions(
         "awslogs-group": log_group_name,
         "awslogs-region": region,
     }
+    stream_subjects = _stream_subjects(subject_prefix)
     containers = [
         {
             "name": "nats",
@@ -239,7 +242,7 @@ def _build_container_definitions(
                 {"name": "NATS_URL", "value": "nats://127.0.0.1:4222"},
                 {"name": "NATS_TIMEOUT", "value": "120s"},
                 {"name": "STREAM_NAME", "value": stream_name},
-                {"name": "SUBJECT_PREFIX", "value": subject_prefix},
+                {"name": "STREAM_SUBJECTS", "value": " ".join(stream_subjects)},
                 {"name": "STREAM_MAX_BYTES", "value": str(stream_max_bytes or "")},
                 {"name": "STREAM_MAX_AGE", "value": str(stream_max_age or "")},
             ],
@@ -248,7 +251,8 @@ def _build_container_definitions(
                 "-ec",
                 (
                     'nats_js() { nats --server "$NATS_URL" --timeout "$NATS_TIMEOUT" "$@"; }; '
-                    'set -- --subjects "${SUBJECT_PREFIX}.>" --discard old --replicas 1; '
+                    'set -- --discard old --replicas 1; '
+                    'for subject in $STREAM_SUBJECTS; do set -- "$@" --subjects "$subject"; done; '
                     'if [ -n "$STREAM_MAX_BYTES" ]; then set -- "$@" --max-bytes "$STREAM_MAX_BYTES"; fi; '
                     'if [ -n "$STREAM_MAX_AGE" ]; then set -- "$@" --max-age "$STREAM_MAX_AGE"; fi; '
                     'if nats_js stream info "$STREAM_NAME" >/dev/null 2>&1; then '
@@ -285,6 +289,15 @@ def _build_container_definitions(
         } if enable_lag_probe else None,
     ]
     return json.dumps([container for container in containers if container is not None])
+
+
+def _stream_subjects(subject_prefix: str) -> list[str]:
+    normalized_prefix = str(subject_prefix or "events").strip().strip(".") or "events"
+    subjects = [f"{normalized_prefix}.>"]
+    for subject in CANONICAL_SECURITY_SUBJECTS:
+        if subject not in subjects:
+            subjects.append(subject)
+    return subjects
 
 
 def _execution_role(name: str) -> aws.iam.Role:
