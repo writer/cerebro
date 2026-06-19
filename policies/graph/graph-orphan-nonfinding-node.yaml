@@ -6,6 +6,7 @@ metadata:
     description: Detect durable non-finding graph nodes with no relationships, indicating source projection or enrichment gaps while ignoring intentionally standalone inventory streams.
     tags:
         - graph
+        - graph-backed
         - graph-hygiene
         - orphan
         - enrichment
@@ -45,6 +46,20 @@ spec:
         falsePositives:
             - Some source records may intentionally be inventory-only and not yet connected to the rest of the graph.
             - Panopticon alerts/cases, SentinelOne installed applications, and Cosmo session/fact records are currently intentionally standalone inventory and are excluded from this broad hygiene check.
+    verification:
+        fixtures:
+            - name: orphan graph entity
+              expect: finding
+              description: A projected non-finding graph entity with no relationships is returned as the primary finding asset.
+            - name: related graph entity
+              expect: pass
+              description: A projected non-finding graph entity with at least one relationship is not returned.
+        mutationChecks:
+            - add_graph_relationship
+            - mark_inventory_only_exception
+        remediationCheck:
+            rerunAfter: 1h
+            expectedStatus: closed
     graph:
         query: |-
             MATCH (entity:Entity {tenant_id: $tenant_id})
@@ -73,3 +88,4 @@ spec:
             - primary_urn
             - fingerprint_key
             - summary
+            - resource_urns
