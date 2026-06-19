@@ -1,19 +1,14 @@
+import pulumi
+
+from components import CerebroService
 from runtime import CerebroRuntimeConfig
 
 
 def main() -> None:
     config = CerebroRuntimeConfig.from_pulumi()
-
-    if config.cloud == "aws":
-        from aws_stack import deploy
-    elif config.cloud == "gcp":
-        from gcp_stack import deploy
-    elif config.cloud == "azure":
-        from azure_stack import deploy
-    else:
-        raise ValueError("cerebro:cloud must be one of aws, gcp, or azure")
-
-    deploy(config)
+    service = CerebroService(config.name, config)
+    for key, value in service.outputs.items():
+        pulumi.export(key, value)
 
 
 main()
