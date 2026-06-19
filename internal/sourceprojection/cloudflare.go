@@ -27,6 +27,10 @@ func cloudflareDNSRecordURN(tenantID string, recordID string) string {
 	return projectionURN(tenantID, "cloudflare_dns_record", strings.TrimSpace(recordID))
 }
 
+func cloudflareLoadBalancerPoolURN(tenantID string, poolID string) string {
+	return projectionURN(tenantID, "cloudflare_load_balancer_pool", strings.TrimSpace(poolID))
+}
+
 func cloudflareEntity(event *cerebrov1.EventEnvelope, urn string, entityType string, label string, attrs map[string]string) *ports.ProjectedEntity {
 	return &ports.ProjectedEntity{
 		URN:        urn,
@@ -85,6 +89,9 @@ func cloudflareMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		"email":      attrs["email"],
 		"status":     attrs["status"],
 	})))
+	if email := strings.TrimSpace(attrs["email"]); email != "" {
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, email, event.GetOccurredAt())
+	}
 	if accountID := strings.TrimSpace(attrs["account_id"]); accountID != "" {
 		accountURN := cloudflareAccountURN(tenantID, accountID)
 		addEntity(entities, cloudflareEntity(event, accountURN, "cloudflare.account", "", map[string]string{"account_id": accountID}))
@@ -214,6 +221,79 @@ func cloudflareDNSRecordProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), zoneURN, recordURN, relationHasDNSRecord, linkAttrs))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+type cloudflareScopeURNFunc func(string, string) string
+
+func cloudflareAccountScopedInventoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudflareScopedInventoryProjections(event, "account_id", "cloudflare.account", "cloudflare_account_scope", cloudflareAccountURN)
+}
+
+func cloudflareZoneScopedInventoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudflareScopedInventoryProjections(event, "zone_id", "cloudflare.zone", "cloudflare_zone_scope", cloudflareZoneURN)
+}
+
+func cloudflareLoadBalancerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	entities, links, err := cloudflareZoneScopedInventoryProjections(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(entities) == 0 {
+		return entities, links, nil
+	}
+	primary := entities[0]
+	tenant := primary.TenantID
+	if tenant == "" {
+		return entities, links, nil
+	}
+	seen := map[string]struct{}{}
+	addPool := func(poolID string) {
+		poolID = strings.TrimSpace(poolID)
+		if poolID == "" {
+			return
+		}
+		if _, ok := seen[poolID]; ok {
+			return
+		}
+		seen[poolID] = struct{}{}
+		poolURN := cloudflareLoadBalancerPoolURN(tenant, poolID)
+		entities = append(entities, cloudflareEntity(event, poolURN, "cloudflare.load_balancer_pool", poolID, map[string]string{"pool_id": poolID}))
+		links = append(links, projectedLink(tenant, event.GetSourceId(), primary.URN, poolURN, relationDependsOn, map[string]string{
+			"event_id":   event.GetId(),
+			"at":         eventObservedAt(event),
+			"match_type": "cloudflare_load_balancer_pool",
+		}))
+	}
+	attrs := event.GetAttributes()
+	addPool(attrs["fallback_pool"])
+	for _, poolID := range splitCSV(attrs["default_pools"]) {
+		addPool(poolID)
+	}
+	return entities, links, nil
+}
+
+func cloudflareScopedInventoryProjections(event *cerebrov1.EventEnvelope, scopeAttr string, scopeEntityType string, matchType string, scopeURN cloudflareScopeURNFunc) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	entities, links, err := genericInventoryProjections(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(entities) == 0 {
+		return entities, links, nil
+	}
+	primary := entities[0]
+	tenant := primary.TenantID
+	scopeID := strings.TrimSpace(event.GetAttributes()[scopeAttr])
+	if tenant == "" || scopeID == "" {
+		return entities, links, nil
+	}
+	targetURN := scopeURN(tenant, scopeID)
+	entities = append(entities, cloudflareEntity(event, targetURN, scopeEntityType, scopeID, map[string]string{scopeAttr: scopeID}))
+	links = append(links, projectedLink(tenant, event.GetSourceId(), primary.URN, targetURN, relationBelongsTo, map[string]string{
+		"event_id":   event.GetId(),
+		"at":         eventObservedAt(event),
+		"match_type": matchType,
+	}))
+	return entities, links, nil
 }
 
 // cloudflareDNSRecordRetractions removes obsolete dns_record-to-zone links when a

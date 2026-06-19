@@ -34,7 +34,7 @@ func TestProjectTailscaleInventoryEntitiesAndLinks(t *testing.T) {
 			"user_id": "user-1", "login_name": "alice@writer.com", "email": "alice@writer.com", "role": "admin", "status": "active",
 		}),
 		tailscaleTestEvent("ts-device-1", "tailscale.device", map[string]string{
-			"device_id": "device-1", "node_id": "node-1", "name": "laptop", "os": "macOS", "user_id": "user-1", "authorized": "true",
+			"device_id": "device-1", "node_id": "node-1", "name": "laptop", "os": "macOS", "user_id": "user-1", "authorized": "true", "tags": "tag:prod",
 		}),
 		tailscaleTestEvent("ts-group-1", "tailscale.group", map[string]string{
 			"group_id": "group:eng", "name": "group:eng", "members": "alice@writer.com,bob@writer.com",
@@ -80,6 +80,7 @@ func TestProjectTailscaleInventoryEntitiesAndLinks(t *testing.T) {
 
 	assertProjectedLink(t, state, deviceURN, relationOwnedBy, userURN)
 	assertProjectedLink(t, state, userURN, relationCanReach, deviceURN)
+	assertProjectedLink(t, state, deviceURN, relationTaggedAs, tagURN)
 	assertProjectedLink(t, state, groupURN, relationContains, memberURN)
 	assertProjectedLink(t, state, memberURN, relationMemberOf, groupURN)
 	assertProjectedLink(t, state, tagURN, relationOwnedBy, groupURN)

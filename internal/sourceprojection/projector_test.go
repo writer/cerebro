@@ -1327,6 +1327,36 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 	}
 }
 
+func TestProjectOktaThreatInsightLinksExcludedNetworkZones(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := &cerebrov1.EventEnvelope{
+		Id:       "okta-threat-insight",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.threat_insight",
+		Attributes: map[string]string{
+			"action":             "block",
+			"domain":             "writer.okta.com",
+			"exclude_zone_count": "1",
+		},
+		Payload: []byte(`{"domain":"writer.okta.com","action":"block","exclude_zones":["zone-corp"]}`),
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	threatInsightURN := "urn:cerebro:writer:okta_threat_insight:writer.okta.com"
+	zoneURN := "urn:cerebro:writer:okta_network_zone:zone-corp"
+	orgURN := "urn:cerebro:writer:okta_org:writer.okta.com"
+	if entity := state.entities[zoneURN]; entity == nil || entity.EntityType != "okta.network_zone" {
+		t.Fatalf("excluded network zone entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, threatInsightURN, relationDependsOn, zoneURN)
+	assertProjectedLink(t, state, zoneURN, relationBelongsTo, orgURN)
+}
+
 func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -5573,7 +5603,10 @@ func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T
 			"cloud_account_external_id": "123456789012",
 			"cloud_provider":            "aws",
 			"cluster_id":                "prod-cluster",
+			"image":                     "registry.example.com/payments-api@sha256:abc123",
+			"image_digest":              "sha256:abc123",
 			"namespace":                 "payments",
+			"node_name":                 "ip-10-0-1-10",
 			"service_account_name":      "api",
 			"workload_kind":             "Deployment",
 			"workload_name":             "payments-api",
@@ -5586,11 +5619,202 @@ func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T
 
 	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
 	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	workloadURN := "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
+	imageURN := "urn:cerebro:writer:trivy_image:sha256:abc123"
 	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, workloadURN, relationAssociatedWith, nodeURN)
+	assertProjectedLink(t, state, workloadURN, relationDependsOn, imageURN)
 	if got := state.entities[clusterURN].EntityType; got != "kubernetes.cluster" {
 		t.Fatalf("cluster entity_type = %q, want kubernetes.cluster", got)
 	}
+}
+
+func TestProjectKubernetesContainerLinksWorkloadNodeAndImage(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-container",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.container",
+		Attributes: map[string]string{
+			"cluster_id":     "prod-cluster",
+			"container_name": "api",
+			"image":          "registry.example.com/payments-api@sha256:abc123",
+			"image_digest":   "sha256:abc123",
+			"namespace":      "payments",
+			"node_name":      "ip-10-0-1-10",
+			"resource_id":    "pod-uid-1",
+			"status_ready":   "true",
+			"workload_kind":  "Pod",
+			"workload_name":  "payments-api",
+			"workload_uid":   "pod-uid-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	containerURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:pod-uid-1:api"
+	workloadURN := "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:pod-uid-1"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
+	imageURN := "urn:cerebro:writer:trivy_image:sha256:abc123"
+	if entity := state.entities[containerURN]; entity == nil || entity.EntityType != "kubernetes.container" {
+		t.Fatalf("container entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, containerURN, relationBelongsTo, workloadURN)
+	assertProjectedLink(t, state, containerURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, workloadURN, relationContains, containerURN)
+	assertProjectedLink(t, state, workloadURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, "urn:cerebro:writer:kubernetes_cluster:prod-cluster")
+	assertProjectedLink(t, state, containerURN, relationAssociatedWith, nodeURN)
+	assertProjectedLink(t, state, containerURN, relationDependsOn, imageURN)
+}
+
+func TestProjectKubernetesContainerPrefersPodUIDOverWorkloadUID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, uid := range []string{"pod-uid-1", "pod-uid-2"} {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "k8s-container-" + uid,
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.container",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"container_name": "api",
+				"namespace":      "payments",
+				"uid":            uid,
+				"workload_kind":  "ReplicaSet",
+				"workload_name":  "payments-api",
+				"workload_uid":   "replicaset-uid-1",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project(%s) error = %v", uid, err)
+		}
+	}
+
+	firstURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:pod-uid-1:api"
+	secondURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:pod-uid-2:api"
+	for _, urn := range []string{firstURN, secondURN} {
+		if entity := state.entities[urn]; entity == nil || entity.EntityType != "kubernetes.container" {
+			t.Fatalf("container entity %s missing or wrong: %#v", urn, entity)
+		}
+	}
+	collapsedURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:replicaset-uid-1:api"
+	if entity := state.entities[collapsedURN]; entity != nil {
+		t.Fatalf("containers with distinct pod UIDs collapsed through workload UID: %#v", entity)
+	}
+}
+
+func TestProjectKubernetesPodIdentityRequiresPodID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "k8s-container-workload-uid-only",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.container",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"container_name": "api",
+				"namespace":      "payments",
+				"node_name":      "ip-10-0-1-10",
+				"workload_kind":  "ReplicaSet",
+				"workload_name":  "payments-api",
+				"workload_uid":   "replicaset-uid-1",
+			},
+		},
+		{
+			Id:       "k8s-pod-workload-uid-only",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.pod",
+			Attributes: map[string]string{
+				"cluster_id":    "prod-cluster",
+				"namespace":     "payments",
+				"node_name":     "ip-10-0-1-11",
+				"resource_name": "payments-api-abc123",
+				"workload_kind": "ReplicaSet",
+				"workload_name": "payments-api",
+				"workload_uid":  "replicaset-uid-1",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	for _, urn := range []string{
+		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:replicaset-uid-1:api",
+		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:replicaset-uid-1",
+	} {
+		if entity := state.entities[urn]; entity != nil {
+			t.Fatalf("workload UID must not be used as pod identity for %s: %#v", urn, entity)
+		}
+	}
+}
+
+func TestProjectKubernetesPodLinksNamespaceServiceAccountNodeAndImage(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-pod",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.pod",
+		Attributes: map[string]string{
+			"cloud_account_external_id": "123456789012",
+			"cloud_provider":            "aws",
+			"cluster_id":                "prod-cluster",
+			"image":                     "registry.example.com/payments-api@sha256:abc123",
+			"image_digest":              "sha256:abc123",
+			"namespace":                 "payments",
+			"node_name":                 "ip-10-0-1-10",
+			"resource_id":               "pod-uid-1",
+			"resource_name":             "payments-api-abc123",
+			"service_account_name":      "api",
+			"uid":                       "pod-uid-1",
+			"workload_kind":             "Pod",
+			"workload_name":             "payments-api-abc123",
+			"workload_uid":              "pod-uid-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	podURN := "urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:pod-uid-1"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
+	imageURN := "urn:cerebro:writer:trivy_image:sha256:abc123"
+	if entity := state.entities[podURN]; entity == nil || entity.EntityType != "kubernetes.pod" {
+		t.Fatalf("pod entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, podURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, podURN, relationRunsAs, serviceAccountURN)
+	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, nodeURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, podURN, relationAssociatedWith, nodeURN)
+	assertProjectedLink(t, state, podURN, relationDependsOn, imageURN)
 }
 
 func TestProjectKubernetesWorkloadIdentityBindingAddsContainmentLinks(t *testing.T) {
@@ -5922,6 +6146,48 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 				"service_account_name": "api",
 			},
 		},
+		{
+			Id:       "k8s-container-no-pod-id",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.container",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"container_name": "api",
+				"namespace":      "payments",
+				"workload_name":  "payments-api",
+				"workload_uid":   "workload-1",
+			},
+		},
+		{
+			Id:       "k8s-workload-no-node",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"name":           "payments-api-abc123",
+				"namespace":      "payments",
+				"resource_name":  "payments-api-abc123",
+				"workload_name":  "payments-api",
+				"workload_uid":   "workload-1",
+				"workload_image": "api",
+			},
+		},
+		{
+			Id:       "k8s-pod-no-pod-id",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.pod",
+			Attributes: map[string]string{
+				"cluster_id":    "prod-cluster",
+				"name":          "payments-api-abc123",
+				"namespace":     "payments",
+				"resource_name": "payments-api-abc123",
+				"workload_name": "payments-api",
+				"workload_uid":  "workload-1",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -5934,6 +6200,11 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 		"urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:/",
 		"urn:cerebro:writer:kubernetes_service_account:payments:api",
 		"urn:cerebro:writer:kubernetes_namespace:payments",
+		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:payments-api:api",
+		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:workload-1:api",
+		"urn:cerebro:writer:kubernetes_node:prod-cluster:payments-api-abc123",
+		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:payments-api-abc123",
+		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:workload-1",
 	} {
 		if _, ok := state.entities[urn]; ok {
 			t.Fatalf("sparse event minted placeholder entity %q", urn)

@@ -200,6 +200,15 @@ func tailscaleDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			}))
 		}
 	}
+	for _, tag := range tailscaleSplitList(attrs["tags"]) {
+		tagURN := tailscaleTagURN(tenantID, tag)
+		addEntity(entities, tailscaleEntity(event, tagURN, "tailscale.tag", tag, map[string]string{"tag_id": tag}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), deviceURN, tagURN, relationTaggedAs, map[string]string{
+			"event_id":   event.GetId(),
+			"at":         eventObservedAt(event),
+			"match_type": "tailscale_device_tag",
+		}))
+	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }

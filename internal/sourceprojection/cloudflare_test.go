@@ -54,6 +54,8 @@ func TestProjectCloudflareInventoryEntitiesAndLinks(t *testing.T) {
 	}
 
 	accountURN := "urn:cerebro:writer:cloudflare_account:acct-1"
+	emailURN := "urn:cerebro:writer:identifier:email:alice@example.com"
+	identityURN := "urn:cerebro:writer:identity:email:alice@example.com"
 	roleURN := "urn:cerebro:writer:cloudflare_role:role-1"
 	memberURN := "urn:cerebro:writer:cloudflare_member:member-1"
 	zoneURN := "urn:cerebro:writer:cloudflare_zone:zone-1"
@@ -79,6 +81,8 @@ func TestProjectCloudflareInventoryEntitiesAndLinks(t *testing.T) {
 
 	assertProjectedLink(t, state, memberURN, relationBelongsTo, accountURN)
 	assertProjectedLink(t, state, memberURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, memberURN, relationHasIdentifier, emailURN)
+	assertProjectedLink(t, state, memberURN, relationRepresentsIdentity, identityURN)
 	assertProjectedLink(t, state, roleURN, relationBelongsTo, accountURN)
 	assertProjectedLink(t, state, zoneURN, relationBelongsTo, accountURN)
 	assertProjectedLink(t, state, recordURN, relationBelongsTo, zoneURN)
@@ -115,6 +119,115 @@ func TestRegistryRoutesCloudflareCoreKinds(t *testing.T) {
 				t.Fatalf("kind %q did not route to dedicated projector; entities=%#v", tc.kind, entities)
 			}
 		})
+	}
+}
+
+func TestProjectCloudflareScopedInventoryLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	ctx := context.Background()
+
+	events := []*cerebrov1.EventEnvelope{
+		cloudflareTestEvent("cf-access-app", "cloudflare.access_application", map[string]string{
+			"application_id": "app-1", "account_id": "acct-1", "name": "Admin App",
+		}, `{"id":"app-1"}`),
+		cloudflareTestEvent("cf-account-ruleset", "cloudflare.account_ruleset", map[string]string{
+			"ruleset_id": "ruleset-1", "account_id": "acct-1", "name": "Account WAF",
+		}, `{"id":"ruleset-1"}`),
+		cloudflareTestEvent("cf-worker-script", "cloudflare.worker_script", map[string]string{
+			"script_id": "api", "account_id": "acct-1", "name": "api",
+		}, `{"id":"api"}`),
+		cloudflareTestEvent("cf-pool", "cloudflare.load_balancer_pool", map[string]string{
+			"pool_id": "pool-1", "account_id": "acct-1", "name": "Primary Pool",
+		}, `{"id":"pool-1"}`),
+		cloudflareTestEvent("cf-zone-access-group", "cloudflare.zone_access_group", map[string]string{
+			"group_id": "group-1", "zone_id": "zone-1", "name": "Employees",
+		}, `{"id":"group-1"}`),
+		cloudflareTestEvent("cf-zone-ruleset", "cloudflare.zone_ruleset", map[string]string{
+			"ruleset_id": "zone-ruleset-1", "zone_id": "zone-1", "name": "Zone WAF",
+		}, `{"id":"zone-ruleset-1"}`),
+		cloudflareTestEvent("cf-lb", "cloudflare.load_balancer", map[string]string{
+			"load_balancer_id": "lb-1", "zone_id": "zone-1", "name": "www.example.com", "fallback_pool": "pool-1", "default_pools": "pool-2,pool-1",
+		}, `{"id":"lb-1"}`),
+		cloudflareTestEvent("cf-audit", "cloudflare.audit_log", map[string]string{
+			"audit_id": "audit-1", "account_id": "acct-1", "zone_id": "zone-1", "actor_email": "admin@example.com",
+		}, `{"id":"audit-1"}`),
+	}
+	for _, event := range events {
+		if _, err := service.Project(ctx, event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	accountURN := "urn:cerebro:writer:cloudflare_account:acct-1"
+	zoneURN := "urn:cerebro:writer:cloudflare_zone:zone-1"
+	accessAppURN := "urn:cerebro:writer:cloudflare_access_application:app-1"
+	accountRulesetURN := "urn:cerebro:writer:cloudflare_account_ruleset:ruleset-1"
+	workerScriptURN := "urn:cerebro:writer:cloudflare_worker_script:acct-1%7Capi"
+	poolURN := "urn:cerebro:writer:cloudflare_load_balancer_pool:pool-1"
+	defaultPoolURN := "urn:cerebro:writer:cloudflare_load_balancer_pool:pool-2"
+	zoneAccessGroupURN := "urn:cerebro:writer:cloudflare_zone_access_group:group-1"
+	zoneRulesetURN := "urn:cerebro:writer:cloudflare_zone_ruleset:zone-ruleset-1"
+	loadBalancerURN := "urn:cerebro:writer:cloudflare_load_balancer:lb-1"
+	auditURN := "urn:cerebro:writer:cloudflare_audit_log:audit-1"
+
+	for _, urn := range []string{accessAppURN, accountRulesetURN, workerScriptURN, poolURN, zoneAccessGroupURN, zoneRulesetURN, loadBalancerURN, auditURN} {
+		if entity := state.entities[urn]; entity == nil {
+			t.Fatalf("expected entity %s; entities=%#v", urn, state.entities)
+		}
+	}
+	assertProjectedLink(t, state, accessAppURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, accountRulesetURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, workerScriptURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, poolURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, zoneAccessGroupURN, relationBelongsTo, zoneURN)
+	assertProjectedLink(t, state, zoneRulesetURN, relationBelongsTo, zoneURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationBelongsTo, zoneURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationDependsOn, poolURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationDependsOn, defaultPoolURN)
+}
+
+func TestProjectCloudflareWorkerScriptRequiresAccountScopedIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := cloudflareTestEvent("cf-worker-missing-account", "cloudflare.worker_script", map[string]string{
+		"script_id": "api",
+		"name":      "api",
+	}, `{"id":"api"}`)
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	nameOnlyURN := "urn:cerebro:writer:cloudflare_worker_script:api"
+	if entity := state.entities[nameOnlyURN]; entity != nil {
+		t.Fatalf("worker script without account must not use script name alone: %#v", entity)
+	}
+	eventURN := "urn:cerebro:writer:cloudflare_worker_script:cf-worker-missing-account"
+	if entity := state.entities[eventURN]; entity == nil || entity.EntityType != "cloudflare.worker_script" {
+		t.Fatalf("worker script fallback entity missing or wrong: %#v", entity)
+	}
+}
+
+func TestProjectCloudflareLoadBalancerDoesNotUseZoneAsIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := cloudflareTestEvent("cf-lb-missing-id", "cloudflare.load_balancer", map[string]string{
+		"zone_id": "zone-1",
+		"name":    "www.example.com",
+	}, `{"name":"www.example.com"}`)
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	zoneDerivedURN := "urn:cerebro:writer:cloudflare_load_balancer:zone-1"
+	if entity := state.entities[zoneDerivedURN]; entity != nil {
+		t.Fatalf("load balancer without id must not use zone as identity: %#v", entity)
+	}
+	eventURN := "urn:cerebro:writer:cloudflare_load_balancer:cf-lb-missing-id"
+	if entity := state.entities[eventURN]; entity == nil || entity.EntityType != "cloudflare.load_balancer" {
+		t.Fatalf("load balancer fallback entity missing or wrong: %#v", entity)
 	}
 }
 
