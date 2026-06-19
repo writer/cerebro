@@ -11,12 +11,14 @@ type NewPolicyRuleInput struct {
 	Domain          string
 	Name            string
 	Description     string
+	References      []string
 	Severity        string
 	Effect          string
 	Resource        string
 	ResourceType    string
 	Conditions      []string
 	Query           string
+	Graph           PolicyRuleGraphFinding
 	Tags            []string
 	RiskCategories  []string
 	Frameworks      []PolicyFramework
@@ -41,6 +43,7 @@ func NewPolicyRule(input NewPolicyRuleInput) PolicyFindingRule {
 			Name:        strings.TrimSpace(input.Name),
 			Description: strings.TrimSpace(input.Description),
 			Tags:        trimStrings(input.Tags),
+			References:  trimStrings(input.References),
 		},
 		Spec: PolicyFindingRuleSpec{
 			Severity:       severity,
@@ -48,6 +51,7 @@ func NewPolicyRule(input NewPolicyRuleInput) PolicyFindingRule {
 			Resource:       strings.TrimSpace(input.Resource),
 			ResourceType:   strings.TrimSpace(input.ResourceType),
 			Match:          PolicyRuleMatch{Conditions: trimStrings(input.Conditions), Query: strings.TrimSpace(input.Query)},
+			Graph:          input.Graph,
 			Remediation:    PolicyRuleRemediation{Summary: strings.TrimSpace(input.Remediation), Steps: trimStrings(input.RemediationStep)},
 			RiskCategories: trimStrings(input.RiskCategories),
 			Frameworks:     normalizeFrameworks(input.Frameworks),
@@ -71,6 +75,7 @@ func NormalizePolicyRule(rule PolicyFindingRule) PolicyFindingRule {
 	rule.Metadata.Description = strings.TrimSpace(rule.Metadata.Description)
 	rule.Metadata.LastModified = strings.TrimSpace(rule.Metadata.LastModified)
 	rule.Metadata.Tags = trimStrings(rule.Metadata.Tags)
+	rule.Metadata.References = trimStrings(rule.Metadata.References)
 	rule.Spec.Severity = strings.TrimSpace(rule.Spec.Severity)
 	rule.Spec.Category = strings.TrimSpace(rule.Spec.Category)
 	rule.Spec.Effect = strings.TrimSpace(rule.Spec.Effect)
@@ -88,6 +93,9 @@ func NormalizePolicyRule(rule PolicyFindingRule) PolicyFindingRule {
 	rule.Spec.Remediation.Steps = trimStrings(rule.Spec.Remediation.Steps)
 	rule.Spec.RiskCategories = trimStrings(rule.Spec.RiskCategories)
 	rule.Spec.Frameworks = normalizeFrameworks(rule.Spec.Frameworks)
+	rule.Spec.Graph.Query = strings.TrimSpace(rule.Spec.Graph.Query)
+	rule.Spec.Graph.RequiredColumns = trimStrings(rule.Spec.Graph.RequiredColumns)
+	rule.Spec.Graph.Params = normalizeGraphParams(rule.Spec.Graph.Params)
 	for idx := range rule.Spec.MITREAttack {
 		rule.Spec.MITREAttack[idx].Tactic = strings.TrimSpace(rule.Spec.MITREAttack[idx].Tactic)
 		rule.Spec.MITREAttack[idx].Technique = strings.TrimSpace(rule.Spec.MITREAttack[idx].Technique)
@@ -129,6 +137,22 @@ func normalizeFrameworks(frameworks []PolicyFramework) []PolicyFramework {
 		}
 	}
 	return out
+}
+
+func normalizeGraphParams(params map[string]any) map[string]any {
+	if len(params) == 0 {
+		return nil
+	}
+	normalized := map[string]any{}
+	for key, value := range params {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			normalized[trimmed] = value
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func firstNonEmpty(values ...string) string {

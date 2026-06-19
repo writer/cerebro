@@ -164,6 +164,39 @@ func TestPolicyDSLContractMetadataOverridesGeneratedRuleFields(t *testing.T) {
 	}
 }
 
+func TestGraphPolicyGenerationDefaults(t *testing.T) {
+	policy := policyFile{
+		ID:       "graph-orphan-nonfinding-node",
+		Name:     "Graph Orphan Non-Finding Node",
+		Severity: "low",
+		Input: findingdsl.PolicyRuleInput{
+			SourceKinds: []string{"graph"},
+		},
+		Graph: findingdsl.PolicyRuleGraphFinding{
+			Query:           "MATCH (entity:Entity {tenant_id: $tenant_id}) RETURN entity.urn AS primary_urn LIMIT $row_limit",
+			RowLimit:        500,
+			RequiredColumns: []string{"primary_urn"},
+		},
+		domain: "graph",
+	}
+
+	if got := policyEvidenceMode(policy); got != "graph" {
+		t.Fatalf("policyEvidenceMode() = %q, want graph", got)
+	}
+	if got, want := strings.Join(policyEventKinds(policy), ","), "graph"; got != want {
+		t.Fatalf("policyEventKinds() = %q, want %q", got, want)
+	}
+	if got := policySourceIDLiteral(policy); got != `"graph"` {
+		t.Fatalf("policySourceIDLiteral() = %q, want graph literal", got)
+	}
+	if got := policyOutputKindLiteral(policy); got != "policyGraphOutputKind" {
+		t.Fatalf("policyOutputKindLiteral() = %q, want policyGraphOutputKind", got)
+	}
+	if got := policyEvidenceLabel(policyEvidenceMode(policy)); got != "graph-state" {
+		t.Fatalf("policyEvidenceLabel(graph) = %q, want graph-state", got)
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

@@ -1,0 +1,17 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: orphan graph entity fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:graph_node:orphan-1
+        primary_label: orphan-1
+        primary_type: graph.node
+        fingerprint_key: urn:cerebro:writer:graph_node:orphan-1
+        severity: LOW
+        summary: Graph entity orphan-1 has no relationships
+        action: Add projection relationships or document why the entity is intentionally inventory-only
+    wantFinding: true
+  - name: no orphan rows passes
+    resource:
+      placeholder: true
+    wantFinding: false

@@ -115,7 +115,6 @@ func TestReviewCoordinationGraphRulesHaveDirectCoverage(t *testing.T) {
 		{name: "sentinelone unmitigated threat", rule: newSentinelOneUnmitigatedThreatRule(), sourceID: "sentinelone", family: "threat", querySnippet: `"mitigation_status":"not_mitigated"`},
 		{name: "cloud current public exposure", rule: newCloudPublicResourceExposureGraphRule(), sourceID: "aws", family: "resource_exposure", querySnippet: `"internet_exposed":"true"`},
 		{name: "graph aws eni link missing", rule: newGraphAWSEC2ENILinkMissingRule(), sourceID: "graph", querySnippet: "attached_instance_id"},
-		{name: "graph orphan node", rule: newGraphOrphanNonFindingNodeRule(), sourceID: "graph", querySnippet: "entity.entity_type <> 'finding'"},
 	}
 
 	for _, tt := range tests {

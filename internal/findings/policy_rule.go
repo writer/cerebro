@@ -13,6 +13,7 @@ import (
 const (
 	policyRuleSourceID        = "policy"
 	policyRuleOutputKind      = "policy.finding"
+	policyGraphOutputKind     = "policy.graph_finding"
 	policyRuleEvidenceKind    = "policy.evidence"
 	policyRuleResultEventKind = "policy.result"
 )
@@ -33,11 +34,25 @@ type policyRuleConfig struct {
 	ExceptionGuidance  []string
 	ControlFamilies    []string
 	ContractAttributes map[string]string
+	Graph              policyRuleGraphConfig
 	Enabled            bool
+}
+
+type policyRuleGraphConfig struct {
+	Query           string
+	RowLimit        int
+	Params          map[string]any
+	SourceKinds     []string
+	RequiredColumns []string
 }
 
 type policyCatalogRule struct {
 	config policyRuleConfig
+}
+
+type policyGraphCatalogRule struct {
+	config   policyRuleConfig
+	delegate GraphRule
 }
 
 func newPolicyCatalogRules() []Rule {
@@ -49,6 +64,14 @@ func newPolicyCatalogRules() []Rule {
 }
 
 func newPolicyCatalogRule(config policyRuleConfig) Rule {
+	config = normalizePolicyRuleConfig(config)
+	if strings.TrimSpace(config.Graph.Query) != "" {
+		return newPolicyGraphCatalogRule(config)
+	}
+	return &policyCatalogRule{config: config}
+}
+
+func normalizePolicyRuleConfig(config policyRuleConfig) policyRuleConfig {
 	definition := cloneRuleDefinition(config.Definition)
 	if definition.SourceID == "" {
 		definition.SourceID = policyRuleSourceID
@@ -68,7 +91,26 @@ func newPolicyCatalogRule(config policyRuleConfig) Rule {
 	config.ExceptionGuidance = cloneStringSlice(config.ExceptionGuidance)
 	config.ControlFamilies = cloneStringSlice(config.ControlFamilies)
 	config.ContractAttributes = cloneStringMap(config.ContractAttributes)
-	return &policyCatalogRule{config: config}
+	config.Graph.Params = cloneAnyMap(config.Graph.Params)
+	config.Graph.SourceKinds = cloneStringSlice(config.Graph.SourceKinds)
+	config.Graph.RequiredColumns = cloneStringSlice(config.Graph.RequiredColumns)
+	return config
+}
+
+func newPolicyGraphCatalogRule(config policyRuleConfig) Rule {
+	definition := cloneRuleDefinition(config.Definition)
+	if definition.SourceID == "" || definition.SourceID == policyRuleSourceID {
+		definition.SourceID = policyGraphSourceID(config.Graph.SourceKinds)
+	}
+	if definition.OutputKind == "" || definition.OutputKind == policyRuleOutputKind {
+		definition.OutputKind = policyGraphOutputKind
+	}
+	if definition.Lifecycle.Kind == "" || definition.Lifecycle.Kind == LifecycleAuditEvidence {
+		definition.Lifecycle = Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}
+	}
+	config.Definition = definition
+	delegate, _ := newCoordinationGraphRule(definition, policyGraphSourceFamilies(config.Graph.SourceKinds), config.Graph.Query, config.Graph.Params).(GraphRule)
+	return &policyGraphCatalogRule{config: config, delegate: delegate}
 }
 
 func (r *policyCatalogRule) RuleMetadata() RuleDefinition {
@@ -96,6 +138,78 @@ func (r *policyCatalogRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bo
 		return false
 	}
 	return runtimeMayEmitEventKind(runtime, r.config.Definition.EventKinds)
+}
+
+func (r *policyGraphCatalogRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.config.Definition)
+}
+
+func (r *policyGraphCatalogRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil || r.delegate == nil {
+		return nil
+	}
+	return r.delegate.Spec()
+}
+
+func (r *policyGraphCatalogRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || r.delegate == nil || !r.config.Enabled {
+		return false
+	}
+	return r.delegate.SupportsRuntime(runtime)
+}
+
+func (r *policyGraphCatalogRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func (r *policyGraphCatalogRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports.CypherQueryRequest {
+	if r == nil || r.delegate == nil {
+		return ports.CypherQueryRequest{}
+	}
+	request := r.delegate.QueryFor(runtime)
+	if r.config.Graph.RowLimit > 0 {
+		request.RowLimit = r.config.Graph.RowLimit
+		if request.Params == nil {
+			request.Params = map[string]any{}
+		}
+		request.Params["row_limit"] = int64(r.config.Graph.RowLimit)
+	}
+	return request
+}
+
+func (r *policyGraphCatalogRule) EvaluateRows(ctx context.Context, runtime *cerebrov1.SourceRuntime, rows []ports.CypherRow) ([]*ports.FindingRecord, error) {
+	if r == nil || r.delegate == nil {
+		return nil, nil
+	}
+	findings, err := r.delegate.EvaluateRows(ctx, runtime, rows)
+	if err != nil {
+		return nil, err
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if finding.Attributes == nil {
+			finding.Attributes = map[string]string{}
+		}
+		finding.PolicyID = r.config.Definition.ID
+		finding.PolicyName = r.config.Definition.Name
+		finding.ObservedPolicyIDs = []string{r.config.Definition.ID}
+		finding.Attributes["policy_id"] = r.config.Definition.ID
+		finding.Attributes["policy_name"] = r.config.Definition.Name
+		finding.Attributes["policy_evidence"] = "graph"
+		finding.Attributes["policy_graph_query_present"] = "true"
+		for key, value := range r.config.ContractAttributes {
+			if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
+				finding.Attributes[trimmedKey] = strings.TrimSpace(value)
+			}
+		}
+		trimEmptyAttributes(finding.Attributes)
+	}
+	return findings, nil
 }
 
 func (r *policyCatalogRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
@@ -237,6 +351,8 @@ func policyEvidenceSummary(config policyRuleConfig) string {
 	}
 	evidenceType = humanPolicyEvidenceType(evidenceType)
 	switch mode {
+	case "graph":
+		return "Failed graph-state evidence for " + evidenceType + ". Review each returned graph row as an exception candidate."
 	case "query":
 		return "Failed query-result evidence for " + evidenceType + ". Review each returned row as an exception candidate."
 	case "manual":
@@ -263,6 +379,60 @@ func policyNextStep(config policyRuleConfig) string {
 		return guidance
 	}
 	return "Review the failed evidence, document remediation or exception status, and rerun evidence collection."
+}
+
+func policyGraphSourceID(sourceKinds []string) string {
+	for _, sourceKind := range sourceKinds {
+		sourceID, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(sourceKind)), ".")
+		if sourceID != "" {
+			return sourceID
+		}
+	}
+	return "graph"
+}
+
+func policyGraphSourceFamilies(sourceKinds []string) map[string][]string {
+	if len(sourceKinds) == 0 {
+		return nil
+	}
+	families := map[string][]string{}
+	sourceAllFamilies := map[string]struct{}{}
+	for _, sourceKind := range sourceKinds {
+		sourceKind = strings.ToLower(strings.TrimSpace(sourceKind))
+		if sourceKind == "" {
+			continue
+		}
+		sourceID, family, hasFamily := strings.Cut(sourceKind, ".")
+		sourceID = strings.TrimSpace(sourceID)
+		family = strings.TrimSpace(family)
+		if sourceID == "" {
+			continue
+		}
+		if !hasFamily || family == "" {
+			sourceAllFamilies[sourceID] = struct{}{}
+			families[sourceID] = nil
+			continue
+		}
+		if _, all := sourceAllFamilies[sourceID]; all {
+			continue
+		}
+		families[sourceID] = append(families[sourceID], family)
+	}
+	if len(families) == 0 {
+		return nil
+	}
+	return families
+}
+
+func cloneAnyMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func compactPolicyControlFamilies(values []string, limit int) string {

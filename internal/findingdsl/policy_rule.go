@@ -40,6 +40,7 @@ type PolicyRuleMetadata struct {
 	Description  string   `json:"description" yaml:"description"`
 	LastModified string   `json:"lastModified,omitempty" yaml:"lastModified,omitempty"`
 	Tags         []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	References   []string `json:"references,omitempty" yaml:"references,omitempty"`
 }
 
 type PolicyFindingRuleSpec struct {
@@ -50,7 +51,7 @@ type PolicyFindingRuleSpec struct {
 	Action         string                 `json:"action,omitempty" yaml:"action,omitempty"`
 	Resource       string                 `json:"resource,omitempty" yaml:"resource,omitempty"`
 	ResourceType   string                 `json:"resourceType,omitempty" yaml:"resourceType,omitempty"`
-	Match          PolicyRuleMatch        `json:"match" yaml:"match"`
+	Match          PolicyRuleMatch        `json:"match,omitempty" yaml:"match,omitempty"`
 	Remediation    PolicyRuleRemediation  `json:"remediation,omitempty" yaml:"remediation,omitempty"`
 	RiskCategories []string               `json:"riskCategories,omitempty" yaml:"riskCategories,omitempty"`
 	Frameworks     []PolicyFramework      `json:"frameworks,omitempty" yaml:"frameworks,omitempty"`
@@ -62,6 +63,7 @@ type PolicyFindingRuleSpec struct {
 	Audit          PolicyRuleAudit        `json:"audit,omitempty" yaml:"audit,omitempty"`
 	Verification   PolicyRuleVerification `json:"verification,omitempty" yaml:"verification,omitempty"`
 	Actions        PolicyRuleActions      `json:"actions,omitempty" yaml:"actions,omitempty"`
+	Graph          PolicyRuleGraphFinding `json:"graph,omitempty" yaml:"graph,omitempty"`
 	Enabled        *bool                  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 }
 
@@ -169,6 +171,13 @@ type PolicyRuleActions struct {
 	Effort       string                       `json:"effort,omitempty" yaml:"effort,omitempty"`
 	BlastRadius  PolicyRuleActionBlastRadius  `json:"blastRadius,omitempty" yaml:"blastRadius,omitempty"`
 	Verification PolicyRuleActionVerification `json:"verification,omitempty" yaml:"verification,omitempty"`
+}
+
+type PolicyRuleGraphFinding struct {
+	Query           string         `json:"query,omitempty" yaml:"query,omitempty"`
+	RowLimit        int            `json:"rowLimit,omitempty" yaml:"rowLimit,omitempty"`
+	Params          map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
+	RequiredColumns []string       `json:"requiredColumns,omitempty" yaml:"requiredColumns,omitempty"`
 }
 
 type PolicyRuleActionOwner struct {
@@ -358,11 +367,15 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 	hasConditions := len(trimStrings(rule.Spec.Match.Conditions)) != 0
 	hasQuery := strings.TrimSpace(rule.Spec.Match.Query) != ""
 	hasAssert := policyAssertConfigured(rule.Spec.Assert)
+	hasGraph := policyGraphConfigured(rule.Spec.Graph)
 	if hasConditions && hasQuery {
 		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions and spec.match.query are mutually exclusive"})
 	}
-	if !hasConditions && !hasQuery && !hasAssert {
-		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions, spec.match.query, or spec.assert is required"})
+	if hasGraph && (hasConditions || hasQuery || hasAssert) {
+		issues = append(issues, Issue{Path: path, Message: "spec.graph is mutually exclusive with spec.match and spec.assert"})
+	}
+	if !hasConditions && !hasQuery && !hasAssert && !hasGraph {
+		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions, spec.match.query, spec.assert, or spec.graph is required"})
 	}
 	if hasConditions {
 		if strings.TrimSpace(rule.Spec.Effect) == "" {
@@ -390,9 +403,12 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 		}
 	}
 	issues = append(issues, validateStringArray(path, "metadata.tags", rule.Metadata.Tags)...)
+	issues = append(issues, validateStringArray(path, "metadata.references", rule.Metadata.References)...)
 	issues = append(issues, validateStringArray(path, "spec.riskCategories", rule.Spec.RiskCategories)...)
 	issues = append(issues, validateUniqueStringArray(path, "metadata.tags", rule.Metadata.Tags)...)
+	issues = append(issues, validateUniqueStringArray(path, "metadata.references", rule.Metadata.References)...)
 	issues = append(issues, validateUniqueStringArray(path, "spec.riskCategories", rule.Spec.RiskCategories)...)
+	issues = append(issues, validatePolicyRuleGraph(path, rule.Spec.Graph)...)
 	issues = append(issues, validateFrameworks(path, rule.Spec.Frameworks)...)
 	issues = append(issues, validatePolicyRuleContract(path, rule.Spec)...)
 	return issues
@@ -420,6 +436,64 @@ func validatePolicyRuleContract(path string, spec PolicyFindingRuleSpec) []Issue
 
 func policyAssertConfigured(assert PolicyRuleAssert) bool {
 	return len(assert.All) != 0 || len(assert.Any) != 0
+}
+
+func policyGraphConfigured(graph PolicyRuleGraphFinding) bool {
+	return strings.TrimSpace(graph.Query) != "" || graph.RowLimit != 0 || len(graph.Params) != 0 || len(trimStrings(graph.RequiredColumns)) != 0
+}
+
+func validatePolicyRuleGraph(path string, graph PolicyRuleGraphFinding) []Issue {
+	if !policyGraphConfigured(graph) {
+		return nil
+	}
+	var issues []Issue
+	query := strings.TrimSpace(graph.Query)
+	if query == "" {
+		issues = append(issues, Issue{Path: path, Message: "spec.graph.query is required"})
+	} else {
+		if !startsWithGraphQueryKeyword(query) {
+			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must start with MATCH, OPTIONAL MATCH, WITH, or UNWIND"})
+		}
+		if containsUnsafeCypherKeyword(query) {
+			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must be read-only and must not contain write/admin Cypher keywords"})
+		}
+		if !cypherReturnsAlias(query, "primary_urn") {
+			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must return primary_urn"})
+		}
+		if !strings.Contains(strings.ToUpper(query), "LIMIT") && (graph.RowLimit <= 0 || graph.RowLimit > 3000) {
+			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must include LIMIT or spec.graph.rowLimit"})
+		}
+	}
+	if graph.RowLimit < 0 || graph.RowLimit > 3000 {
+		issues = append(issues, Issue{Path: path, Message: "spec.graph.rowLimit must be between 1 and 3000 when set"})
+	}
+	issues = append(issues, validateStringArray(path, "spec.graph.requiredColumns", graph.RequiredColumns)...)
+	issues = append(issues, validateUniqueStringArray(path, "spec.graph.requiredColumns", graph.RequiredColumns)...)
+	for idx, column := range graph.RequiredColumns {
+		column = strings.TrimSpace(column)
+		if column == "" {
+			continue
+		}
+		if !isIdentifier(column) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.requiredColumns[%d] must be an identifier", idx)})
+			continue
+		}
+		if query != "" && !cypherReturnsAlias(query, column) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.query must return required column %q", column)})
+		}
+	}
+	for key, value := range graph.Params {
+		if strings.TrimSpace(key) == "" {
+			issues = append(issues, Issue{Path: path, Message: "spec.graph.params keys must be non-empty"})
+			continue
+		}
+		switch value.(type) {
+		case nil, string, bool, int, int64, float64:
+		default:
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.params.%s must be a string, number, boolean, or null", key)})
+		}
+	}
+	return issues
 }
 
 func validateAssertions(path string, field string, assertions []PolicyRuleAssertion) []Issue {
@@ -728,6 +802,64 @@ func stringSetContains(values []string, want string) bool {
 func startsWithQueryKeyword(query string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(query))
 	return strings.HasPrefix(upper, "SELECT ") || strings.HasPrefix(upper, "SELECT\n") || strings.HasPrefix(upper, "WITH ") || strings.HasPrefix(upper, "WITH\n")
+}
+
+func startsWithGraphQueryKeyword(query string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(query))
+	for _, keyword := range []string{"MATCH", "OPTIONAL MATCH", "WITH", "UNWIND"} {
+		if upper == keyword || strings.HasPrefix(upper, keyword+" ") || strings.HasPrefix(upper, keyword+"\n") {
+			return true
+		}
+	}
+	return false
+}
+
+func containsUnsafeCypherKeyword(query string) bool {
+	for _, token := range strings.FieldsFunc(strings.ToUpper(query), func(ch rune) bool {
+		return (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_'
+	}) {
+		switch token {
+		case "CREATE", "MERGE", "DELETE", "DETACH", "SET", "REMOVE", "DROP", "LOAD", "CALL", "YIELD":
+			return true
+		}
+	}
+	return false
+}
+
+func cypherReturnsAlias(query string, alias string) bool {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		return false
+	}
+	upperQuery := strings.ToUpper(query)
+	upperAlias := strings.ToUpper(alias)
+	for _, marker := range []string{" AS " + upperAlias, "\nAS " + upperAlias, "\tAS " + upperAlias} {
+		if strings.Contains(upperQuery, marker) {
+			return true
+		}
+	}
+	return strings.Contains(upperQuery, "RETURN "+upperAlias) || strings.Contains(upperQuery, "RETURN DISTINCT "+upperAlias)
+}
+
+func isIdentifier(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for idx, ch := range value {
+		isAlpha := ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z'
+		isDigit := ch >= '0' && ch <= '9'
+		if idx == 0 {
+			if !isAlpha && ch != '_' {
+				return false
+			}
+			continue
+		}
+		if !isAlpha && !isDigit && ch != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func isPolicyID(value string) bool {

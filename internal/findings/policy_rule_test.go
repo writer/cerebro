@@ -209,6 +209,114 @@ func TestPolicyCatalogRuleDisabledDoesNotSupportRuntimeOrEmit(t *testing.T) {
 	}
 }
 
+func TestPolicyGraphCatalogRuleEmitsGraphFinding(t *testing.T) {
+	rule := newPolicyCatalogRule(policyRuleConfig{
+		Definition: RuleDefinition{
+			ID:                "graph-policy-test",
+			Name:              "Graph Policy Test",
+			Description:       "Graph policy test description",
+			SourceID:          policyRuleSourceID,
+			EventKinds:        []string{"graph"},
+			OutputKind:        policyRuleOutputKind,
+			Severity:          "LOW",
+			Status:            findingStatusOpen,
+			Maturity:          RuleMaturityCandidate,
+			Tags:              []string{"policy", "graph"},
+			FalsePositives:    []string{"Inventory-only entity."},
+			Runbook:           "Review graph evidence.",
+			FingerprintFields: []string{"primary_urn"},
+			ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
+			Lifecycle:         Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+		},
+		EvidenceMode:      "graph",
+		EvidenceType:      "graph_state",
+		AssessmentMethods: []string{"examine"},
+		AuditorGuidance:   "Review graph projection state.",
+		RiskStatement:     "Graph evidence may be incomplete.",
+		RemediationIntent: "Repair the graph projection.",
+		ContractAttributes: map[string]string{
+			"policy_input_source_kinds": "graph",
+		},
+		Graph: policyRuleGraphConfig{
+			Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'LOW' AS severity,
+       'Graph entity requires review' AS summary,
+       [entity.urn] AS resource_urns,
+       [] AS evidence
+LIMIT $row_limit`,
+			RowLimit:    250,
+			Params:      map[string]any{"minimum_count": int64(2)},
+			SourceKinds: []string{"graph"},
+		},
+		Enabled: true,
+	})
+	graphRule, ok := rule.(GraphRule)
+	if !ok {
+		t.Fatalf("newPolicyCatalogRule() = %T, want GraphRule", rule)
+	}
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatalf("newPolicyCatalogRule() = %T, want MetadataRule", rule)
+	}
+	metadata := metadataRule.RuleMetadata()
+	if metadata.SourceID != "graph" || metadata.OutputKind != policyGraphOutputKind {
+		t.Fatalf("metadata source/output = %q/%q, want graph/%s", metadata.SourceID, metadata.OutputKind, policyGraphOutputKind)
+	}
+	if metadata.Lifecycle.Kind != LifecycleDurableState || metadata.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("metadata lifecycle = %+v, want durable graph anchored", metadata.Lifecycle)
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-graph", TenantId: "tenant-1", SourceId: "graph"}
+	if !rule.SupportsRuntime(runtime) {
+		t.Fatal("SupportsRuntime(graph runtime) = false, want true")
+	}
+	query := graphRule.QueryFor(runtime)
+	if query.RowLimit != 250 || query.Params["row_limit"] != int64(250) {
+		t.Fatalf("query row limit = request:%d param:%#v, want 250", query.RowLimit, query.Params["row_limit"])
+	}
+	if query.Params["tenant_id"] != "tenant-1" || query.Params["minimum_count"] != int64(2) {
+		t.Fatalf("query params = %#v, want tenant and custom params", query.Params)
+	}
+	findings, err := graphRule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{{Values: map[string]any{
+		"primary_urn":     "urn:cerebro:tenant-1:resource:one",
+		"primary_label":   "Resource One",
+		"primary_type":    "resource",
+		"fingerprint_key": "urn:cerebro:tenant-1:resource:one",
+		"summary":         "Graph entity requires review",
+		"resource_urns":   []any{"urn:cerebro:tenant-1:resource:one"},
+		"evidence": []any{map[string]any{
+			"urn":         "urn:cerebro:tenant-1:resource:one",
+			"label":       "Resource One",
+			"entity_type": "resource",
+			"relation":    "self",
+		}},
+	}}})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	finding := findings[0]
+	if finding.RuleID != "graph-policy-test" || finding.PolicyID != "graph-policy-test" || finding.CheckID != "graph-policy-test" {
+		t.Fatalf("finding identifiers = rule:%q policy:%q check:%q", finding.RuleID, finding.PolicyID, finding.CheckID)
+	}
+	for key, want := range map[string]string{
+		"policy_id":                  "graph-policy-test",
+		"policy_evidence":            "graph",
+		"policy_graph_query_present": "true",
+		"policy_input_source_kinds":  "graph",
+	} {
+		if got := finding.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%s] = %q, want %q; attrs=%#v", key, got, want, finding.Attributes)
+		}
+	}
+	if len(finding.GraphEvidenceRows) != 1 {
+		t.Fatalf("len(GraphEvidenceRows) = %d, want 1", len(finding.GraphEvidenceRows))
+	}
+}
+
 func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
 	config := generatedPolicyRuleConfigByID("identity-okta-vendor-app-broad-group-access")
 	if config == nil {
@@ -252,6 +360,32 @@ func TestOktaPrivilegedNoMFAPolicyCarriesDSLContractMetadata(t *testing.T) {
 		if got := config.ContractAttributes[key]; got != want {
 			t.Fatalf("ContractAttributes[%s] = %q, want %q; attrs=%#v", key, got, want, config.ContractAttributes)
 		}
+	}
+}
+
+func TestGeneratedGraphOrphanPolicyUsesGraphDSL(t *testing.T) {
+	config := generatedPolicyRuleConfigByID("graph-orphan-nonfinding-node")
+	if config == nil {
+		t.Fatal("graph-orphan-nonfinding-node missing from generated policy catalog")
+	}
+	if strings.TrimSpace(config.Graph.Query) == "" {
+		t.Fatal("graph-orphan-nonfinding-node generated config missing graph query")
+	}
+	if config.Definition.SourceID != "graph" || config.Definition.OutputKind != policyGraphOutputKind {
+		t.Fatalf("source/output = %q/%q, want graph/%s", config.Definition.SourceID, config.Definition.OutputKind, policyGraphOutputKind)
+	}
+	if config.Definition.Lifecycle.Kind != LifecycleDurableState || config.Definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("lifecycle = %+v, want durable graph anchored", config.Definition.Lifecycle)
+	}
+	if config.EvidenceMode != "graph" {
+		t.Fatalf("EvidenceMode = %q, want graph", config.EvidenceMode)
+	}
+	if !policyRuleTestContainsString(config.Graph.RequiredColumns, "primary_urn") {
+		t.Fatalf("Graph.RequiredColumns = %v, missing primary_urn", config.Graph.RequiredColumns)
+	}
+	rule := newPolicyCatalogRule(*config)
+	if _, ok := rule.(GraphRule); !ok {
+		t.Fatalf("newPolicyCatalogRule(generated graph policy) = %T, want GraphRule", rule)
 	}
 }
 

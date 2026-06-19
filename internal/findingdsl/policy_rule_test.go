@@ -190,6 +190,73 @@ func TestValidatePolicyRuleRejectsUnsafeContractMetadata(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyRuleAcceptsGraphPolicy(t *testing.T) {
+	rule := PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "graph-example",
+			Name:        "Graph Example",
+			Description: "Example graph policy",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "low",
+			Graph: PolicyRuleGraphFinding{
+				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'Graph finding' AS summary
+LIMIT $row_limit`,
+				RowLimit:        500,
+				Params:          map[string]any{"minimum_count": int64(3), "enabled": true, "scope": "graph"},
+				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+			},
+			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC7.1"}}},
+		},
+	}
+	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
+func TestValidatePolicyRuleRejectsInvalidGraphPolicy(t *testing.T) {
+	rule := PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "graph-invalid",
+			Name:        "Graph Invalid",
+			Description: "Invalid graph policy",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "low",
+			Match: PolicyRuleMatch{
+				Conditions: []string{"cmp_eq(path(resource, \"public\"), true)"},
+			},
+			Graph: PolicyRuleGraphFinding{
+				Query:           "MATCH (entity) SET entity.checked = true RETURN entity.urn AS primary_urn",
+				RowLimit:        4000,
+				Params:          map[string]any{"bad": map[string]any{"nested": true}},
+				RequiredColumns: []string{"primary_urn", "fingerprint-key"},
+			},
+			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC7.1"}}},
+		},
+	}
+	issues := ValidatePolicyRule(rule)
+	for _, want := range []string{
+		"spec.graph is mutually exclusive",
+		"spec.graph.query must be read-only",
+		"spec.graph.query must include LIMIT or spec.graph.rowLimit",
+		"spec.graph.rowLimit",
+		"spec.graph.requiredColumns[1] must be an identifier",
+		"spec.graph.params.bad",
+	} {
+		if !issuesContain(issues, want) {
+			t.Fatalf("issues = %#v, missing %q", issues, want)
+		}
+	}
+}
+
 func TestLoadPolicyRulesRejectsLegacyJSONPolicies(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "policies/aws/example.json", `{"id":"aws-example"}`)
@@ -335,6 +402,50 @@ cases:
 `)
 
 	issues := RunPolicyRuleTestSuite(root, filepath.Join(root, "policies/aws/example.test.yaml"))
+	if len(issues) != 0 {
+		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want none", issues)
+	}
+}
+
+func TestRunPolicyRuleTestSuiteSupportsGraphRows(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "policies/graph/example.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: graph-example
+  name: Graph Example
+  description: Example graph policy
+spec:
+  severity: low
+  graph:
+    query: |
+      MATCH (entity:Entity {tenant_id: $tenant_id})
+      RETURN entity.urn AS primary_urn,
+             entity.urn AS fingerprint_key
+      LIMIT $row_limit
+    requiredColumns:
+      - primary_urn
+      - fingerprint_key
+  frameworks:
+    - name: SOC 2
+      controls: [CC7.1]
+`)
+	writeTestFile(t, root, "policies/graph/example.test.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: returned primary urn fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:resource:one
+    wantFinding: true
+  - name: empty graph rows pass
+    resource:
+      placeholder: true
+    wantFinding: false
+`)
+
+	issues := RunPolicyRuleTestSuite(root, filepath.Join(root, "policies/graph/example.test.yaml"))
 	if len(issues) != 0 {
 		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want none", issues)
 	}

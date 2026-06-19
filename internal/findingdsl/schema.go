@@ -38,6 +38,7 @@ func metadataSchema() map[string]any {
 			"description":  stringSchema("What the policy checks and why it matters."),
 			"lastModified": stringSchema("Source policy timestamp for imported catalogs."),
 			"tags":         stringArraySchema("Tags for categorization, routing, and catalog search."),
+			"references":   stringArraySchema("External or internal references for public detection catalog metadata."),
 		},
 	}
 }
@@ -46,7 +47,7 @@ func specSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"severity", "match", "frameworks"},
+		"required":             []string{"severity", "frameworks"},
 		"properties": map[string]any{
 			"severity": map[string]any{
 				"type": "string",
@@ -59,8 +60,16 @@ func specSchema() map[string]any {
 			"resource":       stringSchema("Resource selector or resource family."),
 			"resourceType":   stringSchema("Human-readable resource type."),
 			"match":          matchSchema(),
+			"graph":          graphFindingSchema(),
 			"remediation":    remediationSchema(),
 			"riskCategories": stringArraySchema("Normalized risk category labels."),
+			"input":          openObjectSchema("Runtime, claim, and field requirements for evaluating the policy."),
+			"assert":         openObjectSchema("Structured assertions for evidence-backed policy checks."),
+			"context":        openObjectSchema("Graph and severity-adjustment context for policy evaluation."),
+			"evidence":       openObjectSchema("Evidence requirements and fingerprinting metadata."),
+			"audit":          openObjectSchema("Auditor-facing evidence, exception, and risk guidance."),
+			"verification":   openObjectSchema("Author-supplied verification fixtures and mutation checks."),
+			"actions":        openObjectSchema("Ownership, remediation, and verification action hints."),
 			"frameworks": map[string]any{
 				"type":     "array",
 				"minItems": 1,
@@ -74,6 +83,8 @@ func specSchema() map[string]any {
 		},
 		"oneOf": []map[string]any{
 			{"required": []string{"match"}},
+			{"required": []string{"assert"}},
+			{"required": []string{"graph"}},
 		},
 	}
 }
@@ -94,6 +105,29 @@ func matchSchema() map[string]any {
 		"oneOf": []map[string]any{
 			{"required": []string{"conditions"}},
 			{"required": []string{"query"}},
+		},
+	}
+}
+
+func graphFindingSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"query"},
+		"properties": map[string]any{
+			"query": stringSchema("Read-only Cypher query returning graph findings. Must return primary_urn."),
+			"rowLimit": map[string]any{
+				"type":        "integer",
+				"minimum":     1,
+				"maximum":     3000,
+				"description": "Maximum graph rows to read for one rule evaluation.",
+			},
+			"params": map[string]any{
+				"type":                 "object",
+				"description":          "Static Cypher parameters added to tenant_id and row_limit.",
+				"additionalProperties": map[string]any{"type": []string{"string", "number", "boolean", "null"}},
+			},
+			"requiredColumns": stringArraySchema("Additional returned aliases that the query must expose."),
 		},
 	}
 }
@@ -142,6 +176,14 @@ func stringArraySchema(description string) map[string]any {
 		"description": description,
 		"items":       stringSchema(""),
 	}
+}
+
+func openObjectSchema(description string) map[string]any {
+	schema := map[string]any{"type": "object"}
+	if description != "" {
+		schema["description"] = description
+	}
+	return schema
 }
 
 func stringSchema(description string) map[string]any {

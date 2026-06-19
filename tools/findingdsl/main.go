@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/findingdsl"
@@ -109,23 +110,31 @@ func runNew(args []string) error {
 	name := flags.String("name", "", "policy name")
 	description := flags.String("description", "", "policy description")
 	severity := flags.String("severity", "medium", "policy severity")
-	effect := flags.String("effect", "forbid", "policy effect for condition-backed policies")
+	effect := flags.String("effect", "", "policy effect for condition-backed policies")
 	resource := flags.String("resource", "", "policy resource selector")
 	resourceType := flags.String("resource-type", "", "human-readable resource type")
 	remediation := flags.String("remediation", "", "remediation summary")
 	query := flags.String("query", "", "query-backed policy expression")
+	graphQuery := flags.String("graph-query", "", "read-only Cypher query for a graph-backed policy")
+	graphRowLimit := flags.Int("graph-row-limit", 0, "graph query row limit")
 	output := flags.String("out", "", "output path; defaults to policies/<domain>/<id>.yaml")
 	write := flags.Bool("write", false, "write the policy file instead of printing YAML")
 	var conditions stringList
+	var references stringList
 	var tags stringList
 	var risks stringList
 	var frameworks stringList
 	var steps stringList
+	var graphParams stringList
+	var graphRequiredColumns stringList
 	flags.Var(&conditions, "condition", "condition-backed policy expression; repeatable")
+	flags.Var(&references, "reference", "metadata reference URL or document path; repeatable")
 	flags.Var(&tags, "tag", "metadata tag; repeatable")
 	flags.Var(&risks, "risk-category", "risk category; repeatable")
 	flags.Var(&frameworks, "framework", "framework mapping as name:control[,control]; repeatable")
 	flags.Var(&steps, "remediation-step", "remediation step; repeatable")
+	flags.Var(&graphParams, "graph-param", "graph Cypher parameter as key=value; repeatable")
+	flags.Var(&graphRequiredColumns, "graph-required-column", "required graph query return alias; repeatable")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -133,17 +142,28 @@ func runNew(args []string) error {
 	if err != nil {
 		return err
 	}
+	parsedGraphParams, err := parseGraphParams(graphParams)
+	if err != nil {
+		return err
+	}
 	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
-		ID:              *id,
-		Domain:          *domain,
-		Name:            *name,
-		Description:     *description,
-		Severity:        *severity,
-		Effect:          *effect,
-		Resource:        *resource,
-		ResourceType:    *resourceType,
-		Conditions:      conditions,
-		Query:           *query,
+		ID:           *id,
+		Domain:       *domain,
+		Name:         *name,
+		Description:  *description,
+		References:   references,
+		Severity:     *severity,
+		Effect:       *effect,
+		Resource:     *resource,
+		ResourceType: *resourceType,
+		Conditions:   conditions,
+		Query:        *query,
+		Graph: findingdsl.PolicyRuleGraphFinding{
+			Query:           *graphQuery,
+			RowLimit:        *graphRowLimit,
+			Params:          parsedGraphParams,
+			RequiredColumns: graphRequiredColumns,
+		},
 		Tags:            tags,
 		RiskCategories:  risks,
 		Frameworks:      parsedFrameworks,
@@ -452,6 +472,41 @@ func parseFrameworks(values []string) ([]findingdsl.PolicyFramework, error) {
 		frameworks = append(frameworks, framework)
 	}
 	return frameworks, nil
+}
+
+func parseGraphParams(values []string) (map[string]any, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	params := map[string]any{}
+	for _, value := range values {
+		key, rawValue, ok := strings.Cut(value, "=")
+		key = strings.TrimSpace(key)
+		rawValue = strings.TrimSpace(rawValue)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("graph-param %q must use key=value format", value)
+		}
+		params[key] = parseGraphParamValue(rawValue)
+	}
+	return params, nil
+}
+
+func parseGraphParamValue(value string) any {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true":
+		return true
+	case "false":
+		return false
+	case "null":
+		return nil
+	}
+	if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return parsed
+	}
+	if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+		return parsed
+	}
+	return value
 }
 
 func printIssues(issues []findingdsl.Issue) {
