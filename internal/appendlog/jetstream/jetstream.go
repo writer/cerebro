@@ -714,10 +714,10 @@ func (l *Log) runCanary(ctx context.Context, stream *jetstream.StreamInfo) (tele
 		recordJetStreamPublish(ctx, "canary", subject, "failed", err, publishResult)
 		return finish(canaryAttrs), fmt.Errorf("publish canary event: %w", err)
 	}
-	recordJetStreamPublish(ctx, "canary", subject, "completed", nil, publishResult)
 	if publishResult.AckSequence == 0 {
 		return finish(canaryAttrs), errors.New("publish canary event: ack sequence unavailable")
 	}
+	recordJetStreamPublish(ctx, "canary", subject, "completed", nil, publishResult)
 	streamName := strings.TrimSpace(publishResult.AckStream)
 	if streamName == "" && stream != nil {
 		streamName = strings.TrimSpace(stream.Config.Name)
