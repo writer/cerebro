@@ -105,40 +105,99 @@ func main() {
 		fmt.Fprintf(os.Stderr, "policyrulegen: %v\n", err)
 		os.Exit(1)
 	}
-	path := filepath.Join(filepath.Clean(*root), filepath.FromSlash(*output))
+	cleanRoot := filepath.Clean(*root)
+	outputRel, err := safeRepoRel(*output)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "policyrulegen: %v\n", err)
+		os.Exit(1)
+	}
 	if *write {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			fmt.Fprintf(os.Stderr, "policyrulegen: create output directory: %v\n", err)
-			os.Exit(1)
-		}
-		if err := rejectSymlink(path); err != nil {
-			fmt.Fprintf(os.Stderr, "policyrulegen: write %s: %v\n", *output, err)
-			os.Exit(1)
-		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "policyrulegen: write %s: %v\n", *output, err)
+		if err := writeRepoFile(cleanRoot, outputRel, content); err != nil {
+			fmt.Fprintf(os.Stderr, "policyrulegen: write %s: %v\n", outputRel, err)
 			os.Exit(1)
 		}
 	}
 	if *check {
-		if err := rejectSymlink(path); err != nil {
-			fmt.Fprintf(os.Stderr, "policyrulegen: read %s: %v\n", *output, err)
-			os.Exit(1)
-		}
-		existing, err := os.ReadFile(path)
+		existing, err := readRepoFile(cleanRoot, outputRel)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "policyrulegen: read %s: %v\n", *output, err)
+			fmt.Fprintf(os.Stderr, "policyrulegen: read %s: %v\n", outputRel, err)
 			os.Exit(1)
 		}
 		if !bytes.Equal(bytes.TrimSpace(existing), bytes.TrimSpace(content)) {
-			fmt.Fprintf(os.Stderr, "policyrulegen: %s is stale; run `make policy-rule-generate`\n", *output)
+			fmt.Fprintf(os.Stderr, "policyrulegen: %s is stale; run `make policy-rule-generate`\n", outputRel)
 			os.Exit(1)
 		}
 	}
 }
 
-func rejectSymlink(path string) error {
-	info, err := os.Lstat(path)
+func readRepoFile(root string, rel string) ([]byte, error) {
+	cleanRel, err := safeRepoRel(rel)
+	if err != nil {
+		return nil, err
+	}
+	repoRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open repository root: %w", err)
+	}
+	defer func() { _ = repoRoot.Close() }()
+	if err := rejectSymlink(repoRoot, cleanRel); err != nil {
+		return nil, err
+	}
+	content, err := repoRoot.ReadFile(cleanRel)
+	if err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
+func readOptionalRepoFile(root string, rel string) ([]byte, bool, error) {
+	content, err := readRepoFile(root, rel)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return content, true, nil
+}
+
+func writeRepoFile(root string, rel string, content []byte) error {
+	cleanRel, err := safeRepoRel(rel)
+	if err != nil {
+		return err
+	}
+	repoRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return fmt.Errorf("open repository root: %w", err)
+	}
+	defer func() { _ = repoRoot.Close() }()
+	dir := filepath.ToSlash(filepath.Dir(cleanRel))
+	if dir != "." {
+		if err := repoRoot.MkdirAll(dir, 0o750); err != nil {
+			return fmt.Errorf("create %s: %w", dir, err)
+		}
+	}
+	if err := rejectSymlink(repoRoot, cleanRel); err != nil {
+		return err
+	}
+	file, err := repoRoot.OpenFile(cleanRel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", cleanRel, err)
+	}
+	var writeErr error
+	if _, err := file.Write(content); err != nil {
+		writeErr = fmt.Errorf("write %s: %w", cleanRel, err)
+	} else if err := file.Chmod(0o644); err != nil {
+		writeErr = fmt.Errorf("chmod %s: %w", cleanRel, err)
+	}
+	if err := file.Close(); err != nil && writeErr == nil {
+		writeErr = fmt.Errorf("close %s: %w", cleanRel, err)
+	}
+	return writeErr
+}
+
+func rejectSymlink(root *os.Root, rel string) error {
+	info, err := root.Lstat(rel)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -149,6 +208,14 @@ func rejectSymlink(path string) error {
 		return fmt.Errorf("symlinked generated files are not allowed")
 	}
 	return nil
+}
+
+func safeRepoRel(rel string) (string, error) {
+	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel)))
+	if strings.HasPrefix(cleanRel, "../") || cleanRel == ".." || filepath.IsAbs(cleanRel) {
+		return "", fmt.Errorf("path %q escapes repository root", rel)
+	}
+	return cleanRel, nil
 }
 
 func generate(root string) ([]byte, error) {
@@ -251,16 +318,12 @@ func policyFrameworksFromDSL(frameworks []findingdsl.PolicyFramework) []policyFr
 }
 
 func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {
-	path := filepath.Join(root, filepath.FromSlash(policyRuleExtensionsPath))
-	if err := rejectSymlink(path); err != nil {
+	content, ok, err := readOptionalRepoFile(root, policyRuleExtensionsPath)
+	if err != nil {
 		return policyRuleExtensions{}, fmt.Errorf("read %s: %w", policyRuleExtensionsPath, err)
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return policyRuleExtensions{}, nil
-		}
-		return policyRuleExtensions{}, fmt.Errorf("read %s: %w", policyRuleExtensionsPath, err)
+	if !ok {
+		return policyRuleExtensions{}, nil
 	}
 	var extensions policyRuleExtensions
 	if err := yaml.Unmarshal(content, &extensions); err != nil {
@@ -272,16 +335,12 @@ func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {
 type controlFamilyIndex map[string]string
 
 func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
-	path := filepath.Join(root, filepath.FromSlash(controlFamiliesPath))
-	if err := rejectSymlink(path); err != nil {
+	content, ok, err := readOptionalRepoFile(root, controlFamiliesPath)
+	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", controlFamiliesPath, err)
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return controlFamilyIndex{}, nil
-		}
-		return nil, fmt.Errorf("read %s: %w", controlFamiliesPath, err)
+	if !ok {
+		return controlFamilyIndex{}, nil
 	}
 	var catalog complianceControlCatalog
 	if err := yaml.Unmarshal(content, &catalog); err != nil {

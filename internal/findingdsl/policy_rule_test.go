@@ -250,12 +250,13 @@ func TestValidatePolicyRuleAcceptsGraphPolicy(t *testing.T) {
 			Severity: "low",
 			Graph: PolicyRuleGraphFinding{
 				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+WHERE entity.relationship_count >= $minimum_count
 RETURN entity.urn AS primary_urn,
        entity.urn AS fingerprint_key,
        'Graph finding' AS summary
 LIMIT $row_limit`,
 				RowLimit:        500,
-				Params:          map[string]any{"minimum_count": int64(3), "enabled": true, "scope": "graph"},
+				Params:          map[string]any{"minimum_count": int64(3)},
 				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
 			},
 			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC7.1"}}},
@@ -263,6 +264,62 @@ LIMIT $row_limit`,
 	}
 	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
 		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
+func TestValidatePolicyRuleAcceptsEscapedCypherLiteralsAndBacktickIdentifiers(t *testing.T) {
+	rule := PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "graph-escaped",
+			Name:        "Graph Escaped",
+			Description: "Graph policy using escaped literals and quoted identifiers",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "low",
+			Graph: PolicyRuleGraphFinding{
+				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+WHERE entity.note = "escaped \" DELETE still literal"
+  AND entity.` + "`MERGE status`" + ` = 'healthy'
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       entity.label AS summary
+LIMIT $row_limit`,
+				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+			},
+			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC7.1"}}},
+		},
+	}
+	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
+func TestLintPolicyRuleAcceptsInlineLimitAndMultilineOrderBy(t *testing.T) {
+	rule := PolicyFindingRule{
+		RelPath: "policies/graph/example.yaml",
+		Spec: PolicyFindingRuleSpec{
+			Graph: PolicyRuleGraphFinding{
+				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.label AS primary_label,
+       entity.entity_type AS primary_type,
+       entity.urn AS fingerprint_key,
+       'LOW' AS severity,
+       'Graph finding' AS summary,
+       'Fix graph projection' AS action,
+       [entity.urn] AS resource_urns,
+       [] AS evidence
+ORDER
+BY entity.urn
+LIMIT 500`,
+				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+			},
+		},
+	}
+	if issues := LintPolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("LintPolicyRule() issues = %#v, want none", issues)
 	}
 }
 
@@ -293,9 +350,12 @@ func TestValidatePolicyRuleRejectsInvalidGraphPolicy(t *testing.T) {
 	for _, want := range []string{
 		"spec.graph is mutually exclusive",
 		"spec.graph.query must be read-only",
+		"spec.graph.query must return fingerprint_key",
+		"spec.graph.query must return summary",
 		"spec.graph.query must include LIMIT or spec.graph.rowLimit",
 		"spec.graph.rowLimit",
 		"spec.graph.requiredColumns[1] must be an identifier",
+		"spec.graph.params.bad must be referenced",
 		"spec.graph.params.bad",
 	} {
 		if !issuesContain(issues, want) {
@@ -484,11 +544,13 @@ spec:
     query: |
       MATCH (entity:Entity {tenant_id: $tenant_id})
       RETURN entity.urn AS primary_urn,
-             entity.urn AS fingerprint_key
+             entity.urn AS fingerprint_key,
+             'Graph finding' AS summary
       LIMIT $row_limit
     requiredColumns:
       - primary_urn
       - fingerprint_key
+      - summary
   frameworks:
     - name: SOC 2
       controls: [CC7.1]
@@ -500,6 +562,8 @@ cases:
   - name: returned primary urn fails
     queryRows:
       - primary_urn: urn:cerebro:writer:resource:one
+        fingerprint_key: urn:cerebro:writer:resource:one
+        summary: Graph finding
     wantFinding: true
   - name: empty graph rows pass
     resource:
@@ -510,6 +574,116 @@ cases:
 	issues := RunPolicyRuleTestSuite(root, filepath.Join(root, "policies/graph/example.test.yaml"))
 	if len(issues) != 0 {
 		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want none", issues)
+	}
+}
+
+func TestRunPolicyRuleTestSuiteRejectsIncompleteGraphRows(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "policies/graph/example.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: graph-example
+  name: Graph Example
+  description: Example graph policy
+spec:
+  severity: low
+  graph:
+    query: |
+      MATCH (entity:Entity {tenant_id: $tenant_id})
+      RETURN entity.urn AS primary_urn,
+             entity.urn AS fingerprint_key,
+             'Graph finding' AS summary
+      LIMIT $row_limit
+    requiredColumns:
+      - primary_urn
+      - fingerprint_key
+      - summary
+  frameworks:
+    - name: SOC 2
+      controls: [CC7.1]
+`)
+	writeTestFile(t, root, "policies/graph/example.test.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: missing fingerprint
+    queryRows:
+      - primary_urn: urn:cerebro:writer:resource:one
+        summary: Graph finding
+    wantFinding: true
+`)
+
+	issues := RunPolicyRuleTestSuite(root, filepath.Join(root, "policies/graph/example.test.yaml"))
+	if !issuesContain(issues, "queryRows[0].fingerprint_key is required") {
+		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want missing fingerprint", issues)
+	}
+}
+
+func TestLintPolicyRulesRequiresGraphFixtureCoverage(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "policies/graph/example.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: graph-example
+  name: Graph Example
+  description: Example graph policy
+  tags: [graph]
+spec:
+  severity: low
+  graph:
+    query: |
+      MATCH (entity:Entity {tenant_id: $tenant_id})
+      RETURN entity.urn AS primary_urn,
+             entity.label AS primary_label,
+             entity.entity_type AS primary_type,
+             entity.urn AS fingerprint_key,
+             'LOW' AS severity,
+             'Graph finding' AS summary,
+             'Fix graph projection' AS action,
+             [entity.urn] AS resource_urns,
+             [] AS evidence
+      ORDER BY entity.urn
+      LIMIT $row_limit
+    rowLimit: 500
+    requiredColumns:
+      - primary_urn
+      - fingerprint_key
+      - summary
+  frameworks:
+    - name: SOC 2
+      controls: [CC7.1]
+`)
+	issues, err := LintPolicyRules(root)
+	if err != nil {
+		t.Fatalf("LintPolicyRules() error = %v", err)
+	}
+	if !issuesContain(issues, "must have a fixture suite") {
+		t.Fatalf("LintPolicyRules() issues = %#v, want missing suite", issues)
+	}
+
+	writeTestFile(t, root, "policies/graph/example.test.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: graph finding
+    queryRows:
+      - primary_urn: urn:cerebro:writer:resource:one
+        fingerprint_key: urn:cerebro:writer:resource:one
+        summary: Graph finding
+    wantFinding: true
+  - name: graph pass
+    resource:
+      placeholder: true
+    wantFinding: false
+`)
+	issues, err = LintPolicyRules(root)
+	if err != nil {
+		t.Fatalf("LintPolicyRules() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("LintPolicyRules() issues = %#v, want none", issues)
 	}
 }
 

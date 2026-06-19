@@ -43,6 +43,8 @@ func runCommand(command string, args []string) error {
 	switch command {
 	case "check":
 		return runCheck(args)
+	case "lint":
+		return runLint(args)
 	case "migrate", "migrate-policies":
 		return runMigrate(args)
 	case "new":
@@ -90,6 +92,23 @@ func runCheck(args []string) error {
 		return err
 	}
 	return checkPolicyRules(filepath.Clean(*root))
+}
+
+func runLint(args []string) error {
+	flags := flag.NewFlagSet("findingdsl lint", flag.ContinueOnError)
+	root := flags.String("root", ".", "repository root")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	issues, err := findingdsl.LintPolicyRules(filepath.Clean(*root))
+	if err != nil {
+		return err
+	}
+	printIssues(issues)
+	if len(issues) != 0 {
+		return fmt.Errorf("policy DSL lint failed with %d issue(s)", len(issues))
+	}
+	return nil
 }
 
 func runMigrate(args []string) error {
@@ -192,8 +211,8 @@ func runNew(args []string) error {
 	if err := writeRepoFile(filepath.Clean(*root), targetRel, content, 0o600); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stdout, "findingdsl: wrote %s\n", filepath.ToSlash(targetRel))
-	return nil
+	_, err = fmt.Fprintf(os.Stdout, "findingdsl: wrote %s\n", filepath.ToSlash(targetRel))
+	return err
 }
 
 func runFmt(args []string) error {
@@ -243,10 +262,14 @@ func runFmt(args []string) error {
 			if err := writeRepoFile(cleanRoot, rel, formatted, 0o600); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "formatted %s\n", rel)
+			if _, err := fmt.Fprintf(os.Stdout, "formatted %s\n", rel); err != nil {
+				return err
+			}
 			continue
 		}
-		fmt.Fprintf(os.Stdout, "%s needs formatting\n", rel)
+		if _, err := fmt.Fprintf(os.Stdout, "%s needs formatting\n", rel); err != nil {
+			return err
+		}
 	}
 	if changed != 0 && (*check || !*write) {
 		return fmt.Errorf("%d policy file(s) need formatting", changed)
@@ -302,8 +325,8 @@ func runTest(args []string) error {
 		paths = discovered
 	}
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stdout, "findingdsl: no policy test suites found")
-		return nil
+		_, err := fmt.Fprintln(os.Stdout, "findingdsl: no policy test suites found")
+		return err
 	}
 	var issues []findingdsl.Issue
 	for _, path := range paths {
@@ -317,8 +340,8 @@ func runTest(args []string) error {
 		printIssues(issues)
 		return fmt.Errorf("policy DSL tests failed with %d issue(s)", len(issues))
 	}
-	fmt.Fprintf(os.Stdout, "findingdsl: %d policy test suite(s) passed\n", len(paths))
-	return nil
+	_, err := fmt.Fprintf(os.Stdout, "findingdsl: %d policy test suite(s) passed\n", len(paths))
+	return err
 }
 
 func checkPolicyRules(root string) error {
@@ -342,7 +365,7 @@ func migratePolicyFiles(root string, write bool) error {
 	if err != nil {
 		return fmt.Errorf("open repository root: %w", err)
 	}
-	defer repoRoot.Close()
+	defer func() { _ = repoRoot.Close() }()
 	policiesRoot := filepath.Join(cleanRoot, "policies")
 	converted := 0
 	err = filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
@@ -384,7 +407,9 @@ func migratePolicyFiles(root string, write bool) error {
 		}
 		targetRel := strings.TrimSuffix(rel, ".json") + ".yaml"
 		if !write {
-			fmt.Fprintf(os.Stdout, "would convert %s -> %s\n", rel, targetRel)
+			if _, err := fmt.Fprintf(os.Stdout, "would convert %s -> %s\n", rel, targetRel); err != nil {
+				return err
+			}
 			converted++
 			return nil
 		}
@@ -407,15 +432,15 @@ func migratePolicyFiles(root string, write bool) error {
 		return err
 	}
 	if converted == 0 {
-		fmt.Fprintln(os.Stdout, "findingdsl: no legacy policy JSON files to migrate")
-		return nil
+		_, err := fmt.Fprintln(os.Stdout, "findingdsl: no legacy policy JSON files to migrate")
+		return err
 	}
 	if write {
-		fmt.Fprintf(os.Stdout, "findingdsl: converted %d legacy policy file(s)\n", converted)
-	} else {
-		fmt.Fprintf(os.Stdout, "findingdsl: %d legacy policy file(s) would be converted; rerun with --write\n", converted)
+		_, err = fmt.Fprintf(os.Stdout, "findingdsl: converted %d legacy policy file(s)\n", converted)
+		return err
 	}
-	return nil
+	_, err = fmt.Fprintf(os.Stdout, "findingdsl: %d legacy policy file(s) would be converted; rerun with --write\n", converted)
+	return err
 }
 
 func ensureMigrationTargetAvailable(root *os.Root, rel string) error {
@@ -536,7 +561,7 @@ func writeRepoFile(root string, rel string, content []byte, perm fs.FileMode) er
 	if err != nil {
 		return fmt.Errorf("open repository root: %w", err)
 	}
-	defer repoRoot.Close()
+	defer func() { _ = repoRoot.Close() }()
 	dir := filepath.ToSlash(filepath.Dir(cleanRel))
 	if dir != "." {
 		if err := repoRoot.MkdirAll(dir, 0o750); err != nil {

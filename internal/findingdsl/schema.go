@@ -128,7 +128,7 @@ func graphFindingSchema() map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"query"},
 		"properties": map[string]any{
-			"query": stringSchema("Read-only Cypher query returning graph findings. Must return primary_urn."),
+			"query": stringSchema("Read-only Cypher query returning graph findings. Must return primary_urn, fingerprint_key, and summary."),
 			"rowLimit": map[string]any{
 				"type":        "integer",
 				"minimum":     1,
@@ -138,9 +138,10 @@ func graphFindingSchema() map[string]any {
 			"params": map[string]any{
 				"type":                 "object",
 				"description":          "Static Cypher parameters added to tenant_id and row_limit.",
+				"propertyNames":        map[string]any{"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
 				"additionalProperties": map[string]any{"type": []string{"string", "number", "boolean", "null"}},
 			},
-			"requiredColumns": stringArraySchema("Additional returned aliases that the query must expose."),
+			"requiredColumns": uniqueStringArraySchema("Additional returned aliases that the query must expose."),
 		},
 	}
 }
@@ -439,6 +440,12 @@ func stringArraySchema(description string) map[string]any {
 		"description": description,
 		"items":       stringSchema(""),
 	}
+}
+
+func uniqueStringArraySchema(description string) map[string]any {
+	schema := stringArraySchema(description)
+	schema["uniqueItems"] = true
+	return schema
 }
 
 func stringSchema(description string) map[string]any {
