@@ -190,6 +190,53 @@ func TestValidatePolicyRuleRejectsUnsafeContractMetadata(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyRuleRejectsAssertionOperands(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		assertions []PolicyRuleAssertion
+		wantIssue  string
+	}{
+		{
+			name:       "binary op missing value",
+			assertions: []PolicyRuleAssertion{{Field: "privilege_level", Op: "eq"}},
+			wantIssue:  "spec.assert.all[0].value is required for op eq",
+		},
+		{
+			name:       "membership op missing value",
+			assertions: []PolicyRuleAssertion{{Field: "privilege_level", Op: "in"}},
+			wantIssue:  "spec.assert.all[0].value is required for op in",
+		},
+		{
+			name:       "membership op scalar value",
+			assertions: []PolicyRuleAssertion{{Field: "privilege_level", Op: "in", Value: "admin"}},
+			wantIssue:  "spec.assert.all[0].value must be a list for op in",
+		},
+		{
+			name:       "membership op empty list",
+			assertions: []PolicyRuleAssertion{{Field: "privilege_level", Op: "in", Value: []string{}}},
+			wantIssue:  "spec.assert.all[0].value must be a non-empty list for op in",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			issues := ValidatePolicyRule(policyRuleWithAssertions(tc.assertions...))
+			if !issuesContain(issues, tc.wantIssue) {
+				t.Fatalf("issues = %#v, missing %q", issues, tc.wantIssue)
+			}
+		})
+	}
+}
+
+func TestValidatePolicyRuleAcceptsAssertionOperands(t *testing.T) {
+	rule := policyRuleWithAssertions(
+		PolicyRuleAssertion{Field: "mfa_enrolled", Op: "exists"},
+		PolicyRuleAssertion{Field: "mfa_enrolled", Op: "eq", Value: false},
+		PolicyRuleAssertion{Field: "privilege_level", Op: "in", Value: []string{"admin", "owner"}},
+	)
+	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
 func TestValidatePolicyRuleAcceptsGraphPolicy(t *testing.T) {
 	rule := PolicyFindingRule{
 		APIVersion: APIVersion,
@@ -520,6 +567,25 @@ spec:
     - name: SOC 2
       controls: [CC6]
 `
+}
+
+func policyRuleWithAssertions(assertions ...PolicyRuleAssertion) PolicyFindingRule {
+	return PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "assertions",
+			Name:        "Assertions",
+			Description: "Assertion validation test",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "high",
+			Assert:   PolicyRuleAssert{All: assertions},
+			Frameworks: []PolicyFramework{
+				{Name: "SOC 2", Controls: []string{"CC6.1"}},
+			},
+		},
+	}
 }
 
 func writeTestFile(t *testing.T, root string, rel string, content string) {

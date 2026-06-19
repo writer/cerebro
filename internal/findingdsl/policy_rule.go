@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -512,9 +513,43 @@ func validateAssertions(path string, field string, assertions []PolicyRuleAssert
 		}
 		if !stringSetContains([]string{"eq", "ne", "in", "not_in", "gt", "gte", "lt", "lte", "exists", "is_true", "is_false"}, op) {
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d].op must be one of eq, ne, in, not_in, gt, gte, lt, lte, exists, is_true, is_false", field, idx)})
+			continue
 		}
+		issues = append(issues, validateAssertionValue(path, field, idx, op, assertion.Value)...)
 	}
 	return issues
+}
+
+func validateAssertionValue(path string, field string, idx int, op string, value any) []Issue {
+	if !assertionOpRequiresValue(op) {
+		return nil
+	}
+	if value == nil {
+		return []Issue{{Path: path, Message: fmt.Sprintf("%s[%d].value is required for op %s", field, idx, op)}}
+	}
+	if !assertionOpRequiresListValue(op) {
+		return nil
+	}
+	if !assertionValueIsList(value) {
+		return []Issue{{Path: path, Message: fmt.Sprintf("%s[%d].value must be a list for op %s", field, idx, op)}}
+	}
+	if reflect.ValueOf(value).Len() == 0 {
+		return []Issue{{Path: path, Message: fmt.Sprintf("%s[%d].value must be a non-empty list for op %s", field, idx, op)}}
+	}
+	return nil
+}
+
+func assertionOpRequiresValue(op string) bool {
+	return stringSetContains([]string{"eq", "ne", "in", "not_in", "gt", "gte", "lt", "lte"}, op)
+}
+
+func assertionOpRequiresListValue(op string) bool {
+	return op == "in" || op == "not_in"
+}
+
+func assertionValueIsList(value any) bool {
+	kind := reflect.ValueOf(value).Kind()
+	return kind == reflect.Array || kind == reflect.Slice
 }
 
 func validateSeverityAdjustments(path string, adjustments []PolicyRuleSeverityAdjustment) []Issue {
