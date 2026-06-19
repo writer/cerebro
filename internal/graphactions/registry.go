@@ -49,15 +49,18 @@ func TargetForAction(action string, finding *ports.FindingRecord, explicit strin
 	return spec.ResolveTarget(finding, explicit)
 }
 
-func ValidateActionForFinding(action string, finding *ports.FindingRecord) error {
+func ValidateActionForFinding(action string, finding *ports.FindingRecord) (ActionSpec, error) {
 	spec, err := DefaultRegistry().Lookup(action)
 	if err != nil {
-		return err
+		return ActionSpec{}, err
 	}
 	if spec.CheckEligibility == nil {
-		return nil
+		return spec, nil
 	}
-	return spec.CheckEligibility(spec.ID, finding)
+	if err := spec.CheckEligibility(spec.ID, finding); err != nil {
+		return ActionSpec{}, err
+	}
+	return spec, nil
 }
 
 func FindingAllowsAction(action string, finding *ports.FindingRecord) error {

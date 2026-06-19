@@ -158,10 +158,7 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 		return nil
 	}
 	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
-	if err := graphactions.ValidateActionForFinding(graphAction, finding); err != nil {
-		return err
-	}
-	spec, err := graphactions.DefaultRegistry().Lookup(graphAction)
+	spec, err := graphactions.ValidateActionForFinding(graphAction, finding)
 	if err != nil {
 		return err
 	}
