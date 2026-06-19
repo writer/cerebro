@@ -66,8 +66,8 @@ type settings struct {
 }
 
 type listResponse struct {
-	Data       []json.RawMessage `json:"data"`
-	Pagination paginationInfo    `json:"pagination"`
+	Data       json.RawMessage `json:"data"`
+	Pagination paginationInfo  `json:"pagination"`
 }
 
 type paginationInfo struct {
@@ -98,7 +98,6 @@ func (e *responseError) StatusCode() int {
 	return e.statusCode
 }
 
-// New constructs the live SentinelOne source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
@@ -115,17 +114,14 @@ func New() (*Source, error) {
 	return source, nil
 }
 
-// Spec returns the static metadata for the SentinelOne source.
 func (s *Source) Spec() *cerebrov1.SourceSpec {
 	return s.spec
 }
 
-// Check validates that the configured SentinelOne family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.families.Check(ctx, cfg)
 }
 
-// Discover returns SentinelOne URNs for the configured family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.families.Discover(ctx, cfg)
 }
@@ -631,8 +627,12 @@ func listJSONRecords[T any, P interface {
 	if err := source.getJSON(ctx, settings, requestPath, query, &resp); err != nil {
 		return nil, "", err
 	}
-	records := make([]T, 0, len(resp.Data))
-	for _, item := range resp.Data {
+	items, pagination, err := sourcecdk.DecodeListResponseData(resp.Data, requestPath, "activities", "agents", "applications", "exclusions", "groups", "sites", "threats")
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]T, 0, len(items))
+	for _, item := range items {
 		var record T
 		if err := json.Unmarshal(item, &record); err != nil {
 			return nil, "", fmt.Errorf("decode %s record: %w", requestPath, err)
@@ -640,7 +640,7 @@ func listJSONRecords[T any, P interface {
 		P(&record).setRaw(cloneRaw(item))
 		records = append(records, record)
 	}
-	return records, strings.TrimSpace(resp.Pagination.NextCursor), nil
+	return records, strings.TrimSpace(firstNonEmpty(pagination.NextCursor, resp.Pagination.NextCursor)), nil
 }
 
 func (s *Source) listThreats(ctx context.Context, settings settings, cursor string, limit int) ([]threatRecord, string, error) {
