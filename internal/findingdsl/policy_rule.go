@@ -372,9 +372,6 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 	if hasConditions && hasQuery {
 		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions and spec.match.query are mutually exclusive"})
 	}
-	if hasAssert && (hasConditions || hasQuery) {
-		issues = append(issues, Issue{Path: path, Message: "spec.assert is mutually exclusive with spec.match"})
-	}
 	if hasGraph && (hasConditions || hasQuery || hasAssert) {
 		issues = append(issues, Issue{Path: path, Message: "spec.graph is mutually exclusive with spec.match and spec.assert"})
 	}

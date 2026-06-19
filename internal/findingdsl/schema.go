@@ -82,9 +82,22 @@ func specSchema() map[string]any {
 			"enabled":      map[string]any{"type": "boolean"},
 		},
 		"oneOf": []map[string]any{
-			{"required": []string{"match"}},
-			{"required": []string{"assert"}},
-			{"required": []string{"graph"}},
+			{
+				"required": []string{"graph"},
+				"not": map[string]any{
+					"anyOf": []map[string]any{
+						{"required": []string{"match"}},
+						{"required": []string{"assert"}},
+					},
+				},
+			},
+			{
+				"anyOf": []map[string]any{
+					{"required": []string{"match"}},
+					{"required": []string{"assert"}},
+				},
+				"not": map[string]any{"required": []string{"graph"}},
+			},
 		},
 	}
 }

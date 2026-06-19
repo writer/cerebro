@@ -56,19 +56,42 @@
       "additionalProperties": false,
       "oneOf": [
         {
-          "required": [
-            "match"
-          ]
-        },
-        {
-          "required": [
-            "assert"
-          ]
-        },
-        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "match"
+                ]
+              },
+              {
+                "required": [
+                  "assert"
+                ]
+              }
+            ]
+          },
           "required": [
             "graph"
           ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "match"
+              ]
+            },
+            {
+              "required": [
+                "assert"
+              ]
+            }
+          ],
+          "not": {
+            "required": [
+              "graph"
+            ]
+          }
         }
       ],
       "properties": {

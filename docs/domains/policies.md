@@ -78,7 +78,7 @@ spec:
 | `spec.mitreAttack` | No | MITRE tactic and technique mappings. |
 | `spec.enabled` | No | Set to `false` to keep a policy in the catalog while disabling generated rule support. |
 
-Every policy must have exactly one match mode: `spec.match.conditions`, `spec.match.query`, `spec.assert`, or `spec.graph`.
+Every policy must define `spec.graph` or at least one non-graph evaluation mode: `spec.match.conditions`, `spec.match.query`, or `spec.assert`. `spec.graph` is mutually exclusive with `spec.match` and `spec.assert`; `spec.match.conditions` and `spec.match.query` are mutually exclusive.
 
 ## Assertion Policies
 
