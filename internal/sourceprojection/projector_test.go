@@ -5678,6 +5678,44 @@ func TestProjectKubernetesContainerLinksWorkloadNodeAndImage(t *testing.T) {
 	assertProjectedLink(t, state, containerURN, relationDependsOn, imageURN)
 }
 
+func TestProjectKubernetesContainerPrefersPodUIDOverWorkloadUID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, uid := range []string{"pod-uid-1", "pod-uid-2"} {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "k8s-container-" + uid,
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.container",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"container_name": "api",
+				"namespace":      "payments",
+				"uid":            uid,
+				"workload_kind":  "ReplicaSet",
+				"workload_name":  "payments-api",
+				"workload_uid":   "replicaset-uid-1",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project(%s) error = %v", uid, err)
+		}
+	}
+
+	firstURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:pod-uid-1:api"
+	secondURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:pod-uid-2:api"
+	for _, urn := range []string{firstURN, secondURN} {
+		if entity := state.entities[urn]; entity == nil || entity.EntityType != "kubernetes.container" {
+			t.Fatalf("container entity %s missing or wrong: %#v", urn, entity)
+		}
+	}
+	collapsedURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:replicaset-uid-1:api"
+	if entity := state.entities[collapsedURN]; entity != nil {
+		t.Fatalf("containers with distinct pod UIDs collapsed through workload UID: %#v", entity)
+	}
+}
+
 func TestProjectKubernetesPodLinksNamespaceServiceAccountNodeAndImage(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

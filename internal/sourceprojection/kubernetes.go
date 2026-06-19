@@ -675,7 +675,7 @@ func kubernetesServiceURN(tenantID string, attributes map[string]string) string 
 
 func kubernetesContainerURN(tenantID string, attributes map[string]string) string {
 	clusterID := kubernetesClusterIdentity(attributes)
-	podID := firstNonEmpty(attributes["resource_id"], attributes["workload_uid"], attributes["uid"])
+	podID := firstNonEmpty(attributes["resource_id"], attributes["uid"], attributes["workload_uid"])
 	containerName := strings.TrimSpace(attributes["container_name"])
 	if clusterID == "" || podID == "" || containerName == "" {
 		return ""
