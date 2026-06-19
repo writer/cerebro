@@ -594,6 +594,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 
+func init() {
+	registerCatalogRuntimeProjectors(builtinRegistry.projectors)
+}
+
 // BuiltinRegistry returns the default source event projector registry.
 func BuiltinRegistry() *Registry {
 	return builtinRegistry
