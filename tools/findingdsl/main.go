@@ -106,7 +106,7 @@ func migratePolicyFiles(root string, write bool) error {
 			converted++
 			return nil
 		}
-		if err := rejectSymlink(repoRoot, targetRel); err != nil {
+		if err := ensureMigrationTargetAvailable(repoRoot, targetRel); err != nil {
 			return fmt.Errorf("write %s: %w", targetRel, err)
 		}
 		if err := repoRoot.WriteFile(targetRel, yamlContent, 0o600); err != nil {
@@ -136,7 +136,7 @@ func migratePolicyFiles(root string, write bool) error {
 	return nil
 }
 
-func rejectSymlink(root *os.Root, rel string) error {
+func ensureMigrationTargetAvailable(root *os.Root, rel string) error {
 	info, err := root.Lstat(rel)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -147,7 +147,7 @@ func rejectSymlink(root *os.Root, rel string) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("symlinked generated files are not allowed")
 	}
-	return nil
+	return errors.New("destination already exists")
 }
 
 func policyRel(root string, path string) (string, error) {

@@ -437,9 +437,12 @@ func checkCloudPolicyCoverage(root string) ([]issue, error) {
 	}
 	issues := checkRequiredCloudCoverageDimensions(dimensions)
 	issues = append(issues, checkStrictDeployRuntimeCoverage(root, dimensions)...)
-	rules, _, err := findingdsl.LoadPolicyRules(root)
+	rules, dslIssues, err := findingdsl.LoadPolicyRules(root)
 	if err != nil {
 		return nil, err
+	}
+	for _, dslIssue := range dslIssues {
+		issues = append(issues, issue{path: dslIssue.Path, message: dslIssue.Message})
 	}
 	for _, rule := range rules {
 		for _, resource := range splitPolicyResources(rule.Spec.Resource) {

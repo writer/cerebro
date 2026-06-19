@@ -270,7 +270,6 @@ func builtinRuleControlMappings() []compliance.RuleControlMapping {
 
 func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issue, error) {
 	policiesRoot := filepath.Join(root, "policies")
-	ids := map[string]string{}
 	var issues []issue
 	err := filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -318,13 +317,6 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 		issues = append(issues, issue{path: dslIssue.Path, message: dslIssue.Message})
 	}
 	for _, rule := range rules {
-		policyID := strings.TrimSpace(rule.Metadata.ID)
-		if existing := ids[policyID]; policyID != "" && existing != "" {
-			issues = append(issues, issue{path: rule.RelPath, message: fmt.Sprintf("duplicate policy id %q also used by %s", policyID, existing)})
-		}
-		if policyID != "" {
-			ids[policyID] = rule.RelPath
-		}
 		issues = append(issues, validatePolicyRuleControls(rule, controlCatalog)...)
 	}
 	return issues, nil
@@ -354,86 +346,6 @@ func validateControlMapping(path string, raw map[string]json.RawMessage) []issue
 	}
 	if _, ok := raw["controls"]; !ok {
 		issues = append(issues, issue{path: path, message: "control mapping controls object is required"})
-	}
-	return issues
-}
-
-func validatePolicy(path string, raw map[string]json.RawMessage, controlCatalog *compliance.CatalogIndex) []issue {
-	var issues []issue
-	for _, field := range []string{"id", "name", "description", "severity"} {
-		if stringField(raw, field) == "" {
-			issues = append(issues, issue{path: path, message: field + " is required"})
-		}
-	}
-	if severity := strings.ToUpper(stringField(raw, "severity")); severity != "" && !stringSetContains([]string{"INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"}, severity) {
-		issues = append(issues, issue{path: path, message: "severity must be one of info, low, medium, high, critical"})
-	}
-	hasConditions := hasNonEmptyArray(raw, "conditions")
-	hasQuery := stringField(raw, "query") != ""
-	if !hasConditions && !hasQuery {
-		issues = append(issues, issue{path: path, message: "conditions or query is required"})
-	}
-	if hasConditions {
-		if stringField(raw, "effect") == "" {
-			issues = append(issues, issue{path: path, message: "effect is required for CEL policies"})
-		}
-		if format := stringField(raw, "condition_format"); format != "" && !strings.EqualFold(format, "cel") {
-			issues = append(issues, issue{path: path, message: "condition_format must be cel when present"})
-		}
-	}
-	issues = append(issues, validateStringArrayField(path, raw, "tags")...)
-	issues = append(issues, validateFrameworks(path, raw, controlCatalog)...)
-	return issues
-}
-
-func validateStringArrayField(path string, raw map[string]json.RawMessage, field string) []issue {
-	value, ok := raw[field]
-	if !ok {
-		return nil
-	}
-	var values []string
-	if err := json.Unmarshal(value, &values); err != nil {
-		return []issue{{path: path, message: field + " must be a string array"}}
-	}
-	for idx, value := range values {
-		if strings.TrimSpace(value) == "" {
-			return []issue{{path: path, message: fmt.Sprintf("%s[%d] must be non-empty", field, idx)}}
-		}
-	}
-	return nil
-}
-
-func validateFrameworks(path string, raw map[string]json.RawMessage, controlCatalog *compliance.CatalogIndex) []issue {
-	value, ok := raw["frameworks"]
-	if !ok {
-		return []issue{{path: path, message: "frameworks is required"}}
-	}
-	var frameworks []struct {
-		Name     string   `json:"name"`
-		Controls []string `json:"controls"`
-	}
-	if err := json.Unmarshal(value, &frameworks); err != nil {
-		return []issue{{path: path, message: "frameworks must be an array of framework objects"}}
-	}
-	var issues []issue
-	for idx, framework := range frameworks {
-		frameworkName := strings.TrimSpace(framework.Name)
-		if frameworkName == "" {
-			issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].name is required", idx)})
-		}
-		if len(framework.Controls) == 0 {
-			issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls is required", idx)})
-		}
-		for controlIdx, control := range framework.Controls {
-			controlID := strings.TrimSpace(control)
-			if controlID == "" {
-				issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls[%d] is required", idx, controlIdx)})
-				continue
-			}
-			if controlCatalog != nil && frameworkName != "" && !controlCatalog.HasControl(frameworkName, controlID) {
-				issues = append(issues, issue{path: path, message: fmt.Sprintf("frameworks[%d].controls[%d] %s %s is not declared in internal/compliance/control_families.yaml", idx, controlIdx, frameworkName, controlID)})
-			}
-		}
 	}
 	return issues
 }
@@ -632,27 +544,6 @@ func stringField(raw map[string]json.RawMessage, field string) string {
 		return ""
 	}
 	return strings.TrimSpace(text)
-}
-
-func hasNonEmptyArray(raw map[string]json.RawMessage, field string) bool {
-	value, ok := raw[field]
-	if !ok {
-		return false
-	}
-	var values []json.RawMessage
-	if err := json.Unmarshal(value, &values); err != nil {
-		return false
-	}
-	return len(values) != 0
-}
-
-func stringSetContains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func slashRel(root string, path string) string {
