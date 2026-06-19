@@ -27,6 +27,7 @@ type fakePublisher struct {
 	accountErr   error
 	publishErr   error
 	publishErrs  []error
+	ack          *natsjetstream.PubAck
 	published    *nats.Msg
 	publishCalls int
 }
@@ -43,6 +44,9 @@ func (f *fakePublisher) PublishMsg(_ context.Context, msg *nats.Msg, _ ...natsje
 		f.publishErrs = f.publishErrs[1:]
 		return &natsjetstream.PubAck{}, err
 	}
+	if f.ack != nil {
+		return f.ack, f.publishErr
+	}
 	return &natsjetstream.PubAck{}, f.publishErr
 }
 
@@ -50,6 +54,8 @@ type fakeReplayManager struct {
 	streams     []*natsjetstream.StreamInfo
 	msgs        map[string]map[uint64]*natsjetstream.RawStreamMsg
 	err         error
+	getMsgErr   error
+	msgFunc     func(stream string, seq uint64) *natsjetstream.RawStreamMsg
 	streamCalls int
 	getMsgCalls int
 }
@@ -63,19 +69,26 @@ func (f *fakeReplayManager) Stream(_ context.Context, stream string) (replayStre
 		return nil, f.err
 	}
 	f.streamCalls++
-	return &fakeReplayStream{manager: f, msgs: f.msgs[stream]}, nil
+	return &fakeReplayStream{manager: f, stream: stream, msgs: f.msgs[stream]}, nil
 }
 
 type fakeReplayStream struct {
 	manager *fakeReplayManager
+	stream  string
 	msgs    map[uint64]*natsjetstream.RawStreamMsg
 }
 
 func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstream.GetMsgOpt) (*natsjetstream.RawStreamMsg, error) {
 	if f.manager != nil {
 		f.manager.getMsgCalls++
+		if f.manager.getMsgErr != nil {
+			return nil, f.manager.getMsgErr
+		}
 	}
 	raw := f.msgs[seq]
+	if raw == nil && f.manager != nil && f.manager.msgFunc != nil {
+		raw = f.manager.msgFunc(f.stream, seq)
+	}
 	if raw == nil {
 		return nil, natsjetstream.ErrMsgNotFound
 	}
@@ -313,8 +326,8 @@ func TestJetstreamErrorTelemetryAttrsIncludesAPIErrorDetails(t *testing.T) {
 	if values["nats.jetstream.error_description"] != "stream not found" {
 		t.Fatalf("nats.jetstream.error_description = %q, want stream not found", values["nats.jetstream.error_description"])
 	}
-	if values["messaging.jetstream.publish.retryable"] != "false" {
-		t.Fatalf("messaging.jetstream.publish.retryable = %q, want false", values["messaging.jetstream.publish.retryable"])
+	if values["messaging.jetstream.publish.retryable"] != "true" {
+		t.Fatalf("messaging.jetstream.publish.retryable = %q, want true", values["messaging.jetstream.publish.retryable"])
 	}
 }
 
@@ -510,9 +523,65 @@ func TestPingAcceptsMatchingStream(t *testing.T) {
 			{Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}}},
 		},
 	}
-	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", lastCanary: time.Now()}
 	if err := log.Ping(context.Background()); err != nil {
 		t.Fatalf("Ping() error = %v", err)
+	}
+}
+
+func TestPingRunsPublishReplayCanary(t *testing.T) {
+	pub := &fakePublisher{ack: &natsjetstream.PubAck{Stream: "CEREBRO_EVENTS", Sequence: 7}}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 7, Msgs: 7, Bytes: 512, Consumers: 2, NumSubjects: 3},
+			},
+		},
+		msgFunc: func(_ string, seq uint64) *natsjetstream.RawStreamMsg {
+			if seq != 7 || pub.published == nil {
+				return nil
+			}
+			return &natsjetstream.RawStreamMsg{
+				Subject: pub.published.Subject,
+				Header:  pub.published.Header,
+				Data:    pub.published.Data,
+			}
+		},
+	}
+	log := &Log{js: pub, replay: replay, subjectPrefix: "events"}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		if err := log.Ping(context.Background()); err != nil {
+			t.Fatalf("Ping() error = %v", err)
+		}
+	})
+
+	if pub.publishCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", pub.publishCalls)
+	}
+	if pub.published == nil || pub.published.Subject != "events."+jetstreamCanaryKind {
+		t.Fatalf("canary subject = %#v, want events.%s", pub.published, jetstreamCanaryKind)
+	}
+	if got := pub.published.Header.Get(nats.MsgIdHdr); !strings.HasPrefix(got, "jetstream-canary-") {
+		t.Fatalf("canary msg id = %q, want generated canary id", got)
+	}
+	events := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.canary.completed")
+	if len(events) != 1 {
+		t.Fatalf("canary completed events = %d, want 1; stderr=%s", len(events), stderr)
+	}
+	payload := events[0]
+	for key, want := range map[string]any{
+		"messaging.jetstream.canary.replayed":                   true,
+		"messaging.jetstream.ack.stream":                        "CEREBRO_EVENTS",
+		"messaging.jetstream.ack.sequence":                      float64(7),
+		"messaging.jetstream.stream.state.messages":             float64(7),
+		"messaging.jetstream.stream.state.consumer_count":       float64(2),
+		"messaging.jetstream.stream.state.unique_subject_count": float64(3),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
 	}
 }
 
@@ -553,6 +622,61 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 	}
 	if replay.streamCalls != 1 {
 		t.Fatalf("streamCalls = %d, want 1", replay.streamCalls)
+	}
+}
+
+func TestReplayEmitsScanTelemetry(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 3, Msgs: 3, Bytes: 256, Consumers: 1, NumSubjects: 2},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+		if err != nil {
+			t.Fatalf("Replay() error = %v", err)
+		}
+		if len(events) != 2 {
+			t.Fatalf("len(events) = %d, want 2", len(events))
+		}
+	})
+
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.replay")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.replay span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	payload := spanEnds[0]
+	for key, want := range map[string]any{
+		"messaging.jetstream.stream":                       "CEREBRO_EVENTS",
+		"messaging.jetstream.stream.state.messages":        float64(3),
+		"messaging.jetstream.stream.state.bytes":           float64(256),
+		"messaging.jetstream.replay.scanned_count":         float64(3),
+		"messaging.jetstream.replay.missing_count":         float64(1),
+		"messaging.jetstream.replay.subject_matched_count": float64(2),
+		"messaging.jetstream.replay.decoded_count":         float64(2),
+		"messaging.jetstream.replay.matched_count":         float64(2),
+		"events_returned":                                  float64(2),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["messaging.jetstream.replay.duration_ms"].(float64); !ok {
+		t.Fatalf("replay duration missing: %#v", payload)
 	}
 }
 
