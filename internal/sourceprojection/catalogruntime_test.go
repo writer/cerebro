@@ -143,6 +143,43 @@ func TestCatalogRuntimeProjectorRegistrationDoesNotOverrideStaticProjector(t *te
 	}
 }
 
+func TestCatalogRuntimeAssetProjectionRequiresStableResourceIdentity(t *testing.T) {
+	entities, links, err := catalogRuntimeAssetProjections(&cerebrov1.EventEnvelope{
+		Id:       "event-ephemeral",
+		TenantId: "tenant",
+		SourceId: "example_catalog",
+		Kind:     "example_catalog.asset",
+		Attributes: map[string]string{
+			"resource_type": "host",
+		},
+	})
+	if err != nil {
+		t.Fatalf("catalogRuntimeAssetProjections() error = %v", err)
+	}
+	if len(entities) != 0 || len(links) != 0 {
+		t.Fatalf("projected ephemeral asset identity from event id: entities=%#v links=%#v", entities, links)
+	}
+}
+
+func TestCatalogRuntimeFindingProjectionRequiresStableFindingIdentity(t *testing.T) {
+	entities, links, err := catalogRuntimeFindingProjections(&cerebrov1.EventEnvelope{
+		Id:       "event-ephemeral",
+		TenantId: "tenant",
+		SourceId: "example_catalog",
+		Kind:     "example_catalog.finding",
+		Attributes: map[string]string{
+			"title":    "Finding without provider id",
+			"severity": "high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("catalogRuntimeFindingProjections() error = %v", err)
+	}
+	if len(entities) != 0 || len(links) != 0 {
+		t.Fatalf("projected ephemeral finding identity from event id: entities=%#v links=%#v", entities, links)
+	}
+}
+
 func hasProjectedEntityType(entities []*ports.ProjectedEntity, entityType string) bool {
 	for _, entity := range entities {
 		if entity.EntityType == entityType {

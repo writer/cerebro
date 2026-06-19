@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"log"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -12,6 +13,7 @@ import (
 func registerCatalogRuntimeProjectors(projectors map[string]ProjectFunc) {
 	catalog, err := connectorcatalog.Builtin()
 	if err != nil {
+		log.Printf("sourceprojection: load connector catalog runtime projectors: %v", err)
 		return
 	}
 	registerCatalogRuntimeProjectorsForEntries(projectors, catalog.Entries)
@@ -93,8 +95,11 @@ func catalogRuntimeAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	}
 	attributes := event.GetAttributes()
 	resourceType := firstNonEmpty(attributes["resource_type"], attributes["family"], catalogRuntimeKindFamily(event), "asset")
-	resourceID := firstNonEmpty(attributes["resource_id"], attributes["external_id"], attributes["id"], attributes["name"], event.GetId())
-	resourceURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenantID, "runtime_"+normalizeCloudType(resourceType), resourceID))
+	resourceID := firstNonEmpty(attributes["resource_id"], attributes["external_id"], attributes["id"], attributes["name"])
+	resourceURN := strings.TrimSpace(attributes["resource_urn"])
+	if resourceURN == "" && resourceID != "" {
+		resourceURN = projectionURN(tenantID, "runtime_"+normalizeCloudType(resourceType), resourceID)
+	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	if resourceURN != "" {
@@ -139,8 +144,11 @@ func catalogRuntimeFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	findingID := firstNonEmpty(attributes["finding_id"], attributes["id"], event.GetId())
-	findingURN := projectionURN(tenantID, "finding", findingID)
+	findingID := firstNonEmpty(attributes["finding_id"], attributes["id"])
+	findingURN := ""
+	if findingID != "" {
+		findingURN = projectionURN(tenantID, "finding", findingID)
+	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	if findingURN != "" {
