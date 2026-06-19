@@ -570,6 +570,20 @@ func sentinelOneApplicationInventoryProjections(event *cerebrov1.EventEnvelope) 
 		},
 	})
 	agentURN := sentinelOneAgentURN(tenant, agentID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        agentURN,
+		TenantID:   tenant,
+		SourceID:   event.GetSourceId(),
+		EntityType: sentinelOneEntityAgent,
+		Label:      firstNonEmpty(attrs["computer_name"], attrs["agent_name"], agentID),
+		Attributes: compactAttributes(map[string]string{
+			"agent_id":    agentID,
+			"hostname":    strings.TrimSpace(firstNonEmpty(attrs["hostname"], attrs["computer_name"], attrs["agent_name"])),
+			"tenant_host": strings.TrimSpace(attrs["tenant_host"]),
+			"event_id":    event.GetId(),
+			"at":          eventObservedAt(event),
+		}),
+	})
 	addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, appURN, relationContains, map[string]string{"event_id": event.GetId()}))
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)

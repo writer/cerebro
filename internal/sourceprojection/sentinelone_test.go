@@ -388,6 +388,9 @@ func TestProjectSentinelOneApplicationInventoryContainedByAgent(t *testing.T) {
 	if state.entities[appURN] == nil {
 		t.Fatalf("application entity missing; got entities=%v", state.entities)
 	}
+	if entity := state.entities[agentURN]; entity == nil || entity.EntityType != "sentinelone.agent" {
+		t.Fatalf("agent entity missing or wrong type: %#v", entity)
+	}
 	assertProjectedLink(t, state, agentURN, relationContains, appURN)
 }
 

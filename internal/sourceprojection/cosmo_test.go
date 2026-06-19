@@ -25,9 +25,12 @@ func TestProjectCosmoSession(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 	sessionURN := cosmoTestURN("cosmo_session", "ticket-1")
+	threadURN := cosmoTestURN("cosmo_thread", "thread-1")
 	assertCosmoProjectedEntity(t, entities, sessionURN, "cosmo.session")
+	assertCosmoProjectedEntity(t, entities, threadURN, "cosmo.thread")
 	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:identity:email:alice@example.com", "identity.email")
 	assertCosmoProjectedLink(t, links, sessionURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedLink(t, links, sessionURN, relationBelongsTo, threadURN)
 }
 
 func TestProjectCosmoFact(t *testing.T) {
@@ -50,9 +53,9 @@ func TestProjectCosmoFact(t *testing.T) {
 	if got := fact.Attributes["key"]; got != "risk:key" {
 		t.Fatalf("fact key attribute = %q, want raw key", got)
 	}
-	if len(links) != 0 {
-		t.Fatalf("len(links) = %d, want 0", len(links))
-	}
+	categoryURN := "urn:cerebro:writer:cosmo_fact_category:risk"
+	assertCosmoProjectedEntity(t, entities, categoryURN, "cosmo.fact.category")
+	assertCosmoProjectedLink(t, links, fact.URN, relationTaggedAs, categoryURN)
 }
 
 func TestProjectCosmoFactLinksSourceSession(t *testing.T) {
