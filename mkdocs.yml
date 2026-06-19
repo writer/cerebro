@@ -1,0 +1,54 @@
+site_name: Cerebro
+site_description: Operations data platform for cloud, SaaS, identity, workflow, finding, compliance, and graph signals.
+repo_url: https://github.com/writer/cerebro
+theme:
+  name: mkdocs
+validation:
+  links:
+    not_found: info
+    unrecognized_links: info
+nav:
+  - Home: index.md
+  - Start:
+      - Quick Reference: QUICKREF.md
+      - Getting Started: GETTING_STARTED.md
+  - Reference:
+      - Architecture: ARCHITECTURE.md
+      - CLI Reference: CLI_REFERENCE.md
+      - Source Catalog: SOURCES.md
+      - API Reference: API_REFERENCE.md
+      - API Contracts: API_CONTRACTS_AUTOGEN.md
+      - Configuration Notes: CONFIGURATION.md
+      - Configuration Variables: CONFIG_ENV_VARS.md
+      - Auth And Tenancy: AUTH_TENANCY.md
+      - Packages: PACKAGES.md
+  - Operations:
+      - Hosting: HOSTING.md
+      - Cloud Deployment: CLOUD_DEPLOYMENT.md
+      - Deployment Examples: DEPLOYMENT_EXAMPLES.md
+      - Operations Runbook: OPERATIONS_RUNBOOK.md
+      - Headroom: HEADROOM.md
+      - Observability: OBSERVABILITY.md
+      - Troubleshooting: TROUBLESHOOTING.md
+      - Release Contract: RELEASE_CONTRACT.md
+  - Domains:
+      - Source Runtime Guide: SOURCE_RUNTIME_GUIDE.md
+      - Graph Operations: GRAPH_OPERATIONS.md
+      - Compliance Controls: COMPLIANCE_CONTROLS.md
+      - Policies: POLICIES.md
+      - Policy Rule Extensions: POLICY_RULE_EXTENSIONS.md
+      - Findings Platform Architecture: FINDINGS_PLATFORM_ARCHITECTURE.md
+      - Finding Candidate Operations: FINDING_CANDIDATE_OPERATIONS.md
+      - Agent Platform Contract: AGENT_PLATFORM_CONTRACT.md
+      - Endpoint Security Platform Integration: ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md
+      - MCP Native Droid Setup: MCP_DROID_SETUP.md
+  - Engineering:
+      - Development: DEVELOPMENT.md
+      - Non-Goals: NON_GOALS.md
+      - Durability Contract: DURABILITY_CONTRACT.md
+      - Source Sync Recovery: SOURCE_SYNC_RECOVERY.md
+      - Source CDK Extraction: SOURCE_CDK_EXTRACTION.md
+      - Security Regression Harness: SECURITY_REGRESSION_HARNESS.md
+      - Vulnerability DB Architecture: VULNERABILITY_DB_ARCHITECTURE.md
+      - DevEx Codegen Catalog: DEVEX_CODEGEN_AUTOGEN.md
+      - PR Landing: PR_LANDING.md
