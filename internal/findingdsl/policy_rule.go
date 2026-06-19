@@ -280,6 +280,18 @@ func LoadPolicyRules(root string) ([]PolicyFindingRule, []Issue, error) {
 		}
 		return rules[i].Metadata.ID < rules[j].Metadata.ID
 	})
+	seenIDs := map[string]string{}
+	for _, rule := range rules {
+		policyID := strings.TrimSpace(rule.Metadata.ID)
+		if policyID == "" {
+			continue
+		}
+		if existing := seenIDs[policyID]; existing != "" {
+			issues = append(issues, Issue{Path: rule.RelPath, Message: fmt.Sprintf("duplicate metadata.id %q also used by %s", policyID, existing)})
+			continue
+		}
+		seenIDs[policyID] = rule.RelPath
+	}
 	return rules, issues, nil
 }
 
@@ -564,12 +576,13 @@ func validateFrameworks(path string, frameworks []PolicyFramework) []Issue {
 }
 
 func validateStringArray(path string, field string, values []string) []Issue {
+	var issues []Issue
 	for idx, value := range values {
 		if strings.TrimSpace(value) == "" {
-			return []Issue{{Path: path, Message: fmt.Sprintf("%s[%d] must be non-empty", field, idx)}}
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("%s[%d] must be non-empty", field, idx)})
 		}
 	}
-	return nil
+	return issues
 }
 
 func validateStringArrayMap(path string, field string, values map[string][]string) []Issue {

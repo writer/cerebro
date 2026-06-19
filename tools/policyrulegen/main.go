@@ -955,22 +955,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func policyDomain(rel string) string {
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) >= 2 && parts[0] == "policies" {
-		return strings.TrimSpace(parts[1])
-	}
-	return "policy"
-}
-
 func quote(value string) string {
 	return strconv.Quote(strings.TrimSpace(value))
-}
-
-func slashRel(root string, path string) string {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
 }

@@ -203,6 +203,32 @@ func TestLoadPolicyRulesRejectsLegacyJSONPolicies(t *testing.T) {
 	}
 }
 
+func TestLoadPolicyRulesRejectsDuplicatePolicyIDs(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "policies/aws/a.yaml", testPolicyRuleYAML("aws-duplicate", "AWS A"))
+	writeTestFile(t, root, "policies/aws/b.yaml", testPolicyRuleYAML("aws-duplicate", "AWS B"))
+
+	_, issues, err := LoadPolicyRules(root)
+	if err != nil {
+		t.Fatalf("LoadPolicyRules() error = %v", err)
+	}
+	if len(issues) != 1 || !strings.Contains(issues[0].Message, `duplicate metadata.id "aws-duplicate"`) {
+		t.Fatalf("issues = %#v, want duplicate metadata.id issue", issues)
+	}
+	if issues[0].Path != "policies/aws/b.yaml" {
+		t.Fatalf("issue path = %q, want duplicate path", issues[0].Path)
+	}
+}
+
+func TestValidateStringArrayReportsAllBlankEntries(t *testing.T) {
+	issues := validateStringArray("policies/aws/example.yaml", "metadata.tags", []string{"", "aws", " "})
+	for _, want := range []string{"metadata.tags[0]", "metadata.tags[2]"} {
+		if !issuesContain(issues, want) {
+			t.Fatalf("issues = %#v, missing %q", issues, want)
+		}
+	}
+}
+
 func TestLegacyPolicyRoundTrip(t *testing.T) {
 	rule := FromLegacyPolicy("policies/aws/example.yaml", LegacyPolicy{
 		ID:              "aws-example",
@@ -232,6 +258,29 @@ func issuesContain(issues []Issue, want string) bool {
 		}
 	}
 	return false
+}
+
+func testPolicyRuleYAML(id string, name string) string {
+	return `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: ` + id + `
+  name: ` + name + `
+  description: Example policy
+  tags: [aws]
+spec:
+  severity: high
+  effect: forbid
+  resource: aws::s3::bucket
+  match:
+    conditionFormat: cel
+    conditions:
+      - cmp_eq(path(resource, "public"), true)
+  frameworks:
+    - name: SOC 2
+      controls: [CC6]
+`
 }
 
 func writeTestFile(t *testing.T, root string, rel string, content string) {

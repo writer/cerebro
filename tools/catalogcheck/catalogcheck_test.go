@@ -337,6 +337,43 @@ emitted_kinds:
 	}
 }
 
+func TestCheckCloudPolicyCoverageReportsDSLValidationIssues(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "policies/cloud/test.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: cloud-test
+  description: Test policy
+  tags: [test]
+spec:
+  severity: high
+  effect: forbid
+  resource: aws::s3::bucket
+  match:
+    conditionFormat: cel
+    conditions:
+      - cmp_eq(path(resource, "visibility"), "public")
+  frameworks:
+    - name: SOC 2
+      controls: [CC6]
+`)
+	writeFile(t, root, "sources/sdk/catalog.yaml", `
+id: sdk
+name: SDK
+description: SDK source
+emitted_kinds: []
+`)
+
+	issues, err := checkCloudPolicyCoverage(root)
+	if err != nil {
+		t.Fatalf("checkCloudPolicyCoverage() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "metadata.name is required") {
+		t.Fatalf("issues = %#v, want DSL validation issue", issues)
+	}
+}
+
 func TestCloudPolicyCoverageMapsLegacyGCPResources(t *testing.T) {
 	tests := map[string]string{
 		"gcp_container_clusters":        "gke_cluster",
