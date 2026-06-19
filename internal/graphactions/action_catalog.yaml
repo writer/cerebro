@@ -1,0 +1,28 @@
+version: graph-actions.cerebro/v1alpha1
+actions:
+  - id: identity.okta.suspend_user
+    const_name: ActionIdentityOktaSuspendUser
+    provider: access-approvals
+    provider_const: ProviderAccessApprovals
+    provider_action: suspend
+    provider_action_const: AccessApprovalsActionSuspend
+    target_kind: identity.okta.user
+    target_kind_const: TargetKindOktaUser
+    target_resolver: OktaUserTargetForFinding
+    eligibility_checker: FindingAllowsAction
+    effect: deny_access
+    destructive: true
+    reversible_by: identity.okta.unsuspend_user
+  - id: identity.okta.unsuspend_user
+    const_name: ActionIdentityOktaUnsuspendUser
+    provider: access-approvals
+    provider_const: ProviderAccessApprovals
+    provider_action: unsuspend
+    provider_action_const: AccessApprovalsActionUnsuspend
+    target_kind: identity.okta.user
+    target_kind_const: TargetKindOktaUser
+    target_resolver: OktaUserTargetForFinding
+    eligibility_checker: FindingAllowsAction
+    effect: restore_access
+    destructive: false
+    reversible_by: identity.okta.suspend_user

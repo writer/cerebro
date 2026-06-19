@@ -31,4 +31,6 @@ export CEREBRO_NEO4J_PASSWORD='<secret>'
 
 Provider-backed graph actions are optional. To enable access-approvals backed identity actions such as `identity.okta.suspend_user` and `identity.okta.unsuspend_user`, configure `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL`, `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` or `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`, and grant callers the `cerebro.graph_actions.write` scope. `POST /platform/graph/actions` requires an eligible `finding_id`; the target is derived from the finding unless an explicit target assertion matches the finding identity. `POST /platform/graph/actions/reconcile` refreshes a linked provider action status back into the finding lifecycle.
 
+Graph action support is catalog-driven. Add or review supported actions in `internal/graphactions/action_catalog.yaml`, regenerate the Go registry with `make graph-action-generate`, and keep `make graph-action-check` green. Non-Okta providers should implement an `internal/graphactions.ActionProvider` adapter so execution and reconciliation keep the same finding eligibility, target validation, idempotency, workflow-event, and external-reference safeguards.
+
 See `docs/CONFIG_ENV_VARS.md` for the full current variable list.

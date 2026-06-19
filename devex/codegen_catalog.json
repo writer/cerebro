@@ -105,6 +105,43 @@
       ]
     },
     {
+      "id": "graph-actions",
+      "title": "Graph Action Registry",
+      "summary": "Keeps graph action catalog definitions and generated Go registry wiring aligned.",
+      "change_reason": "graph action catalog, generated registry, or provider action metadata changed",
+      "triggers": [
+        "internal/graphactions/action_catalog.yaml",
+        "internal/graphactions/registry_gen.go",
+        "tools/graphactiongen/**"
+      ],
+      "generator": {
+        "make_target": "graph-action-generate",
+        "command": [
+          "make",
+          "graph-action-generate"
+        ],
+        "summary": "Regenerate the graph action registry from the reviewed action catalog."
+      },
+      "checks": [
+        {
+          "key": "graph-action-check",
+          "summary": "Verify generated graph action registry is up to date",
+          "make_target": "graph-action-check",
+          "command": [
+            "make",
+            "graph-action-check"
+          ],
+          "include_in_pr_generated_step": true
+        }
+      ],
+      "outputs": [
+        "internal/graphactions/registry_gen.go"
+      ],
+      "ci_jobs": [
+        "graph-actions"
+      ]
+    },
+    {
       "id": "detection-catalog",
       "title": "Detection Catalog",
       "summary": "Keeps generated detection catalog artifacts aligned with policy definitions.",

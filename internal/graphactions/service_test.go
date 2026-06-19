@@ -227,10 +227,220 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 	}
 }
 
+func TestDefaultRegistryComesFromGeneratedCatalogMetadata(t *testing.T) {
+	specs := KnownActionSpecs()
+	if len(specs) != 2 {
+		t.Fatalf("KnownActionSpecs() len = %d, want 2", len(specs))
+	}
+	spec, err := DefaultRegistry().Lookup(ActionIdentityOktaSuspendUser)
+	if err != nil {
+		t.Fatalf("Lookup() error = %v", err)
+	}
+	if spec.Provider != ProviderAccessApprovals || spec.ProviderAction != AccessApprovalsActionSuspend || spec.TargetKind != TargetKindOktaUser {
+		t.Fatalf("generated suspend spec = %#v, want access-approvals suspend Okta user", spec)
+	}
+	if spec.Effect != "deny_access" || !spec.Destructive || spec.ReversibleBy != ActionIdentityOktaUnsuspendUser {
+		t.Fatalf("generated suspend metadata = %#v, want destructive deny_access with unsuspend reversal", spec)
+	}
+}
+
+func TestServiceExecuteUsesConfiguredActionProvider(t *testing.T) {
+	const actionID = "identity.generic.lock_user"
+	provider := &stubActionProvider{executeAction: &GraphAction{
+		ID:             "provider-action-1",
+		Action:         actionID,
+		Provider:       "generic-idp",
+		ExternalID:     "provider-action-1",
+		ExternalStatus: "queued",
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:         "finding-1",
+		TenantID:   "tenant-a",
+		Status:     "open",
+		RuleID:     "rule-1",
+		Attributes: map[string]string{"graph_actions_allowed": actionID},
+	}}
+	result, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			"generic-idp": provider,
+		},
+		Registry: Registry{actions: map[string]ActionSpec{
+			actionID: {
+				ID:               actionID,
+				Provider:         "generic-idp",
+				ProviderAction:   "lock",
+				TargetKind:       "identity.generic.user",
+				ResolveTarget:    fixedTarget("generic-user-1"),
+				CheckEligibility: FindingAllowsAction,
+			},
+		}},
+	}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    actionID,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if provider.request.Target != "generic-user-1" || provider.spec.ProviderAction != "lock" {
+		t.Fatalf("provider request/spec = %#v %#v, want generic provider target and action", provider.request, provider.spec)
+	}
+	if result == nil || result.Action == nil || result.Action.Provider != "generic-idp" || result.Target != "generic-user-1" {
+		t.Fatalf("Execute() result = %#v, want generic provider action", result)
+	}
+	if workflow.ref.System != "generic-idp" || workflow.ref.ExternalID != "provider-action-1" {
+		t.Fatalf("linked ref = %#v, want generic provider graph action ref", workflow.ref)
+	}
+}
+
+func TestServiceExecuteRejectsProviderActionWithoutExternalID(t *testing.T) {
+	const actionID = "identity.generic.lock_user"
+	provider := &stubActionProvider{executeAction: &GraphAction{
+		Action:   actionID,
+		Provider: "generic-idp",
+		Target:   "generic-user-1",
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:         "finding-1",
+		TenantID:   "tenant-a",
+		Status:     "open",
+		RuleID:     "rule-1",
+		Attributes: map[string]string{"graph_actions_allowed": actionID},
+	}}
+	_, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			"generic-idp": provider,
+		},
+		Registry: Registry{actions: map[string]ActionSpec{
+			actionID: {
+				ID:               actionID,
+				Provider:         "generic-idp",
+				ProviderAction:   "lock",
+				TargetKind:       "identity.generic.user",
+				ResolveTarget:    fixedTarget("generic-user-1"),
+				CheckEligibility: FindingAllowsAction,
+			},
+		}},
+	}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    actionID,
+	})
+	if !errors.Is(err, ErrRemote) {
+		t.Fatalf("Execute() error = %v, want ErrRemote", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("linked ref = %#v, want no unmatchable provider ref", workflow.ref)
+	}
+}
+
 func TestGraphActionFromAccessApprovalsFallsBackToResolvedTarget(t *testing.T) {
 	action := GraphActionFromAccessApprovals(ActionIdentityOktaSuspendUser, &AccessApprovalsUserAction{ID: "action-1"}, "", "00u123")
 	if action == nil || action.Target != "00u123" {
 		t.Fatalf("GraphActionFromAccessApprovals() = %#v, want fallback target", action)
+	}
+}
+
+func TestServiceReconcileUsesLinkedActionProvider(t *testing.T) {
+	const actionID = "identity.generic.lock_user"
+	provider := &stubActionProvider{getAction: &GraphAction{
+		ID:             "provider-action-1",
+		Action:         actionID,
+		Provider:       "generic-idp",
+		Target:         "generic-user-1",
+		ExternalStatus: "succeeded",
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		RuleID:   "rule-1",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     "generic-idp",
+				Kind:       RefKind,
+				ExternalID: "provider-action-1",
+			}},
+		},
+		Attributes: map[string]string{"graph_actions_allowed": actionID},
+	}}
+	result, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			"generic-idp": provider,
+		},
+		Registry: Registry{actions: map[string]ActionSpec{
+			actionID: {
+				ID:               actionID,
+				Provider:         "generic-idp",
+				ProviderAction:   "lock",
+				TargetKind:       "identity.generic.user",
+				ResolveTarget:    echoExplicitTarget,
+				CheckEligibility: FindingAllowsAction,
+			},
+		}},
+	}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: "provider-action-1",
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if result == nil || result.Action == nil || result.Action.Provider != "generic-idp" || result.Action.ExternalStatus != "succeeded" {
+		t.Fatalf("Reconcile() result = %#v, want generic provider action", result)
+	}
+	if workflow.ref.System != "generic-idp" || workflow.ref.ExternalStatus != "succeeded" {
+		t.Fatalf("linked ref = %#v, want refreshed generic provider ref", workflow.ref)
+	}
+}
+
+func TestServiceReconcileRejectsLinkedProviderMismatch(t *testing.T) {
+	const actionID = "identity.generic.lock_user"
+	provider := &stubActionProvider{getAction: &GraphAction{
+		ID:         "provider-action-1",
+		Action:     actionID,
+		Provider:   "generic-idp",
+		Target:     "generic-user-1",
+		ExternalID: "provider-action-1",
+	}}
+	workflow := &stubFindingWorkflow{finding: &ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		RuleID:   "rule-1",
+		FindingWorkflow: ports.FindingWorkflow{
+			ExternalRefs: []ports.FindingExternalRef{{
+				System:     "generic-idp",
+				Kind:       RefKind,
+				ExternalID: "provider-action-1",
+			}},
+		},
+		Attributes: map[string]string{"graph_actions_allowed": actionID},
+	}}
+	_, err := (Service{
+		Findings: workflow,
+		Providers: map[string]ActionProvider{
+			"generic-idp": provider,
+		},
+		Registry: Registry{actions: map[string]ActionSpec{
+			actionID: {
+				ID:               actionID,
+				Provider:         "different-idp",
+				ProviderAction:   "lock",
+				TargetKind:       "identity.generic.user",
+				ResolveTarget:    echoExplicitTarget,
+				CheckEligibility: FindingAllowsAction,
+			},
+		}},
+	}).Reconcile(context.Background(), ReconcileInput{
+		FindingID:  "finding-1",
+		ExternalID: "provider-action-1",
+	})
+	if !errors.Is(err, ErrRemote) {
+		t.Fatalf("Reconcile() error = %v, want ErrRemote", err)
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("reconcile linked ref despite provider mismatch: %#v", workflow.ref)
 	}
 }
 
@@ -421,4 +631,31 @@ func (s *stubAccessApprovalsClient) GetOktaUserAction(context.Context, string) (
 
 func (s *stubAccessApprovalsClient) ActionURL(string) string {
 	return ""
+}
+
+type stubActionProvider struct {
+	spec          ActionSpec
+	request       ProviderActionRequest
+	executeAction *GraphAction
+	getAction     *GraphAction
+}
+
+func (s *stubActionProvider) ExecuteGraphAction(_ context.Context, spec ActionSpec, request ProviderActionRequest) (*GraphAction, error) {
+	s.spec = spec
+	s.request = request
+	return s.executeAction, nil
+}
+
+func (s *stubActionProvider) GetGraphAction(context.Context, string) (*GraphAction, error) {
+	return s.getAction, nil
+}
+
+func fixedTarget(target string) TargetResolver {
+	return func(*ports.FindingRecord, string) (string, error) {
+		return target, nil
+	}
+}
+
+func echoExplicitTarget(_ *ports.FindingRecord, explicit string) (string, error) {
+	return explicit, nil
 }

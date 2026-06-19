@@ -133,8 +133,12 @@ claims into route-level permission checks.
 Graph action execution is also represented in the bootstrap budget only at the
 transport boundary: route registration, scoped auth policy, request/response
 mapping, tenant-authorized finding lookup, and service dependency wiring. Action
-target selection, provider request shaping, idempotency, and external reference
-mapping stay behind `internal/graphactions` and `internal/graphactionapi`.
+target selection, provider request shaping, idempotency, provider dispatch, and
+external reference mapping stay behind `internal/graphactions` and
+`internal/graphactionapi`. Supported actions are cataloged in
+`internal/graphactions/action_catalog.yaml` and generated into the registry with
+`make graph-action-generate`; new providers add an `ActionProvider` adapter
+rather than branching in bootstrap or handler code.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes

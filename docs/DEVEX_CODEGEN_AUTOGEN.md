@@ -4,7 +4,7 @@ Maintained from `devex/codegen_catalog.json`.
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **CodegenCatalog**
-- Families: **3**
+- Families: **4**
 
 ## CI To Local Map
 
@@ -12,6 +12,7 @@ Maintained from `devex/codegen_catalog.json`.
 |---|---|---|---|---|
 | `openapi` | `openapi-sync` | `openapi-check`, `openapi-lint` | `openapi` | `api/openapi.yaml` |
 | `proto` | `proto-generate` | `proto-breaking`, `proto-generate-check`, `proto-lint` | `proto` | `gen/cerebro/v1`, `sdk/python/cerebro/v1` |
+| `graph-actions` | `graph-action-generate` | `graph-action-check` | `graph-actions` | `internal/graphactions/registry_gen.go` |
 | `detection-catalog` | `detection-catalog-generate` | `catalog-check`, `detection-catalog-check` | `catalog` | `docs/POLICIES.md` |
 
 ## Families
@@ -42,6 +43,18 @@ Keeps proto definitions, generated Go/Python outputs, and breaking-change checks
 - Triggers: `buf.gen.yaml`, `buf.yaml`, `proto/**`
 - Outputs: `gen/cerebro/v1`, `sdk/python/cerebro/v1`
 - CI jobs: `proto`
+
+### `graph-actions`
+
+Keeps graph action catalog definitions and generated Go registry wiring aligned.
+
+- Change reason: graph action catalog, generated registry, or provider action metadata changed
+- Generator: `graph-action-generate` -> `make graph-action-generate`
+- Checks:
+  - `graph-action-check` -> `make graph-action-check`
+- Triggers: `internal/graphactions/action_catalog.yaml`, `internal/graphactions/registry_gen.go`, `tools/graphactiongen/**`
+- Outputs: `internal/graphactions/registry_gen.go`
+- CI jobs: `graph-actions`
 
 ### `detection-catalog`
 
