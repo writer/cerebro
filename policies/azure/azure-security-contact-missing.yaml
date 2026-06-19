@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-security-contact-missing
+    name: Azure Security Contact Missing
+    description: "Azure Security Contact Missing policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - azure
+        - security-contact
+        - generated
+        - security
+spec:
+    severity: medium
+    effect: forbid
+    resource: azure_security_contact
+    match:
+        conditions:
+            - "cmp_eq(path(resource, \"security_contact_missing\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore security contact missing controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - CLOUD_MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - CM-6
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "4"
+            - "6"
+            - "8"

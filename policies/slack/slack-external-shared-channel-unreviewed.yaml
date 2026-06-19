@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: slack-external-shared-channel-unreviewed
+    name: Slack External Shared Channel Unreviewed
+    description: "Slack External Shared Channel Unreviewed policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - slack
+        - external-sharing
+        - review
+        - generated
+        - external
+spec:
+    severity: medium
+    effect: forbid
+    resource: "slack::channel"
+    match:
+        conditions:
+            - "cmp_ne(path(resource, \"external_shared_channel_unreviewed_compliant\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore external shared channel unreviewed controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - ACCESS_CONTROL
+        - DATA_EXPOSURE
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+            - CC7.1
+        - name: "ISO 27001:2022"
+          controls:
+            - A.5.15
+            - A.5.18
+            - A.8.12
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-3
+            - AU-2

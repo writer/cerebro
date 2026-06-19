@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: m365-admin-consent-workflow-disabled
+    name: M365 Admin Consent Workflow Disabled
+    description: "M365 Admin Consent Workflow Disabled policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - m365
+        - admin-consent
+        - generated
+        - admin
+spec:
+    severity: high
+    effect: forbid
+    resource: "m365::tenant_policy"
+    match:
+        conditions:
+            - "cmp_eq(path(resource, \"admin_consent_workflow_disabled\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore admin consent workflow disabled controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - DATA_PROTECTION
+        - ACCESS_CONTROL
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+            - CC7.1
+        - name: "ISO 27001:2022"
+          controls:
+            - A.5.15
+            - A.5.23
+            - A.8.12
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-3
+            - AU-2

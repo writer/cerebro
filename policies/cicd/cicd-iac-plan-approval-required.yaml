@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: cicd-iac-plan-approval-required
+    name: Cicd Iac Plan Approval Required
+    description: "Cicd Iac Plan Approval Required policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cicd
+        - iac
+        - approval
+        - generated
+spec:
+    severity: medium
+    effect: forbid
+    resource: "cicd::pipeline"
+    match:
+        conditions:
+            - "cmp_ne(path(resource, \"iac_plan_approval_required\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore iac plan approval required controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - SUPPLY_CHAIN
+        - CHANGE_CONTROL
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC7.1
+            - CC8.1
+        - name: "ISO 27001:2022"
+          controls:
+            - A.8.8
+            - A.8.25
+            - A.8.32
+        - name: NIST 800-53 r5
+          controls:
+            - SA-10
+            - SA-15
+            - SR-4

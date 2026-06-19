@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-ecs-task-definition-readonly-root
+    name: AWS ECS Task Definition Readonly Root
+    description: "AWS ECS Task Definition Readonly Root policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - ecs
+        - filesystem
+        - generated
+spec:
+    severity: medium
+    effect: forbid
+    resource: "aws::ecs::task_definition"
+    match:
+        conditions:
+            - "cmp_ne(path(resource, \"ecs_task_definition_readonly_root_compliant\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore ecs task definition readonly root controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - CLOUD_MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - CM-6
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "4"
+            - "6"
+            - "8"

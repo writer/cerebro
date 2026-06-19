@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-sagemaker-notebook-no-direct-internet
+    name: AWS Sagemaker Notebook No Direct Internet
+    description: "AWS Sagemaker Notebook No Direct Internet policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - sagemaker
+        - network
+        - ai
+        - generated
+spec:
+    severity: medium
+    effect: forbid
+    resource: "aws::sagemaker::notebook_instance"
+    match:
+        conditions:
+            - "cmp_ne(path(resource, \"sagemaker_notebook_no_direct_internet_compliant\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore sagemaker notebook no direct internet controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - MODEL_RISK
+        - DATA_EXPOSURE
+        - GOVERNANCE
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - A.2.2
+            - A.6.2.4
+            - A.8.2
+            - A.9.2
+        - name: EU AI Act
+          controls:
+            - Art.13
+            - Art.14
+        - name: SOC 2
+          controls:
+            - CC3.2
+            - CC7.2
