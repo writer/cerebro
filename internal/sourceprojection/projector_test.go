@@ -3165,6 +3165,60 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 	}
 }
 
+func TestProjectAWSCloudTrailRoleResourceLinksCanonicalRole(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	roleARN := "arn:aws:iam::123456789012:role/AdminRole"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-cloudtrail-role-resource",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.cloudtrail",
+		Attributes: map[string]string{
+			"domain":        "123456789012",
+			"event_type":    "ListRolePolicies",
+			"resource_id":   roleARN,
+			"resource_type": "resource",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:aws_resource:" + roleARN
+	roleURN := "urn:cerebro:writer:aws_role:" + roleARN
+	assertProjectedEntityType(t, state, resourceURN, "aws.resource")
+	assertProjectedEntityType(t, state, roleURN, "aws.role")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, resourceURN, relationRepresents, roleURN)
+}
+
+func TestProjectGCPAuditResourceLinksProject(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	resourceID := "projects/writer-prod/locations/us-central1/keyRings/ring-1/cryptoKeys/key-1"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "gcp-audit-resource",
+		TenantId: "writer",
+		SourceId: "gcp",
+		Kind:     "gcp.audit",
+		Attributes: map[string]string{
+			"event_type":    "GetCryptoKey",
+			"resource_id":   resourceID,
+			"resource_type": "audited_resource",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	resourceURN := "urn:cerebro:writer:gcp_audited_resource:" + resourceID
+	assertProjectedEntityType(t, state, resourceURN, "gcp.audited.resource")
+	assertProjectedLink(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
+}
+
 func TestProjectGoogleWorkspaceAuditTargetEmailLinksIdentity(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

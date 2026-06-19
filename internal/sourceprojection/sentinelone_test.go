@@ -407,7 +407,8 @@ func TestProjectSentinelOneExclusion(t *testing.T) {
 			"exclusion_type": "path",
 			"mode":           "suppress_alerts",
 			"os_type":        "macos",
-			"scope":          "site",
+			"scope":          `{"siteIds":["site-1"]}`,
+			"scope_name":     "Production",
 			"value":          "/Applications/Approved.app",
 		},
 	}); err != nil {
@@ -417,7 +418,12 @@ func TestProjectSentinelOneExclusion(t *testing.T) {
 	if state.entities[exclusionURN] == nil {
 		t.Fatal("exclusion entity missing")
 	}
-	if got := state.entities[exclusionURN].Attributes["scope"]; got != "site" {
-		t.Fatalf("exclusion scope = %q, want site", got)
+	if got := state.entities[exclusionURN].Attributes["scope"]; got != `{"siteIds":["site-1"]}` {
+		t.Fatalf("exclusion scope = %q, want site JSON", got)
 	}
+	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
+	if entity := state.entities[siteURN]; entity == nil || entity.EntityType != "sentinelone.site" {
+		t.Fatalf("site entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, exclusionURN, relationTargeted, siteURN)
 }

@@ -946,6 +946,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 		if resourceIdentifier := firstNonEmpty(resourceEmail, resourceID); extractEmailIdentifier(resourceIdentifier) != "" {
 			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), resourceURN, resourceIdentifier, event.GetOccurredAt())
 		}
+		addIdentityAuditResourceContext(entities, links, tenantID, event, profile, resourceURN, attributes, resourceType, resourceID)
 	}
 	if actorURN != "" && resourceURN != "" {
 		actedAttrs := map[string]string{
@@ -957,6 +958,57 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 	}
 	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, profile, attributes, resourceURN)
 	return identityProjectionResult(entities, links)
+}
+
+func addIdentityAuditResourceContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, resourceURN string, attributes map[string]string, resourceType string, resourceID string) {
+	switch profile.Provider {
+	case "aws":
+		if accountID := firstNonEmpty(awsAccountID(attributes["domain"]), awsAccountID(attributes["aws_account_id"]), awsAccountIDFromARN(resourceID)); accountID != "" {
+			addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, accountID, profile.Provider)
+		}
+		if !strings.Contains(strings.TrimSpace(resourceID), ":role/") {
+			return
+		}
+		roleURN := identityPrincipalURN(tenantID, profile.Provider, "role", resourceID, "")
+		if roleURN == "" {
+			return
+		}
+		roleName := awsRoleNameFromARN(resourceID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        roleURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("role"),
+			Label:      firstNonEmpty(roleName, resourceID),
+			Attributes: map[string]string{
+				"role_arn":  strings.TrimSpace(resourceID),
+				"role_name": roleName,
+			},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, roleURN, relationRepresents, map[string]string{
+			"event_id":       event.GetId(),
+			"match_type":     "aws_audit_resource_role_arn",
+			"resource_id":    strings.TrimSpace(resourceID),
+			"resource_type":  strings.TrimSpace(resourceType),
+			"canonical_type": "aws.role",
+		}))
+	case "gcp":
+		if projectID := firstNonEmpty(attributes["gcp_project_id"], attributes["project_id"], gcpProjectIDFromResource(resourceID), attributes["domain"]); projectID != "" {
+			addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, projectID, profile.Provider)
+		}
+	case "azure":
+		if subscriptionID := firstNonEmpty(attributes["subscription_id"], azureSubscriptionIDFromScope(resourceID), azureSubscriptionIDFromScope(attributes["target_id"])); subscriptionID != "" {
+			addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, subscriptionID, profile.Provider)
+		}
+	}
+}
+
+func awsRoleNameFromARN(value string) string {
+	_, roleName, ok := strings.Cut(strings.TrimSpace(value), ":role/")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(roleName)
 }
 
 func isAWSAssumedRoleActor(profile identityProjectionProfile, actorType string, actorID string) bool {

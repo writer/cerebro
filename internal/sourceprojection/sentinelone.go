@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -520,6 +521,7 @@ func sentinelOneExclusionProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 			"tenant_host":         strings.TrimSpace(attrs["tenant_host"]),
 		},
 	})
+	addSentinelOneExclusionScopeLinks(entities, links, tenant, event, exclusionURN, attrs)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -615,6 +617,86 @@ func addSentinelOneScopeLinks(entities map[string]*ports.ProjectedEntity, links 
 		})
 		addLink(links, projectedLink(tenant, event.GetSourceId(), fromURN, groupURN, relationMemberOf, map[string]string{"event_id": event.GetId()}))
 	}
+}
+
+func addSentinelOneExclusionScopeLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, exclusionURN string, attrs map[string]string) {
+	for _, siteID := range sentinelOneScopeIDs(attrs["scope"], "siteIds", "site_ids", "siteId", "site_id") {
+		siteURN := sentinelOneSiteURN(tenant, siteID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        siteURN,
+			TenantID:   tenant,
+			SourceID:   event.GetSourceId(),
+			EntityType: sentinelOneEntitySite,
+			Label:      firstNonEmpty(attrs["scope_name"], siteID),
+			Attributes: map[string]string{"site_id": siteID, "site_name": strings.TrimSpace(attrs["scope_name"])},
+		})
+		addLink(links, projectedLink(tenant, event.GetSourceId(), exclusionURN, siteURN, relationTargeted, map[string]string{"event_id": event.GetId(), "match_type": "sentinelone_exclusion_site_scope"}))
+	}
+	for _, groupID := range sentinelOneScopeIDs(attrs["scope"], "groupIds", "group_ids", "groupId", "group_id") {
+		groupURN := sentinelOneGroupURN(tenant, groupID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        groupURN,
+			TenantID:   tenant,
+			SourceID:   event.GetSourceId(),
+			EntityType: sentinelOneEntityGroup,
+			Label:      firstNonEmpty(attrs["scope_name"], groupID),
+			Attributes: map[string]string{"group_id": groupID, "group_name": strings.TrimSpace(attrs["scope_name"])},
+		})
+		addLink(links, projectedLink(tenant, event.GetSourceId(), exclusionURN, groupURN, relationTargeted, map[string]string{"event_id": event.GetId(), "match_type": "sentinelone_exclusion_group_scope"}))
+	}
+	for _, accountID := range sentinelOneScopeIDs(attrs["scope"], "accountIds", "account_ids", "accountId", "account_id") {
+		accountURN := sentinelOneAccountURN(tenant, accountID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        accountURN,
+			TenantID:   tenant,
+			SourceID:   event.GetSourceId(),
+			EntityType: sentinelOneEntityAccount,
+			Label:      firstNonEmpty(attrs["scope_name"], accountID),
+			Attributes: map[string]string{"account_id": accountID, "account_name": strings.TrimSpace(attrs["scope_name"])},
+		})
+		addLink(links, projectedLink(tenant, event.GetSourceId(), exclusionURN, accountURN, relationTargeted, map[string]string{"event_id": event.GetId(), "match_type": "sentinelone_exclusion_account_scope"}))
+	}
+}
+
+func sentinelOneScopeIDs(raw string, keys ...string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var ids []string
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		ids = append(ids, value)
+	}
+	for _, key := range keys {
+		switch value := decoded[key].(type) {
+		case string:
+			add(value)
+		case []any:
+			for _, item := range value {
+				if itemString, ok := item.(string); ok {
+					add(itemString)
+				}
+			}
+		case []string:
+			for _, item := range value {
+				add(item)
+			}
+		}
+	}
+	return ids
 }
 
 func addSentinelOneThreatClassificationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, threatURN string, attrs map[string]string) {
