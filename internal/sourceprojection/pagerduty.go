@@ -142,6 +142,33 @@ func pagerDutyEscalationPolicyProjections(event *cerebrov1.EventEnvelope) ([]*po
 	return projectedEntities, projectedLinks, nil
 }
 
+func pagerDutyUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	entities, links, err := genericInventoryProjections(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(entities) == 0 {
+		return entities, links, nil
+	}
+	primary := entities[0]
+	tenant := primary.TenantID
+	email := strings.TrimSpace(event.GetAttributes()["email"])
+	if tenant == "" || email == "" {
+		return entities, links, nil
+	}
+	entityMap := map[string]*ports.ProjectedEntity{}
+	linkMap := map[string]*ports.ProjectedLink{}
+	for _, entity := range entities {
+		addEntity(entityMap, entity)
+	}
+	for _, link := range links {
+		addLink(linkMap, link)
+	}
+	addIdentifierLink(entityMap, linkMap, tenant, event.GetSourceId(), event.GetId(), primary.URN, email, event.GetOccurredAt())
+	projectedEntities, projectedLinks := entitiesAndLinks(entityMap, linkMap)
+	return projectedEntities, projectedLinks, nil
+}
+
 // pagerDutyIntegrationProjections materializes the PagerDuty integration entity
 // and links it to the service it feeds and the vendor that provides it, so the
 // responder topology resolves which third-party tooling routes signals into

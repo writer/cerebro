@@ -123,6 +123,29 @@ func TestProjectPagerDutyEscalationPolicyTeamsAndTargets(t *testing.T) {
 	assertProjectedLinkMissing(t, state, escalationURN, relationDependsOn, "urn:cerebro:writer:pagerduty_user:PU2")
 }
 
+func TestProjectPagerDutyUserEmailIdentifier(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := pagerDutyEvent("pagerduty.user", map[string]string{
+		"user_id": "PU1",
+		"name":    "Alice",
+		"email":   "alice@writer.com",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	userURN := "urn:cerebro:writer:pagerduty_user:PU1"
+	emailURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	if entity := state.entities[userURN]; entity == nil || entity.EntityType != "pagerduty.user" {
+		t.Fatalf("pagerduty.user entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, userURN, relationHasIdentifier, emailURN)
+	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
+}
+
 func TestProjectPagerDutyIntegrationServiceVendorDependency(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

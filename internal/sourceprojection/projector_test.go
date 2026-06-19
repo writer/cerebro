@@ -5673,6 +5673,53 @@ func TestProjectKubernetesContainerLinksWorkloadNodeAndImage(t *testing.T) {
 	assertProjectedLink(t, state, containerURN, relationDependsOn, imageURN)
 }
 
+func TestProjectKubernetesPodLinksNamespaceServiceAccountNodeAndImage(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-pod",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.pod",
+		Attributes: map[string]string{
+			"cloud_account_external_id": "123456789012",
+			"cloud_provider":            "aws",
+			"cluster_id":                "prod-cluster",
+			"image":                     "registry.example.com/payments-api@sha256:abc123",
+			"image_digest":              "sha256:abc123",
+			"namespace":                 "payments",
+			"node_name":                 "ip-10-0-1-10",
+			"resource_id":               "pod-uid-1",
+			"resource_name":             "payments-api-abc123",
+			"service_account_name":      "api",
+			"uid":                       "pod-uid-1",
+			"workload_kind":             "Pod",
+			"workload_name":             "payments-api-abc123",
+			"workload_uid":              "pod-uid-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	podURN := "urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:pod-uid-1"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
+	imageURN := "urn:cerebro:writer:trivy_image:sha256:abc123"
+	if entity := state.entities[podURN]; entity == nil || entity.EntityType != "kubernetes.pod" {
+		t.Fatalf("pod entity missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, podURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, podURN, relationRunsAs, serviceAccountURN)
+	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, podURN, relationAssociatedWith, nodeURN)
+	assertProjectedLink(t, state, podURN, relationDependsOn, imageURN)
+}
+
 func TestProjectKubernetesWorkloadIdentityBindingAddsContainmentLinks(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

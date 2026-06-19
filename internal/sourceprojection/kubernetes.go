@@ -226,6 +226,58 @@ func kubernetesWorkloadProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	return identityProjectionResult(entities, links)
 }
 
+func kubernetesPodProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	podURN := kubernetesPodURN(tenantID, attributes)
+	serviceAccountURN := kubernetesServiceAccountURN(tenantID, attributes)
+	namespaceURN := kubernetesNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
+	if podURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        podURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "kubernetes.pod",
+			Label:      firstNonEmpty(attributes["resource_name"], attributes["name"], attributes["workload_name"], attributes["uid"], attributes["resource_id"]),
+			Attributes: map[string]string{
+				"cluster_id":           strings.TrimSpace(attributes["cluster_id"]),
+				"image":                strings.TrimSpace(attributes["image"]),
+				"image_digest":         strings.TrimSpace(attributes["image_digest"]),
+				"namespace":            strings.TrimSpace(attributes["namespace"]),
+				"node_name":            strings.TrimSpace(attributes["node_name"]),
+				"resource_id":          strings.TrimSpace(attributes["resource_id"]),
+				"resource_name":        strings.TrimSpace(attributes["resource_name"]),
+				"service_account_name": strings.TrimSpace(attributes["service_account_name"]),
+				"uid":                  strings.TrimSpace(attributes["uid"]),
+				"workload_kind":        strings.TrimSpace(attributes["workload_kind"]),
+				"workload_name":        strings.TrimSpace(attributes["workload_name"]),
+				"workload_uid":         strings.TrimSpace(attributes["workload_uid"]),
+			},
+		})
+	}
+	if serviceAccountURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{URN: serviceAccountURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "kubernetes.service_account", Label: firstNonEmpty(attributes["service_account_name"], "default")})
+	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
+	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
+	if podURN != "" && serviceAccountURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), podURN, serviceAccountURN, relationRunsAs, map[string]string{"event_id": event.GetId()}))
+	}
+	if podURN != "" && namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), podURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	}
+	addKubernetesNodeLink(entities, links, tenantID, event, podURN, attributes, "kubernetes_pod_node")
+	addKubernetesImageLinks(entities, links, tenantID, event, podURN, attributes, "kubernetes_pod_image")
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
+	return identityProjectionResult(entities, links)
+}
+
 func kubernetesContainerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -612,6 +664,15 @@ func kubernetesContainerURN(tenantID string, attributes map[string]string) strin
 		return ""
 	}
 	return projectionURN(tenantID, "kubernetes_container", clusterID, firstNonEmpty(attributes["namespace"], "default"), podID, containerName)
+}
+
+func kubernetesPodURN(tenantID string, attributes map[string]string) string {
+	clusterID := kubernetesClusterIdentity(attributes)
+	podID := firstNonEmpty(attributes["resource_id"], attributes["uid"], attributes["workload_uid"], attributes["resource_name"], attributes["name"])
+	if clusterID == "" || podID == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_pod", clusterID, firstNonEmpty(attributes["namespace"], "default"), podID)
 }
 
 func kubernetesNamespaceURN(tenantID string, attributes map[string]string) string {
