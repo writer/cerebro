@@ -68,6 +68,15 @@ func TestRecordUsesCanonicalActionURNForProviderID(t *testing.T) {
 	if got, _ := payload.Metadata["external_id"].(string); got != externalID {
 		t.Fatalf("metadata external_id = %q, want provider external id", got)
 	}
+	if got, _ := payload.Metadata["target_urn"].(string); got != "urn:cerebro:tenant-1:okta.user:00u123" {
+		t.Fatalf("metadata target_urn = %q, want primary resource urn", got)
+	}
+	if got, _ := payload.Metadata["reconciliation_status"].(string); got != "queued" {
+		t.Fatalf("metadata reconciliation_status = %q, want queued", got)
+	}
+	if got, _ := payload.Metadata["dry_run"].(bool); got {
+		t.Fatalf("metadata dry_run = true, want false")
+	}
 }
 
 func TestRecordEmitsGraphActionMetricAfterAppend(t *testing.T) {
