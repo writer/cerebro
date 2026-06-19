@@ -54,6 +54,11 @@ def package_for_go_file(path: str, repo: Path) -> str:
     if str(directory) in {"vendor", "gen"} or str(directory).startswith("vendor/"):
         return ""
     abs_dir = repo / directory
+    for parent in (abs_dir, *abs_dir.parents):
+        if parent == repo:
+            break
+        if (parent / "go.mod").exists():
+            return ""
     if not abs_dir.exists() or not any(candidate.suffix == ".go" for candidate in abs_dir.iterdir() if candidate.is_file()):
         return ""
     if str(directory) == ".":
