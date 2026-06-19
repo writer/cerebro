@@ -101,6 +101,9 @@ PROD_HIGH_CONTENTION_GRAPH_RUNTIMES = {
 }
 PROD_MAX_HIGH_CONTENTION_PAGE_LIMIT = 1
 PROD_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 1
+ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT = 4
+ACTIVE_JETSTREAM_MIN_PUBLISH_RETRY_MAX_ELAPSED_SECONDS = 300
+ACTIVE_NATS_MIN_MEMORY_MIB = 32768
 SEC_DEV_AWS_ACCOUNT_ID = "944130631940"
 SEC_DEV_AWS_ROLE_ARN = "arn:aws:iam::944130631940:role/cerebro-org-scan-role"
 AWS_CLOUD_DEPTH_GLOBAL_FAMILIES = {
@@ -313,6 +316,26 @@ def _parse_date(value: Any) -> datetime | None:
         return parsed
     except ValueError:
         return None
+
+
+def _parse_duration_seconds(value: Any) -> float | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)(ns|us|µs|ms|s|m|h)", text)
+    if not match:
+        return None
+    amount = float(match.group(1))
+    multiplier = {
+        "ns": 1 / 1_000_000_000,
+        "us": 1 / 1_000_000,
+        "µs": 1 / 1_000_000,
+        "ms": 1 / 1_000,
+        "s": 1,
+        "m": 60,
+        "h": 3600,
+    }[match.group(2)]
+    return amount * multiplier
 
 
 def _quarantined_source_runtime_ids(stack: str, config: dict[str, Any], findings: list[Finding]) -> set[str]:
@@ -1622,6 +1645,8 @@ def validate_stack(path: Path) -> list[Finding]:
     )
     nats_cpu = config.get("natsCpu", 512)
     nats_memory = config.get("natsMemory", 1024)
+    jetstream_publish_max_in_flight = config.get("jetstreamPublishMaxInFlight", 0)
+    jetstream_publish_retry_max_elapsed = config.get("jetstreamPublishRetryMaxElapsed")
     nats_efs_throughput_mode = str(config.get("natsEfsThroughputMode", "bursting")).strip().lower()
     nats_efs_provisioned_throughput = config.get("natsEfsProvisionedThroughputMibps")
     valid_nats_efs_throughput_modes = {"bursting", "elastic", "provisioned"}
@@ -1663,13 +1688,32 @@ def validate_stack(path: Path) -> list[Finding]:
                     "active Cerebro environments must allocate at least 2048 CPU units to NATS JetStream for wide-event headroom",
                 )
             )
-        if not isinstance(nats_memory, int) or nats_memory < 4096:
+        if not isinstance(nats_memory, int) or nats_memory < ACTIVE_NATS_MIN_MEMORY_MIB:
             findings.append(
                 _finding(
                     "error",
                     stack,
                     "cerebro:natsMemory",
-                    "active Cerebro environments must allocate at least 4096 MiB to NATS JetStream for wide-event headroom",
+                    f"active Cerebro environments must allocate at least {ACTIVE_NATS_MIN_MEMORY_MIB} MiB to NATS JetStream for wide-event restore headroom",
+                )
+            )
+        if not isinstance(jetstream_publish_max_in_flight, int) or jetstream_publish_max_in_flight < ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:jetstreamPublishMaxInFlight",
+                    f"active Cerebro environments must set JetStream publish max-in-flight to at least {ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT}",
+                )
+            )
+        retry_max_elapsed_seconds = _parse_duration_seconds(jetstream_publish_retry_max_elapsed)
+        if retry_max_elapsed_seconds is None or retry_max_elapsed_seconds < ACTIVE_JETSTREAM_MIN_PUBLISH_RETRY_MAX_ELAPSED_SECONDS:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:jetstreamPublishRetryMaxElapsed",
+                    "active Cerebro environments must keep JetStream publish retry max elapsed at least 5m for NATS restore headroom",
                 )
             )
         if nats_efs_throughput_mode not in {"elastic", "provisioned"}:

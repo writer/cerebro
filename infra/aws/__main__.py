@@ -315,6 +315,14 @@ jetstream_subject_prefix = config.get("jetstreamSubjectPrefix") or "events"
 jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
 jetstream_max_bytes = config.get("jetstreamMaxBytes") or ""
 jetstream_max_age = config.get("jetstreamMaxAge") or ""
+jetstream_publish_max_in_flight = _config_int("jetstreamPublishMaxInFlight", 0)
+jetstream_publish_retry_attempts = _config_int("jetstreamPublishRetryAttempts", 0)
+jetstream_publish_retry_initial_backoff = config.get("jetstreamPublishRetryInitialBackoff") or ""
+jetstream_publish_retry_max_backoff = config.get("jetstreamPublishRetryMaxBackoff") or ""
+jetstream_publish_attempt_timeout = config.get("jetstreamPublishAttemptTimeout") or ""
+jetstream_publish_retry_max_elapsed = config.get("jetstreamPublishRetryMaxElapsed") or ""
+jetstream_publish_client_retry_attempts = _config_int("jetstreamPublishClientRetryAttempts", 0)
+jetstream_publish_client_retry_wait = config.get("jetstreamPublishClientRetryWait") or ""
 nats_efs_throughput_mode = config.get("natsEfsThroughputMode") or None
 nats_efs_provisioned_throughput_mibps = config.get_int("natsEfsProvisionedThroughputMibps")
 enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
@@ -824,6 +832,22 @@ app_environment = {
     "AWS_REGION": aws_region,
     "AWS_DEFAULT_REGION": aws_region,
 }
+if jetstream_publish_max_in_flight > 0:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT"] = str(jetstream_publish_max_in_flight)
+if jetstream_publish_retry_attempts > 0:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS"] = str(jetstream_publish_retry_attempts)
+if jetstream_publish_retry_initial_backoff:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF"] = jetstream_publish_retry_initial_backoff
+if jetstream_publish_retry_max_backoff:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF"] = jetstream_publish_retry_max_backoff
+if jetstream_publish_attempt_timeout:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT"] = jetstream_publish_attempt_timeout
+if jetstream_publish_retry_max_elapsed:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED"] = jetstream_publish_retry_max_elapsed
+if jetstream_publish_client_retry_attempts > 0:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS"] = str(jetstream_publish_client_retry_attempts)
+if jetstream_publish_client_retry_wait:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT"] = jetstream_publish_client_retry_wait
 otel_configured = any([
     otel_enabled,
     otel_collector_enabled,

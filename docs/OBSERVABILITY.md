@@ -222,6 +222,13 @@ caused long startup recovery in sec-dev. Keep the threshold below the point
 where a single NATS restart would exceed the acceptable restore window, and
 revisit it after restore drills or retention changes.
 
+Active stacks keep NATS at 16 vCPU with 64 GiB memory, elastic EFS throughput,
+and a Cerebro publish retry budget of at least 5 minutes. That retry window is
+deliberately longer than the observed 26 GiB stream restore window, and
+`cerebro:jetstreamPublishMaxInFlight` limits per-process publish fan-out during a
+broker restart so source runtimes wait instead of stampeding the recovering
+stream.
+
 The NATS bootstrap stream must bind both `events.>` and `sec.>`. Runtime events
 use the configured `CEREBRO_JETSTREAM_SUBJECT_PREFIX`, while canonical security
 events such as `sec.findings.v1.recorded` publish directly on the `sec.*`

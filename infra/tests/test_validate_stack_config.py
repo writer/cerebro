@@ -109,7 +109,9 @@ config:
   cerebro:imageTag: v2.1.36
   cerebro:apiMaxInstances: 2
   cerebro:natsCpu: 2048
-  cerebro:natsMemory: 4096
+  cerebro:natsMemory: 32768
+  cerebro:jetstreamPublishMaxInFlight: 4
+  cerebro:jetstreamPublishRetryMaxElapsed: 5m
   cerebro:natsEfsThroughputMode: elastic
   cerebro:postgresDeletionProtection: true
   cerebro:postgresBackupRetentionDays: 14
@@ -957,12 +959,21 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_active_environments_require_nats_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:natsCpu: 2048", "  cerebro:natsCpu: 1024").replace(
-            "  cerebro:natsMemory: 4096",
+            "  cerebro:natsMemory: 32768",
             "  cerebro:natsMemory: 2048",
         )
         messages = self._messages(content)
         self.assertTrue(any("at least 2048 CPU units" in message for message in messages))
-        self.assertTrue(any("at least 4096 MiB" in message for message in messages))
+        self.assertTrue(any("at least 32768 MiB" in message for message in messages))
+
+    def test_active_environments_require_jetstream_publish_restore_headroom(self) -> None:
+        content = BASE_STACK.replace("  cerebro:jetstreamPublishMaxInFlight: 4", "  cerebro:jetstreamPublishMaxInFlight: 2").replace(
+            "  cerebro:jetstreamPublishRetryMaxElapsed: 5m",
+            "  cerebro:jetstreamPublishRetryMaxElapsed: 90s",
+        )
+        messages = self._messages(content)
+        self.assertTrue(any("publish max-in-flight" in message for message in messages))
+        self.assertTrue(any("retry max elapsed at least 5m" in message for message in messages))
 
     def test_active_environments_require_nats_efs_throughput_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:natsEfsThroughputMode: elastic", "  cerebro:natsEfsThroughputMode: bursting")

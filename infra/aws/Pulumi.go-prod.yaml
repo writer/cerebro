@@ -50,9 +50,17 @@ config:
   cerebro:cacheStaleTTL: 5m
   cerebro:cacheMaxPayloadBytes: 1048576
   cerebro:natsCpu: 16384
-  cerebro:natsMemory: 32768
+  cerebro:natsMemory: 65536
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
+  cerebro:jetstreamPublishMaxInFlight: 16
+  cerebro:jetstreamPublishRetryAttempts: 24
+  cerebro:jetstreamPublishRetryInitialBackoff: 500ms
+  cerebro:jetstreamPublishRetryMaxBackoff: 10s
+  cerebro:jetstreamPublishAttemptTimeout: 45s
+  cerebro:jetstreamPublishRetryMaxElapsed: 5m
+  cerebro:jetstreamPublishClientRetryAttempts: 6
+  cerebro:jetstreamPublishClientRetryWait: 750ms
   cerebro:natsEfsThroughputMode: elastic
   cerebro:enableJetstreamLagProbe: true
   cerebro:jetstreamLagProbeIntervalSeconds: 60

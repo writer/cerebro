@@ -413,6 +413,38 @@ config:
     type: string
     default: ""
     description: Optional JetStream max age limit passed to the stream bootstrapper
+  cerebro:jetstreamPublishMaxInFlight:
+    type: integer
+    default: 0
+    description: Optional per-process bulkhead for concurrent Cerebro JetStream publishes; 0 leaves it unlimited
+  cerebro:jetstreamPublishRetryAttempts:
+    type: integer
+    default: 0
+    description: Optional override for Cerebro JetStream publish retry attempts; 0 uses runtime default
+  cerebro:jetstreamPublishRetryInitialBackoff:
+    type: string
+    default: ""
+    description: Optional override for Cerebro JetStream publish initial retry backoff
+  cerebro:jetstreamPublishRetryMaxBackoff:
+    type: string
+    default: ""
+    description: Optional override for Cerebro JetStream publish max retry backoff
+  cerebro:jetstreamPublishAttemptTimeout:
+    type: string
+    default: ""
+    description: Optional override for each Cerebro JetStream publish attempt timeout
+  cerebro:jetstreamPublishRetryMaxElapsed:
+    type: string
+    default: ""
+    description: Optional override for total Cerebro JetStream publish retry budget
+  cerebro:jetstreamPublishClientRetryAttempts:
+    type: integer
+    default: 0
+    description: Optional override for NATS client retry attempts inside each Cerebro publish attempt
+  cerebro:jetstreamPublishClientRetryWait:
+    type: string
+    default: ""
+    description: Optional override for NATS client retry wait inside each Cerebro publish attempt
   cerebro:natsEfsThroughputMode:
     type: string
     default: bursting
