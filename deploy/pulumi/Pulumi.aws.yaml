@@ -1,5 +1,6 @@
 config:
   cerebro:cloud: aws
+  cerebro:deploymentProfile: preview
   cerebro:name: cerebro-aws-example
   cerebro:image: ghcr.io/writer/cerebro:latest
   cerebro:apiAuthEnabled: "false"

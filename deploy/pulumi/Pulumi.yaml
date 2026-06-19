@@ -16,6 +16,18 @@ config:
   cerebro:image:
     type: string
     description: Cerebro runtime image to deploy.
+  cerebro:deploymentProfile:
+    type: string
+    default: preview
+    description: Deployment profile. Use production for shared environments to enable guardrails.
+  cerebro:allowUnsafeProduction:
+    type: boolean
+    default: false
+    description: Explicitly allow production guardrail exceptions when paired with a justification.
+  cerebro:unsafeProductionJustification:
+    type: string
+    default: ""
+    description: Required when allowUnsafeProduction is true.
   cerebro:containerPort:
     type: integer
     default: 8080
@@ -48,6 +60,17 @@ config:
     type: integer
     default: 1
     description: Number of trusted trailing X-Forwarded-For hops.
+  cerebro:ingressCidrs:
+    type: array
+    items:
+      type: string
+    default:
+      - 0.0.0.0/0
+    description: CIDR allowlist for AWS ALB ingress.
+  cerebro:edgeAuthManaged:
+    type: boolean
+    default: false
+    description: Set true when an upstream edge owns authentication and forwarded-header hygiene.
   cerebro:apiAuthEnabled:
     type: boolean
     default: true
@@ -56,3 +79,41 @@ config:
     type: string
     default: ""
     description: Optional comma-separated tenant allowlist.
+  cerebro:existingSecretRefs:
+    type: object
+    default: {}
+    description: Existing cloud secret references keyed by Cerebro environment variable name.
+  cerebro:scheduledJobs:
+    type: array
+    items:
+      type: object
+    default: []
+    description: Optional scheduled job definitions that run the Cerebro image with command overrides.
+  cerebro:awsCertificateArn:
+    type: string
+    default: ""
+    description: Optional ACM certificate ARN for HTTPS on the AWS load balancer.
+  cerebro:awsEnablePrivateSubnets:
+    type: boolean
+    default: false
+    description: Run AWS ECS tasks in private subnets created by the template.
+  cerebro:awsEnableNatGateway:
+    type: boolean
+    default: false
+    description: Create a NAT gateway for AWS private subnet egress.
+  cerebro:gcpServiceAccountEmail:
+    type: string
+    default: ""
+    description: Optional Cloud Run service account email.
+  cerebro:gcpSchedulerServiceAccountEmail:
+    type: string
+    default: ""
+    description: Optional service account used by Cloud Scheduler to run Cloud Run Jobs.
+  cerebro:gcpVpcConnector:
+    type: string
+    default: ""
+    description: Optional Serverless VPC Access connector for Cloud Run.
+  cerebro:azureEnableSystemIdentity:
+    type: boolean
+    default: false
+    description: Enable a system-assigned identity on Azure Container Apps resources.

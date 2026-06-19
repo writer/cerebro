@@ -33,17 +33,17 @@ The container runs:
 
 It listens on `:8080` by default. Use `/livez` for process liveness and `/health` for dependency-aware readiness.
 
-## Pulumi Templates
+## Pulumi Component Model
 
-The templates in [`deploy/pulumi`](../deploy/pulumi) use one shared configuration model and choose a cloud backend with `cerebro:cloud`:
+The templates in [`deploy/pulumi`](../deploy/pulumi) use one shared `CerebroService` component and choose a cloud backend with `cerebro:cloud`:
 
-| Cloud | Template target | What it creates |
+| Cloud | Component target | What it creates |
 | --- | --- | --- |
-| AWS | ECS Fargate plus Application Load Balancer | VPC, public subnets, ALB, ECS cluster, task definition, service, logs, IAM, and optional Secrets Manager entries |
-| GCP | Cloud Run v2 | Cloud Run service, optional public invoker binding, and optional Secret Manager entries |
-| Azure | Azure Container Apps | Resource group, Container Apps managed environment, Container App, ingress, and Container App secrets |
+| AWS | ECS Fargate plus Application Load Balancer | VPC, public subnets, optional private subnets/NAT, ALB, optional ACM HTTPS, ECS cluster, task definition, service, logs, IAM, optional Secrets Manager entries, and optional EventBridge Scheduler jobs |
+| GCP | Cloud Run v2 | Cloud Run service, optional service account, optional VPC connector, optional Secret Manager entries, optional Cloud Run Jobs, and optional Cloud Scheduler triggers |
+| Azure | Azure Container Apps | Resource group, Container Apps managed environment, Container App, optional system identity, Container App secrets, Key Vault-backed secret refs, and optional scheduled Container Apps Jobs |
 
-The templates do not create a private organization-specific control plane, source runtime schedules, DNS zones, certificates, Postgres clusters, NATS clusters, or Neo4j/Aura instances. They wire the API service to those dependencies when you provide their DSNs or URLs as Pulumi secrets.
+The templates do not create a private organization-specific control plane, source runtime rollout catalog, DNS zones, managed Postgres clusters, NATS clusters, or Neo4j/Aura instances. They wire the API service and job runners to those dependencies when you provide DSNs, URLs, or existing secret references.
 
 Install:
 
@@ -67,11 +67,36 @@ pulumi preview --stack gcp --refresh=false
 pulumi preview --stack azure --refresh=false
 ```
 
-The checked-in stacks are preview-only examples with `cerebro:apiAuthEnabled=false`. Do not deploy them to a shared environment as-is.
+If your workstation has no active provider auth, use dummy provider environment variables only for preview-only validation with `--refresh=false`; never use dummy credentials for deployment.
+
+The checked-in stacks are preview-only examples with `cerebro:deploymentProfile=preview` and `cerebro:apiAuthEnabled=false`. Do not deploy them to a shared environment as-is.
+
+## Production Guardrails
+
+Set production mode before any shared deployment:
+
+```bash
+pulumi config set cerebro:deploymentProfile production
+```
+
+Production mode fails preview/update when the stack has common unsafe settings:
+
+- API auth disabled without `cerebro:edgeAuthManaged=true`.
+- mutable `:latest` or untagged images.
+- non-HTTPS public origin.
+- public ingress without API auth, edge auth, restricted ingress CIDRs, or IAM-only access.
+- AWS public ALB without `cerebro:awsCertificateArn` or an upstream edge declaration.
+
+Temporary exceptions must be explicit and justified:
+
+```bash
+pulumi config set cerebro:allowUnsafeProduction true
+pulumi config set cerebro:unsafeProductionJustification '<why this is acceptable and time-bounded>'
+```
 
 ## Common Production Config
 
-Set a real image and enable auth before any shared deployment:
+Set a real image, enable auth or declare an authenticated edge, and set the public origin:
 
 ```bash
 pulumi config set cerebro:image ghcr.io/writer/cerebro:vX.Y.Z
@@ -82,10 +107,25 @@ pulumi config set cerebro:trustedProxyCount 1
 pulumi config set --secret cerebro:apiKeys '<random-key>:<principal>:<tenant-id>'
 ```
 
-Enable durable state:
+Enable durable state with a Pulumi-created cloud secret:
 
 ```bash
 pulumi config set --secret cerebro:postgresDsn '<postgres-dsn-with-tls>'
+```
+
+Or reference an existing provider-native secret instead:
+
+```bash
+pulumi config set --path 'cerebro:existingSecretRefs.CEREBRO_POSTGRES_DSN.awsArn' \
+  'arn:aws:secretsmanager:us-east-1:111122223333:secret:cerebro/postgres'
+
+pulumi config set --path 'cerebro:existingSecretRefs.CEREBRO_POSTGRES_DSN.gcpSecret' \
+  'projects/example-project/secrets/cerebro-postgres-dsn'
+
+pulumi config set --path 'cerebro:existingSecretRefs.CEREBRO_POSTGRES_DSN.azureSecretName' \
+  cerebro-postgres-dsn
+pulumi config set --path 'cerebro:existingSecretRefs.CEREBRO_POSTGRES_DSN.azureKeyVaultUrl' \
+  'https://example-vault.vault.azure.net/secrets/cerebro-postgres-dsn'
 ```
 
 Enable append-log-backed source sync and replay:
@@ -110,21 +150,16 @@ pulumi config set --secret cerebro:connectorTransitPrivateKey '<rsa-private-key-
 pulumi config set --secret cerebro:capabilityTokenSecrets '<hmac-secret-1>,<hmac-secret-2>'
 ```
 
-For any additional non-secret runtime variable, use:
+For Redis/Valkey or other optional dependency URLs:
 
 ```bash
 pulumi config set --path 'cerebro:extraEnv.CEREBRO_CACHE_MODE' redis
-```
-
-For any additional secret runtime variable, use:
-
-```bash
 pulumi config set --secret --path 'cerebro:extraSecrets.CEREBRO_CACHE_URL' '<redis-or-valkey-url>'
 ```
 
 ## AWS
 
-The AWS template deploys the Cerebro API on ECS Fargate behind an Application Load Balancer.
+The AWS component deploys the Cerebro API on ECS Fargate behind an Application Load Balancer.
 
 Example setup:
 
@@ -135,23 +170,25 @@ export PULUMI_CONFIG_PASSPHRASE="local-preview-only"
 
 pulumi stack select aws --create
 pulumi config set cerebro:cloud aws
+pulumi config set cerebro:deploymentProfile production
 pulumi config set cerebro:name cerebro-prod
 pulumi config set cerebro:awsRegion us-east-1
 pulumi config set --path 'cerebro:awsAvailabilityZones[0]' us-east-1a
 pulumi config set --path 'cerebro:awsAvailabilityZones[1]' us-east-1b
 pulumi config set cerebro:image '<account>.dkr.ecr.us-east-1.amazonaws.com/cerebro:vX.Y.Z'
+pulumi config set cerebro:awsCertificateArn '<acm-certificate-arn>'
 ```
 
 Recommended AWS hardening before `pulumi up`:
 
 - Mirror the public image to ECR or an approved registry.
-- Put tasks in private subnets with controlled egress for shared environments.
-- Terminate TLS with ACM on the load balancer or an upstream edge.
+- Set `cerebro:awsCertificateArn` so the ALB serves HTTPS; HTTP redirects to HTTPS by default.
+- Restrict ALB ingress with `cerebro:ingressCidrs` or place the service behind a private edge.
+- Set `cerebro:awsEnablePrivateSubnets=true` and `cerebro:awsEnableNatGateway=true` when tasks should run in private subnets with outbound internet access.
 - Use RDS or Aurora PostgreSQL with TLS, backups, and least-privilege credentials.
 - Use managed or self-hosted NATS JetStream with persistent storage.
 - Use Neo4j Aura or an operated Neo4j deployment with encrypted connections.
-- Restrict ALB ingress CIDRs or place the service behind a private edge when appropriate.
-- Store runtime secrets in Secrets Manager through Pulumi secrets or your secret-import pipeline.
+- Store runtime secrets in Secrets Manager through Pulumi secrets, `existingSecretRefs`, or your secret-import pipeline.
 
 Preview:
 
@@ -167,7 +204,7 @@ AWS_PROFILE=<profile> pulumi up --stack aws
 
 ## Google Cloud
 
-The GCP template deploys the Cerebro API on Cloud Run v2.
+The GCP component deploys the Cerebro API on Cloud Run v2.
 
 Example setup:
 
@@ -178,10 +215,12 @@ export PULUMI_CONFIG_PASSPHRASE="local-preview-only"
 
 pulumi stack select gcp --create
 pulumi config set cerebro:cloud gcp
+pulumi config set cerebro:deploymentProfile production
 pulumi config set cerebro:name cerebro-prod
 pulumi config set cerebro:gcpProject example-project
 pulumi config set cerebro:gcpRegion us-central1
 pulumi config set cerebro:image 'us-central1-docker.pkg.dev/example-project/cerebro/cerebro:vX.Y.Z'
+pulumi config set cerebro:gcpAllowUnauthenticated false
 ```
 
 Recommended GCP hardening before `pulumi up`:
@@ -191,8 +230,9 @@ Recommended GCP hardening before `pulumi up`:
 - Use managed NATS or run NATS JetStream on GKE or another persistent platform.
 - Use Neo4j Aura or an operated Neo4j deployment with encrypted connections.
 - Set `cerebro:gcpAllowUnauthenticated=false` when an authenticated edge or IAM invoker policy owns access.
-- Use Serverless VPC Access or equivalent private connectivity for private dependencies.
-- Store runtime secrets in Secret Manager through Pulumi secrets or your secret-import pipeline.
+- Set `cerebro:gcpServiceAccountEmail` to a least-privilege Cloud Run service account.
+- Set `cerebro:gcpVpcConnector` when private dependencies require Serverless VPC Access.
+- Store runtime secrets in Secret Manager through Pulumi secrets, `existingSecretRefs`, or your secret-import pipeline.
 
 Preview:
 
@@ -209,7 +249,7 @@ pulumi up --stack gcp
 
 ## Azure
 
-The Azure template deploys the Cerebro API on Azure Container Apps.
+The Azure component deploys the Cerebro API on Azure Container Apps.
 
 Example setup:
 
@@ -220,6 +260,7 @@ export PULUMI_CONFIG_PASSPHRASE="local-preview-only"
 
 pulumi stack select azure --create
 pulumi config set cerebro:cloud azure
+pulumi config set cerebro:deploymentProfile production
 pulumi config set cerebro:name cerebro-prod
 pulumi config set cerebro:azureLocation eastus
 pulumi config set cerebro:azureResourceGroupName cerebro-prod-rg
@@ -234,7 +275,8 @@ Recommended Azure hardening before `pulumi up`:
 - Use Neo4j Aura or an operated Neo4j deployment with encrypted connections.
 - Put Container Apps in a network-integrated environment when dependencies are private.
 - Put Azure Front Door, Application Gateway, or another TLS edge in front of the app for shared deployments.
-- Store runtime secrets as Container App secrets through Pulumi secrets or your secret-import pipeline.
+- Use `cerebro:azureEnableSystemIdentity=true` or Key Vault-backed `existingSecretRefs` when the app needs managed identity.
+- Store runtime secrets as Container App secrets, Key Vault references, or your secret-import pipeline.
 
 Preview:
 
@@ -258,12 +300,23 @@ cerebro source-runtime sync <runtime-id> page_limit=100
 cerebro graph ingest-runtime <runtime-id> page_limit=100
 ```
 
+Configure jobs with `cerebro:scheduledJobs`:
+
+```bash
+pulumi config set --path 'cerebro:scheduledJobs[0].name' sync-example
+pulumi config set --path 'cerebro:scheduledJobs[0].schedule' 'rate(15 minutes)'
+pulumi config set --path 'cerebro:scheduledJobs[0].command[0]' source-runtime
+pulumi config set --path 'cerebro:scheduledJobs[0].command[1]' sync
+pulumi config set --path 'cerebro:scheduledJobs[0].command[2]' '<runtime-id>'
+pulumi config set --path 'cerebro:scheduledJobs[0].command[3]' page_limit=100
+```
+
 Common scheduler mappings:
 
 | Cloud | Scheduler shape |
 | --- | --- |
-| AWS | EventBridge Scheduler or EventBridge rule launching an ECS Fargate task |
-| GCP | Cloud Scheduler triggering a Cloud Run Job or Workflows step |
+| AWS | EventBridge Scheduler launching the ECS task definition with container command overrides |
+| GCP | Cloud Run Job plus optional Cloud Scheduler trigger when `cerebro:gcpSchedulerServiceAccountEmail` is set |
 | Azure | Container Apps Job with a schedule trigger |
 
 Keep runtime IDs, tenant assignments, provider credentials, and cadence in your deployment repository or scheduler config. Do not publish live schedules in generic docs.
@@ -275,11 +328,12 @@ Before opening a deployment PR:
 ```bash
 cd deploy/pulumi
 uv sync
-uv run python -m py_compile __main__.py runtime.py aws_stack.py gcp_stack.py azure_stack.py
+uv run python -m py_compile __main__.py components.py runtime.py aws_stack.py gcp_stack.py azure_stack.py
+uv run pytest -q
 pulumi preview --stack <aws|gcp|azure> --refresh=false
 ```
 
-The templates were validated locally with `pulumi preview --refresh=false` for all three example stacks and with placeholder secret config for durable/graph-enabled previews. No `pulumi up` was run.
+The templates should be validated with `pulumi preview --refresh=false` for all three example stacks and with placeholder secret config for durable/graph-enabled previews. Do not run `pulumi up` during template validation.
 
 After deploying to a real environment, verify:
 
