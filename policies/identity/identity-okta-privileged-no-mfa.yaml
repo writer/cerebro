@@ -13,6 +13,120 @@ spec:
     severity: HIGH
     category: identity
     resourceType: okta_user
+    input:
+        sourceKinds:
+            - okta.user
+            - identity.user
+        eventKinds:
+            - policy.evidence
+            - policy.result
+        requiredClaims:
+            - identity.user
+            - identity.mfa_status
+            - identity.privilege
+        requiredFields:
+            - tenant_id
+            - policy_id
+            - resource_urn
+            - resource_id
+            - privilege_level
+            - mfa_enrolled
+            - observed_at
+        freshnessSLA: 24h
+    assert:
+        all:
+            - field: privilege_level
+              op: in
+              value: [admin, super_admin]
+            - field: mfa_enrolled
+              op: eq
+              value: false
+    context:
+        graph:
+            anchors:
+                - resource_urn
+                - principal_urn
+            enrich:
+                - owner
+                - privileged_access_path
+                - crown_jewel_distance
+        severityAdjustments:
+            - when: context.crown_jewel_distance <= 2
+              set: CRITICAL
+    evidence:
+        type: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        requiredForAudit: true
+        freshnessSLA: 24h
+        acceptableSources:
+            - okta
+            - entra
+            - google-workspace
+        requiredFields:
+            - subject_urn
+            - privilege_level
+            - mfa_enrolled
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - resource_urn
+            - resource_id
+    audit:
+        evidenceType: identity_configuration
+        assessmentMethods:
+            - examine
+            - test
+        freshnessSLA: 24h
+        auditorStatement: Privileged users are required to have MFA enabled before they can access administrative SaaS functions.
+        riskStatement: Privileged accounts without MFA weaken identity control enforcement and increase the likelihood of unauthorized administrative access.
+        remediationIntent: Enforce MFA for the privileged account, remove unnecessary privileged access, and rerun identity evidence collection.
+        acceptableEvidence:
+            - source: okta
+              fields:
+                - user_id
+                - role
+                - mfa_status
+                - observed_at
+        exceptionPolicy:
+            maxAge: 14d
+            requiresApproval: true
+        exceptionGuidance:
+            - A documented break-glass exception is approved and expires within the policy window.
+        falsePositives:
+            - The account is disabled, deprovisioned, or outside the privileged access population.
+    verification:
+        fixtures:
+            - name: admin-without-mfa
+              expect: finding
+            - name: admin-with-mfa
+              expect: pass
+            - name: non-privileged-without-mfa
+              expect: pass
+        mutationChecks:
+            - missing_required_field
+            - stale_evidence
+            - wrong_resource_type
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: pass
+    actions:
+        owner:
+            from: graph.owner
+            fallback: resource.tags.owner
+        remediation:
+            type: manual
+            steps:
+                - Require MFA enrollment.
+                - Remove unnecessary privileged role assignments.
+                - Re-run identity sync.
+        effort: low
+        blastRadius:
+            estimateFrom: graph.neighborhood
+        verification:
+            rerunPolicy: true
     match:
         query: SELECT u.id AS id, u.login AS account_name FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (COALESCE(u.is_admin, false) = true) AND COALESCE(u.mfa_enrolled, false) = false
     remediation:
@@ -21,6 +135,9 @@ spec:
         - name: SOC 2
           controls:
             - CC6.1
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
         - name: ISO 27001:2022
           controls:
             - A.5.17

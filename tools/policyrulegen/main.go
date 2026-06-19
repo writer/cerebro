@@ -20,21 +20,28 @@ const policyRuleExtensionsPath = "internal/compliance/policy_rule_extensions.yam
 const controlFamiliesPath = "internal/compliance/control_families.yaml"
 
 type policyFile struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name"`
-	Description      string            `json:"description"`
-	Severity         string            `json:"severity"`
-	Category         string            `json:"category"`
-	Resource         string            `json:"resource"`
-	ResourceType     string            `json:"resource_type"`
-	Conditions       []string          `json:"conditions"`
-	ConditionFormat  string            `json:"condition_format"`
-	Query            string            `json:"query"`
-	Tags             []string          `json:"tags"`
-	Remediation      string            `json:"remediation"`
-	RemediationSteps []string          `json:"remediation_steps"`
-	Frameworks       []policyFramework `json:"frameworks"`
-	Enabled          *bool             `json:"enabled"`
+	ID               string                            `json:"id"`
+	Name             string                            `json:"name"`
+	Description      string                            `json:"description"`
+	Severity         string                            `json:"severity"`
+	Category         string                            `json:"category"`
+	Resource         string                            `json:"resource"`
+	ResourceType     string                            `json:"resource_type"`
+	Conditions       []string                          `json:"conditions"`
+	ConditionFormat  string                            `json:"condition_format"`
+	Query            string                            `json:"query"`
+	Tags             []string                          `json:"tags"`
+	Remediation      string                            `json:"remediation"`
+	RemediationSteps []string                          `json:"remediation_steps"`
+	Frameworks       []policyFramework                 `json:"frameworks"`
+	Input            findingdsl.PolicyRuleInput        `json:"input"`
+	Assert           findingdsl.PolicyRuleAssert       `json:"assert"`
+	Context          findingdsl.PolicyRuleContext      `json:"context"`
+	Evidence         findingdsl.PolicyRuleEvidence     `json:"evidence"`
+	Audit            findingdsl.PolicyRuleAudit        `json:"audit"`
+	Verification     findingdsl.PolicyRuleVerification `json:"verification"`
+	Actions          findingdsl.PolicyRuleActions      `json:"actions"`
+	Enabled          *bool                             `json:"enabled"`
 	relPath          string
 	domain           string
 }
@@ -215,6 +222,13 @@ func policyFromDSL(rule findingdsl.PolicyFindingRule) policyFile {
 		Remediation:      legacy.Remediation,
 		RemediationSteps: legacy.RemediationSteps,
 		Frameworks:       policyFrameworksFromDSL(legacy.Frameworks),
+		Input:            rule.Spec.Input,
+		Assert:           rule.Spec.Assert,
+		Context:          rule.Spec.Context,
+		Evidence:         rule.Spec.Evidence,
+		Audit:            rule.Spec.Audit,
+		Verification:     rule.Spec.Verification,
+		Actions:          rule.Spec.Actions,
 		Enabled:          legacy.Enabled,
 		relPath:          rule.RelPath,
 		domain:           rule.Domain,
@@ -347,21 +361,27 @@ func mergePolicyRuleExtension(base, next policyRuleExtension) policyRuleExtensio
 
 func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension policyRuleExtension, controlFamilies []string) {
 	evidenceMode := policyEvidenceMode(policy)
+	evidenceType := policyEvidenceType(policy, extension)
+	assessmentMethods := policyAssessmentMethods(policy, extension)
+	auditorGuidance := policyAuditorGuidance(policy, extension)
 	fmt.Fprintf(buf, "{\n")
 	fmt.Fprintf(buf, "Definition: RuleDefinition{\n")
 	fmt.Fprintf(buf, "ID: %s,\n", quote(policy.ID))
 	fmt.Fprintf(buf, "Name: %s,\n", quote(policy.Name))
 	fmt.Fprintf(buf, "Description: %s,\n", quote(policyDescription(policy, extension)))
 	fmt.Fprintf(buf, "SourceID: policyRuleSourceID,\n")
-	fmt.Fprintf(buf, "EventKinds: []string{policyRuleEvidenceKind, policyRuleResultEventKind},\n")
+	writePolicyEventKinds(buf, policy)
 	fmt.Fprintf(buf, "OutputKind: policyRuleOutputKind,\n")
 	fmt.Fprintf(buf, "Severity: %s,\n", quote(normalizeSeverity(policy.Severity)))
 	fmt.Fprintf(buf, "Status: %s,\n", quote(policyStatus(policy)))
 	fmt.Fprintf(buf, "Maturity: RuleMaturityCandidate,\n")
-	writeStringSlice(buf, "Tags", policyTags(policy, evidenceMode, extension))
-	writeStringSlice(buf, "FalsePositives", policyFalsePositives(extension))
+	writeStringSlice(buf, "Tags", policyTags(policy, evidenceMode, evidenceType, assessmentMethods))
+	writeStringSlice(buf, "References", policyReferences(policy))
+	writeStringSlice(buf, "FalsePositives", policyFalsePositives(policy, extension))
 	fmt.Fprintf(buf, "Runbook: %s,\n", quote(policyRunbook(policy, extension)))
-	fmt.Fprintf(buf, "FingerprintFields: []string{%s, %s, %s, %s},\n", quote("tenant_id"), quote("policy_id"), quote("resource_urn"), quote("resource_id"))
+	writeStringSlice(buf, "RequiredAttributes", policyRequiredAttributes(policy))
+	writeStringSliceMap(buf, "RequiredAttributesByKind", policyRequiredAttributesByKind(policy))
+	writePolicyFingerprintFields(buf, policy)
 	writeControlRefs(buf, policy.Frameworks)
 	fmt.Fprintf(buf, "Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},\n")
 	fmt.Fprintf(buf, "},\n")
@@ -371,13 +391,14 @@ func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension polic
 	fmt.Fprintf(buf, "ResourceType: %s,\n", quote(firstNonEmpty(policy.ResourceType, policy.Resource)))
 	fmt.Fprintf(buf, "Category: %s,\n", quote(firstNonEmpty(policy.Category, policy.domain)))
 	fmt.Fprintf(buf, "EvidenceMode: %s,\n", quote(evidenceMode))
-	fmt.Fprintf(buf, "EvidenceType: %s,\n", quote(extension.EvidenceType))
-	writeStringSlice(buf, "AssessmentMethods", extension.AssessmentMethods)
-	fmt.Fprintf(buf, "AuditorGuidance: %s,\n", quote(extension.AuditorGuidance))
+	fmt.Fprintf(buf, "EvidenceType: %s,\n", quote(evidenceType))
+	writeStringSlice(buf, "AssessmentMethods", assessmentMethods)
+	fmt.Fprintf(buf, "AuditorGuidance: %s,\n", quote(auditorGuidance))
 	fmt.Fprintf(buf, "RiskStatement: %s,\n", quote(policyRiskStatement(policy, extension)))
-	fmt.Fprintf(buf, "RemediationIntent: %s,\n", quote(policyRemediationIntent(extension)))
-	writeStringSlice(buf, "ExceptionGuidance", policyFalsePositives(extension))
+	fmt.Fprintf(buf, "RemediationIntent: %s,\n", quote(policyRemediationIntent(policy, extension)))
+	writeStringSlice(buf, "ExceptionGuidance", policyExceptionGuidance(policy, extension))
 	writeStringSlice(buf, "ControlFamilies", controlFamilies)
+	writeStringMap(buf, "ContractAttributes", policyContractAttributes(policy))
 	fmt.Fprintf(buf, "Enabled: %t,\n", policy.Enabled == nil || *policy.Enabled)
 	fmt.Fprintf(buf, "},\n")
 }
@@ -391,6 +412,68 @@ func writeStringSlice(buf *bytes.Buffer, field string, values []string) {
 		fmt.Fprintf(buf, "%s,", quote(value))
 	}
 	fmt.Fprintf(buf, "},\n")
+}
+
+func writeStringSliceMap(buf *bytes.Buffer, field string, values map[string][]string) {
+	if len(values) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		if strings.TrimSpace(key) != "" && len(trimStrings(values[key])) != 0 {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "%s: map[string][]string{\n", field)
+	for _, key := range keys {
+		fmt.Fprintf(buf, "%s: []string{", quote(key))
+		for _, value := range uniqueSorted(values[key]) {
+			fmt.Fprintf(buf, "%s,", quote(value))
+		}
+		fmt.Fprintf(buf, "},\n")
+	}
+	fmt.Fprintf(buf, "},\n")
+}
+
+func writeStringMap(buf *bytes.Buffer, field string, values map[string]string) {
+	if len(values) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(values))
+	for key, value := range values {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "%s: map[string]string{\n", field)
+	for _, key := range keys {
+		fmt.Fprintf(buf, "%s: %s,\n", quote(key), quote(values[key]))
+	}
+	fmt.Fprintf(buf, "},\n")
+}
+
+func writePolicyEventKinds(buf *bytes.Buffer, policy policyFile) {
+	if eventKinds := uniqueSorted(policy.Input.EventKinds); len(eventKinds) != 0 {
+		writeStringSlice(buf, "EventKinds", eventKinds)
+		return
+	}
+	fmt.Fprintf(buf, "EventKinds: []string{policyRuleEvidenceKind, policyRuleResultEventKind},\n")
+}
+
+func writePolicyFingerprintFields(buf *bytes.Buffer, policy policyFile) {
+	if fields := uniqueStrings(policy.Evidence.FingerprintFields); len(fields) != 0 {
+		writeStringSlice(buf, "FingerprintFields", fields)
+		return
+	}
+	fmt.Fprintf(buf, "FingerprintFields: []string{%s, %s, %s, %s},\n", quote("tenant_id"), quote("policy_id"), quote("resource_urn"), quote("resource_id"))
 }
 
 func writeControlRefs(buf *bytes.Buffer, frameworks []policyFramework) {
@@ -438,13 +521,63 @@ func policyStatus(policy policyFile) string {
 	return "active"
 }
 
-func policyTags(policy policyFile, evidenceMode string, extension policyRuleExtension) []string {
+func policyEventKinds(policy policyFile) []string {
+	if eventKinds := uniqueSorted(policy.Input.EventKinds); len(eventKinds) != 0 {
+		return eventKinds
+	}
+	return []string{"policy.evidence", "policy.result"}
+}
+
+func policyRequiredAttributes(policy policyFile) []string {
+	return uniqueSorted(append(policy.Input.RequiredFields, policy.Evidence.RequiredFields...))
+}
+
+func policyRequiredAttributesByKind(policy policyFile) map[string][]string {
+	if len(policy.Input.RequiredFieldsByKind) == 0 {
+		return nil
+	}
+	out := map[string][]string{}
+	for key, values := range policy.Input.RequiredFieldsByKind {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			if normalized := uniqueSorted(values); len(normalized) != 0 {
+				out[trimmed] = normalized
+			}
+		}
+	}
+	return out
+}
+
+func policyReferences(policy policyFile) []string {
+	values := append([]string{}, policy.Context.Graph.Anchors...)
+	values = append(values, policy.Context.Graph.Enrich...)
+	return uniqueSorted(values)
+}
+
+func policyEvidenceType(policy policyFile, extension policyRuleExtension) string {
+	return firstNonEmpty(policy.Evidence.Type, policy.Audit.EvidenceType, extension.EvidenceType)
+}
+
+func policyAssessmentMethods(policy policyFile, extension policyRuleExtension) []string {
+	if methods := uniqueSorted(policy.Evidence.AssessmentMethods); len(methods) != 0 {
+		return methods
+	}
+	if methods := uniqueSorted(policy.Audit.AssessmentMethods); len(methods) != 0 {
+		return methods
+	}
+	return uniqueSorted(extension.AssessmentMethods)
+}
+
+func policyAuditorGuidance(policy policyFile, extension policyRuleExtension) string {
+	return firstNonEmpty(policy.Audit.AuditorGuidance, policy.Audit.AuditorStatement, extension.AuditorGuidance)
+}
+
+func policyTags(policy policyFile, evidenceMode string, evidenceType string, assessmentMethods []string) []string {
 	values := append([]string{}, policy.Tags...)
 	values = append(values, "policy", evidenceMode, policy.domain)
-	if evidenceType := strings.TrimSpace(extension.EvidenceType); evidenceType != "" {
+	if evidenceType := strings.TrimSpace(evidenceType); evidenceType != "" {
 		values = append(values, "evidence:"+evidenceType)
 	}
-	for _, method := range extension.AssessmentMethods {
+	for _, method := range assessmentMethods {
 		if trimmed := strings.TrimSpace(method); trimmed != "" {
 			values = append(values, "assessment:"+trimmed)
 		}
@@ -489,21 +622,27 @@ func policyRunbook(policy policyFile, extension policyRuleExtension) string {
 	parts := []string{
 		"Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls.",
 	}
-	if guidance := strings.TrimSpace(extension.AuditorGuidance); guidance != "" {
+	if guidance := strings.TrimSpace(policyAuditorGuidance(policy, extension)); guidance != "" {
 		parts = append(parts, guidance)
 	}
 	if remediation := strings.TrimSpace(policy.Remediation); remediation != "" {
 		parts = append(parts, remediation)
 	} else if steps := trimStrings(policy.RemediationSteps); len(steps) != 0 {
 		parts = append(parts, "Complete these remediation steps: "+strings.Join(steps, "; ")+".")
-	} else if remediationIntent := policyRemediationIntent(extension); remediationIntent != "" {
+	} else if remediationIntent := policyRemediationIntent(policy, extension); remediationIntent != "" {
 		parts = append(parts, remediationIntent)
+	}
+	if steps := actionStepList(policy.Actions.Remediation.Steps); steps != "" {
+		parts = append(parts, "Action plan: "+steps)
 	}
 	parts = append(parts, "Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.")
 	return joinSentences(parts)
 }
 
 func policyRiskStatement(policy policyFile, extension policyRuleExtension) string {
+	if value := strings.TrimSpace(policy.Audit.RiskStatement); value != "" {
+		return value
+	}
 	if value := strings.TrimSpace(extension.RiskStatement); value != "" {
 		return value
 	}
@@ -511,15 +650,19 @@ func policyRiskStatement(policy policyFile, extension policyRuleExtension) strin
 	return "The mapped control may lack sufficient operating evidence because " + subject + " is outside the expected policy state."
 }
 
-func policyRemediationIntent(extension policyRuleExtension) string {
+func policyRemediationIntent(policy policyFile, extension policyRuleExtension) string {
+	if value := strings.TrimSpace(policy.Audit.RemediationIntent); value != "" {
+		return value
+	}
 	if value := strings.TrimSpace(extension.RemediationIntent); value != "" {
 		return value
 	}
 	return "Restore the assessed subject to the expected control state, reduce exposure where applicable, and preserve evidence of the corrective action."
 }
 
-func policyFalsePositives(extension policyRuleExtension) []string {
+func policyFalsePositives(policy policyFile, extension policyRuleExtension) []string {
 	values := append([]string{}, extension.FalsePositives...)
+	values = append(values, policy.Audit.FalsePositives...)
 	if len(values) == 0 {
 		values = []string{
 			"The subject is outside the assessment scope or has a documented exception for the audit period.",
@@ -528,6 +671,169 @@ func policyFalsePositives(extension policyRuleExtension) []string {
 		}
 	}
 	return uniqueSorted(trimStrings(values))
+}
+
+func policyExceptionGuidance(policy policyFile, extension policyRuleExtension) []string {
+	values := policyFalsePositives(policy, extension)
+	values = append(values, policy.Audit.ExceptionGuidance...)
+	return uniqueSorted(values)
+}
+
+func actionStepList(values []string) string {
+	steps := make([]string, 0, len(values))
+	for _, value := range values {
+		step := strings.TrimSpace(value)
+		step = strings.TrimRight(step, ".!?")
+		if step != "" {
+			steps = append(steps, step)
+		}
+	}
+	return strings.Join(steps, "; ")
+}
+
+func policyContractAttributes(policy policyFile) map[string]string {
+	attributes := map[string]string{}
+	addContractList(attributes, "policy_input_source_kinds", policy.Input.SourceKinds)
+	addContractList(attributes, "policy_input_event_kinds", policy.Input.EventKinds)
+	addContractList(attributes, "policy_input_required_claims", policy.Input.RequiredClaims)
+	addContractList(attributes, "policy_input_required_fields", policy.Input.RequiredFields)
+	addContractValue(attributes, "policy_input_freshness_sla", policy.Input.FreshnessSLA)
+	addContractList(attributes, "policy_evidence_required_fields", policy.Evidence.RequiredFields)
+	addContractList(attributes, "policy_evidence_acceptable_sources", policy.Evidence.AcceptableSources)
+	addContractValue(attributes, "policy_evidence_freshness_sla", policy.Evidence.FreshnessSLA)
+	if policy.Evidence.RequiredForAudit {
+		attributes["policy_evidence_required_for_audit"] = "true"
+	}
+	addContractValue(attributes, "policy_audit_freshness_sla", policy.Audit.FreshnessSLA)
+	addContractList(attributes, "policy_context_graph_anchors", policy.Context.Graph.Anchors)
+	addContractList(attributes, "policy_context_graph_enrich", policy.Context.Graph.Enrich)
+	addContractList(attributes, "policy_verification_mutation_checks", policy.Verification.MutationChecks)
+	addContractValue(attributes, "policy_action_effort", policy.Actions.Effort)
+	addContractValue(attributes, "policy_action_owner_from", policy.Actions.Owner.From)
+	addContractValue(attributes, "policy_action_owner_fallback", policy.Actions.Owner.Fallback)
+	addContractValue(attributes, "policy_action_remediation_type", policy.Actions.Remediation.Type)
+	addContractOrderedList(attributes, "policy_action_remediation_steps", policy.Actions.Remediation.Steps)
+	addContractValue(attributes, "policy_action_blast_radius_from", policy.Actions.BlastRadius.EstimateFrom)
+	if policy.Actions.Verification.RerunPolicy {
+		attributes["policy_action_verification_rerun_policy"] = "true"
+	}
+	addContractValue(attributes, "policy_verification_remediation_rerun_after", policy.Verification.RemediationCheck.RerunAfter)
+	addContractValue(attributes, "policy_verification_remediation_expected_status", policy.Verification.RemediationCheck.ExpectedStatus)
+	addContractOrderedList(attributes, "policy_assert_all", assertionSummaries(policy.Assert.All))
+	addContractOrderedList(attributes, "policy_assert_any", assertionSummaries(policy.Assert.Any))
+	addContractOrderedList(attributes, "policy_context_severity_adjustments", severityAdjustmentSummaries(policy.Context.SeverityAdjustments))
+	addContractOrderedList(attributes, "policy_audit_acceptable_evidence", acceptableEvidenceSummaries(policy.Audit.AcceptableEvidence))
+	addContractValue(attributes, "policy_audit_exception_max_age", policy.Audit.ExceptionPolicy.MaxAge)
+	if policy.Audit.ExceptionPolicy.RequiresApproval {
+		attributes["policy_audit_exception_requires_approval"] = "true"
+	}
+	addContractOrderedList(attributes, "policy_verification_fixtures", fixtureSummaries(policy.Verification.Fixtures))
+	if len(attributes) == 0 {
+		return nil
+	}
+	return attributes
+}
+
+func addContractValue(attributes map[string]string, key string, value string) {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		attributes[key] = trimmed
+	}
+}
+
+func addContractList(attributes map[string]string, key string, values []string) {
+	if normalized := uniqueSorted(values); len(normalized) != 0 {
+		attributes[key] = strings.Join(normalized, ",")
+	}
+}
+
+func addContractOrderedList(attributes map[string]string, key string, values []string) {
+	if normalized := uniqueStrings(values); len(normalized) != 0 {
+		attributes[key] = strings.Join(normalized, ",")
+	}
+}
+
+func assertionSummaries(assertions []findingdsl.PolicyRuleAssertion) []string {
+	values := make([]string, 0, len(assertions))
+	for _, assertion := range assertions {
+		field := strings.TrimSpace(assertion.Field)
+		op := strings.TrimSpace(assertion.Op)
+		if field == "" || op == "" {
+			continue
+		}
+		if value := contractValueString(assertion.Value); value != "" {
+			values = append(values, field+" "+op+" "+value)
+		} else {
+			values = append(values, field+" "+op)
+		}
+	}
+	return values
+}
+
+func severityAdjustmentSummaries(adjustments []findingdsl.PolicyRuleSeverityAdjustment) []string {
+	values := make([]string, 0, len(adjustments))
+	for _, adjustment := range adjustments {
+		when := strings.TrimSpace(adjustment.When)
+		if when == "" {
+			continue
+		}
+		target := firstNonEmpty(adjustment.Set, adjustment.Delta)
+		if target == "" {
+			continue
+		}
+		values = append(values, when+" => "+target)
+	}
+	return values
+}
+
+func acceptableEvidenceSummaries(evidence []findingdsl.PolicyRuleAcceptableEvidence) []string {
+	values := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		source := strings.TrimSpace(item.Source)
+		if source == "" {
+			continue
+		}
+		fields := strings.Join(uniqueSorted(item.Fields), ",")
+		if fields == "" {
+			values = append(values, source)
+		} else {
+			values = append(values, source+"["+fields+"]")
+		}
+	}
+	return values
+}
+
+func fixtureSummaries(fixtures []findingdsl.PolicyRuleVerificationFixture) []string {
+	values := make([]string, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		name := strings.TrimSpace(fixture.Name)
+		expect := strings.TrimSpace(fixture.Expect)
+		if name == "" || expect == "" {
+			continue
+		}
+		values = append(values, name+":"+expect)
+	}
+	return values
+}
+
+func contractValueString(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(typed)
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if value := contractValueString(item); value != "" {
+				values = append(values, value)
+			}
+		}
+		return strings.Join(values, "|")
+	case []string:
+		return strings.Join(uniqueStrings(typed), "|")
+	default:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
 }
 
 func policySubject(policy policyFile) string {
@@ -599,6 +905,24 @@ func trimStrings(values []string) []string {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			out = append(out, trimmed)
 		}
+	}
+	return out
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
 	}
 	return out
 }
