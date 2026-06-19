@@ -76,6 +76,9 @@ emitted_kinds: []
 	if len(issues) == 0 {
 		t.Fatal("issues = 0, want policy metadata issue")
 	}
+	if got := countIssueMessages(issues, "metadata.name is required"); got != 1 {
+		t.Fatalf("metadata.name issue count = %d, want 1; issues = %#v", got, issues)
+	}
 }
 
 func TestCheckConnectorDefinitionCatalogRejectsProofGateIssues(t *testing.T) {
@@ -701,4 +704,14 @@ func issueMessagesContain(issues []issue, substring string) bool {
 		}
 	}
 	return false
+}
+
+func countIssueMessages(issues []issue, substring string) int {
+	count := 0
+	for _, issue := range issues {
+		if strings.Contains(issue.message, substring) {
+			count++
+		}
+	}
+	return count
 }
