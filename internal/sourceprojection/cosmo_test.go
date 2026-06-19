@@ -53,7 +53,7 @@ func TestProjectCosmoFact(t *testing.T) {
 	if got := fact.Attributes["key"]; got != "risk:key" {
 		t.Fatalf("fact key attribute = %q, want raw key", got)
 	}
-	categoryURN := "urn:cerebro:writer:cosmo_fact_category:risk"
+	categoryURN := cosmoTestURN("cosmo_fact_category", "risk")
 	assertCosmoProjectedEntity(t, entities, categoryURN, "cosmo.fact.category")
 	assertCosmoProjectedLink(t, links, fact.URN, relationTaggedAs, categoryURN)
 }
@@ -108,6 +108,29 @@ func TestProjectCosmoFactLinksPayloadSourceSession(t *testing.T) {
 		t.Fatalf("session ticket_id attribute = %q, want raw payload session id", got)
 	}
 	assertCosmoProjectedLink(t, links, factURN, relationBelongsTo, sessionURN)
+}
+
+func TestProjectCosmoFactLinksHashedCategory(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-risk-category",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"key":      "risk:key",
+			"category": "security:risk/high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	factURN := cosmoTestURN("cosmo_fact", "risk:key")
+	categoryURN := cosmoTestURN("cosmo_fact_category", "security:risk/high")
+	category := cosmoProjectedEntity(t, entities, categoryURN, "cosmo.fact.category")
+	if got := category.Attributes["category"]; got != "security:risk/high" {
+		t.Fatalf("category attribute = %q, want raw category", got)
+	}
+	assertCosmoProjectedLink(t, links, factURN, relationTaggedAs, categoryURN)
 }
 
 func TestProjectCosmoFactCarriesCoordinationRiskState(t *testing.T) {

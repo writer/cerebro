@@ -200,7 +200,7 @@ func addCosmoCategoryLink(entities map[string]*ports.ProjectedEntity, links map[
 	if category == "" {
 		return
 	}
-	categoryURN := projectionURN(tenantID, "cosmo_fact_category", normalizeIdentifier(category))
+	categoryURN := projectionURN(tenantID, "cosmo_fact_category", cosmoExternalIDKey(category))
 	addEntity(entities, cosmoEntity(event, categoryURN, "cosmo.fact.category", category, map[string]string{"category": category}))
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, categoryURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": "category"}))
 }

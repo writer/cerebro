@@ -278,7 +278,7 @@ func TestProjectPanopticonCaseLinksScalarAlertIDs(t *testing.T) {
 		},
 		Payload: mustJSON(t, map[string]any{
 			"case_id":            "case-1",
-			"upstream_alert_ids": []any{"alert-1", "alert-2"},
+			"upstream_alert_ids": []any{"alert-1", "alert-2", 12345},
 			"related_alert_ids":  "alert-2, alert-3",
 		}),
 	})
@@ -287,7 +287,7 @@ func TestProjectPanopticonCaseLinksScalarAlertIDs(t *testing.T) {
 	}
 
 	caseURN := "urn:cerebro:writer:panopticon_case:case-1"
-	for _, alertID := range []string{"alert-1", "alert-2", "alert-3", "alert-4"} {
+	for _, alertID := range []string{"alert-1", "alert-2", "alert-3", "alert-4", "12345"} {
 		alertURN := "urn:cerebro:writer:panopticon_alert:" + alertID
 		assertProjectedEntityType(t, state, alertURN, "panopticon.alert")
 		assertProjectedLink(t, state, caseURN, relationContains, alertURN)

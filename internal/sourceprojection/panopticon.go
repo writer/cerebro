@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -1861,6 +1862,18 @@ func panopticonCollectAlertIDs(value any, add func(string)) {
 			if trimmed := strings.TrimSpace(part); trimmed != "" {
 				add(trimmed)
 			}
+		}
+	case float64:
+		if alertID := strings.TrimSpace(strconv.FormatFloat(typed, 'f', -1, 64)); alertID != "" {
+			add(alertID)
+		}
+	case int:
+		if alertID := strings.TrimSpace(strconv.Itoa(typed)); alertID != "" {
+			add(alertID)
+		}
+	case int64:
+		if alertID := strings.TrimSpace(strconv.FormatInt(typed, 10)); alertID != "" {
+			add(alertID)
 		}
 	case []string:
 		for _, item := range typed {
