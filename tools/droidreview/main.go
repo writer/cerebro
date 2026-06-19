@@ -17,9 +17,17 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/tools/droidreview/bodyread"
+	"github.com/writer/cerebro/tools/droidreview/urnlinter"
 )
 
-const sonnetBugReviewModel = "claude-sonnet-4-6"
+const bugReviewModel = "glm-5.2"
+
+func reviewModel() string {
+	if model := os.Getenv("DROID_REVIEW_MODEL"); model != "" {
+		return model
+	}
+	return bugReviewModel
+}
 
 type preflightResult struct {
 	ChangedFiles   []string          `json:"changed_files"`
@@ -86,7 +94,7 @@ func writeJSONFile(path string, result preflightResult) error {
 func run(base, head, repo string) (preflightResult, error) {
 	files, err := changedFiles(base, head, repo)
 	if err != nil {
-		return preflightResult{RunDroidReview: true, ReviewModel: sonnetBugReviewModel}, err
+		return preflightResult{RunDroidReview: true, ReviewModel: reviewModel()}, err
 	}
 	result := classifyReview(files)
 	result.Checks = []string{
@@ -95,6 +103,7 @@ func run(base, head, repo string) (preflightResult, error) {
 		"cypher-safety",
 		"ask-post-processing-boundary",
 		"candidate-lifecycle-atomicity",
+		"urn-identity-safety",
 	}
 	result.ProbePlan = reviewProbePlan(files)
 	for _, file := range files {
@@ -129,6 +138,18 @@ func run(base, head, repo string) (preflightResult, error) {
 		result.Findings = append(result.Findings, cypherFindings(file, body)...)
 		result.Findings = append(result.Findings, askPostProcessingFindings(file, body)...)
 		result.Findings = append(result.Findings, candidateLifecycleFindings(file, body)...)
+		urnFindings, err := urnlinter.FindDisplayNameInURN(file, body)
+		if err != nil {
+			return result, fmt.Errorf("scan %s for URN identity: %w", file, err)
+		}
+		for _, finding := range urnFindings {
+			result.Findings = append(result.Findings, checkFinding{
+				Rule:    "urn-identity-safety",
+				File:    finding.File,
+				Line:    finding.Line,
+				Message: fmt.Sprintf("%s uses display-name field %q in URN identity chain; prefer stable provider IDs (resource_id, uid) to avoid collisions", finding.Function, finding.DisplayName),
+			})
+		}
 	}
 	if len(result.Findings) > 0 {
 		var message strings.Builder
@@ -229,7 +250,7 @@ func classifyReview(files []string) preflightResult {
 	result := preflightResult{
 		ChangedFiles:   files,
 		RunDroidReview: false,
-		ReviewModel:    sonnetBugReviewModel,
+		ReviewModel:    reviewModel(),
 		ReviewReason:   "docs/templates only; fast preflight and CI are sufficient",
 	}
 	for _, file := range files {

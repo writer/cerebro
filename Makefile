@@ -424,6 +424,20 @@ land-pr: ## Wait for core/Droid gates, merge PR, then delete the PR branch.
 	@if [ -z "$(PR)" ]; then echo "PR is required, e.g. make land-pr PR=719" >&2; exit 2; fi
 	python3 scripts/land_pr.py "$(PR)" --repo "$(LAND_PR_REPO)" $(if $(filter true,$(LAND_PR_ADMIN)),--admin,) $(if $(filter true,$(LAND_PR_KEEP_BRANCH)),--keep-branch,) $(if $(filter true,$(LAND_PR_ALLOW_LARGE)),--allow-large-pr,)
 
+ci-poll: ## Poll PR checks until complete or timeout (PR required, optional INTERVAL and TIMEOUT).
+	@if [ -z "$(PR)" ]; then echo "PR is required, e.g. make ci-poll PR=719" >&2; exit 2; fi
+	@interval="$(INTERVAL)"; timeout_s="$(TIMEOUT)"; \
+	if [ -z "$$interval" ]; then interval=60; fi; \
+	if [ -z "$$timeout_s" ]; then timeout_s=1800; fi; \
+	elapsed=0; \
+	while [ $$elapsed -lt $$timeout_s ]; do \
+		gh pr checks $(PR) --repo writer/cerebro 2>&1; rc=$$?; \
+		if [ $$rc -eq 1 ]; then echo "CI failed"; exit 1; fi; \
+		if [ $$rc -eq 0 ]; then echo "All checks passed"; exit 0; fi; \
+		sleep $$interval; elapsed=$$((elapsed + interval)); \
+	done; \
+	echo "CI polling timed out after $$timeout_s seconds"; exit 1
+
 # ==== Project Hygiene ====
 ##@ Project Hygiene
 clean: ## Remove build artifacts.

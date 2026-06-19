@@ -51,18 +51,24 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		return joinProjectionIdentity(attrs, "cluster_id", "namespace", "resource_id", "name")
 	case "kubernetes.container":
 		return joinProjectionIdentity(attrs, "cluster_id", "namespace", "resource_id", "container_name")
-	case "cloudflare.access_application", "cloudflare.zone_access_application":
-		return joinProjectionIdentity(attrs, "application_id", "id")
-	case "cloudflare.access_group", "cloudflare.zone_access_group":
-		return joinProjectionIdentity(attrs, "group_id", "id")
-	case "cloudflare.account_ruleset", "cloudflare.zone_ruleset":
-		return joinProjectionIdentity(attrs, "ruleset_id", "id")
+	case "cloudflare.access_application":
+		return joinRequiredScopedProjectionIdentity(attrs, "account_id", "application_id", "id")
+	case "cloudflare.zone_access_application":
+		return joinRequiredScopedProjectionIdentity(attrs, "zone_id", "application_id", "id")
+	case "cloudflare.access_group":
+		return joinRequiredScopedProjectionIdentity(attrs, "account_id", "group_id", "id")
+	case "cloudflare.zone_access_group":
+		return joinRequiredScopedProjectionIdentity(attrs, "zone_id", "group_id", "id")
+	case "cloudflare.account_ruleset":
+		return joinRequiredScopedProjectionIdentity(attrs, "account_id", "ruleset_id", "id")
+	case "cloudflare.zone_ruleset":
+		return joinRequiredScopedProjectionIdentity(attrs, "zone_id", "ruleset_id", "id")
 	case "cloudflare.audit_log":
 		return joinProjectionIdentity(attrs, "audit_id", "id")
 	case "cloudflare.gateway_rule":
-		return joinProjectionIdentity(attrs, "rule_id", "id")
+		return joinRequiredScopedProjectionIdentity(attrs, "account_id", "rule_id", "id")
 	case "cloudflare.load_balancer":
-		return joinProjectionIdentity(attrs, "load_balancer_id", "id")
+		return joinRequiredScopedProjectionIdentity(attrs, "zone_id", "load_balancer_id", "id")
 	case "cloudflare.load_balancer_pool":
 		return joinProjectionIdentity(attrs, "pool_id", "id")
 	case "cloudflare.worker_script":
@@ -107,9 +113,6 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		"resource_id",
 		"uid",
 		"id",
-		"name",
-		"email",
-		"username",
 		"vulnerability_id",
 		"package",
 		"external_id",

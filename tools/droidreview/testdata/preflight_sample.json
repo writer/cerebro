@@ -5,14 +5,15 @@
     "scripts/droid_ci_context.py"
   ],
   "run_droid_review": true,
-  "review_model": "claude-sonnet-4-6",
+  "review_model": "glm-5.2",
   "review_reason": "code, workflow, API, source, or security-sensitive paths changed",
   "checks": [
     "bounded-body-read",
     "source-http-safety",
     "cypher-safety",
     "ask-post-processing-boundary",
-    "candidate-lifecycle-atomicity"
+    "candidate-lifecycle-atomicity",
+    "urn-identity-safety"
   ],
   "findings": [],
   "probe_plan": [

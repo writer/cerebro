@@ -2,6 +2,8 @@ package sourceprojection
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,14 +163,14 @@ func TestProjectCloudflareScopedInventoryLinks(t *testing.T) {
 
 	accountURN := "urn:cerebro:writer:cloudflare_account:acct-1"
 	zoneURN := "urn:cerebro:writer:cloudflare_zone:zone-1"
-	accessAppURN := "urn:cerebro:writer:cloudflare_access_application:app-1"
-	accountRulesetURN := "urn:cerebro:writer:cloudflare_account_ruleset:ruleset-1"
+	accessAppURN := "urn:cerebro:writer:cloudflare_access_application:acct-1%7Capp-1"
+	accountRulesetURN := "urn:cerebro:writer:cloudflare_account_ruleset:acct-1%7Cruleset-1"
 	workerScriptURN := "urn:cerebro:writer:cloudflare_worker_script:acct-1%7Capi"
 	poolURN := "urn:cerebro:writer:cloudflare_load_balancer_pool:pool-1"
 	defaultPoolURN := "urn:cerebro:writer:cloudflare_load_balancer_pool:pool-2"
-	zoneAccessGroupURN := "urn:cerebro:writer:cloudflare_zone_access_group:group-1"
-	zoneRulesetURN := "urn:cerebro:writer:cloudflare_zone_ruleset:zone-ruleset-1"
-	loadBalancerURN := "urn:cerebro:writer:cloudflare_load_balancer:lb-1"
+	zoneAccessGroupURN := "urn:cerebro:writer:cloudflare_zone_access_group:zone-1%7Cgroup-1"
+	zoneRulesetURN := "urn:cerebro:writer:cloudflare_zone_ruleset:zone-1%7Czone-ruleset-1"
+	loadBalancerURN := "urn:cerebro:writer:cloudflare_load_balancer:zone-1%7Clb-1"
 	auditURN := "urn:cerebro:writer:cloudflare_audit_log:audit-1"
 
 	for _, urn := range []string{accessAppURN, accountRulesetURN, workerScriptURN, poolURN, zoneAccessGroupURN, zoneRulesetURN, loadBalancerURN, auditURN} {
@@ -228,6 +230,136 @@ func TestProjectCloudflareLoadBalancerDoesNotUseZoneAsIdentity(t *testing.T) {
 	eventURN := "urn:cerebro:writer:cloudflare_load_balancer:cf-lb-missing-id"
 	if entity := state.entities[eventURN]; entity == nil || entity.EntityType != "cloudflare.load_balancer" {
 		t.Fatalf("load balancer fallback entity missing or wrong: %#v", entity)
+	}
+}
+
+func TestProjectCloudflareScopedResourcesRequireScopeKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		eventID  string
+		kind     string
+		attrs    map[string]string
+		entityID string
+	}{
+		{
+			name:     "access_application without account_id",
+			eventID:  "cf-app-no-account",
+			kind:     "cloudflare.access_application",
+			attrs:    map[string]string{"application_id": "app-1", "name": "Admin App"},
+			entityID: "app-1",
+		},
+		{
+			name:     "zone_access_group without zone_id",
+			eventID:  "cf-group-no-zone",
+			kind:     "cloudflare.zone_access_group",
+			attrs:    map[string]string{"group_id": "group-1", "name": "Employees"},
+			entityID: "group-1",
+		},
+		{
+			name:     "account_ruleset without account_id",
+			eventID:  "cf-ruleset-no-account",
+			kind:     "cloudflare.account_ruleset",
+			attrs:    map[string]string{"ruleset_id": "ruleset-1", "name": "WAF"},
+			entityID: "ruleset-1",
+		},
+		{
+			name:     "gateway_rule without account_id",
+			eventID:  "cf-gw-rule-no-account",
+			kind:     "cloudflare.gateway_rule",
+			attrs:    map[string]string{"rule_id": "rule-1", "name": "Block bad traffic"},
+			entityID: "rule-1",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+
+			event := cloudflareTestEvent(tc.eventID, tc.kind, tc.attrs, `{"id":"`+tc.entityID+`"}`)
+			if _, err := service.Project(context.Background(), event); err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+
+			family := strings.ReplaceAll(tc.kind, ".", "_")
+			unscopedURN := fmt.Sprintf("urn:cerebro:writer:%s:%s", family, tc.entityID)
+			if entity := state.entities[unscopedURN]; entity != nil {
+				t.Fatalf("unscoped entity %s must not exist: %#v", unscopedURN, entity)
+			}
+			eventURN := fmt.Sprintf("urn:cerebro:writer:%s:%s", family, tc.eventID)
+			if entity := state.entities[eventURN]; entity == nil || entity.EntityType != tc.kind {
+				t.Fatalf("fallback entity %s missing or wrong: %#v", eventURN, entity)
+			}
+		})
+	}
+}
+
+func TestProjectCloudflareScopedResourcesStayDistinctAcrossScopes(t *testing.T) {
+	tests := []struct {
+		name     string
+		kind     string
+		idKey    string
+		idValue  string
+		scopeKey string
+		scopeA   string
+		scopeB   string
+	}{
+		{
+			name:     "access_application across accounts",
+			kind:     "cloudflare.access_application",
+			idKey:    "application_id",
+			idValue:  "app-1",
+			scopeKey: "account_id",
+			scopeA:   "acct-1",
+			scopeB:   "acct-2",
+		},
+		{
+			name:     "zone_access_group across zones",
+			kind:     "cloudflare.zone_access_group",
+			idKey:    "group_id",
+			idValue:  "group-1",
+			scopeKey: "zone_id",
+			scopeA:   "zone-1",
+			scopeB:   "zone-2",
+		},
+		{
+			name:     "load_balancer across zones",
+			kind:     "cloudflare.load_balancer",
+			idKey:    "load_balancer_id",
+			idValue:  "lb-1",
+			scopeKey: "zone_id",
+			scopeA:   "zone-1",
+			scopeB:   "zone-2",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+
+			for i, scope := range []string{tc.scopeA, tc.scopeB} {
+				event := cloudflareTestEvent(
+					fmt.Sprintf("cf-%s-%d", tc.idValue, i),
+					tc.kind,
+					map[string]string{tc.idKey: tc.idValue, tc.scopeKey: scope, "name": "test"},
+					`{"id":"`+tc.idValue+`"}`,
+				)
+				if _, err := service.Project(context.Background(), event); err != nil {
+					t.Fatalf("Project() error = %v", err)
+				}
+			}
+
+			family := strings.ReplaceAll(tc.kind, ".", "_")
+			urnA := fmt.Sprintf("urn:cerebro:writer:%s:%s%%7C%s", family, tc.scopeA, tc.idValue)
+			urnB := fmt.Sprintf("urn:cerebro:writer:%s:%s%%7C%s", family, tc.scopeB, tc.idValue)
+			if urnA == urnB {
+				t.Fatalf("URNs must differ across scopes: %s", urnA)
+			}
+			for _, urn := range []string{urnA, urnB} {
+				if entity := state.entities[urn]; entity == nil {
+					t.Fatalf("expected entity %s; entities=%#v", urn, state.entities)
+				}
+			}
+		})
 	}
 }
 

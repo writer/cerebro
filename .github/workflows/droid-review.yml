@@ -12,6 +12,7 @@ jobs:
   droid-review-preflight:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       checks: read
@@ -263,6 +264,7 @@ jobs:
     # preflight context but skip the secret-dependent Droid execution job.
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && needs.droid-review-preflight.outputs.run_droid_review == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
@@ -280,8 +282,9 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          # Fast deterministic preflight runs first; use Sonnet for the actual
-          # bug-finding review so Droid does not fall back to stale depth presets.
-          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-sonnet-4-6' }}
+          # Fast deterministic preflight runs first; use GLM-5.2 for the actual
+          # bug-finding review (faster than Sonnet while maintaining quality).
+          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'glm-5.2' }}
           security_model: gpt-5.4
+          reasoning_effort: medium
           allowed_bots: dependabot
