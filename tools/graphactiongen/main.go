@@ -194,6 +194,8 @@ func validateCatalog(catalog actionCatalog) error {
 	}
 	ids := map[string]struct{}{}
 	constNames := map[string]struct{}{}
+	providerConstValues := map[string]string{}
+	providerActionConstValues := map[string]string{}
 	targetKindConstValues := map[string]string{}
 	for i, action := range catalog.Actions {
 		if err := validateAction(i, action); err != nil {
@@ -207,6 +209,14 @@ func validateCatalog(catalog actionCatalog) error {
 			return fmt.Errorf("duplicate action const_name %q", action.ConstName)
 		}
 		constNames[action.ConstName] = struct{}{}
+		if prior, exists := providerConstValues[action.ProviderConst]; exists && prior != action.Provider {
+			return fmt.Errorf("action %q: provider_const %q maps to both %q and %q", action.ID, action.ProviderConst, prior, action.Provider)
+		}
+		providerConstValues[action.ProviderConst] = action.Provider
+		if prior, exists := providerActionConstValues[action.ProviderActionConst]; exists && prior != action.ProviderAction {
+			return fmt.Errorf("action %q: provider_action_const %q maps to both %q and %q", action.ID, action.ProviderActionConst, prior, action.ProviderAction)
+		}
+		providerActionConstValues[action.ProviderActionConst] = action.ProviderAction
 		if prior, exists := targetKindConstValues[action.TargetKindConst]; exists && prior != action.TargetKind {
 			return fmt.Errorf("action %q: target_kind_const %q maps to both %q and %q", action.ID, action.TargetKindConst, prior, action.TargetKind)
 		}

@@ -102,6 +102,40 @@ func TestValidateCatalogRejectsConflictingTargetKindConst(t *testing.T) {
 	}
 }
 
+func TestValidateCatalogRejectsConflictingProviderConst(t *testing.T) {
+	first := testActionCatalogEntry("identity.okta.suspend_user", "ActionIdentityOktaSuspendUser", "identity.okta.user", "TargetKindOktaUser")
+	second := testActionCatalogEntry("identity.generic.lock_user", "ActionIdentityGenericLockUser", "identity.generic.user", "TargetKindGenericUser")
+	second.Provider = "generic-idp"
+	second.ProviderConst = first.ProviderConst
+	err := validateCatalog(actionCatalog{
+		Version: "graph-actions.cerebro/v1alpha1",
+		Actions: []actionCatalogEntry{
+			first,
+			second,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider_const") {
+		t.Fatalf("validateCatalog() error = %v, want provider_const conflict", err)
+	}
+}
+
+func TestValidateCatalogRejectsConflictingProviderActionConst(t *testing.T) {
+	first := testActionCatalogEntry("identity.okta.suspend_user", "ActionIdentityOktaSuspendUser", "identity.okta.user", "TargetKindOktaUser")
+	second := testActionCatalogEntry("identity.okta.disable_user", "ActionIdentityOktaDisableUser", "identity.okta.user", "TargetKindOktaUser")
+	second.ProviderAction = "disable"
+	second.ProviderActionConst = first.ProviderActionConst
+	err := validateCatalog(actionCatalog{
+		Version: "graph-actions.cerebro/v1alpha1",
+		Actions: []actionCatalogEntry{
+			first,
+			second,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider_action_const") {
+		t.Fatalf("validateCatalog() error = %v, want provider_action_const conflict", err)
+	}
+}
+
 func TestGeneratedFileIORejectsSymlink(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "target.go")
