@@ -5,6 +5,7 @@ import (
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	akeylessource "github.com/writer/cerebro/sources/akeyless"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
@@ -17,6 +18,7 @@ import (
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	duosource "github.com/writer/cerebro/sources/duo"
+	dopplersource "github.com/writer/cerebro/sources/doppler"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
@@ -63,6 +65,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "anthropic",
 		load: func() (sourcecdk.Source, error) {
 			return anthropicsource.New()
+		},
+	},
+	{
+		name: "akeyless",
+		load: func() (sourcecdk.Source, error) {
+			return akeylessource.New()
 		},
 	},
 	{
@@ -117,6 +125,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "duo",
 		load: func() (sourcecdk.Source, error) {
 			return duosource.New()
+		},
+	},
+	{
+		name: "doppler",
+		load: func() (sourcecdk.Source, error) {
+			return dopplersource.New()
 		},
 	},
 	{

@@ -1,0 +1,68 @@
+id: doppler
+name: "Doppler"
+description: "Doppler connector definition catalog entry for high-value security and operations resources."
+emitted_kinds:
+  - doppler.secrets
+  - doppler.projects
+  - doppler.audit_events
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: doppler
+  dimensions:
+    - id: secrets
+      type: entity_family
+      title: "Secrets"
+      families: [secrets]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: entity_family
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: doppler.secrets
+    schema_ref: doppler/secrets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: doppler.projects
+    schema_ref: doppler/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: doppler.audit_events
+    schema_ref: doppler/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
