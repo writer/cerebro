@@ -690,10 +690,6 @@ func sentinelOneScopeIDs(raw string, keys ...string) []string {
 					add(itemString)
 				}
 			}
-		case []string:
-			for _, item := range value {
-				add(item)
-			}
 		}
 	}
 	return ids
