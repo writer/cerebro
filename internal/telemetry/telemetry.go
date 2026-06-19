@@ -71,7 +71,7 @@ type RuntimeMetadata struct {
 }
 
 const maxAttributeStringLength = 1024
-const wideEventSchemaVersion = "2026-06-18.2"
+const wideEventSchemaVersion = "2026-06-19.1"
 
 var (
 	runtimeMetadataMu sync.RWMutex

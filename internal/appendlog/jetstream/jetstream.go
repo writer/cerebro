@@ -10,12 +10,14 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
@@ -32,6 +34,8 @@ const (
 	maxReplayCandidates        = 5000
 	publishRetryAttempts       = 4
 	publishRetryInitialBackoff = 50 * time.Millisecond
+	jetstreamCanaryKind        = "cerebro.health.jetstream_canary"
+	jetstreamCanaryMinInterval = time.Minute
 )
 
 type publisher interface {
@@ -91,6 +95,8 @@ type Log struct {
 	js            publisher
 	replay        replayManager
 	subjectPrefix string
+	canaryMu      sync.Mutex
+	lastCanary    time.Time
 }
 
 // Open dials JetStream and returns an append-log implementation.
@@ -172,21 +178,43 @@ func (l *Log) Ping(ctx context.Context) error {
 		jetstreamTelemetryError(ctx, span, "ping", err)
 		return err
 	}
+	pingAttrs := telemetry.Attrs()
+	accountStarted := time.Now()
 	_, err := l.js.AccountInfo(ctx)
+	pingAttrs = pingAttrs.WithField(telemetry.Field{Key: "messaging.jetstream.account_info.duration_ms", Value: time.Since(accountStarted).Milliseconds()})
 	if err != nil {
 		err = fmt.Errorf("jetstream account info: %w", err)
-		jetstreamTelemetryError(ctx, span, "ping", err)
+		jetstreamTelemetryError(ctx, span, "ping", err, pingAttrs)
 		return err
 	}
 	if l.replay != nil {
-		if _, err := l.replayStream(ctx); err != nil {
+		stream, err := l.replayStream(ctx)
+		if err != nil {
 			err = fmt.Errorf("jetstream stream readiness: %w", err)
-			jetstreamTelemetryError(ctx, span, "ping", err)
+			jetstreamTelemetryError(ctx, span, "ping", err, pingAttrs)
 			return err
 		}
+		pingAttrs = pingAttrs.With(jetstreamStreamTelemetryAttrs(stream))
+		if l.shouldRunCanary(time.Now().UTC()) {
+			canaryAttrs, err := l.runCanary(ctx, stream)
+			pingAttrs = pingAttrs.With(canaryAttrs)
+			if err != nil {
+				telemetry.Event(ctx, "jetstream.canary.failed", canaryAttrs.With(jetstreamErrorTelemetryAttrs("canary", err)))
+				err = fmt.Errorf("jetstream canary: %w", err)
+				jetstreamTelemetryError(ctx, span, "canary", err, pingAttrs)
+				return err
+			}
+			l.markCanarySucceeded(time.Now().UTC())
+			telemetry.Event(ctx, "jetstream.canary.completed", canaryAttrs)
+		} else {
+			pingAttrs = pingAttrs.With(telemetry.Attrs(
+				telemetry.Field{Key: "messaging.jetstream.canary.throttled", Value: true},
+				telemetry.Field{Key: "messaging.jetstream.canary.interval_ms", Value: jetstreamCanaryMinInterval.Milliseconds()},
+			))
+		}
 	}
-	jetstreamAnnotateMain(ctx, "ping", "completed")
-	telemetry.End(span, "completed", telemetry.Attrs())
+	jetstreamAnnotateMain(ctx, "ping", "completed", pingAttrs)
+	telemetry.End(span, "completed", pingAttrs)
 	return nil
 }
 
@@ -235,7 +263,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	publishAttrs := func() telemetry.Attributes {
 		return jetstreamPublishMessageAttrs(subject, l.subjectPrefix, len(payload), msg.Header.Get(nats.MsgIdHdr))
 	}
-	publishResult, err := l.publishMsg(ctx, msg, publishAttrs)
+	publishResult, err := l.publishMsg(ctx, msg, "append", publishAttrs)
 	endAttrs := publishAttrs().With(publishResult.attrs())
 	if err != nil {
 		err = fmt.Errorf("publish event: %w", err)
@@ -251,7 +279,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	return nil
 }
 
-func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
+func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
 	result := publishTelemetry{Attempts: 0, MaxAttempts: 1}
 	if msg.Header.Get(nats.MsgIdHdr) != "" {
 		result.MaxAttempts = publishRetryAttempts
@@ -272,20 +300,20 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, eventAttrs func() t
 		if attempt == result.MaxAttempts || !result.LastRetryable || ctx.Err() != nil {
 			result.Duration = time.Since(started)
 			if result.RetryCount > 0 {
-				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs("append", err)))
+				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, err)))
 			}
 			return result, err
 		}
 		result.RetryCount++
 		result.LastBackoff = backoff
 		telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry.count", 1)
-		telemetry.Event(ctx, "jetstream.publish.retry", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs("append", err)).With(telemetry.Attrs(
+		telemetry.Event(ctx, "jetstream.publish.retry", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, err)).With(telemetry.Attrs(
 			telemetry.Field{Key: "messaging.jetstream.publish.next_attempt", Value: attempt + 1},
 			telemetry.Field{Key: "messaging.jetstream.publish.next_backoff_ms", Value: backoff.Milliseconds()},
 		)))
 		if waitErr := waitBeforePublishRetry(ctx, backoff); waitErr != nil {
 			result.Duration = time.Since(started)
-			telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs("append", waitErr)))
+			telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, waitErr)))
 			return result, waitErr
 		}
 		backoff *= 2
@@ -332,6 +360,10 @@ func retryablePublishError(err error) bool {
 	if err == nil {
 		return false
 	}
+	var apiErr *jetstream.APIError
+	if errors.As(err, &apiErr) && apiErr != nil {
+		return apiErr.Code == 408 || apiErr.Code == 429 || apiErr.Code >= 500
+	}
 	text := strings.ToLower(err.Error())
 	for _, fragment := range []string{
 		"no response",
@@ -366,7 +398,8 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	ctx, span := telemetry.Start(ctx, "jetstream.replay", jetstreamTelemetryAttrs("replay").
 		WithField(telemetry.Field{Key: "replay.limit", Value: normalizeReplayLimit(request.Limit)}).
 		WithField(telemetry.Field{Key: "replay.kind_prefix_count", Value: len(replayKindPrefixes(request))}).
-		WithField(telemetry.Field{Key: "replay.attribute_filter_count", Value: len(request.AttributeEquals)}))
+		WithField(telemetry.Field{Key: "replay.attribute_filter_count", Value: len(request.AttributeEquals)}).
+		With(jetstreamReplayRequestAttrs(request)))
 	if l == nil || l.replay == nil {
 		err := errors.New("jetstream is not configured")
 		jetstreamTelemetryError(ctx, span, "replay", err)
@@ -382,9 +415,10 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		jetstreamTelemetryError(ctx, span, "replay", err)
 		return nil, err
 	}
+	streamAttrs := jetstreamStreamTelemetryAttrs(stream)
 	prefix, err := normalizeSubjectPrefix(l.subjectPrefix)
 	if err != nil {
-		jetstreamTelemetryError(ctx, span, "replay", err)
+		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs)
 		return nil, err
 	}
 	subjectPrefixes := replaySubjectPrefixes(prefix, request)
@@ -393,36 +427,46 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
 	if err != nil {
 		err = fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
-		jetstreamTelemetryError(ctx, span, "replay", err)
+		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, 0, 0, 0, 0, 0, 0, ctx)))
 		return nil, err
 	}
+	started := time.Now()
+	var scanned, missing, subjectMatched, decoded, matched uint64
 	candidates := make([]replayCandidate, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
-		jetstreamAnnotateMain(ctx, "replay", "completed")
-		telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "events_returned", Value: 0}))
+		endAttrs := streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, 0, 0, 0, 0, 0, 0, ctx)).
+			WithField(telemetry.Field{Key: "events_returned", Value: 0}).
+			WithField(telemetry.Field{Key: "messaging.jetstream.replay.duration_ms", Value: time.Since(started).Milliseconds()})
+		jetstreamAnnotateMain(ctx, "replay", "completed", endAttrs)
+		telemetry.End(span, "completed", endAttrs)
 		return nil, nil
 	}
 	for seq := stream.State.LastSeq; ; seq-- {
+		scanned++
 		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {
+				missing++
 				if seq == stream.State.FirstSeq {
 					break
 				}
 				continue
 			}
 			err = fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
-			jetstreamTelemetryError(ctx, span, "replay", err)
+			jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, scanned, missing, subjectMatched, decoded, matched, seq, ctx)))
 			return nil, err
 		}
 		if raw != nil && replaySubjectMatchesAnyPrefix(raw.Subject, subjectPrefixes) {
+			subjectMatched++
 			event, err := decodeReplayEvent(raw)
 			if err != nil {
 				err = fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
-				jetstreamTelemetryError(ctx, span, "replay", err)
+				jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, scanned, missing, subjectMatched, decoded, matched, seq, ctx)))
 				return nil, err
 			}
+			decoded++
 			if matchesReplayRequest(event, request) {
+				matched++
 				candidates = append(candidates, replayCandidate{event: event, seq: seq})
 				if countAtLeastUint32(len(candidates), candidateLimit) {
 					break
@@ -446,9 +490,107 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	for _, candidate := range candidates {
 		events = append(events, candidate.event)
 	}
-	jetstreamAnnotateMain(ctx, "replay", "completed")
-	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "events_returned", Value: len(events)}))
+	endAttrs := streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, scanned, missing, subjectMatched, decoded, matched, 0, ctx)).
+		WithField(telemetry.Field{Key: "events_returned", Value: len(events)}).
+		WithField(telemetry.Field{Key: "messaging.jetstream.replay.duration_ms", Value: time.Since(started).Milliseconds()})
+	jetstreamAnnotateMain(ctx, "replay", "completed", endAttrs)
+	telemetry.End(span, "completed", endAttrs)
 	return events, nil
+}
+
+func (l *Log) shouldRunCanary(now time.Time) bool {
+	l.canaryMu.Lock()
+	defer l.canaryMu.Unlock()
+	if l.lastCanary.IsZero() {
+		return true
+	}
+	return now.Sub(l.lastCanary) >= jetstreamCanaryMinInterval
+}
+
+func (l *Log) markCanarySucceeded(now time.Time) {
+	l.canaryMu.Lock()
+	defer l.canaryMu.Unlock()
+	if now.After(l.lastCanary) {
+		l.lastCanary = now
+	}
+}
+
+func (l *Log) runCanary(ctx context.Context, stream *jetstream.StreamInfo) (telemetry.Attributes, error) {
+	started := time.Now()
+	attrs := jetstreamStreamTelemetryAttrs(stream).With(telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.canary.enabled", Value: true},
+		telemetry.Field{Key: "messaging.jetstream.canary.kind", Value: "publish_replay"},
+		telemetry.Field{Key: "event.kind", Value: jetstreamCanaryKind},
+	))
+	finish := func(extra telemetry.Attributes) telemetry.Attributes {
+		durationMs := time.Since(started).Milliseconds()
+		return attrs.With(extra).With(telemetry.Attrs(
+			telemetry.Field{Key: "messaging.jetstream.canary.duration_ms", Value: durationMs},
+			telemetry.Field{Key: "canary_duration_ms", Value: durationMs},
+		))
+	}
+	subject, err := eventSubject(l.subjectPrefix, jetstreamCanaryKind)
+	if err != nil {
+		return finish(telemetry.Attrs()), err
+	}
+	now := time.Now().UTC()
+	event := &cerebrov1.EventEnvelope{
+		Id:         fmt.Sprintf("jetstream-canary-%d", now.UnixNano()),
+		Kind:       jetstreamCanaryKind,
+		OccurredAt: timestamppb.New(now),
+		Attributes: map[string]string{
+			"canary":    "true",
+			"component": "appendlog.jetstream",
+		},
+	}
+	payload, err := publishPayload(event)
+	if err != nil {
+		return finish(telemetry.Attrs()), fmt.Errorf("marshal canary event: %w", err)
+	}
+	msg := nats.NewMsg(subject)
+	msg.Data = payload
+	msg.Header.Set(nats.MsgIdHdr, event.Id)
+	publishAttrs := func() telemetry.Attributes {
+		return jetstreamPublishMessageAttrs(subject, l.subjectPrefix, len(payload), event.Id).With(attrs)
+	}
+	publishResult, err := l.publishMsg(ctx, msg, "canary", publishAttrs)
+	canaryAttrs := publishAttrs().With(publishResult.attrs()).With(telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.canary.publish.duration_ms", Value: publishResult.Duration.Milliseconds()},
+	))
+	if err != nil {
+		return finish(canaryAttrs), fmt.Errorf("publish canary event: %w", err)
+	}
+	if publishResult.AckSequence == 0 {
+		return finish(canaryAttrs), errors.New("publish canary event: ack sequence unavailable")
+	}
+	streamName := strings.TrimSpace(publishResult.AckStream)
+	if streamName == "" && stream != nil {
+		streamName = strings.TrimSpace(stream.Config.Name)
+	}
+	if streamName == "" {
+		return finish(canaryAttrs), errors.New("publish canary event: ack stream unavailable")
+	}
+	replayStarted := time.Now()
+	streamRef, err := l.replay.Stream(ctx, streamName)
+	if err != nil {
+		return finish(canaryAttrs), fmt.Errorf("open canary replay stream %q: %w", streamName, err)
+	}
+	raw, err := streamRef.GetMsg(ctx, publishResult.AckSequence)
+	if err != nil {
+		return finish(canaryAttrs.WithField(telemetry.Field{Key: "messaging.jetstream.canary.replay.sequence", Value: publishResult.AckSequence})), fmt.Errorf("read canary message %s:%d: %w", streamName, publishResult.AckSequence, err)
+	}
+	replayed, err := decodeReplayEvent(raw)
+	if err != nil {
+		return finish(canaryAttrs.WithField(telemetry.Field{Key: "messaging.jetstream.canary.replay.sequence", Value: publishResult.AckSequence})), fmt.Errorf("decode canary message %s:%d: %w", streamName, publishResult.AckSequence, err)
+	}
+	if strings.TrimSpace(replayed.GetId()) != event.Id || strings.TrimSpace(replayed.GetKind()) != jetstreamCanaryKind {
+		return finish(canaryAttrs.WithField(telemetry.Field{Key: "messaging.jetstream.canary.replay.sequence", Value: publishResult.AckSequence})), errors.New("canary replayed unexpected event")
+	}
+	return finish(canaryAttrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.canary.replayed", Value: true},
+		telemetry.Field{Key: "messaging.jetstream.canary.replay.duration_ms", Value: time.Since(replayStarted).Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.canary.replay.sequence", Value: publishResult.AckSequence},
+	))), nil
 }
 
 func jetstreamTelemetryAttrs(operation string) telemetry.Attributes {
@@ -476,6 +618,79 @@ func jetstreamPublishMessageAttrs(subject string, subjectPrefix string, payloadB
 	return attrs
 }
 
+func jetstreamStreamTelemetryAttrs(stream *jetstream.StreamInfo) telemetry.Attributes {
+	attrs := telemetry.Attrs()
+	if stream == nil {
+		return attrs
+	}
+	attrs = attrs.With(telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.stream", Value: strings.TrimSpace(stream.Config.Name)},
+		telemetry.Field{Key: "messaging.jetstream.stream.subject_count", Value: len(stream.Config.Subjects)},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.messages", Value: stream.State.Msgs},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.bytes", Value: stream.State.Bytes},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.first_sequence", Value: stream.State.FirstSeq},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.last_sequence", Value: stream.State.LastSeq},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.consumer_count", Value: stream.State.Consumers},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.deleted_count", Value: stream.State.NumDeleted},
+		telemetry.Field{Key: "messaging.jetstream.stream.state.unique_subject_count", Value: stream.State.NumSubjects},
+	))
+	if stream.Cluster != nil {
+		attrs = attrs.With(telemetry.Attrs(
+			telemetry.Field{Key: "messaging.jetstream.cluster.name", Value: strings.TrimSpace(stream.Cluster.Name)},
+			telemetry.Field{Key: "messaging.jetstream.cluster.leader", Value: strings.TrimSpace(stream.Cluster.Leader)},
+			telemetry.Field{Key: "messaging.jetstream.cluster.replica_count", Value: len(stream.Cluster.Replicas)},
+		))
+	}
+	return attrs
+}
+
+func jetstreamReplayRequestAttrs(request ports.ReplayRequest) telemetry.Attributes {
+	kindPrefixes := replayKindPrefixes(request)
+	filterKeys := make([]string, 0, len(request.AttributeEquals))
+	for key := range request.AttributeEquals {
+		filterKeys = append(filterKeys, strings.TrimSpace(key))
+	}
+	sort.Strings(filterKeys)
+	return telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: request.RuntimeID},
+		telemetry.Field{Key: "tenant_id", Value: request.TenantID},
+		telemetry.Field{Key: "replay.kind_prefix", Value: request.KindPrefix},
+		telemetry.Field{Key: "replay.kind_prefixes", Value: strings.Join(kindPrefixes, ",")},
+		telemetry.Field{Key: "replay.attribute_filter_keys", Value: strings.Join(filterKeys, ",")},
+	)
+}
+
+func jetstreamReplayScanAttrs(limit uint32, candidateLimit uint32, scanned uint64, missing uint64, subjectMatched uint64, decoded uint64, matched uint64, sequence uint64, ctx context.Context) telemetry.Attributes {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.replay.limit", Value: limit},
+		telemetry.Field{Key: "messaging.jetstream.replay.candidate_limit", Value: candidateLimit},
+		telemetry.Field{Key: "messaging.jetstream.replay.scanned_count", Value: scanned},
+		telemetry.Field{Key: "messaging.jetstream.replay.missing_count", Value: missing},
+		telemetry.Field{Key: "messaging.jetstream.replay.subject_matched_count", Value: subjectMatched},
+		telemetry.Field{Key: "messaging.jetstream.replay.decoded_count", Value: decoded},
+		telemetry.Field{Key: "messaging.jetstream.replay.matched_count", Value: matched},
+		telemetry.Field{Key: "messaging.jetstream.replay.deadline_budget_ms", Value: contextDeadlineBudgetMs(ctx)},
+		telemetry.Field{Key: "replay_scanned_count", Value: scanned},
+		telemetry.Field{Key: "replay_matched_count", Value: matched},
+	)
+	if sequence > 0 {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.replay.sequence", Value: sequence})
+	}
+	return attrs
+}
+
+func contextDeadlineBudgetMs(ctx context.Context) int64 {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return 0
+	}
+	remaining := time.Until(deadline).Milliseconds()
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 func shortHash(value string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
 	return hex.EncodeToString(sum[:8])
@@ -496,7 +711,8 @@ func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operatio
 
 func jetstreamErrorTelemetryAttrs(operation string, err error) telemetry.Attributes {
 	attrs := telemetry.Attrs(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
-	if strings.TrimSpace(operation) == "append" {
+	attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.error.category", Value: jetstreamErrorCategory(err)})
+	if strings.TrimSpace(operation) == "append" || strings.TrimSpace(operation) == "canary" {
 		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.publish.retryable", Value: retryablePublishError(err)})
 	}
 	var apiErr *jetstream.APIError
@@ -508,6 +724,50 @@ func jetstreamErrorTelemetryAttrs(operation string, err error) telemetry.Attribu
 		))
 	}
 	return attrs
+}
+
+func jetstreamErrorCategory(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	}
+	var apiErr *jetstream.APIError
+	if errors.As(err, &apiErr) && apiErr != nil {
+		switch {
+		case apiErr.Code == 401 || apiErr.Code == 403:
+			return "permission"
+		case apiErr.Code == 404:
+			return "not_found"
+		case apiErr.Code == 408:
+			return "timeout"
+		case apiErr.Code == 429:
+			return "rate_limited"
+		case apiErr.Code >= 500:
+			return "server"
+		default:
+			return "api"
+		}
+	}
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "timeout") || strings.Contains(text, "deadline"):
+		return "timeout"
+	case strings.Contains(text, "no response"):
+		return "no_response"
+	case strings.Contains(text, "connection") || strings.Contains(text, "reconnect") || strings.Contains(text, "broken pipe") || strings.Contains(text, "reset by peer") || strings.Contains(text, "closed"):
+		return "connection"
+	case strings.Contains(text, "permission") || strings.Contains(text, "authorization") || strings.Contains(text, "authentication"):
+		return "permission"
+	case strings.Contains(text, "not found") || strings.Contains(text, "no replay stream"):
+		return "not_found"
+	default:
+		return "unknown"
+	}
 }
 
 func jetstreamAnnotateMain(ctx context.Context, operation string, status string, extra ...telemetry.Attributes) {

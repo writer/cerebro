@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehealth"
@@ -151,6 +153,56 @@ func TestRunOrchestratorPhaseAnnotatesMainDuration(t *testing.T) {
 	}
 }
 
+func TestRunOrchestratorPhaseEmitsPlatformJobPhaseEvents(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	stderr := captureCommandStderr(t, func() {
+		ctx, span := telemetry.StartMain(context.Background(), "orchestrator.run", telemetry.Attrs())
+		ctx = withOrchestratorJobMetadata(ctx, orchestratorJobMetadata{
+			ID:        "orchestrator-test-job",
+			Kind:      jobs.KindSourceRuntimeOrchestrate,
+			Name:      "orchestrator.run",
+			Schedule:  "single_run",
+			StartedAt: time.Now().Add(-time.Second),
+		})
+		_, err := runOrchestratorPhase[int](ctx, "orchestrator.test_phase", 3, runtime, time.Second, func(context.Context) (int, error) {
+			return 1, nil
+		})
+		if err != nil {
+			t.Fatalf("runOrchestratorPhase() error = %v", err)
+		}
+		telemetry.End(span, "completed", telemetry.Attrs())
+	})
+
+	started := commandTelemetryPayloads(t, stderr, "event", "platform.job.phase.started")
+	if len(started) != 1 {
+		t.Fatalf("platform.job.phase.started events = %d, want 1; stderr=%s", len(started), stderr)
+	}
+	completed := commandTelemetryPayloads(t, stderr, "event", "platform.job.phase.completed")
+	if len(completed) != 1 {
+		t.Fatalf("platform.job.phase.completed events = %d, want 1; stderr=%s", len(completed), stderr)
+	}
+	payload := completed[0]
+	for key, want := range map[string]any{
+		"job.id":           "orchestrator-test-job",
+		"job.kind":         jobs.KindSourceRuntimeOrchestrate,
+		"job.name":         "orchestrator.run",
+		"job.phase":        "orchestrator.test_phase",
+		"job.phase_key":    "orchestrator_test_phase",
+		"job.phase.status": "completed",
+		"iteration":        float64(3),
+		"runtime_id":       "runtime-1",
+		"source_id":        "github",
+		"tenant_id":        "writer",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got, ok := payload["job.phase.duration_ms"].(float64); !ok || got < 0 {
+		t.Fatalf("job.phase.duration_ms = %#v, want non-negative number; payload=%#v", payload["job.phase.duration_ms"], payload)
+	}
+}
+
 // runOrchestratorPhase must inherit cancellation from the parent runtime
 // context. The orchestrator's lease-renewal goroutine cancels the
 // runtime context when lease renewal fails, and that cancellation must
@@ -281,6 +333,25 @@ func TestCaptureOrchestratorErrorAnnotatesFirstFailureOnly(t *testing.T) {
 	if got, ok := payload["orchestrator.first_failure.error_fingerprint"].(string); !ok || got == "" {
 		t.Fatalf("first failure fingerprint missing: %#v", payload)
 	}
+}
+
+func commandTelemetryPayloads(t *testing.T, stderr string, kind string, name string) []map[string]any {
+	t.Helper()
+	var payloads []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("telemetry line is not JSON: %v\nline=%s\nstderr=%s", err, line, stderr)
+		}
+		if payload["kind"] == kind && payload["name"] == name {
+			payloads = append(payloads, payload)
+		}
+	}
+	return payloads
 }
 
 func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T) {
