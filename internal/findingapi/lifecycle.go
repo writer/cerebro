@@ -144,13 +144,12 @@ func NewMCPActionProposal(args MCPArguments, findingID string, action string) MC
 	}
 }
 
-func MCPGraphActionTarget(args MCPArguments, finding *ports.FindingRecord) (string, error) {
-	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+func mcpGraphActionTargetForSpec(args MCPArguments, finding *ports.FindingRecord, spec graphactions.ActionSpec) (string, error) {
 	target := strings.TrimSpace(mcpStringArg(args, "target"))
 	if target == "" {
-		target = mcpStringArg(args, "email_or_user_id")
+		target = strings.TrimSpace(mcpStringArg(args, "email_or_user_id"))
 	}
-	return graphactions.TargetForAction(graphAction, finding, target)
+	return graphactions.TargetForActionSpec(spec, finding, target)
 }
 
 func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *ports.FindingRecord, action string, args MCPArguments, requiredScope string) error {
@@ -158,10 +157,11 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 		return nil
 	}
 	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
-	if err := graphactions.ValidateActionForFinding(graphAction, finding); err != nil {
+	spec, err := graphactions.ValidateActionForFinding(graphAction, finding)
+	if err != nil {
 		return err
 	}
-	target, err := MCPGraphActionTarget(args, finding)
+	target, err := mcpGraphActionTargetForSpec(args, finding, spec)
 	if err != nil {
 		return err
 	}
@@ -176,9 +176,9 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	proposal["required_scope"] = requiredScope
 	proposal["approval_required"] = true
 	proposal["handoff_required"] = true
-	proposal["external_system"] = graphactions.ProviderAccessApprovals
+	proposal["external_system"] = spec.Provider
 	proposal["external_ref_kind"] = graphactions.RefKind
-	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through access-approvals; this dry run does not mutate the provider or Cerebro."
+	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through " + spec.Provider + "; this dry run does not mutate the provider or Cerebro."
 	return nil
 }
 
@@ -215,7 +215,7 @@ func MCPActionInputProperties() MCPSchemaProperties {
 		"external_status":        map[string]any{"type": "string"},
 		"external_status_reason": map[string]any{"type": "string"},
 		"external_url":           map[string]any{"type": "string"},
-		"graph_action":           map[string]any{"type": "string", "enum": []string{"identity.okta.suspend_user", "identity.okta.unsuspend_user"}},
+		"graph_action":           map[string]any{"type": "string", "enum": graphActionEnum()},
 		"target":                 map[string]any{"type": "string"},
 		"email_or_user_id":       map[string]any{"type": "string"},
 		"idempotency_key":        map[string]any{"type": "string"},
@@ -224,6 +224,15 @@ func MCPActionInputProperties() MCPSchemaProperties {
 		"handoff_required":       map[string]any{"type": "boolean"},
 		"proposal_note":          map[string]any{"type": "string"},
 	}
+}
+
+func graphActionEnum() []string {
+	specs := graphactions.KnownActionSpecs()
+	out := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		out = append(out, spec.ID)
+	}
+	return out
 }
 
 // MCPActionOutputProperties returns the finding action proposal output schema fields.

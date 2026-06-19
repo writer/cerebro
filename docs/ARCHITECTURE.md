@@ -155,7 +155,10 @@ external reference mapping stay behind `internal/graphactions` and
 `internal/graphactionapi`. Supported actions are cataloged in
 `internal/graphactions/action_catalog.yaml` and generated into the registry with
 `make graph-action-generate`; new providers add an `ActionProvider` adapter
-rather than branching in bootstrap or handler code.
+rather than branching in bootstrap or handler code. First-party providers, such
+as Cerebro device-auth revocation, use the same adapter boundary as external
+providers so target derivation, tenant checks, workflow events, and
+reconciliation remain shared.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes

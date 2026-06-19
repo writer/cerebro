@@ -1,6 +1,9 @@
 package bootstrap
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
@@ -269,6 +273,123 @@ func TestGraphActionTargetForFindingAllowsMatchingExplicitTarget(t *testing.T) {
 		t.Fatalf("target = %q, want normalized explicit target", target)
 	}
 }
+
+func TestHandleExecuteGraphActionRevokesCerebroDevice(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	store := &graphActionDeviceStore{
+		stubRuntimeStore: &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:        "finding-1",
+				TenantID:  "writer",
+				RuntimeID: "trusted-endpoint",
+				RuleID:    "endpoint-compromised-device",
+				Title:     "Endpoint has high-risk compromise evidence",
+				Status:    "open",
+				ResourceURNs: []string{
+					"urn:cerebro:writer:cerebro_device:dev-1",
+				},
+				Attributes: map[string]string{
+					"cerebro_device_id":     "dev-1",
+					"graph_actions_allowed": graphactions.ActionEndpointCerebroRevokeDevice,
+				},
+			},
+		}},
+		MemStore: deviceauth.NewMemStore(),
+	}
+	_, err = store.EnrollDevice(context.Background(), deviceauth.DeviceRecord{
+		DeviceID:     "dev-1",
+		HardwareUUID: "hw-1",
+		Hostname:     "laptop-1",
+		TenantID:     "writer",
+		Status:       "active",
+		EnrolledAt:   time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("seed device: %v", err)
+	}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "operator-key",
+				Principal: "ops",
+				TenantID:  "writer",
+			}},
+			DeviceAuth: config.DeviceAuthConfig{
+				Enabled:                  true,
+				Issuer:                   "cerebro",
+				Audience:                 "cerebro-device",
+				CurrentKID:               "test",
+				EnrollPerIPRatePerSecond: 100,
+				EnrollPerIPBurst:         100,
+				SigningKeys: []config.DeviceAuthSigningKey{{
+					KID:        "test",
+					PublicPEM:  encodePEMPublic(t, pub),
+					PrivatePEM: encodePEMPrivate(t, priv),
+				}},
+			},
+		},
+	}, Dependencies{StateStore: store, AppendLog: appendLog}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/platform/graph/actions", strings.NewReader(`{"action":"endpoint.cerebro.revoke_device","finding_id":"finding-1","reason":"compromised endpoint"}`))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer operator-key")
+	request.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("POST graph action: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", response.StatusCode)
+	}
+	device, err := store.LookupDevice(context.Background(), "dev-1")
+	if err != nil {
+		t.Fatalf("LookupDevice() error = %v", err)
+	}
+	if device.Status != "revoked" || device.RevokedAt.IsZero() {
+		t.Fatalf("device = %#v, want revoked", device)
+	}
+	updated := store.findings["finding-1"]
+	if len(updated.ExternalRefs) != 1 {
+		t.Fatalf("external refs = %#v, want one device action ref", updated.ExternalRefs)
+	}
+	ref := updated.ExternalRefs[0]
+	if ref.System != graphactions.ProviderCerebroDeviceAuth || ref.Kind != graphactions.RefKind || ref.ExternalID != graphactions.CerebroDeviceExternalID("dev-1") || ref.ExternalStatus != "revoked" {
+		t.Fatalf("external ref = %#v", ref)
+	}
+	actionEvent := firstGraphActionWorkflowEvent(appendLog.events)
+	if actionEvent == nil {
+		t.Fatalf("workflow events = %d, want an action-recorded event", len(appendLog.events))
+	}
+	actionPayload, err := workflowevents.DecodeActionRecorded(actionEvent)
+	if err != nil {
+		t.Fatalf("DecodeActionRecorded() error = %v", err)
+	}
+	if actionPayload.ActionType != graphactions.ActionEndpointCerebroRevokeDevice || actionPayload.SourceEventID != graphactions.CerebroDeviceExternalID("dev-1") || actionPayload.Status != "revoked" {
+		t.Fatalf("workflow action payload = %#v", actionPayload)
+	}
+}
+
+type graphActionDeviceStore struct {
+	*stubRuntimeStore
+	*deviceauth.MemStore
+}
+
+var (
+	_ ports.StateStore = (*graphActionDeviceStore)(nil)
+	_ deviceauth.Store = (*graphActionDeviceStore)(nil)
+)
 
 func firstGraphActionWorkflowEvent(events []*cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
 	for _, event := range events {

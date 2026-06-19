@@ -311,6 +311,38 @@ func TestBuildEvidencePacketBlocksUnapprovedGraphActionExecution(t *testing.T) {
 	}
 }
 
+func TestBuildEvidencePacketRoutesEndpointGraphActionToRemediationAndSOC(t *testing.T) {
+	packet := BuildEvidencePacket(EvidencePacketRequest{
+		TenantID:        "tenant-1",
+		ActorID:         "analyst-1",
+		Question:        "Revoke this compromised endpoint from Cerebro device auth.",
+		ScopeURN:        "urn:cerebro:tenant-1:finding:endpoint-compromise-1",
+		CapabilityIDs:   []string{"graph-reasoning", "graph-action-execution"},
+		RequestedScopes: []string{ScopeCosmoSecurityRead, ScopeGraphActionsWrite},
+		AllowPreview:    true,
+		Action: EvidencePacketAction{
+			Stage:      ActionStageExecute,
+			TargetURNs: []string{"urn:cerebro:tenant-1:cerebro_device:dev-123"},
+		},
+		CoverageContext: &AgentCoverageContext{
+			Version:         ContractVersion,
+			TenantID:        "tenant-1",
+			SourceID:        "trusted-endpoint",
+			TotalDimensions: 2,
+		},
+	})
+
+	if !packet.Preflight.Enabled {
+		t.Fatalf("preflight enabled = false, blockers = %+v", packet.Preflight.Blockers)
+	}
+	if !packetHasEvalScenario(packet, "graph-action-execution-safety") {
+		t.Fatalf("packet eval checklist missing graph action scenario: %+v", packet.EvalChecklist)
+	}
+	if !packetHasRecommendedAgent(packet, "remediation-planner") || !packetHasRecommendedAgent(packet, "soc-triage-analyst") {
+		t.Fatalf("recommended agents = %+v, want remediation planner and SOC triage", packet.RecommendedAgents)
+	}
+}
+
 func TestBuildEvidencePacketSelectsAIGovernanceAnalyst(t *testing.T) {
 	packet := BuildEvidencePacket(EvidencePacketRequest{
 		TenantID:        "tenant-1",

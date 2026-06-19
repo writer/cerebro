@@ -91,22 +91,40 @@ func AccessApprovalsConfigured(cfg config.AccessApprovalsActionConfig) bool {
 	return strings.TrimSpace(cfg.BaseURL) != "" && strings.TrimSpace(cfg.BearerToken) != ""
 }
 
-func NewAccessApprovalsServiceIfConfigured(cfg config.AccessApprovalsActionConfig, findings graphactions.FindingWorkflow) (*graphactions.Service, error) {
-	if !AccessApprovalsConfigured(cfg) {
+func NewServiceIfConfigured(cfg config.GraphActionsConfig, findings graphactions.FindingWorkflow, providers map[string]graphactions.ActionProvider) (*graphactions.Service, error) {
+	merged := make(map[string]graphactions.ActionProvider, len(providers)+1)
+	for provider, actionProvider := range providers {
+		if strings.TrimSpace(provider) != "" && actionProvider != nil {
+			merged[strings.TrimSpace(provider)] = actionProvider
+		}
+	}
+	if AccessApprovalsConfigured(cfg.AccessApprovals) {
+		client, err := accessapprovalsclient.New(cfg.AccessApprovals)
+		if err != nil {
+			return nil, err
+		}
+		merged[graphactions.ProviderAccessApprovals] = graphactions.AccessApprovalsProvider{Client: client}
+	}
+	if len(merged) == 0 {
 		return nil, nil
 	}
-	return NewAccessApprovalsService(cfg, findings)
+	return &graphactions.Service{
+		Findings:  findings,
+		Providers: merged,
+	}, nil
+}
+
+func NewAccessApprovalsServiceIfConfigured(cfg config.AccessApprovalsActionConfig, findings graphactions.FindingWorkflow) (*graphactions.Service, error) {
+	return NewServiceIfConfigured(config.GraphActionsConfig{AccessApprovals: cfg}, findings, nil)
 }
 
 func NewAccessApprovalsService(cfg config.AccessApprovalsActionConfig, findings graphactions.FindingWorkflow) (*graphactions.Service, error) {
-	client, err := accessapprovalsclient.New(cfg)
+	service, err := NewServiceIfConfigured(config.GraphActionsConfig{AccessApprovals: cfg}, findings, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &graphactions.Service{
-		Findings: findings,
-		Providers: map[string]graphactions.ActionProvider{
-			graphactions.ProviderAccessApprovals: graphactions.AccessApprovalsProvider{Client: client},
-		},
-	}, nil
+	if service == nil {
+		return nil, graphactions.ErrNotConfigured
+	}
+	return service, nil
 }

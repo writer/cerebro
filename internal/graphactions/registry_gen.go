@@ -4,13 +4,15 @@ package graphactions
 
 // Action IDs.
 const (
-	ActionIdentityOktaSuspendUser   = "identity.okta.suspend_user"
-	ActionIdentityOktaUnsuspendUser = "identity.okta.unsuspend_user"
+	ActionIdentityOktaSuspendUser     = "identity.okta.suspend_user"
+	ActionIdentityOktaUnsuspendUser   = "identity.okta.unsuspend_user"
+	ActionEndpointCerebroRevokeDevice = "endpoint.cerebro.revoke_device"
 )
 
 // Target kinds.
 const (
-	TargetKindOktaUser = "identity.okta.user"
+	TargetKindCerebroDevice = "endpoint.cerebro.device"
+	TargetKindOktaUser      = "identity.okta.user"
 )
 
 func DefaultRegistry() Registry {
@@ -48,6 +50,17 @@ var generatedActionSpecs = []ActionSpec{
 		Destructive:      false,
 		ReversibleBy:     "identity.okta.suspend_user",
 		ResolveTarget:    OktaUserTargetForFinding,
+		CheckEligibility: FindingAllowsAction,
+	},
+	{
+		ID:               ActionEndpointCerebroRevokeDevice,
+		Provider:         ProviderCerebroDeviceAuth,
+		ProviderAction:   CerebroDeviceActionRevoke,
+		TargetKind:       TargetKindCerebroDevice,
+		Effect:           "deny_device_access",
+		Destructive:      true,
+		ReversibleBy:     "",
+		ResolveTarget:    CerebroDeviceTargetForFinding,
 		CheckEligibility: FindingAllowsAction,
 	},
 }

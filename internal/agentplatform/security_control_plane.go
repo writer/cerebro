@@ -636,11 +636,11 @@ func recommendedProfileIDs(request EvidencePacketRequest, preflight AgentRunPref
 		ids["identity-drift-analyst"] = true
 		matched = true
 	}
-	if strings.Contains(text, "remed") || strings.Contains(text, "fix") || strings.Contains(text, "patch") {
+	if requestHasCapability(request, "graph-action-execution") || strings.Contains(text, "graph action") || strings.Contains(text, "remed") || strings.Contains(text, "fix") || strings.Contains(text, "patch") || strings.Contains(text, "revoke") || strings.Contains(text, "quarantine") || strings.Contains(text, "disable") {
 		ids["remediation-planner"] = true
 		matched = true
 	}
-	if strings.Contains(text, "alert") || strings.Contains(text, "incident") || strings.Contains(text, "triage") {
+	if strings.Contains(text, "alert") || strings.Contains(text, "incident") || strings.Contains(text, "triage") || strings.Contains(text, "compromised") || strings.Contains(text, "endpoint") || strings.Contains(text, "device") {
 		ids["soc-triage-analyst"] = true
 		matched = true
 	}
@@ -655,6 +655,15 @@ func recommendedProfileIDs(request EvidencePacketRequest, preflight AgentRunPref
 		ids["coverage-scout"] = true
 	}
 	return ids
+}
+
+func requestHasCapability(request EvidencePacketRequest, capabilityID string) bool {
+	for _, id := range request.CapabilityIDs {
+		if id == capabilityID {
+			return true
+		}
+	}
+	return false
 }
 
 func evaluateAgentVerifiers(request EvidencePacketRequest, preflight AgentRunPreflight, profiles []SecurityAgentProfile) []AgentVerifierResult {

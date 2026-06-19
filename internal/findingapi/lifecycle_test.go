@@ -76,6 +76,65 @@ func TestApplyMCPGraphActionProposalClearsStaleExternalLifecycleFields(t *testin
 	}
 }
 
+func TestApplyMCPGraphActionProposalUsesCatalogProvider(t *testing.T) {
+	proposal := MCPActionProposalPayload{"finding_id": "finding-1"}
+	finding := eligibleGraphActionFinding(map[string]string{
+		"cerebro_device_id": "dev-1",
+	})
+	finding.TenantID = "writer"
+	finding.Attributes["graph_actions_allowed"] = graphactions.ActionEndpointCerebroRevokeDevice
+	err := ApplyMCPGraphActionProposal(proposal, finding, "execute_graph_action", MCPArguments{
+		"graph_action": graphactions.ActionEndpointCerebroRevokeDevice,
+		"target":       "dev-1",
+	}, "cerebro.graph_actions.write")
+	if err != nil {
+		t.Fatalf("ApplyMCPGraphActionProposal() error = %v", err)
+	}
+	if proposal["external_system"] != graphactions.ProviderCerebroDeviceAuth || proposal["external_ref_kind"] != graphactions.RefKind {
+		t.Fatalf("proposal external ref routing = %#v, want cerebro-device-auth graph action", proposal)
+	}
+	if proposal["target"] != "dev-1" {
+		t.Fatalf("proposal target = %#v, want dev-1", proposal["target"])
+	}
+}
+
+func TestMCPGraphActionTargetForSpecUsesValidatedSpec(t *testing.T) {
+	target, err := mcpGraphActionTargetForSpec(MCPArguments{
+		"target": "custom-target",
+	}, eligibleGraphActionFinding(nil), graphactions.ActionSpec{
+		ID: "custom.unregistered",
+		ResolveTarget: func(_ *ports.FindingRecord, explicit string) (string, error) {
+			return "resolved:" + explicit, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcpGraphActionTargetForSpec() error = %v", err)
+	}
+	if target != "resolved:custom-target" {
+		t.Fatalf("target = %q, want resolved custom target", target)
+	}
+}
+
+func TestMCPActionInputPropertiesIncludesCatalogGraphActions(t *testing.T) {
+	graphAction, ok := MCPActionInputProperties()["graph_action"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph_action schema missing or invalid")
+	}
+	enum, ok := graphAction["enum"].([]string)
+	if !ok {
+		t.Fatalf("graph_action enum missing or invalid: %#v", graphAction["enum"])
+	}
+	allowed := map[string]struct{}{}
+	for _, action := range enum {
+		allowed[action] = struct{}{}
+	}
+	for _, spec := range graphactions.KnownActionSpecs() {
+		if _, ok := allowed[spec.ID]; !ok {
+			t.Fatalf("graph_action enum missing catalog action %q", spec.ID)
+		}
+	}
+}
+
 func eligibleGraphActionFinding(attrs map[string]string) *ports.FindingRecord {
 	if attrs == nil {
 		attrs = map[string]string{}

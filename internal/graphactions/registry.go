@@ -43,21 +43,28 @@ func TargetForAction(action string, finding *ports.FindingRecord, explicit strin
 	if err != nil {
 		return "", err
 	}
+	return TargetForActionSpec(spec, finding, explicit)
+}
+
+func TargetForActionSpec(spec ActionSpec, finding *ports.FindingRecord, explicit string) (string, error) {
 	if spec.ResolveTarget == nil {
-		return "", fmt.Errorf("%w: action %q has no target resolver", ErrInvalidRequest, action)
+		return "", fmt.Errorf("%w: action %q has no target resolver", ErrInvalidRequest, spec.ID)
 	}
 	return spec.ResolveTarget(finding, explicit)
 }
 
-func ValidateActionForFinding(action string, finding *ports.FindingRecord) error {
+func ValidateActionForFinding(action string, finding *ports.FindingRecord) (ActionSpec, error) {
 	spec, err := DefaultRegistry().Lookup(action)
 	if err != nil {
-		return err
+		return ActionSpec{}, err
 	}
 	if spec.CheckEligibility == nil {
-		return nil
+		return spec, nil
 	}
-	return spec.CheckEligibility(spec.ID, finding)
+	if err := spec.CheckEligibility(spec.ID, finding); err != nil {
+		return ActionSpec{}, err
+	}
+	return spec, nil
 }
 
 func FindingAllowsAction(action string, finding *ports.FindingRecord) error {

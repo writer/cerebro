@@ -224,7 +224,11 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
 	app.services.graphQueries = app.newGraphQueryService()
-	if app.services.graphActions, err = graphactionapi.NewAccessApprovalsServiceIfConfigured(app.cfg.GraphActions.AccessApprovals, app.findingService()); err != nil {
+	graphActionProviders := map[string]graphactions.ActionProvider{}
+	if app.deviceService != nil {
+		graphActionProviders[graphactions.ProviderCerebroDeviceAuth] = graphactions.CerebroDeviceProvider{Service: app.deviceService}
+	}
+	if app.services.graphActions, err = graphactionapi.NewServiceIfConfigured(app.cfg.GraphActions, app.findingService(), graphActionProviders); err != nil {
 		return nil, fmt.Errorf("graph actions bootstrap failed: %w", err)
 	}
 	app.services.graphIngestOps = newGraphIngestService(app.cfg, app.deps, app.sources)
