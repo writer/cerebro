@@ -2,7 +2,6 @@ package sourceprojection
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
 	"time"
 
@@ -665,7 +664,9 @@ func sentinelOneScopeIDs(raw string, keys ...string) []string {
 		return nil
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
 		return nil
 	}
 	seen := map[string]struct{}{}
@@ -681,27 +682,21 @@ func sentinelOneScopeIDs(raw string, keys ...string) []string {
 		seen[value] = struct{}{}
 		ids = append(ids, value)
 	}
-	addValue := func(value any) {
-		switch typed := value.(type) {
+	var addValue func(any)
+	addValue = func(value any) {
+		switch value := value.(type) {
 		case string:
-			add(typed)
-		case float64:
-			add(strconv.FormatFloat(typed, 'f', -1, 64))
-		case int:
-			add(strconv.Itoa(typed))
-		case int64:
-			add(strconv.FormatInt(typed, 10))
-		}
-	}
-	for _, key := range keys {
-		switch value := decoded[key].(type) {
+			add(value)
+		case json.Number:
+			add(value.String())
 		case []any:
 			for _, item := range value {
 				addValue(item)
 			}
-		default:
-			addValue(value)
 		}
+	}
+	for _, key := range keys {
+		addValue(decoded[key])
 	}
 	return ids
 }

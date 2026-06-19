@@ -407,7 +407,7 @@ func TestProjectSentinelOneExclusion(t *testing.T) {
 			"exclusion_type": "path",
 			"mode":           "suppress_alerts",
 			"os_type":        "macos",
-			"scope":          `{"siteIds":["site-1",12345]}`,
+			"scope":          `{"siteIds":["site-1",2104712254931195613]}`,
 			"scope_name":     "Production",
 			"value":          "/Applications/Approved.app",
 		},
@@ -418,14 +418,14 @@ func TestProjectSentinelOneExclusion(t *testing.T) {
 	if state.entities[exclusionURN] == nil {
 		t.Fatal("exclusion entity missing")
 	}
-	if got := state.entities[exclusionURN].Attributes["scope"]; got != `{"siteIds":["site-1",12345]}` {
+	if got := state.entities[exclusionURN].Attributes["scope"]; got != `{"siteIds":["site-1",2104712254931195613]}` {
 		t.Fatalf("exclusion scope = %q, want site JSON", got)
 	}
 	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
 	if entity := state.entities[siteURN]; entity == nil || entity.EntityType != "sentinelone.site" {
 		t.Fatalf("site entity missing or wrong type: %#v", entity)
 	}
-	numericSiteURN := "urn:cerebro:writer:sentinelone_site:12345"
+	numericSiteURN := "urn:cerebro:writer:sentinelone_site:2104712254931195613"
 	if entity := state.entities[numericSiteURN]; entity == nil || entity.EntityType != "sentinelone.site" {
 		t.Fatalf("numeric site entity missing or wrong type: %#v", entity)
 	}
