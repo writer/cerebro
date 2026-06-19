@@ -2,6 +2,8 @@ package jetstream
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -44,6 +46,19 @@ type replayManager interface {
 
 type replayStream interface {
 	GetMsg(context.Context, uint64, ...jetstream.GetMsgOpt) (*jetstream.RawStreamMsg, error)
+}
+
+type publishTelemetry struct {
+	Attempts       int
+	MaxAttempts    int
+	RetryCount     int
+	LastBackoff    time.Duration
+	LastRetryable  bool
+	Duration       time.Duration
+	AckStream      string
+	AckSequence    uint64
+	AckDuplicate   bool
+	AckUnavailable bool
 }
 
 type jetStreamReplayManager struct {
@@ -217,36 +232,100 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if event.Id != "" {
 		msg.Header.Set(nats.MsgIdHdr, event.Id)
 	}
-	if err := l.publishMsg(ctx, msg); err != nil {
+	publishAttrs := func() telemetry.Attributes {
+		return jetstreamPublishMessageAttrs(subject, l.subjectPrefix, len(payload), msg.Header.Get(nats.MsgIdHdr))
+	}
+	publishResult, err := l.publishMsg(ctx, msg, publishAttrs)
+	endAttrs := publishAttrs().With(publishResult.attrs())
+	if err != nil {
 		err = fmt.Errorf("publish event: %w", err)
-		jetstreamTelemetryError(ctx, span, "append", err)
+		jetstreamTelemetryError(ctx, span, "append", err, endAttrs)
 		return err
 	}
-	jetstreamAnnotateMain(ctx, "append", "completed")
-	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "payload_bytes", Value: len(payload)}))
+	if publishResult.RetryCount > 0 {
+		telemetry.IncrementMain(ctx, "messaging.jetstream.publish.recovered.count", 1)
+		telemetry.Event(ctx, "jetstream.publish.recovered", endAttrs)
+	}
+	jetstreamAnnotateMain(ctx, "append", "completed", endAttrs)
+	telemetry.End(span, "completed", endAttrs)
 	return nil
 }
 
-func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg) error {
-	attempts := 1
+func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
+	result := publishTelemetry{Attempts: 0, MaxAttempts: 1}
 	if msg.Header.Get(nats.MsgIdHdr) != "" {
-		attempts = publishRetryAttempts
+		result.MaxAttempts = publishRetryAttempts
 	}
 	backoff := publishRetryInitialBackoff
+	started := time.Now()
 	var err error
-	for attempt := 1; attempt <= attempts; attempt++ {
-		if _, err = l.js.PublishMsg(ctx, msg); err == nil {
-			return nil
+	for attempt := 1; attempt <= result.MaxAttempts; attempt++ {
+		result.Attempts = attempt
+		ack, publishErr := l.js.PublishMsg(ctx, msg)
+		if publishErr == nil {
+			result.Duration = time.Since(started)
+			result.applyAck(ack)
+			return result, nil
 		}
-		if attempt == attempts || !retryablePublishError(err) || ctx.Err() != nil {
-			return err
+		err = publishErr
+		result.LastRetryable = retryablePublishError(err)
+		if attempt == result.MaxAttempts || !result.LastRetryable || ctx.Err() != nil {
+			result.Duration = time.Since(started)
+			if result.RetryCount > 0 {
+				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs("append", err)))
+			}
+			return result, err
 		}
+		result.RetryCount++
+		result.LastBackoff = backoff
+		telemetry.IncrementMain(ctx, "messaging.jetstream.publish.retry.count", 1)
+		telemetry.Event(ctx, "jetstream.publish.retry", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs("append", err)).With(telemetry.Attrs(
+			telemetry.Field{Key: "messaging.jetstream.publish.next_attempt", Value: attempt + 1},
+			telemetry.Field{Key: "messaging.jetstream.publish.next_backoff_ms", Value: backoff.Milliseconds()},
+		)))
 		if waitErr := waitBeforePublishRetry(ctx, backoff); waitErr != nil {
-			return waitErr
+			result.Duration = time.Since(started)
+			telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs("append", waitErr)))
+			return result, waitErr
 		}
 		backoff *= 2
 	}
-	return err
+	result.Duration = time.Since(started)
+	return result, err
+}
+
+func (r *publishTelemetry) applyAck(ack *jetstream.PubAck) {
+	if ack == nil {
+		r.AckUnavailable = true
+		return
+	}
+	r.AckStream = strings.TrimSpace(ack.Stream)
+	r.AckSequence = ack.Sequence
+	r.AckDuplicate = ack.Duplicate
+}
+
+func (r publishTelemetry) attrs() telemetry.Attributes {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.publish.attempts", Value: r.Attempts},
+		telemetry.Field{Key: "messaging.jetstream.publish.max_attempts", Value: r.MaxAttempts},
+		telemetry.Field{Key: "messaging.jetstream.publish.retry_count", Value: r.RetryCount},
+		telemetry.Field{Key: "messaging.jetstream.publish.retryable_last_error", Value: r.LastRetryable},
+		telemetry.Field{Key: "messaging.jetstream.publish.last_backoff_ms", Value: r.LastBackoff.Milliseconds()},
+		telemetry.Field{Key: "messaging.jetstream.publish.duration_ms", Value: r.Duration.Milliseconds()},
+	)
+	if r.AckUnavailable {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.unavailable", Value: true})
+	}
+	if r.AckStream != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.stream", Value: r.AckStream})
+	}
+	if r.AckSequence > 0 {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.sequence", Value: r.AckSequence})
+	}
+	if r.AckStream != "" || r.AckSequence > 0 || r.AckDuplicate {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.duplicate", Value: r.AckDuplicate})
+	}
+	return attrs
 }
 
 func retryablePublishError(err error) bool {
@@ -380,9 +459,34 @@ func jetstreamTelemetryAttrs(operation string) telemetry.Attributes {
 	)
 }
 
-func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error) {
-	jetstreamAnnotateMain(ctx, operation, "failed")
+func jetstreamPublishMessageAttrs(subject string, subjectPrefix string, payloadBytes int, messageID string) telemetry.Attributes {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "messaging.system", Value: "nats"},
+		telemetry.Field{Key: "messaging.operation", Value: "publish"},
+		telemetry.Field{Key: "messaging.destination.name", Value: strings.TrimSpace(subject)},
+		telemetry.Field{Key: "messaging.destination.kind", Value: "topic"},
+		telemetry.Field{Key: "messaging.jetstream.subject", Value: strings.TrimSpace(subject)},
+		telemetry.Field{Key: "messaging.jetstream.subject_prefix", Value: strings.Trim(strings.TrimSpace(subjectPrefix), ".")},
+		telemetry.Field{Key: "messaging.message.id.present", Value: strings.TrimSpace(messageID) != ""},
+		telemetry.Field{Key: "payload_bytes", Value: payloadBytes},
+	)
+	if strings.TrimSpace(messageID) != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.message.id_hash", Value: shortHash(messageID)})
+	}
+	return attrs
+}
+
+func shortHash(value string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
+	return hex.EncodeToString(sum[:8])
+}
+
+func jetstreamTelemetryError(ctx context.Context, span *telemetry.Span, operation string, err error, extra ...telemetry.Attributes) {
 	attrs := jetstreamErrorTelemetryAttrs(operation, err)
+	for _, item := range extra {
+		attrs = attrs.With(item)
+	}
+	jetstreamAnnotateMain(ctx, operation, "failed", attrs)
 	telemetry.CaptureError(ctx, "jetstream.error", err, telemetry.Attrs(
 		telemetry.Field{Key: "component", Value: "appendlog.jetstream"},
 		telemetry.Field{Key: "operation", Value: operation},
@@ -406,16 +510,27 @@ func jetstreamErrorTelemetryAttrs(operation string, err error) telemetry.Attribu
 	return attrs
 }
 
-func jetstreamAnnotateMain(ctx context.Context, operation string, status string) {
+func jetstreamAnnotateMain(ctx context.Context, operation string, status string, extra ...telemetry.Attributes) {
+	operation = strings.TrimSpace(operation)
+	status = strings.TrimSpace(status)
 	telemetry.IncrementMain(ctx, "messaging.jetstream.operation.count", 1)
+	if operation != "" {
+		telemetry.IncrementMain(ctx, "messaging.jetstream."+operation+".count", 1)
+	}
 	if status == "failed" {
 		telemetry.IncrementMain(ctx, "messaging.jetstream.error.count", 1)
+		if operation != "" {
+			telemetry.IncrementMain(ctx, "messaging.jetstream."+operation+".error.count", 1)
+		}
 	}
 	attrs := telemetry.Attrs(
-		telemetry.Field{Key: "messaging.jetstream.last_operation", Value: strings.TrimSpace(operation)},
-		telemetry.Field{Key: "messaging.jetstream.last_status", Value: strings.TrimSpace(status)},
+		telemetry.Field{Key: "messaging.jetstream.last_operation", Value: operation},
+		telemetry.Field{Key: "messaging.jetstream.last_status", Value: status},
 		telemetry.Field{Key: "messaging.system", Value: "nats"},
 	)
+	for _, item := range extra {
+		attrs = attrs.With(item)
+	}
 	telemetry.AnnotateMain(ctx, attrs)
 	telemetry.AnnotateMainDependency(ctx, "messaging.jetstream", "appendlog.jetstream", operation, status, attrs)
 }
