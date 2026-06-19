@@ -164,18 +164,26 @@ func LoadPolicyRules(root string) ([]PolicyFindingRule, []Issue, error) {
 }
 
 func LoadPolicyRuleFile(root string, path string) (PolicyFindingRule, []Issue, error) {
-	rel := slashRel(filepath.Clean(root), path)
-	content, err := os.ReadFile(path)
+	root = filepath.Clean(root)
+	rel, err := safeRel(root, path)
+	if err != nil {
+		return PolicyFindingRule{}, nil, err
+	}
+	content, err := fs.ReadFile(os.DirFS(root), rel)
 	if err != nil {
 		return PolicyFindingRule{}, nil, fmt.Errorf("read %s: %w", rel, err)
 	}
 	var rule PolicyFindingRule
-	if err := yaml.Unmarshal(content, &rule); err != nil {
-		return PolicyFindingRule{}, []Issue{{Path: rel, Message: "invalid PolicyFindingRule YAML: " + err.Error()}}, nil
+	if parseErr := yaml.Unmarshal(content, &rule); parseErr != nil {
+		return policyRuleIssue(rel, "invalid PolicyFindingRule YAML: "+parseErr.Error())
 	}
 	rule.RelPath = rel
 	rule.Domain = PolicyDomain(rel)
 	return rule, ValidatePolicyRule(rule), nil
+}
+
+func policyRuleIssue(path string, message string) (PolicyFindingRule, []Issue, error) {
+	return PolicyFindingRule{}, []Issue{{Path: path, Message: message}}, nil
 }
 
 func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
@@ -352,4 +360,23 @@ func slashRel(root string, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(rel)
+}
+
+func safeRel(root string, path string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve policy root: %w", err)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve policy path: %w", err)
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve policy path relative to root: %w", err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("policy path %q escapes policy root %q", path, root)
+	}
+	return filepath.ToSlash(rel), nil
 }
