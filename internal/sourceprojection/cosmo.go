@@ -35,7 +35,7 @@ func cosmoSessionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	if user := firstNonEmpty(attrs["user"], stringValue(payload, "user")); user != "" {
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), sessionURN, user, event.GetOccurredAt())
 	}
-	addCosmoThreadLink(entities, links, event, tenantID, sessionURN, firstNonEmpty(attrs["thread_key"], stringValue(payload, "thread_key"), attrs["ticket_id"], stringValue(payload, "ticket_id")))
+	addCosmoThreadLink(entities, links, event, tenantID, sessionURN, firstNonEmpty(attrs["thread_key"], stringValue(payload, "thread_key")))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
