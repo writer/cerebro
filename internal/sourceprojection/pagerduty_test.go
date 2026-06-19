@@ -82,6 +82,45 @@ func TestProjectPagerDutyServiceWithoutEscalationPolicy(t *testing.T) {
 	}
 }
 
+func TestProjectPagerDutyEscalationPolicyTeamsAndTargets(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := &cerebrov1.EventEnvelope{
+		Id:       "pagerduty-escalation-policy",
+		TenantId: "writer",
+		SourceId: "pagerduty",
+		Kind:     "pagerduty.escalation_policy",
+		Attributes: map[string]string{
+			"escalation_policy_id": "PE1",
+			"name":                 "Checkout EP",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"id":    "PE1",
+			"name":  "Checkout EP",
+			"teams": []map[string]any{{"id": "PT1", "summary": "Platform"}},
+			"escalation_rules": []map[string]any{{
+				"targets": []map[string]any{
+					{"id": "PSC1", "type": "schedule_reference", "summary": "Primary"},
+					{"id": "PU1", "type": "user_reference", "summary": "Alice"},
+				},
+			}},
+		}),
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	escalationURN := "urn:cerebro:writer:pagerduty_escalation_policy:PE1"
+	teamURN := "urn:cerebro:writer:pagerduty_team:PT1"
+	scheduleURN := "urn:cerebro:writer:pagerduty_schedule:PSC1"
+	userURN := "urn:cerebro:writer:pagerduty_user:PU1"
+	assertProjectedLink(t, state, escalationURN, relationBelongsTo, teamURN)
+	assertProjectedLink(t, state, teamURN, relationContains, escalationURN)
+	assertProjectedLink(t, state, escalationURN, relationDependsOn, scheduleURN)
+	assertProjectedLink(t, state, escalationURN, relationDependsOn, userURN)
+}
+
 func TestProjectPagerDutyIntegrationServiceVendorDependency(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

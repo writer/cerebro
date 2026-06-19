@@ -36,6 +36,8 @@ func TestProjectSlackUserPostureAndTeamContext(t *testing.T) {
 
 	userURN := "urn:cerebro:writer:slack_user:U1"
 	teamURN := "urn:cerebro:writer:slack_team:T1"
+	emailURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 
 	user := state.entities[userURN]
 	if user == nil || user.EntityType != "slack.user" {
@@ -61,6 +63,8 @@ func TestProjectSlackUserPostureAndTeamContext(t *testing.T) {
 	}
 	assertProjectedLink(t, state, userURN, relationBelongsTo, teamURN)
 	assertProjectedLink(t, state, teamURN, relationContains, userURN)
+	assertProjectedLink(t, state, userURN, relationHasIdentifier, emailURN)
+	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
 }
 
 func TestProjectSlackChannelAndUserGroupTeamContext(t *testing.T) {
@@ -70,6 +74,7 @@ func TestProjectSlackChannelAndUserGroupTeamContext(t *testing.T) {
 	channel := slackEvent("slack.channel", map[string]string{
 		"channel_id": "C1",
 		"team_id":    "T1",
+		"creator":    "U1",
 		"name":       "general",
 	})
 	group := slackEvent("slack.user_group", map[string]string{
@@ -84,6 +89,7 @@ func TestProjectSlackChannelAndUserGroupTeamContext(t *testing.T) {
 	}
 
 	channelURN := "urn:cerebro:writer:slack_channel:C1"
+	creatorURN := "urn:cerebro:writer:slack_user:U1"
 	groupURN := "urn:cerebro:writer:slack_user_group:S1"
 	teamURN := "urn:cerebro:writer:slack_team:T1"
 
@@ -95,6 +101,7 @@ func TestProjectSlackChannelAndUserGroupTeamContext(t *testing.T) {
 	}
 	assertProjectedLink(t, state, channelURN, relationBelongsTo, teamURN)
 	assertProjectedLink(t, state, teamURN, relationContains, channelURN)
+	assertProjectedLink(t, state, creatorURN, relationAuthored, channelURN)
 	assertProjectedLink(t, state, groupURN, relationBelongsTo, teamURN)
 	assertProjectedLink(t, state, teamURN, relationContains, groupURN)
 }
