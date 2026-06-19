@@ -452,6 +452,36 @@ func TestRuntimeEventsAreUniqueAndReplayable(t *testing.T) {
 	}
 }
 
+func TestGraphActionRecordContractMatchesWorkflowRecord(t *testing.T) {
+	event, ok := runtimeEventByName("graph_action.recorded")
+	if !ok {
+		t.Fatal("graph_action.recorded runtime event missing")
+	}
+	requireContainsAll(t, "graph_action.recorded payload", event.PayloadFields, []string{
+		"finding_id",
+		"action_id",
+		"provider",
+		"action",
+		"target_urn",
+		"external_status",
+		"dry_run",
+	})
+
+	provenance, ok := provenanceRequirementBySurface("graph-action-record")
+	if !ok {
+		t.Fatal("graph-action-record provenance requirement missing")
+	}
+	requireContainsAll(t, "graph-action-record provenance", provenance.RequiredFields, []string{
+		"finding_id",
+		"action_id",
+		"provider",
+		"action",
+		"target_urn",
+		"external_status",
+		"reconciliation_status",
+	})
+}
+
 func TestProvenanceRequirementsCoverKnowledgeAndConnectors(t *testing.T) {
 	requiredFields := []string{"source_urn", "scope", "citation_status", "fallback_reason"}
 	ask, ok := provenanceRequirementBySurface("ask-answer")
@@ -494,6 +524,15 @@ func provenanceRequirementSurfaces() map[string]bool {
 	return surfaces
 }
 
+func runtimeEventByName(name string) (RuntimeEvent, bool) {
+	for _, event := range RuntimeEvents {
+		if event.Name == name {
+			return event, true
+		}
+	}
+	return RuntimeEvent{}, false
+}
+
 func capabilityByID(id string) (Capability, bool) {
 	for _, capability := range Capabilities {
 		if capability.ID == id {
@@ -510,6 +549,15 @@ func provenanceRequirementBySurface(surface string) (ProvenanceRequirement, bool
 		}
 	}
 	return ProvenanceRequirement{}, false
+}
+
+func requireContainsAll(t *testing.T, label string, values []string, required []string) {
+	t.Helper()
+	for _, value := range required {
+		if !containsString(values, value) {
+			t.Fatalf("%s missing %q from %v", label, value, values)
+		}
+	}
 }
 
 func containsString(values []string, needle string) bool {
