@@ -591,6 +591,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"vulnview.scan":                                 vulnViewScanProjections,
 	"vulnview.site":                                 vulnViewSiteProjections,
 	"vulnview.vulnerability":                        vulnViewVulnerabilityProjections,
+	// hashicorp_vault generated projectors (sourcegen promotion)
+	"hashicorp_vault.users":                         hashicorpVaultUsersProjections,
+	"hashicorp_vault.secrets":                       hashicorpVaultSecretsProjections,
+	"hashicorp_vault.audit_events":                  hashicorpVaultAuditEventsProjections,
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 

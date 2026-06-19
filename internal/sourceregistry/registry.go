@@ -23,6 +23,7 @@ import (
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	grcsource "github.com/writer/cerebro/sources/grc"
+	hashicorpvaultsource "github.com/writer/cerebro/sources/hashicorp_vault"
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
@@ -146,6 +147,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "grc",
 		load: func() (sourcecdk.Source, error) {
 			return grcsource.New()
+		},
+	},
+	{
+		name: "hashicorp_vault",
+		load: func() (sourcecdk.Source, error) {
+			return hashicorpvaultsource.New()
 		},
 	},
 	{
