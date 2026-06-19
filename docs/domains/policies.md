@@ -64,6 +64,13 @@ spec:
 | `spec.graph.rowLimit` | No | Optional row cap from 1 to 3000. Required when the query does not include `LIMIT`. |
 | `spec.graph.params` | No | Static scalar Cypher params merged with runtime `tenant_id` and `row_limit`. |
 | `spec.graph.requiredColumns` | No | Return aliases the validator must find in `spec.graph.query`. |
+| `spec.input` | No | Evidence input contract: source kinds, event kinds, required claims, required fields, and freshness SLA. |
+| `spec.assert` | Conditional | Structured evidence assertions for policies that evaluate normalized evidence records instead of CEL or SQL. |
+| `spec.context` | No | Graph anchors, graph enrichment, and severity adjustment metadata used to explain and prioritize findings. |
+| `spec.evidence` | No | Evidence type, audit requirement, accepted sources, required fields, fingerprint fields, and freshness metadata. |
+| `spec.audit` | No | Auditor-facing evidence, assessment, exception, risk, remediation, and false-positive guidance. |
+| `spec.verification` | No | Fixture expectations, mutation checks, and remediation rerun expectations for policy validation. |
+| `spec.actions` | No | Owner resolution, remediation steps, effort, blast-radius, and policy-rerun guidance. |
 | `spec.remediation.summary` | No | Remediation intent used in generated runbooks and finding attributes. |
 | `spec.remediation.steps` | No | Optional ordered remediation steps. |
 | `spec.riskCategories` | No | Normalized risk category labels. |
@@ -72,6 +79,38 @@ spec:
 | `spec.enabled` | No | Set to `false` to keep a policy in the catalog while disabling generated rule support. |
 
 Every policy must have exactly one match mode: `spec.match.conditions`, `spec.match.query`, `spec.assert`, or `spec.graph`.
+
+## Assertion Policies
+
+Use `spec.assert` for normalized evidence records where the policy can be stated as field-level expectations. Assertions are useful for auditor-facing controls because they pair cleanly with input, evidence, audit, verification, and action metadata.
+
+```yaml
+spec:
+  severity: high
+  frameworks:
+    - name: SOC 2
+      controls: [CC6]
+  input:
+    sourceKinds: [okta.user]
+    requiredFields: [tenant_id, resource_urn, privilege_level, mfa_enrolled, observed_at]
+    freshnessSLA: 24h
+  assert:
+    all:
+      - field: privilege_level
+        op: in
+        value: [admin, super_admin]
+      - field: mfa_enrolled
+        op: eq
+        value: false
+  evidence:
+    type: identity_configuration
+    assessmentMethods: [examine, test]
+    requiredForAudit: true
+  audit:
+    auditorStatement: Privileged users are required to have MFA before administrative SaaS access.
+    falsePositives:
+      - The account is disabled or outside the privileged population.
+```
 
 ## CEL Policies
 

@@ -77,15 +77,252 @@
           "type": "string"
         },
         "actions": {
-          "description": "Ownership, remediation, and verification action hints.",
+          "additionalProperties": false,
+          "properties": {
+            "blastRadius": {
+              "additionalProperties": false,
+              "properties": {
+                "estimateFrom": {
+                  "description": "Context path used to estimate blast radius.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "effort": {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            "owner": {
+              "additionalProperties": false,
+              "properties": {
+                "fallback": {
+                  "description": "Fallback owner lookup path.",
+                  "type": "string"
+                },
+                "from": {
+                  "description": "Primary owner lookup path.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "remediation": {
+              "additionalProperties": false,
+              "properties": {
+                "steps": {
+                  "description": "Ordered action steps.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "description": "Remediation action type.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "verification": {
+              "additionalProperties": false,
+              "properties": {
+                "rerunPolicy": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            }
+          },
           "type": "object"
         },
         "assert": {
-          "description": "Structured assertions for evidence-backed policy checks.",
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "required": [
+                "all"
+              ]
+            },
+            {
+              "required": [
+                "any"
+              ]
+            }
+          ],
+          "properties": {
+            "all": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "description": "Evidence field or normalized context path to evaluate.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "enum": [
+                      "eq",
+                      "ne",
+                      "in",
+                      "not_in",
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte",
+                      "exists",
+                      "is_true",
+                      "is_false"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "Expected comparison value for operators that need one."
+                  }
+                },
+                "required": [
+                  "field",
+                  "op"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "any": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "description": "Evidence field or normalized context path to evaluate.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "enum": [
+                      "eq",
+                      "ne",
+                      "in",
+                      "not_in",
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte",
+                      "exists",
+                      "is_true",
+                      "is_false"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "Expected comparison value for operators that need one."
+                  }
+                },
+                "required": [
+                  "field",
+                  "op"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "audit": {
-          "description": "Auditor-facing evidence, exception, and risk guidance.",
+          "additionalProperties": false,
+          "properties": {
+            "acceptableEvidence": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fields": {
+                    "description": "Fields expected from this source.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "source": {
+                    "description": "Authoritative evidence source.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "assessmentMethods": {
+              "description": "Audit assessment methods.",
+              "items": {
+                "enum": [
+                  "examine",
+                  "interview",
+                  "observe",
+                  "test"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "auditorGuidance": {
+              "description": "Guidance for interpreting evidence and exceptions.",
+              "type": "string"
+            },
+            "auditorStatement": {
+              "description": "Plain-language control statement for auditors.",
+              "type": "string"
+            },
+            "evidenceType": {
+              "description": "Auditor-facing evidence type.",
+              "type": "string"
+            },
+            "exceptionGuidance": {
+              "description": "Accepted exception scenarios.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exceptionPolicy": {
+              "additionalProperties": false,
+              "properties": {
+                "maxAge": {
+                  "description": "Maximum exception age, such as 14d.",
+                  "type": "string"
+                },
+                "requiresApproval": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "falsePositives": {
+              "description": "Common false-positive explanations.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "freshnessSLA": {
+              "description": "Maximum acceptable age for auditor-facing evidence.",
+              "type": "string"
+            },
+            "remediationIntent": {
+              "description": "Expected remediation outcome.",
+              "type": "string"
+            },
+            "riskStatement": {
+              "description": "Risk addressed by the policy.",
+              "type": "string"
+            }
+          },
           "type": "object"
         },
         "category": {
@@ -93,7 +330,76 @@
           "type": "string"
         },
         "context": {
-          "description": "Graph and severity-adjustment context for policy evaluation.",
+          "additionalProperties": false,
+          "properties": {
+            "graph": {
+              "additionalProperties": false,
+              "properties": {
+                "anchors": {
+                  "description": "Evidence fields that anchor graph lookup.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "enrich": {
+                  "description": "Graph-derived context to attach to the finding.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "severityAdjustments": {
+              "items": {
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "required": [
+                      "set"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "delta"
+                    ]
+                  }
+                ],
+                "properties": {
+                  "delta": {
+                    "description": "Relative severity adjustment.",
+                    "type": "string"
+                  },
+                  "set": {
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low",
+                      "info",
+                      "CRITICAL",
+                      "HIGH",
+                      "MEDIUM",
+                      "LOW",
+                      "INFO"
+                    ],
+                    "type": "string"
+                  },
+                  "when": {
+                    "description": "Expression over policy context that triggers the adjustment.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "when"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "effect": {
@@ -104,7 +410,54 @@
           "type": "boolean"
         },
         "evidence": {
-          "description": "Evidence requirements and fingerprinting metadata.",
+          "additionalProperties": false,
+          "properties": {
+            "acceptableSources": {
+              "description": "Authoritative systems accepted as evidence sources.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "assessmentMethods": {
+              "description": "Audit assessment methods.",
+              "items": {
+                "enum": [
+                  "examine",
+                  "interview",
+                  "observe",
+                  "test"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "fingerprintFields": {
+              "description": "Stable fields used to fingerprint repeated findings.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "freshnessSLA": {
+              "description": "Maximum acceptable evidence age for this policy.",
+              "type": "string"
+            },
+            "requiredFields": {
+              "description": "Fields required on collected evidence.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "requiredForAudit": {
+              "type": "boolean"
+            },
+            "type": {
+              "description": "Normalized evidence type used for audit and routing.",
+              "type": "string"
+            }
+          },
           "type": "object"
         },
         "frameworks": {
@@ -172,7 +525,51 @@
           "type": "object"
         },
         "input": {
-          "description": "Runtime, claim, and field requirements for evaluating the policy.",
+          "additionalProperties": false,
+          "properties": {
+            "eventKinds": {
+              "description": "Evidence or result event kinds accepted by the policy.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "freshnessSLA": {
+              "description": "Maximum acceptable evidence age, such as 24h or 14d.",
+              "type": "string"
+            },
+            "requiredClaims": {
+              "description": "Normalized claims that must be present before evaluation.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "requiredFields": {
+              "description": "Fields required on every evaluated evidence record.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "requiredFieldsByKind": {
+              "additionalProperties": {
+                "description": "Fields required for this evidence kind.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            "sourceKinds": {
+              "description": "Source record kinds required to evaluate the policy.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "match": {
@@ -280,7 +677,63 @@
           "type": "string"
         },
         "verification": {
-          "description": "Author-supplied verification fixtures and mutation checks.",
+          "additionalProperties": false,
+          "properties": {
+            "fixtures": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "description": "What the fixture proves.",
+                    "type": "string"
+                  },
+                  "expect": {
+                    "enum": [
+                      "finding",
+                      "pass"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Fixture identifier.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "expect"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "mutationChecks": {
+              "description": "Negative checks used to harden the policy.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remediationCheck": {
+              "additionalProperties": false,
+              "properties": {
+                "expectedStatus": {
+                  "enum": [
+                    "pass",
+                    "finding",
+                    "closed",
+                    "open"
+                  ],
+                  "type": "string"
+                },
+                "rerunAfter": {
+                  "description": "Trigger after which the policy should be rerun.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
           "type": "object"
         }
       },

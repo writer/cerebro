@@ -257,6 +257,17 @@ func TestValidatePolicyRuleRejectsInvalidGraphPolicy(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyRuleRejectsMixedMatchAndAssertModes(t *testing.T) {
+	rule := policyRuleWithAssertions(PolicyRuleAssertion{Field: "mfa_enrolled", Op: "is_false"})
+	rule.Spec.Match = PolicyRuleMatch{
+		Query: "SELECT id FROM resources WHERE mfa_enrolled = false",
+	}
+	issues := ValidatePolicyRule(rule)
+	if !issuesContain(issues, "spec.assert is mutually exclusive with spec.match") {
+		t.Fatalf("issues = %#v, want mixed match/assert mode rejection", issues)
+	}
+}
+
 func TestLoadPolicyRulesRejectsLegacyJSONPolicies(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "policies/aws/example.json", `{"id":"aws-example"}`)
@@ -457,7 +468,22 @@ func TestPolicyRuleJSONSchema(t *testing.T) {
 		t.Fatalf("PolicyRuleJSONSchema() error = %v", err)
 	}
 	text := string(schema)
-	for _, want := range []string{`"apiVersion"`, APIVersion, KindPolicyFindingRule, `"additionalProperties": false`} {
+	for _, want := range []string{
+		`"apiVersion"`,
+		APIVersion,
+		KindPolicyFindingRule,
+		`"additionalProperties": false`,
+		`"input"`,
+		`"assert"`,
+		`"context"`,
+		`"evidence"`,
+		`"audit"`,
+		`"verification"`,
+		`"actions"`,
+		`"auditorStatement"`,
+		`"acceptableEvidence"`,
+		`"remediationCheck"`,
+	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("schema missing %q:\n%s", want, text)
 		}
