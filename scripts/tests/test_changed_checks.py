@@ -27,6 +27,10 @@ class ChangedChecksTests(unittest.TestCase):
         self.assertIn("policy-rule-check", names)
         self.assertIn("detection-catalog-check", names)
 
+    def test_policy_schema_paths_select_dsl_check(self):
+        names = self.command_names(["schemas/policy-finding-rule.schema.json"])
+        self.assertIn("finding-dsl-check", names)
+
     def test_script_paths_select_python_tests(self):
         names = self.command_names(["scripts/droid_review_context.py"])
         self.assertIn("python-script-tests", names)

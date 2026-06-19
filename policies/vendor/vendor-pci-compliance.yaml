@@ -14,7 +14,7 @@ spec:
     category: vendor
     resourceType: vendor
     match:
-        query: "SELECT id, name, risk_level, processes_cardholder_data FROM vendors WHERE processes_cardholder_data = true AND risk_level = 'high' AND (pci_aoc_date IS NULL OR pci_aoc_date < NOW() - INTERVAL '365 days')"
+        query: SELECT id, name, risk_level, processes_cardholder_data FROM vendors WHERE processes_cardholder_data = true AND risk_level = 'high' AND (pci_aoc_date IS NULL OR pci_aoc_date < NOW() - INTERVAL '365 days')
     remediation:
         summary: Obtain current PCI DSS Attestation of Compliance (AOC) from all high-risk vendors that process cardholder data.
     frameworks:

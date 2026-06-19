@@ -15,10 +15,10 @@ spec:
     effect: forbid
     resource: vendors
     match:
-        conditionFormat: cel
         conditions:
             - cmp_eq(path(resource, "risk_level"), path(resource, "HIGH"))
             - cmp_ne(path(resource, "security_review_complete"), true)
+        conditionFormat: cel
     remediation:
         summary: Complete a security review of the vendor including review of their SOC2 report, security questionnaire, or conduct a security assessment
         steps:

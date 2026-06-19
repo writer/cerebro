@@ -1,0 +1,220 @@
+{
+  "$id": "https://cerebro.writer.com/schemas/policy-finding-rule.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Authoring schema for generated Cerebro policy finding rules.",
+  "properties": {
+    "apiVersion": {
+      "const": "cerebro.writer.com/v1alpha1"
+    },
+    "kind": {
+      "const": "PolicyFindingRule"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "What the policy checks and why it matters.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable policy and generated rule identifier.",
+          "pattern": "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+          "type": "string"
+        },
+        "lastModified": {
+          "description": "Source policy timestamp for imported catalogs.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable policy name.",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Tags for categorization, routing, and catalog search.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "match"
+          ]
+        }
+      ],
+      "properties": {
+        "action": {
+          "description": "Action selector metadata for access-control-style policies.",
+          "type": "string"
+        },
+        "category": {
+          "description": "Optional generated policy category override.",
+          "type": "string"
+        },
+        "effect": {
+          "description": "Policy effect, usually forbid for CEL-backed policies.",
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "frameworks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "controls": {
+                "items": {
+                  "description": "Framework control identifier.",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "name": {
+                "description": "Compliance framework name.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "controls"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "match": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "conditions"
+              ]
+            },
+            {
+              "required": [
+                "query"
+              ]
+            }
+          ],
+          "properties": {
+            "conditionFormat": {
+              "enum": [
+                "cel"
+              ],
+              "type": "string"
+            },
+            "conditions": {
+              "items": {
+                "description": "CEL-style policy condition expression.",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "query": {
+              "description": "Query that returns failing rows for query-backed policies.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "mitreAttack": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "tactic": {
+                "description": "MITRE ATT\u0026CK tactic.",
+                "type": "string"
+              },
+              "technique": {
+                "description": "MITRE ATT\u0026CK technique.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "principal": {
+          "description": "Principal selector metadata for access-control-style policies.",
+          "type": "string"
+        },
+        "remediation": {
+          "additionalProperties": false,
+          "properties": {
+            "steps": {
+              "description": "Ordered remediation steps.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "description": "Short remediation intent.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "resource": {
+          "description": "Resource selector or resource family.",
+          "type": "string"
+        },
+        "resourceType": {
+          "description": "Human-readable resource type.",
+          "type": "string"
+        },
+        "riskCategories": {
+          "description": "Normalized risk category labels.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info",
+            "CRITICAL",
+            "HIGH",
+            "MEDIUM",
+            "LOW",
+            "INFO"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "match",
+        "frameworks"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Cerebro PolicyFindingRule",
+  "type": "object"
+}

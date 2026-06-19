@@ -8,6 +8,8 @@ Policies are generated into Go rule definitions in `internal/findings/policy_rul
 
 Generated rule copy, evidence type, assessment methods, false-positive guidance, and auditor notes are enriched from `internal/compliance/policy_rule_extensions.yaml`; see `docs/POLICY_RULE_EXTENSIONS.md`. Control pack authoring, custom frameworks, and selected control coverage are documented in `docs/COMPLIANCE_CONTROLS.md`.
 
+Editor integrations can use the generated JSON Schema at `schemas/policy-finding-rule.schema.json`.
+
 ## Basic Policy
 
 ```yaml
@@ -64,11 +66,11 @@ spec:
 | `spec.mitreAttack` | No | MITRE tactic and technique mappings. |
 | `spec.enabled` | No | Set to `false` to keep a policy in the catalog while disabling generated rule support. |
 
-Every policy must have either `spec.match.conditions` or `spec.match.query`.
+Every policy must have exactly one match mode: either `spec.match.conditions` or `spec.match.query`.
 
 ## CEL Policies
 
-Use `spec.match.conditions` for resource-state or event-state checks. Conditions are stored as strings because the policy runtime owns CEL evaluation; the DSL validator checks the envelope and required metadata, not semantic CEL execution.
+Use `spec.match.conditions` for resource-state or event-state checks. Conditions are stored as strings because the policy runtime owns CEL evaluation. The DSL validator parse-checks the supported predicate envelope, including helpers such as `path`, `exists_path`, `cmp_eq`, `cmp_ne`, `cmp_gt`, `cmp_lt`, `cmp_ge`, `cmp_le`, `in_list`, `contains_value`, `matches_value`, `ends_with_value`, and `list_value(...).exists(...)`.
 
 ```yaml
 spec:
@@ -98,6 +100,90 @@ spec:
 
 The generated finding rule records `policy_query_present=true` and treats each failed evidence event as a policy finding candidate keyed by policy and resource identifiers.
 
+## Authoring Commands
+
+Create a policy scaffold:
+
+```bash
+go run ./tools/findingdsl new \
+  --write \
+  --domain aws \
+  --id aws-s3-bucket-no-public-access \
+  --name "S3 Bucket Public Access Block" \
+  --description "S3 buckets should have public access blocked." \
+  --severity critical \
+  --resource aws::s3::bucket \
+  --condition 'cmp_eq(path(resource, "block_public_acls"), false)' \
+  --framework "SOC 2:CC6" \
+  --tag aws \
+  --risk-category EXTERNAL_EXPOSURE \
+  --remediation "Enable S3 public access block settings."
+```
+
+Without `--write`, `new` prints the YAML to stdout. When `--out` is omitted, the file path is `policies/<domain>/<id>.yaml`.
+
+Format one file or the full catalog:
+
+```bash
+go run ./tools/findingdsl fmt --write policies/aws/aws-s3-public.yaml
+go run ./tools/findingdsl fmt --check
+```
+
+Generate or verify the editor schema:
+
+```bash
+make finding-dsl-schema-generate
+make finding-dsl-schema-check
+```
+
+The legacy flag interface remains available for automation:
+
+```bash
+go run ./tools/findingdsl --check
+go run ./tools/findingdsl --migrate-policies --write
+```
+
+## Fixture Tests
+
+Policy behavior can be covered with `PolicyFindingRuleTest` files next to the policy. A suite named `policies/aws/aws-s3-public.test.yaml` defaults to testing `policies/aws/aws-s3-public.yaml`.
+
+```yaml
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: bucket without public access block fails
+    resource:
+      block_public_acls: false
+    wantFinding: true
+  - name: bucket with public access block passes
+    resource:
+      block_public_acls: true
+    wantFinding: false
+```
+
+For query-backed policies, use `queryRows`; any returned row means the policy should produce a finding:
+
+```yaml
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+policy: policies/identity/example-query-policy.yaml
+cases:
+  - name: returned row fails
+    queryRows:
+      - id: user-1
+    wantFinding: true
+  - name: empty result passes
+    resource:
+      placeholder: true
+    wantFinding: false
+```
+
+Run suites with:
+
+```bash
+go run ./tools/findingdsl test
+```
+
 ## Validation And Generation
 
 Run focused checks after editing policy DSL files:
@@ -116,7 +202,7 @@ make policy-rule-check
 make detection-catalog-check
 ```
 
-`make policy-rule-check` depends on `finding-dsl-check`, so stale generated rule output and invalid DSL files fail together.
+`make finding-dsl-check` verifies the JSON Schema, runs policy fixture suites, rejects unknown YAML fields, rejects legacy JSON policy files, checks condition/query mode correctness, parse-checks condition expressions, and validates required DSL metadata. `make policy-rule-check` depends on `finding-dsl-check`, so stale generated rule output and invalid DSL files fail together.
 
 ## Migration
 
