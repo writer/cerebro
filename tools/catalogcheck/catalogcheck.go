@@ -93,6 +93,7 @@ func checkRepositoryWithOptions(root string, options repositoryCheckOptions) ([]
 	issues = append(issues, checkFindingRuleMetadata(findingControlCatalog)...)
 	issues = append(issues, checkCorrelationCatalog()...)
 	issues = append(issues, checkComplianceEvidencePacketContract(controlCatalog)...)
+	issues = dedupeIssues(issues)
 	sort.Slice(issues, func(i int, j int) bool {
 		if issues[i].path != issues[j].path {
 			return issues[i].path < issues[j].path
@@ -100,6 +101,19 @@ func checkRepositoryWithOptions(root string, options repositoryCheckOptions) ([]
 		return issues[i].message < issues[j].message
 	})
 	return issues, nil
+}
+
+func dedupeIssues(issues []issue) []issue {
+	seen := map[issue]struct{}{}
+	deduped := make([]issue, 0, len(issues))
+	for _, issue := range issues {
+		if _, ok := seen[issue]; ok {
+			continue
+		}
+		seen[issue] = struct{}{}
+		deduped = append(deduped, issue)
+	}
+	return deduped
 }
 
 func loadComplianceControlCatalog(root string) (*compliance.CatalogIndex, []issue, error) {
