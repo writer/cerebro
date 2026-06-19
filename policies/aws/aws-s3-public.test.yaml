@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: bucket without public access block fails
+      resource:
+          block_public_acls: false
+      wantFinding: true
+    - name: bucket with public access block passes
+      resource:
+          block_public_acls: true
+      wantFinding: false

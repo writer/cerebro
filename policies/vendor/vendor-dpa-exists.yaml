@@ -16,10 +16,10 @@ spec:
     effect: forbid
     resource: vendors
     match:
-        conditionFormat: cel
         conditions:
             - cmp_eq(path(resource, "processes_personal_data"), true)
             - cmp_ne(path(resource, "dpa_signed"), true)
+        conditionFormat: cel
     remediation:
         summary: Execute a Data Processing Agreement with the vendor that covers data protection requirements per GDPR, CCPA, and other applicable regulations
         steps:

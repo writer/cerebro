@@ -14,10 +14,10 @@ spec:
     effect: forbid
     resource: vendors
     match:
-        conditionFormat: cel
         conditions:
             - cmp_eq(path(resource, "risk_level"), null)
             - cmp_eq(path(resource, "vendor_status"), path(resource, "ACTIVE"))
+        conditionFormat: cel
     remediation:
         summary: Assess the vendor's risk level based on the type of data accessed, service criticality, and security posture
         steps:

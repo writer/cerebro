@@ -251,6 +251,108 @@ func TestLegacyPolicyRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyRuleRejectsUnknownYAMLFields(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "policies/aws/example.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: aws-example
+  name: AWS Example
+  description: Example policy
+spec:
+  severity: high
+  match:
+    query: SELECT id FROM resources
+  frameworks:
+    - name: SOC 2
+      controls: [CC6]
+unexpected: true
+`)
+
+	_, issues, err := LoadPolicyRuleFile(root, filepath.Join(root, "policies/aws/example.yaml"))
+	if err != nil {
+		t.Fatalf("LoadPolicyRuleFile() error = %v", err)
+	}
+	if len(issues) != 1 || !strings.Contains(issues[0].Message, "field unexpected not found") {
+		t.Fatalf("issues = %#v, want unknown field rejection", issues)
+	}
+}
+
+func TestEvaluatePolicyConditions(t *testing.T) {
+	resource := map[string]any{
+		"public": true,
+		"rules": []any{
+			map[string]any{"port": "443", "source": "10.0.0.0/8"},
+			map[string]any{"port": "22", "source": "0.0.0.0/0"},
+		},
+	}
+	got, err := EvaluatePolicyConditions([]string{
+		`cmp_eq(path(resource, "public"), true)`,
+		`list_value(path(resource, "rules")).exists(item, (cmp_eq(path(item, "port"), "22")) && (cmp_eq(path(item, "source"), "0.0.0.0/0")))`,
+	}, resource)
+	if err != nil {
+		t.Fatalf("EvaluatePolicyConditions() error = %v", err)
+	}
+	if !got {
+		t.Fatal("EvaluatePolicyConditions() = false, want true")
+	}
+}
+
+func TestRunPolicyRuleTestSuite(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "policies/aws/example.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: aws-example
+  name: AWS Example
+  description: Example policy
+spec:
+  severity: high
+  effect: forbid
+  resource: aws::s3::bucket
+  match:
+    conditionFormat: cel
+    conditions:
+      - cmp_eq(path(resource, "public"), true)
+  frameworks:
+    - name: SOC 2
+      controls: [CC6]
+`)
+	writeTestFile(t, root, "policies/aws/example.test.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: public bucket fails
+    resource:
+      public: true
+    wantFinding: true
+  - name: private bucket passes
+    resource:
+      public: false
+    wantFinding: false
+`)
+
+	issues := RunPolicyRuleTestSuite(root, filepath.Join(root, "policies/aws/example.test.yaml"))
+	if len(issues) != 0 {
+		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want none", issues)
+	}
+}
+
+func TestPolicyRuleJSONSchema(t *testing.T) {
+	schema, err := PolicyRuleJSONSchema()
+	if err != nil {
+		t.Fatalf("PolicyRuleJSONSchema() error = %v", err)
+	}
+	text := string(schema)
+	for _, want := range []string{`"apiVersion"`, APIVersion, KindPolicyFindingRule, `"additionalProperties": false`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("schema missing %q:\n%s", want, text)
+		}
+	}
+}
+
 func issuesContain(issues []Issue, want string) bool {
 	for _, issue := range issues {
 		if strings.Contains(issue.Message, want) {

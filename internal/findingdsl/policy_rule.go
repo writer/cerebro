@@ -1,6 +1,7 @@
 package findingdsl
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -246,6 +247,9 @@ func LoadPolicyRules(root string) ([]PolicyFindingRule, []Issue, error) {
 		if rel == ControlMappingRelPath {
 			return nil
 		}
+		if isPolicyTestRelPath(rel) {
+			return nil
+		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext == ".json" {
 			issues = append(issues, Issue{Path: rel, Message: "legacy JSON policy files are not allowed; use PolicyFindingRule DSL YAML"})
@@ -306,7 +310,9 @@ func LoadPolicyRuleFile(root string, path string) (PolicyFindingRule, []Issue, e
 		return PolicyFindingRule{}, nil, fmt.Errorf("read %s: %w", rel, err)
 	}
 	var rule PolicyFindingRule
-	if parseErr := yaml.Unmarshal(content, &rule); parseErr != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if parseErr := decoder.Decode(&rule); parseErr != nil {
 		return policyRuleIssue(rel, "invalid PolicyFindingRule YAML: "+parseErr.Error())
 	}
 	rule.RelPath = rel
@@ -343,12 +349,18 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 			issues = append(issues, Issue{Path: path, Message: field.name + " is required"})
 		}
 	}
+	if policyID := strings.TrimSpace(rule.Metadata.ID); policyID != "" && !isPolicyID(policyID) {
+		issues = append(issues, Issue{Path: path, Message: "metadata.id must use dash-separated alphanumeric segments"})
+	}
 	if severity := strings.ToUpper(strings.TrimSpace(rule.Spec.Severity)); severity != "" && !stringSetContains([]string{"INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"}, severity) {
 		issues = append(issues, Issue{Path: path, Message: "spec.severity must be one of info, low, medium, high, critical"})
 	}
 	hasConditions := len(trimStrings(rule.Spec.Match.Conditions)) != 0
 	hasQuery := strings.TrimSpace(rule.Spec.Match.Query) != ""
 	hasAssert := policyAssertConfigured(rule.Spec.Assert)
+	if hasConditions && hasQuery {
+		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions and spec.match.query are mutually exclusive"})
+	}
 	if !hasConditions && !hasQuery && !hasAssert {
 		issues = append(issues, Issue{Path: path, Message: "spec.match.conditions, spec.match.query, or spec.assert is required"})
 	}
@@ -359,9 +371,28 @@ func ValidatePolicyRule(rule PolicyFindingRule) []Issue {
 		if format := strings.TrimSpace(rule.Spec.Match.ConditionFormat); format != "" && !strings.EqualFold(format, "cel") {
 			issues = append(issues, Issue{Path: path, Message: "spec.match.conditionFormat must be cel when present"})
 		}
+		for idx, condition := range rule.Spec.Match.Conditions {
+			if strings.TrimSpace(condition) == "" {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.match.conditions[%d] must be non-empty", idx)})
+				continue
+			}
+			if err := ParsePolicyCondition(condition); err != nil {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.match.conditions[%d] is invalid: %v", idx, err)})
+			}
+		}
+	}
+	if hasQuery {
+		if strings.TrimSpace(rule.Spec.Match.ConditionFormat) != "" {
+			issues = append(issues, Issue{Path: path, Message: "spec.match.conditionFormat is only valid with spec.match.conditions"})
+		}
+		if !startsWithQueryKeyword(rule.Spec.Match.Query) {
+			issues = append(issues, Issue{Path: path, Message: "spec.match.query must start with SELECT or WITH"})
+		}
 	}
 	issues = append(issues, validateStringArray(path, "metadata.tags", rule.Metadata.Tags)...)
 	issues = append(issues, validateStringArray(path, "spec.riskCategories", rule.Spec.RiskCategories)...)
+	issues = append(issues, validateUniqueStringArray(path, "metadata.tags", rule.Metadata.Tags)...)
+	issues = append(issues, validateUniqueStringArray(path, "spec.riskCategories", rule.Spec.RiskCategories)...)
 	issues = append(issues, validateFrameworks(path, rule.Spec.Frameworks)...)
 	issues = append(issues, validatePolicyRuleContract(path, rule.Spec)...)
 	return issues
@@ -566,10 +597,18 @@ func validateFrameworks(path string, frameworks []PolicyFramework) []Issue {
 		if len(framework.Controls) == 0 {
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.frameworks[%d].controls is required", idx)})
 		}
+		seenControls := map[string]int{}
 		for controlIdx, control := range framework.Controls {
-			if strings.TrimSpace(control) == "" {
+			controlID := strings.TrimSpace(control)
+			if controlID == "" {
 				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.frameworks[%d].controls[%d] is required", idx, controlIdx)})
+				continue
 			}
+			if previousIdx, ok := seenControls[controlID]; ok {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.frameworks[%d].controls[%d] duplicates controls[%d]", idx, controlIdx, previousIdx)})
+				continue
+			}
+			seenControls[controlID] = controlIdx
 		}
 	}
 	return issues
@@ -652,6 +691,21 @@ func unstableFingerprintField(value string) bool {
 	}
 }
 
+func validateUniqueStringArray(path string, field string, values []string) []Issue {
+	seen := map[string]int{}
+	for idx, value := range values {
+		normalized := strings.TrimSpace(value)
+		if normalized == "" {
+			continue
+		}
+		if previousIdx, ok := seen[normalized]; ok {
+			return []Issue{{Path: path, Message: fmt.Sprintf("%s[%d] duplicates %s[%d]", field, idx, field, previousIdx)}}
+		}
+		seen[normalized] = idx
+	}
+	return nil
+}
+
 func trimStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
@@ -669,6 +723,33 @@ func stringSetContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func startsWithQueryKeyword(query string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(query))
+	return strings.HasPrefix(upper, "SELECT ") || strings.HasPrefix(upper, "SELECT\n") || strings.HasPrefix(upper, "WITH ") || strings.HasPrefix(upper, "WITH\n")
+}
+
+func isPolicyID(value string) bool {
+	segmentHasAlnum := false
+	previousDash := false
+	for idx, ch := range value {
+		isAlnum := ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9'
+		switch {
+		case isAlnum:
+			segmentHasAlnum = true
+			previousDash = false
+		case ch == '-':
+			if idx == 0 || previousDash || !segmentHasAlnum {
+				return false
+			}
+			previousDash = true
+			segmentHasAlnum = false
+		default:
+			return false
+		}
+	}
+	return segmentHasAlnum && !previousDash
 }
 
 func slashRel(root string, path string) string {
