@@ -190,22 +190,6 @@ func ParsePolicyCondition(condition string) error {
 	return err
 }
 
-// PolicyConditionResourceFields returns the resource fields referenced by one policy condition.
-func PolicyConditionResourceFields(condition string) ([]string, error) {
-	expr, err := parsePolicyExpression(condition)
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]struct{}{}
-	collectPolicyResourceFields(expr, seen)
-	fields := make([]string, 0, len(seen))
-	for field := range seen {
-		fields = append(fields, field)
-	}
-	sort.Strings(fields)
-	return fields, nil
-}
-
 // PolicyConditionsResourceFields returns the resource fields referenced by policy conditions.
 func PolicyConditionsResourceFields(conditions []string) ([]string, error) {
 	seen := map[string]struct{}{}
