@@ -34,6 +34,9 @@ const (
 	maxReplayCandidates        = 5000
 	publishRetryAttempts       = 4
 	publishRetryInitialBackoff = 50 * time.Millisecond
+	publishClientRetryAttempts = 2
+	publishClientRetryWait     = 250 * time.Millisecond
+	publishAttemptTimeout      = 15 * time.Second
 	jetstreamCanaryKind        = "cerebro.health.jetstream_canary"
 	jetstreamCanaryMinInterval = time.Minute
 )
@@ -257,8 +260,12 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if workflowevents.IsSharedEnvelopeEvent(envelope) {
 		msg.Header = eventAttributesHeader(envelope.GetAttributes())
 	}
-	if event.Id != "" {
-		msg.Header.Set(nats.MsgIdHdr, event.Id)
+	messageID := publishMessageID(envelope, payload)
+	if messageID != "" {
+		if msg.Header == nil {
+			msg.Header = nats.Header{}
+		}
+		msg.Header.Set(nats.MsgIdHdr, messageID)
 	}
 	publishAttrs := func() telemetry.Attributes {
 		return jetstreamPublishMessageAttrs(subject, l.subjectPrefix, len(payload), msg.Header.Get(nats.MsgIdHdr))
@@ -280,16 +287,20 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 }
 
 func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
-	result := publishTelemetry{Attempts: 0, MaxAttempts: 1}
-	if msg.Header.Get(nats.MsgIdHdr) != "" {
-		result.MaxAttempts = publishRetryAttempts
-	}
+	result := publishTelemetry{Attempts: 0, MaxAttempts: publishRetryAttempts}
 	backoff := publishRetryInitialBackoff
 	started := time.Now()
 	var err error
 	for attempt := 1; attempt <= result.MaxAttempts; attempt++ {
 		result.Attempts = attempt
-		ack, publishErr := l.js.PublishMsg(ctx, msg)
+		attemptCtx, cancel := context.WithTimeout(ctx, publishAttemptTimeout)
+		ack, publishErr := l.js.PublishMsg(
+			attemptCtx,
+			msg,
+			jetstream.WithRetryAttempts(publishClientRetryAttempts),
+			jetstream.WithRetryWait(publishClientRetryWait),
+		)
+		cancel()
 		if publishErr == nil {
 			result.Duration = time.Since(started)
 			result.applyAck(ack)
@@ -320,6 +331,16 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 	}
 	result.Duration = time.Since(started)
 	return result, err
+}
+
+func publishMessageID(event *cerebrov1.EventEnvelope, payload []byte) string {
+	if event != nil {
+		if id := strings.TrimSpace(event.Id); id != "" {
+			return id
+		}
+	}
+	sum := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func (r *publishTelemetry) applyAck(ack *jetstream.PubAck) {
@@ -368,6 +389,7 @@ func retryablePublishError(err error) bool {
 	for _, fragment := range []string{
 		"no response",
 		"timeout",
+		"deadline exceeded",
 		"temporarily unavailable",
 		"connection",
 		"reconnect",
