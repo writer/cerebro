@@ -3,6 +3,7 @@ package findingdsl
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -189,6 +190,40 @@ func ParsePolicyCondition(condition string) error {
 	return err
 }
 
+// PolicyConditionResourceFields returns the resource fields referenced by one policy condition.
+func PolicyConditionResourceFields(condition string) ([]string, error) {
+	expr, err := parsePolicyExpression(condition)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	collectPolicyResourceFields(expr, seen)
+	fields := make([]string, 0, len(seen))
+	for field := range seen {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields, nil
+}
+
+// PolicyConditionsResourceFields returns the resource fields referenced by policy conditions.
+func PolicyConditionsResourceFields(conditions []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	for idx, condition := range conditions {
+		expr, err := parsePolicyExpression(condition)
+		if err != nil {
+			return nil, fmt.Errorf("condition[%d]: %w", idx, err)
+		}
+		collectPolicyResourceFields(expr, seen)
+	}
+	fields := make([]string, 0, len(seen))
+	for field := range seen {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields, nil
+}
+
 func EvaluatePolicyConditions(conditions []string, resource PolicyResource) (bool, error) {
 	env := &evalEnv{vars: map[string]any{"resource": resource}}
 	for idx, condition := range conditions {
@@ -209,6 +244,64 @@ func EvaluatePolicyConditions(conditions []string, resource PolicyResource) (boo
 		}
 	}
 	return true, nil
+}
+
+func collectPolicyResourceFields(expr expression, seen map[string]struct{}) {
+	switch typed := expr.(type) {
+	case callExpression:
+		if field, ok := policyResourceFieldFromCall(typed); ok {
+			seen[field] = struct{}{}
+		}
+		for _, arg := range typed.args {
+			collectPolicyResourceFields(arg, seen)
+		}
+	case methodCallExpression:
+		collectPolicyResourceFields(typed.receiver, seen)
+		for _, arg := range typed.args {
+			collectPolicyResourceFields(arg, seen)
+		}
+	case unaryExpression:
+		collectPolicyResourceFields(typed.expr, seen)
+	case binaryExpression:
+		collectPolicyResourceFields(typed.left, seen)
+		collectPolicyResourceFields(typed.right, seen)
+	case listExpression:
+		for _, item := range typed.items {
+			collectPolicyResourceFields(item, seen)
+		}
+	case objectExpression:
+		for _, value := range typed.values {
+			collectPolicyResourceFields(value, seen)
+		}
+	}
+}
+
+func policyResourceFieldFromCall(expr callExpression) (string, bool) {
+	switch expr.name {
+	case "path", "exists_path":
+	default:
+		return "", false
+	}
+	if len(expr.args) != 2 {
+		return "", false
+	}
+	identifier, ok := expr.args[0].(identExpression)
+	if !ok || identifier.name != "resource" {
+		return "", false
+	}
+	literal, ok := expr.args[1].(literalExpression)
+	if !ok {
+		return "", false
+	}
+	field, ok := literal.value.(string)
+	if !ok {
+		return "", false
+	}
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return "", false
+	}
+	return field, true
 }
 
 func parsePolicyExpression(input string) (expression, error) {

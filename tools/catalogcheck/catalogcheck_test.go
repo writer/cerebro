@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -645,6 +646,98 @@ func TestCheckPoliciesRejectsSymlinkedPolicyFiles(t *testing.T) {
 	}
 }
 
+func TestCheckPolicyAssetContractsAcceptsSupportedGraphBackedResource(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want none", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsUnsupportedGraphBackedResource(t *testing.T) {
+	rule := graphBackedResourceRule("github.unprojected")
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `graph-backed policy resource "github.unprojected" has no projected asset contract`) {
+		t.Fatalf("issues = %#v, want unsupported resource issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsUnsupportedProjectedField(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+	rule.Spec.Match.Conditions = []string{`cmp_eq(path(resource, "not_projected"), true)`}
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `spec.match.conditions references "not_projected"`) {
+		t.Fatalf("issues = %#v, want unsupported field issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsWrongEventKind(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+	rule.Spec.Input.EventKinds = []string{"github.secret_scanning_alert"}
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `declares unsupported event kinds github.secret_scanning_alert`) {
+		t.Fatalf("issues = %#v, want wrong event kind issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsMixedSupportedAndUnsupportedEventKinds(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+	rule.Spec.Input.EventKinds = []string{"github.code.repository", "github.secret_scanning_alert"}
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `declares unsupported event kinds github.secret_scanning_alert`) {
+		t.Fatalf("issues = %#v, want mixed event kind issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsMissingFixturePair(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+	rule.Spec.Verification.Fixtures = []findingdsl.PolicyRuleVerificationFixture{{Name: "finding", Expect: "finding"}}
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `graph-backed policy verification fixtures must include an expect=pass case`) {
+		t.Fatalf("issues = %#v, want missing pass fixture issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsMissingResourceURNAnchors(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+	rule.Spec.Context.Graph.Anchors = nil
+	rule.Spec.Evidence.FingerprintFields = []string{"tenant_id", "policy_id"}
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	for _, want := range []string{
+		`graph-backed policy must include resource_urn in spec.context.graph.anchors`,
+		`graph-backed policy must include resource_urn in spec.evidence.fingerprintFields`,
+	} {
+		if !issueMessagesContain(issues, want) {
+			t.Fatalf("issues = %#v, want %q", issues, want)
+		}
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsGraphQueryMissingAssetColumns(t *testing.T) {
+	rule := graphBackedGraphQueryRule([]string{"primary_urn", "fingerprint_key", "summary"})
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `graph-backed graph policy must include "resource_urns"`) {
+		t.Fatalf("issues = %#v, want missing graph asset column issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsAcceptsGraphQueryAssetColumns(t *testing.T) {
+	rule := graphBackedGraphQueryRule([]string{"primary_urn", "fingerprint_key", "summary", "resource_urns"})
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want none", issues)
+	}
+}
+
 func TestCheckSourceCatalogsRejectsSymlinkedCatalogs(t *testing.T) {
 	root := t.TempDir()
 	sourceDir := filepath.Join(root, "sources", "custom")
@@ -660,6 +753,64 @@ func TestCheckSourceCatalogsRejectsSymlinkedCatalogs(t *testing.T) {
 	}
 	if len(issues) == 0 || !strings.Contains(issues[0].message, "symlinked source catalog") {
 		t.Fatalf("issues = %#v, want symlinked source catalog issue", issues)
+	}
+}
+
+func graphBackedResourceRule(resource string) findingdsl.PolicyFindingRule {
+	return findingdsl.PolicyFindingRule{
+		RelPath: "policies/github/test.yaml",
+		Metadata: findingdsl.PolicyRuleMetadata{
+			Tags: []string{"github", "graph-backed"},
+		},
+		Spec: findingdsl.PolicyFindingRuleSpec{
+			Resource: resource,
+			Input: findingdsl.PolicyRuleInput{
+				EventKinds: []string{"github.code.repository"},
+			},
+			Match: findingdsl.PolicyRuleMatch{
+				Conditions: []string{`cmp_eq(path(resource, "visibility"), "public")`},
+			},
+			Assert: findingdsl.PolicyRuleAssert{
+				All: []findingdsl.PolicyRuleAssertion{
+					{Field: "repository", Op: "exists"},
+				},
+			},
+			Context: findingdsl.PolicyRuleContext{
+				Graph: findingdsl.PolicyRuleGraphContext{
+					Anchors: []string{"resource_urn"},
+				},
+			},
+			Evidence: findingdsl.PolicyRuleEvidence{
+				FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn"},
+			},
+			Verification: findingdsl.PolicyRuleVerification{
+				Fixtures: []findingdsl.PolicyRuleVerificationFixture{
+					{Name: "finding", Expect: "finding"},
+					{Name: "pass", Expect: "pass"},
+				},
+			},
+		},
+	}
+}
+
+func graphBackedGraphQueryRule(requiredColumns []string) findingdsl.PolicyFindingRule {
+	return findingdsl.PolicyFindingRule{
+		RelPath: "policies/graph/test.yaml",
+		Metadata: findingdsl.PolicyRuleMetadata{
+			Tags: []string{"graph-backed"},
+		},
+		Spec: findingdsl.PolicyFindingRuleSpec{
+			Graph: findingdsl.PolicyRuleGraphFinding{
+				Query:           "MATCH (entity:Entity) RETURN entity.urn AS primary_urn",
+				RequiredColumns: requiredColumns,
+			},
+			Verification: findingdsl.PolicyRuleVerification{
+				Fixtures: []findingdsl.PolicyRuleVerificationFixture{
+					{Name: "finding", Expect: "finding"},
+					{Name: "pass", Expect: "pass"},
+				},
+			},
+		},
 	}
 }
 
