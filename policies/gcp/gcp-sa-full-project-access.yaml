@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-sa-no-full-project-access
+    name: GCP Service Account No Full Access Scopes
+    description: Service account should not have cloud-platform (full access) scope on compute instances
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-4.2
+        - iam
+        - service-account
+        - least-privilege
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::compute::instance
+    match:
+        conditions:
+            - contains_value(path(resource, "service_accounts.scopes"), "https://www.googleapis.com/auth/cloud-platform")
+        conditionFormat: cel
+    remediation:
+        summary: Replace cloud-platform scope with specific, minimal scopes required by the workload.
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078

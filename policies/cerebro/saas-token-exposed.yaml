@@ -1,0 +1,52 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: saas-token-exposed
+    name: Validated exposure of SaaS API token
+    description: A SaaS API token has been validated as exposed and functional
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - secrets
+        - saas
+        - validated-exposure
+spec:
+    severity: critical
+    effect: forbid
+    resource: '*'
+    match:
+        conditions:
+            - list_value(path(resource, "secrets")).exists(item, (cmp_eq(path(item, "type"), "saas_api_key")) && (cmp_eq(path(item, "validated_exposed"), true)))
+        conditionFormat: cel
+    remediation:
+        summary: Rotate the exposed token immediately. Audit for unauthorized access using the token.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "3.5"
+            - "8.6"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Execution
+          technique: T1059
+        - tactic: Credential Access
+          technique: T1552

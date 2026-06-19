@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-sa-admin-user-combined
+    name: User account with both 'Service Account Admin' and 'Service Account User' roles assigned
+    description: A user can both create and impersonate service accounts, a dangerous privilege combination
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - gcp
+        - identity
+        - privilege-escalation
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::iam::member
+    match:
+        conditions:
+            - list_value(path(resource, "roles")).exists(item, cmp_eq(path(item, "name"), "roles/iam.serviceAccountAdmin"))
+            - list_value(path(resource, "roles")).exists(item, cmp_eq(path(item, "name"), "roles/iam.serviceAccountUser"))
+        conditionFormat: cel
+    remediation:
+        summary: Separate service account administration from usage. Apply separation of duties principle.
+    riskCategories:
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078

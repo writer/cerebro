@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-apigateway-public
+    name: API Gateway Publicly Accessible
+    description: API Gateway REST API is publicly accessible from the internet without authorization
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - apigateway
+        - network-exposure
+        - cis-aws-2.6
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::apigateway::rest_api
+    match:
+        conditions:
+            - (contains_value(path(resource, "endpoint_configuration.types"), "EDGE")) || (contains_value(path(resource, "endpoint_configuration.types"), "REGIONAL"))
+            - cmp_eq(path(resource, "web_acl_arn"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Configure the API as private with VPC endpoint access. Use resource policies to restrict access. Enable authorization on all methods. Attach a WAF web ACL.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "2.6"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190

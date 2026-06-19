@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-network-policy-selector-present
+    name: Kubernetes NetworkPolicy Selector Is Present
+    description: NetworkPolicies should define pod selectors to avoid unintentionally broad scope.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - network
+        - segmentation
+spec:
+    severity: medium
+    effect: forbid
+    resource: k8s::core::namespace
+    match:
+        conditions:
+            - '!(in_list(path(resource, "name"), ["kube-system","kube-public","kube-node-lease"]))'
+            - cmp_gt(path(resource, "network_policies_without_selector"), 0)
+        conditionFormat: cel
+    remediation:
+        summary: Add explicit pod selectors to NetworkPolicies that currently target all pods.
+    riskCategories:
+        - LATERAL_MOVEMENT
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-4
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+        - name: PCI DSS v4.0.1
+          controls:
+            - 1.3.1
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"

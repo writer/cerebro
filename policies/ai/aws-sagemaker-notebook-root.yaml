@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-sagemaker-notebook-root-access
+    name: SageMaker Notebook Root Access
+    description: SageMaker notebook instance allows root access
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - sagemaker
+        - least-privilege
+        - container-security
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::sagemaker::notebook_instance
+    match:
+        conditions:
+            - cmp_eq(path(resource, "root_access"), "Enabled")
+        conditionFormat: cel
+    remediation:
+        summary: Disable root access on the notebook instance.
+    riskCategories:
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

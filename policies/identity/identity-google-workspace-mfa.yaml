@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-google-workspace-mfa
+    name: Google Workspace MFA Enforced
+    description: Ensures all Google Workspace users have MFA enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - google-workspace
+        - gsuite
+        - identity
+        - mfa
+        - authentication
+        - compliance
+spec:
+    severity: high
+    effect: forbid
+    resource: google_workspace_users
+    match:
+        conditions:
+            - cmp_eq(path(resource, "is_enrolled_in_2sv"), false)
+            - cmp_eq(path(resource, "suspended"), false)
+        conditionFormat: cel
+    remediation:
+        summary: Enable 2-Step Verification (MFA) for all Google Workspace users. Configure organizational policy to enforce MFA.
+        steps:
+            - Navigate to Google Admin Console > Security > 2-Step Verification
+            - Enable 'Allow users to turn on 2-Step Verification'
+            - Set enforcement policy to require 2-Step Verification
+            - Provide users with enrollment instructions
+            - Monitor enrollment status and follow up with non-compliant users
+    riskCategories:
+        - WEAK_AUTHENTICATION
+    frameworks:
+        - name: CIS Google Workspace Benchmark
+          controls:
+            - "1.1"
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2

@@ -1,0 +1,40 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-sagemaker-endpoint-no-encryption
+    name: SageMaker Endpoint Without Encryption
+    description: SageMaker endpoint does not have KMS encryption configured
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - sagemaker
+        - encryption
+        - data-protection
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::sagemaker::endpoint_configuration
+    match:
+        conditions:
+            - cmp_eq(path(resource, "kms_key_id"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Configure KMS encryption for the SageMaker endpoint.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

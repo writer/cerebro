@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: pci-unique-user-ids
+    name: Unique User IDs for CDE Access
+    description: Ensures all users have unique IDs and shared/group accounts are not used (PCI DSS 8.1.1)
+    tags:
+        - pci
+        - identity
+        - authentication
+        - requirement-8
+spec:
+    severity: HIGH
+    category: pci
+    resourceType: user_account
+    match:
+        query: SELECT id, username, account_type, system_name FROM user_accounts WHERE cde_access = true AND (account_type = 'shared' OR account_type = 'group')
+    remediation:
+        summary: Replace shared accounts with unique individual user accounts. Assign unique user IDs to all users.
+    frameworks:
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+    enabled: true

@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-google-workspace-group-personal-email-domain
+    name: Google Workspace Groups Using Personal Email Domains
+    description: Detects Google Workspace groups configured with personal email domains.
+    tags:
+        - google-workspace
+        - identity
+        - groups
+        - governance
+spec:
+    severity: LOW
+    category: identity
+    resourceType: google_workspace_group
+    match:
+        query: SELECT g.id AS id, g.name AS group_name, g.email FROM google_workspace_groups g WHERE LOWER(COALESCE(g.email, '')) SIMILAR TO '%@(gmail|yahoo|hotmail|outlook)\.com'
+    remediation:
+        summary: Update group email aliases to approved corporate domains and remove legacy personal-domain aliases.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.17
+    enabled: true

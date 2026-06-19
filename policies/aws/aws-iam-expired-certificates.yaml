@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-iam-expired-certificates
+    name: IAM Server Certificates Not Expired
+    description: Expired SSL/TLS server certificates stored in IAM should be removed as they can no longer be used and indicate poor certificate lifecycle management
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - iam
+        - certificates
+        - ssl
+        - tls
+        - hygiene
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws_iam_server_certificates
+    match:
+        conditions:
+            - cmp_lt(path(resource, "expiration"), "now()")
+        conditionFormat: cel
+    remediation:
+        summary: 'Remove expired server certificates from IAM. Use: aws iam delete-server-certificate --server-certificate-name <name>'
+        steps:
+            - 'List all server certificates: aws iam list-server-certificates'
+            - Identify expired certificates by checking the Expiration date
+            - 'Delete expired certificates: aws iam delete-server-certificate --server-certificate-name <name>'
+            - Update any services still referencing the old certificate to use a valid one
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "1.19"
+        - name: NIST 800-53 r5
+          controls:
+            - IA-5
+            - SC-17
+        - name: SOC 2
+          controls:
+            - CC6.1

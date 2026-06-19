@@ -1,0 +1,47 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: compliance-p1-security-issues
+    name: P1 Security Issues Resolved Timely
+    description: Ensures P1 (critical) security issues are resolved within SLA (24-48 hours)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - compliance
+        - security-issues
+        - p1
+        - critical
+        - sla
+        - incident-response
+spec:
+    severity: critical
+    effect: forbid
+    resource: security_issues
+    match:
+        conditions:
+            - cmp_eq(path(resource, "priority"), "P1")
+            - cmp_ne(path(resource, "status"), "resolved")
+            - cmp_lt(path(resource, "created_at"), "NOW() - INTERVAL '48 hours'")
+        conditionFormat: cel
+    remediation:
+        summary: Immediately escalate and resolve P1 security issues. Follow incident response procedures.
+        steps:
+            - Acknowledge the P1 issue within 15 minutes
+            - Assemble incident response team
+            - Implement containment measures
+            - Apply fix or workaround
+            - Complete post-incident review
+    riskCategories:
+        - UNMITIGATED_RISK
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.3
+            - CC7.4
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.26
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - IR-5

@@ -1,0 +1,39 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-storage-https-only
+    name: Azure Storage HTTPS Only
+    description: Azure Storage accounts should require HTTPS traffic only
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-azure-3.1
+        - security
+        - storage
+        - encryption
+spec:
+    severity: high
+    effect: forbid
+    resource: azure::storage::account
+    match:
+        conditions:
+            - cmp_ne(path(resource, "enable_https_traffic_only"), true)
+        conditionFormat: cel
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

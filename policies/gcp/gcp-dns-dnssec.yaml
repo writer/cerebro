@@ -1,0 +1,35 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-dns-dnssec
+    name: Cloud DNS DNSSEC Disabled
+    description: Cloud DNS managed zone does not have DNSSEC enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - dns
+        - dnssec
+        - integrity
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::dns::managed_zone
+    match:
+        conditions:
+            - cmp_ne(path(resource, "dnssec_config.state"), "on")
+        conditionFormat: cel
+    remediation:
+        summary: Enable DNSSEC on the managed zone. Ensure DS records are properly configured with the domain registrar.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-20
+            - SC-21
+        - name: SOC 2
+          controls:
+            - CC6.6
+        - name: CIS Controls v8
+          controls:
+            - "12"

@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-servicenow-personal-email-domain
+    name: Servicenow Accounts Using Personal Email Domains
+    description: Detects active servicenow accounts using personal email domains instead of corporate identity domains.
+    tags:
+        - servicenow
+        - identity
+        - account-hygiene
+        - governance
+spec:
+    severity: MEDIUM
+    category: identity
+    resourceType: servicenow_user
+    match:
+        query: SELECT u.id AS id, u.email AS email FROM servicenow_users u WHERE COALESCE(u.active, true) = true AND LOWER(COALESCE(u.email, '')) SIMILAR TO '%@(gmail|yahoo|hotmail|outlook)\\.com'
+    remediation:
+        summary: Migrate account identities to corporate domains and disable personal-domain access where not explicitly approved.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.17
+    enabled: true

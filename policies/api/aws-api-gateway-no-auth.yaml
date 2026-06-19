@@ -1,0 +1,50 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-api-gateway-no-authorization
+    name: AWS API Gateway No Authorization
+    description: API Gateway endpoint has no authorization configured
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - api
+        - apigateway
+        - authentication
+        - public-api
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::apigateway::method
+    match:
+        conditions:
+            - cmp_eq(path(resource, "authorization_type"), "NONE")
+            - cmp_ne(path(resource, "api_key_required"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Configure IAM, Cognito, or Lambda authorizer for the API Gateway method.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "8.3"
+            - "8.4"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190

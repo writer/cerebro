@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-namespace-missing-pss-label
+    name: Kubernetes Namespace Missing Pod Security Enforcement Label
+    description: Namespace does not define pod-security.kubernetes.io/enforce, indicating Pod Security Standards are not explicitly enforced.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - pod-security-standards
+        - namespace
+spec:
+    severity: low
+    effect: forbid
+    resource: k8s::namespace
+    match:
+        conditions:
+            - '!(in_list(path(resource, "name"), ["kube-system","kube-public","kube-node-lease"]))'
+            - cmp_eq(path(resource, "labels['pod-security.kubernetes.io/enforce']"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Set pod-security.kubernetes.io/enforce (for example baseline or restricted) on each application namespace.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.1
+            - 5.2.2
+            - 5.2.3
+            - 5.2.4
+            - 5.2.5
+            - 5.2.6
+            - 5.2.7
+            - 5.2.8
+        - name: NIST 800-53 r5
+          controls:
+            - AC-6
+            - CM-7
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6

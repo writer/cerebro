@@ -1,0 +1,40 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-alb-no-authentication
+    name: AWS ALB No Authentication
+    description: Application Load Balancer listener has no authentication action
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - api
+        - alb
+        - authentication
+        - network
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::elbv2::listener
+    match:
+        conditions:
+            - '!(contains_value(path(resource, "default_actions"), {"type":"authenticate-oidc"}))'
+            - '!(contains_value(path(resource, "default_actions"), {"type":"authenticate-cognito"}))'
+        conditionFormat: cel
+    remediation:
+        summary: Add Cognito or OIDC authentication action to the ALB listener.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"
+    mitreAttack:
+        - tactic: Discovery
+          technique: T1087

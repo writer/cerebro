@@ -1,0 +1,29 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: org-customer-touchpoints-low
+    name: Customer Touchpoint Coverage Too Thin
+    description: Customer relationship has fewer than two active touchpoints.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - org-topology
+        - customer-health
+        - coverage
+spec:
+    severity: high
+    effect: forbid
+    resource: org::customer_relationship
+    match:
+        conditions:
+            - cmp_lt(path(resource, "touchpoint_count"), 2)
+            - cmp_lt(path(resource, "renewal_days"), 120)
+        conditionFormat: cel
+    remediation:
+        summary: Add at least one additional owner and auto-escalate to the account owner for coverage recovery.
+    riskCategories:
+        - CUSTOMER_HEALTH_RISK
+        - RESILIENCE_RISK
+    frameworks:
+        - name: Cerebro Organizational Resilience
+          controls:
+            - ORG-2

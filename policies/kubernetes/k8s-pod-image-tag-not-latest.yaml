@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-image-tag-not-latest
+    name: Kubernetes Pod Image Tag Is Not Latest
+    description: Pods should not use latest or implicit image tags.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - supply-chain
+        - image
+spec:
+    severity: medium
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_eq(path(resource, "spec.uses_latest_image_tag"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Pin images to immutable, versioned tags and avoid latest.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - CM-5
+            - CM-7
+            - SI-7
+            - SR-11
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "6.5"
+        - name: CIS Controls v8
+          controls:
+            - "2"
+            - "7"
+            - "16"

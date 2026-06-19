@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: pci-audit-retention
+    name: Audit Log Retention 1 Year
+    description: Ensures audit trail history is retained for at least one year with 3 months immediately available (PCI DSS 10.7)
+    tags:
+        - pci
+        - audit
+        - retention
+        - requirement-10
+spec:
+    severity: HIGH
+    category: pci
+    resourceType: log_retention
+    match:
+        query: SELECT id, log_type, retention_days, immediate_availability_days FROM log_retention_policies WHERE cde_scope = true AND (retention_days < 365 OR immediate_availability_days < 90)
+    remediation:
+        summary: Configure audit log retention for minimum 1 year with at least 3 months immediately available for analysis.
+    frameworks:
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+    enabled: true

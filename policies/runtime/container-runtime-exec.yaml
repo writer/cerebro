@@ -1,0 +1,58 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: container-runtime-exec-detected
+    name: Container Runtime Exec Detected
+    description: kubectl exec or docker exec detected in production container
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - runtime
+        - kubernetes
+        - container
+        - exec
+        - suspicious-activity
+spec:
+    severity: high
+    effect: forbid
+    resource: kubernetes::audit_event
+    match:
+        conditions:
+            - cmp_eq(path(resource, "verb"), "create")
+            - cmp_eq(path(resource, "resource"), "pods/exec")
+            - '!(in_list(path(resource, "namespace"), ["[''kube-system'']"]))'
+        conditionFormat: cel
+    remediation:
+        summary: Review exec session for unauthorized access. Implement admission policies to restrict exec.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.2
+            - CC7.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.8.16
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: SOC 2
+          controls:
+            - CC7.3
+            - CC7.4
+            - CC7.5
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.5.26
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - IR-5
+            - IR-8

@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-rds-auto-minor-upgrade
+    name: RDS Auto Minor Version Upgrade Enabled
+    description: RDS instances should have automatic minor version upgrades enabled to receive security patches and bug fixes automatically
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - rds
+        - patching
+        - maintenance
+        - security-updates
+spec:
+    severity: low
+    effect: forbid
+    resource: aws_rds_instances
+    match:
+        conditions:
+            - cmp_ne(path(resource, "auto_minor_version_upgrade"), true)
+        conditionFormat: cel
+    remediation:
+        summary: 'Enable automatic minor version upgrades for the RDS instance. Use: aws rds modify-db-instance --db-instance-identifier <name> --auto-minor-version-upgrade --apply-immediately'
+        steps:
+            - Navigate to RDS in AWS Console
+            - Select the database instance
+            - Click 'Modify'
+            - Under 'Maintenance', enable 'Auto minor version upgrade'
+            - Apply changes
+    riskCategories:
+        - VULNERABILITY
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SI-2
+            - CM-3
+        - name: SOC 2
+          controls:
+            - CC7.1
+        - name: ISO 27001:2022
+          controls:
+            - A.8.8
+            - A.8.19

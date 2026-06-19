@@ -1,0 +1,40 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-sagemaker-training-unencrypted
+    name: SageMaker Training Job Unencrypted Storage
+    description: SageMaker training job does not encrypt output data
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - sagemaker
+        - encryption
+        - training-data
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::sagemaker::training_job
+    match:
+        conditions:
+            - cmp_eq(path(resource, "output_data_config.kms_key_id"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Configure KMS encryption for training job output data.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

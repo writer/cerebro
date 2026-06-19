@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-cloudfront-http
+    name: CloudFront Distribution Allows HTTP
+    description: CloudFront distribution allows unencrypted HTTP traffic instead of requiring HTTPS
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - cloudfront
+        - encryption
+        - transport-security
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::cloudfront::distribution
+    match:
+        conditions:
+            - (cmp_ne(path(resource, "viewer_protocol_policy"), "https-only")) && (cmp_ne(path(resource, "viewer_protocol_policy"), "redirect-to-https"))
+        conditionFormat: cel
+    remediation:
+        summary: Update the distribution's viewer protocol policy to 'redirect-to-https' or 'https-only'. Ensure a valid SSL certificate is configured.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"

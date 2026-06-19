@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-eks-control-plane-logging
+    name: EKS Control Plane Logging
+    description: EKS cluster should have control plane logging enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-eks-2.1.1
+        - eks
+        - kubernetes
+        - logging
+        - audit
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::eks::cluster
+    match:
+        conditions:
+            - cmp_ne(path(resource, "logging.cluster_logging.enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: 'Enable all control plane logging types: api, audit, authenticator, controllerManager, scheduler.'
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562

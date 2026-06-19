@@ -1,0 +1,32 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: org-customer-topology-churn-risk
+    name: Customer Topology Matches Churn Pattern
+    description: Customer topology is structurally similar to historically churned relationships.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - org-topology
+        - customer-health
+        - churn-risk
+spec:
+    severity: high
+    effect: forbid
+    resource: org::customer_relationship
+    match:
+        conditions:
+            - cmp_gt(path(resource, "churn_risk"), 0.7)
+            - cmp_lt(path(resource, "cohort_percentile"), 40)
+        conditionFormat: cel
+    remediation:
+        summary: 'Trigger churn-intervention playbook: sponsor outreach, technical recovery plan, and weekly account-team sync.'
+    riskCategories:
+        - CHURN_RISK
+        - CUSTOMER_HEALTH_RISK
+    frameworks:
+        - name: Cerebro Organizational Resilience
+          controls:
+            - ORG-2
+        - name: Cerebro Revenue Operations
+          controls:
+            - REV-5

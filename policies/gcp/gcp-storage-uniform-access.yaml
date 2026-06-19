@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-storage-uniform-bucket-access
+    name: GCP Storage Uniform Bucket Access
+    description: Cloud Storage buckets should use uniform bucket-level access
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-5.2
+        - storage
+        - access-control
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::storage::bucket
+    match:
+        conditions:
+            - cmp_ne(path(resource, "iam_configuration.uniform_bucket_level_access.enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable uniform bucket-level access to use IAM consistently for access control.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

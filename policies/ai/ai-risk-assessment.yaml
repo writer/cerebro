@@ -1,0 +1,32 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-risk-assessment
+    name: AI Model Risk Assessment Completed
+    description: Ensures risk assessments are completed for all AI models before deployment (ISO 42001)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - ml
+        - risk
+        - assessment
+        - iso42001
+spec:
+    severity: high
+    effect: forbid
+    resource: ai_models
+    match:
+        conditions:
+            - exists_path(resource, "deployment_date")
+            - (!exists_path(resource, "risk_assessment_date")) || (cmp_gt(path(resource, "risk_assessment_date"), path(resource, "deployment_date")))
+        conditionFormat: cel
+    remediation:
+        summary: Complete risk assessment for all AI models before deployment. Document potential harms, biases, and mitigation strategies.
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - "6.1"
+            - "6.2"
+        - name: SOC 2
+          controls:
+            - CC3.2

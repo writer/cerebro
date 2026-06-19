@@ -1,0 +1,35 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-compute-shielded-vm
+    name: GCP Compute Shielded VM
+    description: Compute instances should use shielded VM features
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-4.8
+        - compute
+        - security
+        - shielded-vm
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::compute::instance
+    match:
+        conditions:
+            - cmp_ne(path(resource, "shielded_instance_config.enable_secure_boot"), true)
+            - cmp_ne(path(resource, "shielded_instance_config.enable_vtpm"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable Secure Boot, vTPM, and Integrity Monitoring on the instance.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Benchmarks
+          controls:
+            - "4.8"
+        - name: NIST 800-53 r5
+          controls:
+            - SI-7
+        - name: SOC 2
+          controls:
+            - CC7.1

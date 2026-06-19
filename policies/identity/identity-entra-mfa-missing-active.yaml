@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-entra-mfa-missing-active
+    name: Entra Active Accounts Without MFA
+    description: Detects active entra accounts that do not meet MFA requirements.
+    tags:
+        - entra
+        - identity
+        - mfa
+        - authentication
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: entra_user
+    match:
+        query: SELECT u.id AS id, u.display_name AS account_name FROM entra_users u WHERE COALESCE(u.account_enabled, true) = true AND COALESCE(u.mfa_registered, false) = false
+    remediation:
+        summary: Require MFA enrollment and enforcement for all active accounts.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.17
+    enabled: true

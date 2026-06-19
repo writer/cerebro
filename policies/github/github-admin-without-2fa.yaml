@@ -1,0 +1,48 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: github-admin-without-2fa
+    name: GitHub Admin Without 2FA
+    description: Organization admin or repository admin does not have two-factor authentication enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - github
+        - authentication
+        - mfa
+        - privileged-access
+spec:
+    severity: critical
+    effect: forbid
+    resource: github::user
+    match:
+        conditions:
+            - in_list(path(resource, "role"), ["admin","owner"])
+            - cmp_ne(path(resource, "two_factor_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Require the user to enable 2FA on their GitHub account. Consider removing admin access until 2FA is enabled.
+    riskCategories:
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+            - "7.2"
+        - name: CIS Controls v8
+          controls:
+            - "6"
+            - "5"
+        - name: SOC 2
+          controls:
+            - CC6
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

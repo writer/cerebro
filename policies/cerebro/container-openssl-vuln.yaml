@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: container-openssl-vuln
+    name: Internal container has an image vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability)
+    description: A container is running an image vulnerable to OpenSSL vulnerabilities
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - container
+        - vulnerability
+        - openssl
+spec:
+    severity: high
+    effect: forbid
+    resource: container::image
+    match:
+        conditions:
+            - (cmp_eq(path(resource, "has_openssl_vulnerability"), true)) || (contains_value(path(resource, "vulnerabilities"), "CVE-2022-3602")) || (contains_value(path(resource, "vulnerabilities"), "CVE-2022-3786"))
+        conditionFormat: cel
+    remediation:
+        summary: Rebuild container image with OpenSSL 3.0.7 or later.
+    riskCategories:
+        - VULNERABILITY
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+            - RA-5
+            - SI-2
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+            - "6.3"
+            - "11.3"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+            - "7"

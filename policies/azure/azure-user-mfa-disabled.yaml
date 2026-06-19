@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-user-mfa-disabled
+    name: Azure AD User Without MFA
+    description: Azure AD user does not have multi-factor authentication methods registered
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - azure
+        - identity
+        - mfa
+        - authentication
+        - cis-azure-1.1.1
+spec:
+    severity: high
+    effect: forbid
+    resource: azure::ad::user
+    match:
+        conditions:
+            - cmp_eq(path(resource, "account_enabled"), true)
+            - (cmp_eq(path(resource, "authentication_methods_count"), 0)) || (cmp_eq(path(resource, "strong_authentication_methods_count"), 0))
+        conditionFormat: cel
+    remediation:
+        summary: Enable MFA for the user via Conditional Access policies. Use Security Defaults for baseline MFA. Enroll users in self-service MFA registration.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098

@@ -1,0 +1,55 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: serverless-public-admin
+    name: Publicly exposed serverless with admin privileges
+    description: A publicly exposed serverless function has administrative privileges
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - serverless
+        - admin
+        - public-exposure
+spec:
+    severity: critical
+    effect: forbid
+    resource: serverless::function
+    match:
+        conditions:
+            - cmp_eq(path(resource, "is_public"), true)
+            - cmp_eq(path(resource, "execution_role.has_admin_role"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Remove admin privileges from the function. Implement least privilege IAM policies. Add authentication to the function endpoint.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Execution
+          technique: T1059
+        - tactic: Privilege Escalation
+          technique: T1078

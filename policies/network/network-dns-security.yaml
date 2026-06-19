@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: network-dns-security
+    name: DNS Security Extensions Enabled
+    description: Ensures DNSSEC is enabled for domain validation to prevent DNS spoofing
+    tags:
+        - network
+        - dns
+        - dnssec
+        - security
+spec:
+    severity: MEDIUM
+    category: network
+    resourceType: dns_zone
+    match:
+        query: SELECT id, zone_name, dnssec_enabled FROM dns_zones WHERE is_public = true AND dnssec_enabled = false
+    remediation:
+        summary: Enable DNSSEC for all public DNS zones to protect against DNS spoofing and cache poisoning.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

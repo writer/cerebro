@@ -1,0 +1,50 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-keyvault-logging
+    name: Key Vault Diagnostic Logging Disabled
+    description: Azure Key Vault does not have diagnostic logging enabled for audit events
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - azure
+        - keyvault
+        - logging
+        - audit
+        - cis-azure-5.1.5
+spec:
+    severity: medium
+    effect: forbid
+    resource: azure::keyvault::vault
+    match:
+        conditions:
+            - '!(contains_value(path(resource, "diagnostic_settings.logs"), "category == ''AuditEvent'' AND enabled == true"))'
+        conditionFormat: cel
+    remediation:
+        summary: Enable diagnostic settings with AuditEvent logs sent to Log Analytics workspace or storage account.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+            - "3.5"
+            - "8.6"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562
+        - tactic: Credential Access
+          technique: T1552

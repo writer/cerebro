@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-rds-backup-enabled
+    name: RDS Backup Enabled
+    description: RDS instances should have automated backups enabled with adequate retention
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - rds
+        - database
+        - backup
+        - disaster-recovery
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::rds::db_instance
+    match:
+        conditions:
+            - cmp_lt(path(resource, "backup_retention_period"), 7)
+        conditionFormat: cel
+    remediation:
+        summary: Enable automated backups with at least 7 days retention period.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+            - A1.1
+            - A1.2
+        - name: ISO 27001:2022
+          controls:
+            - A.5.30
+            - A.8.13
+        - name: NIST 800-53 r5
+          controls:
+            - CP-9
+            - CP-10
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

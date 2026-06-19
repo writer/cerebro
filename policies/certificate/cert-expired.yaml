@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: cert-expired
+    name: Expired SSL/TLS Certificates
+    description: Identifies SSL/TLS certificates that have already expired
+    tags:
+        - ssl
+        - tls
+        - certificate
+        - expired
+        - critical
+spec:
+    severity: CRITICAL
+    category: certificate
+    resourceType: certificate
+    match:
+        query: SELECT id, domain, issuer, valid_to, days_until_expiry FROM certificates WHERE days_until_expiry <= 0
+    remediation:
+        summary: Immediately renew the expired certificate. Services using this certificate may be unavailable or showing security warnings to users.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.1
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+    enabled: true

@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-dynamodb-pitr
+    name: DynamoDB Point-in-Time Recovery Enabled
+    description: Ensures DynamoDB tables have Point-in-Time Recovery (PITR) enabled for backup and restore
+    tags:
+        - aws
+        - dynamodb
+        - backup
+        - pitr
+        - recovery
+spec:
+    severity: HIGH
+    category: aws
+    resourceType: aws_dynamodb_table
+    match:
+        query: 'SELECT t._cq_id AS id, t.table_name, t.region FROM aws_dynamodb_tables t LEFT JOIN aws_dynamodb_table_continuous_backups b ON t.table_arn = b.table_arn WHERE b.table_arn IS NULL OR b.continuous_backups_status <> ''ENABLED'' OR b.point_in_time_recovery_description NOT ILIKE ''%"PointInTimeRecoveryStatus": "ENABLED"%'''
+    remediation:
+        summary: 'Enable Point-in-Time Recovery on DynamoDB tables via AWS Console or CLI: aws dynamodb update-continuous-backups'
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

@@ -1,0 +1,25 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-baa-required
+    name: HIPAA Business Associate Agreements
+    description: Ensures Business Associate Agreements exist for vendors with PHI access (HIPAA 164.308(b)(1))
+    tags:
+        - hipaa
+        - baa
+        - vendor
+        - healthcare
+        - compliance
+spec:
+    severity: HIGH
+    category: hipaa
+    resourceType: vendor
+    match:
+        query: SELECT id, name, phi_access, baa_signed, baa_expiry FROM vendors WHERE phi_access = true AND (baa_signed = false OR baa_expiry < NOW())
+    remediation:
+        summary: Execute Business Associate Agreements with all vendors that access, store, or transmit PHI.
+    frameworks:
+        - name: HIPAA
+          controls:
+            - "164.312"
+    enabled: true

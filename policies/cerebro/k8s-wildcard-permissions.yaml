@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-wildcard-permissions
+    name: Kubernetes role/cluster role assigned permissions that contain wildcards
+    description: A Kubernetes role uses wildcard permissions which grant overly broad access
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - kubernetes
+        - rbac
+        - wildcard
+spec:
+    severity: high
+    effect: forbid
+    resource: k8s::cluster_role|k8s::role|k8s::rbac::risky_binding
+    match:
+        conditions:
+            - ((cmp_eq(path(resource, "wildcard_verbs"), true)) || (cmp_eq(path(resource, "wildcard_resources"), true))) || (list_value(path(resource, "rules")).exists(item, (contains_value(path(item, "resources"), "*")) || (contains_value(path(item, "verbs"), "*")) || (contains_value(path(item, "api_groups"), "*"))))
+        conditionFormat: cel
+    remediation:
+        summary: Replace wildcard permissions with explicit resource and verb definitions.
+    riskCategories:
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078

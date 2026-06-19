@@ -1,0 +1,30 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: org-bus-factor-critical
+    name: Critical System With Bus Factor 1
+    description: A system classified as critical has only one person with active knowledge.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - org-topology
+        - knowledge-concentration
+        - resilience
+spec:
+    severity: high
+    effect: forbid
+    resource: org::system
+    match:
+        conditions:
+            - cmp_eq(path(resource, "criticality"), "high")
+            - cmp_le(path(resource, "bus_factor"), 1)
+        conditionFormat: cel
+    remediation:
+        summary: Assign at least one additional active owner and execute a knowledge-transfer plan.
+    riskCategories:
+        - RESILIENCE_RISK
+        - KNOWLEDGE_CONCENTRATION
+    frameworks:
+        - name: Cerebro Organizational Resilience
+          controls:
+            - ORG-1
+            - ORG-4

@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: vpc-dns-logging
+    name: VPC has no Route 53 DNS resolver with logging enabled
+    description: A VPC does not have DNS query logging enabled for security visibility
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - aws
+        - network
+        - dns
+        - logging
+spec:
+    severity: low
+    effect: forbid
+    resource: aws::ec2::vpc
+    match:
+        conditions:
+            - cmp_eq(path(resource, "dns_query_logging_enabled"), false)
+        conditionFormat: cel
+    remediation:
+        summary: Enable Route 53 Resolver DNS query logging for security monitoring and threat detection.
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562

@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: vpc-external-peering
+    name: Virtual network is peered with a virtual network from an external subscription
+    description: A VPC/VNet is peered with a network in a different subscription or account
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - network
+        - peering
+        - cross-account
+spec:
+    severity: high
+    effect: forbid
+    resource: network::vpc_peering|network::vnet_peering
+    match:
+        conditions:
+            - cmp_ne(path(resource, "peer_subscription_id"), path(resource, "subscription_id"))
+        conditionFormat: cel
+    remediation:
+        summary: Review and validate external peering connections. Remove unauthorized peerings. Document approved connections.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - LATERAL_MOVEMENT
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-4
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+        - name: PCI DSS v4.0.1
+          controls:
+            - 1.3.1
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+    mitreAttack:
+        - tactic: Execution
+          technique: T1059
+        - tactic: Lateral Movement
+          technique: T1021

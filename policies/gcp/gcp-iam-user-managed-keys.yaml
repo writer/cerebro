@@ -1,0 +1,49 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-iam-minimize-user-managed-keys
+    name: GCP Minimize User Managed Service Account Keys
+    description: Service accounts should use GCP-managed keys instead of user-managed keys where possible
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-1.4
+        - iam
+        - service-account
+        - keys
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::iam::service_account_key
+    match:
+        conditions:
+            - cmp_eq(path(resource, "key_type"), "USER_MANAGED")
+        conditionFormat: cel
+    remediation:
+        summary: Use workload identity or GCP-managed keys. If user-managed keys are required, implement rotation.
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+            - "3.5"
+            - "8.6"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Credential Access
+          technique: T1552

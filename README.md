@@ -22,7 +22,7 @@ In practical terms, Cerebro ingests source and runtime signals, turns them into 
 - **Graph operations** — Neo4j/Aura-backed graph counts, relation counts, neighborhoods, path summaries, impact queries, graph health, source/runtime ingest, ingest run status, repair/cleanup helpers, and isolated dry-run rebuilds.
 - **MCP and graph-agent surfaces** — an authenticated MCP endpoint, optional OAuth 2.1 authorization-server flow for MCP clients, and an optional graph agent LLM adapter.
 - **Device telemetry surface** — optional first-party device enrollment, token, telemetry ingest, and device vulnerability finding routes.
-- **Policy and compliance catalogs** — JSON policy definitions under `policies/`, generated detection catalogs, compliance control profiles, coverage indexes, evidence/posture packet helpers, and extension packs for custom control frameworks.
+- **Policy and compliance catalogs** — validated policy-finding DSL documents under `policies/`, generated detection catalogs, compliance control profiles, coverage indexes, evidence/posture packet helpers, and extension packs for custom control frameworks.
 
 Cerebro has historical and forward-looking docs in `docs/`. For current runtime behavior, treat `cmd/cerebro`, `internal/config`, `internal/bootstrap`, `proto/cerebro/v1/bootstrap.proto`, and the Makefile as the source of truth.
 
@@ -356,7 +356,7 @@ cd sdk/typescript && npm test
 
 ## Policies
 
-Policy definitions live under `policies/` as JSON files. The catalog includes cloud posture, identity governance, GitHub, Kubernetes, M365, Okta, runtime, vulnerability, compliance, and business-operation checks.
+Policy definitions live under `policies/` as validated `PolicyFindingRule` YAML DSL files. The catalog includes cloud posture, identity governance, GitHub, Kubernetes, M365, Okta, runtime, vulnerability, compliance, and business-operation checks.
 
 Useful directories include `policies/aws/`, `policies/azure/`, `policies/gcp/`, `policies/github/`, `policies/identity/`, `policies/kubernetes/`, `policies/okta/`, `policies/runtime/`, and `policies/vulnerability/`.
 

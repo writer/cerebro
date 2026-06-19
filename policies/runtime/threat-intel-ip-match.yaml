@@ -1,0 +1,56 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: threat-intel-malicious-ip-connection
+    name: Connection to Threat Intelligence IP
+    description: Network connection detected to IP address in threat intelligence feeds
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - runtime
+        - threat-intel
+        - network
+        - c2
+        - incident-response
+spec:
+    severity: critical
+    effect: forbid
+    resource: network::connection
+    match:
+        conditions:
+            - in_list(path(resource, "destination_ip"), ["threat_intel.malicious_ips"])
+        conditionFormat: cel
+    remediation:
+        summary: Block the IP at security groups/firewall and investigate the source instance.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.2
+            - CC7.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.8.16
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: SOC 2
+          controls:
+            - CC7.3
+            - CC7.4
+            - CC7.5
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.5.26
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - IR-5
+            - IR-8

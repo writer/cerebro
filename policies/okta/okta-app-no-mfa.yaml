@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: okta-app-no-mfa
+    name: Okta Application Without MFA Policy
+    description: Okta application does not have an authentication policy requiring MFA
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - okta
+        - application
+        - mfa
+        - authentication
+spec:
+    severity: high
+    effect: forbid
+    resource: okta::application
+    match:
+        conditions:
+            - '!(list_value(path(resource, "sign_on_policy.rules")).exists(item, cmp_eq(path(item, "actions.signon.factor_mode"), "MFA_REQUIRED")))'
+            - '!(matches_value(path(resource, "label"), ".*(test|dev|sandbox).*"))'
+        conditionFormat: cel
+    remediation:
+        summary: Create or update the application's sign-on policy to require MFA. Use Okta's authentication policies to enforce MFA for sensitive applications.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"

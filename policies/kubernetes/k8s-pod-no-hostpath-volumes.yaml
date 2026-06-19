@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-no-hostpath-volumes
+    name: Kubernetes Pod Avoids hostPath Volumes
+    description: Pods should not mount hostPath volumes because they can expose host resources.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - pod-security
+        - storage
+spec:
+    severity: high
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_eq(path(resource, "spec.uses_host_path_volume"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Replace hostPath volumes with safer volume types such as PVCs, ConfigMaps, or Secrets.
+    riskCategories:
+        - PRIVILEGE_ESCALATION
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.1
+            - 5.2.2
+            - 5.2.3
+            - 5.2.4
+            - 5.2.5
+            - 5.2.6
+            - 5.2.7
+            - 5.2.8
+        - name: NIST 800-53 r5
+          controls:
+            - AC-6
+            - CM-7
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6

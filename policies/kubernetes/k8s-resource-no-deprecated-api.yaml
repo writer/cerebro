@@ -1,0 +1,39 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-resource-no-deprecated-api
+    name: Kubernetes Resources Avoid Deprecated APIs
+    description: Audit events should not reference deprecated Kubernetes API versions.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - api
+        - upgrade
+spec:
+    severity: medium
+    effect: forbid
+    resource: kubernetes::audit_event
+    match:
+        conditions:
+            - matches_value(path(resource, "involved_object.api_version"), "(extensions/v1beta1|apps/v1beta1|apps/v1beta2|networking.k8s.io/v1beta1|rbac.authorization.k8s.io/v1beta1|batch/v1beta1|policy/v1beta1)")
+        conditionFormat: cel
+    remediation:
+        summary: Migrate manifests and controllers to supported stable API versions.
+    riskCategories:
+        - VULNERABILITY
+        - MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5
+            - SI-2
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "11.3"
+        - name: CIS Controls v8
+          controls:
+            - "7"

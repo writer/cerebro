@@ -1,0 +1,52 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ml-model-untrusted-source
+    name: ML Model from Untrusted Source
+    description: ML model loaded from external source without security scanning
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - model-security
+        - supply-chain
+        - malicious-model
+spec:
+    severity: high
+    effect: forbid
+    resource: ml::model_artifact
+    match:
+        conditions:
+            - cmp_eq(path(resource, "source_type"), "external")
+            - cmp_ne(path(resource, "security_scan_status"), "passed")
+        conditionFormat: cel
+    remediation:
+        summary: Scan external models for malicious payloads before deployment.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - LATERAL_MOVEMENT
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - CM-5
+            - CM-7
+            - SI-7
+            - SR-11
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "6.5"
+        - name: CIS Controls v8
+          controls:
+            - "2"
+            - "7"
+            - "16"
+        - name: Cerebro AI Governance
+          controls:
+            - AI-3
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190

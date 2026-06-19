@@ -1,0 +1,53 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-ec2-instance-profile-attached
+    name: EC2 Instance Profile Attached
+    description: EC2 instances should use instance profiles instead of hardcoded credentials
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ec2
+        - iam
+        - credentials
+        - best-practice
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::ec2::instance
+    match:
+        conditions:
+            - cmp_eq(path(resource, "iam_instance_profile"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Attach an IAM instance profile to the EC2 instance instead of using static credentials.
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+            - "3.5"
+            - "8.6"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1078
+        - tactic: Execution
+          technique: T1059
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Credential Access
+          technique: T1552

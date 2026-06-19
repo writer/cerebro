@@ -14,6 +14,7 @@ import (
 
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/findingdsl"
 	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceprojection"
@@ -275,12 +276,18 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() || filepath.Ext(path) != ".json" {
+		if entry.IsDir() {
 			return nil
 		}
 		rel := slashRel(root, path)
+		if rel != findingdsl.ControlMappingRelPath && filepath.Ext(path) != ".json" {
+			return nil
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			issues = append(issues, issue{path: rel, message: "symlinked policy files are not allowed"})
+			return nil
+		}
+		if rel != findingdsl.ControlMappingRelPath {
 			return nil
 		}
 		content, err := os.ReadFile(path)
@@ -294,16 +301,7 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 		}
 		if rel == "policies/cerebro/control-mapping.json" {
 			issues = append(issues, validateControlMapping(rel, raw)...)
-			return nil
 		}
-		policyID := stringField(raw, "id")
-		if existing := ids[policyID]; policyID != "" && existing != "" {
-			issues = append(issues, issue{path: rel, message: fmt.Sprintf("duplicate policy id %q also used by %s", policyID, existing)})
-		}
-		if policyID != "" {
-			ids[policyID] = rel
-		}
-		issues = append(issues, validatePolicy(rel, raw, controlCatalog)...)
 		return nil
 	})
 	if err != nil {
@@ -312,7 +310,41 @@ func checkPolicies(root string, controlCatalog *compliance.CatalogIndex) ([]issu
 		}
 		return nil, err
 	}
+	rules, dslIssues, err := findingdsl.LoadPolicyRules(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, dslIssue := range dslIssues {
+		issues = append(issues, issue{path: dslIssue.Path, message: dslIssue.Message})
+	}
+	for _, rule := range rules {
+		policyID := strings.TrimSpace(rule.Metadata.ID)
+		if existing := ids[policyID]; policyID != "" && existing != "" {
+			issues = append(issues, issue{path: rule.RelPath, message: fmt.Sprintf("duplicate policy id %q also used by %s", policyID, existing)})
+		}
+		if policyID != "" {
+			ids[policyID] = rule.RelPath
+		}
+		issues = append(issues, validatePolicyRuleControls(rule, controlCatalog)...)
+	}
 	return issues, nil
+}
+
+func validatePolicyRuleControls(rule findingdsl.PolicyFindingRule, controlCatalog *compliance.CatalogIndex) []issue {
+	var issues []issue
+	for frameworkIdx, framework := range rule.Spec.Frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		for controlIdx, control := range framework.Controls {
+			controlID := strings.TrimSpace(control)
+			if controlCatalog != nil && frameworkName != "" && controlID != "" && !controlCatalog.HasControl(frameworkName, controlID) {
+				issues = append(issues, issue{
+					path:    rule.RelPath,
+					message: fmt.Sprintf("spec.frameworks[%d].controls[%d] %s %s is not declared in internal/compliance/control_families.yaml", frameworkIdx, controlIdx, frameworkName, controlID),
+				})
+			}
+		}
+	}
+	return issues
 }
 
 func validateControlMapping(path string, raw map[string]json.RawMessage) []issue {

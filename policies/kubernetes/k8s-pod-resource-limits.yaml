@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-resource-limits
+    name: K8s Pod Resource Limits
+    description: Containers should have CPU and memory limits defined
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - pod-security
+        - resources
+        - availability
+spec:
+    severity: medium
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_eq(path(resource, "spec.containers.resources.limits.memory"), null)
+            - cmp_eq(path(resource, "spec.containers.resources.limits.cpu"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Define CPU and memory limits for all containers.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - A1.1
+            - A1.2
+            - A1.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.30
+            - A.8.14
+        - name: NIST 800-53 r5
+          controls:
+            - CP-2
+            - CP-4
+        - name: Cerebro Operational Resilience
+          controls:
+            - OPS-2

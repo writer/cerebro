@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-no-privileged
+    name: K8s Pod No Privileged Containers
+    description: Pods should not run privileged containers
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-k8s-5.2.1
+        - pod-security
+        - privileged
+spec:
+    severity: critical
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_eq(path(resource, "spec.containers.security_context.privileged"), true)
+        conditionFormat: cel
+    remediation:
+        summary: 'Remove privileged: true from container security context.'
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

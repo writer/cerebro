@@ -1,0 +1,34 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ssh-key-unused
+    name: SSH key pair is not used by any VM
+    description: An SSH key pair exists but is not associated with any VM
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - compute
+        - ssh
+        - hygiene
+spec:
+    severity: low
+    effect: forbid
+    resource: compute::ssh_key
+    match:
+        conditions:
+            - cmp_eq(path(resource, "associated_instances_count"), 0)
+        conditionFormat: cel
+    remediation:
+        summary: Delete unused SSH key pairs. Maintain key hygiene for security.
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "8.6"
+    mitreAttack:
+        - tactic: Credential Access
+          technique: T1552

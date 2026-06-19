@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-function-anonymous-access
+    name: Azure Function Anonymous Access
+    description: Azure Function allows anonymous HTTP trigger access
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - api
+        - azure-functions
+        - serverless
+        - authentication
+spec:
+    severity: high
+    effect: forbid
+    resource: azure::web::function
+    match:
+        conditions:
+            - cmp_eq(path(resource, "auth_level"), "anonymous")
+        conditionFormat: cel
+    remediation:
+        summary: Set auth_level to 'function' or 'admin' and configure Azure AD authentication.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+            - "7.2"
+        - name: CIS Controls v8
+          controls:
+            - "6"
+            - "5"
+        - name: SOC 2
+          controls:
+            - CC6
+    mitreAttack:
+        - tactic: Execution
+          technique: T1059

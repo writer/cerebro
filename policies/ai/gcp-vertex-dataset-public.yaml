@@ -1,0 +1,54 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-vertex-ai-dataset-public
+    name: GCP Vertex AI Dataset Public Access
+    description: Vertex AI dataset is accessible by allUsers or allAuthenticatedUsers
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - vertex-ai
+        - gcp
+        - training-data
+        - data-exposure
+spec:
+    severity: critical
+    effect: forbid
+    resource: gcp::aiplatform::dataset
+    match:
+        conditions:
+            - (contains_value(path(resource, "iam_policy"), "allUsers")) || (contains_value(path(resource, "iam_policy"), "allAuthenticatedUsers"))
+        conditionFormat: cel
+    remediation:
+        summary: Remove public IAM bindings from the Vertex AI dataset.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Collection
+          technique: T1530

@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: sentinelone-ransomware
+    name: SentinelOne Ransomware Activity Detected
+    description: SentinelOne detected ransomware behavior or file encryption activity on endpoint
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - sentinelone
+        - edr
+        - ransomware
+        - threat-detection
+        - mitre-ta0040
+spec:
+    severity: critical
+    effect: forbid
+    resource: sentinelone::threat
+    match:
+        conditions:
+            - (matches_value(path(resource, "threat_info.classification"), "(?i)ransom")) || (contains_value(path(resource, "indicators.categories"), "Ransomware"))
+        conditionFormat: cel
+    remediation:
+        summary: Immediately isolate endpoint. Do NOT pay ransom. Engage incident response and legal. Restore from clean backups. Report to law enforcement if required. Conduct root cause analysis.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"

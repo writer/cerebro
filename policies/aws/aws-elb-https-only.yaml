@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-elb-https-only
+    name: Load Balancer Listener Without HTTPS
+    description: Application or Network Load Balancer has a listener accepting unencrypted HTTP traffic
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - elb
+        - encryption
+        - transport-security
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::elbv2::listener
+    match:
+        conditions:
+            - cmp_eq(path(resource, "protocol"), "HTTP")
+            - '!(contains_value(path(resource, "default_actions"), "type == ''redirect'' AND redirect_config.protocol == ''HTTPS''"))'
+        conditionFormat: cel
+    remediation:
+        summary: Configure HTTP listeners to redirect to HTTPS. Remove plain HTTP listeners if not needed for redirects.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Discovery
+          technique: T1087
