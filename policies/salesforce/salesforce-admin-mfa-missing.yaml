@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: salesforce-admin-mfa-missing
+    name: Salesforce Admin MFA Missing
+    description: "Salesforce Admin MFA Missing policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - salesforce
+        - admin
+        - mfa
+        - generated
+spec:
+    severity: high
+    effect: forbid
+    resource: "salesforce::user"
+    match:
+        conditions:
+            - "cmp_ne(path(resource, \"admin_mfa_missing\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore admin mfa missing controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - ACCESS_CONTROL
+        - GOVERNANCE
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC7.1
+            - CC8.1
+        - name: "ISO 27001:2022"
+          controls:
+            - A.5.15
+            - A.8.8
+            - A.8.9
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - AC-6
+            - SI-4

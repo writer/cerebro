@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-namespace-pss-audit-missing
+    name: Kubernetes Namespace Pss Audit Missing
+    description: "Kubernetes Namespace Pss Audit Missing policy evidence is missing, disabled, or outside the expected secure state."
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - pod-security
+        - namespace
+        - generated
+spec:
+    severity: medium
+    effect: forbid
+    resource: "k8s::namespace"
+    match:
+        conditions:
+            - "cmp_eq(path(resource, \"namespace_pss_audit_missing\"), true)"
+        conditionFormat: cel
+    remediation:
+        summary: "Restore namespace pss audit missing controls to the approved state, capture owner approval, and retain evidence from the authoritative system."
+        steps:
+            - Review the affected resource or subject and confirm the policy evidence is in scope.
+            - Update the authoritative system configuration or documented control evidence.
+            - Rerun evidence collection and attach the passing result or approved exception.
+    riskCategories:
+        - WORKLOAD_HARDENING
+        - LATERAL_MOVEMENT
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.1.1
+            - 5.2.1
+            - 5.2.5
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC7.1
+        - name: NIST 800-53 r5
+          controls:
+            - AC-6
+            - CM-6
+            - SI-7
