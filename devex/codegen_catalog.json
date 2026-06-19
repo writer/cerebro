@@ -240,7 +240,7 @@
         }
       ],
       "outputs": [
-        "docs/POLICIES.md"
+        "docs/domains/policies.md"
       ],
       "ci_jobs": [
         "catalog"

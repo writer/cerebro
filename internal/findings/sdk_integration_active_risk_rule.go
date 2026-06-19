@@ -42,7 +42,7 @@ var sdkIntegrationActiveRiskDefinition = RuleDefinition{
 	Status:             sdkIntegrationActiveRiskStatus,
 	Maturity:           "test",
 	Tags:               []string{"sdk", "integration", "posture", "control-gap"},
-	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"},
+	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/domains/source-runtime-guide.md"},
 	FalsePositives:     []string{"Integrations that report a transient at-risk posture during a planned maintenance window where the control gap is documented and risk-accepted."},
 	Runbook:            "Review the reported control gap for the affected resource and remediate it; the finding resolves automatically once the integration reports the resource as secure.",
 	RequiredAttributes: []string{"integration", "resource_urn", "control"},

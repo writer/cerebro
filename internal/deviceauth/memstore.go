@@ -11,7 +11,7 @@ import (
 // MemStore is an in-memory [Store] implementation used for unit tests and as
 // a reference for the persistence contract. It is not suitable for
 // production: the bootstrap binary is required to use a real driver per
-// docs/NON_GOALS.md.
+// docs/engineering/non-goals.md.
 type MemStore struct {
 	mu                        sync.Mutex
 	devices                   map[string]DeviceRecord

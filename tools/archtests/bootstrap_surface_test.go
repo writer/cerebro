@@ -39,9 +39,9 @@ func TestBootstrapProductionSurfaceDoesNotGrow(t *testing.T) {
 
 func TestArchitectureDocumentsBootstrapOwnership(t *testing.T) {
 	root := repoRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, "docs", "ARCHITECTURE.md"))
+	body, err := os.ReadFile(filepath.Join(root, "docs", "reference", "architecture.md"))
 	if err != nil {
-		t.Fatalf("read docs/ARCHITECTURE.md: %v", err)
+		t.Fatalf("read docs/reference/architecture.md: %v", err)
 	}
 	for _, marker := range []string{
 		"## Bootstrap ownership",
@@ -51,7 +51,7 @@ func TestArchitectureDocumentsBootstrapOwnership(t *testing.T) {
 		"Production Go under `internal/bootstrap` is ratcheted by `tools/archtests`",
 	} {
 		if !bytes.Contains(body, []byte(marker)) {
-			t.Fatalf("docs/ARCHITECTURE.md missing bootstrap ownership marker %q", marker)
+			t.Fatalf("docs/reference/architecture.md missing bootstrap ownership marker %q", marker)
 		}
 	}
 }

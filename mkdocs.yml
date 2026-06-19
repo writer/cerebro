@@ -10,45 +10,45 @@ validation:
 nav:
   - Home: index.md
   - Start:
-      - Quick Reference: QUICKREF.md
-      - Getting Started: GETTING_STARTED.md
+      - Quick Reference: start/quick-reference.md
+      - Getting Started: start/getting-started.md
   - Reference:
-      - Architecture: ARCHITECTURE.md
-      - CLI Reference: CLI_REFERENCE.md
-      - Source Catalog: SOURCES.md
-      - API Reference: API_REFERENCE.md
-      - API Contracts: API_CONTRACTS_AUTOGEN.md
-      - Configuration Notes: CONFIGURATION.md
-      - Configuration Variables: CONFIG_ENV_VARS.md
-      - Auth And Tenancy: AUTH_TENANCY.md
-      - Packages: PACKAGES.md
+      - Architecture: reference/architecture.md
+      - CLI Reference: reference/cli.md
+      - Source Catalog: reference/sources.md
+      - API Reference: reference/api-reference.md
+      - API Contracts: reference/api-contracts.md
+      - Configuration Notes: reference/configuration.md
+      - Configuration Variables: reference/config-env-vars.md
+      - Auth And Tenancy: reference/auth-tenancy.md
+      - Packages: reference/packages.md
   - Operations:
-      - Hosting: HOSTING.md
-      - Cloud Deployment: CLOUD_DEPLOYMENT.md
-      - Deployment Examples: DEPLOYMENT_EXAMPLES.md
-      - Operations Runbook: OPERATIONS_RUNBOOK.md
-      - Headroom: HEADROOM.md
-      - Observability: OBSERVABILITY.md
-      - Troubleshooting: TROUBLESHOOTING.md
-      - Release Contract: RELEASE_CONTRACT.md
+      - Hosting: operations/hosting.md
+      - Cloud Deployment: operations/cloud-deployment.md
+      - Deployment Examples: operations/deployment-examples.md
+      - Operations Runbook: operations/operations-runbook.md
+      - Headroom: operations/headroom.md
+      - Observability: operations/observability.md
+      - Troubleshooting: operations/troubleshooting.md
+      - Release Contract: operations/release-contract.md
   - Domains:
-      - Source Runtime Guide: SOURCE_RUNTIME_GUIDE.md
-      - Graph Operations: GRAPH_OPERATIONS.md
-      - Compliance Controls: COMPLIANCE_CONTROLS.md
-      - Policies: POLICIES.md
-      - Policy Rule Extensions: POLICY_RULE_EXTENSIONS.md
-      - Findings Platform Architecture: FINDINGS_PLATFORM_ARCHITECTURE.md
-      - Finding Candidate Operations: FINDING_CANDIDATE_OPERATIONS.md
-      - Agent Platform Contract: AGENT_PLATFORM_CONTRACT.md
-      - Endpoint Security Platform Integration: ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md
-      - MCP Native Droid Setup: MCP_DROID_SETUP.md
+      - Source Runtime Guide: domains/source-runtime-guide.md
+      - Graph Operations: domains/graph-operations.md
+      - Compliance Controls: domains/compliance-controls.md
+      - Policies: domains/policies.md
+      - Policy Rule Extensions: domains/policy-rule-extensions.md
+      - Findings Platform Architecture: domains/findings-platform-architecture.md
+      - Finding Candidate Operations: domains/finding-candidate-operations.md
+      - Agent Platform Contract: domains/agent-platform-contract.md
+      - Endpoint Security Platform Integration: domains/endpoint-security-platform-integration.md
+      - MCP Native Droid Setup: domains/mcp-droid-setup.md
   - Engineering:
-      - Development: DEVELOPMENT.md
-      - Non-Goals: NON_GOALS.md
-      - Durability Contract: DURABILITY_CONTRACT.md
-      - Source Sync Recovery: SOURCE_SYNC_RECOVERY.md
-      - Source CDK Extraction: SOURCE_CDK_EXTRACTION.md
-      - Security Regression Harness: SECURITY_REGRESSION_HARNESS.md
-      - Vulnerability DB Architecture: VULNERABILITY_DB_ARCHITECTURE.md
-      - DevEx Codegen Catalog: DEVEX_CODEGEN_AUTOGEN.md
-      - PR Landing: PR_LANDING.md
+      - Development: engineering/development.md
+      - Non-Goals: engineering/non-goals.md
+      - Durability Contract: engineering/durability-contract.md
+      - Source Sync Recovery: engineering/source-sync-recovery.md
+      - Source CDK Extraction: engineering/source-cdk-extraction.md
+      - Security Regression Harness: engineering/security-regression-harness.md
+      - Vulnerability DB Architecture: engineering/vulnerability-db-architecture.md
+      - DevEx Codegen Catalog: engineering/devex-codegen.md
+      - PR Landing: engineering/pr-landing.md

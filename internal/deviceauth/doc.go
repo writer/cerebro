@@ -19,6 +19,6 @@
 // All token material is hashed at rest. Bootstrap tokens and refresh tokens
 // are opaque random byte strings; only their SHA-256 digests are persisted.
 //
-// See docs/AUTH_TENANCY.md and docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md
+// See docs/reference/auth-tenancy.md and docs/domains/endpoint-security-platform-integration.md
 // for the public auth and endpoint telemetry boundaries.
 package deviceauth

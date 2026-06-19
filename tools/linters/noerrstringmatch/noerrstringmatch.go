@@ -84,7 +84,7 @@ func checkCall(pass *analysis.Pass, call *ast.CallExpr) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "matching on err.Error() is forbidden; use errors.Is / errors.As with a typed sentinel. (see docs/NON_GOALS.md)",
+				Message: "matching on err.Error() is forbidden; use errors.Is / errors.As with a typed sentinel. (see docs/engineering/non-goals.md)",
 			})
 			return
 		}
@@ -101,7 +101,7 @@ func checkBinary(pass *analysis.Pass, bin *ast.BinaryExpr) {
 		pass.Report(analysis.Diagnostic{
 			Pos:     bin.Pos(),
 			End:     bin.End(),
-			Message: "comparing err.Error() to a string is forbidden; use errors.Is / errors.As with a typed sentinel. (see docs/NON_GOALS.md)",
+			Message: "comparing err.Error() to a string is forbidden; use errors.Is / errors.As with a typed sentinel. (see docs/engineering/non-goals.md)",
 		})
 	}
 }

@@ -109,9 +109,9 @@ func TestGrandfatheredSourceLOCBudgetsRatchetDownToCurrentSize(t *testing.T) {
 
 func TestGrandfatheredSourceExtractionPlanIsDocumented(t *testing.T) {
 	root := repoRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, "docs", "SOURCE_CDK_EXTRACTION.md"))
+	body, err := os.ReadFile(filepath.Join(root, "docs", "engineering", "source-cdk-extraction.md"))
 	if err != nil {
-		t.Fatalf("read docs/SOURCE_CDK_EXTRACTION.md: %v", err)
+		t.Fatalf("read docs/engineering/source-cdk-extraction.md: %v", err)
 	}
 	text := string(body)
 	for _, marker := range []string{
@@ -121,13 +121,13 @@ func TestGrandfatheredSourceExtractionPlanIsDocumented(t *testing.T) {
 		"Keep normalization, graph projection, persistence, and finding logic outside",
 	} {
 		if !strings.Contains(text, marker) {
-			t.Fatalf("docs/SOURCE_CDK_EXTRACTION.md missing extraction marker %q", marker)
+			t.Fatalf("docs/engineering/source-cdk-extraction.md missing extraction marker %q", marker)
 		}
 	}
 	for name, budget := range grandfatheredSourcePackageLOCBudgets {
 		marker := fmt.Sprintf("| `%s` | %d |", name, budget)
 		if !strings.Contains(text, marker) {
-			t.Fatalf("docs/SOURCE_CDK_EXTRACTION.md missing grandfathered source marker %q", marker)
+			t.Fatalf("docs/engineering/source-cdk-extraction.md missing grandfathered source marker %q", marker)
 		}
 	}
 }

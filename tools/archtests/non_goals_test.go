@@ -17,7 +17,7 @@ var (
 
 func TestNonGoalsEnforcedInPointersResolve(t *testing.T) {
 	root := repoRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, "docs", "NON_GOALS.md"))
+	body, err := os.ReadFile(filepath.Join(root, "docs", "engineering", "non-goals.md"))
 	if err != nil {
 		t.Fatalf("read NON_GOALS.md: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestNonGoalsEnforcedInPointersResolve(t *testing.T) {
 	}
 	if len(missing) != 0 {
 		sort.Strings(missing)
-		t.Fatalf("docs/NON_GOALS.md Enforced in pointers must resolve:\n%s", strings.Join(missing, "\n"))
+		t.Fatalf("docs/engineering/non-goals.md Enforced in pointers must resolve:\n%s", strings.Join(missing, "\n"))
 	}
 }
 
@@ -96,7 +96,7 @@ func nonGoalsPointerPath(root string, ref string) string {
 	ref = strings.Split(ref, "#")[0]
 	ref = strings.TrimSpace(ref)
 	if strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") {
-		return filepath.Clean(filepath.Join(root, "docs", filepath.FromSlash(ref)))
+		return filepath.Clean(filepath.Join(root, "docs", "engineering", filepath.FromSlash(ref)))
 	}
 	return filepath.Join(root, filepath.FromSlash(ref))
 }

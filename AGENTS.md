@@ -30,8 +30,8 @@
 
 ## Scope Discipline
 
-- [`docs/NON_GOALS.md`](docs/NON_GOALS.md) is the canonical list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.
-- A change that crosses any non-goal must cite the relevant entry in the PR description, state which "What would change this" criterion has been met, and update `docs/NON_GOALS.md` in the same change.
+- [`docs/engineering/non-goals.md`](docs/engineering/non-goals.md) is the canonical list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.
+- A change that crosses any non-goal must cite the relevant entry in the PR description, state which "What would change this" criterion has been met, and update `docs/engineering/non-goals.md` in the same change.
 - When in doubt, prefer the narrower interpretation. Scope creep that quietly bypasses a non-goal is a review-blocker, not a discussion.
 
 ## Finding Rule Design Notes

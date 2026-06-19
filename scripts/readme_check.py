@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
-SOURCE_CATALOG = ROOT / "docs" / "SOURCES.md"
+SOURCE_CATALOG = ROOT / "docs" / "reference" / "sources.md"
 CONTROL_INDEX_DOC_FLAGS = {"init-extension", "extension", "profile", "output", "write", "check"}
 CONTROL_INDEX_README_FLAGS = {"init-extension", "extension", "profile", "output", "write"}
 
@@ -39,7 +39,7 @@ def documented_source_ids() -> list[str]:
     source_catalog = read(SOURCE_CATALOG)
     match = re.search(r"# Built-In Sources\n\n.*?(\| Source ID \|.*?)(?:\n## |\Z)", source_catalog, re.S)
     if not match:
-        fail("docs/SOURCES.md is missing the Built-In Sources table")
+        fail("docs/reference/sources.md is missing the Built-In Sources table")
     return sorted(set(re.findall(r"^\| `([^`]+)` \|", match.group(1), re.MULTILINE)))
 
 
@@ -71,7 +71,7 @@ def require_controlindex_docs(readme: str) -> None:
     if missing_code_flags:
         fail("controlindex lost README-tracked flags: " + ", ".join(f"--{flag}" for flag in missing_code_flags))
 
-    compliance_docs = read(ROOT / "docs" / "COMPLIANCE_CONTROLS.md")
+    compliance_docs = read(ROOT / "docs" / "domains" / "compliance-controls.md")
     missing_doc_flags = sorted(f"--{flag}" for flag in CONTROL_INDEX_DOC_FLAGS if f"--{flag}" not in compliance_docs)
     if missing_doc_flags:
         fail("COMPLIANCE_CONTROLS.md missing controlindex flags: " + ", ".join(missing_doc_flags))
@@ -112,7 +112,7 @@ def main() -> int:
     sources = builtin_source_ids()
     documented_sources = documented_source_ids()
     if documented_sources != sources:
-        fail(f"built-in source table drift: docs/SOURCES.md={documented_sources} registry={sources}")
+        fail(f"built-in source table drift: docs/reference/sources.md={documented_sources} registry={sources}")
 
     commands = usage_commands()
     documented_commands = readme_commands(readme)
@@ -134,13 +134,13 @@ def main() -> int:
             "Environment-specific deployment details",
             "cerebro-runtime-contract.json",
             ".env.example",
-            "docs/CONFIG_ENV_VARS.md",
-            "docs/GETTING_STARTED.md",
+            "docs/reference/config-env-vars.md",
+            "docs/start/getting-started.md",
             "sdk/python/README.md",
             "sdk/typescript/README.md",
-            "docs/MCP_DROID_SETUP.md",
-            "docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md",
-            "docs/COMPLIANCE_CONTROLS.md",
+            "docs/domains/mcp-droid-setup.md",
+            "docs/domains/endpoint-security-platform-integration.md",
+            "docs/domains/compliance-controls.md",
             "make control-index-check",
             "make policy-rule-check",
             "make detection-catalog-check",

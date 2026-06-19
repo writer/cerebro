@@ -14,11 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 FORBIDDEN_DOC_MARKERS = {
-    "docs/FINDINGS_PLATFORM_ARCHITECTURE.md": [
+    "docs/domains/findings-platform-architecture.md": [
         "Today the built-in catalog contains one rule",
         "first built-in finding rule",
     ],
-    "docs/VULNERABILITY_DB_ARCHITECTURE.md": [
+    "docs/engineering/vulnerability-db-architecture.md": [
         "SQLite via `internal/vulndb.SQLiteStore`",
         "persisted by default at `VULNDB_STATE_FILE`",
     ],
@@ -26,7 +26,7 @@ FORBIDDEN_DOC_MARKERS = {
 
 
 CONFIG_DEFAULT_DOCS = {
-    "docs/CONFIG_ENV_VARS.md": {
+    "docs/reference/config-env-vars.md": {
         "CEREBRO_API_AUTH_ENABLED": (1, "true outside acknowledged dev mode"),
         "CEREBRO_RATE_LIMIT_ENABLED": (1, "true outside acknowledged dev mode"),
         "CEREBRO_RATE_LIMIT_RPS": (1, "100"),
@@ -52,11 +52,11 @@ def check_forbidden_markers() -> list[str]:
 def check_findings_catalog_reference() -> list[str]:
     catalog = json.loads(read("internal/findings/public_detection_catalog.json"))
     count = len(catalog.get("detections") or [])
-    body = read("docs/FINDINGS_PLATFORM_ARCHITECTURE.md")
+    body = read("docs/domains/findings-platform-architecture.md")
     expected = f"currently contains {count} rules"
     if expected not in body:
         return [
-            "docs/FINDINGS_PLATFORM_ARCHITECTURE.md: "
+            "docs/domains/findings-platform-architecture.md: "
             f"expected public detection catalog count phrase {expected!r}"
         ]
     return []

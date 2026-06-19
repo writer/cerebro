@@ -4,10 +4,10 @@ This guide explains Cerebro's public authentication and tenant-scoping model for
 
 Use it with:
 
-- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for the exact variable reference.
-- [`docs/HOSTING.md`](./HOSTING.md) for proxy and TLS guidance.
-- [`docs/MCP_DROID_SETUP.md`](./MCP_DROID_SETUP.md) for MCP OAuth setup.
-- [`api/openapi.yaml`](../api/openapi.yaml) for protected HTTP routes.
+- [`docs/reference/config-env-vars.md`](config-env-vars.md) for the exact variable reference.
+- [`docs/operations/hosting.md`](../operations/hosting.md) for proxy and TLS guidance.
+- [`docs/domains/mcp-droid-setup.md`](../domains/mcp-droid-setup.md) for MCP OAuth setup.
+- [`api/openapi.yaml`](../../api/openapi.yaml) for protected HTTP routes.
 
 ## Default behavior
 
@@ -254,7 +254,7 @@ CEREBRO_POSTGRES_DSN=<postgres-dsn>
 CEREBRO_CAPABILITY_TOKEN_SECRETS=<hmac-secret>
 ```
 
-Then configure the relevant `CEREBRO_MCP_OAUTH_*` variables from [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) and [`docs/MCP_DROID_SETUP.md`](./MCP_DROID_SETUP.md).
+Then configure the relevant `CEREBRO_MCP_OAUTH_*` variables from [`docs/reference/config-env-vars.md`](config-env-vars.md) and [`docs/domains/mcp-droid-setup.md`](../domains/mcp-droid-setup.md).
 
 ## Device auth
 

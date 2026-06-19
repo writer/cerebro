@@ -220,8 +220,8 @@ func mcpDomainSurfaceCorpus(t *testing.T) string {
 		"internal/bootstrap/routes.go",
 		"proto/cerebro/v1/bootstrap.proto",
 		"api/openapi.yaml",
-		"docs/MCP_DROID_SETUP.md",
-		"docs/FINDINGS_PLATFORM_ARCHITECTURE.md",
+		"docs/domains/mcp-droid-setup.md",
+		"docs/domains/findings-platform-architecture.md",
 	} {
 		// #nosec G304 -- rel comes from this fixed test corpus allowlist.
 		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))

@@ -8,7 +8,7 @@ Cerebro emits three layers of operational signal:
 
 The structured JSON and OTEL spans share the same trace context where possible. HTTP responses include `X-Cerebro-Trace-Id` so operators can pivot from the web UI or API response to logs and traces.
 
-For capacity SLOs, saturation dashboards, alert templates, autoscaling signals, and live load-smoke checks, use [`docs/HEADROOM.md`](./HEADROOM.md). This observability contract supplies the event and metric shape; the headroom guide defines how operators turn those signals into prevention, paging, and release gates.
+For capacity SLOs, saturation dashboards, alert templates, autoscaling signals, and live load-smoke checks, use [`docs/operations/headroom.md`](headroom.md). This observability contract supplies the event and metric shape; the headroom guide defines how operators turn those signals into prevention, paging, and release gates.
 
 ## Wide Event Contract
 

@@ -4,12 +4,12 @@ This runbook is for operators hosting the public Cerebro bootstrap service. It i
 
 Use it with:
 
-- [`docs/HOSTING.md`](./HOSTING.md) for the hosting baseline.
-- [`docs/DEPLOYMENT_EXAMPLES.md`](./DEPLOYMENT_EXAMPLES.md) for portable deployment patterns.
-- [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) for symptom-driven debugging.
-- [`docs/HEADROOM.md`](./HEADROOM.md) for capacity SLOs, saturation alerts, autoscaling signals, load-smoke gates, and capacity incident playbooks.
-- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for current environment variables.
-- [`api/openapi.yaml`](../api/openapi.yaml) for the HTTP route contract.
+- [`docs/operations/hosting.md`](hosting.md) for the hosting baseline.
+- [`docs/operations/deployment-examples.md`](deployment-examples.md) for portable deployment patterns.
+- [`docs/operations/troubleshooting.md`](troubleshooting.md) for symptom-driven debugging.
+- [`docs/operations/headroom.md`](headroom.md) for capacity SLOs, saturation alerts, autoscaling signals, load-smoke gates, and capacity incident playbooks.
+- [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for current environment variables.
+- [`api/openapi.yaml`](../../api/openapi.yaml) for the HTTP route contract.
 
 ## Operating model
 
@@ -302,4 +302,4 @@ Useful alerts for any shared deployment:
 - missing metrics scrape
 - scheduled live load-smoke failure
 
-Keep exact thresholds environment-specific. Use [`docs/HEADROOM.md`](./HEADROOM.md) and [`docs/observability/headroom-alerts.promql`](./observability/headroom-alerts.promql) as the portable baseline.
+Keep exact thresholds environment-specific. Use [`docs/operations/headroom.md`](headroom.md) and [`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql) as the portable baseline.

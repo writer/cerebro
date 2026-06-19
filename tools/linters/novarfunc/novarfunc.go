@@ -66,7 +66,7 @@ func run(pass *analysis.Pass) (any, error) {
 							Message: "package-level var '" + name.Name +
 								"' is bound to a function literal; " +
 								"use explicit dependency injection instead of a mutable hook. " +
-								"(see docs/NON_GOALS.md)",
+								"(see docs/engineering/non-goals.md)",
 						})
 					}
 				}

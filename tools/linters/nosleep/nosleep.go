@@ -59,13 +59,13 @@ func run(pass *analysis.Pass) (any, error) {
 				pass.Report(analysis.Diagnostic{
 					Pos:     call.Pos(),
 					End:     call.End(),
-					Message: "time.Sleep is forbidden outside tests; use a context deadline, an errgroup, or runtime/backoff. (see docs/NON_GOALS.md)",
+					Message: "time.Sleep is forbidden outside tests; use a context deadline, an errgroup, or runtime/backoff. (see docs/engineering/non-goals.md)",
 				})
 			case "After":
 				pass.Report(analysis.Diagnostic{
 					Pos:     call.Pos(),
 					End:     call.End(),
-					Message: "time.After leaks timers; use ctx.Done() with a deadline, or time.NewTimer. (see docs/NON_GOALS.md)",
+					Message: "time.After leaks timers; use ctx.Done() with a deadline, or time.NewTimer. (see docs/engineering/non-goals.md)",
 				})
 			}
 			return true

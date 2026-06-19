@@ -58,7 +58,7 @@ External dependency drivers are opt-in. A lightweight server can start without o
 | MCP endpoint | API auth; OAuth mode additionally requires Postgres, public origin, client/upstream config, and capability-token secrets |
 | Device-auth telemetry | API auth, device-auth signing keys, and a device-auth-capable state store |
 
-See [`DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md) for the current
+See [`DURABILITY_CONTRACT.md`](../engineering/durability-contract.md) for the current
 write-path contract. Source runtime sync and workflow writes are event-backed
 before projection. SDK/runtime claim writes are currently Postgres-backed and
 project from persisted claim state until a `claim.v1.*` event family exists.
@@ -193,6 +193,6 @@ Sources live under `sources/<id>` and must include:
 
 Arch tests and custom linters are the enforcement mechanism for keeping future
 sources inside the Source CDK and preventing regressions toward the older
-god-object architecture. [`SOURCE_CDK_EXTRACTION.md`](./SOURCE_CDK_EXTRACTION.md)
+god-object architecture. [`SOURCE_CDK_EXTRACTION.md`](../engineering/source-cdk-extraction.md)
 tracks grandfathered source LOC budgets and the extraction pressure that should
 move shared behavior back into the CDK.

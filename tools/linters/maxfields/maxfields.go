@@ -79,7 +79,7 @@ func run(pass *analysis.Pass) (any, error) {
 					End: ts.End(),
 					Message: "struct " + ts.Name.Name + " declares " +
 						itoa(count) + " fields; max allowed is " + itoa(limit) +
-						". Split into smaller cohesive types. (see docs/NON_GOALS.md)",
+						". Split into smaller cohesive types. (see docs/engineering/non-goals.md)",
 				})
 			}
 		}

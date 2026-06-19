@@ -11,7 +11,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MCP_GO = ROOT / "internal" / "bootstrap" / "mcp.go"
 OPENAPI = ROOT / "api" / "openapi.yaml"
-DOCS = ROOT / "docs" / "MCP_DROID_SETUP.md"
+DOCS = ROOT / "docs" / "domains" / "mcp-droid-setup.md"
 
 
 def main() -> int:
@@ -38,7 +38,7 @@ def main() -> int:
         "make mcp-contract-check mcp-sdk-compat",
         "scripts/mcp_smoke.py",
     ]:
-        require(phrase in docs, f"docs/MCP_DROID_SETUP.md missing {phrase!r}", failures)
+        require(phrase in docs, f"docs/domains/mcp-droid-setup.md missing {phrase!r}", failures)
 
     if failures:
         print("mcp_contract_check: failed", file=sys.stderr)

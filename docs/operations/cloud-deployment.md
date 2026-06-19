@@ -4,10 +4,10 @@ This guide explains how to deploy Cerebro on AWS, Google Cloud, or Azure without
 
 Use it with:
 
-- [`docs/HOSTING.md`](./HOSTING.md) for the runtime hosting contract.
-- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for all supported environment variables.
-- [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for health checks, rollout, rollback, and incident handling.
-- [`deploy/pulumi`](../deploy/pulumi) for validated Pulumi templates.
+- [`docs/operations/hosting.md`](hosting.md) for the runtime hosting contract.
+- [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for all supported environment variables.
+- [`docs/operations/operations-runbook.md`](operations-runbook.md) for health checks, rollout, rollback, and incident handling.
+- [`deploy/pulumi`](../../deploy/pulumi) for validated Pulumi templates.
 
 ## Deployment Contract
 
@@ -35,7 +35,7 @@ It listens on `:8080` by default. Use `/livez` for process liveness and `/health
 
 ## Pulumi Component Model
 
-The templates in [`deploy/pulumi`](../deploy/pulumi) use one shared `CerebroService` component and choose a cloud backend with `cerebro:cloud`:
+The templates in [`deploy/pulumi`](../../deploy/pulumi) use one shared `CerebroService` component and choose a cloud backend with `cerebro:cloud`:
 
 | Cloud | Component target | What it creates |
 | --- | --- | --- |
@@ -344,4 +344,4 @@ curl -fsS -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
   https://cerebro.example.com/sources
 ```
 
-For durable or graph-enabled deployments, also run the checks in [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md).
+For durable or graph-enabled deployments, also run the checks in [`docs/operations/operations-runbook.md`](operations-runbook.md).

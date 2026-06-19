@@ -13,7 +13,7 @@ Maintained from `devex/codegen_catalog.json`.
 | `openapi` | `openapi-sync` | `openapi-check`, `openapi-lint` | `openapi` | `api/openapi.yaml` |
 | `proto` | `proto-generate` | `proto-breaking`, `proto-generate-check`, `proto-lint` | `proto` | `gen/cerebro/v1`, `sdk/python/cerebro/v1` |
 | `graph-actions` | `graph-action-generate` | `graph-action-check` | `graph-actions` | `internal/graphactions/registry_gen.go` |
-| `detection-catalog` | `detection-catalog-generate` | `catalog-check`, `detection-catalog-check` | `catalog` | `docs/POLICIES.md` |
+| `detection-catalog` | `detection-catalog-generate` | `catalog-check`, `detection-catalog-check` | `catalog` | `docs/domains/policies.md` |
 
 ## Families
 
@@ -67,11 +67,11 @@ Keeps generated detection catalog artifacts aligned with policy definitions.
   - `finding-dsl-check` -> `make finding-dsl-check`
   - `catalog-check` -> `make catalog-check`
 - Triggers: `policies/**`, `internal/findingdsl/**`, `tools/findingdsl/**`, `tools/detectioncatalog/**`
-- Outputs: `docs/POLICIES.md`
+- Outputs: `docs/domains/policies.md`
 - CI jobs: `catalog`
 
 ## Notes
 
 - `devex/codegen_catalog.json` is the source of truth for generator families, trigger globs, local checks, and CI job mapping.
-- `docs/DEVEX_CODEGEN_CATALOG.json` is the machine-readable artifact for editors and external tooling.
+- `docs/engineering/devex-codegen-catalog.json` is the machine-readable artifact for editors and external tooling.
 - Retired generator families are intentionally omitted until their scripts and Make targets exist again.

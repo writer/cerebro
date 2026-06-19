@@ -4,10 +4,10 @@ This guide explains Cerebro's public release artifacts and the runtime deploy co
 
 Use it with:
 
-- [`README.md`](../README.md) "Release and deploy artifacts".
-- [`docs/HOSTING.md`](./HOSTING.md) for how to run the image.
-- [`docs/SOURCE_RUNTIME_GUIDE.md`](./SOURCE_RUNTIME_GUIDE.md) for source runtime manifests.
-- [`tools/sourcedeploy`](../tools/sourcedeploy) for contract rendering code.
+- [`README.md`](../../README.md) "Release and deploy artifacts".
+- [`docs/operations/hosting.md`](hosting.md) for how to run the image.
+- [`docs/domains/source-runtime-guide.md`](../domains/source-runtime-guide.md) for source runtime manifests.
+- [`tools/sourcedeploy`](../../tools/sourcedeploy) for contract rendering code.
 
 ## Release tags
 

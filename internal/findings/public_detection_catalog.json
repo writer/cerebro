@@ -166,7 +166,7 @@
         "tenant-isolation"
       ],
       "references": [
-        "https://github.com/writer/cerebro/blob/main/docs/ARCHITECTURE.md"
+        "https://github.com/writer/cerebro/blob/main/docs/reference/architecture.md"
       ],
       "false_positives": [
         "Authorized administrative or support principals that intentionally hold elevated cross-tenant access under a documented, risk-accepted exception."
@@ -714,7 +714,7 @@
         "posture"
       ],
       "references": [
-        "https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"
+        "https://github.com/writer/cerebro/blob/main/docs/domains/source-runtime-guide.md"
       ],
       "false_positives": [
         "Memory facts that record a historical coordination-risk pattern that has already been remediated but still require operator review before the finding is resolved.",
@@ -910,7 +910,7 @@
         "evidence-cas"
       ],
       "references": [
-        "https://github.com/writer/cerebro/blob/main/docs/ARCHITECTURE.md"
+        "https://github.com/writer/cerebro/blob/main/docs/reference/architecture.md"
       ],
       "false_positives": [
         "Evidence captured slightly ahead of the case or resource it references, where the linkage resolves on the next sync once the referenced context is ingested."
@@ -79288,7 +79288,7 @@
         "sdk"
       ],
       "references": [
-        "https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"
+        "https://github.com/writer/cerebro/blob/main/docs/domains/source-runtime-guide.md"
       ],
       "false_positives": [
         "Integrations that report a transient at-risk posture during a planned maintenance window where the control gap is documented and risk-accepted."
@@ -79999,7 +79999,7 @@
         "zero-trust"
       ],
       "references": [
-        "https://github.com/writer/cerebro/blob/main/docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md"
+        "https://github.com/writer/cerebro/blob/main/docs/domains/endpoint-security-platform-integration.md"
       ],
       "false_positives": [
         "A trust-gate denial issued during an approved maintenance window or risk-accepted exception that has not yet been reflected as an allow decision."

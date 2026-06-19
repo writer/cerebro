@@ -41,7 +41,7 @@ Shared source helpers belong under `sources/internal` or `internal/sourcecdk` ra
 - Postgres is the current-state and finding/report store.
 - Neo4j/Aura is the graph projection and query store.
 
-Adding another long-lived store crosses the repository non-goals and requires updating `docs/NON_GOALS.md`.
+Adding another long-lived store crosses the repository non-goals and requires updating `docs/engineering/non-goals.md`.
 
 ## Catalogs And Contracts
 

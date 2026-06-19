@@ -4,11 +4,11 @@ Source runtimes are Cerebro's durable connection between a source integration an
 
 Use it with:
 
-- [`docs/GETTING_STARTED.md`](./GETTING_STARTED.md) for a local SDK source walkthrough.
-- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for source secret allowlist variables.
-- [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for sync operations.
-- [`api/openapi.yaml`](../api/openapi.yaml) for the HTTP route contract.
-- [`sources/*/catalog.yaml`](../sources) for source capability declarations.
+- [`docs/start/getting-started.md`](../start/getting-started.md) for a local SDK source walkthrough.
+- [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for source secret allowlist variables.
+- [`docs/operations/operations-runbook.md`](../operations/operations-runbook.md) for sync operations.
+- [`api/openapi.yaml`](../../api/openapi.yaml) for the HTTP route contract.
+- [`sources/*/catalog.yaml`](../../sources) for source capability declarations.
 
 ## Mental model
 
@@ -246,7 +246,7 @@ POST /source-runtimes/{runtimeID}/finding-rules/evaluate
 POST /source-runtimes/{runtimeID}/findings/evaluate
 ```
 
-The SDK source is useful for application-owned inventory or posture claims. SDK runtimes may declare comma- or newline-separated `inventory_urns` for preview discovery, but durable inventory and posture evidence should still be written as runtime claims. See [`docs/GETTING_STARTED.md`](./GETTING_STARTED.md) for a local claim write.
+The SDK source is useful for application-owned inventory or posture claims. SDK runtimes may declare comma- or newline-separated `inventory_urns` for preview discovery, but durable inventory and posture evidence should still be written as runtime claims. See [`docs/start/getting-started.md`](../start/getting-started.md) for a local claim write.
 
 ## Graph ingest from runtime
 
@@ -335,7 +335,7 @@ still heuristic and do not replace periodic family-specific reconciliation.
 
 The deploy manifest intentionally declares what the source needs, not when or where your platform should schedule it. Deployment cadence and concrete secrets belong in your deployment system.
 
-See [`docs/RELEASE_CONTRACT.md`](./RELEASE_CONTRACT.md) for how source manifests contribute to `cerebro-runtime-contract.json`.
+See [`docs/operations/release-contract.md`](../operations/release-contract.md) for how source manifests contribute to `cerebro-runtime-contract.json`.
 
 ## Troubleshooting quick map
 

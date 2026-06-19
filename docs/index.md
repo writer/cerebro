@@ -48,22 +48,22 @@ docker compose up --build
 
 | Need | Document |
 | --- | --- |
-| Short command reference | [Quick reference](QUICKREF.md) |
-| Local end-to-end walkthrough | [Getting started](GETTING_STARTED.md) |
-| Runtime shape and dependency boundaries | [Architecture](ARCHITECTURE.md) |
-| Runtime configuration | [Configuration variables](CONFIG_ENV_VARS.md) |
-| Hosting and operations | [Hosting](HOSTING.md), [cloud deployment](CLOUD_DEPLOYMENT.md), [deployment examples](DEPLOYMENT_EXAMPLES.md), [operations runbook](OPERATIONS_RUNBOOK.md), and [troubleshooting](TROUBLESHOOTING.md) |
-| API contracts | [API reference](API_REFERENCE.md), [generated API contracts](API_CONTRACTS_AUTOGEN.md), `../api/openapi.yaml`, and `../proto/cerebro/v1/bootstrap.proto` |
-| CLI usage | [CLI reference](CLI_REFERENCE.md) |
-| Built-in source integrations | [Source catalog](SOURCES.md) |
-| Source runtime sync | [Source runtime guide](SOURCE_RUNTIME_GUIDE.md) |
-| Graph operations | [Graph operations](GRAPH_OPERATIONS.md) |
-| Compliance control coverage | [Compliance controls](COMPLIANCE_CONTROLS.md) |
-| Policies | [Policies](POLICIES.md) |
-| MCP setup | [MCP native Droid setup](MCP_DROID_SETUP.md) |
-| Endpoint telemetry | [Endpoint security platform integration](ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md) |
-| Release artifacts | [Release contract](RELEASE_CONTRACT.md) |
-| Contribution rules | [Development](DEVELOPMENT.md) and [non-goals](NON_GOALS.md) |
+| Short command reference | [Quick reference](start/quick-reference.md) |
+| Local end-to-end walkthrough | [Getting started](start/getting-started.md) |
+| Runtime shape and dependency boundaries | [Architecture](reference/architecture.md) |
+| Runtime configuration | [Configuration variables](reference/config-env-vars.md) |
+| Hosting and operations | [Hosting](operations/hosting.md), [cloud deployment](operations/cloud-deployment.md), [deployment examples](operations/deployment-examples.md), [operations runbook](operations/operations-runbook.md), and [troubleshooting](operations/troubleshooting.md) |
+| API contracts | [API reference](reference/api-reference.md), [generated API contracts](reference/api-contracts.md), `../api/openapi.yaml`, and `../proto/cerebro/v1/bootstrap.proto` |
+| CLI usage | [CLI reference](reference/cli.md) |
+| Built-in source integrations | [Source catalog](reference/sources.md) |
+| Source runtime sync | [Source runtime guide](domains/source-runtime-guide.md) |
+| Graph operations | [Graph operations](domains/graph-operations.md) |
+| Compliance control coverage | [Compliance controls](domains/compliance-controls.md) |
+| Policies | [Policies](domains/policies.md) |
+| MCP setup | [MCP native Droid setup](domains/mcp-droid-setup.md) |
+| Endpoint telemetry | [Endpoint security platform integration](domains/endpoint-security-platform-integration.md) |
+| Release artifacts | [Release contract](operations/release-contract.md) |
+| Contribution rules | [Development](engineering/development.md) and [non-goals](engineering/non-goals.md) |
 
 ## Source Of Truth
 

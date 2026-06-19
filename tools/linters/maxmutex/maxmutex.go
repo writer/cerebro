@@ -63,7 +63,7 @@ func run(pass *analysis.Pass) (any, error) {
 					Message: "struct " + ts.Name.Name + " declares " +
 						itoa(count) + " mutex fields; at most 1 is allowed. " +
 						"Split the type so each mutex protects a single cohesive concern. " +
-						"(see docs/NON_GOALS.md)",
+						"(see docs/engineering/non-goals.md)",
 					Related: locations,
 				})
 			}
