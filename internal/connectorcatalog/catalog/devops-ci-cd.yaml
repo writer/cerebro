@@ -492,6 +492,200 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-codefresh
+      tenant_id: builtin_catalog
+      source_id: codefresh
+      display_name: "Codefresh"
+      description: "Codefresh connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - devops
+        - ci
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://g.codefresh.io/api"
+        verification:
+          method: GET
+          path: /orgs
+          expect_status: [200]
+      resource_families:
+        - id: projects
+          label: Projects
+          path: /projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: codefresh.projects
+            schema_ref: codefresh/projects/v1
+          projection:
+            template: repository
+          coverage:
+            - id: projects
+              type: entity_family
+              title: "Projects"
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: builds
+          label: Builds
+          path: /builds
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: codefresh.builds
+            schema_ref: codefresh/builds/v1
+          projection:
+            template: asset
+          coverage:
+            - id: builds
+              type: entity_family
+              title: "Builds"
+              families: [builds]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /audit/events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: codefresh.audit_events
+            schema_ref: codefresh/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-digitalocean
+      tenant_id: builtin_catalog
+      source_id: digitalocean
+      display_name: "DigitalOcean"
+      description: "DigitalOcean connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - devops
+        - cloud
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.digitalocean.com/v2"
+        verification:
+          method: GET
+          path: /account
+          expect_status: [200]
+      resource_families:
+        - id: droplets
+          label: Droplets
+          path: /droplets
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: digitalocean.droplets
+            schema_ref: digitalocean/droplets/v1
+          projection:
+            template: cloud_resource
+          coverage:
+            - id: droplets
+              type: entity_family
+              title: "Droplets"
+              families: [droplets]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: teams
+          label: Teams
+          path: /teams
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: digitalocean.teams
+            schema_ref: digitalocean/teams/v1
+          projection:
+            template: identity_group
+          coverage:
+            - id: teams
+              type: entity_family
+              title: "Teams"
+              families: [teams]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /actions
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: digitalocean.audit_events
+            schema_ref: digitalocean/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-docker_hub
       tenant_id: builtin_catalog
       source_id: docker_hub
@@ -585,6 +779,103 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-fastly
+      tenant_id: builtin_catalog
+      source_id: fastly
+      display_name: "Fastly"
+      description: "Fastly connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - devops
+        - cdn
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.fastly.com"
+        verification:
+          method: GET
+          path: /current_customer
+          expect_status: [200]
+      resource_families:
+        - id: services
+          label: Services
+          path: /service
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: fastly.services
+            schema_ref: fastly/services/v1
+          projection:
+            template: asset
+          coverage:
+            - id: services
+              type: entity_family
+              title: "Services"
+              families: [services]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: acl_entries
+          label: ACL entries
+          path: /acl
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: fastly.acl_entries
+            schema_ref: fastly/acl_entries/v1
+          projection:
+            template: asset
+          coverage:
+            - id: acl_entries
+              type: entity_family
+              title: "ACL entries"
+              families: [acl_entries]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: fastly.audit_events
+            schema_ref: fastly/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
@@ -777,6 +1068,103 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-heroku
+      tenant_id: builtin_catalog
+      source_id: heroku
+      display_name: "Heroku"
+      description: "Heroku connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - devops
+        - paas
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.heroku.com"
+        verification:
+          method: GET
+          path: /apps
+          expect_status: [200]
+      resource_families:
+        - id: apps
+          label: Apps
+          path: /apps
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: heroku.apps
+            schema_ref: heroku/apps/v1
+          projection:
+            template: asset
+          coverage:
+            - id: apps
+              type: entity_family
+              title: "Apps"
+              families: [apps]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: collaborators
+          label: Collaborators
+          path: /collaborators
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: heroku.collaborators
+            schema_ref: heroku/collaborators/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: collaborators
+              type: entity_family
+              title: "Collaborators"
+              families: [collaborators]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /audit-events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: heroku.audit_events
+            schema_ref: heroku/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1

@@ -4,6 +4,200 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-abuseipdb
+      tenant_id: builtin_catalog
+      source_id: abuseipdb
+      display_name: "AbuseIPDB"
+      description: "AbuseIPDB connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - threat_intel
+        - security
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.abuseipdb.com/api/v2"
+        verification:
+          method: GET
+          path: /blacklist
+          expect_status: [200]
+      resource_families:
+        - id: reports
+          label: Reports
+          path: /reports
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: abuseipdb.reports
+            schema_ref: abuseipdb/reports/v1
+          projection:
+            template: finding
+          coverage:
+            - id: reports
+              type: remediation_state
+              title: "Reports"
+              families: [reports]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: ip_addresses
+          label: IP addresses
+          path: /ip-addresses
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: abuseipdb.ip_addresses
+            schema_ref: abuseipdb/ip_addresses/v1
+          projection:
+            template: asset
+          coverage:
+            - id: ip_addresses
+              type: entity_family
+              title: "IP addresses"
+              families: [ip_addresses]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /audit-events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: abuseipdb.audit_events
+            schema_ref: abuseipdb/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-bugsnag
+      tenant_id: builtin_catalog
+      source_id: bugsnag
+      display_name: "Bugsnag"
+      description: "Bugsnag connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - observability
+        - security
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.bugsnag.com"
+        verification:
+          method: GET
+          path: /health
+          expect_status: [200]
+      resource_families:
+        - id: projects
+          label: Projects
+          path: /projects
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: bugsnag.projects
+            schema_ref: bugsnag/projects/v1
+          projection:
+            template: asset
+          coverage:
+            - id: projects
+              type: entity_family
+              title: "Projects"
+              families: [projects]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: errors
+          label: Errors
+          path: /errors
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: bugsnag.errors
+            schema_ref: bugsnag/errors/v1
+          projection:
+            template: finding
+          coverage:
+            - id: errors
+              type: remediation_state
+              title: "Errors"
+              families: [errors]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /audit-events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: bugsnag.audit_events
+            schema_ref: bugsnag/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-cortex_xdr
       tenant_id: builtin_catalog
       source_id: cortex_xdr
@@ -576,6 +770,297 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-haveibeenpwned
+      tenant_id: builtin_catalog
+      source_id: haveibeenpwned
+      display_name: "Have I Been Pwned"
+      description: "Have I Been Pwned connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - threat_intel
+        - identity
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://haveibeenpwned.com/api/v3"
+        verification:
+          method: GET
+          path: /breaches
+          expect_status: [200]
+      resource_families:
+        - id: breaches
+          label: Breaches
+          path: /breaches
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: haveibeenpwned.breaches
+            schema_ref: haveibeenpwned/breaches/v1
+          projection:
+            template: finding
+          coverage:
+            - id: breaches
+              type: remediation_state
+              title: "Breaches"
+              families: [breaches]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: affected_accounts
+          label: Affected accounts
+          path: /breachedaccount
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: haveibeenpwned.affected_accounts
+            schema_ref: haveibeenpwned/affected_accounts/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: affected_accounts
+              type: entity_family
+              title: "Affected accounts"
+              families: [affected_accounts]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /audit-events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: haveibeenpwned.audit_events
+            schema_ref: haveibeenpwned/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-hudsonrock
+      tenant_id: builtin_catalog
+      source_id: hudsonrock
+      display_name: "Hudson Rock"
+      description: "Hudson Rock connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - threat_intel
+        - security
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://cavalier.hudsonrock.com/api"
+        verification:
+          method: GET
+          path: /health
+          expect_status: [200]
+      resource_families:
+        - id: infostealers
+          label: Infostealers
+          path: /infostealers
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: hudsonrock.infostealers
+            schema_ref: hudsonrock/infostealers/v1
+          projection:
+            template: finding
+          coverage:
+            - id: infostealers
+              type: remediation_state
+              title: "Infostealers"
+              families: [infostealers]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: domains
+          label: Domains
+          path: /domains
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: hudsonrock.domains
+            schema_ref: hudsonrock/domains/v1
+          projection:
+            template: asset
+          coverage:
+            - id: domains
+              type: entity_family
+              title: "Domains"
+              families: [domains]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /audit-events
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: hudsonrock.audit_events
+            schema_ref: hudsonrock/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-mailchimp
+      tenant_id: builtin_catalog
+      source_id: mailchimp
+      display_name: "Mailchimp"
+      description: "Mailchimp connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - identity
+        - communications
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.dc}.api.mailchimp.com/3.0"
+        verification:
+          method: GET
+          path: /ping
+          expect_status: [200]
+      resource_families:
+        - id: lists
+          label: Lists
+          path: /lists
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: mailchimp.lists
+            schema_ref: mailchimp/lists/v1
+          projection:
+            template: identity_group
+          coverage:
+            - id: lists
+              type: entity_family
+              title: "Lists"
+              families: [lists]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: members
+          label: Members
+          path: /lists/${config.list_id}/members
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: mailchimp.members
+            schema_ref: mailchimp/members/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: members
+              type: entity_family
+              title: "Members"
+              families: [members]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /activity-feed
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: mailchimp.audit_events
+            schema_ref: mailchimp/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
@@ -1543,6 +2028,202 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-twilio
+      tenant_id: builtin_catalog
+      source_id: twilio
+      display_name: "Twilio"
+      description: "Twilio connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - identity
+        - communications
+      auth:
+        model: basic
+        credential_fields:
+          - key: username
+            reference_only: true
+          - key: password
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.twilio.com"
+        verification:
+          method: GET
+          path: /2010-04-01/Accounts.json
+          expect_status: [200]
+      resource_families:
+        - id: accounts
+          label: Accounts
+          path: /2010-04-01/Accounts.json
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: twilio.accounts
+            schema_ref: twilio/accounts/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: accounts
+              type: entity_family
+              title: "Accounts"
+              families: [accounts]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: keys
+          label: Keys
+          path: /2010-04-01/Accounts/${config.account_sid}/Keys.json
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: twilio.keys
+            schema_ref: twilio/keys/v1
+          projection:
+            template: secret
+          coverage:
+            - id: keys
+              type: entity_family
+              title: "Keys"
+              families: [keys]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /2010-04-01/Accounts/${config.account_sid}/Messages.json
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: twilio.audit_events
+            schema_ref: twilio/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-uptimerobot
+      tenant_id: builtin_catalog
+      source_id: uptimerobot
+      display_name: "UptimeRobot"
+      description: "UptimeRobot connector definition catalog entry for high-value security and operations resources."
+      categories:
+        - observability
+        - security
+      auth:
+        model: api_key
+        credential_fields:
+          - key: api_key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.uptimerobot.com/v2"
+        verification:
+          method: GET
+          path: /getAccountDetails
+          expect_status: [200]
+      resource_families:
+        - id: monitors
+          label: Monitors
+          path: /getMonitors
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: uptimerobot.monitors
+            schema_ref: uptimerobot/monitors/v1
+          projection:
+            template: asset
+          coverage:
+            - id: monitors
+              type: entity_family
+              title: "Monitors"
+              families: [monitors]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: alert_contacts
+          label: Alert contacts
+          path: /getAlertContacts
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: uptimerobot.alert_contacts
+            schema_ref: uptimerobot/alert_contacts/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: alert_contacts
+              type: entity_family
+              title: "Alert contacts"
+              families: [alert_contacts]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: audit_events
+          label: Audit events
+          path: /getAuditLog
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: uptimerobot.audit_events
+            schema_ref: uptimerobot/audit_events/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: audit_events
+              type: audit_event
+              title: "Audit events"
+              families: [audit_events]
+              support: partial
+              high_value: true
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
