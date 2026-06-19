@@ -267,6 +267,62 @@ LIMIT $row_limit`,
 	}
 }
 
+func TestValidatePolicyRuleAcceptsEscapedCypherLiteralsAndBacktickIdentifiers(t *testing.T) {
+	rule := PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "graph-escaped",
+			Name:        "Graph Escaped",
+			Description: "Graph policy using escaped literals and quoted identifiers",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "low",
+			Graph: PolicyRuleGraphFinding{
+				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+WHERE entity.note = "escaped \" DELETE still literal"
+  AND entity.` + "`MERGE status`" + ` = 'healthy'
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       entity.label AS summary
+LIMIT $row_limit`,
+				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+			},
+			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC7.1"}}},
+		},
+	}
+	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
+func TestLintPolicyRuleAcceptsInlineLimitAndMultilineOrderBy(t *testing.T) {
+	rule := PolicyFindingRule{
+		RelPath: "policies/graph/example.yaml",
+		Spec: PolicyFindingRuleSpec{
+			Graph: PolicyRuleGraphFinding{
+				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
+RETURN entity.urn AS primary_urn,
+       entity.label AS primary_label,
+       entity.entity_type AS primary_type,
+       entity.urn AS fingerprint_key,
+       'LOW' AS severity,
+       'Graph finding' AS summary,
+       'Fix graph projection' AS action,
+       [entity.urn] AS resource_urns,
+       [] AS evidence
+ORDER
+BY entity.urn
+LIMIT 500`,
+				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
+			},
+		},
+	}
+	if issues := LintPolicyRule(rule); len(issues) != 0 {
+		t.Fatalf("LintPolicyRule() issues = %#v, want none", issues)
+	}
+}
+
 func TestValidatePolicyRuleRejectsInvalidGraphPolicy(t *testing.T) {
 	rule := PolicyFindingRule{
 		APIVersion: APIVersion,

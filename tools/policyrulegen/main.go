@@ -180,7 +180,7 @@ func writeRepoFile(root string, rel string, content []byte) error {
 	if err := rejectSymlink(repoRoot, cleanRel); err != nil {
 		return err
 	}
-	return repoRoot.WriteFile(cleanRel, content, 0o600)
+	return repoRoot.WriteFile(cleanRel, content, 0o644)
 }
 
 func rejectSymlink(root *os.Root, rel string) error {

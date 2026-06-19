@@ -47,8 +47,8 @@ func lintGraphPolicyRule(path string, graph PolicyRuleGraphFinding) []Issue {
 	if query == "" {
 		return nil
 	}
-	if graph.RowLimit == 0 {
-		issues = append(issues, Issue{Path: path, Message: "spec.graph.rowLimit should be set explicitly for deterministic graph evaluation"})
+	if graph.RowLimit == 0 && !cypherHasKeyword(query, "LIMIT") {
+		issues = append(issues, Issue{Path: path, Message: "spec.graph.rowLimit should be set explicitly when spec.graph.query does not include LIMIT"})
 	}
 	if cypherHasKeyword(query, "LIMIT") && !cypherKeywordAppearsBefore(query, "ORDER BY", "LIMIT") {
 		issues = append(issues, Issue{Path: path, Message: "spec.graph.query should ORDER BY stable keys before LIMIT"})

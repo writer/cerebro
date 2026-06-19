@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/writer/cerebro/internal/findingdsl"
@@ -205,6 +208,22 @@ func TestSafeRepoRelRejectsEscapingOutput(t *testing.T) {
 	}
 	if got, err := safeRepoRel("internal/findings/policy_rule_catalog_gen.go"); err != nil || got != "internal/findings/policy_rule_catalog_gen.go" {
 		t.Fatalf("safeRepoRel(valid) = %q, %v", got, err)
+	}
+}
+
+func TestWriteRepoFileUsesReadableGeneratedFileMode(t *testing.T) {
+	oldUmask := syscall.Umask(0)
+	defer syscall.Umask(oldUmask)
+	root := t.TempDir()
+	if err := writeRepoFile(root, "internal/findings/generated.go", []byte("package findings\n")); err != nil {
+		t.Fatalf("writeRepoFile() error = %v", err)
+	}
+	info, err := os.Stat(filepath.Join(root, "internal/findings/generated.go"))
+	if err != nil {
+		t.Fatalf("stat generated file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("generated file mode = %#o, want 0644", got)
 	}
 }
 

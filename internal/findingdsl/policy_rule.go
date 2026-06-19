@@ -1037,25 +1037,48 @@ func cypherLastKeywordIndex(query string, keyword string) int {
 
 func cypherKeywordIndex(query string, keyword string) int {
 	upper := strings.ToUpper(query)
-	needle := strings.ToUpper(strings.TrimSpace(keyword))
-	if needle == "" {
+	parts := strings.Fields(strings.ToUpper(strings.TrimSpace(keyword)))
+	if len(parts) == 0 {
 		return -1
 	}
 	for offset := 0; offset < len(upper); {
-		idx := strings.Index(upper[offset:], needle)
+		idx := strings.Index(upper[offset:], parts[0])
 		if idx < 0 {
 			return -1
 		}
 		idx += offset
 		beforeOK := idx == 0 || !isIdentByte(upper[idx-1])
-		after := idx + len(needle)
-		afterOK := after == len(upper) || !isIdentByte(upper[after])
-		if beforeOK && afterOK {
-			return idx
+		after := idx + len(parts[0])
+		if beforeOK {
+			matched := true
+			for _, part := range parts[1:] {
+				spaceStart := after
+				for after < len(upper) && isCypherKeywordSpace(upper[after]) {
+					after++
+				}
+				if after == spaceStart || !strings.HasPrefix(upper[after:], part) {
+					matched = false
+					break
+				}
+				after += len(part)
+			}
+			afterOK := after == len(upper) || !isIdentByte(upper[after])
+			if matched && afterOK {
+				return idx
+			}
 		}
-		offset = idx + len(needle)
+		offset = idx + len(parts[0])
 	}
 	return -1
+}
+
+func isCypherKeywordSpace(ch byte) bool {
+	switch ch {
+	case ' ', '\t', '\n', '\r', '\f':
+		return true
+	default:
+		return false
+	}
 }
 
 func stripCypherLiteralsAndComments(query string) string {
@@ -1088,7 +1111,7 @@ func stripCypherLiteralsAndComments(query string) string {
 			}
 			continue
 		}
-		if query[idx] == '\'' || query[idx] == '"' {
+		if query[idx] == '\'' || query[idx] == '"' || query[idx] == '`' {
 			quote := query[idx]
 			out.WriteByte(' ')
 			idx++
@@ -1100,6 +1123,15 @@ func stripCypherLiteralsAndComments(query string) string {
 					out.WriteByte(' ')
 				}
 				idx++
+				if ch == '\\' && quote != '`' && idx < len(query) {
+					if query[idx] == '\n' {
+						out.WriteByte('\n')
+					} else {
+						out.WriteByte(' ')
+					}
+					idx++
+					continue
+				}
 				if ch == quote {
 					if idx < len(query) && query[idx] == quote {
 						out.WriteByte(' ')
