@@ -217,6 +217,12 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("NatsCorruptStateRecoveries", body)
         self.assertIn("NatsRestoreCompletions", body)
         self.assertIn("JetStreamStreamBytes", body)
+        self.assertIn("App JetStream Reliability", body)
+        self.assertIn("JetStreamAppErrors", body)
+        self.assertIn("JetStreamJSErrors", body)
+        self.assertIn("JetStreamPublishRetries", body)
+        self.assertIn("JetStreamPublishRetryExhausted", body)
+        self.assertIn("JetStreamAppErrorsByKind", body)
 
     def test_dashboard_includes_postgres_metrics_when_identifier_is_set(self) -> None:
         original_get_region = monitoring.aws.get_region
@@ -300,7 +306,12 @@ class MonitoringRuntimeTest(unittest.TestCase):
 
         self.assertIn("Tenant Runtime Failures", body)
         self.assertIn("Tenant Runtime Failure Groups", body)
+        self.assertIn("JetStream App Events", body)
+        self.assertIn("JetStream App Event Groups", body)
         self.assertIn("/ecs/cerebro-test/api", body)
+        self.assertIn('name = \\"jetstream.error\\"', body)
+        self.assertIn('name = \\"jetstream.publish.retry_exhausted\\"', body)
+        self.assertIn("messaging.jetstream.subject", body)
         self.assertIn('name = \\"source_runtime.sync\\"', body)
         self.assertIn('name = \\"source_projection.project\\"', body)
         self.assertIn("tenant_id", body)
@@ -328,9 +339,12 @@ class MonitoringRuntimeTest(unittest.TestCase):
             monitoring.aws.get_region = original_get_region
 
         by_title = {widget["properties"]["title"]: widget for widget in parsed["widgets"]}
+        self.assertEqual(by_title["App JetStream Reliability"]["y"], 60)
         self.assertEqual(by_title["NATS JetStream Operations"]["y"], 60)
-        self.assertEqual(by_title["Tenant Runtime Failures"]["y"], 66)
-        self.assertEqual(by_title["Tenant Runtime Failure Groups"]["y"], 66)
+        self.assertEqual(by_title["JetStream App Events"]["y"], 66)
+        self.assertEqual(by_title["JetStream App Event Groups"]["y"], 66)
+        self.assertEqual(by_title["Tenant Runtime Failures"]["y"], 72)
+        self.assertEqual(by_title["Tenant Runtime Failure Groups"]["y"], 72)
 
     def test_otel_product_metric_widgets_follow_collector_widgets(self) -> None:
         class Region:

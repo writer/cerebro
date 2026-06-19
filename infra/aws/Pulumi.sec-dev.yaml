@@ -80,6 +80,8 @@ config:
   cerebro:jetstreamLagProbeIntervalSeconds: 60
   cerebro:jetstreamLagAlarmThreshold: 1000
   cerebro:jetstreamStreamBytesAlarmThreshold: 85899345920
+  cerebro:jetstreamAppErrorAlarmThreshold: 10
+  cerebro:jetstreamPublishRetryAlarmThreshold: 25
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:944130631940:aws-controltower-SecurityNotifications
   cerebro:apiAuthEnabled: true

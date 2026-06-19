@@ -433,6 +433,14 @@ config:
     type: integer
     default: 10000
     description: CloudWatch alarm threshold for aggregate JetStream consumer lag
+  cerebro:jetstreamAppErrorAlarmThreshold:
+    type: integer
+    default: 10
+    description: Optional CloudWatch alarm threshold for structured app-level JetStream errors per 5-minute period; 0 disables this alarm
+  cerebro:jetstreamPublishRetryAlarmThreshold:
+    type: integer
+    default: 25
+    description: Optional CloudWatch alarm threshold for structured JetStream publish retry events per 5-minute period; 0 disables this alarm
   cerebro:accessAuditDeniedAlarmThreshold:
     type: integer
     default: 0

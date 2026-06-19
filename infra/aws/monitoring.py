@@ -436,6 +436,8 @@ def create_monitoring(
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
     jetstream_stream_bytes_alarm_threshold: int = 0,
+    jetstream_app_error_alarm_threshold: int = 10,
+    jetstream_publish_retry_alarm_threshold: int = 25,
     nats_log_group_name: pulumi.Input[str] = None,
     api_request_count_per_target_alarm_threshold: int = 0,
     api_latency_p95_alarm_threshold_seconds: int = 3,
@@ -925,6 +927,35 @@ def create_monitoring(
                 dimensions={"Dashboard": "grc"},
                 tags={"Name": f"{name}-grc-dashboard-latency-p95-alarm"},
             )
+        if jetstream_app_error_alarm_threshold > 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-jetstream-app-errors-alarm",
+                alarm_name=f"{name}-jetstream-app-errors",
+                namespace=telemetry_namespace,
+                metric_name="JetStreamAppErrors",
+                threshold=jetstream_app_error_alarm_threshold,
+                description="Application-level JetStream errors exceeded the configured threshold; inspect structured app logs for jetstream.error and publish retry exhaustion.",
+                alarm_actions=alarm_actions,
+            )
+        if jetstream_publish_retry_alarm_threshold > 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-jetstream-publish-retries-alarm",
+                alarm_name=f"{name}-jetstream-publish-retries",
+                namespace=telemetry_namespace,
+                metric_name="JetStreamPublishRetries",
+                threshold=jetstream_publish_retry_alarm_threshold,
+                description="JetStream publish retries exceeded the configured threshold; NATS may be accepting connections while publish acknowledgements are unhealthy.",
+                alarm_actions=alarm_actions,
+            )
+        _custom_metric_alarm(
+            resource_name=f"{name}-jetstream-publish-retry-exhausted-alarm",
+            alarm_name=f"{name}-jetstream-publish-retry-exhausted",
+            namespace=telemetry_namespace,
+            metric_name="JetStreamPublishRetryExhausted",
+            threshold=0,
+            description="A JetStream publish exhausted all idempotent retry attempts; inspect jetstream.publish.retry_exhausted and correlated wide events immediately.",
+            alarm_actions=alarm_actions,
+        )
     otel_collector_filters = {}
     if otel_collector_enabled and otel_collector_log_group_name:
         otel_collector_filters = _create_otel_collector_metric_filters(name, otel_collector_log_group_name, telemetry_namespace)
@@ -1454,6 +1485,90 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
+        "jetstream_app_errors": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-app-errors-filter",
+            name=f"{name}-jetstream-app-errors",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.error" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamAppErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_app_errors_by_kind": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-app-errors-by-kind-filter",
+            name=f"{name}-jetstream-app-errors-by-kind",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.error" && $.error_kind = * && $.operation = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamAppErrorsByKind",
+                namespace=namespace,
+                value="1",
+                dimensions={"ErrorKind": "$.error_kind", "Operation": "$.operation"},
+            ),
+        ),
+        "jetstream_js_errors": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-js-errors-filter",
+            name=f"{name}-jetstream-js-errors",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.error" && $.error_kind = "jetstream_js_error" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamJSErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_timeouts": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-timeouts-filter",
+            name=f"{name}-jetstream-timeouts",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.error" && (($.error_kind = "context_deadline_exceeded") || ($.error_kind = "context_canceled")) }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamTimeouts",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_publish_retries": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-publish-retries-filter",
+            name=f"{name}-jetstream-publish-retries",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.publish.retry" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamPublishRetries",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_publish_recovered": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-publish-recovered-filter",
+            name=f"{name}-jetstream-publish-recovered",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.publish.recovered" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamPublishRecovered",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "jetstream_publish_retry_exhausted": aws.cloudwatch.LogMetricFilter(
+            f"{name}-jetstream-publish-retry-exhausted-filter",
+            name=f"{name}-jetstream-publish-retry-exhausted",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "jetstream.publish.retry_exhausted" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="JetStreamPublishRetryExhausted",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
         "orchestrator_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
             f"{name}-orchestrator-completed-by-runtime-filter",
             name=f"{name}-orchestrator-completed-by-runtime",
@@ -1836,7 +1951,32 @@ def _dashboard_body(
             },
             {
                 "type": "metric",
-                "x": 0, "y": 60, "width": 24, "height": 6,
+                "x": 0, "y": 60, "width": 12, "height": 6,
+                "properties": {
+                    "title": "App JetStream Reliability",
+                    "metrics": [
+                        [telemetry_namespace, "JetStreamAppErrors", {"stat": "Sum", "label": "App errors"}],
+                        [".", "JetStreamJSErrors", {"stat": "Sum", "label": "JS errors"}],
+                        [".", "JetStreamTimeouts", {"stat": "Sum", "label": "Timeouts/cancels"}],
+                        [".", "JetStreamPublishRetries", {"stat": "Sum", "label": "Publish retries"}],
+                        [".", "JetStreamPublishRecovered", {"stat": "Sum", "label": "Recovered after retry"}],
+                        [".", "JetStreamPublishRetryExhausted", {"stat": "Sum", "label": "Retry exhausted"}],
+                        [
+                            {
+                                "expression": f"SEARCH('{{{telemetry_namespace},ErrorKind,Operation}} MetricName=\"JetStreamAppErrorsByKind\"', 'Sum', 300)",
+                                "label": "Errors by kind/op",
+                                "id": "e1",
+                                "yAxis": "right",
+                            }
+                        ],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 60, "width": 12, "height": 6,
                 "properties": {
                     "title": "NATS JetStream Operations",
                     "metrics": [
@@ -1987,8 +2127,10 @@ def _dashboard_body(
                 },
             },
         ])
-    tenant_diagnostic_widgets = _tenant_runtime_diagnostic_widgets(app_log_group_name, 66) if app_log_group_name else []
-    next_y = 72 if tenant_diagnostic_widgets else 66
+    jetstream_diagnostic_widgets = _jetstream_diagnostic_widgets(app_log_group_name, 66) if app_log_group_name else []
+    tenant_y = 72 if jetstream_diagnostic_widgets else 66
+    tenant_diagnostic_widgets = _tenant_runtime_diagnostic_widgets(app_log_group_name, tenant_y) if app_log_group_name else []
+    next_y = tenant_y + 6 if tenant_diagnostic_widgets else (72 if jetstream_diagnostic_widgets else 66)
     otel_widgets = (
         _otel_collector_observability_widgets(
             name,
@@ -2005,6 +2147,7 @@ def _dashboard_body(
     otel_product_widgets = _otel_product_metric_widgets(next_y) if otel_widgets else []
     if otel_product_widgets:
         next_y += 12
+    widgets.extend(jetstream_diagnostic_widgets)
     widgets.extend(tenant_diagnostic_widgets)
     widgets.extend(otel_widgets)
     widgets.extend(otel_product_widgets)
@@ -2016,6 +2159,54 @@ def _dashboard_body(
         )
     )
     return json.dumps({"widgets": widgets})
+
+
+def _jetstream_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
+    region = aws.get_region().region
+    event_filter = (
+        'kind = "event" and (name = "jetstream.error" or name = "jetstream.publish.retry" '
+        'or name = "jetstream.publish.retry_exhausted" or name = "jetstream.publish.recovered")'
+    )
+    return [
+        {
+            "type": "log",
+            "x": 0,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "JetStream App Events",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields @timestamp, name, operation, error_kind, error_fingerprint, "
+                    "`messaging.jetstream.subject`, `messaging.jetstream.publish.retry_count`, "
+                    "`messaging.jetstream.publish.attempts`, trace_id, runtime_id, source_id, tenant_id "
+                    f"| filter {event_filter} "
+                    "| sort @timestamp desc | limit 50"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": y,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "JetStream App Event Groups",
+                "query": (
+                    f"SOURCE '{log_group_name}' | fields name, operation, error_kind, error_fingerprint, "
+                    "`messaging.jetstream.subject`, `messaging.jetstream.publish.retry_count` "
+                    f"| filter {event_filter} "
+                    "| stats count(*) as events, max(@timestamp) as last_seen by name, operation, error_kind, error_fingerprint, `messaging.jetstream.subject` "
+                    "| sort events desc | limit 50"
+                ),
+                "region": region,
+                "view": "table",
+            },
+        },
+    ]
 
 
 def _tenant_runtime_diagnostic_widgets(log_group_name: str, y: int) -> list[dict]:
