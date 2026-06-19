@@ -45,7 +45,7 @@ func (p CerebroDeviceProvider) ExecuteGraphAction(ctx context.Context, spec Acti
 	}
 	device.Status = "revoked"
 	device.RevokedAt = p.now()
-	return GraphActionFromCerebroDevice(spec.ID, device, request, "succeeded", "revoked", ""), nil
+	return GraphActionFromCerebroDevice(spec.ID, device, request, ActionStatusSucceeded, "revoked", ""), nil
 }
 
 func (p CerebroDeviceProvider) GetGraphAction(ctx context.Context, externalID string) (*GraphAction, error) {
@@ -63,10 +63,10 @@ func (p CerebroDeviceProvider) GetGraphAction(ctx context.Context, externalID st
 		}
 		return nil, fmt.Errorf("%w: lookup device: %w", ErrRemote, err)
 	}
-	status := "needs_attention"
+	status := ActionStatusNeedsAttention
 	reason := "device is not revoked"
 	if strings.EqualFold(strings.TrimSpace(device.Status), "revoked") {
-		status = "succeeded"
+		status = ActionStatusSucceeded
 		reason = ""
 	}
 	return GraphActionFromCerebroDevice(ActionEndpointCerebroRevokeDevice, device, ProviderActionRequest{}, status, device.Status, reason), nil

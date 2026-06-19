@@ -262,6 +262,9 @@ func renderCatalog(catalog actionCatalog) ([]byte, error) {
 	buf.WriteString("\npackage graphactions\n\n")
 	writeStringConstants(&buf, "Action IDs", actionConstants(catalog.Actions))
 	writeStringConstants(&buf, "Target kinds", targetKindConstants(catalog.Actions))
+	writeStringSlice(&buf, "generatedActionIDs", actionConstants(catalog.Actions))
+	writeStringSlice(&buf, "generatedProviderIDs", providerConstants(catalog.Actions))
+	writeStringSlice(&buf, "generatedTargetKinds", targetKindConstants(catalog.Actions))
 	buf.WriteString("func DefaultRegistry() Registry {\n")
 	buf.WriteString("\tactions := make(map[string]ActionSpec, len(generatedActionSpecs))\n")
 	buf.WriteString("\tfor _, spec := range generatedActionSpecs {\n")
@@ -272,6 +275,28 @@ func renderCatalog(catalog actionCatalog) ([]byte, error) {
 	buf.WriteString("func KnownActionSpecs() []ActionSpec {\n")
 	buf.WriteString("\tout := make([]ActionSpec, len(generatedActionSpecs))\n")
 	buf.WriteString("\tcopy(out, generatedActionSpecs)\n")
+	buf.WriteString("\treturn out\n")
+	buf.WriteString("}\n\n")
+	buf.WriteString("func KnownActionMetadata() []ActionMetadata {\n")
+	buf.WriteString("\tout := make([]ActionMetadata, 0, len(generatedActionSpecs))\n")
+	buf.WriteString("\tfor _, spec := range generatedActionSpecs {\n")
+	buf.WriteString("\t\tout = append(out, spec.Metadata())\n")
+	buf.WriteString("\t}\n")
+	buf.WriteString("\treturn out\n")
+	buf.WriteString("}\n\n")
+	buf.WriteString("func KnownActionIDs() []string {\n")
+	buf.WriteString("\tout := make([]string, len(generatedActionIDs))\n")
+	buf.WriteString("\tcopy(out, generatedActionIDs)\n")
+	buf.WriteString("\treturn out\n")
+	buf.WriteString("}\n\n")
+	buf.WriteString("func KnownProviderIDs() []string {\n")
+	buf.WriteString("\tout := make([]string, len(generatedProviderIDs))\n")
+	buf.WriteString("\tcopy(out, generatedProviderIDs)\n")
+	buf.WriteString("\treturn out\n")
+	buf.WriteString("}\n\n")
+	buf.WriteString("func KnownTargetKinds() []string {\n")
+	buf.WriteString("\tout := make([]string, len(generatedTargetKinds))\n")
+	buf.WriteString("\tcopy(out, generatedTargetKinds)\n")
 	buf.WriteString("\treturn out\n")
 	buf.WriteString("}\n\n")
 	buf.WriteString("var generatedActionSpecs = []ActionSpec{\n")
@@ -309,6 +334,23 @@ func actionConstants(actions []actionCatalogEntry) []stringConstant {
 	return out
 }
 
+func providerConstants(actions []actionCatalogEntry) []stringConstant {
+	seen := map[string]string{}
+	for _, action := range actions {
+		seen[action.ProviderConst] = action.Provider
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]stringConstant, 0, len(names))
+	for _, name := range names {
+		out = append(out, stringConstant{Name: name, Value: seen[name]})
+	}
+	return out
+}
+
 func targetKindConstants(actions []actionCatalogEntry) []stringConstant {
 	seen := map[string]string{}
 	for _, action := range actions {
@@ -336,4 +378,15 @@ func writeStringConstants(buf *bytes.Buffer, title string, constants []stringCon
 		fmt.Fprintf(buf, "\t%s = %q\n", constant.Name, constant.Value)
 	}
 	buf.WriteString(")\n\n")
+}
+
+func writeStringSlice(buf *bytes.Buffer, name string, constants []stringConstant) {
+	if len(constants) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "var %s = []string{\n", name)
+	for _, constant := range constants {
+		fmt.Fprintf(buf, "\t%s,\n", constant.Name)
+	}
+	buf.WriteString("}\n\n")
 }

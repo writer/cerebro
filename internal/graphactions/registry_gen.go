@@ -15,6 +15,22 @@ const (
 	TargetKindOktaUser      = "identity.okta.user"
 )
 
+var generatedActionIDs = []string{
+	ActionIdentityOktaSuspendUser,
+	ActionIdentityOktaUnsuspendUser,
+	ActionEndpointCerebroRevokeDevice,
+}
+
+var generatedProviderIDs = []string{
+	ProviderAccessApprovals,
+	ProviderCerebroDeviceAuth,
+}
+
+var generatedTargetKinds = []string{
+	TargetKindCerebroDevice,
+	TargetKindOktaUser,
+}
+
 func DefaultRegistry() Registry {
 	actions := make(map[string]ActionSpec, len(generatedActionSpecs))
 	for _, spec := range generatedActionSpecs {
@@ -26,6 +42,32 @@ func DefaultRegistry() Registry {
 func KnownActionSpecs() []ActionSpec {
 	out := make([]ActionSpec, len(generatedActionSpecs))
 	copy(out, generatedActionSpecs)
+	return out
+}
+
+func KnownActionMetadata() []ActionMetadata {
+	out := make([]ActionMetadata, 0, len(generatedActionSpecs))
+	for _, spec := range generatedActionSpecs {
+		out = append(out, spec.Metadata())
+	}
+	return out
+}
+
+func KnownActionIDs() []string {
+	out := make([]string, len(generatedActionIDs))
+	copy(out, generatedActionIDs)
+	return out
+}
+
+func KnownProviderIDs() []string {
+	out := make([]string, len(generatedProviderIDs))
+	copy(out, generatedProviderIDs)
+	return out
+}
+
+func KnownTargetKinds() []string {
+	out := make([]string, len(generatedTargetKinds))
+	copy(out, generatedTargetKinds)
 	return out
 }
 

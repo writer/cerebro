@@ -6771,14 +6771,14 @@ components:
       properties:
         action:
           type: string
-          enum: [identity.okta.suspend_user, identity.okta.unsuspend_user]
+          enum: [identity.okta.suspend_user, identity.okta.unsuspend_user, endpoint.cerebro.revoke_device]
         finding_id:
           type: string
           minLength: 1
           description: Required finding id. Cerebro authorizes the finding tenant, derives the default target, and links the provider action back to the finding.
         target:
           type: string
-          description: Optional explicit graph action target within the authorized finding context. For Okta identity actions this is an Okta user id, login, or email.
+          description: Optional explicit graph action target within the authorized finding context. For Okta identity actions this is an Okta user id, login, or email; for Cerebro device actions this is the finding-scoped device id.
         reason:
           type: string
           maxLength: 2048
@@ -6824,13 +6824,13 @@ components:
           type: string
         action:
           type: string
-          enum: [identity.okta.suspend_user, identity.okta.unsuspend_user]
+          enum: [identity.okta.suspend_user, identity.okta.unsuspend_user, endpoint.cerebro.revoke_device]
         provider:
           type: string
-          enum: [access-approvals]
+          enum: [access-approvals, cerebro-device-auth]
         status:
           type: string
-          enum: [pending, running, succeeded, failed]
+          enum: [pending, queued, running, succeeded, failed, cancelled, needs_attention]
         target:
           type: string
         external_id:
