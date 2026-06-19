@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: stripe-large-refund
+    name: Large Refund Without Approval
+    description: Flags large refunds without explicit approval metadata.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - finance
+        - guardrail
+        - stripe
+spec:
+    severity: high
+    effect: forbid
+    resource: stripe::charge
+    match:
+        conditions:
+            - cmp_gt(path(resource, "amount_refunded"), 500000)
+            - cmp_ne(path(resource, "metadata.approved"), true)
+        conditionFormat: cel
+    frameworks:
+        - name: Cerebro Financial Controls
+          controls:
+            - FIN-3

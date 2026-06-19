@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gitlab-runner-unprotected-tags
+    name: GitLab Runner Without Protected Tags
+    description: GitLab runner accepts jobs without requiring protected tags
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cicd
+        - gitlab
+        - runners
+        - supply-chain
+spec:
+    severity: high
+    effect: forbid
+    resource: gitlab::runner
+    match:
+        conditions:
+            - cmp_eq(path(resource, "run_untagged"), true)
+            - cmp_eq(path(resource, "is_shared"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Configure runner to only accept jobs with protected tags.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - CM-5
+            - CM-7
+            - SI-7
+            - SR-11
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "6.5"
+        - name: CIS Controls v8
+          controls:
+            - "2"
+            - "7"
+            - "16"

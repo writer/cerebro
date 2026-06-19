@@ -1,0 +1,39 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-container-vuln-high
+    name: GCP Container High Vulnerabilities Addressed
+    description: Ensures high vulnerabilities in GCP container images are remediated within SLA (14 days)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - container
+        - vulnerability
+        - high
+        - sla
+        - compliance
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp_container_vulnerabilities
+    match:
+        conditions:
+            - cmp_eq(path(resource, "severity"), "HIGH")
+            - cmp_eq(path(resource, "state"), "ACTIVE")
+            - cmp_lt(path(resource, "discovered_at"), "NOW() - INTERVAL '14 days'")
+        conditionFormat: cel
+    remediation:
+        summary: Update container images to address high vulnerabilities within 14 days of discovery.
+    riskCategories:
+        - VULNERABLE_WORKLOAD
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+        - name: PCI DSS v4.0
+          controls:
+            - 6.3.1
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5
+            - SI-2

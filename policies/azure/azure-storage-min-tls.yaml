@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-storage-minimum-tls-1-2
+    name: Azure Storage Minimum TLS 1.2
+    description: Storage accounts should enforce minimum TLS version 1.2
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-azure-3.15
+        - storage
+        - encryption
+        - tls
+spec:
+    severity: medium
+    effect: forbid
+    resource: azure::storage::account
+    match:
+        conditions:
+            - cmp_ne(path(resource, "minimum_tls_version"), "TLS1_2")
+        conditionFormat: cel
+    remediation:
+        summary: Set the minimum TLS version to 1.2 in storage account configuration.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

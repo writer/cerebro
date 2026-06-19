@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: compliance-ir-gdpr-addendum
+    name: Incident Response Plan GDPR Addendum
+    description: Ensures incident response plan includes GDPR breach notification procedures
+    tags:
+        - compliance
+        - gdpr
+        - incident-response
+        - breach-notification
+spec:
+    severity: HIGH
+    category: compliance
+    resourceType: policy_document
+    match:
+        query: SELECT id, policy_type, status, last_approved_date FROM policy_documents WHERE policy_type = 'incident_response_gdpr' AND (status != 'approved' OR last_approved_date < NOW() - INTERVAL '365 days')
+    remediation:
+        summary: Add GDPR breach notification procedures to incident response plan. Include 72-hour notification requirement.
+    frameworks:
+        - name: GDPR
+          controls:
+            - Art.5
+        - name: SOC 2
+          controls:
+            - CC1.1
+    enabled: true

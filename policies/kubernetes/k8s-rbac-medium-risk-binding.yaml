@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-rbac-medium-risk-binding
+    name: Kubernetes Medium-Risk RBAC Binding
+    description: RBAC binding has medium-risk permissions that may allow lateral movement or privilege expansion.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - rbac
+        - least-privilege
+spec:
+    severity: medium
+    effect: forbid
+    resource: k8s::rbac::risky_binding
+    match:
+        conditions:
+            - cmp_eq(path(resource, "risk_level"), "medium")
+        conditionFormat: cel
+    remediation:
+        summary: Review binding scope and subjects, remove unnecessary privileges, and split broad roles into narrowly scoped bindings.
+    riskCategories:
+        - PRIVILEGE_ESCALATION
+        - LATERAL_MOVEMENT
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.1.1
+            - 5.1.3
+            - 5.1.4
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"

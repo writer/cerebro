@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-github-deprovision
+    name: GitHub Accounts Deprovisioned on Termination
+    description: Ensures GitHub organization access is revoked when personnel leave the company
+    tags:
+        - github
+        - identity
+        - offboarding
+        - access-control
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: github_user
+    match:
+        query: SELECT g.id, g.login, g.email, e.termination_date FROM github_organization_members g JOIN employees e ON g.email = e.work_email WHERE e.status = 'terminated' AND g.org_membership_state = 'active'
+    remediation:
+        summary: Remove GitHub organization access for terminated employees within 24 hours of termination.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.1
+    enabled: true

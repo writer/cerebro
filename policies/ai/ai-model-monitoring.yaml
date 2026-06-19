@@ -1,0 +1,32 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-model-monitoring
+    name: AI Model Performance Monitoring
+    description: Ensures deployed AI models have monitoring for performance degradation and drift (ISO 42001)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - ai
+        - ml
+        - monitoring
+        - drift
+        - iso42001
+spec:
+    severity: medium
+    effect: forbid
+    resource: ai_models
+    match:
+        conditions:
+            - cmp_eq(path(resource, "environment"), "production")
+            - (cmp_eq(path(resource, "monitoring_enabled"), false)) || (cmp_eq(path(resource, "drift_detection_enabled"), false))
+        conditionFormat: cel
+    remediation:
+        summary: Enable monitoring and drift detection for all production AI models. Set alerts for performance degradation.
+    frameworks:
+        - name: ISO 42001
+          controls:
+            - "9.1"
+            - "9.3"
+        - name: SOC 2
+          controls:
+            - CC7.2

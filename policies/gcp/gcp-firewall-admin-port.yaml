@@ -1,0 +1,47 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-firewall-admin-port
+    name: GCP Firewall Allows Admin Ports from Internet
+    description: Firewall rule allows SSH (22) or RDP (3389) access from any source (0.0.0.0/0)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - firewall
+        - network
+        - admin-access
+        - cis-gcp-3.6
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::compute::firewall
+    match:
+        conditions:
+            - cmp_eq(path(resource, "direction"), "INGRESS")
+            - contains_value(path(resource, "source_ranges"), "0.0.0.0/0")
+            - list_value(path(resource, "allowed")).exists(item, (contains_value(path(item, "ports"), "22")) || (contains_value(path(item, "ports"), "3389")) || (cmp_eq(path(item, "ip_protocol"), "all")))
+        conditionFormat: cel
+    remediation:
+        summary: Restrict source ranges to specific IP addresses or CIDR blocks. Use Identity-Aware Proxy (IAP) for SSH/RDP access. Consider using OS Login.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

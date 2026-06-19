@@ -1,0 +1,33 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-network-policy-default-deny
+    name: Kubernetes Namespace Without Default Deny NetworkPolicy
+    description: Namespace does not have a default-deny NetworkPolicy, allowing unrestricted pod-to-pod traffic
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - network
+        - segmentation
+        - zero-trust
+        - cis-k8s-5.3.2
+spec:
+    severity: medium
+    effect: forbid
+    resource: k8s::core::namespace
+    match:
+        conditions:
+            - '!(in_list(path(resource, "metadata.name"), ["kube-system","kube-public","kube-node-lease","gatekeeper-system"]))'
+            - '!(list_value(path(resource, "network_policies")).exists(item, (cmp_eq(path(item, "spec.pod_selector"), "{}")) && (contains_value(path(item, "spec.policy_types"), "Ingress")) && (cmp_eq(path(item, "spec.ingress"), null))))'
+        conditionFormat: cel
+    remediation:
+        summary: Create a default-deny NetworkPolicy for ingress traffic. Add specific allow policies for required communication paths. Consider using a service mesh for mTLS.
+    riskCategories:
+        - LATERAL_MOVEMENT
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.3.2
+    mitreAttack:
+        - tactic: Lateral Movement
+          technique: T1021

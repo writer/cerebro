@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-drop-all-capabilities
+    name: K8s Pod Drop All Capabilities
+    description: Containers should drop all capabilities and add only required ones
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-k8s-5.2.7
+        - pod-security
+        - capabilities
+spec:
+    severity: medium
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - '!(contains_value(path(resource, "spec.containers.security_context.capabilities.drop"), "ALL"))'
+        conditionFormat: cel
+    remediation:
+        summary: 'Add capabilities.drop: [''ALL''] and explicitly add only required capabilities.'
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.7

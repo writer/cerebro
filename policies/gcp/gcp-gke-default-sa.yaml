@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-gke-default-sa
+    name: GKE Node Pool Using Default Service Account
+    description: GKE node pool is using the Compute Engine default service account instead of a dedicated service account
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - gke
+        - kubernetes
+        - least-privilege
+        - cis-gcp-7.17
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::container::node_pool
+    match:
+        conditions:
+            - (cmp_eq(path(resource, "config.service_account"), "default")) || (ends_with_value(path(resource, "config.service_account"), "-compute@developer.gserviceaccount.com"))
+        conditionFormat: cel
+    remediation:
+        summary: Create a dedicated service account with minimal permissions for the node pool. Update the node pool configuration.
+    riskCategories:
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078

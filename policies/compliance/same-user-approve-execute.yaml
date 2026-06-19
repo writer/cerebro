@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: same-user-approve-execute
+    name: Same User Approved and Executed Financial Action
+    description: Flags finance actions where approver and executor are the same principal.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - financial-controls
+        - separation-of-duties
+        - fraud-prevention
+spec:
+    severity: critical
+    effect: forbid
+    resource: billing::approval_event
+    match:
+        conditions:
+            - cmp_eq(path(resource, "approved_by"), path(resource, "executed_by"))
+        conditionFormat: cel
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC5.2
+            - CC5.3
+        - name: Cerebro Financial Controls
+          controls:
+            - FIN-1

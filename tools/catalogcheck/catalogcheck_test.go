@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,18 +12,7 @@ import (
 
 func TestCheckRepositoryAcceptsMinimalCatalogs(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/github/test.json", `{
-  "id": "github-test",
-  "name": "GitHub Test",
-  "description": "Test policy",
-  "effect": "forbid",
-  "resource": "github::repository",
-  "conditions": ["cmp_eq(path(resource, \"visibility\"), \"public\")"],
-  "condition_format": "cel",
-  "severity": "high",
-  "tags": ["github"],
-  "frameworks": [{"name": "SOC 2", "controls": ["CC6"]}]
-}`)
+	writeFile(t, root, "policies/github/test.yaml", policyDSL("github-test", "github::repository"))
 	writeFile(t, root, "policies/cerebro/control-mapping.json", `{"version":"1.0.0","controls":{}}`)
 	writeFile(t, root, "internal/compliance/control_families.yaml", `
 version: "2026-06-16"
@@ -65,7 +55,15 @@ kind_lifecycle:
 
 func TestCheckRepositoryRejectsPolicyMissingMetadata(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/github/test.json", `{"id":"github-test","conditions":["true"]}`)
+	writeFile(t, root, "policies/github/test.yaml", `
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-test
+spec:
+  match:
+    conditions: ["true"]
+`)
 	writeFile(t, root, "sources/sdk/catalog.yaml", `id: sdk
 name: SDK
 emitted_kinds: []
@@ -176,13 +174,7 @@ entries:
 
 func TestCheckRepositoryRejectsUnprojectedEmittedKind(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/github/test.json", `{
-  "id": "github-test",
-  "name": "GitHub Test",
-  "description": "Test policy",
-  "query": "SELECT 1",
-  "severity": "LOW"
-}`)
+	writeFile(t, root, "policies/github/test.yaml", policyDSL("github-test", "github::repository"))
 	writeFile(t, root, "sources/custom/catalog.yaml", `
 id: custom
 name: Custom
@@ -327,7 +319,7 @@ coverage_contract:
 
 func TestCheckCloudPolicyCoverageRejectsUnmappedCloudPolicyResource(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/cloud/test.json", `{"resource":"aws::unknown::thing"}`)
+	writeFile(t, root, "policies/cloud/test.yaml", policyDSL("cloud-test", "aws::unknown::thing"))
 	writeFile(t, root, "sources/aws/catalog.yaml", `
 id: aws
 name: AWS
@@ -414,7 +406,7 @@ func TestCloudPolicyCoverageMapsAWSNetworkExpansionTargets(t *testing.T) {
 
 func TestCheckCloudPolicyCoverageRejectsUncoveredStrictRuntimeFamily(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
+	writeFile(t, root, "policies/cloud/test.yaml", policyDSL("cloud-test", "gcp::compute::instance"))
 	writeFile(t, root, "sources/gcp/catalog.yaml", `
 id: gcp
 name: GCP
@@ -452,7 +444,7 @@ runtimes:
 
 func TestCheckCloudPolicyCoverageRejectsUnsupportedStrictRuntimeFamily(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/cloud/test.json", `{"resource":"gcp::compute::instance"}`)
+	writeFile(t, root, "policies/cloud/test.yaml", policyDSL("cloud-test", "gcp::compute::instance"))
 	writeFile(t, root, "sources/gcp/catalog.yaml", `
 id: gcp
 name: GCP
@@ -487,7 +479,7 @@ runtimes:
 
 func TestCheckCloudPolicyCoverageRejectsUncoveredDeployRuntimeFamilyForAnySource(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "policies/custom/test.json", `{}`)
+	writeFile(t, root, "policies/custom/test.yaml", policyDSL("custom-test", "custom::thing"))
 	writeFile(t, root, "sources/okta/catalog.yaml", `
 id: okta
 name: Okta
@@ -640,6 +632,29 @@ func writeFile(t *testing.T, root string, rel string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func policyDSL(id string, resource string) string {
+	return fmt.Sprintf(`
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: %s
+  name: Test Policy
+  description: Test policy
+  tags: [test]
+spec:
+  severity: high
+  effect: forbid
+  resource: %s
+  match:
+    conditionFormat: cel
+    conditions:
+      - cmp_eq(path(resource, "visibility"), "public")
+  frameworks:
+    - name: SOC 2
+      controls: [CC6]
+`, id, resource)
 }
 
 func issueMessagesContain(issues []issue, substring string) bool {

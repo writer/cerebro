@@ -1,0 +1,39 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-elb-tls-version
+    name: Load Balancer Using Weak TLS Policy
+    description: Load Balancer is using a TLS security policy that allows TLS 1.0 or 1.1
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - elb
+        - encryption
+        - tls
+        - transport-security
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::elbv2::listener
+    match:
+        conditions:
+            - cmp_eq(path(resource, "protocol"), "HTTPS")
+            - '!(in_list(path(resource, "ssl_policy"), ["ELBSecurityPolicy-TLS13-1-2-2021-06","ELBSecurityPolicy-TLS-1-2-2017-01","ELBSecurityPolicy-TLS-1-2-Ext-2018-06"]))'
+        conditionFormat: cel
+    remediation:
+        summary: Update the listener's SSL policy to ELBSecurityPolicy-TLS13-1-2-2021-06 or similar TLS 1.2+ only policy.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"

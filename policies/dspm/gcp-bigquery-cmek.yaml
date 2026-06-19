@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-bigquery-no-cmek
+    name: GCP BigQuery No Customer Managed Encryption
+    description: BigQuery dataset does not use customer-managed encryption keys
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - dspm
+        - bigquery
+        - gcp
+        - encryption
+        - cmek
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::bigquery::dataset
+    match:
+        conditions:
+            - cmp_eq(path(resource, "default_encryption_configuration.kms_key_name"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Configure customer-managed encryption key (CMEK) for the dataset.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+            - "8.6"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Credential Access
+          technique: T1552
+        - tactic: Collection
+          technique: T1530

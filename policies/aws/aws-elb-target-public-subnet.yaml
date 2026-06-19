@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-elb-target-public-subnet
+    name: Load Balancer Targets in Public Subnet
+    description: Load balancer target group contains instances or IPs in public subnets, potentially exposing backend services
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - elb
+        - network
+        - architecture
+        - defense-in-depth
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::elbv2::target_group
+    match:
+        conditions:
+            - in_list(path(resource, "target_type"), ["instance","ip"])
+            - list_value(path(resource, "targets")).exists(item, (cmp_eq(path(item, "subnet.map_public_ip_on_launch"), true)) || (cmp_eq(path(item, "subnet.is_public"), true)))
+        conditionFormat: cel
+    remediation:
+        summary: Move targets to private subnets. Use load balancer in public subnet with targets in private subnets. Ensure security groups restrict direct access to targets.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-4
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+        - name: PCI DSS v4.0.1
+          controls:
+            - 1.3.1
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190

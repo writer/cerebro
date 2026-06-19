@@ -1,0 +1,35 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-gke-dashboard-disabled
+    name: GKE Kubernetes Dashboard Disabled
+    description: The Kubernetes Dashboard should be disabled on GKE clusters as it can be a security risk and is deprecated in favor of Cloud Console
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gke
+        - kubernetes
+        - dashboard
+        - deprecated
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp_container_clusters
+    match:
+        conditions:
+            - cmp_ne(path(resource, "addons_config.kubernetes_dashboard.disabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Disable the Kubernetes Dashboard addon on the GKE cluster using gcloud container clusters update
+        steps:
+            - 'Use gcloud: gcloud container clusters update CLUSTER_NAME --update-addons KubernetesDashboard=DISABLED'
+            - 'Use Google Cloud Console: Navigate to the cluster, click Edit, and disable the dashboard addon'
+            - Use kubectl to access the cluster through Cloud Shell or gcloud instead
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+    frameworks:
+        - name: CIS GKE Benchmark v1.4
+          controls:
+            - 5.6.1
+        - name: NIST 800-53 r5
+          controls:
+            - CM-7

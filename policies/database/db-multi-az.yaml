@@ -1,0 +1,30 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: db-multi-az
+    name: Production Database Multi-AZ Deployment
+    description: Ensures production databases have Multi-AZ deployment for high availability
+    tags:
+        - database
+        - high-availability
+        - multi-az
+        - production
+spec:
+    severity: HIGH
+    category: database
+    resourceType: database
+    match:
+        query: SELECT id, name, engine, environment, multi_az FROM databases WHERE environment = 'production' AND multi_az = false
+    remediation:
+        summary: Enable Multi-AZ deployment for production databases to ensure high availability and automatic failover.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.1
+        - name: NIST 800-53 r5
+          controls:
+            - CP-10
+    enabled: true

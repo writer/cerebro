@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hipaa-access-controls
+    name: HIPAA Unique User Identification
+    description: Ensures unique user IDs for PHI system access (HIPAA 164.312(a)(2)(i))
+    tags:
+        - hipaa
+        - access-control
+        - identity
+        - healthcare
+spec:
+    severity: HIGH
+    category: hipaa
+    resourceType: user_account
+    match:
+        query: SELECT id, username, account_type, system_name FROM user_accounts WHERE phi_access = true AND account_type = 'shared'
+    remediation:
+        summary: Replace shared accounts with individual user accounts for all PHI system access.
+    frameworks:
+        - name: HIPAA
+          controls:
+            - "164.312"
+    enabled: true

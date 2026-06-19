@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-logging-disabled
+    name: GCP Cloud Logging Disabled
+    description: Cloud Logging is not enabled or log sinks are not configured for the project
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - logging
+        - audit
+        - compliance
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::logging::project_sink
+    match:
+        conditions:
+            - (cmp_eq(path(resource, "disabled"), true)) || (cmp_eq(path(resource, "sink_count"), 0))
+        conditionFormat: cel
+    remediation:
+        summary: Enable Cloud Logging for the project. Configure log sinks to export logs to Cloud Storage, BigQuery, or Pub/Sub for retention and analysis.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562

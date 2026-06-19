@@ -1,0 +1,57 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: sentinelone-threat-detected
+    name: SentinelOne Threat Detected
+    description: SentinelOne EDR detected threat on endpoint
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - runtime
+        - edr
+        - sentinelone
+        - malware
+        - incident-response
+spec:
+    severity: critical
+    effect: forbid
+    resource: sentinelone::threat
+    match:
+        conditions:
+            - cmp_ne(path(resource, "threat_info.incident_status"), "resolved")
+            - in_list(path(resource, "threat_info.confidence_level"), ["['malicious","suspicious']"])
+        conditionFormat: cel
+    remediation:
+        summary: Review threat in SentinelOne console and follow incident response playbook.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.2
+            - CC7.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.8.16
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: SOC 2
+          controls:
+            - CC7.3
+            - CC7.4
+            - CC7.5
+        - name: ISO 27001:2022
+          controls:
+            - A.5.24
+            - A.5.25
+            - A.5.26
+        - name: NIST 800-53 r5
+          controls:
+            - IR-4
+            - IR-5
+            - IR-8

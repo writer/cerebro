@@ -21,8 +21,9 @@ class ChangedChecksTests(unittest.TestCase):
         self.assertIn("catalog-check", names)
 
     def test_policy_paths_select_rule_and_detection_checks(self):
-        names = self.command_names(["policies/aws/example.json"])
+        names = self.command_names(["policies/aws/example.yaml"])
         self.assertIn("catalog-check", names)
+        self.assertIn("finding-dsl-check", names)
         self.assertIn("policy-rule-check", names)
         self.assertIn("detection-catalog-check", names)
 

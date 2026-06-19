@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: vm-cleartext-cloud-keys
+    name: VM with cleartext cloud keys granting high privileges
+    description: Compute instance contains cleartext cloud credentials (service account keys, API keys) that grant high privileges, enabling lateral movement if compromised
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - compute
+        - secrets
+        - credentials
+        - toxic-combination
+        - security
+spec:
+    severity: critical
+    effect: forbid
+    resource: gcp::compute::instance
+    match:
+        conditions:
+            - (contains_value(path(resource, "metadata"), "PRIVATE_KEY")) || (contains_value(path(resource, "metadata"), "service_account")) || (contains_value(path(resource, "metadata"), "credentials"))
+        conditionFormat: cel
+    remediation:
+        summary: 1. Remove hardcoded credentials from instance metadata. 2. Use workload identity or attached service accounts instead. 3. Rotate any exposed credentials immediately. 4. Enable Secret Manager for credential storage.
+    riskCategories:
+        - INSECURE_USE_OF_SECRETS
+        - UNPROTECTED_PRINCIPAL
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-5
+            - SC-12
+            - SC-28
+        - name: CIS Controls v8
+          controls:
+            - "3"
+            - "16"
+        - name: SOC 2
+          controls:
+            - CC6
+    mitreAttack:
+        - tactic: Credential Access
+          technique: T1552
+        - tactic: Lateral Movement
+          technique: T1550

@@ -1,0 +1,37 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-cloud-run-allow-unauthenticated
+    name: GCP Cloud Run Allow Unauthenticated
+    description: Cloud Run service allows unauthenticated invocations
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - api
+        - cloud-run
+        - gcp
+        - authentication
+        - serverless
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::run::service
+    match:
+        conditions:
+            - contains_value(path(resource, "iam_policy"), "allUsers")
+        conditionFormat: cel
+    remediation:
+        summary: Remove allUsers IAM binding and require authentication.
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - IA-5
+        - name: PCI DSS v4.0.1
+          controls:
+            - "8.3"
+            - "8.4"
+        - name: CIS Controls v8
+          controls:
+            - "6"

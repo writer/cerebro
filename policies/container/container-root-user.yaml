@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: container-root-user
+    name: Container Running as Root
+    description: Ensures containers are not running as root user
+    tags:
+        - container
+        - root
+        - user
+        - security
+        - kubernetes
+spec:
+    severity: HIGH
+    category: container
+    resourceType: container
+    match:
+        query: SELECT id, name, image, namespace, run_as_user FROM containers WHERE run_as_user = 0 OR run_as_non_root = false
+    remediation:
+        summary: 'Configure containers to run as non-root user. Set runAsNonRoot: true in security context.'
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: CIS Benchmarks
+          controls:
+            - "1.1"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

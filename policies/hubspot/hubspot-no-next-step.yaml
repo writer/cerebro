@@ -1,0 +1,24 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: hubspot-no-next-step
+    name: Open Deal Without Next Step
+    description: Flags active deals missing a defined next-step field.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - pipeline-hygiene
+        - hubspot
+spec:
+    severity: low
+    effect: forbid
+    resource: hubspot::deal
+    match:
+        conditions:
+            - cmp_ne(path(resource, "properties.dealstage"), "closedwon")
+            - cmp_ne(path(resource, "properties.dealstage"), "closedlost")
+            - '!exists_path(resource, "properties.hs_next_step")'
+        conditionFormat: cel
+    frameworks:
+        - name: Cerebro Revenue Operations
+          controls:
+            - REV-1

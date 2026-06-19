@@ -1,0 +1,48 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-external-domain-admin
+    name: User account with non organizational domain (gmail) and high/admin access in GCP
+    description: A personal email account (non-organizational) has high or admin access to GCP resources
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - gcp
+        - identity
+        - external-domain
+        - admin
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::iam::member
+    match:
+        conditions:
+            - matches_value(path(resource, "email"), ".*@gmail.com$|.*@outlook.com$|.*@yahoo.com$|.*@hotmail.com$")
+            - (cmp_eq(path(resource, "has_high_privilege"), true)) || (cmp_eq(path(resource, "has_admin_role"), true))
+        conditionFormat: cel
+    remediation:
+        summary: Replace personal accounts with organizational accounts. Remove high privileges from personal accounts immediately.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Privilege Escalation
+          technique: T1078

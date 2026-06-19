@@ -1,0 +1,40 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-gke-metadata-server
+    name: GKE Workload Identity (Metadata Server) Enabled
+    description: GKE node pools should have GKE Metadata Server enabled to use Workload Identity for secure pod authentication to Google Cloud APIs
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gke
+        - kubernetes
+        - workload-identity
+        - metadata-server
+        - authentication
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp_container_node_pools
+    match:
+        conditions:
+            - cmp_ne(path(resource, "config.workload_metadata_config.mode"), path(resource, "GKE_METADATA"))
+        conditionFormat: cel
+    remediation:
+        summary: Enable GKE Metadata Server and configure Workload Identity for secure authentication
+        steps:
+            - Enable Workload Identity on the cluster if not already enabled
+            - 'Update node pool: gcloud container node-pools update POOL_NAME --cluster=CLUSTER_NAME --workload-metadata=GKE_METADATA'
+            - Configure Kubernetes service accounts to use Google service accounts via Workload Identity
+    riskCategories:
+        - IDENTITY_RISK
+    frameworks:
+        - name: CIS GKE Benchmark v1.4
+          controls:
+            - 5.2.1
+        - name: NIST 800-53 r5
+          controls:
+            - IA-2
+            - AC-2
+        - name: SOC 2
+          controls:
+            - CC6.1

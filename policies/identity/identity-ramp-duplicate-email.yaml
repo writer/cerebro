@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-ramp-duplicate-email
+    name: Ramp Duplicate Account Emails
+    description: Detects duplicate active ramp accounts sharing the same email identity.
+    tags:
+        - ramp
+        - identity
+        - access-control
+        - account-hygiene
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: ramp_user
+    match:
+        query: SELECT LOWER(TRIM(u.email)) AS email, COUNT(*) AS account_count FROM ramp_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND COALESCE(TRIM(u.email), '') != '' GROUP BY LOWER(TRIM(u.email)) HAVING COUNT(*) > 1
+    remediation:
+        summary: Consolidate duplicate identities and remove unintended duplicate access paths.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: ISO 27001:2022
+          controls:
+            - A.5.17
+    enabled: true

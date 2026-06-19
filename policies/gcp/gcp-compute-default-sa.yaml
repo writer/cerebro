@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-compute-no-default-service-account
+    name: GCP Compute No Default Service Account
+    description: Compute instances should not use the default service account
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-4.1
+        - compute
+        - iam
+        - service-account
+spec:
+    severity: medium
+    effect: forbid
+    resource: gcp::compute::instance
+    match:
+        conditions:
+            - ends_with_value(path(resource, "service_accounts.email"), "-compute@developer.gserviceaccount.com")
+        conditionFormat: cel
+    remediation:
+        summary: Create a dedicated service account with minimal permissions for the instance.
+    riskCategories:
+        - IDENTITY_RISK
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098

@@ -1,0 +1,49 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: bucket-public-large-files
+    name: Publicly readable bucket contains large log and data files
+    description: A public bucket contains large files that may contain sensitive information
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - storage
+        - public-exposure
+        - data-files
+spec:
+    severity: high
+    effect: forbid
+    resource: storage::bucket|storage::blob_container
+    match:
+        conditions:
+            - cmp_eq(path(resource, "is_public"), true)
+            - list_value(path(resource, "objects")).exists(item, (cmp_gt(path(item, "size_mb"), 100)) && (in_list(path(item, "file_type"), ["log","csv","json","parquet"])))
+        conditionFormat: cel
+    remediation:
+        summary: Remove public access. Review large files for sensitive content before any exposure.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Collection
+          technique: T1530
+        - tactic: Exfiltration
+          technique: T1537

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"gopkg.in/yaml.v3"
 )
@@ -437,48 +437,29 @@ func checkCloudPolicyCoverage(root string) ([]issue, error) {
 	}
 	issues := checkRequiredCloudCoverageDimensions(dimensions)
 	issues = append(issues, checkStrictDeployRuntimeCoverage(root, dimensions)...)
-	policiesRoot := filepath.Join(root, "policies")
-	err = filepath.WalkDir(policiesRoot, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || filepath.Ext(path) != ".json" {
-			return nil
-		}
-		rel := slashRel(root, path)
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", rel, err)
-		}
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(content, &raw); err != nil {
-			return nil
-		}
-		for _, resource := range splitPolicyResources(stringField(raw, "resource")) {
+	rules, _, err := findingdsl.LoadPolicyRules(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, rule := range rules {
+		for _, resource := range splitPolicyResources(rule.Spec.Resource) {
 			if !isCloudPolicyResource(resource) {
 				continue
 			}
 			alias, ok := cloudPolicyCoverageAliases[resource]
 			if !ok {
-				issues = append(issues, issue{path: rel, message: fmt.Sprintf("cloud policy resource %q has no source coverage mapping", resource)})
+				issues = append(issues, issue{path: rule.RelPath, message: fmt.Sprintf("cloud policy resource %q has no source coverage mapping", resource)})
 				continue
 			}
 			sourceDimensions := dimensions[alias.SourceID]
 			if len(sourceDimensions) == 0 {
-				issues = append(issues, issue{path: rel, message: fmt.Sprintf("cloud policy resource %q maps to source %q with no coverage_contract", resource, alias.SourceID)})
+				issues = append(issues, issue{path: rule.RelPath, message: fmt.Sprintf("cloud policy resource %q maps to source %q with no coverage_contract", resource, alias.SourceID)})
 				continue
 			}
 			if _, ok := sourceDimensions[alias.DimensionID]; !ok {
-				issues = append(issues, issue{path: rel, message: fmt.Sprintf("cloud policy resource %q maps to missing %s coverage dimension %q", resource, alias.SourceID, alias.DimensionID)})
+				issues = append(issues, issue{path: rule.RelPath, message: fmt.Sprintf("cloud policy resource %q maps to missing %s coverage dimension %q", resource, alias.SourceID, alias.DimensionID)})
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("policies directory not found")
-		}
-		return nil, err
 	}
 	return issues, nil
 }

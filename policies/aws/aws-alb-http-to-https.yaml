@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-alb-http-to-https
+    name: ALB HTTP to HTTPS Redirect
+    description: Ensures Application Load Balancers redirect HTTP traffic to HTTPS
+    tags:
+        - aws
+        - alb
+        - https
+        - redirect
+        - tls
+spec:
+    severity: HIGH
+    category: aws
+    resourceType: aws_lb_listener
+    match:
+        query: 'SELECT _cq_id AS id, load_balancer_arn, port, protocol FROM aws_lb_listeners WHERE protocol = ''HTTP'' AND NOT (default_actions ILIKE ''%"Type": "redirect"%'' AND default_actions ILIKE ''%"Protocol": "HTTPS"%'')'
+    remediation:
+        summary: Configure HTTP listeners to redirect to HTTPS. Add a redirect action on port 80 listeners.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

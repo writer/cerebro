@@ -1,0 +1,38 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-elb-certificate-expiry
+    name: Load Balancer Certificate Expiring Soon
+    description: SSL/TLS certificate attached to load balancer listener expires within 30 days
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - elb
+        - certificates
+        - operational
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::elbv2::listener
+    match:
+        conditions:
+            - list_value(path(resource, "certificates")).exists(item, cmp_lt(path(item, "not_after_days"), 30))
+        conditionFormat: cel
+    remediation:
+        summary: Renew or replace the SSL certificate before expiration. Consider using ACM for automatic certificate renewal.
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Discovery
+          technique: T1087

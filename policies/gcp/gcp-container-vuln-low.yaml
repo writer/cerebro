@@ -1,0 +1,35 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-container-vuln-low
+    name: GCP Container Low Vulnerabilities Addressed
+    description: Ensures low vulnerabilities in GCP container images are tracked and addressed within SLA (90 days)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - container
+        - vulnerability
+        - low
+        - sla
+        - compliance
+spec:
+    severity: low
+    effect: forbid
+    resource: gcp_container_vulnerabilities
+    match:
+        conditions:
+            - cmp_eq(path(resource, "severity"), "LOW")
+            - cmp_eq(path(resource, "state"), "ACTIVE")
+            - cmp_lt(path(resource, "discovered_at"), "NOW() - INTERVAL '90 days'")
+        conditionFormat: cel
+    remediation:
+        summary: Address low vulnerabilities during regular maintenance cycles within 90 days.
+    riskCategories:
+        - VULNERABLE_WORKLOAD
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5

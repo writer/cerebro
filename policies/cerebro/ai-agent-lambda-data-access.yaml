@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: ai-agent-lambda-data-access
+    name: AI Agent that is using a lambda function with access to sensitive data
+    description: An AI agent uses a Lambda function that has access to sensitive data
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - ai
+        - agent
+        - lambda
+        - data-access
+spec:
+    severity: high
+    effect: forbid
+    resource: ai::agent
+    match:
+        conditions:
+            - list_value(path(resource, "tools")).exists(item, (cmp_eq(path(item, "type"), "lambda")) && (cmp_eq(path(item, "execution_role.has_sensitive_data_access"), true)))
+        conditionFormat: cel
+    remediation:
+        summary: Restrict Lambda function permissions. Implement data access controls for AI agent actions.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Execution
+          technique: T1059
+        - tactic: Collection
+          technique: T1530

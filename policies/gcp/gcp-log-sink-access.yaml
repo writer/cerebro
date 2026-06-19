@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-log-sink-access
+    name: GCP Log Sink Access Restricted
+    description: Ensures only authorized users can access log sink destinations
+    tags:
+        - gcp
+        - logging
+        - sink
+        - access
+        - security
+spec:
+    severity: HIGH
+    category: gcp
+    resourceType: gcp_logging_sink
+    match:
+        query: SELECT id, name, destination, writer_identity FROM gcp_logging_sinks WHERE destination_iam_permissions_public = true
+    remediation:
+        summary: Restrict IAM permissions on log sink destinations. Remove public access and grant only to necessary service accounts.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: CIS Benchmarks
+          controls:
+            - "1.1"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

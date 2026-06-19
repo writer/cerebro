@@ -1,0 +1,52 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-storage-public-write
+    name: Azure Storage Container Allows Public Write
+    description: Storage container has public access level that could allow anonymous writes
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - azure
+        - storage
+        - public-access
+        - data-integrity
+spec:
+    severity: critical
+    effect: forbid
+    resource: azure::storage::container
+    match:
+        conditions:
+            - cmp_ne(path(resource, "public_access"), "None")
+            - cmp_eq(path(resource, "immutability_policy"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Set public access level to 'None' (private). Use SAS tokens with limited permissions for external access. Enable soft delete and versioning.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Collection
+          technique: T1530

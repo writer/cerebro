@@ -1,0 +1,40 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-service-no-nodeport
+    name: Kubernetes Service Avoids NodePort
+    description: NodePort services expose ports on all nodes and should be avoided unless explicitly required.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - network
+        - exposure
+spec:
+    severity: medium
+    effect: forbid
+    resource: k8s::core::service
+    match:
+        conditions:
+            - cmp_eq(path(resource, "type"), "NodePort")
+        conditionFormat: cel
+    remediation:
+        summary: Use ClusterIP with Ingress or an internal LoadBalancer instead of NodePort.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-4
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6
+        - name: PCI DSS v4.0.1
+          controls:
+            - 1.3.1
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"

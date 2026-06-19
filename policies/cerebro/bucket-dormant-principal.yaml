@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: bucket-dormant-principal
+    name: Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days
+    description: A dormant principal still has access to a bucket containing sensitive data
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - storage
+        - dormant
+        - sensitive-data
+spec:
+    severity: medium
+    effect: forbid
+    resource: storage::bucket|storage::blob_container
+    match:
+        conditions:
+            - cmp_eq(path(resource, "has_sensitive_data"), true)
+            - list_value(path(resource, "iam_policy.principals")).exists(item, cmp_gt(path(item, "last_activity_days_ago"), 90))
+        conditionFormat: cel
+    remediation:
+        summary: Review and remove access for dormant principals. Implement regular access certification.
+    riskCategories:
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

@@ -1,0 +1,52 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-iam-role-cross-account-admin
+    name: IAM Role Cross Account Admin
+    description: IAM role can be assumed from external account and has administrator privileges
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - iam
+        - cross-account
+        - admin
+        - lateral-movement
+spec:
+    severity: critical
+    effect: forbid
+    resource: aws::iam::role
+    match:
+        conditions:
+            - contains_value(path(resource, "assume_role_policy_document.Statement.Principal.AWS"), "arn:aws:iam::")
+            - contains_value(path(resource, "attached_policies"), "AdministratorAccess")
+        conditionFormat: cel
+    remediation:
+        summary: Reduce permissions on cross-account roles or restrict trust to specific principals.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - IDENTITY_RISK
+        - LATERAL_MOVEMENT
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078
+        - tactic: Lateral Movement
+          technique: T1021

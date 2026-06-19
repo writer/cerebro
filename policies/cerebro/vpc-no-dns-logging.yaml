@@ -1,0 +1,41 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: vpc-no-dns-resolver-logging
+    name: VPC has no Route 53 DNS resolver with logging enabled
+    description: VPC does not have a Route 53 Resolver query logging configuration, limiting visibility into DNS queries for threat detection and incident response
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - aws
+        - vpc
+        - dns
+        - logging
+        - monitoring
+        - security
+spec:
+    severity: low
+    effect: forbid
+    resource: aws::ec2::vpc
+    match:
+        conditions:
+            - (!exists_path(resource, "resolver_query_log_config")) || (cmp_eq(path(resource, "resolver_query_log_config"), ""))
+        conditionFormat: cel
+    remediation:
+        summary: 1. Create a Route 53 Resolver query log configuration. 2. Associate it with the VPC. 3. Configure log destination (CloudWatch Logs, S3, or Kinesis). 4. Set up alerts for suspicious DNS queries.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-3
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: SOC 2
+          controls:
+            - CC7
+    mitreAttack:
+        - tactic: Command and Control
+          technique: T1071

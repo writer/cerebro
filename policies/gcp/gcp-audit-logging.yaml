@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-audit-logging-enabled
+    name: Audit Logging Enabled
+    description: Cloud Audit Logging should be enabled for all services
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-gcp-2.1
+        - audit
+        - logging
+        - monitoring
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::resourcemanager::project
+    match:
+        conditions:
+            - cmp_eq(path(resource, "audit_configs"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Enable Cloud Audit Logging for all services. Configure data access logs for sensitive resources.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562

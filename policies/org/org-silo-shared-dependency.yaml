@@ -1,0 +1,29 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: org-silo-shared-dependency
+    name: Teams Sharing Dependencies With No Communication
+    description: Two teams depend on the same infrastructure but have zero interaction edges.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - org-topology
+        - silos
+        - communication
+spec:
+    severity: medium
+    effect: forbid
+    resource: org::team_pair
+    match:
+        conditions:
+            - cmp_gt(path(resource, "shared_dependencies"), 2)
+            - cmp_eq(path(resource, "interaction_edges"), 0)
+        conditionFormat: cel
+    remediation:
+        summary: Create explicit cross-team operating rhythms and assign joint dependency ownership.
+    riskCategories:
+        - SILO_RISK
+        - OPERATIONAL_FRAGMENTATION
+    frameworks:
+        - name: Cerebro Organizational Resilience
+          controls:
+            - ORG-3

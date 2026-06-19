@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: container-host-network
+    name: Container Host Network Disabled
+    description: Ensures containers do not use host network namespace
+    tags:
+        - container
+        - network
+        - host
+        - isolation
+        - kubernetes
+spec:
+    severity: HIGH
+    category: container
+    resourceType: container
+    match:
+        query: SELECT id, name, image, namespace, host_network FROM containers WHERE host_network = true
+    remediation:
+        summary: Disable host network mode for containers. Use Kubernetes services for networking.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: CIS Benchmarks
+          controls:
+            - "1.1"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

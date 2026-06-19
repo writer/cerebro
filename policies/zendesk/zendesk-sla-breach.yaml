@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: zendesk-sla-breach
+    name: Zendesk First Response SLA Breach
+    description: Flags high-priority Zendesk tickets that have breached first response SLA.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - sla
+        - support
+        - zendesk
+spec:
+    severity: high
+    effect: forbid
+    resource: zendesk::ticket
+    match:
+        conditions:
+            - cmp_eq(path(resource, "first_response_sla_breached"), true)
+            - cmp_ne(path(resource, "status"), "closed")
+        conditionFormat: cel
+    frameworks:
+        - name: SOC 2
+          controls:
+            - A1.1
+        - name: Cerebro Operational Resilience
+          controls:
+            - OPS-2

@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-s3-cross-region-replication
+    name: S3 Buckets Have Cross-Region Replication
+    description: Critical S3 buckets should have cross-region replication enabled for disaster recovery and data durability
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - s3
+        - disaster-recovery
+        - replication
+        - backup
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws_s3_buckets
+    match:
+        conditions:
+            - cmp_eq(path(resource, "replication_configuration"), null)
+            - cmp_eq(path(resource, "tags.critical"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable cross-region replication for the S3 bucket to a bucket in a different AWS region
+        steps:
+            - Navigate to S3 in AWS Console
+            - Select the source bucket
+            - Go to 'Management' tab
+            - Click 'Replication rules' and 'Create replication rule'
+            - Select destination bucket in a different region
+            - Configure IAM role for replication
+            - Enable versioning on both source and destination buckets
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - CP-9
+            - CP-10
+        - name: SOC 2
+          controls:
+            - A1.2
+        - name: ISO 27001:2022
+          controls:
+            - A.5.29
+            - A.8.13

@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-rds-logging-enabled
+    name: RDS Logging Enabled
+    description: RDS instances should export logs to CloudWatch
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - rds
+        - database
+        - logging
+        - audit
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::rds::db_instance
+    match:
+        conditions:
+            - cmp_eq(path(resource, "enabled_cloudwatch_logs_exports"), null)
+        conditionFormat: cel
+    remediation:
+        summary: Enable CloudWatch log exports for audit, error, and slow query logs.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1562
+        - tactic: Collection
+          technique: T1530

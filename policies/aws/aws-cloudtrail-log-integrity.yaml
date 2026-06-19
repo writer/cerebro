@@ -1,0 +1,48 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-cloudtrail-log-integrity
+    name: CloudTrail Log File Integrity Validation
+    description: CloudTrail trails should have log file integrity validation enabled to detect tampering or unauthorized modifications to log files
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-aws-3.2
+        - cloudtrail
+        - integrity
+        - logging
+        - tamper-detection
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws_cloudtrail_trails
+    match:
+        conditions:
+            - cmp_ne(path(resource, "log_file_validation_enabled"), true)
+        conditionFormat: cel
+    remediation:
+        summary: 'Enable log file validation for the CloudTrail trail using: aws cloudtrail update-trail --name <trail-name> --enable-log-file-validation'
+        steps:
+            - Navigate to CloudTrail in AWS Console
+            - Select the trail
+            - Click 'Edit'
+            - In 'Additional settings', enable 'Log file validation'
+            - Save the changes
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "3.2"
+        - name: NIST 800-53 r5
+          controls:
+            - AU-9
+            - SI-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: HIPAA
+          controls:
+            - 164.312(b)
+    mitreAttack:
+        - tactic: Defense Evasion
+          technique: T1070

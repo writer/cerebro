@@ -1,0 +1,45 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-codebuild-privileged-mode
+    name: AWS CodeBuild Privileged Mode
+    description: CodeBuild project runs with privileged container mode enabled
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cicd
+        - codebuild
+        - container-security
+        - privilege-escalation
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::codebuild::project
+    match:
+        conditions:
+            - cmp_eq(path(resource, "environment.privileged_mode"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Disable privileged mode unless Docker builds are required.
+    riskCategories:
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Execution
+          technique: T1059
+        - tactic: Privilege Escalation
+          technique: T1078

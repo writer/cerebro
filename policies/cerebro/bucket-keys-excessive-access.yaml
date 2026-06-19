@@ -1,0 +1,53 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: bucket-keys-excessive-access
+    name: Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access
+    description: A bucket with privileged keys can be accessed by an overly permissive account
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - storage
+        - secrets
+        - excessive-access
+spec:
+    severity: high
+    effect: forbid
+    resource: storage::bucket|storage::blob_container
+    match:
+        conditions:
+            - list_value(path(resource, "secrets")).exists(item, (cmp_eq(path(item, "type"), "cloud_key")) && (cmp_eq(path(item, "cleartext"), true)) && (cmp_eq(path(item, "grants_high_privilege"), true)))
+            - list_value(path(resource, "iam_policy.principals")).exists(item, cmp_eq(path(item, "has_excessive_data_access"), true))
+        conditionFormat: cel
+    remediation:
+        summary: Remove cleartext keys. Restrict bucket access to minimum required principals.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+            - "3.5"
+            - "8.6"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Privilege Escalation
+          technique: T1078
+        - tactic: Credential Access
+          technique: T1552
+        - tactic: Collection
+          technique: T1530

@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: github-actions-self-hosted-public
+    name: GitHub Actions Self-Hosted Runner on Public Repo
+    description: Self-hosted runner used on public repository poses security risk
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - devsecops
+        - github-actions
+        - runners
+        - cicd-security
+spec:
+    severity: critical
+    effect: forbid
+    resource: github::repository
+    match:
+        conditions:
+            - cmp_eq(path(resource, "visibility"), "public")
+            - cmp_eq(path(resource, "has_self_hosted_runners"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Do not use self-hosted runners on public repositories. Use GitHub-hosted runners instead.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190

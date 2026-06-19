@@ -1,0 +1,52 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: storage-key-exposed
+    name: Validated exposure of storage account key/SAS token
+    description: A storage account key or SAS token has been validated as exposed
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - wiz
+        - secrets
+        - storage
+        - validated-exposure
+spec:
+    severity: critical
+    effect: forbid
+    resource: '*'
+    match:
+        conditions:
+            - list_value(path(resource, "secrets")).exists(item, (in_list(path(item, "type"), ["storage_account_key","sas_token"])) && (cmp_eq(path(item, "validated_exposed"), true)))
+        conditionFormat: cel
+    remediation:
+        summary: Rotate the exposed keys immediately. Check for unauthorized data access. Regenerate SAS tokens.
+    riskCategories:
+        - EXTERNAL_EXPOSURE
+        - UNPROTECTED_DATA
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-3
+            - SC-7
+            - IA-5
+            - SC-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "1.3"
+            - "1.4"
+            - "3.5"
+            - "8.6"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "12"
+            - "13"
+    mitreAttack:
+        - tactic: Initial Access
+          technique: T1190
+        - tactic: Credential Access
+          technique: T1552
+        - tactic: Collection
+          technique: T1530

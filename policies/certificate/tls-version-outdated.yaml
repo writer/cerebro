@@ -1,0 +1,31 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: tls-version-outdated
+    name: Services Using Outdated TLS Versions
+    description: Identifies services still supporting TLS 1.0 or TLS 1.1 which are deprecated
+    tags:
+        - ssl
+        - tls
+        - protocol
+        - deprecated
+        - pci
+spec:
+    severity: HIGH
+    category: certificate
+    resourceType: tls_endpoint
+    match:
+        query: SELECT id, hostname, port, tls_versions_supported FROM tls_endpoints WHERE 'TLSv1.0' = ANY(tls_versions_supported) OR 'TLSv1.1' = ANY(tls_versions_supported)
+    remediation:
+        summary: Disable TLS 1.0 and TLS 1.1 on the server. Configure the server to only support TLS 1.2 and TLS 1.3.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC1.1
+        - name: PCI DSS v4.0
+          controls:
+            - "1.1"
+        - name: NIST 800-53 r5
+          controls:
+            - AC-1
+    enabled: true

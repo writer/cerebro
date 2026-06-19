@@ -1,0 +1,36 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-vm-approved-extensions-only
+    name: Azure VM Approved Extensions Only
+    description: Azure VMs should only have approved extensions installed
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - compute
+        - extensions
+        - compliance
+spec:
+    severity: medium
+    effect: forbid
+    resource: azure::compute::virtual_machine_extension
+    match:
+        conditions:
+            - '!(in_list(path(resource, "type"), ["[''MicrosoftMonitoringAgent","OmsAgentForLinux","DependencyAgentWindows","DependencyAgentLinux'']"]))'
+        conditionFormat: cel
+    remediation:
+        summary: Review and remove unapproved VM extensions.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - CM-7
+            - SI-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC7.1
+        - name: CIS Controls v8
+          controls:
+            - "4"
+            - "7"

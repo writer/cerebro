@@ -1,0 +1,46 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: gcp-sa-admin-privileges
+    name: GCP Service Account with Admin Privileges
+    description: Service account has been granted organization or project admin roles
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - gcp
+        - iam
+        - service-account
+        - least-privilege
+        - cis-gcp-1.5
+spec:
+    severity: high
+    effect: forbid
+    resource: gcp::iam::service_account
+    match:
+        conditions:
+            - list_value(path(resource, "iam_bindings")).exists(item, in_list(path(item, "role"), ["roles/owner","roles/editor","roles/resourcemanager.organizationAdmin","roles/resourcemanager.projectIamAdmin"]))
+        conditionFormat: cel
+    remediation:
+        summary: Remove admin roles from service accounts. Create custom roles with minimal required permissions. Use Workload Identity Federation where possible.
+    riskCategories:
+        - IDENTITY_RISK
+        - PRIVILEGE_ESCALATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - AC-2
+            - AC-6
+        - name: PCI DSS v4.0.1
+          controls:
+            - "7.2"
+        - name: SOC 2
+          controls:
+            - CC6
+        - name: CIS Controls v8
+          controls:
+            - "5"
+            - "6"
+    mitreAttack:
+        - tactic: Persistence
+          technique: T1098
+        - tactic: Privilege Escalation
+          technique: T1078

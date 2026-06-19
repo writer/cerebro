@@ -1,0 +1,44 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-no-privilege-escalation
+    name: Kubernetes Pod Disallows Privilege Escalation
+    description: Pods should explicitly disable privilege escalation for all containers.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - pod-security
+        - privilege-escalation
+spec:
+    severity: high
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_eq(path(resource, "spec.allows_privilege_escalation"), true)
+        conditionFormat: cel
+    remediation:
+        summary: 'Set allowPrivilegeEscalation: false on every container security context.'
+    riskCategories:
+        - PRIVILEGE_ESCALATION
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.1
+            - 5.2.2
+            - 5.2.3
+            - 5.2.4
+            - 5.2.5
+            - 5.2.6
+            - 5.2.7
+            - 5.2.8
+        - name: NIST 800-53 r5
+          controls:
+            - AC-6
+            - CM-7
+            - SC-7
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.6

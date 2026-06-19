@@ -64,8 +64,9 @@ Keeps generated detection catalog artifacts aligned with policy definitions.
 - Generator: `detection-catalog-generate` -> `make detection-catalog-generate`
 - Checks:
   - `detection-catalog-check` -> `make detection-catalog-check`
+  - `finding-dsl-check` -> `make finding-dsl-check`
   - `catalog-check` -> `make catalog-check`
-- Triggers: `policies/**`, `tools/detectioncatalog/**`
+- Triggers: `policies/**`, `internal/findingdsl/**`, `tools/findingdsl/**`, `tools/detectioncatalog/**`
 - Outputs: `docs/POLICIES.md`
 - CI jobs: `catalog`
 

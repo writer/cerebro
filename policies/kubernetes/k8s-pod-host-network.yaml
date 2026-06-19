@@ -1,0 +1,27 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-no-host-network
+    name: K8s Pod No Host Network
+    description: Pods should not use host network namespace
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-k8s-5.2.4
+        - pod-security
+        - network
+spec:
+    severity: high
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_eq(path(resource, "spec.host_network"), true)
+        conditionFormat: cel
+    remediation:
+        summary: 'Remove hostNetwork: true from pod spec.'
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS Kubernetes Benchmark
+          controls:
+            - 5.2.4

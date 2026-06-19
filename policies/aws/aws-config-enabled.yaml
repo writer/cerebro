@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-config-enabled-all-regions
+    name: AWS Config Enabled All Regions
+    description: AWS Config should be enabled in all regions to track resource configuration changes
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-aws-3.5
+        - config
+        - monitoring
+        - compliance
+spec:
+    severity: medium
+    effect: forbid
+    resource: aws::config::configuration_recorder
+    match:
+        conditions:
+            - cmp_ne(path(resource, "recording"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Enable AWS Config in all regions with recording enabled for all resource types.
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "3.5"
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
+        - name: SOC 2
+          controls:
+            - CC4
+            - CC7
+        - name: CIS Controls v8
+          controls:
+            - "8"

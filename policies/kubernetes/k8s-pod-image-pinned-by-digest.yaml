@@ -1,0 +1,43 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: k8s-pod-image-pinned-by-digest
+    name: Kubernetes Pod Images Pinned by Digest
+    description: Pod images should be pinned by digest to reduce supply chain drift.
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - kubernetes
+        - supply-chain
+        - image
+spec:
+    severity: medium
+    effect: forbid
+    resource: kubernetes::pod
+    match:
+        conditions:
+            - cmp_ne(path(resource, "spec.all_images_pinned_by_digest"), true)
+        conditionFormat: cel
+    remediation:
+        summary: Reference images using immutable digests (for example image@sha256:...).
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC8.1
+        - name: NIST 800-53 r5
+          controls:
+            - CM-5
+            - CM-7
+            - SI-7
+            - SR-11
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "6.5"
+        - name: CIS Controls v8
+          controls:
+            - "2"
+            - "7"
+            - "16"

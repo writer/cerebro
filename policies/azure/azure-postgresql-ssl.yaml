@@ -1,0 +1,42 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: azure-postgresql-ssl
+    name: PostgreSQL SSL Enforcement Disabled
+    description: Azure Database for PostgreSQL does not enforce SSL connections
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - azure
+        - postgresql
+        - encryption
+        - transport-security
+        - cis-azure-4.3.1
+spec:
+    severity: high
+    effect: forbid
+    resource: azure::postgresql::server
+    match:
+        conditions:
+            - cmp_ne(path(resource, "ssl_enforcement"), "Enabled")
+        conditionFormat: cel
+    remediation:
+        summary: Enable SSL enforcement on the PostgreSQL server. Update connection strings to use SSL.
+    riskCategories:
+        - UNPROTECTED_DATA
+        - MISCONFIGURATION
+    frameworks:
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
+        - name: CIS Controls v8
+          controls:
+            - "3"
+    mitreAttack:
+        - tactic: Collection
+          technique: T1530

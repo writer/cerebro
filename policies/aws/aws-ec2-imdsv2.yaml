@@ -1,0 +1,26 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: aws-ec2-imdsv2-required
+    name: EC2 IMDSv2 Required
+    description: EC2 instances should require IMDSv2 to prevent SSRF attacks
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - cis-aws-5.6
+        - security
+        - ec2
+        - ssrf
+spec:
+    severity: high
+    effect: forbid
+    resource: aws::ec2::instance
+    match:
+        conditions:
+            - cmp_ne(path(resource, "metadata_options_http_tokens"), path(resource, "required"))
+        conditionFormat: cel
+    riskCategories:
+        - MISCONFIGURATION
+    frameworks:
+        - name: CIS AWS Foundations Benchmark v2.0
+          controls:
+            - "5.6"
