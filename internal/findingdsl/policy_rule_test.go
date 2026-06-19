@@ -282,9 +282,9 @@ func TestValidatePolicyRuleAcceptsEscapedCypherLiteralsAndBacktickIdentifiers(t 
 				Query: `MATCH (entity:Entity {tenant_id: $tenant_id})
 WHERE entity.note = "escaped \" DELETE still literal"
   AND entity.` + "`MERGE status`" + ` = 'healthy'
-RETURN entity.urn AS primary_urn,
-       entity.urn AS fingerprint_key,
-       entity.label AS summary
+RETURN entity.urn AS ` + "`primary_urn`" + `,
+       entity.urn AS ` + "`fingerprint_key`" + `,
+       entity.label AS ` + "`summary`" + `
 LIMIT $row_limit`,
 				RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
 			},
@@ -293,6 +293,37 @@ LIMIT $row_limit`,
 	}
 	if issues := ValidatePolicyRule(rule); len(issues) != 0 {
 		t.Fatalf("ValidatePolicyRule() issues = %#v, want none", issues)
+	}
+}
+
+func TestValidatePolicyRuleReservedGraphParamDoesNotRequestQueryReference(t *testing.T) {
+	rule := PolicyFindingRule{
+		APIVersion: APIVersion,
+		Kind:       KindPolicyFindingRule,
+		Metadata: PolicyRuleMetadata{
+			ID:          "graph-reserved-param",
+			Name:        "Graph Reserved Param",
+			Description: "Graph policy with a reserved static param",
+		},
+		Spec: PolicyFindingRuleSpec{
+			Severity: "low",
+			Graph: PolicyRuleGraphFinding{
+				Query: `MATCH (entity:Entity)
+RETURN entity.urn AS primary_urn,
+       entity.urn AS fingerprint_key,
+       'Graph finding' AS summary
+LIMIT $row_limit`,
+				Params: map[string]any{"tenant_id": "writer"},
+			},
+			Frameworks: []PolicyFramework{{Name: "SOC 2", Controls: []string{"CC7.1"}}},
+		},
+	}
+	issues := ValidatePolicyRule(rule)
+	if !issuesContain(issues, "spec.graph.params.tenant_id must not override runtime parameter $tenant_id") {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want reserved param issue", issues)
+	}
+	if issuesContain(issues, "spec.graph.params.tenant_id must be referenced") {
+		t.Fatalf("ValidatePolicyRule() issues = %#v, want no misleading query reference issue", issues)
 	}
 }
 
@@ -615,8 +646,11 @@ cases:
 `)
 
 	issues := RunPolicyRuleTestSuite(root, filepath.Join(root, "policies/graph/example.test.yaml"))
-	if !issuesContain(issues, "queryRows[0].fingerprint_key is required") {
+	if !issuesContain(issues, "queryRows[0].fingerprint_key is a required graph return alias") {
 		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want missing fingerprint", issues)
+	}
+	if issuesContain(issues, "queryRows[0].fingerprint_key is required by spec.graph.requiredColumns") {
+		t.Fatalf("RunPolicyRuleTestSuite() issues = %#v, want system requirement message", issues)
 	}
 }
 

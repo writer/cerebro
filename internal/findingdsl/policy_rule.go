@@ -512,6 +512,7 @@ func validatePolicyRuleGraph(path string, graph PolicyRuleGraphFinding) []Issue 
 		}
 		if isReservedGraphParam(key) {
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.params.%s must not override runtime parameter $%s", key, key)})
+			continue
 		}
 		if query != "" {
 			if _, ok := queryParams[key]; !ok {
@@ -928,7 +929,7 @@ func cypherQueryParams(query string) map[string]struct{} {
 }
 
 func cypherReturnAliases(query string) map[string]struct{} {
-	cleaned := stripCypherLiteralsAndComments(query)
+	cleaned := stripCypherLiteralsAndCommentsPreserveBacktickIdentifiers(query)
 	aliases := map[string]struct{}{}
 	for _, field := range splitCypherReturnFields(cypherReturnClause(cleaned)) {
 		if alias := cypherFieldAlias(field); alias != "" {
@@ -1082,6 +1083,14 @@ func isCypherKeywordSpace(ch byte) bool {
 }
 
 func stripCypherLiteralsAndComments(query string) string {
+	return stripCypherLiteralsAndCommentsMode(query, false)
+}
+
+func stripCypherLiteralsAndCommentsPreserveBacktickIdentifiers(query string) string {
+	return stripCypherLiteralsAndCommentsMode(query, true)
+}
+
+func stripCypherLiteralsAndCommentsMode(query string, preserveBacktickIdentifiers bool) string {
 	var out strings.Builder
 	out.Grow(len(query))
 	for idx := 0; idx < len(query); {
@@ -1111,7 +1120,36 @@ func stripCypherLiteralsAndComments(query string) string {
 			}
 			continue
 		}
-		if query[idx] == '\'' || query[idx] == '"' || query[idx] == '`' {
+		if query[idx] == '`' {
+			out.WriteByte(' ')
+			idx++
+			for idx < len(query) {
+				ch := query[idx]
+				idx++
+				if ch == '`' {
+					if idx < len(query) && query[idx] == '`' {
+						if preserveBacktickIdentifiers {
+							out.WriteByte('`')
+						} else {
+							out.WriteByte(' ')
+						}
+						idx++
+						continue
+					}
+					out.WriteByte(' ')
+					break
+				}
+				if preserveBacktickIdentifiers {
+					out.WriteByte(ch)
+				} else if ch == '\n' {
+					out.WriteByte('\n')
+				} else {
+					out.WriteByte(' ')
+				}
+			}
+			continue
+		}
+		if query[idx] == '\'' || query[idx] == '"' {
 			quote := query[idx]
 			out.WriteByte(' ')
 			idx++
@@ -1123,7 +1161,7 @@ func stripCypherLiteralsAndComments(query string) string {
 					out.WriteByte(' ')
 				}
 				idx++
-				if ch == '\\' && quote != '`' && idx < len(query) {
+				if ch == '\\' && idx < len(query) {
 					if query[idx] == '\n' {
 						out.WriteByte('\n')
 					} else {
