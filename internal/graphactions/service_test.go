@@ -3,6 +3,7 @@ package graphactions
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +79,76 @@ func TestServiceExecuteRejectsReservedParameters(t *testing.T) {
 	}
 	if client.called {
 		t.Fatalf("parameter-rejected action reached access-approvals client")
+	}
+}
+
+func TestServiceExecuteDryRunPlansWithoutProviderMutationOrLink(t *testing.T) {
+	client := &stubAccessApprovalsClient{}
+	workflow := &stubFindingWorkflow{finding: eligibleFinding(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		RuleID:   "rule-1",
+		Attributes: map[string]string{
+			"okta_user_email": "alice@tenant-a.example",
+		},
+	})}
+	result, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    ActionIdentityOktaSuspendUser,
+		Reason:    "reviewing high-risk login",
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("Execute(dry_run) error = %v", err)
+	}
+	if client.called {
+		t.Fatalf("dry run reached access-approvals client")
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("dry run linked external ref %#v", workflow.ref)
+	}
+	if result == nil || !result.DryRun || result.Target != "alice@tenant-a.example" {
+		t.Fatalf("dry run result = %#v, want dry-run target plan", result)
+	}
+	if result.Action == nil || result.Action.Status != ActionStatusDryRun || result.Action.ExternalStatus != ExternalStatusNotSubmitted {
+		t.Fatalf("dry run action = %#v, want not-submitted dry-run action", result.Action)
+	}
+	if result.Action.ExternalID != "" {
+		t.Fatalf("dry run external_id = %q, want empty provider external id", result.Action.ExternalID)
+	}
+	if result.Action.Metadata["dry_run"] != "true" ||
+		result.Action.Metadata["approval_required"] != "true" ||
+		result.Action.Metadata["external_ref_created"] != "false" ||
+		result.Action.Metadata["tenant_id"] != "tenant-a" ||
+		result.Action.Metadata["finding_id"] != "finding-1" {
+		t.Fatalf("dry run metadata = %#v", result.Action.Metadata)
+	}
+	if !strings.HasPrefix(result.Action.IdempotencyKey, "cerebro:graph-action:identity.okta.suspend_user:") {
+		t.Fatalf("dry run idempotency_key = %q, want stable action key", result.Action.IdempotencyKey)
+	}
+}
+
+func TestServiceExecuteRequiresApprovalForMutation(t *testing.T) {
+	client := &stubAccessApprovalsClient{}
+	workflow := &stubFindingWorkflow{finding: eligibleFinding(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Attributes: map[string]string{
+			"okta_user_email": "alice@tenant-a.example",
+		},
+	})}
+	_, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
+		FindingID: "finding-1",
+		Action:    ActionIdentityOktaSuspendUser,
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Execute() error = %v, want ErrInvalidRequest", err)
+	}
+	if client.called {
+		t.Fatalf("unapproved mutation reached access-approvals client")
+	}
+	if workflow.ref.ExternalID != "" {
+		t.Fatalf("unapproved mutation linked external ref %#v", workflow.ref)
 	}
 }
 
@@ -158,6 +229,7 @@ func TestServiceExecuteDerivesTargetFromOktaUserURN(t *testing.T) {
 	result, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
 		FindingID: "finding-1",
 		Action:    ActionIdentityOktaSuspendUser,
+		Approved:  true,
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -188,6 +260,7 @@ func TestServiceExecuteDerivesDelimitedOktaURNWithoutForwardingRawURN(t *testing
 			result, err := (Service{Findings: workflow, Client: client}).Execute(context.Background(), Input{
 				FindingID: "finding-1",
 				Action:    ActionIdentityOktaSuspendUser,
+				Approved:  true,
 			})
 			if err != nil {
 				t.Fatalf("Execute() error = %v", err)
@@ -214,6 +287,7 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 		FindingID: "finding-1",
 		Action:    ActionIdentityOktaSuspendUser,
 		Target:    "Alice <alice@tenant-a.example>",
+		Approved:  true,
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -333,6 +407,7 @@ func TestServiceExecuteRevokesCerebroDeviceProvider(t *testing.T) {
 		FindingID: "finding-1",
 		Action:    ActionEndpointCerebroRevokeDevice,
 		Reason:    "compromised device",
+		Approved:  true,
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -372,6 +447,7 @@ func TestServiceExecuteCerebroDeviceProviderRequiresFindingTenant(t *testing.T) 
 		FindingID: "finding-1",
 		Action:    ActionEndpointCerebroRevokeDevice,
 		Reason:    "compromised device",
+		Approved:  true,
 	})
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Execute() error = %v, want ErrInvalidRequest", err)
@@ -486,6 +562,7 @@ func TestServiceExecuteUsesConfiguredActionProvider(t *testing.T) {
 	}).Execute(context.Background(), Input{
 		FindingID: "finding-1",
 		Action:    actionID,
+		Approved:  true,
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -533,6 +610,7 @@ func TestServiceExecuteRejectsProviderActionWithoutExternalID(t *testing.T) {
 	}).Execute(context.Background(), Input{
 		FindingID: "finding-1",
 		Action:    actionID,
+		Approved:  true,
 	})
 	if !errors.Is(err, ErrRemote) {
 		t.Fatalf("Execute() error = %v, want ErrRemote", err)

@@ -1581,7 +1581,7 @@ paths:
   /platform/graph/actions:
     post:
       summary: Execute graph action
-      description: Executes a supported provider-backed action against an eligible finding-scoped graph target. `finding_id` is required so Cerebro can authorize the tenant, verify the finding allows the action, derive the default target, emit a workflow action event, and link the provider action back to the finding as an external lifecycle reference. `target` is an optional explicit target assertion within the authorized finding context. Requires the `cerebro.graph_actions.write` scope. Currently supported actions are `identity.okta.suspend_user` and `identity.okta.unsuspend_user`.
+      description: Executes or dry-runs a supported provider-backed action against an eligible finding-scoped graph target. `finding_id` is required so Cerebro can authorize the tenant, verify the finding allows the action, and derive the default target. `dry_run=true` returns the planned provider action without mutating provider or finding state. Mutating execution requires `approved=true`, emits a workflow action event, and links the provider action back to the finding as an external lifecycle reference. `target` is an optional explicit target assertion within the authorized finding context. Requires the `cerebro.graph_actions.write` scope. Currently supported actions are `identity.okta.suspend_user`, `identity.okta.unsuspend_user`, and `endpoint.cerebro.revoke_device`.
       tags:
         - Graph
       requestBody:
@@ -1591,8 +1591,14 @@ paths:
             schema:
               $ref: '#/components/schemas/GraphActionRequest'
       responses:
+        '200':
+          description: Dry-run graph action plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphActionResponse'
         '202':
-          description: Graph action queued.
+          description: Approved graph action accepted.
           content:
             application/json:
               schema:
@@ -6789,6 +6795,12 @@ components:
           type: string
           maxLength: 256
           description: Optional caller-provided idempotency key. Cerebro generates a stable per-action/finding-or-target key when omitted.
+        dry_run:
+          type: boolean
+          description: Validate policy, target resolution, and provider routing without calling the provider or linking an external reference.
+        approved:
+          type: boolean
+          description: Required as true for mutating execution. Not required when dry_run is true.
         parameters:
           type: object
           additionalProperties:
@@ -6830,7 +6842,7 @@ components:
           enum: [access-approvals, cerebro-device-auth]
         status:
           type: string
-          enum: [pending, queued, running, succeeded, failed, cancelled, needs_attention]
+          enum: [dry_run, pending, queued, running, succeeded, failed, cancelled, needs_attention]
         target:
           type: string
         external_id:

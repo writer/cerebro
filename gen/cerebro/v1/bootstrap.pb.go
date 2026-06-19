@@ -3594,7 +3594,11 @@ type ExecuteGraphActionRequest struct {
 	TicketUrl      string                 `protobuf:"bytes,5,opt,name=ticket_url,json=ticketUrl,proto3" json:"ticket_url,omitempty"`
 	IdempotencyKey string                 `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	// Reserved for future typed executors. Current actions reject non-empty parameters.
-	Parameters    map[string]string `protobuf:"bytes,7,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Parameters map[string]string `protobuf:"bytes,7,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// When true, validate and return the provider plan without mutating provider or finding state.
+	DryRun bool `protobuf:"varint,8,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
+	// Required for mutating execution. Dry runs do not require approval.
+	Approved      bool `protobuf:"varint,9,opt,name=approved,proto3" json:"approved,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3676,6 +3680,20 @@ func (x *ExecuteGraphActionRequest) GetParameters() map[string]string {
 		return x.Parameters
 	}
 	return nil
+}
+
+func (x *ExecuteGraphActionRequest) GetDryRun() bool {
+	if x != nil {
+		return x.DryRun
+	}
+	return false
+}
+
+func (x *ExecuteGraphActionRequest) GetApproved() bool {
+	if x != nil {
+		return x.Approved
+	}
+	return false
 }
 
 // ReconcileGraphActionRequest asks Cerebro to refresh one linked provider action.
@@ -7330,7 +7348,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\vobserved_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\"O\n" +
 	"\x1eLinkFindingExternalRefResponse\x12-\n" +
-	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\"\xe0\x02\n" +
+	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\"\x95\x03\n" +
 	"\x19ExecuteGraphActionRequest\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x1d\n" +
 	"\n" +
@@ -7342,7 +7360,9 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\x12U\n" +
 	"\n" +
 	"parameters\x18\a \x03(\v25.cerebro.v1.ExecuteGraphActionRequest.ParametersEntryR\n" +
-	"parameters\x1a=\n" +
+	"parameters\x12\x17\n" +
+	"\adry_run\x18\b \x01(\bR\x06dryRun\x12\x1a\n" +
+	"\bapproved\x18\t \x01(\bR\bapproved\x1a=\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +

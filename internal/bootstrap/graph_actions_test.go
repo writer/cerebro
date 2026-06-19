@@ -83,7 +83,7 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	body := `{"action":"identity.okta.suspend_user","finding_id":"finding-1","ticket_url":"https://tickets.example.com/SEC-1"}`
+	body := `{"action":"identity.okta.suspend_user","finding_id":"finding-1","ticket_url":"https://tickets.example.com/SEC-1","approved":true}`
 	request, err := http.NewRequest(http.MethodPost, server.URL+"/platform/graph/actions", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
@@ -142,6 +142,128 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	action, ok := payload["action"].(map[string]any)
 	if !ok || action["id"] != "oja-1" || action["action"] != graphactions.ActionIdentityOktaSuspendUser || action["provider"] != graphactions.ProviderAccessApprovals {
 		t.Fatalf("response action = %#v", payload["action"])
+	}
+}
+
+func TestHandleExecuteGraphActionDryRunDoesNotMutateProviderOrFinding(t *testing.T) {
+	var called bool
+	accessApprovals := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		http.Error(w, "dry run should not call provider", http.StatusInternalServerError)
+	}))
+	defer accessApprovals.Close()
+
+	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
+		"finding-1": {
+			ID:        "finding-1",
+			TenantID:  "writer",
+			RuntimeID: "writer-okta",
+			RuleID:    "identity-deprovisioned-okta-active-github",
+			Title:     "Deprovisioned Okta user still active in GitHub",
+			Status:    "open",
+			Attributes: map[string]string{
+				"okta_user_urn":         "urn:cerebro:writer:okta.user:alice@writer.com",
+				"graph_actions_allowed": graphactions.ActionIdentityOktaSuspendUser,
+			},
+		},
+	}}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		GraphActions: config.GraphActionsConfig{
+			AccessApprovals: config.AccessApprovalsActionConfig{
+				BaseURL:     accessApprovals.URL,
+				BearerToken: "graph-action-token",
+				Timeout:     time.Second,
+			},
+		},
+	}, Dependencies{StateStore: store, AppendLog: appendLog}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := `{"action":"identity.okta.suspend_user","finding_id":"finding-1","dry_run":true}`
+	response, err := server.Client().Post(server.URL+"/platform/graph/actions", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST graph action dry run: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if called {
+		t.Fatalf("dry run called access-approvals provider")
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("dry run workflow events = %d, want none", len(appendLog.events))
+	}
+	if refs := store.findings["finding-1"].ExternalRefs; len(refs) != 0 {
+		t.Fatalf("dry run external refs = %#v, want none", refs)
+	}
+	action, ok := payload["action"].(map[string]any)
+	if !ok {
+		t.Fatalf("response action = %#v", payload["action"])
+	}
+	if action["status"] != graphactions.ActionStatusDryRun || action["external_status"] != graphactions.ExternalStatusNotSubmitted || action["external_id"] != nil {
+		t.Fatalf("dry run action = %#v", action)
+	}
+	metadata, ok := action["metadata"].(map[string]any)
+	if !ok || metadata["dry_run"] != "true" || metadata["approval_required"] != "true" || metadata["external_ref_created"] != "false" {
+		t.Fatalf("dry run metadata = %#v", action["metadata"])
+	}
+	if payload["external_ref"] != nil {
+		t.Fatalf("dry run external_ref = %#v, want omitted", payload["external_ref"])
+	}
+}
+
+func TestHandleExecuteGraphActionRequiresApprovalForMutation(t *testing.T) {
+	var called bool
+	accessApprovals := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		http.Error(w, "unapproved action should not call provider", http.StatusInternalServerError)
+	}))
+	defer accessApprovals.Close()
+
+	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
+		"finding-1": {
+			ID:       "finding-1",
+			TenantID: "writer",
+			RuleID:   "identity-deprovisioned-okta-active-github",
+			Status:   "open",
+			Attributes: map[string]string{
+				"okta_user_urn":         "urn:cerebro:writer:okta.user:alice@writer.com",
+				"graph_actions_allowed": graphactions.ActionIdentityOktaSuspendUser,
+			},
+		},
+	}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		GraphActions: config.GraphActionsConfig{
+			AccessApprovals: config.AccessApprovalsActionConfig{
+				BaseURL:     accessApprovals.URL,
+				BearerToken: "graph-action-token",
+				Timeout:     time.Second,
+			},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	response, err := server.Client().Post(server.URL+"/platform/graph/actions", "application/json", strings.NewReader(`{"action":"identity.okta.suspend_user","finding_id":"finding-1"}`))
+	if err != nil {
+		t.Fatalf("POST graph action: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
+	}
+	if called {
+		t.Fatalf("unapproved graph action reached access-approvals")
 	}
 }
 
@@ -339,7 +461,7 @@ func TestHandleExecuteGraphActionRevokesCerebroDevice(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	request, err := http.NewRequest(http.MethodPost, server.URL+"/platform/graph/actions", strings.NewReader(`{"action":"endpoint.cerebro.revoke_device","finding_id":"finding-1","reason":"compromised endpoint"}`))
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/platform/graph/actions", strings.NewReader(`{"action":"endpoint.cerebro.revoke_device","finding_id":"finding-1","reason":"compromised endpoint","approved":true}`))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}

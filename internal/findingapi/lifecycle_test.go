@@ -38,7 +38,7 @@ func TestApplyMCPGraphActionProposalPopulatesValidProposal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMCPGraphActionProposal() error = %v", err)
 	}
-	if proposal["endpoint"] != "/platform/graph/actions" || proposal["target"] != "alice@example.com" || proposal["handoff_required"] != true {
+	if proposal["endpoint"] != "/platform/graph/actions" || proposal["target"] != "alice@example.com" || proposal["handoff_required"] != true || proposal["approved"] != false {
 		t.Fatalf("proposal = %#v, want graph action proposal fields populated", proposal)
 	}
 	for _, key := range []string{"external_id", "external_url", "external_status", "external_status_reason", "lifecycle_owner"} {
@@ -96,6 +96,9 @@ func TestApplyMCPGraphActionProposalUsesCatalogProvider(t *testing.T) {
 	if proposal["target"] != "dev-1" {
 		t.Fatalf("proposal target = %#v, want dev-1", proposal["target"])
 	}
+	if proposal["approved"] != false {
+		t.Fatalf("proposal approved = %#v, want false for dry-run proposal", proposal["approved"])
+	}
 }
 
 func TestMCPGraphActionTargetForSpecUsesValidatedSpec(t *testing.T) {
@@ -132,6 +135,10 @@ func TestMCPActionInputPropertiesIncludesCatalogGraphActions(t *testing.T) {
 		if _, ok := allowed[spec.ID]; !ok {
 			t.Fatalf("graph_action enum missing catalog action %q", spec.ID)
 		}
+	}
+	approved, ok := MCPActionInputProperties()["approved"].(map[string]any)
+	if !ok || approved["type"] != "boolean" {
+		t.Fatalf("approved schema = %#v, want boolean", MCPActionInputProperties()["approved"])
 	}
 }
 

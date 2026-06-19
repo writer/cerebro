@@ -37,7 +37,7 @@ func (e Executor) Execute(ctx context.Context, input graphactions.Input) (*graph
 	if err != nil {
 		return nil, err
 	}
-	if result.Finding != nil && e.BumpFinding != nil {
+	if result.Finding != nil && e.BumpFinding != nil && !result.DryRun {
 		e.BumpFinding(ctx, result.Finding)
 	}
 	return result, nil

@@ -114,6 +114,7 @@ func timestampValue(value *timestamppb.Timestamp) time.Time {
 func NewMCPActionProposal(args MCPArguments, findingID string, action string) MCPActionProposalPayload {
 	return MCPActionProposalPayload{
 		"dry_run":                true,
+		"approved":               false,
 		"would_mutate":           false,
 		"finding_id":             findingID,
 		"action":                 action,
@@ -175,10 +176,11 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	proposal["recommended_action"] = "POST " + endpoint
 	proposal["required_scope"] = requiredScope
 	proposal["approval_required"] = true
+	proposal["approved"] = false
 	proposal["handoff_required"] = true
 	proposal["external_system"] = spec.Provider
 	proposal["external_ref_kind"] = graphactions.RefKind
-	proposal["proposal_note"] = "Use the graph action endpoint to queue " + graphAction + " through " + spec.Provider + "; this dry run does not mutate the provider or Cerebro."
+	proposal["proposal_note"] = "Use the graph action endpoint with dry_run=true to plan " + graphAction + " through " + spec.Provider + "; submit approved=true only after review to mutate the provider and Cerebro."
 	return nil
 }
 
@@ -198,6 +200,7 @@ func clearMCPGraphActionExternalRefProposal(proposal MCPActionProposalPayload) {
 func MCPActionInputProperties() MCPSchemaProperties {
 	return MCPSchemaProperties{
 		"dry_run":                map[string]any{"type": "boolean", "const": true},
+		"approved":               map[string]any{"type": "boolean"},
 		"finding_id":             map[string]any{"type": "string"},
 		"action":                 map[string]any{"type": "string", "enum": []string{"add_note", "update_status", "create_exception", "link_ticket", "execute_graph_action"}},
 		"note":                   map[string]any{"type": "string"},
