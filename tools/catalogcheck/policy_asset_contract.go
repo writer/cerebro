@@ -306,14 +306,21 @@ func validatePolicyAssetEventKinds(path string, resource string, contract policy
 	if !hasNonEmptyString(eventKinds) {
 		return nil
 	}
+	var unsupported []string
 	for _, eventKind := range eventKinds {
-		if containsString(contract.EventKinds, eventKind) {
-			return nil
+		eventKind = strings.TrimSpace(eventKind)
+		if eventKind == "" || containsString(contract.EventKinds, eventKind) {
+			continue
 		}
+		unsupported = append(unsupported, eventKind)
 	}
+	if len(unsupported) == 0 {
+		return nil
+	}
+	sort.Strings(unsupported)
 	return []issue{{
 		path:    path,
-		message: fmt.Sprintf("graph-backed policy resource %q must use a projected event kind from: %s", resource, strings.Join(contract.EventKinds, ", ")),
+		message: fmt.Sprintf("graph-backed policy resource %q declares unsupported event kinds %s; expected projected event kinds from: %s", resource, strings.Join(unsupported, ", "), strings.Join(contract.EventKinds, ", ")),
 	}}
 }
 

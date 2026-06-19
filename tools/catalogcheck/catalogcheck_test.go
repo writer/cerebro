@@ -679,8 +679,18 @@ func TestCheckPolicyAssetContractsRejectsWrongEventKind(t *testing.T) {
 	rule.Spec.Input.EventKinds = []string{"github.secret_scanning_alert"}
 
 	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
-	if !issueMessagesContain(issues, `must use a projected event kind`) {
+	if !issueMessagesContain(issues, `declares unsupported event kinds github.secret_scanning_alert`) {
 		t.Fatalf("issues = %#v, want wrong event kind issue", issues)
+	}
+}
+
+func TestCheckPolicyAssetContractsRejectsMixedSupportedAndUnsupportedEventKinds(t *testing.T) {
+	rule := graphBackedResourceRule("github.code.repository")
+	rule.Spec.Input.EventKinds = []string{"github.code.repository", "github.secret_scanning_alert"}
+
+	issues := checkPolicyAssetContracts([]findingdsl.PolicyFindingRule{rule})
+	if !issueMessagesContain(issues, `declares unsupported event kinds github.secret_scanning_alert`) {
+		t.Fatalf("issues = %#v, want mixed event kind issue", issues)
 	}
 }
 
