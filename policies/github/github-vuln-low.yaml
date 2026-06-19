@@ -1,35 +1,35 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRule
 metadata:
-    id: github-vuln-low
-    name: GitHub Repo Low Vulnerabilities Addressed
-    description: Ensures low vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (90 days)
-    lastModified: "0001-01-01T00:00:00Z"
-    tags:
-        - github
-        - dependabot
-        - vulnerability
-        - low
-        - sla
-        - compliance
+  id: github-vuln-low
+  name: GitHub Repo Low Vulnerabilities Addressed
+  description: Ensures low vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (90 days)
+  lastModified: '0001-01-01T00:00:00Z'
+  tags:
+  - github
+  - dependabot
+  - vulnerability
+  - low
+  - sla
+  - compliance
 spec:
-    severity: low
-    effect: forbid
-    resource: github_dependabot_alerts
-    match:
-        conditions:
-            - cmp_eq(path(resource, "severity"), "low")
-            - cmp_eq(path(resource, "state"), "open")
-            - cmp_lt(path(resource, "created_at"), "NOW() - INTERVAL '90 days'")
-        conditionFormat: cel
-    remediation:
-        summary: Review and address Dependabot alerts for low severity vulnerabilities during regular maintenance.
-    riskCategories:
-        - VULNERABLE_CODE
-    frameworks:
-        - name: SOC 2
-          controls:
-            - CC7.1
-        - name: NIST 800-53 r5
-          controls:
-            - RA-5
+  severity: low
+  effect: forbid
+  resource: github.dependabot_alert
+  match:
+    conditions:
+    - cmp_eq(path(resource, "severity"), "low")
+    - cmp_eq(path(resource, "state"), "open")
+    - cmp_lt(path(resource, "created_at"), "NOW() - INTERVAL '90 days'")
+    conditionFormat: cel
+  remediation:
+    summary: Review and address Dependabot alerts for low severity vulnerabilities during regular maintenance.
+  riskCategories:
+  - VULNERABLE_CODE
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC7.1
+  - name: NIST 800-53 r5
+    controls:
+    - RA-5

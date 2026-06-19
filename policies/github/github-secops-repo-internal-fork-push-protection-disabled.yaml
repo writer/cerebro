@@ -1,0 +1,170 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-repo-internal-fork-push-protection-disabled
+  name: GitHub Secret scanning push protection Disabled For Internal Fork
+  description: GitHub internal repositories in the fork repositories cohort should keep secret scanning push protection enabled so exposed code and dependencies stay continuously monitored.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - repository
+  - code-security
+  - push-protection
+  - internal
+  - fork
+spec:
+  severity: high
+  effect: forbid
+  resource: github.code.repository
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.code.repository
+    requiredFields:
+    - repository
+    - resource_type
+    - visibility
+    - private
+    - fork
+    - secret_scanning_push_protection
+    freshnessSLA: 12h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "resource_type"), "code_repository")
+    - cmp_eq(path(resource, "visibility"), "internal")
+    - cmp_eq(path(resource, "fork"), "true")
+    - cmp_ne(path(resource, "secret_scanning_push_protection"), "enabled")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: repository
+      op: exists
+    - field: resource_type
+      op: exists
+    - field: visibility
+      op: exists
+    - field: private
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - owner
+      - repository
+      - default_branch
+      - security_alerts
+      - rulesets
+      - branch_protection
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_repository_security_configuration
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 12h
+    acceptableSources:
+    - github
+    requiredFields:
+    - repository
+    - resource_type
+    - visibility
+    - private
+    - fork
+    - secret_scanning_push_protection
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - repository
+  audit:
+    evidenceType: github_repository_security_configuration
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 12h
+    auditorStatement: Repository security configuration is collected from GitHub repository security analysis fields.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: GitHub internal repositories in the fork repositories cohort should keep secret scanning push protection enabled so exposed code and dependencies stay continuously monitored.
+    remediationIntent: Enable secret scanning push protection for the affected repository or document a time-bound exception.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - repository
+      - resource_type
+      - visibility
+      - private
+      - fork
+      - secret_scanning_push_protection
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-repo-internal-fork-push-protection-disabled-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-repo-internal-fork-push-protection-disabled-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Enable secret scanning push protection for the affected repository or document a time-bound exception.
+      - Confirm the repository security analysis fields report secret_scanning_push_protection=enabled.
+      - Rerun the GitHub repository source and verify the graph node is updated.
+    effort: low
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Enable secret scanning push protection for the affected repository or document a time-bound exception.
+    steps:
+    - Enable secret scanning push protection for the affected repository or document a time-bound exception.
+    - Confirm the repository security analysis fields report secret_scanning_push_protection=enabled.
+    - Rerun the GitHub repository source and verify the graph node is updated.
+  riskCategories:
+  - SECRET_EXPOSURE
+  - UNPROTECTED_DATA
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC7.1
+    - CC8.1
+  - name: ISO 27001:2022
+    controls:
+    - A.8.8
+    - A.8.15
+  - name: NIST 800-53 r5
+    controls:
+    - AU-2
+    - AU-6
+    - SI-2

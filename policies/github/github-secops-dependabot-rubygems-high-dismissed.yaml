@@ -1,0 +1,166 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-dependabot-rubygems-high-dismissed
+  name: GitHub Dependabot Rubygems High Alert Dismissed
+  description: Dismissed high Dependabot alerts in rubygems require approval evidence because the repository remains connected to vulnerable package context.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - dependabot
+  - dismissal
+  - rubygems
+  - high
+spec:
+  severity: high
+  effect: forbid
+  resource: github.dependabot_alert
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.dependabot_alert
+    requiredFields:
+    - repository
+    - alert_number
+    - state
+    - severity
+    - ecosystem
+    freshnessSLA: 12h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "state"), "dismissed")
+    - cmp_eq(path(resource, "severity"), "high")
+    - cmp_eq(path(resource, "ecosystem"), "rubygems")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: repository
+      op: exists
+    - field: alert_number
+      op: exists
+    - field: state
+      op: exists
+    - field: severity
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - repository
+      - package
+      - security_advisory
+      - dependency_manifest
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_dependabot_alert_dismissal
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 12h
+    acceptableSources:
+    - github
+    requiredFields:
+    - repository
+    - alert_number
+    - state
+    - severity
+    - ecosystem
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - repository
+    - alert_number
+  audit:
+    evidenceType: github_dependabot_alert_dismissal
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 12h
+    auditorStatement: Dependabot dismissal evidence must be reconciled with package and advisory context in the graph.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: Dismissed high Dependabot alerts in rubygems require approval evidence because the repository remains connected to vulnerable package context.
+    remediationIntent: Review the dismissal reason and package reachability.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - repository
+      - alert_number
+      - state
+      - severity
+      - ecosystem
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-dependabot-rubygems-high-dismissed-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-dependabot-rubygems-high-dismissed-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Review the dismissal reason and package reachability.
+      - Reopen or remediate the alert when no approved false-positive evidence exists.
+      - Capture exception approval and rerun Dependabot ingestion.
+    effort: low
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Review the dismissal reason and package reachability.
+    steps:
+    - Review the dismissal reason and package reachability.
+    - Reopen or remediate the alert when no approved false-positive evidence exists.
+    - Capture exception approval and rerun Dependabot ingestion.
+  riskCategories:
+  - SUPPLY_CHAIN
+  - CHANGE_CONTROL
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC6.1
+    - CC7.1
+    - CC8.1
+  - name: ISO 27001:2022
+    controls:
+    - A.5.15
+    - A.8.8
+    - A.8.25
+  - name: NIST 800-53 r5
+    controls:
+    - RA-5
+    - SA-10
+    - SR-4

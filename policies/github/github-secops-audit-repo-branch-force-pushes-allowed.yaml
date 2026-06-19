@@ -1,0 +1,163 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-audit-repo-branch-force-pushes-allowed
+  name: GitHub Audit Branch Force Pushes Allowed
+  description: GitHub audit evidence indicates branch force pushes allowed on a repository-scoped asset, which weakens source control and supply-chain guardrails.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - audit
+  - repository
+  - change-control
+  - branch-force-pushes-allowed
+spec:
+  severity: critical
+  effect: forbid
+  resource: github.code.repository
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.audit
+    requiredFields:
+    - action
+    - resource_type
+    - resource_id
+    - repo
+    freshnessSLA: 24h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "resource_type"), "protected_branch")
+    - cmp_eq(path(resource, "force_pushes_allowed"), "true")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: action
+      op: exists
+    - field: resource_type
+      op: exists
+    - field: resource_id
+      op: exists
+    - field: repo
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - owner
+      - repository
+      - default_branch
+      - security_alerts
+      - rulesets
+      - branch_protection
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_audit_repository_control
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 24h
+    acceptableSources:
+    - github
+    requiredFields:
+    - action
+    - resource_type
+    - resource_id
+    - repo
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - resource_id
+  audit:
+    evidenceType: github_audit_repository_control
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 24h
+    auditorStatement: Repository-scoped GitHub audit fields are projected onto the repository graph node for policy evaluation.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: GitHub audit evidence indicates branch force pushes allowed on a repository-scoped asset, which weakens source control and supply-chain guardrails.
+    remediationIntent: Review the GitHub audit event and affected repository control.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - action
+      - resource_type
+      - resource_id
+      - repo
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-audit-repo-branch-force-pushes-allowed-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-audit-repo-branch-force-pushes-allowed-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Review the GitHub audit event and affected repository control.
+      - Restore the repository protection, ruleset, webhook, or code security setting.
+      - Capture owner approval for any exception and verify the next GitHub audit sync.
+    effort: medium
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Review the GitHub audit event and affected repository control.
+    steps:
+    - Review the GitHub audit event and affected repository control.
+    - Restore the repository protection, ruleset, webhook, or code security setting.
+    - Capture owner approval for any exception and verify the next GitHub audit sync.
+  riskCategories:
+  - CHANGE_CONTROL
+  - SUPPLY_CHAIN
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC6.1
+    - CC7.1
+    - CC8.1
+  - name: ISO 27001:2022
+    controls:
+    - A.5.15
+    - A.8.8
+    - A.8.25
+  - name: NIST 800-53 r5
+    controls:
+    - AC-3
+    - CM-5
+    - CM-6

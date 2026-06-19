@@ -1,47 +1,47 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRule
 metadata:
-    id: github-public-repo-branch-protection
-    name: GitHub Public Repository Without Branch Protection
-    description: Public repository does not have branch protection rules on the default branch
-    lastModified: "0001-01-01T00:00:00Z"
-    tags:
-        - github
-        - branch-protection
-        - supply-chain
-        - cis-github-1.1.3
+  id: github-public-repo-branch-protection
+  name: GitHub Public Repository Without Branch Protection
+  description: Public repository does not have branch protection rules on the default branch
+  lastModified: '0001-01-01T00:00:00Z'
+  tags:
+  - github
+  - branch-protection
+  - supply-chain
+  - cis-github-1.1.3
 spec:
-    severity: high
-    effect: forbid
-    resource: github::repository
-    match:
-        conditions:
-            - cmp_eq(path(resource, "visibility"), "public")
-            - cmp_ne(path(resource, "default_branch_protection_enabled"), true)
-        conditionFormat: cel
-    remediation:
-        summary: 'Enable branch protection rules on the default branch: require pull request reviews, require status checks, restrict force pushes.'
-    riskCategories:
-        - EXTERNAL_EXPOSURE
-    frameworks:
-        - name: CIS GitHub Benchmark
-          controls:
-            - 1.1.3
-        - name: NIST 800-53 r5
-          controls:
-            - AC-3
-            - SC-7
-        - name: PCI DSS v4.0.1
-          controls:
-            - "1.3"
-            - "1.4"
-        - name: SOC 2
-          controls:
-            - CC6
-        - name: CIS Controls v8
-          controls:
-            - "12"
-            - "13"
-    mitreAttack:
-        - tactic: Initial Access
-          technique: T1190
+  severity: high
+  effect: forbid
+  resource: github.code.repository
+  match:
+    conditions:
+    - cmp_eq(path(resource, "visibility"), "public")
+    - cmp_ne(path(resource, "default_branch_protection_enabled"), true)
+    conditionFormat: cel
+  remediation:
+    summary: 'Enable branch protection rules on the default branch: require pull request reviews, require status checks, restrict force pushes.'
+  riskCategories:
+  - EXTERNAL_EXPOSURE
+  frameworks:
+  - name: CIS GitHub Benchmark
+    controls:
+    - 1.1.3
+  - name: NIST 800-53 r5
+    controls:
+    - AC-3
+    - SC-7
+  - name: PCI DSS v4.0.1
+    controls:
+    - '1.3'
+    - '1.4'
+  - name: SOC 2
+    controls:
+    - CC6
+  - name: CIS Controls v8
+    controls:
+    - '12'
+    - '13'
+  mitreAttack:
+  - tactic: Initial Access
+    technique: T1190

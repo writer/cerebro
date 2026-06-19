@@ -1,0 +1,162 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+  id: github-secops-app-installation-all-repos-event-member
+  name: GitHub App Installation All Repos Event Member
+  description: GitHub Apps installed on all repositories and subscribed to member events have broad monitoring or automation reach.
+  lastModified: '2026-06-19T00:00:00Z'
+  tags:
+  - github
+  - secops
+  - generated
+  - graph-backed
+  - github-app
+  - installation
+  - events
+  - member
+spec:
+  severity: medium
+  effect: forbid
+  resource: github.org_installation
+  input:
+    sourceKinds:
+    - github
+    eventKinds:
+    - github.org_installation
+    requiredFields:
+    - installation_id
+    - app_slug
+    - repository_selection
+    - permissions
+    - events
+    freshnessSLA: 12h
+  match:
+    conditions:
+    - cmp_eq(path(resource, "repository_selection"), "all")
+    - contains_value(path(resource, "events"), "member")
+    conditionFormat: cel
+  assert:
+    all:
+    - field: installation_id
+      op: exists
+    - field: app_slug
+      op: exists
+    - field: repository_selection
+      op: exists
+    - field: permissions
+      op: exists
+  context:
+    graph:
+      anchors:
+      - resource_urn
+      - tenant_id
+      enrich:
+      - organization
+      - repository_selection
+      - permissions
+      - subscribed_events
+    severityAdjustments:
+    - when: path(resource, "visibility") == "public"
+      delta: "+1"
+    - when: context.crown_jewel_distance <= 2
+      set: critical
+  evidence:
+    type: github_app_installation_events
+    assessmentMethods:
+    - examine
+    - test
+    requiredForAudit: true
+    freshnessSLA: 12h
+    acceptableSources:
+    - github
+    requiredFields:
+    - installation_id
+    - app_slug
+    - repository_selection
+    - permissions
+    - events
+    fingerprintFields:
+    - tenant_id
+    - policy_id
+    - resource_urn
+    - installation_id
+  audit:
+    evidenceType: github_app_installation_events
+    assessmentMethods:
+    - examine
+    - test
+    freshnessSLA: 12h
+    auditorStatement: GitHub App event subscription evidence is projected on the organization installation asset.
+    auditorGuidance: Review the GitHub graph entity, the source event kind, and the required evidence fields before accepting or suppressing this policy result.
+    riskStatement: GitHub Apps installed on all repositories and subscribed to member events have broad monitoring or automation reach.
+    remediationIntent: Confirm the GitHub App requires member events across all repositories.
+    acceptableEvidence:
+    - source: github
+      fields:
+      - installation_id
+      - app_slug
+      - repository_selection
+      - permissions
+      - events
+    exceptionPolicy:
+      maxAge: 14d
+      requiresApproval: true
+    exceptionGuidance:
+    - Document the repository, organization, app, runner, or credential owner.
+    - Record the compensating control and the planned date for returning to the secure state.
+    falsePositives:
+    - Provider preview fields may be absent from older GitHub Enterprise versions.
+    - Short-lived migration windows may produce transient audit evidence before the next source sync.
+  verification:
+    fixtures:
+    - name: github-secops-app-installation-all-repos-event-member-finding
+      expect: finding
+      description: Required GitHub evidence matches the failing condition.
+    - name: github-secops-app-installation-all-repos-event-member-pass
+      expect: pass
+      description: The projected graph asset returns to the expected secure state.
+    mutationChecks:
+    - missing_required_field
+    - stale_evidence
+    - control_value_inverted
+    remediationCheck:
+      rerunAfter: source_sync
+      expectedStatus: pass
+  actions:
+    owner:
+      from: graph.owner
+      fallback: security.platform
+    remediation:
+      type: manual
+      steps:
+      - Confirm the GitHub App requires member events across all repositories.
+      - Narrow repository selection or remove the event subscription where possible.
+      - Capture owner approval and rerun organization inventory ingestion.
+    effort: low
+    blastRadius:
+      estimateFrom: graph.neighborhood
+    verification:
+      rerunPolicy: true
+  remediation:
+    summary: Confirm the GitHub App requires member events across all repositories.
+    steps:
+    - Confirm the GitHub App requires member events across all repositories.
+    - Narrow repository selection or remove the event subscription where possible.
+    - Capture owner approval and rerun organization inventory ingestion.
+  riskCategories:
+  - MONITORING_GAP
+  - INCIDENT_RESPONSE
+  frameworks:
+  - name: SOC 2
+    controls:
+    - CC7.1
+    - CC8.1
+  - name: ISO 27001:2022
+    controls:
+    - A.8.8
+    - A.8.15
+  - name: NIST 800-53 r5
+    controls:
+    - AU-2
+    - AU-6
+    - SI-2
