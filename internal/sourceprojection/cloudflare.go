@@ -85,6 +85,9 @@ func cloudflareMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		"email":      attrs["email"],
 		"status":     attrs["status"],
 	})))
+	if email := strings.TrimSpace(attrs["email"]); email != "" {
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, email, event.GetOccurredAt())
+	}
 	if accountID := strings.TrimSpace(attrs["account_id"]); accountID != "" {
 		accountURN := cloudflareAccountURN(tenantID, accountID)
 		addEntity(entities, cloudflareEntity(event, accountURN, "cloudflare.account", "", map[string]string{"account_id": accountID}))

@@ -54,6 +54,8 @@ func TestProjectCloudflareInventoryEntitiesAndLinks(t *testing.T) {
 	}
 
 	accountURN := "urn:cerebro:writer:cloudflare_account:acct-1"
+	emailURN := "urn:cerebro:writer:identifier:email:alice@example.com"
+	identityURN := "urn:cerebro:writer:identity:email:alice@example.com"
 	roleURN := "urn:cerebro:writer:cloudflare_role:role-1"
 	memberURN := "urn:cerebro:writer:cloudflare_member:member-1"
 	zoneURN := "urn:cerebro:writer:cloudflare_zone:zone-1"
@@ -79,6 +81,8 @@ func TestProjectCloudflareInventoryEntitiesAndLinks(t *testing.T) {
 
 	assertProjectedLink(t, state, memberURN, relationBelongsTo, accountURN)
 	assertProjectedLink(t, state, memberURN, relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, memberURN, relationHasIdentifier, emailURN)
+	assertProjectedLink(t, state, memberURN, relationRepresentsIdentity, identityURN)
 	assertProjectedLink(t, state, roleURN, relationBelongsTo, accountURN)
 	assertProjectedLink(t, state, zoneURN, relationBelongsTo, accountURN)
 	assertProjectedLink(t, state, recordURN, relationBelongsTo, zoneURN)
