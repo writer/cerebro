@@ -61,6 +61,8 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		return joinProjectionIdentity(attrs, "audit_id", "id")
 	case "cloudflare.gateway_rule":
 		return joinProjectionIdentity(attrs, "rule_id", "id")
+	case "cloudflare.load_balancer":
+		return joinProjectionIdentity(attrs, "load_balancer_id", "id")
 	case "cloudflare.load_balancer_pool":
 		return joinProjectionIdentity(attrs, "pool_id", "id")
 	case "cloudflare.worker_script":

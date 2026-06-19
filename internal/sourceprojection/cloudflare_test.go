@@ -182,6 +182,28 @@ func TestProjectCloudflareScopedInventoryLinks(t *testing.T) {
 	assertProjectedLink(t, state, loadBalancerURN, relationDependsOn, defaultPoolURN)
 }
 
+func TestProjectCloudflareLoadBalancerDoesNotUseZoneAsIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := cloudflareTestEvent("cf-lb-missing-id", "cloudflare.load_balancer", map[string]string{
+		"zone_id": "zone-1",
+		"name":    "www.example.com",
+	}, `{"name":"www.example.com"}`)
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	zoneDerivedURN := "urn:cerebro:writer:cloudflare_load_balancer:zone-1"
+	if entity := state.entities[zoneDerivedURN]; entity != nil {
+		t.Fatalf("load balancer without id must not use zone as identity: %#v", entity)
+	}
+	eventURN := "urn:cerebro:writer:cloudflare_load_balancer:cf-lb-missing-id"
+	if entity := state.entities[eventURN]; entity == nil || entity.EntityType != "cloudflare.load_balancer" {
+		t.Fatalf("load balancer fallback entity missing or wrong: %#v", entity)
+	}
+}
+
 func TestProjectCloudflareDNSRecordZoneReassignmentRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

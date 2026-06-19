@@ -668,7 +668,7 @@ func kubernetesContainerURN(tenantID string, attributes map[string]string) strin
 
 func kubernetesPodURN(tenantID string, attributes map[string]string) string {
 	clusterID := kubernetesClusterIdentity(attributes)
-	podID := firstNonEmpty(attributes["resource_id"], attributes["uid"], attributes["workload_uid"], attributes["resource_name"], attributes["name"])
+	podID := firstNonEmpty(attributes["resource_id"], attributes["uid"], attributes["workload_uid"])
 	if clusterID == "" || podID == "" {
 		return ""
 	}
