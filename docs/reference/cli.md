@@ -45,7 +45,7 @@ Source runtime persistence requires Postgres. Sync also requires NATS JetStream.
 ./bin/cerebro source-runtime sync example-github page_limit=1
 ```
 
-See [Source runtime guide](SOURCE_RUNTIME_GUIDE.md) for store setup, secrets, sync behavior, and recovery.
+See [Source runtime guide](../domains/source-runtime-guide.md) for store setup, secrets, sync behavior, and recovery.
 
 ## Finding Rules
 
@@ -72,4 +72,4 @@ Graph inspection and ingest require Neo4j or Aura. Runtime-backed graph operatio
 ./bin/cerebro graph rebuild example-github dry_run=true mode=replay
 ```
 
-See [Graph operations](GRAPH_OPERATIONS.md) for health checks, ingest, rebuilds, query safety, and troubleshooting.
+See [Graph operations](../domains/graph-operations.md) for health checks, ingest, rebuilds, query safety, and troubleshooting.

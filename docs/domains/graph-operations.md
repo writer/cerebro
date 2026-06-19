@@ -2,7 +2,7 @@
 
 This guide covers operating Cerebro's graph projection and graph query surfaces. Graph operations require Neo4j or Aura and, for runtime-backed ingest, the configured source runtime stores.
 
-Use it with [`docs/SOURCE_RUNTIME_GUIDE.md`](./SOURCE_RUNTIME_GUIDE.md) for source runtime sync and [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for operational checks.
+Use it with [`docs/domains/source-runtime-guide.md`](source-runtime-guide.md) for source runtime sync and [`docs/operations/operations-runbook.md`](../operations/operations-runbook.md) for operational checks.
 
 ## Dependencies
 
@@ -213,7 +213,7 @@ Cerebro is not a general-purpose graph database product. Graph routes and graph-
 - monitor query latency,
 - set `CEREBRO_NEO4J_QUERY_TIMEOUT` when needed.
 
-See [`docs/NON_GOALS.md`](./NON_GOALS.md) before expanding graph storage shape, traversal depth, or public graph query surface.
+See [`docs/engineering/non-goals.md`](../engineering/non-goals.md) before expanding graph storage shape, traversal depth, or public graph query surface.
 
 ## Observability
 

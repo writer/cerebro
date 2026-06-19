@@ -43,27 +43,27 @@ docker compose up --build
 - Built-in source integrations for cloud, SaaS, identity, endpoint, vulnerability, compliance, and workflow signals.
 - Source runtime sync, append-log replay, claim/finding/report workflows, compliance control coverage, and optional graph projection/query tooling.
 - Optional MCP, graph-agent, and device-authenticated telemetry surfaces.
-- PolicyFindingRule YAML DSL catalogs, generated detection catalogs, SDK helpers, OpenAPI/Connect contracts, release artifacts, and local validation tooling.
+- Policy and FindingRule YAML DSL catalogs, generated detection catalogs, SDK helpers, OpenAPI/Connect contracts, release artifacts, and local validation tooling.
 
 ## Choose A Path
 
 | Goal | Start here |
 | --- | --- |
-| Get the shortest runnable path | [Quick reference](docs/QUICKREF.md) |
-| Walk through a local end-to-end flow | [Getting started](docs/GETTING_STARTED.md) |
-| Understand runtime shape and stores | [Architecture](docs/ARCHITECTURE.md) |
-| Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/CONFIG_ENV_VARS.md) and [.env.example](.env.example) |
-| Host or operate Cerebro | [Hosting](docs/HOSTING.md), [cloud deployment](docs/CLOUD_DEPLOYMENT.md), [deployment examples](docs/DEPLOYMENT_EXAMPLES.md), and [operations runbook](docs/OPERATIONS_RUNBOOK.md) |
-| Explore JSON HTTP or Connect APIs | [API reference](docs/API_REFERENCE.md), `api/openapi.yaml`, and `proto/cerebro/v1/bootstrap.proto` |
-| Use the CLI | [CLI reference](docs/CLI_REFERENCE.md) |
-| Browse built-in integrations | [Source catalog](docs/SOURCES.md) |
+| Get the shortest runnable path | [Quick reference](docs/start/quick-reference.md) |
+| Walk through a local end-to-end flow | [Getting started](docs/start/getting-started.md) |
+| Understand runtime shape and stores | [Architecture](docs/reference/architecture.md) |
+| Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
+| Host or operate Cerebro | [Hosting](docs/operations/hosting.md), [cloud deployment](docs/operations/cloud-deployment.md), [deployment examples](docs/operations/deployment-examples.md), and [operations runbook](docs/operations/operations-runbook.md) |
+| Explore JSON HTTP or Connect APIs | [API reference](docs/reference/api-reference.md), `api/openapi.yaml`, and `proto/cerebro/v1/bootstrap.proto` |
+| Use the CLI | [CLI reference](docs/reference/cli.md) |
+| Browse built-in integrations | [Source catalog](docs/reference/sources.md) |
 | Use SDK helpers | [Python SDK](sdk/python/README.md), [TypeScript SDK](sdk/typescript/README.md), and `sources/sdk` |
-| Persist and sync source runtimes | [Source runtime guide](docs/SOURCE_RUNTIME_GUIDE.md) |
-| Work on graph behavior | [Graph operations](docs/GRAPH_OPERATIONS.md) |
-| Integrate MCP clients | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) |
-| Integrate endpoint telemetry | [Endpoint security platform integration](docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md) |
-| Author policies, control mappings, or finding rules | [Policies](docs/POLICIES.md), [compliance controls](docs/COMPLIANCE_CONTROLS.md), `policies/`, `internal/findingdsl`, and `internal/findings` |
-| Contribute code or docs | [Development](docs/DEVELOPMENT.md), [non-goals](docs/NON_GOALS.md), and the Makefile |
+| Persist and sync source runtimes | [Source runtime guide](docs/domains/source-runtime-guide.md) |
+| Work on graph behavior | [Graph operations](docs/domains/graph-operations.md) |
+| Integrate MCP clients | [MCP native Droid setup](docs/domains/mcp-droid-setup.md) |
+| Integrate endpoint telemetry | [Endpoint security platform integration](docs/domains/endpoint-security-platform-integration.md) |
+| Author policies, control mappings, or finding rules | [Policies](docs/domains/policies.md), [compliance controls](docs/domains/compliance-controls.md), `policies/`, `internal/findingdsl`, and `internal/findings` |
+| Contribute code or docs | [Development](docs/engineering/development.md), [non-goals](docs/engineering/non-goals.md), and the Makefile |
 
 ## Optional Docs Site
 
@@ -82,9 +82,9 @@ This public repository is authoritative for runtime behavior, CLI/API contracts,
 
 The handoff to deployment repositories is the release payload: container images plus `cerebro-runtime-contract.json`. Treat that contract as the bridge between public runtime releases and environment-specific promotion/deploy automation.
 
-Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/CONFIG_ENV_VARS.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release/deploy handoff data in `cerebro-runtime-contract.json`.
+Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/reference/config-env-vars.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release/deploy handoff data in `cerebro-runtime-contract.json`.
 
-See [Non-goals](docs/NON_GOALS.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
+See [Non-goals](docs/engineering/non-goals.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
 
 ## Common Commands
 
@@ -101,7 +101,7 @@ make oss-audit      # public repository hygiene scan
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
-For policy or compliance-control work, run `make finding-dsl-check`, `make policy-rule-check`, `make detection-catalog-check`, and `make control-index-check` as applicable. Control extension packs are documented in [Compliance controls](docs/COMPLIANCE_CONTROLS.md) and use `--init-extension`, `--extension`, `--profile`, `--output`, and `--write` workflows.
+For policy or compliance-control work, run `make finding-dsl-check`, `make policy-rule-check`, `make detection-catalog-check`, and `make control-index-check` as applicable. Control extension packs are documented in [Compliance controls](docs/domains/compliance-controls.md) and use `--init-extension`, `--extension`, `--profile`, `--output`, and `--write` workflows.
 
 ## Stack
 

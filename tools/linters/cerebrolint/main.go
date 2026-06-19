@@ -4,7 +4,7 @@
 //	go run ./cerebrolint ../../...
 //
 // Each analyzer is deliberately small and self-contained; see
-// tools/linters/README.md and docs/NON_GOALS.md for the architectural
+// tools/linters/README.md and docs/engineering/non-goals.md for the architectural
 // invariants it enforces.
 package main
 

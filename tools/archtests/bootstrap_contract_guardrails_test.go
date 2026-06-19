@@ -172,7 +172,7 @@ func TestBootstrapPublicHTTPRoutesStayMethodScopedAndDocumented(t *testing.T) {
 			t.Fatalf("auth.go missing public route marker %q", public)
 		}
 	}
-	for _, doc := range []string{"docs/API_REFERENCE.md", "docs/API_CONTRACTS_AUTOGEN.md"} {
+	for _, doc := range []string{"docs/reference/api-reference.md", "docs/reference/api-contracts.md"} {
 		body, err := os.ReadFile(filepath.Join(root, doc))
 		if err != nil {
 			t.Fatalf("read %s: %v", doc, err)

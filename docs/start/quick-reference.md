@@ -14,7 +14,7 @@ Durable local stack:
 docker compose up --build
 ```
 
-End-to-end local walkthrough: [`docs/GETTING_STARTED.md`](GETTING_STARTED.md).
+End-to-end local walkthrough: [`docs/start/getting-started.md`](getting-started.md).
 
 Health and source catalog:
 

@@ -39,7 +39,7 @@ var trustedEndpointActiveTrustGateFailureDefinition = RuleDefinition{
 	Status:             findingStatusOpen,
 	Maturity:           "test",
 	Tags:               []string{"trusted-endpoint", "endpoint", "trust-gate", "device-posture", "zero-trust"},
-	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md"},
+	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/domains/endpoint-security-platform-integration.md"},
 	FalsePositives:     []string{"A trust-gate denial issued during an approved maintenance window or risk-accepted exception that has not yet been reflected as an allow decision."},
 	Runbook:            "Inspect the agent's failing endpoint posture/trust checks, remediate the underlying gap, and confirm the next trust-gate decision for the action allows it.",
 	RequiredAttributes: []string{"agent_id", "action", "decision"},

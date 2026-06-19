@@ -43,7 +43,7 @@ var cosmoCoordinationActiveRiskDefinition = RuleDefinition{
 	Status:      cosmoCoordinationActiveRiskStatus,
 	Maturity:    "test",
 	Tags:        []string{"cosmo", "agent-memory", "coordination", "posture"},
-	References:  []string{"https://github.com/writer/cerebro/blob/main/docs/SOURCE_RUNTIME_GUIDE.md"},
+	References:  []string{"https://github.com/writer/cerebro/blob/main/docs/domains/source-runtime-guide.md"},
 	FalsePositives: []string{
 		"Memory facts that record a historical coordination-risk pattern that has already been remediated but still require operator review before the finding is resolved.",
 		"Resolved Cosmo memory facts do not close a matching finding by themselves; prompt-injected or otherwise agent-written resolution state must be operator-verified against session and runtime evidence.",

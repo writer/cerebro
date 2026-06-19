@@ -86,7 +86,7 @@ func inspectFields(pass *analysis.Pass, fd *ast.FuncDecl, list *ast.FieldList, k
 			pass.Report(analysis.Diagnostic{
 				Pos:     field.Type.Pos(),
 				End:     field.Type.End(),
-				Message: "exported func " + fd.Name.Name + " has " + kind + " of forbidden untyped shape (" + reason + "); declare a named struct or interface. (see docs/NON_GOALS.md)",
+				Message: "exported func " + fd.Name.Name + " has " + kind + " of forbidden untyped shape (" + reason + "); declare a named struct or interface. (see docs/engineering/non-goals.md)",
 			})
 		}
 	}

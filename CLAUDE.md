@@ -10,8 +10,8 @@ Only repo-specific, non-obvious guidance lives here.
 
 ## Scope discipline
 
-- [`docs/NON_GOALS.md`](docs/NON_GOALS.md) is the canonical, indexed list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.
-- A change that crosses a non-goal must cite the entry, name which "What would change this" criterion has been met, and update `docs/NON_GOALS.md` in the same PR. Quiet bypass is a review-blocker.
+- [`docs/engineering/non-goals.md`](docs/engineering/non-goals.md) is the canonical, indexed list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.
+- A change that crosses a non-goal must cite the entry, name which "What would change this" criterion has been met, and update `docs/engineering/non-goals.md` in the same PR. Quiet bypass is a review-blocker.
 
 ## Preferred validation entrypoints
 
@@ -37,5 +37,5 @@ Run `make contracts-check` before finishing broad contract changes, or the corre
 
 ## Runtime notes
 
-- Current `main` is the bootstrap service: NATS JetStream as the append log, Postgres as the state store, Neo4j/Aura as the graph projection. There is no in-memory or SQLite fallback in production; routes that need a configured store fail closed when the store is absent. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the storage section of [`docs/NON_GOALS.md`](docs/NON_GOALS.md).
+- Current `main` is the bootstrap service: NATS JetStream as the append log, Postgres as the state store, Neo4j/Aura as the graph projection. There is no in-memory or SQLite fallback in production; routes that need a configured store fail closed when the store is absent. See [`docs/reference/architecture.md`](docs/reference/architecture.md) and the storage section of [`docs/engineering/non-goals.md`](docs/engineering/non-goals.md).
 - Some CLI paths use repo-specific env wrappers in `make`, so prefer documented make targets when available.

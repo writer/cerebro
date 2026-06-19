@@ -10,9 +10,9 @@ import (
 
 func TestDurabilityContractDocumentsGraphRebuildSources(t *testing.T) {
 	root := repoRoot(t)
-	contract, err := os.ReadFile(filepath.Join(root, "docs", "DURABILITY_CONTRACT.md"))
+	contract, err := os.ReadFile(filepath.Join(root, "docs", "engineering", "durability-contract.md"))
 	if err != nil {
-		t.Fatalf("read docs/DURABILITY_CONTRACT.md: %v", err)
+		t.Fatalf("read docs/engineering/durability-contract.md: %v", err)
 	}
 	for _, marker := range []string{
 		"Source runtime sync",
@@ -23,13 +23,13 @@ func TestDurabilityContractDocumentsGraphRebuildSources(t *testing.T) {
 		"Neo4j remains a projection",
 	} {
 		if !bytes.Contains(contract, []byte(marker)) {
-			t.Fatalf("docs/DURABILITY_CONTRACT.md missing durability marker %q", marker)
+			t.Fatalf("docs/engineering/durability-contract.md missing durability marker %q", marker)
 		}
 	}
 
-	architecture, err := os.ReadFile(filepath.Join(root, "docs", "ARCHITECTURE.md"))
+	architecture, err := os.ReadFile(filepath.Join(root, "docs", "reference", "architecture.md"))
 	if err != nil {
-		t.Fatalf("read docs/ARCHITECTURE.md: %v", err)
+		t.Fatalf("read docs/reference/architecture.md: %v", err)
 	}
 	for _, marker := range []string{
 		"DURABILITY_CONTRACT.md",
@@ -37,13 +37,13 @@ func TestDurabilityContractDocumentsGraphRebuildSources(t *testing.T) {
 		"Neo4j remains a projection",
 	} {
 		if !bytes.Contains(architecture, []byte(marker)) {
-			t.Fatalf("docs/ARCHITECTURE.md missing durability marker %q", marker)
+			t.Fatalf("docs/reference/architecture.md missing durability marker %q", marker)
 		}
 	}
 
-	nonGoals, err := os.ReadFile(filepath.Join(root, "docs", "NON_GOALS.md"))
+	nonGoals, err := os.ReadFile(filepath.Join(root, "docs", "engineering", "non-goals.md"))
 	if err != nil {
-		t.Fatalf("read docs/NON_GOALS.md: %v", err)
+		t.Fatalf("read docs/engineering/non-goals.md: %v", err)
 	}
 	for _, marker := range []string{
 		"Neo4j is a projection, not a store of record",
@@ -52,16 +52,16 @@ func TestDurabilityContractDocumentsGraphRebuildSources(t *testing.T) {
 		"DURABILITY_CONTRACT.md",
 	} {
 		if !bytes.Contains(nonGoals, []byte(marker)) {
-			t.Fatalf("docs/NON_GOALS.md missing graph durability marker %q", marker)
+			t.Fatalf("docs/engineering/non-goals.md missing graph durability marker %q", marker)
 		}
 	}
 }
 
 func TestSourceSyncRecoveryContractDocumentsCommitOrdering(t *testing.T) {
 	root := repoRoot(t)
-	contract, err := os.ReadFile(filepath.Join(root, "docs", "SOURCE_SYNC_RECOVERY.md"))
+	contract, err := os.ReadFile(filepath.Join(root, "docs", "engineering", "source-sync-recovery.md"))
 	if err != nil {
-		t.Fatalf("read docs/SOURCE_SYNC_RECOVERY.md: %v", err)
+		t.Fatalf("read docs/engineering/source-sync-recovery.md: %v", err)
 	}
 	for _, marker := range []string{
 		"append, project, then progress",
@@ -71,20 +71,20 @@ func TestSourceSyncRecoveryContractDocumentsCommitOrdering(t *testing.T) {
 		"source_runtime.page_committed",
 	} {
 		if !bytes.Contains(contract, []byte(marker)) {
-			t.Fatalf("docs/SOURCE_SYNC_RECOVERY.md missing source sync recovery marker %q", marker)
+			t.Fatalf("docs/engineering/source-sync-recovery.md missing source sync recovery marker %q", marker)
 		}
 	}
 
-	durability, err := os.ReadFile(filepath.Join(root, "docs", "DURABILITY_CONTRACT.md"))
+	durability, err := os.ReadFile(filepath.Join(root, "docs", "engineering", "durability-contract.md"))
 	if err != nil {
-		t.Fatalf("read docs/DURABILITY_CONTRACT.md: %v", err)
+		t.Fatalf("read docs/engineering/durability-contract.md: %v", err)
 	}
 	for _, marker := range []string{
 		"SOURCE_SYNC_RECOVERY.md",
 		"transactional sync ledger or outbox",
 	} {
 		if !bytes.Contains(durability, []byte(marker)) {
-			t.Fatalf("docs/DURABILITY_CONTRACT.md missing source sync recovery marker %q", marker)
+			t.Fatalf("docs/engineering/durability-contract.md missing source sync recovery marker %q", marker)
 		}
 	}
 }

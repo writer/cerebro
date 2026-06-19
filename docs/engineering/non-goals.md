@@ -1,6 +1,6 @@
 # Non-Goals
 
-This document collects, in one place, the things Cerebro intentionally does not try to do. It exists because non-goals in this repo are otherwise scattered across [`ARCHITECTURE.md`](./ARCHITECTURE.md), [`FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md), and code-level guardrails, with no single index that a contributor, agent, or reviewer can read first.
+This document collects, in one place, the things Cerebro intentionally does not try to do. It exists because non-goals in this repo are otherwise scattered across [`ARCHITECTURE.md`](../reference/architecture.md), [`FINDINGS_PLATFORM_ARCHITECTURE.md`](../domains/findings-platform-architecture.md), and code-level guardrails, with no single index that a contributor, agent, or reviewer can read first.
 
 Each section lists what Cerebro will not do, why that boundary exists, where in the codebase the boundary is enforced, and what evidence would justify revisiting the decision. The point is not to freeze scope. The point is to make scope drift expensive on purpose: if a change crosses one of these lines, the PR description should say so explicitly, and the corresponding entry in this document should be amended in the same change.
 
@@ -17,14 +17,14 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - JetStream is the only writable long-term substrate. Postgres holds current state. Neo4j/Aura is a graph projection rebuilt from JetStream. Adding any other long-term store (SQLite-as-production, Kuzu, RedisGraph, DuckDB-as-warehouse, a separate "intelligence" store, a vector index treated as authoritative) is out of scope.
 - Why: every additional store doubles the surfaces that need replay, tenancy, retention, and disaster-recovery thinking. The current three already pay for themselves; a fourth would have to clear a higher bar than its first happy-path use case.
-- Enforced in: [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) "Store boundaries"; `tools/archtests`; and the `noinmemorydb` linter in `tools/linters/noinmemorydb`.
+- Enforced in: [`docs/reference/architecture.md`](../reference/architecture.md) "Store boundaries"; `tools/archtests`; and the `noinmemorydb` linter in `tools/linters/noinmemorydb`.
 - What would change this: a documented capability that demonstrably cannot be served by JetStream, Postgres, or Neo4j without changing their operational profile, ratified in an architecture PR before any code lands.
 
 ### No in-memory or embedded database fallback in production.
 
 - The bootstrap binary will not silently fall back to SQLite, BoltDB, or `:memory:` when JetStream/Postgres/Neo4j are absent. Routes that need a store either run with the configured store or fail closed.
 - Why: in-memory fallbacks make local dev cheap by making production observability dishonest. The historical SQLite fallback produced exactly that gap, and the current arch-test stance is to reject it.
-- Enforced in: `internal/config` driver wiring (no embedded driver registered), [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) "Kuzu and embedded/in-memory database backends are intentionally rejected by config and arch tests", and the `noinmemorydb` linter in `tools/linters/noinmemorydb`.
+- Enforced in: `internal/config` driver wiring (no embedded driver registered), [`docs/reference/architecture.md`](../reference/architecture.md) "Kuzu and embedded/in-memory database backends are intentionally rejected by config and arch tests", and the `noinmemorydb` linter in `tools/linters/noinmemorydb`.
 - What would change this: a separate, explicitly-named development binary (not the production server) that opts into an embedded store and is barred from CI artifacts and release images.
 
 ### No "if X fails, try Y" capability fallbacks.
@@ -36,9 +36,9 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Snowflake is not a store of record.
 
-- Cerebro's current `main` is the bootstrap service described in [`README.md`](../README.md), [`docs/QUICKREF.md`](./QUICKREF.md), and [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). It does not require, and is not coupled to, the historical Snowflake-centered monolith. Documents that still assume Snowflake describe legacy behavior that is being retired, not target architecture.
-- Why: tying Cerebro to one warehouse vendor conflicts with the cloud-agnostic runtime boundary in this document and the "boring, proven, operable" architecture described in [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md).
-- Enforced in: bootstrap config surface in [`internal/config`](../internal/config), env vars in [`README.md`](../README.md) "Configuration".
+- Cerebro's current `main` is the bootstrap service described in [`README.md`](../../README.md), [`docs/start/quick-reference.md`](../start/quick-reference.md), and [`docs/reference/architecture.md`](../reference/architecture.md). It does not require, and is not coupled to, the historical Snowflake-centered monolith. Documents that still assume Snowflake describe legacy behavior that is being retired, not target architecture.
+- Why: tying Cerebro to one warehouse vendor conflicts with the cloud-agnostic runtime boundary in this document and the "boring, proven, operable" architecture described in [`docs/reference/architecture.md`](../reference/architecture.md).
+- Enforced in: bootstrap config surface in [`internal/config`](../../internal/config), env vars in [`README.md`](../../README.md) "Configuration".
 - What would change this: nothing inside this repo. Warehouse-shaped query workloads belong to a separate analytics layer that consumes Cerebro's events.
 
 ## Source CDK
@@ -47,7 +47,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Anything that talks to a third-party API, cloud SDK, file system mount, or webhook receiver is a Source. Application packages do not import `net/http`, `database/sql`, or vendor SDKs directly to reach the outside world.
 - Why: the outside world is the highest-blast-radius surface in Cerebro. Funneling it through one CDK is what lets retries, pagination, error wrapping, replay, and tenant scoping be solved once instead of 46 times.
-- Enforced in: arch tests in `tools/archtests`, [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) "Source CDK", and the Source CDK packages under `internal/sourcecdk`.
+- Enforced in: arch tests in `tools/archtests`, [`docs/reference/architecture.md`](../reference/architecture.md) "Source CDK", and the Source CDK packages under `internal/sourcecdk`.
 - What would change this: nothing for application packages. New "outside world" affordances must register as Sources or as a typed Source CDK extension reviewed under the same constraints.
 
 ### Each source is bounded to ≤300 LOC of Go and zero direct I/O primitives.
@@ -75,16 +75,16 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Cerebro accepts push traffic only from first-party agents Cerebro itself authenticates and authorizes per-device. Third-party services and unmanaged callers do not write to the platform: they integrate via the Source CDK's pull contract.
 - Why: a first-party agent is a substantively different trust shape from a third-party API. Cerebro provisions the device identity (bootstrap token via MDM), signs the JWTs, owns the rotation key material, and revokes the device. None of those affordances exist for third-party callers, and conflating them would erase the Source-CDK boundary that makes replay, rebuild, and rule evaluation deterministic. Distinct affordance gets distinct entry.
-- Enforced in: [`internal/deviceauth`](../internal/deviceauth) (token issuance, rotation, replay detection); the bootstrap auth pipeline in [`internal/bootstrap/auth.go`](../internal/bootstrap/auth.go) (the device-JWT verifier sits next to the existing API-key and capability-token paths, not as a separate service); the `platform.devices.*`, `platform.telemetry.ingest`, and `security.devices.findings.read` scope set wired through `authorizeHTTPRequestScope`.
-- What would change this: a second first-party agent class with materially different posture (e.g. server-side runtime agents, container sidecars). That belongs to its own design proposal and its own [`docs/NON_GOALS.md`](./NON_GOALS.md) entry; reusing the SeCheck shape by default is not the answer.
+- Enforced in: [`internal/deviceauth`](../../internal/deviceauth) (token issuance, rotation, replay detection); the bootstrap auth pipeline in [`internal/bootstrap/auth.go`](../../internal/bootstrap/auth.go) (the device-JWT verifier sits next to the existing API-key and capability-token paths, not as a separate service); the `platform.devices.*`, `platform.telemetry.ingest`, and `security.devices.findings.read` scope set wired through `authorizeHTTPRequestScope`.
+- What would change this: a second first-party agent class with materially different posture (e.g. server-side runtime agents, container sidecars). That belongs to its own design proposal and its own [`docs/engineering/non-goals.md`](non-goals.md) entry; reusing the SeCheck shape by default is not the answer.
 
 ## Graph And Cypher
 
 ### Neo4j is a projection, not a store of record.
 
-- The graph is rebuildable from durable Cerebro records. Source runtime and workflow graph state must be reproducible from JetStream `entity.*`, `event.*`, or `workflow.v1.*` events. SDK/runtime claim graph state is currently reproducible from Postgres claim rows, as documented in [`docs/DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md), until a `claim.v1.*` event family exists. Direct `Neo4jSession.Run` writes from anywhere outside `internal/graphingest`, `internal/sourceprojection`, `internal/workflowprojection`, and the documented claim projection path are out of scope.
+- The graph is rebuildable from durable Cerebro records. Source runtime and workflow graph state must be reproducible from JetStream `entity.*`, `event.*`, or `workflow.v1.*` events. SDK/runtime claim graph state is currently reproducible from Postgres claim rows, as documented in [`DURABILITY_CONTRACT.md`](durability-contract.md), until a `claim.v1.*` event family exists. Direct `Neo4jSession.Run` writes from anywhere outside `internal/graphingest`, `internal/sourceprojection`, `internal/workflowprojection`, and the documented claim projection path are out of scope.
 - Why: the graph drifts the moment two paths can write to it independently. Replayability is the property that lets findings, reports, and reasoning trust traversal results.
-- Enforced in: [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) "Store boundaries", [`docs/DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md), workflow durability packages in `internal/workflowevents` and `internal/workflowprojection`, and graph write arch tests.
+- Enforced in: [`docs/reference/architecture.md`](../reference/architecture.md) "Store boundaries", [`DURABILITY_CONTRACT.md`](durability-contract.md), workflow durability packages in `internal/workflowevents` and `internal/workflowprojection`, and graph write arch tests.
 - What would change this: a workflow or claim concept whose durability genuinely cannot be modeled as either an event-and-projector pair or a documented current-state-backed rebuild source, ratified before code that writes to Neo4j directly is merged.
 
 ### The graph is not a general-purpose graph database product.
@@ -98,14 +98,14 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - The Cypher safety validator in `internal/graphagent/validator.go` rejects any query that contains write or bulk-load tokens (`CREATE`, `MERGE`, `DELETE`, `REMOVE`, `SET`, `DROP`, `FOREACH`), `LOAD CSV`, `USING PERIODIC`, `apoc.trigger.*`, `apoc.periodic.*`, or any procedure `CALL`. It also requires every node pattern to carry the `Entity` label and inline `tenant_id: $tenant_id`, and rejects queries without a numeric `LIMIT` ≤ `MaxRows` (default 100). These constraints will not be loosened to support agent-authored data mutations or autonomous remediation through the graph.
 - Why: LLM-authored Cypher is the largest agentic blast-radius surface in the codebase. The validator is the load-bearing safety boundary; weakening it has a multiplicative effect on every other risk in the system.
-- Enforced in: `Validator.validate` and `allNodePatternsTenantScoped` in [`internal/graphagent/validator.go`](../internal/graphagent/validator.go); validator test corpus in `internal/graphagent/validator_test.go`.
+- Enforced in: `Validator.validate` and `allNodePatternsTenantScoped` in [`internal/graphagent/validator.go`](../../internal/graphagent/validator.go); validator test corpus in `internal/graphagent/validator_test.go`.
 - What would change this: nothing for write tokens. New agent capabilities must travel through typed Action and workflow event surfaces, not through Cypher.
 
 ### The graph is not where org dynamics live as primitives.
 
 - Bus factor, coordination fragility, privilege concentration, blast-radius posture, and similar derived analytics live on top of the shared graph as report runs and intelligence section views. They will not be promoted into standalone graph primitives, dedicated `/api/v1/*` resource trees, or new node categories until they require their own write lifecycle, durable IDs, approvals, or actuation semantics.
 - Why: every promoted primitive is a permanent contract. Treating early views as report runs lets the platform iterate without growing a new tax surface.
-- Enforced in: the current platform route layout in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go) and report/run contracts in [`internal/reports`](../internal/reports).
+- Enforced in: the current platform route layout in [`internal/bootstrap/routes.go`](../../internal/bootstrap/routes.go) and report/run contracts in [`internal/reports`](../../internal/reports).
 - What would change this: a derived view that demonstrably needs durable IDs, approvals, or actuation, with the promotion proposed in a contract PR before the new resource ships.
 
 ## Findings Platform
@@ -114,28 +114,28 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - The findings evaluation API selects exactly one rule per call. The bootstrap surface will not evaluate many rules in one request, run "all rules" against a runtime, or cross-tenant orchestrate evaluations.
 - Why: the response carries one `RuleSpec` and persisted findings carry one `rule_id`. Multiplexing rules into one call breaks attribution, fingerprinting, and the durable evaluation run lineage that reports anchor on.
-- Enforced in: [`docs/FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md) §3 "Generic Evaluation Service" and "Why the service selects exactly one rule per call"; the `?rule_id=` requirement on `POST /source-runtimes/{id}/findings/evaluate`.
+- Enforced in: [`docs/domains/findings-platform-architecture.md`](../domains/findings-platform-architecture.md) §3 "Generic Evaluation Service" and "Why the service selects exactly one rule per call"; the `?rule_id=` requirement on `POST /source-runtimes/{id}/findings/evaluate`.
 - What would change this: a scheduler-owned orchestration layer that batches single-rule evaluations and persists the same evaluation-run lineage Cerebro already requires, designed in a separate doc.
 
 ### The findings platform does not own scheduling, leases, retries, or suppression workflows yet.
 
 - The bootstrap surface intentionally does not provide cron-style rule scheduling, lease-based execution coordination, automatic retries, suppression assignment workflows, or control/check mapping. Today these live in product surfaces or are out of scope.
 - Why: shipping these prematurely couples the rule registry to operational policy that is not yet stable. Keeping them out preserves the rule registry as a small, predictable seam.
-- Enforced in: [`docs/FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md) "What This Does Not Solve Yet".
+- Enforced in: [`docs/domains/findings-platform-architecture.md`](../domains/findings-platform-architecture.md) "What This Does Not Solve Yet".
 - What would change this: persistent operational pain expressed as a stable contract, not as ad-hoc scheduling glue inside individual rules.
 
 ### Findings are not a one-to-one mirror of upstream alerts.
 
 - A finding is a remediable control gap or durable risk state. Source-native alerts and threats become evidence and graph context, not findings. SentinelOne threat records, GitHub Dependabot alerts, and Okta detections do not reproduce themselves as findings; they aggregate under control- or posture-shaped findings.
 - Why: 1:1 mirroring imports upstream noise into Cerebro's lifecycle, makes fingerprinting unstable, and fragments remediation across vendor identifiers.
-- Enforced in: [`AGENTS.md`](../AGENTS.md) "Finding Rule Design Notes"; rule fingerprinting conventions in `internal/findings/`.
+- Enforced in: [`AGENTS.md`](../../AGENTS.md) "Finding Rule Design Notes"; rule fingerprinting conventions in `internal/findings/`.
 - What would change this: a control or posture story that genuinely requires per-alert lifecycle, not a feature request to "see all upstream alerts" through Cerebro.
 
 ### Findings persistence does not include free-form attachments.
 
 - Persisted finding evidence is bounded to current finding attributes plus graph and report joins. Cerebro will not accept arbitrary file uploads into the findings store, mirror upstream PDF/HTML attachments, or expose a generic blob attachment surface from finding mutations.
 - Why: file storage is a different operational surface (encryption, lifecycle, retention, scanning, signed URLs). The findings store is current-state, indexed, and tenant-scoped; it is not a content store.
-- Enforced in: [`docs/FINDINGS_PLATFORM_ARCHITECTURE.md`](./FINDINGS_PLATFORM_ARCHITECTURE.md) "What This Does Not Solve Yet".
+- Enforced in: [`docs/domains/findings-platform-architecture.md`](../domains/findings-platform-architecture.md) "What This Does Not Solve Yet".
 - What would change this: an explicit content-addressable storage layer designed and reviewed as its own subsystem, with finding evidence pointing into it by reference.
 
 ## Workflow And Action Engine
@@ -191,7 +191,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - The platform exposes shared primitives such as graph, knowledge, source runtimes, workflow replay, jobs, and runtime response through typed bootstrap routes. Security, governance, and operations are application surfaces that use those primitives rather than redefining them.
 - The platform vocabulary will not adopt security-first naming as default. "Security graph", "asset", "finding", "compliance", and "threat intel" are valid security application nouns; they are not the platform vocabulary.
 - Why: collapsing platform into security ships a worse platform and a worse security product. Both layers benefit from explicit contracts.
-- Enforced in: the current HTTP route surface in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go), [`docs/API_REFERENCE.md`](./API_REFERENCE.md), and [`docs/API_CONTRACTS_AUTOGEN.md`](./API_CONTRACTS_AUTOGEN.md).
+- Enforced in: the current HTTP route surface in [`internal/bootstrap/routes.go`](../../internal/bootstrap/routes.go), [`docs/reference/api-reference.md`](../reference/api-reference.md), and [`docs/reference/api-contracts.md`](../reference/api-contracts.md).
 - What would change this: nothing. New application surfaces (DataOps, ML observability, supply chain, GRC programs) follow the same boundary.
 
 ### Cerebro is not a CSPM, CNAPP, CWPP, EDR, SIEM, SOAR, or IDS replacement.
@@ -202,7 +202,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
   - It does not own response automation as its primary product surface; runtime response is a constrained subsystem with explicit gates, not a SOAR.
   - It does not author cloud posture from Cerebro's own scanners as the source of truth; cloud posture findings come from typed sources whose budgets are explicit.
 - Why: Cerebro's value is the typed substrate (events, claims, evidence, decisions, workflows, the read graph, and the safety boundary). Promising a replacement promise would force the codebase to take on operational scope that is incompatible with that substrate.
-- Enforced in: [`README.md`](../README.md) "Operations data platform" and the current route surface in [`docs/API_REFERENCE.md`](./API_REFERENCE.md).
+- Enforced in: [`README.md`](../../README.md) "Operations data platform" and the current route surface in [`docs/reference/api-reference.md`](../reference/api-reference.md).
 - What would change this: nothing in this repo. Category-shaped products belong on top of Cerebro, not inside it.
 
 ## Operational And Distribution
@@ -211,14 +211,14 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - The repo exposes JSON HTTP, Connect RPC, and CLI surfaces. It will not host an end-user web console, a dashboarding UI, an investigation workbench, or a chat surface.
 - Why: a console is a separate product with separate distribution, accessibility, and security constraints. Pulling it into the bootstrap repo would couple every release of either to the other.
-- Enforced in: cmd/cerebro entrypoints and the documented HTTP route surface in [`README.md`](../README.md) "HTTP and Connect API surface".
+- Enforced in: cmd/cerebro entrypoints and the documented HTTP route surface in [`README.md`](../../README.md) "HTTP and Connect API surface".
 - What would change this: nothing. Console-shaped products consume Cerebro through its typed APIs from a separate repository.
 
 ### Cerebro does not host or proxy LLM providers.
 
 - The platform integrates with LLM providers through typed clients and configured endpoints. It will not embed LLM weights, run a local inference engine, broker model calls between tenants as a service, or treat any LLM provider as a global default.
 - Why: model hosting is a distinct operational surface (GPU lifecycle, model versioning, inference budgets). Treating it as part of Cerebro distorts both products.
-- Enforced in: graph agent provider config in `internal/graphagent` and bootstrap config in [`internal/config`](../internal/config).
+- Enforced in: graph agent provider config in `internal/graphagent` and bootstrap config in [`internal/config`](../../internal/config).
 - What would change this: nothing in this repo. Inference belongs in an LLM-serving layer that Cerebro consumes.
 
 ### Cerebro is not multi-cloud control plane code.
@@ -232,7 +232,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - Legacy `/graph/*` aliases for routes that have moved to `/platform/graph/*` exist only when there are real consumers. When no known consumer exists, the alias is removed quickly rather than preserved as silent drift.
 - Why: indefinite aliasing turns the API surface into a museum of every past decision. Removal discipline keeps the contract honest.
-- Enforced in: route registration in [`internal/bootstrap/routes.go`](../internal/bootstrap/routes.go) and deprecation header behavior in `internal/bootstrap`.
+- Enforced in: route registration in [`internal/bootstrap/routes.go`](../../internal/bootstrap/routes.go) and deprecation header behavior in `internal/bootstrap`.
 - What would change this: a documented external consumer that justifies the alias for a defined window, tracked with a removal date.
 
 ## Vocabulary
@@ -254,4 +254,4 @@ This document is considered correct when:
 - Every newly merged PR that crosses a non-goal cites the relevant entry and updates this document in the same change.
 - New non-goals discovered during review are added here rather than relitigated in PR threads.
 
-Update mechanics: change this file in the same PR that introduces the boundary change, get review from the Platform CODEOWNER set, and update [`docs/QUICKREF.md`](./QUICKREF.md) and [`README.md`](../README.md) where they reference the changed behavior.
+Update mechanics: change this file in the same PR that introduces the boundary change, get review from the Platform CODEOWNER set, and update [`docs/start/quick-reference.md`](../start/quick-reference.md) and [`README.md`](../../README.md) where they reference the changed behavior.

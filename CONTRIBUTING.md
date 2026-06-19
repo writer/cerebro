@@ -52,4 +52,4 @@ make oss-audit
 - Use `CEREBRO_*` configuration variables only.
 - Do not add embedded or in-memory production stores.
 - Keep new source integrations within the Source CDK budget unless the shared CDK changes first.
-- Update `docs/NON_GOALS.md` when intentionally crossing a documented non-goal.
+- Update `docs/engineering/non-goals.md` when intentionally crossing a documented non-goal.

@@ -79,7 +79,7 @@
         "internal/graphstore/**",
         "internal/graphprovenance/**",
         "internal/bootstrap/agent_platform*",
-        "docs/AGENT_PLATFORM_CONTRACT.md"
+        "docs/domains/agent-platform-contract.md"
       ],
       "invariants": [
         "Agent-facing behavior starts from typed evidence packets, verifier results, tenant scope, and replayable events.",

@@ -40,7 +40,7 @@ var evidenceCASUnresolvedLinkageDefinition = RuleDefinition{
 	Status:             findingStatusOpen,
 	Maturity:           "test",
 	Tags:               []string{"evidence-cas", "evidence", "chain-of-custody", "data-integrity", "correlation"},
-	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/ARCHITECTURE.md"},
+	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/reference/architecture.md"},
 	FalsePositives:     []string{"Evidence captured slightly ahead of the case or resource it references, where the linkage resolves on the next sync once the referenced context is ingested."},
 	Runbook:            "Confirm whether the referenced case or resource exists, repair the evidence reference or ingest the missing context, and verify the next Evidence CAS sync resolves the linkage.",
 	RequiredAttributes: []string{"evidence_id"},

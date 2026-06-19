@@ -3,9 +3,9 @@
 This document records which Cerebro writes are event-backed today, which writes
 are current-state backed, and how graph rebuilds should treat each path.
 
-Use this with [`ARCHITECTURE.md`](./ARCHITECTURE.md), [`NON_GOALS.md`](./NON_GOALS.md),
-[`SOURCE_RUNTIME_GUIDE.md`](./SOURCE_RUNTIME_GUIDE.md), and
-[`SOURCE_SYNC_RECOVERY.md`](./SOURCE_SYNC_RECOVERY.md).
+Use this with [`ARCHITECTURE.md`](../reference/architecture.md), [`NON_GOALS.md`](non-goals.md),
+[`SOURCE_RUNTIME_GUIDE.md`](../domains/source-runtime-guide.md), and
+[`SOURCE_SYNC_RECOVERY.md`](source-sync-recovery.md).
 
 ## Current Write Classes
 
@@ -27,7 +27,7 @@ path until a claim event stream lands.
 - Source runtime sync must not advance runtime progress before the page's
   accepted events have been appended and projected through the configured
   projector.
-- Source runtime page recovery must follow [`SOURCE_SYNC_RECOVERY.md`](./SOURCE_SYNC_RECOVERY.md) until a transactional sync ledger or outbox exists.
+- Source runtime page recovery must follow [`SOURCE_SYNC_RECOVERY.md`](source-sync-recovery.md) until a transactional sync ledger or outbox exists.
 - Workflow projection must happen after the corresponding workflow event append.
 - SDK/runtime claim writes must persist claim rows before writing graph
   projections.

@@ -4,10 +4,10 @@ This cookbook maps common Cerebro symptoms to likely causes and first checks. It
 
 Use it with:
 
-- [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for incident flow.
-- [`docs/AUTH_TENANCY.md`](./AUTH_TENANCY.md) for auth and tenant checks.
-- [`docs/SOURCE_RUNTIME_GUIDE.md`](./SOURCE_RUNTIME_GUIDE.md) for source runtime checks.
-- [`docs/GRAPH_OPERATIONS.md`](./GRAPH_OPERATIONS.md) for graph checks.
+- [`docs/operations/operations-runbook.md`](operations-runbook.md) for incident flow.
+- [`docs/reference/auth-tenancy.md`](../reference/auth-tenancy.md) for auth and tenant checks.
+- [`docs/domains/source-runtime-guide.md`](../domains/source-runtime-guide.md) for source runtime checks.
+- [`docs/domains/graph-operations.md`](../domains/graph-operations.md) for graph checks.
 
 ## Quick triage
 

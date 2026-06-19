@@ -4,12 +4,12 @@ This guide describes how to host the Cerebro bootstrap service using public, env
 
 Use it with:
 
-- [`README.md`](../README.md) for the current runtime overview and quick start.
-- [`docs/CLOUD_DEPLOYMENT.md`](./CLOUD_DEPLOYMENT.md) for AWS, GCP, Azure, and Pulumi templates.
-- [`docs/CONFIGURATION.md`](./CONFIGURATION.md) for a short configuration baseline.
-- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for the current environment variable reference.
-- [`api/openapi.yaml`](../api/openapi.yaml) for the JSON HTTP route contract.
-- [`proto/cerebro/v1/bootstrap.proto`](../proto/cerebro/v1/bootstrap.proto) for the Connect RPC contract.
+- [`README.md`](../../README.md) for the current runtime overview and quick start.
+- [`docs/operations/cloud-deployment.md`](cloud-deployment.md) for AWS, GCP, Azure, and Pulumi templates.
+- [`docs/reference/configuration.md`](../reference/configuration.md) for a short configuration baseline.
+- [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for the current environment variable reference.
+- [`api/openapi.yaml`](../../api/openapi.yaml) for the JSON HTTP route contract.
+- [`proto/cerebro/v1/bootstrap.proto`](../../proto/cerebro/v1/bootstrap.proto) for the Connect RPC contract.
 
 ## What you host
 
@@ -86,7 +86,7 @@ The runtime image should run as a non-root user and expose only the HTTP port ne
 
 ### Pulumi cloud templates
 
-For AWS, GCP, or Azure, start from [`docs/CLOUD_DEPLOYMENT.md`](./CLOUD_DEPLOYMENT.md) and the templates in [`deploy/pulumi`](../deploy/pulumi). They provide a shared multi-cloud config surface for the Cerebro API container and cloud-native secret injection while keeping account-specific networking, DNS, backing-service choices, source schedules, and rollout policy in your deployment environment.
+For AWS, GCP, or Azure, start from [`docs/operations/cloud-deployment.md`](cloud-deployment.md) and the templates in [`deploy/pulumi`](../../deploy/pulumi). They provide a shared multi-cloud config surface for the Cerebro API container and cloud-native secret injection while keeping account-specific networking, DNS, backing-service choices, source schedules, and rollout policy in your deployment environment.
 
 ### Generic orchestrator example
 

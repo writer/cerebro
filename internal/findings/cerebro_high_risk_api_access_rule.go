@@ -50,7 +50,7 @@ var cerebroHighRiskAPIAccessDefinition = RuleDefinition{
 	Status:             findingStatusOpen,
 	Maturity:           "test",
 	Tags:               []string{"cerebro", "access", "api", "authorization", "tenant-isolation"},
-	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/ARCHITECTURE.md"},
+	References:         []string{"https://github.com/writer/cerebro/blob/main/docs/reference/architecture.md"},
 	FalsePositives:     []string{"Authorized administrative or support principals that intentionally hold elevated cross-tenant access under a documented, risk-accepted exception."},
 	Runbook:            "Review the Cerebro principal and credential behind the high-risk access; revoke or scope down the credential, correct the tenant binding, or document a risk-accepted exception if the access is authorized.",
 	RequiredAttributes: []string{"event_type"},

@@ -4,11 +4,11 @@ This document defines how Cerebro operators keep enough spare capacity to absorb
 
 Use this with:
 
-- [`docs/OBSERVABILITY.md`](./OBSERVABILITY.md) for OTEL, structured telemetry, and wide-event contracts.
-- [`docs/OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) for startup, readiness, dependency, rollout, rollback, and incident basics.
-- [`docs/CONFIG_ENV_VARS.md`](./CONFIG_ENV_VARS.md) for runtime knobs.
-- [`docs/DEPLOYMENT_EXAMPLES.md`](./DEPLOYMENT_EXAMPLES.md) for portable hosting patterns.
-- [`scripts/load_smoke.py`](../scripts/load_smoke.py) and `make load-smoke` for bounded live checks.
+- [`docs/operations/observability.md`](observability.md) for OTEL, structured telemetry, and wide-event contracts.
+- [`docs/operations/operations-runbook.md`](operations-runbook.md) for startup, readiness, dependency, rollout, rollback, and incident basics.
+- [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for runtime knobs.
+- [`docs/operations/deployment-examples.md`](deployment-examples.md) for portable hosting patterns.
+- [`scripts/load_smoke.py`](../../scripts/load_smoke.py) and `make load-smoke` for bounded live checks.
 
 ## Principles
 
@@ -133,7 +133,7 @@ Use multi-window burn-rate alerts for high-traffic environments:
 - Slow burn: 5xx/error budget burn over 1h and 6h.
 - Low-traffic floor: require enough requests to avoid paging on one request.
 
-Example alert queries live in [`docs/observability/headroom-alerts.promql`](./observability/headroom-alerts.promql). Treat them as templates: adapt label names and platform metric names to the deployed collector.
+Example alert queries live in [`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql). Treat them as templates: adapt label names and platform metric names to the deployed collector.
 
 ## Autoscaling
 
@@ -195,7 +195,7 @@ Outputs:
 - `tmp/load-smoke.json`: machine-readable summary with request counts, latency percentiles, status counts, and threshold failures.
 - `tmp/load-smoke.md`: human-readable artifact for release notes, incidents, or PR comments.
 
-The GitHub Actions workflow [`load-smoke.yml`](../.github/workflows/load-smoke.yml) supports:
+The GitHub Actions workflow [`load-smoke.yml`](../../.github/workflows/load-smoke.yml) supports:
 
 - daily scheduled execution when `CEREBRO_LOAD_SMOKE_BASE_URL` is configured as a repository secret;
 - manual `workflow_dispatch` with `base_url`, duration, RPS, concurrency, and p95 threshold inputs;

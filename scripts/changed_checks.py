@@ -117,7 +117,7 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
                 ".env.example",
                 "README.md",
                 "cmd/cerebro/main.go",
-                "docs/COMPLIANCE_CONTROLS.md",
+                "docs/domains/compliance-controls.md",
                 "internal/sourceregistry/registry.go",
                 "tools/controlindex/main.go",
             ),

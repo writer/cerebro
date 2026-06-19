@@ -2,7 +2,7 @@
 
 Cerebro `main` uses a small bootstrap configuration surface.
 
-For end-to-end hosting guidance, including container deployment, reverse proxy settings, backing stores, health checks, secrets, and rollout operations, see [`docs/HOSTING.md`](./HOSTING.md).
+For end-to-end hosting guidance, including container deployment, reverse proxy settings, backing stores, health checks, secrets, and rollout operations, see [`docs/operations/hosting.md`](../operations/hosting.md).
 
 ## Minimal local configuration
 
@@ -33,4 +33,4 @@ Provider-backed graph actions are optional. To enable access-approvals backed id
 
 Graph action support is catalog-driven. Add or review supported actions in `internal/graphactions/action_catalog.yaml`, regenerate the Go registry with `make graph-action-generate`, and keep `make graph-action-check` green. Non-Okta providers should implement an `internal/graphactions.ActionProvider` adapter so execution and reconciliation keep the same finding eligibility, target validation, idempotency, workflow-event, and external-reference safeguards.
 
-See `docs/CONFIG_ENV_VARS.md` for the full current variable list.
+See `docs/reference/config-env-vars.md` for the full current variable list.
