@@ -560,8 +560,8 @@ config:
         - unknown
         - not_configured
   cerebro:orchestratorEnabled: true
-  cerebro:orchestratorCpu: 2048
-  cerebro:orchestratorMemory: 4096
+  cerebro:orchestratorCpu: 4096
+  cerebro:orchestratorMemory: 8192
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:
     - orchestrator
