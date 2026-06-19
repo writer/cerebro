@@ -324,12 +324,24 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	if exhausted["messaging.jetstream.publish.last_backoff_ms"] != float64(publishRetryMaxBackoff.Milliseconds()) {
 		t.Fatalf("last backoff = %v, want capped %d", exhausted["messaging.jetstream.publish.last_backoff_ms"], publishRetryMaxBackoff.Milliseconds())
 	}
+	if exhausted["messaging.jetstream.publish.retry_exhausted"] != true {
+		t.Fatalf("exhausted retry flag = %v, want true", exhausted["messaging.jetstream.publish.retry_exhausted"])
+	}
+	if exhausted["messaging.jetstream.publish.max_attempts_exhausted"] != true {
+		t.Fatalf("max attempts exhausted = %v, want true", exhausted["messaging.jetstream.publish.max_attempts_exhausted"])
+	}
+	if exhausted["messaging.jetstream.error.category"] != "no_response" {
+		t.Fatalf("exhausted error category = %v, want no_response", exhausted["messaging.jetstream.error.category"])
+	}
 	errorEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.error")
 	if len(errorEvents) != 1 {
 		t.Fatalf("jetstream.error events = %d, want 1; stderr=%s", len(errorEvents), stderr)
 	}
 	if errorEvents[0]["messaging.jetstream.publish.retry_count"] != float64(publishRetryAttempts-1) {
 		t.Fatalf("jetstream.error retry count = %v, want %d", errorEvents[0]["messaging.jetstream.publish.retry_count"], publishRetryAttempts-1)
+	}
+	if errorEvents[0]["messaging.jetstream.publish.max_attempts_exhausted"] != true {
+		t.Fatalf("jetstream.error max attempts exhausted = %v, want true", errorEvents[0]["messaging.jetstream.publish.max_attempts_exhausted"])
 	}
 }
 
@@ -355,6 +367,52 @@ func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
 	}
 	if got := pub.published.Header.Get(nats.MsgIdHdr); !strings.HasPrefix(got, "sha256:") {
 		t.Fatalf("derived msg id = %q, want sha256 fallback", got)
+	}
+}
+
+func TestAppendEmitsPublishBulkheadTelemetry(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events", publishSlots: make(chan struct{}, 1)}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-bulkhead-telemetry",
+			Kind: "entity.upsert",
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	end := spanEnds[0]
+	if end["messaging.jetstream.publish.bulkhead.enabled"] != true {
+		t.Fatalf("bulkhead enabled = %v, want true", end["messaging.jetstream.publish.bulkhead.enabled"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(1) {
+		t.Fatalf("bulkhead max in flight = %v, want 1", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
+	}
+}
+
+func TestAcquirePublishSlotRespectsContextDeadline(t *testing.T) {
+	log := &Log{publishSlots: make(chan struct{}, 1)}
+	log.publishSlots <- struct{}{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+
+	_, release, err := log.acquirePublishSlot(ctx)
+	if err == nil {
+		release()
+		t.Fatal("acquirePublishSlot() error = nil, want deadline error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("acquirePublishSlot() error = %v, want deadline exceeded", err)
+	}
+	if len(log.publishSlots) != 1 {
+		t.Fatalf("publishSlots len = %d, want 1", len(log.publishSlots))
 	}
 }
 
