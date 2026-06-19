@@ -283,6 +283,9 @@ func kubernetesContainerProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), containerURN, workloadURN, relationBelongsTo, linkAttrs))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, containerURN, relationContains, linkAttrs))
 	}
+	if containerURN != "" && namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), containerURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_container_namespace"}))
+	}
 	addKubernetesNodeLink(entities, links, tenantID, event, containerURN, attributes, "kubernetes_container_node")
 	addKubernetesImageLinks(entities, links, tenantID, event, containerURN, attributes, "kubernetes_container_image")
 	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)

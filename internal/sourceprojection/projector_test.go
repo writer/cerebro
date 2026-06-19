@@ -5660,12 +5660,14 @@ func TestProjectKubernetesContainerLinksWorkloadNodeAndImage(t *testing.T) {
 
 	containerURN := "urn:cerebro:writer:kubernetes_container:prod-cluster:payments:pod-uid-1:api"
 	workloadURN := "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:pod-uid-1"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
 	nodeURN := "urn:cerebro:writer:kubernetes_node:prod-cluster:ip-10-0-1-10"
 	imageURN := "urn:cerebro:writer:trivy_image:sha256:abc123"
 	if entity := state.entities[containerURN]; entity == nil || entity.EntityType != "kubernetes.container" {
 		t.Fatalf("container entity missing or wrong: %#v", entity)
 	}
 	assertProjectedLink(t, state, containerURN, relationBelongsTo, workloadURN)
+	assertProjectedLink(t, state, containerURN, relationBelongsTo, namespaceURN)
 	assertProjectedLink(t, state, workloadURN, relationContains, containerURN)
 	assertProjectedLink(t, state, containerURN, relationAssociatedWith, nodeURN)
 	assertProjectedLink(t, state, containerURN, relationDependsOn, imageURN)
