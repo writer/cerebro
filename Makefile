@@ -431,10 +431,9 @@ ci-poll: ## Poll PR checks until complete or timeout (PR required, optional INTE
 	if [ -z "$$timeout_s" ]; then timeout_s=1800; fi; \
 	elapsed=0; \
 	while [ $$elapsed -lt $$timeout_s ]; do \
-		status=$$(gh pr checks $(PR) --repo writer/cerebro 2>&1); \
-		echo "$$status"; \
-		if echo "$$status" | grep -qE '^(fail|error)'; then echo "CI failed"; exit 1; fi; \
-		if ! echo "$$status" | grep -qE 'pending|in_progress|queued|0\b'; then echo "All checks passed"; exit 0; fi; \
+		gh pr checks $(PR) --repo writer/cerebro 2>&1; rc=$$?; \
+		if [ $$rc -eq 1 ]; then echo "CI failed"; exit 1; fi; \
+		if [ $$rc -eq 0 ]; then echo "All checks passed"; exit 0; fi; \
 		sleep $$interval; elapsed=$$((elapsed + interval)); \
 	done; \
 	echo "CI polling timed out after $$timeout_s seconds"; exit 1
