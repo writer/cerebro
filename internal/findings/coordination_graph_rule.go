@@ -34,7 +34,6 @@ func newCoordinationGraphRules() []Rule {
 		newGRCDocumentNeedsOwnerOrUploadRule(),
 		newGRCIsolatedTargetEnrichmentGapRule(),
 		newFindingIsolatedOpenAnchorRule(),
-		newGraphOrphanNonFindingNodeRule(),
 		newGraphAWSEC2ENILinkMissingRule(),
 		newResourceMultipleOpenFindingsRule(),
 	}
@@ -48,7 +47,7 @@ func isCoordinationGraphRuleID(ruleID string) bool {
 		"grc-document-needs-owner-or-upload",
 		"grc-isolated-target-enrichment-gap",
 		"finding-isolated-open-anchor",
-		graphOrphanNonFindingNodeRuleID,
+		"graph-orphan-nonfinding-node",
 		graphAWSEC2ENILinkMissingRuleID,
 		githubProgrammaticCredentialReviewRuleID,
 		githubOrgOwnerConcentrationRuleID,

@@ -4,7 +4,7 @@
 
 The `policies/` tree is the checked-in authoring catalog for generated policy findings. Policy findings are authored as validated `PolicyFindingRule` YAML DSL documents. The only JSON file that remains under `policies/` is the non-finding control mapping at `policies/cerebro/control-mapping.json`.
 
-Policies are generated into Go rule definitions in `internal/findings/policy_rule_catalog_gen.go` with `make policy-rule-generate`. The generated policy rules register in the built-in `policy` rule pack, publish auditor-facing control refs in `internal/findings/public_detection_catalog.json`, and evaluate dedicated `policy.evidence` / `policy.result` events that identify a failed `policy_id`, `check_id`, or `rule_id`.
+Policies are generated into Go rule definitions in `internal/findings/policy_rule_catalog_gen.go` with `make policy-rule-generate`. The generated policy rules register in the built-in `policy` rule pack, publish auditor-facing control refs in `internal/findings/public_detection_catalog.json`, and evaluate either dedicated `policy.evidence` / `policy.result` events that identify a failed `policy_id`, `check_id`, or `rule_id`, or bounded graph queries that emit graph-anchored policy findings.
 
 Generated rule copy, evidence type, assessment methods, false-positive guidance, and auditor notes are enriched from `internal/compliance/policy_rule_extensions.yaml`; see `docs/domains/policy-rule-extensions.md`. Control pack authoring, custom frameworks, and selected control coverage are documented in `docs/domains/compliance-controls.md`.
 
@@ -49,6 +49,7 @@ spec:
 | `metadata.description` | Yes | What the policy checks and why it matters. |
 | `metadata.lastModified` | No | Source policy timestamp when imported from an upstream catalog. |
 | `metadata.tags` | No | Tags for categorization, routing, and catalog search. |
+| `metadata.references` | No | External or internal references surfaced in public detection catalog metadata. |
 | `spec.severity` | Yes | One of `critical`, `high`, `medium`, `low`, or `info`. |
 | `spec.category` | No | Optional category override. Defaults to the policy directory domain. |
 | `spec.effect` | Conditional | Required for CEL-backed policies; usually `forbid`. |
@@ -59,6 +60,10 @@ spec:
 | `spec.match.conditions` | Conditional | CEL condition expressions for resource-state policies. |
 | `spec.match.conditionFormat` | Conditional | Must be `cel` when present. |
 | `spec.match.query` | Conditional | SQL/evidence query for query-backed policy rules. |
+| `spec.graph.query` | Conditional | Read-only Cypher query for graph-backed policy rules. Must return `primary_urn`. |
+| `spec.graph.rowLimit` | No | Optional row cap from 1 to 3000. Required when the query does not include `LIMIT`. |
+| `spec.graph.params` | No | Static scalar Cypher params merged with runtime `tenant_id` and `row_limit`. |
+| `spec.graph.requiredColumns` | No | Return aliases the validator must find in `spec.graph.query`. |
 | `spec.remediation.summary` | No | Remediation intent used in generated runbooks and finding attributes. |
 | `spec.remediation.steps` | No | Optional ordered remediation steps. |
 | `spec.riskCategories` | No | Normalized risk category labels. |
@@ -66,7 +71,7 @@ spec:
 | `spec.mitreAttack` | No | MITRE tactic and technique mappings. |
 | `spec.enabled` | No | Set to `false` to keep a policy in the catalog while disabling generated rule support. |
 
-Every policy must have exactly one match mode: either `spec.match.conditions` or `spec.match.query`.
+Every policy must have exactly one match mode: `spec.match.conditions`, `spec.match.query`, `spec.assert`, or `spec.graph`.
 
 ## CEL Policies
 
@@ -100,6 +105,37 @@ spec:
 
 The generated finding rule records `policy_query_present=true` and treats each failed evidence event as a policy finding candidate keyed by policy and resource identifiers.
 
+## Graph Policies
+
+Use `spec.graph` when the finding is derived from the projected graph rather than a replayed policy event. Graph policies compile into `GraphRule` implementations with a durable graph-anchored lifecycle.
+
+```yaml
+spec:
+  severity: low
+  category: graph
+  resourceType: graph entity
+  graph:
+    query: |
+      MATCH (entity:Entity {tenant_id: $tenant_id})
+      WHERE entity.entity_type <> 'finding'
+      RETURN entity.urn AS primary_urn,
+             entity.urn AS fingerprint_key,
+             'Graph entity requires review' AS summary
+      LIMIT $row_limit
+    rowLimit: 500
+    requiredColumns:
+      - primary_urn
+      - fingerprint_key
+      - summary
+  input:
+    sourceKinds: [graph]
+  frameworks:
+    - name: SOC 2
+      controls: [CC7.1]
+```
+
+The graph validator enforces read-only Cypher, a bounded query, scalar params, and returned aliases. Standard aliases consumed by the runtime are `primary_urn`, `primary_label`, `primary_type`, `fingerprint_key`, `severity`, `summary`, `action`, `resource_urns`, and `evidence`.
+
 ## Authoring Commands
 
 Create a policy scaffold:
@@ -115,12 +151,32 @@ go run ./tools/findingdsl new \
   --resource aws::s3::bucket \
   --condition 'cmp_eq(path(resource, "block_public_acls"), false)' \
   --framework "SOC 2:CC6" \
+  --reference "https://www.cisecurity.org/benchmark/amazon_web_services" \
   --tag aws \
   --risk-category EXTERNAL_EXPOSURE \
   --remediation "Enable S3 public access block settings."
 ```
 
 Without `--write`, `new` prints the YAML to stdout. When `--out` is omitted, the file path is `policies/<domain>/<id>.yaml`.
+
+Create a graph-backed policy scaffold:
+
+```bash
+go run ./tools/findingdsl new \
+  --write \
+  --domain graph \
+  --id graph-orphan-nonfinding-node \
+  --name "Graph Orphan Non-Finding Node" \
+  --description "Detect non-finding graph nodes with no relationships." \
+  --severity low \
+  --graph-query 'MATCH (entity:Entity {tenant_id: $tenant_id}) RETURN entity.urn AS primary_urn, entity.urn AS fingerprint_key LIMIT $row_limit' \
+  --graph-row-limit 500 \
+  --graph-required-column primary_urn \
+  --graph-required-column fingerprint_key \
+  --framework "SOC 2:CC7.1" \
+  --reference "https://www.iso.org/standard/27001" \
+  --tag graph
+```
 
 Format one file or the full catalog:
 
@@ -161,7 +217,7 @@ cases:
     wantFinding: false
 ```
 
-For query-backed policies, use `queryRows`; any returned row means the policy should produce a finding:
+For query-backed policies, use `queryRows`; any returned row means the policy should produce a finding. For graph-backed policies, `queryRows` should model returned Cypher rows and include `primary_urn` for rows that should emit findings:
 
 ```yaml
 apiVersion: cerebro.writer.com/v1alpha1
@@ -170,7 +226,7 @@ policy: policies/identity/example-query-policy.yaml
 cases:
   - name: returned row fails
     queryRows:
-      - id: user-1
+      - primary_urn: urn:cerebro:writer:identity:user-1
     wantFinding: true
   - name: empty result passes
     resource:

@@ -23,6 +23,7 @@ type policyFile struct {
 	ID               string                            `json:"id"`
 	Name             string                            `json:"name"`
 	Description      string                            `json:"description"`
+	References       []string                          `json:"references"`
 	Severity         string                            `json:"severity"`
 	Category         string                            `json:"category"`
 	Resource         string                            `json:"resource"`
@@ -41,6 +42,7 @@ type policyFile struct {
 	Audit            findingdsl.PolicyRuleAudit        `json:"audit"`
 	Verification     findingdsl.PolicyRuleVerification `json:"verification"`
 	Actions          findingdsl.PolicyRuleActions      `json:"actions"`
+	Graph            findingdsl.PolicyRuleGraphFinding `json:"graph"`
 	Enabled          *bool                             `json:"enabled"`
 	relPath          string
 	domain           string
@@ -211,6 +213,7 @@ func policyFromDSL(rule findingdsl.PolicyFindingRule) policyFile {
 		ID:               legacy.ID,
 		Name:             legacy.Name,
 		Description:      legacy.Description,
+		References:       rule.Metadata.References,
 		Severity:         legacy.Severity,
 		Category:         legacy.Category,
 		Resource:         legacy.Resource,
@@ -229,6 +232,7 @@ func policyFromDSL(rule findingdsl.PolicyFindingRule) policyFile {
 		Audit:            rule.Spec.Audit,
 		Verification:     rule.Spec.Verification,
 		Actions:          rule.Spec.Actions,
+		Graph:            rule.Spec.Graph,
 		Enabled:          legacy.Enabled,
 		relPath:          rule.RelPath,
 		domain:           rule.Domain,
@@ -369,9 +373,9 @@ func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension polic
 	fmt.Fprintf(buf, "ID: %s,\n", quote(policy.ID))
 	fmt.Fprintf(buf, "Name: %s,\n", quote(policy.Name))
 	fmt.Fprintf(buf, "Description: %s,\n", quote(policyDescription(policy, extension)))
-	fmt.Fprintf(buf, "SourceID: policyRuleSourceID,\n")
+	fmt.Fprintf(buf, "SourceID: %s,\n", policySourceIDLiteral(policy))
 	writePolicyEventKinds(buf, policy)
-	fmt.Fprintf(buf, "OutputKind: policyRuleOutputKind,\n")
+	fmt.Fprintf(buf, "OutputKind: %s,\n", policyOutputKindLiteral(policy))
 	fmt.Fprintf(buf, "Severity: %s,\n", quote(normalizeSeverity(policy.Severity)))
 	fmt.Fprintf(buf, "Status: %s,\n", quote(policyStatus(policy)))
 	fmt.Fprintf(buf, "Maturity: RuleMaturityCandidate,\n")
@@ -383,7 +387,7 @@ func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension polic
 	writeStringSliceMap(buf, "RequiredAttributesByKind", policyRequiredAttributesByKind(policy))
 	writePolicyFingerprintFields(buf, policy)
 	writeControlRefs(buf, policy.Frameworks)
-	fmt.Fprintf(buf, "Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},\n")
+	writePolicyLifecycle(buf, policy)
 	fmt.Fprintf(buf, "},\n")
 	writeStringSlice(buf, "Conditions", trimStrings(policy.Conditions))
 	fmt.Fprintf(buf, "Query: %s,\n", quote(strings.TrimSpace(policy.Query)))
@@ -399,6 +403,7 @@ func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension polic
 	writeStringSlice(buf, "ExceptionGuidance", policyExceptionGuidance(policy, extension))
 	writeStringSlice(buf, "ControlFamilies", controlFamilies)
 	writeStringMap(buf, "ContractAttributes", policyContractAttributes(policy))
+	writeGraphConfig(buf, policy)
 	fmt.Fprintf(buf, "Enabled: %t,\n", policy.Enabled == nil || *policy.Enabled)
 	fmt.Fprintf(buf, "},\n")
 }
@@ -460,12 +465,82 @@ func writeStringMap(buf *bytes.Buffer, field string, values map[string]string) {
 	fmt.Fprintf(buf, "},\n")
 }
 
+func writeAnyMap(buf *bytes.Buffer, field string, values map[string]any) {
+	if len(values) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		if strings.TrimSpace(key) != "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "%s: map[string]any{\n", field)
+	for _, key := range keys {
+		fmt.Fprintf(buf, "%s: %s,\n", quote(key), anyLiteral(values[key]))
+	}
+	fmt.Fprintf(buf, "},\n")
+}
+
+func anyLiteral(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return "nil"
+	case string:
+		return quote(typed)
+	case bool:
+		if typed {
+			return "true"
+		}
+		return "false"
+	case int:
+		return fmt.Sprintf("int64(%d)", typed)
+	case int64:
+		return fmt.Sprintf("int64(%d)", typed)
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	default:
+		return quote(fmt.Sprintf("%v", typed))
+	}
+}
+
+func writeGraphConfig(buf *bytes.Buffer, policy policyFile) {
+	if strings.TrimSpace(policy.Graph.Query) == "" {
+		return
+	}
+	fmt.Fprintf(buf, "Graph: policyRuleGraphConfig{\n")
+	fmt.Fprintf(buf, "Query: %s,\n", quote(strings.TrimSpace(policy.Graph.Query)))
+	if policy.Graph.RowLimit > 0 {
+		fmt.Fprintf(buf, "RowLimit: %d,\n", policy.Graph.RowLimit)
+	}
+	writeAnyMap(buf, "Params", policy.Graph.Params)
+	writeStringSlice(buf, "SourceKinds", policyGraphSourceKinds(policy))
+	writeStringSlice(buf, "RequiredColumns", policy.Graph.RequiredColumns)
+	fmt.Fprintf(buf, "},\n")
+}
+
 func writePolicyEventKinds(buf *bytes.Buffer, policy policyFile) {
 	if eventKinds := uniqueSorted(policy.Input.EventKinds); len(eventKinds) != 0 {
 		writeStringSlice(buf, "EventKinds", eventKinds)
 		return
 	}
+	if policyGraphConfigured(policy) {
+		fmt.Fprintf(buf, "EventKinds: []string{%s},\n", quote("graph"))
+		return
+	}
 	fmt.Fprintf(buf, "EventKinds: []string{policyRuleEvidenceKind, policyRuleResultEventKind},\n")
+}
+
+func writePolicyLifecycle(buf *bytes.Buffer, policy policyFile) {
+	if policyGraphConfigured(policy) {
+		fmt.Fprintf(buf, "Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},\n")
+		return
+	}
+	fmt.Fprintf(buf, "Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},\n")
 }
 
 func writePolicyFingerprintFields(buf *bytes.Buffer, policy policyFile) {
@@ -505,6 +580,9 @@ func writeControlRefs(buf *bytes.Buffer, frameworks []policyFramework) {
 }
 
 func policyEvidenceMode(policy policyFile) string {
+	if policyGraphConfigured(policy) {
+		return "graph"
+	}
 	if strings.TrimSpace(policy.Query) != "" {
 		return "query"
 	}
@@ -512,6 +590,37 @@ func policyEvidenceMode(policy policyFile) string {
 		return "cel"
 	}
 	return "manual"
+}
+
+func policyGraphConfigured(policy policyFile) bool {
+	return strings.TrimSpace(policy.Graph.Query) != ""
+}
+
+func policySourceIDLiteral(policy policyFile) string {
+	if !policyGraphConfigured(policy) {
+		return "policyRuleSourceID"
+	}
+	for _, sourceKind := range policyGraphSourceKinds(policy) {
+		sourceID, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(sourceKind)), ".")
+		if sourceID != "" {
+			return quote(sourceID)
+		}
+	}
+	return quote("graph")
+}
+
+func policyOutputKindLiteral(policy policyFile) string {
+	if policyGraphConfigured(policy) {
+		return "policyGraphOutputKind"
+	}
+	return "policyRuleOutputKind"
+}
+
+func policyGraphSourceKinds(policy policyFile) []string {
+	if len(trimStrings(policy.Input.SourceKinds)) != 0 {
+		return uniqueSorted(policy.Input.SourceKinds)
+	}
+	return nil
 }
 
 func policyStatus(policy policyFile) string {
@@ -524,6 +633,9 @@ func policyStatus(policy policyFile) string {
 func policyEventKinds(policy policyFile) []string {
 	if eventKinds := uniqueSorted(policy.Input.EventKinds); len(eventKinds) != 0 {
 		return eventKinds
+	}
+	if policyGraphConfigured(policy) {
+		return []string{"graph"}
 	}
 	return []string{"policy.evidence", "policy.result"}
 }
@@ -548,7 +660,8 @@ func policyRequiredAttributesByKind(policy policyFile) map[string][]string {
 }
 
 func policyReferences(policy policyFile) []string {
-	values := append([]string{}, policy.Context.Graph.Anchors...)
+	values := append([]string{}, policy.References...)
+	values = append(values, policy.Context.Graph.Anchors...)
 	values = append(values, policy.Context.Graph.Enrich...)
 	return uniqueSorted(values)
 }
@@ -850,6 +963,8 @@ func policySubject(policy policyFile) string {
 
 func policyEvidenceLabel(mode string) string {
 	switch strings.TrimSpace(mode) {
+	case "graph":
+		return "graph-state"
 	case "query":
 		return "query-result"
 	case "manual":

@@ -1764,48 +1764,6 @@
       ]
     },
     {
-      "id": "graph-orphan-nonfinding-node",
-      "pack_id": "grc",
-      "pack_name": "GRC",
-      "name": "Graph Orphan Non-Finding Node",
-      "description": "Detect non-finding graph nodes with no relationships, indicating source projection or enrichment gaps.",
-      "source_id": "graph",
-      "evaluation_mode": "graph",
-      "event_kinds": [
-        "graph"
-      ],
-      "output_kind": "finding.graph_orphan_nonfinding_node",
-      "severity": "LOW",
-      "status": "open",
-      "maturity": "test",
-      "tags": [
-        "enrichment",
-        "graph",
-        "graph-hygiene",
-        "orphan"
-      ],
-      "references": [
-        "https://www.iso.org/standard/27001"
-      ],
-      "false_positives": [
-        "Some source records may intentionally be inventory-only and not yet connected to the rest of the graph."
-      ],
-      "runbook": "Review the source projection for the entity type and add ownership, source, identity, or resource relations where appropriate.",
-      "fingerprint_fields": [
-        "orphan_urn"
-      ],
-      "control_refs": [
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC7.1"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.35"
-        }
-      ]
-    },
-    {
       "id": "graph-resource-multiple-open-findings",
       "pack_id": "grc",
       "pack_name": "GRC",
@@ -39161,6 +39119,54 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "6"
+        }
+      ]
+    },
+    {
+      "id": "graph-orphan-nonfinding-node",
+      "pack_id": "policy",
+      "pack_name": "Policy",
+      "name": "Graph Orphan Non-Finding Node",
+      "description": "Flags failed graph-state evidence for graph entity: Graph Orphan Non-Finding Node. Detect non-finding graph nodes with no relationships, indicating source projection or enrichment gaps. Audit impact: Orphan graph nodes can hide projection gaps and weaken graph-backed finding context.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "graph"
+      ],
+      "output_kind": "policy.graph_finding",
+      "severity": "LOW",
+      "status": "active",
+      "maturity": "candidate",
+      "tags": [
+        "assessment:examine",
+        "enrichment",
+        "evidence:graph_state",
+        "graph",
+        "graph-hygiene",
+        "orphan",
+        "policy"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "A compensating control satisfies the mapped control objective and is documented for auditor review.",
+        "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
+        "Some source records may intentionally be inventory-only and not yet connected to the rest of the graph.",
+        "The subject is outside the assessment scope or has a documented exception for the audit period."
+      ],
+      "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Graph entities should have meaningful relationships unless they are intentionally inventory-only. Review the source projection for the entity type and add ownership, source, identity, or resource relations where appropriate. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
+      "fingerprint_fields": [
+        "orphan_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.35"
         }
       ]
     },

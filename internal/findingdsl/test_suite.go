@@ -148,6 +148,14 @@ func RunPolicyRuleTestSuite(root string, suitePath string) []Issue {
 }
 
 func EvaluatePolicyRuleTestCase(rule PolicyFindingRule, testCase PolicyRuleTestCase) (bool, error) {
+	if strings.TrimSpace(rule.Spec.Graph.Query) != "" {
+		for _, row := range testCase.QueryRows {
+			if strings.TrimSpace(fmt.Sprintf("%v", row["primary_urn"])) != "" {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 	if strings.TrimSpace(rule.Spec.Match.Query) != "" {
 		return len(testCase.QueryRows) != 0, nil
 	}

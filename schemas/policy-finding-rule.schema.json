@@ -30,6 +30,13 @@
           "description": "Human-readable policy name.",
           "type": "string"
         },
+        "references": {
+          "description": "External or internal references for public detection catalog metadata.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "tags": {
           "description": "Tags for categorization, routing, and catalog search.",
           "items": {
@@ -52,6 +59,16 @@
           "required": [
             "match"
           ]
+        },
+        {
+          "required": [
+            "assert"
+          ]
+        },
+        {
+          "required": [
+            "graph"
+          ]
         }
       ],
       "properties": {
@@ -59,9 +76,25 @@
           "description": "Action selector metadata for access-control-style policies.",
           "type": "string"
         },
+        "actions": {
+          "description": "Ownership, remediation, and verification action hints.",
+          "type": "object"
+        },
+        "assert": {
+          "description": "Structured assertions for evidence-backed policy checks.",
+          "type": "object"
+        },
+        "audit": {
+          "description": "Auditor-facing evidence, exception, and risk guidance.",
+          "type": "object"
+        },
         "category": {
           "description": "Optional generated policy category override.",
           "type": "string"
+        },
+        "context": {
+          "description": "Graph and severity-adjustment context for policy evaluation.",
+          "type": "object"
         },
         "effect": {
           "description": "Policy effect, usually forbid for CEL-backed policies.",
@@ -69,6 +102,10 @@
         },
         "enabled": {
           "type": "boolean"
+        },
+        "evidence": {
+          "description": "Evidence requirements and fingerprinting metadata.",
+          "type": "object"
         },
         "frameworks": {
           "items": {
@@ -95,6 +132,48 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "graph": {
+          "additionalProperties": false,
+          "properties": {
+            "params": {
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "description": "Static Cypher parameters added to tenant_id and row_limit.",
+              "type": "object"
+            },
+            "query": {
+              "description": "Read-only Cypher query returning graph findings. Must return primary_urn.",
+              "type": "string"
+            },
+            "requiredColumns": {
+              "description": "Additional returned aliases that the query must expose.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "rowLimit": {
+              "description": "Maximum graph rows to read for one rule evaluation.",
+              "maximum": 3000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        },
+        "input": {
+          "description": "Runtime, claim, and field requirements for evaluating the policy.",
+          "type": "object"
         },
         "match": {
           "additionalProperties": false,
@@ -199,11 +278,14 @@
             "INFO"
           ],
           "type": "string"
+        },
+        "verification": {
+          "description": "Author-supplied verification fixtures and mutation checks.",
+          "type": "object"
         }
       },
       "required": [
         "severity",
-        "match",
         "frameworks"
       ],
       "type": "object"
