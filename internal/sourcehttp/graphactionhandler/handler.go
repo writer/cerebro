@@ -33,7 +33,11 @@ func (h Handler) HandleExecute(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	h.WriteProtoJSON(w, http.StatusAccepted, graphactionapi.ResponseMessage(result, h.findingMessage(result.Finding)))
+	status := http.StatusAccepted
+	if result.DryRun {
+		status = http.StatusOK
+	}
+	h.WriteProtoJSON(w, status, graphactionapi.ResponseMessage(result, h.findingMessage(result.Finding)))
 }
 
 func (h Handler) ExecuteConnect(ctx context.Context, request *cerebrov1.ExecuteGraphActionRequest) (*connect.Response[cerebrov1.ExecuteGraphActionResponse], error) {

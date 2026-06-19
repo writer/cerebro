@@ -21,11 +21,13 @@ const (
 	AccessApprovalsActionSuspend   = "suspend"
 	AccessApprovalsActionUnsuspend = "unsuspend"
 	CerebroDeviceActionRevoke      = "revoke"
+	ActionStatusDryRun             = "dry_run"
 
-	ProviderAccessApprovals   = "access-approvals"
-	ProviderCerebroDeviceAuth = "cerebro-device-auth"
-	Source                    = "cerebro:graph_action"
-	RefKind                   = "graph_action"
+	ProviderAccessApprovals    = "access-approvals"
+	ProviderCerebroDeviceAuth  = "cerebro-device-auth"
+	Source                     = "cerebro:graph_action"
+	RefKind                    = "graph_action"
+	ExternalStatusNotSubmitted = "not_submitted"
 
 	maxTargetLen = 512
 	maxReasonLen = 2048
@@ -145,6 +147,8 @@ type Input struct {
 	IdempotencyKey string
 	Source         string
 	Parameters     map[string]string
+	DryRun         bool
+	Approved       bool
 }
 
 type ReconcileInput struct {
@@ -157,6 +161,14 @@ type Result struct {
 	Action      *GraphAction
 	Target      string
 	ExternalRef ports.FindingExternalRef
+	DryRun      bool
+}
+
+type executionPlan struct {
+	Spec    ActionSpec
+	Finding *ports.FindingRecord
+	Request ProviderActionRequest
+	Target  string
 }
 
 func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
@@ -175,6 +187,52 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	plan, err := s.plan(ctx, input, spec, findingID)
+	if err != nil {
+		return nil, err
+	}
+	if input.DryRun {
+		return &Result{
+			Finding: plan.Finding,
+			Action:  dryRunGraphAction(plan.Spec, plan.Request),
+			Target:  plan.Target,
+			DryRun:  true,
+		}, nil
+	}
+	if !input.Approved {
+		return nil, fmt.Errorf("%w: approved=true is required for mutating graph action execution", ErrInvalidRequest)
+	}
+	graphAction, err := provider.ExecuteGraphAction(ctx, plan.Spec, plan.Request)
+	if err != nil {
+		return nil, err
+	}
+	if graphAction == nil {
+		return nil, fmt.Errorf("%w: response missing action", ErrRemote)
+	}
+	if err := normalizeProviderGraphAction(plan.Spec, graphAction, plan.Target); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(graphAction.ExternalID) == "" {
+		return nil, fmt.Errorf("%w: response missing action external_id", ErrRemote)
+	}
+	var ref ports.FindingExternalRef
+	updated := plan.Finding
+	if plan.Finding != nil {
+		if s.BeforeLink != nil {
+			if err := s.BeforeLink(ctx, plan.Finding, graphAction, plan.Target); err != nil {
+				return nil, err
+			}
+		}
+		ref = ExternalRef(graphAction)
+		updated, err = s.Findings.LinkFindingExternalRef(ctx, plan.Finding.ID, ref)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Result{Finding: updated, Action: graphAction, Target: plan.Target, ExternalRef: ref}, nil
+}
+
+func (s Service) plan(ctx context.Context, input Input, spec ActionSpec, findingID string) (*executionPlan, error) {
 	finding, err := s.Findings.GetFinding(ctx, findingID)
 	if err != nil {
 		return nil, err
@@ -205,46 +263,23 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if idempotencyKey == "" {
 		idempotencyKey = IdempotencyKey(spec.ID, findingID, target)
 	}
-	actionRequest := ProviderActionRequest{
-		Target:         target,
-		Reason:         reason,
-		Source:         source,
-		TicketURL:      ticketURL,
-		IdempotencyKey: idempotencyKey,
-		TenantID:       strings.TrimSpace(finding.TenantID),
-		FindingID:      strings.TrimSpace(finding.ID),
-		FindingRuleID:  strings.TrimSpace(finding.RuleID),
-		ResourceURN:    primaryResourceURN(finding),
-		SubjectURN:     subjectURNForFinding(finding),
-	}
-	graphAction, err := provider.ExecuteGraphAction(ctx, spec, actionRequest)
-	if err != nil {
-		return nil, err
-	}
-	if graphAction == nil {
-		return nil, fmt.Errorf("%w: response missing action", ErrRemote)
-	}
-	if err := normalizeProviderGraphAction(spec, graphAction, target); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(graphAction.ExternalID) == "" {
-		return nil, fmt.Errorf("%w: response missing action external_id", ErrRemote)
-	}
-	var ref ports.FindingExternalRef
-	updated := finding
-	if finding != nil {
-		if s.BeforeLink != nil {
-			if err := s.BeforeLink(ctx, finding, graphAction, target); err != nil {
-				return nil, err
-			}
-		}
-		ref = ExternalRef(graphAction)
-		updated, err = s.Findings.LinkFindingExternalRef(ctx, finding.ID, ref)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return &Result{Finding: updated, Action: graphAction, Target: target, ExternalRef: ref}, nil
+	return &executionPlan{
+		Spec:    spec,
+		Finding: finding,
+		Target:  target,
+		Request: ProviderActionRequest{
+			Target:         target,
+			Reason:         reason,
+			Source:         source,
+			TicketURL:      ticketURL,
+			IdempotencyKey: idempotencyKey,
+			TenantID:       strings.TrimSpace(finding.TenantID),
+			FindingID:      strings.TrimSpace(finding.ID),
+			FindingRuleID:  strings.TrimSpace(finding.RuleID),
+			ResourceURN:    primaryResourceURN(finding),
+			SubjectURN:     subjectURNForFinding(finding),
+		},
+	}, nil
 }
 
 func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, error) {
@@ -359,6 +394,46 @@ func normalizeProviderGraphAction(spec ActionSpec, action *GraphAction, fallback
 		action.ExternalID = strings.TrimSpace(action.ID)
 	}
 	return nil
+}
+
+func dryRunGraphAction(spec ActionSpec, request ProviderActionRequest) *GraphAction {
+	now := time.Now().UTC().Unix()
+	idempotencyKey := strings.TrimSpace(request.IdempotencyKey)
+	metadata := map[string]string{
+		"dry_run":              "true",
+		"approval_required":    "true",
+		"provider_mutation":    ExternalStatusNotSubmitted,
+		"provider_action":      strings.TrimSpace(spec.ProviderAction),
+		"target_kind":          strings.TrimSpace(spec.TargetKind),
+		"external_ref_created": "false",
+	}
+	for key, value := range map[string]string{
+		"tenant_id":       request.TenantID,
+		"finding_id":      request.FindingID,
+		"finding_rule_id": request.FindingRuleID,
+		"resource_urn":    request.ResourceURN,
+		"subject_urn":     request.SubjectURN,
+	} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			metadata[key] = trimmed
+		}
+	}
+	return &GraphAction{
+		ID:                   "dry-run:" + idempotencyKey,
+		Action:               strings.TrimSpace(spec.ID),
+		Provider:             strings.TrimSpace(spec.Provider),
+		Status:               ActionStatusDryRun,
+		Target:               strings.TrimSpace(request.Target),
+		ExternalStatus:       ExternalStatusNotSubmitted,
+		ExternalStatusReason: "dry run only; provider not called",
+		Reason:               strings.TrimSpace(request.Reason),
+		Source:               strings.TrimSpace(request.Source),
+		TicketURL:            strings.TrimSpace(request.TicketURL),
+		IdempotencyKey:       idempotencyKey,
+		CreatedAtUnix:        now,
+		UpdatedAtUnix:        now,
+		Metadata:             metadata,
+	}
 }
 
 func validateProviderTenant(action *GraphAction, finding *ports.FindingRecord) error {

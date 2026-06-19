@@ -472,6 +472,10 @@ message ExecuteGraphActionRequest {
   string idempotency_key = 6;
   // Reserved for future typed executors. Current actions reject non-empty parameters.
   map<string, string> parameters = 7;
+  // When true, validate and return the provider plan without mutating provider or finding state.
+  bool dry_run = 8;
+  // Required for mutating execution. Dry runs do not require approval.
+  bool approved = 9;
 }
 
 // ReconcileGraphActionRequest asks Cerebro to refresh one linked provider action.
