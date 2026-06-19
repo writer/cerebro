@@ -155,7 +155,7 @@ func EvaluatePolicyRuleTestCase(rule PolicyFindingRule, testCase PolicyRuleTestC
 	if len(conditions) == 0 {
 		return false, fmt.Errorf("policy has no conditions to evaluate")
 	}
-	return EvaluatePolicyConditions(conditions, testCase.Resource)
+	return EvaluatePolicyConditions(conditions, PolicyResource(testCase.Resource))
 }
 
 func isPolicyTestRelPath(path string) bool {

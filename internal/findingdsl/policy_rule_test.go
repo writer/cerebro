@@ -280,7 +280,7 @@ unexpected: true
 }
 
 func TestEvaluatePolicyConditions(t *testing.T) {
-	resource := map[string]any{
+	resource := PolicyResource{
 		"public": true,
 		"rules": []any{
 			map[string]any{"port": "443", "source": "10.0.0.0/8"},

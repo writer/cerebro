@@ -15,6 +15,9 @@ type evalEnv struct {
 	vars map[string]any
 }
 
+// PolicyResource is the resource document evaluated by condition-backed rules.
+type PolicyResource map[string]any
+
 type literalExpression struct {
 	value any
 }
@@ -186,7 +189,7 @@ func ParsePolicyCondition(condition string) error {
 	return err
 }
 
-func EvaluatePolicyConditions(conditions []string, resource map[string]any) (bool, error) {
+func EvaluatePolicyConditions(conditions []string, resource PolicyResource) (bool, error) {
 	env := &evalEnv{vars: map[string]any{"resource": resource}}
 	for idx, condition := range conditions {
 		expr, err := parsePolicyExpression(condition)
@@ -716,6 +719,12 @@ func lookupPath(value any, path string) (any, bool) {
 			return nil, false
 		}
 		switch typed := current.(type) {
+		case PolicyResource:
+			next, ok := typed[part]
+			if !ok {
+				return nil, false
+			}
+			current = next
 		case map[string]any:
 			next, ok := typed[part]
 			if !ok {
