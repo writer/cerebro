@@ -49,6 +49,55 @@
       ]
     },
     {
+      "id": "openapi-connector-definition",
+      "title": "OpenAPI Connector Definition Codegen",
+      "summary": "Generates sourcegen-ready connector definitions from provider OpenAPI specs by selecting high-value read endpoints, auth, pagination, selectors, and projection templates.",
+      "change_reason": "Provider OpenAPI specs, connector definition inference, or automated platform coverage planning changed",
+      "triggers": [
+        "internal/connectordefinitions/openapigen/**",
+        "tools/openapidefgen/**",
+        "internal/connectordefinitions/**",
+        "internal/sourcegen/**"
+      ],
+      "generator": {
+        "make_target": "openapi-definition-gen-test",
+        "command": [
+          "make",
+          "openapi-definition-gen-test"
+        ],
+        "summary": "Validate OpenAPI-to-connector-definition generation and sourcegen compatibility."
+      },
+      "checks": [
+        {
+          "key": "openapi-definition-gen-test",
+          "summary": "Run OpenAPI connector definition generator tests",
+          "make_target": "openapi-definition-gen-test",
+          "command": [
+            "make",
+            "openapi-definition-gen-test"
+          ],
+          "include_in_pr_generated_step": true
+        },
+        {
+          "key": "sourcegen-test",
+          "summary": "Run source generator and catalog runtime projection tests",
+          "make_target": "sourcegen-test",
+          "command": [
+            "make",
+            "sourcegen-test"
+          ]
+        }
+      ],
+      "outputs": [
+        "internal/connectorcatalog/catalog/<category>.yaml",
+        "sources/<source-id>"
+      ],
+      "ci_jobs": [
+        "catalog",
+        "coverage"
+      ]
+    },
+    {
       "id": "proto",
       "title": "Proto Contracts",
       "summary": "Keeps proto definitions, generated Go/Python outputs, and breaking-change checks aligned.",
@@ -194,6 +243,107 @@
         "docs/POLICIES.md"
       ],
       "ci_jobs": [
+        "catalog"
+      ]
+    },
+    {
+      "id": "source-runtime",
+      "title": "Source Runtime Codegen",
+      "summary": "Keeps connector-definition-driven source runtime scaffolds, catalog runtime adapters, and generated-style projectors aligned.",
+      "change_reason": "connector definitions, Source Runtime SDK generator, or generic projection templates changed",
+      "triggers": [
+        "internal/connectordefinitions/**",
+        "internal/connectorcatalog/catalog/**",
+        "internal/sourcegen/**",
+        "internal/sourceprojection/catalogruntime.go",
+        "sources/internal/catalogruntime/**"
+      ],
+      "generator": {
+        "make_target": "sourcegen-test",
+        "command": [
+          "make",
+          "sourcegen-test"
+        ],
+        "summary": "Validate sourcegen-ready connector definitions, catalog runtime execution, and generated projection coverage."
+      },
+      "checks": [
+        {
+          "key": "sourcegen-check",
+          "summary": "Verify connector definitions remain sourcegen-ready",
+          "make_target": "sourcegen-check",
+          "command": [
+            "make",
+            "sourcegen-check"
+          ],
+          "include_in_pr_generated_step": true
+        },
+        {
+          "key": "sourcegen-test",
+          "summary": "Run source generator and catalog runtime projection tests",
+          "make_target": "sourcegen-test",
+          "command": [
+            "make",
+            "sourcegen-test"
+          ]
+        }
+      ],
+      "outputs": [
+        "sources/<source-id>",
+        "internal/sourceprojection/<source-id>.go"
+      ],
+      "ci_jobs": [
+        "catalog",
+        "coverage"
+      ]
+    },
+    {
+      "id": "finding-rule-scaffold",
+      "title": "Finding Rule Scaffold",
+      "summary": "Generates metadata-complete finding rule, fixture, and test scaffolds that satisfy rule catalog contracts before registration.",
+      "change_reason": "finding rule scaffold templates, lifecycle semantics, or rule metadata contracts changed",
+      "triggers": [
+        "cmd/cerebro/finding_rule.go",
+        "cmd/cerebro/finding_rule_test.go",
+        "internal/findings/event_rule.go",
+        "internal/findings/rule_metadata.go",
+        "internal/findings/rule_fixture_test.go"
+      ],
+      "generator": {
+        "make_target": "finding-rule-scaffold-test",
+        "command": [
+          "make",
+          "finding-rule-scaffold-test"
+        ],
+        "summary": "Validate generated finding rule scaffolds, metadata defaults, control refs, fixtures, and no-match examples."
+      },
+      "checks": [
+        {
+          "key": "finding-rule-scaffold-test",
+          "summary": "Run finding rule scaffold generator tests",
+          "make_target": "finding-rule-scaffold-test",
+          "command": [
+            "make",
+            "finding-rule-scaffold-test"
+          ],
+          "include_in_pr_generated_step": true
+        },
+        {
+          "key": "finding-rule-test",
+          "summary": "Run built-in finding rule fixtures and catalog behavior tests",
+          "make_target": "finding-rule-test",
+          "command": [
+            "make",
+            "finding-rule-test"
+          ]
+        }
+      ],
+      "outputs": [
+        "internal/findings/<rule>_rule.go",
+        "internal/findings/<rule>_rule_test.go",
+        "internal/findings/testdata/rules/<rule-id>.json"
+      ],
+      "ci_jobs": [
+        "coverage",
         "catalog"
       ]
     }

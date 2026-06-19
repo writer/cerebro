@@ -14,9 +14,10 @@ import (
 	"unicode"
 
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/ports"
 )
 
-const findingRuleNewUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [lifecycle_kind=<kind>] [lifecycle_anchor=<anchor>] [lifecycle_ttl=<duration>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
+const findingRuleNewUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [references=<ref[,ref]>] [false_positives=<fp[,fp]>] [runbook=<text>] [control_refs=<framework:control[,framework:control]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [lifecycle_kind=<kind>] [lifecycle_anchor=<anchor>] [lifecycle_ttl=<duration>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
 
 const findingRuleGraphEvaluateUsage = "usage: %s finding-rule graph-evaluate <runtime-id> rule_id=<graph-rule-id>"
 
@@ -76,6 +77,7 @@ type findingRuleTemplateLiterals struct {
 	FalsePositives     string
 	RequiredAttributes string
 	FingerprintFields  string
+	ControlRefs        string
 }
 
 type findingRuleTemplateFixture struct {
@@ -135,12 +137,36 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 	if name == "" {
 		name = titleFromID(ruleID)
 	}
+	description := strings.TrimSpace(values["description"])
+	if description == "" {
+		description = fmt.Sprintf("%s generated finding rule scaffold for %s source events. Review matcher logic and metadata before registration.", name, sourceID)
+	}
 	severity := firstNonEmptyCLI(values["severity"], "MEDIUM")
 	status := firstNonEmptyCLI(values["status"], "open")
 	maturity := firstNonEmptyCLI(values["maturity"], "test")
+	tags := splitCSV(values["tags"])
+	if len(tags) == 0 {
+		tags = []string{sourceID, "generated"}
+	}
+	references := splitCSV(values["references"])
+	if len(references) == 0 {
+		references = []string{"Generated scaffold; replace with provider or control-plane reference before registration."}
+	}
+	falsePositives := splitCSV(values["false_positives"])
+	if len(falsePositives) == 0 {
+		falsePositives = []string{"The source event is expected or covered by an approved exception."}
+	}
+	runbook := strings.TrimSpace(values["runbook"])
+	if runbook == "" {
+		runbook = "Review the triggering source event, confirm the state is still risky, then remediate the provider state or document an approved exception."
+	}
 	fingerprintFields := splitCSV(values["fingerprint_fields"])
 	if len(fingerprintFields) == 0 {
 		fingerprintFields = []string{"event_id"}
+	}
+	controlRefs, err := parseScaffoldControlRefs(values["control_refs"])
+	if err != nil {
+		return findingRuleScaffoldRequest{}, err
 	}
 	pack := firstNonEmptyCLI(values["pack"], sourceID)
 	outputDir := firstNonEmptyCLI(values["output_dir"], ".")
@@ -162,19 +188,20 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 	definition := findings.RuleDefinition{
 		ID:                 ruleID,
 		Name:               name,
-		Description:        strings.TrimSpace(values["description"]),
+		Description:        description,
 		SourceID:           sourceID,
 		EventKinds:         eventKinds,
 		OutputKind:         outputKind,
 		Severity:           severity,
 		Status:             status,
 		Maturity:           maturity,
-		Tags:               splitCSV(values["tags"]),
-		References:         splitCSV(values["references"]),
-		FalsePositives:     splitCSV(values["false_positives"]),
-		Runbook:            strings.TrimSpace(values["runbook"]),
+		Tags:               tags,
+		References:         references,
+		FalsePositives:     falsePositives,
+		Runbook:            runbook,
 		RequiredAttributes: splitCSV(values["required_attributes"]),
 		FingerprintFields:  fingerprintFields,
+		ControlRefs:        controlRefs,
 		Lifecycle:          lifecycle,
 	}
 	if err := definition.Validate(); err != nil {
@@ -306,6 +333,7 @@ func newFindingRuleTemplateData(request findingRuleScaffoldRequest) findingRuleT
 			FalsePositives:     goStringSlice(definition.FalsePositives),
 			RequiredAttributes: goStringSlice(definition.RequiredAttributes),
 			FingerprintFields:  goStringSlice(definition.FingerprintFields),
+			ControlRefs:        goControlRefSlice(definition.ControlRefs),
 		},
 		Fixture: findingRuleTemplateFixture{
 			RequiredAttrs:  requiredFixtureAttrs,
@@ -336,7 +364,7 @@ func renderFindingRuleGo(data findingRuleTemplateData) string {
 	fmt.Fprintf(&b, "\t%s = %s\n", names.CheckIDConst, strconv.Quote(definition.ID))
 	fmt.Fprintf(&b, "\t%s = %s\n", names.CheckNameConst, strconv.Quote(definition.Name))
 	fmt.Fprintf(&b, ")\n\n")
-	fmt.Fprintf(&b, "var %s = []ports.FindingControlRef{}\n\n", names.ControlRefsVar)
+	fmt.Fprintf(&b, "var %s = []ports.FindingControlRef{%s}\n\n", names.ControlRefsVar, literals.ControlRefs)
 	fmt.Fprintf(&b, "var %s = RuleDefinition{\n", names.DefinitionVar)
 	fmt.Fprintf(&b, "\tID: %s,\n\tName: %s,\n\tDescription: %s,\n\tSourceID: %s,\n\tEventKinds: %s,\n\tOutputKind: %s,\n\tSeverity: %s,\n\tStatus: %s,\n\tMaturity: %s,\n\tTags: %s,\n\tReferences: %s,\n\tFalsePositives: %s,\n\tRequiredAttributes: %s,\n\tFingerprintFields: %s,\n\tControlRefs: %s,\n\tLifecycle: %s,\n",
 		names.RuleIDConst, names.TitleConst, strconv.Quote(definition.Description), strconv.Quote(definition.SourceID), literals.EventKinds, strconv.Quote(definition.OutputKind), names.SeverityConst, names.StatusConst, strconv.Quote(definition.Maturity), literals.Tags, literals.References, literals.FalsePositives, literals.RequiredAttributes, literals.FingerprintFields, names.ControlRefsVar, renderLifecycleLiteral(definition.Lifecycle))
@@ -429,6 +457,43 @@ func renderFindingRuleFixture(data findingRuleTemplateData) string {
 	if data.Definition.Lifecycle.Kind == findings.LifecycleRetired {
 		expectedFindings = []map[string]any{}
 	}
+	events := []map[string]any{
+		{
+			"id":          "fixture-event-1",
+			"tenant_id":   "fixture-tenant",
+			"source_id":   data.Definition.SourceID,
+			"kind":        data.Fixture.FirstEventKind,
+			"occurred_at": "2026-04-27T00:00:00Z",
+			"schema_ref":  data.Definition.SourceID + "/fixture/v1",
+			"attributes":  attributes,
+		},
+	}
+	expectedNoMatch := []map[string]string{}
+	if data.Definition.Lifecycle.Kind != findings.LifecycleRetired {
+		events = append(events, map[string]any{
+			"id":          "fixture-event-unrelated-kind",
+			"tenant_id":   "fixture-tenant",
+			"source_id":   data.Definition.SourceID,
+			"kind":        data.Definition.SourceID + ".unrelated",
+			"occurred_at": "2026-04-27T00:01:00Z",
+			"schema_ref":  data.Definition.SourceID + "/fixture/v1",
+			"attributes":  attributes,
+		})
+		expectedNoMatch = append(expectedNoMatch, map[string]string{"event_id": "fixture-event-unrelated-kind", "reason": "unrelated event kind"})
+		if len(data.Definition.RequiredAttributes) != 0 {
+			missingRequiredAttributes := map[string]string{"source_runtime_id": "fixture-runtime"}
+			events = append(events, map[string]any{
+				"id":          "fixture-event-missing-required-attribute",
+				"tenant_id":   "fixture-tenant",
+				"source_id":   data.Definition.SourceID,
+				"kind":        data.Fixture.FirstEventKind,
+				"occurred_at": "2026-04-27T00:02:00Z",
+				"schema_ref":  data.Definition.SourceID + "/fixture/v1",
+				"attributes":  missingRequiredAttributes,
+			})
+			expectedNoMatch = append(expectedNoMatch, map[string]string{"event_id": "fixture-event-missing-required-attribute", "reason": "missing required attribute"})
+		}
+	}
 	fixture := map[string]any{
 		"rule_id": data.Definition.ID,
 		"runtime": map[string]any{
@@ -436,21 +501,34 @@ func renderFindingRuleFixture(data findingRuleTemplateData) string {
 			"source_id": data.Definition.SourceID,
 			"tenant_id": "fixture-tenant",
 		},
-		"events": []map[string]any{
-			{
-				"id":          "fixture-event-1",
-				"tenant_id":   "fixture-tenant",
-				"source_id":   data.Definition.SourceID,
-				"kind":        data.Fixture.FirstEventKind,
-				"occurred_at": "2026-04-27T00:00:00Z",
-				"schema_ref":  data.Definition.SourceID + "/fixture/v1",
-				"attributes":  attributes,
-			},
-		},
+		"events":            events,
 		"expected_findings": expectedFindings,
+	}
+	if len(expectedNoMatch) != 0 {
+		fixture["expected_no_match"] = expectedNoMatch
 	}
 	payload, _ := json.MarshalIndent(fixture, "", "  ")
 	return string(append(payload, '\n'))
+}
+
+func parseScaffoldControlRefs(value string) ([]ports.FindingControlRef, error) {
+	parts := splitCSV(value)
+	refs := make([]ports.FindingControlRef, 0, len(parts))
+	for _, part := range parts {
+		index := strings.LastIndex(part, ":")
+		if index <= 0 || index == len(part)-1 {
+			return nil, fmt.Errorf("invalid control_ref %q; want framework:control", part)
+		}
+		ref := ports.FindingControlRef{
+			FrameworkName: strings.TrimSpace(part[:index]),
+			ControlID:     strings.TrimSpace(part[index+1:]),
+		}
+		if ref.FrameworkName == "" || ref.ControlID == "" {
+			return nil, fmt.Errorf("invalid control_ref %q; framework and control are required", part)
+		}
+		refs = append(refs, ref)
+	}
+	return refs, nil
 }
 
 func splitCSV(value string) []string {
@@ -552,6 +630,22 @@ func goStringSlice(values []string) string {
 		quoted = append(quoted, strconv.Quote(strings.TrimSpace(value)))
 	}
 	return "[]string{" + strings.Join(quoted, ", ") + "}"
+}
+
+func goControlRefSlice(values []ports.FindingControlRef) string {
+	if len(values) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		framework := strings.TrimSpace(value.FrameworkName)
+		control := strings.TrimSpace(value.ControlID)
+		if framework == "" || control == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("{FrameworkName: %s, ControlID: %s}", strconv.Quote(framework), strconv.Quote(control)))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func firstString(values []string) string {

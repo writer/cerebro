@@ -40,8 +40,59 @@ func TestParseFindingRuleNewArgsAppliesDefaults(t *testing.T) {
 	if got := request.Definition.FingerprintFields[0]; got != "event_id" {
 		t.Fatalf("FingerprintFields[0] = %q, want event_id", got)
 	}
+	if request.Definition.Description == "" || request.Definition.Runbook == "" {
+		t.Fatalf("metadata defaults missing: %+v", request.Definition)
+	}
+	if got := strings.Join(request.Definition.Tags, ","); got != "github,secret-scanning" {
+		t.Fatalf("Tags = %q, want explicit tags preserved", got)
+	}
+	if len(request.Definition.References) == 0 || len(request.Definition.FalsePositives) == 0 {
+		t.Fatalf("metadata list defaults missing: %+v", request.Definition)
+	}
 	if !request.DryRun {
 		t.Fatal("DryRun = false, want true")
+	}
+}
+
+func TestParseFindingRuleNewArgsParsesControlRefsAndMetadataComplete(t *testing.T) {
+	request, err := parseFindingRuleNewArgs([]string{
+		"github-secret-scanning-disabled",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"required_attributes=repository,action",
+		"fingerprint_fields=repository,action",
+		"control_refs=SOC 2:CC7.1,ISO 27001:2022:A.8.8",
+	})
+	if err != nil {
+		t.Fatalf("parseFindingRuleNewArgs() error = %v", err)
+	}
+	if got := len(request.Definition.ControlRefs); got != 2 {
+		t.Fatalf("ControlRefs = %d, want 2", got)
+	}
+	if got := request.Definition.ControlRefs[1].FrameworkName; got != "ISO 27001:2022" {
+		t.Fatalf("ControlRefs[1].FrameworkName = %q, want ISO 27001:2022", got)
+	}
+	if errs := findings.ValidateRuleMetadataCompleteness([]findings.RuleDefinition{request.Definition}); len(errs) != 0 {
+		t.Fatalf("ValidateRuleMetadataCompleteness() errors = %v", errs)
+	}
+	rendered := renderFindingRuleGo(newFindingRuleTemplateData(request))
+	for _, want := range []string{
+		`{FrameworkName: "SOC 2", ControlID: "CC7.1"}`,
+		`{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"}`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("rendered control refs missing %q:\n%s", want, rendered)
+		}
+	}
+	fixture := renderFindingRuleFixture(newFindingRuleTemplateData(request))
+	for _, want := range []string{
+		`"expected_no_match"`,
+		`"fixture-event-unrelated-kind"`,
+		`"fixture-event-missing-required-attribute"`,
+	} {
+		if !strings.Contains(fixture, want) {
+			t.Fatalf("generated fixture missing %q:\n%s", want, fixture)
+		}
 	}
 }
 
