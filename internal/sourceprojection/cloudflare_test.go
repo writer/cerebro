@@ -122,6 +122,66 @@ func TestRegistryRoutesCloudflareCoreKinds(t *testing.T) {
 	}
 }
 
+func TestProjectCloudflareScopedInventoryLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	ctx := context.Background()
+
+	events := []*cerebrov1.EventEnvelope{
+		cloudflareTestEvent("cf-access-app", "cloudflare.access_application", map[string]string{
+			"application_id": "app-1", "account_id": "acct-1", "name": "Admin App",
+		}, `{"id":"app-1"}`),
+		cloudflareTestEvent("cf-account-ruleset", "cloudflare.account_ruleset", map[string]string{
+			"ruleset_id": "ruleset-1", "account_id": "acct-1", "name": "Account WAF",
+		}, `{"id":"ruleset-1"}`),
+		cloudflareTestEvent("cf-pool", "cloudflare.load_balancer_pool", map[string]string{
+			"pool_id": "pool-1", "account_id": "acct-1", "name": "Primary Pool",
+		}, `{"id":"pool-1"}`),
+		cloudflareTestEvent("cf-zone-access-group", "cloudflare.zone_access_group", map[string]string{
+			"group_id": "group-1", "zone_id": "zone-1", "name": "Employees",
+		}, `{"id":"group-1"}`),
+		cloudflareTestEvent("cf-zone-ruleset", "cloudflare.zone_ruleset", map[string]string{
+			"ruleset_id": "zone-ruleset-1", "zone_id": "zone-1", "name": "Zone WAF",
+		}, `{"id":"zone-ruleset-1"}`),
+		cloudflareTestEvent("cf-lb", "cloudflare.load_balancer", map[string]string{
+			"load_balancer_id": "lb-1", "zone_id": "zone-1", "name": "www.example.com", "fallback_pool": "pool-1", "default_pools": "pool-2,pool-1",
+		}, `{"id":"lb-1"}`),
+		cloudflareTestEvent("cf-audit", "cloudflare.audit_log", map[string]string{
+			"audit_id": "audit-1", "account_id": "acct-1", "zone_id": "zone-1", "actor_email": "admin@example.com",
+		}, `{"id":"audit-1"}`),
+	}
+	for _, event := range events {
+		if _, err := service.Project(ctx, event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	accountURN := "urn:cerebro:writer:cloudflare_account:acct-1"
+	zoneURN := "urn:cerebro:writer:cloudflare_zone:zone-1"
+	accessAppURN := "urn:cerebro:writer:cloudflare_access_application:app-1"
+	accountRulesetURN := "urn:cerebro:writer:cloudflare_account_ruleset:ruleset-1"
+	poolURN := "urn:cerebro:writer:cloudflare_load_balancer_pool:pool-1"
+	defaultPoolURN := "urn:cerebro:writer:cloudflare_load_balancer_pool:pool-2"
+	zoneAccessGroupURN := "urn:cerebro:writer:cloudflare_zone_access_group:group-1"
+	zoneRulesetURN := "urn:cerebro:writer:cloudflare_zone_ruleset:zone-ruleset-1"
+	loadBalancerURN := "urn:cerebro:writer:cloudflare_load_balancer:lb-1"
+	auditURN := "urn:cerebro:writer:cloudflare_audit_log:audit-1"
+
+	for _, urn := range []string{accessAppURN, accountRulesetURN, poolURN, zoneAccessGroupURN, zoneRulesetURN, loadBalancerURN, auditURN} {
+		if entity := state.entities[urn]; entity == nil {
+			t.Fatalf("expected entity %s; entities=%#v", urn, state.entities)
+		}
+	}
+	assertProjectedLink(t, state, accessAppURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, accountRulesetURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, poolURN, relationBelongsTo, accountURN)
+	assertProjectedLink(t, state, zoneAccessGroupURN, relationBelongsTo, zoneURN)
+	assertProjectedLink(t, state, zoneRulesetURN, relationBelongsTo, zoneURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationBelongsTo, zoneURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationDependsOn, poolURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationDependsOn, defaultPoolURN)
+}
+
 func TestProjectCloudflareDNSRecordZoneReassignmentRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

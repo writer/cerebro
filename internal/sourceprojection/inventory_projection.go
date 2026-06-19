@@ -51,6 +51,20 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		return joinProjectionIdentity(attrs, "cluster_id", "namespace", "resource_id", "name")
 	case "kubernetes.container":
 		return joinProjectionIdentity(attrs, "cluster_id", "namespace", "resource_id", "container_name")
+	case "cloudflare.access_application", "cloudflare.zone_access_application":
+		return joinProjectionIdentity(attrs, "application_id", "id")
+	case "cloudflare.access_group", "cloudflare.zone_access_group":
+		return joinProjectionIdentity(attrs, "group_id", "id")
+	case "cloudflare.account_ruleset", "cloudflare.zone_ruleset":
+		return joinProjectionIdentity(attrs, "ruleset_id", "id")
+	case "cloudflare.audit_log":
+		return joinProjectionIdentity(attrs, "audit_id", "id")
+	case "cloudflare.gateway_rule":
+		return joinProjectionIdentity(attrs, "rule_id", "id")
+	case "cloudflare.load_balancer_pool":
+		return joinProjectionIdentity(attrs, "pool_id", "id")
+	case "cloudflare.worker_script":
+		return joinProjectionIdentity(attrs, "script_id", "id")
 	case "trivy.image_scan":
 		return joinProjectionIdentity(attrs, "image_digest")
 	case "trivy.image_package":
