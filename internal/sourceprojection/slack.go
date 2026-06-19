@@ -33,21 +33,39 @@ func slackUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 }
 
 func slackWithTeamContext(event *cerebrov1.EventEnvelope, enrich func([]*ports.ProjectedEntity, *cerebrov1.EventEnvelope)) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	entities, links, err := genericInventoryProjections(event)
+	projectedEntities, projectedLinks, err := genericInventoryProjections(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	if enrich != nil {
-		enrich(entities, event)
+		enrich(projectedEntities, event)
 	}
-	if len(entities) == 0 {
-		return entities, links, nil
+	if len(projectedEntities) == 0 {
+		return projectedEntities, projectedLinks, nil
 	}
-	primary := entities[0]
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	for _, entity := range projectedEntities {
+		addEntity(entities, entity)
+	}
+	for _, link := range projectedLinks {
+		addLink(links, link)
+	}
+	primary := projectedEntities[0]
 	tenant := primary.TenantID
-	teamIDs := slackTeamContextIDs(event.GetAttributes())
+	attrs := event.GetAttributes()
+	if tenant != "" {
+		switch primary.EntityType {
+		case "slack.user":
+			addIdentifierLink(entities, links, tenant, event.GetSourceId(), event.GetId(), primary.URN, attrs["email"], event.GetOccurredAt())
+		case "slack.channel":
+			addSlackChannelCreatorLink(entities, links, tenant, event, primary.URN, attrs)
+		}
+	}
+	teamIDs := slackTeamContextIDs(attrs)
 	if tenant == "" || len(teamIDs) == 0 {
-		return entities, links, nil
+		outEntities, outLinks := entitiesAndLinks(entities, links)
+		return outEntities, outLinks, nil
 	}
 	linkAttrs := map[string]string{
 		"event_id":   event.GetId(),
@@ -59,7 +77,7 @@ func slackWithTeamContext(event *cerebrov1.EventEnvelope, enrich func([]*ports.P
 		if primary.URN == teamURN {
 			continue
 		}
-		entities = append(entities, &ports.ProjectedEntity{
+		addEntity(entities, &ports.ProjectedEntity{
 			URN:        teamURN,
 			TenantID:   tenant,
 			SourceID:   event.GetSourceId(),
@@ -67,12 +85,32 @@ func slackWithTeamContext(event *cerebrov1.EventEnvelope, enrich func([]*ports.P
 			Label:      teamID,
 			Attributes: map[string]string{"team_id": teamID},
 		})
-		links = append(links,
-			projectedLink(tenant, event.GetSourceId(), primary.URN, teamURN, relationBelongsTo, linkAttrs),
-			projectedLink(tenant, event.GetSourceId(), teamURN, primary.URN, relationContains, linkAttrs),
-		)
+		addLink(links, projectedLink(tenant, event.GetSourceId(), primary.URN, teamURN, relationBelongsTo, linkAttrs))
+		addLink(links, projectedLink(tenant, event.GetSourceId(), teamURN, primary.URN, relationContains, linkAttrs))
 	}
-	return entities, links, nil
+	outEntities, outLinks := entitiesAndLinks(entities, links)
+	return outEntities, outLinks, nil
+}
+
+func addSlackChannelCreatorLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, channelURN string, attrs map[string]string) {
+	creatorID := strings.TrimSpace(attrs["creator"])
+	if creatorID == "" {
+		return
+	}
+	creatorURN := projectionURN(tenant, "slack_user", creatorID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        creatorURN,
+		TenantID:   tenant,
+		SourceID:   event.GetSourceId(),
+		EntityType: "slack.user",
+		Label:      creatorID,
+		Attributes: map[string]string{"user_id": creatorID},
+	})
+	addLink(links, projectedLink(tenant, event.GetSourceId(), creatorURN, channelURN, relationAuthored, map[string]string{
+		"event_id":   event.GetId(),
+		"at":         eventObservedAt(event),
+		"match_type": "slack_channel_creator",
+	}))
 }
 
 // slackTeamContextIDs resolves the distinct real team IDs a Slack entity is

@@ -220,6 +220,71 @@ func kubernetesWorkloadProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	if workloadURN != "" && namespaceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 	}
+	addKubernetesNodeLink(entities, links, tenantID, event, workloadURN, attributes, "kubernetes_workload_node")
+	addKubernetesImageLinks(entities, links, tenantID, event, workloadURN, attributes, "kubernetes_workload_image")
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
+	return identityProjectionResult(entities, links)
+}
+
+func kubernetesContainerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	containerURN := kubernetesContainerURN(tenantID, attributes)
+	workloadURN := kubernetesWorkloadURN(tenantID, attributes)
+	namespaceURN := kubernetesNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
+	if containerURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        containerURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "kubernetes.container",
+			Label:      firstNonEmpty(attributes["container_name"], attributes["name"]),
+			Attributes: map[string]string{
+				"allow_privilege_escalation": strings.TrimSpace(attributes["allow_privilege_escalation"]),
+				"cluster_id":                 strings.TrimSpace(attributes["cluster_id"]),
+				"container_name":             strings.TrimSpace(attributes["container_name"]),
+				"image":                      strings.TrimSpace(attributes["image"]),
+				"image_digest":               strings.TrimSpace(attributes["image_digest"]),
+				"image_pull_policy":          strings.TrimSpace(attributes["image_pull_policy"]),
+				"namespace":                  strings.TrimSpace(attributes["namespace"]),
+				"node_name":                  strings.TrimSpace(attributes["node_name"]),
+				"privileged":                 strings.TrimSpace(attributes["privileged"]),
+				"resource_id":                strings.TrimSpace(attributes["resource_id"]),
+				"status_image_id":            strings.TrimSpace(attributes["status_image_id"]),
+				"status_ready":               strings.TrimSpace(attributes["status_ready"]),
+				"status_started":             strings.TrimSpace(attributes["status_started"]),
+				"status_state":               strings.TrimSpace(attributes["status_state"]),
+				"workload_kind":              strings.TrimSpace(attributes["workload_kind"]),
+				"workload_name":              strings.TrimSpace(attributes["workload_name"]),
+				"workload_uid":               strings.TrimSpace(attributes["workload_uid"]),
+			},
+		})
+	}
+	if workloadURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        workloadURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "kubernetes.workload",
+			Label:      firstNonEmpty(attributes["workload_name"], attributes["name"], attributes["workload_uid"]),
+			Attributes: map[string]string{"cluster_id": strings.TrimSpace(attributes["cluster_id"]), "namespace": strings.TrimSpace(attributes["namespace"]), "workload_uid": strings.TrimSpace(attributes["workload_uid"])},
+		})
+	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
+	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
+	if containerURN != "" && workloadURN != "" {
+		linkAttrs := map[string]string{"event_id": event.GetId(), "match_type": "kubernetes_container_workload"}
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), containerURN, workloadURN, relationBelongsTo, linkAttrs))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, containerURN, relationContains, linkAttrs))
+	}
+	addKubernetesNodeLink(entities, links, tenantID, event, containerURN, attributes, "kubernetes_container_node")
+	addKubernetesImageLinks(entities, links, tenantID, event, containerURN, attributes, "kubernetes_container_image")
 	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
 	return identityProjectionResult(entities, links)
 }
@@ -439,6 +504,46 @@ func addKubernetesClusterLinks(entities map[string]*ports.ProjectedEntity, links
 	addCloudAccountLink(entities, links, tenantID, sourceID, event, clusterURN, kubernetesCloudAccountID(attributes), firstNonEmpty(attributes["cloud_provider"], attributes["provider"]))
 }
 
+func addKubernetesNodeLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, attributes map[string]string, matchType string) {
+	nodeURN := kubernetesNodeURN(tenantID, attributes)
+	if fromURN == "" || nodeURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        nodeURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "kubernetes.node",
+		Label:      firstNonEmpty(attributes["node_name"], attributes["resource_name"], attributes["name"]),
+		Attributes: map[string]string{
+			"cluster_id":   strings.TrimSpace(attributes["cluster_id"]),
+			"cluster_name": strings.TrimSpace(attributes["cluster_name"]),
+			"node_name":    firstNonEmpty(attributes["node_name"], attributes["resource_name"], attributes["name"]),
+		},
+	})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, nodeURN, relationAssociatedWith, map[string]string{
+		"event_id":   event.GetId(),
+		"match_type": matchType,
+	}))
+}
+
+func addKubernetesImageLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, attributes map[string]string, matchType string) {
+	if fromURN == "" {
+		return
+	}
+	for _, imageDigest := range splitCSV(attributes["image_digest"]) {
+		imageURN := trivyImageURN(tenantID, imageDigest)
+		addEntity(entities, trivyEntity(event, imageURN, "trivy.image", firstNonEmpty(attributes["image"], attributes["image_uri"], imageDigest), map[string]string{
+			"image_digest": imageDigest,
+			"image_uri":    firstNonEmpty(attributes["image_uri"], attributes["image"]),
+		}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, imageURN, relationDependsOn, map[string]string{
+			"event_id":   event.GetId(),
+			"match_type": matchType,
+		}))
+	}
+}
+
 func addKubernetesNamespace(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attributes map[string]string, namespaceURN string) {
 	if namespaceURN == "" {
 		return
@@ -494,6 +599,16 @@ func kubernetesServiceURN(tenantID string, attributes map[string]string) string 
 		return ""
 	}
 	return projectionURN(tenantID, "kubernetes_service", clusterID, firstNonEmpty(attributes["namespace"], "default"), serviceName)
+}
+
+func kubernetesContainerURN(tenantID string, attributes map[string]string) string {
+	clusterID := kubernetesClusterIdentity(attributes)
+	podID := firstNonEmpty(attributes["resource_id"], attributes["workload_uid"], attributes["uid"], attributes["workload_name"], attributes["name"])
+	containerName := strings.TrimSpace(attributes["container_name"])
+	if clusterID == "" || podID == "" || containerName == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_container", clusterID, firstNonEmpty(attributes["namespace"], "default"), podID, containerName)
 }
 
 func kubernetesNamespaceURN(tenantID string, attributes map[string]string) string {

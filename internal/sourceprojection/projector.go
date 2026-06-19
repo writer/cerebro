@@ -2022,10 +2022,55 @@ func oktaThreatInsightProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), tiURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		for _, zoneID := range oktaThreatInsightExcludeZoneIDs(event) {
+			zoneURN := projectionURN(tenantID, "okta_network_zone", zoneID)
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        zoneURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "okta.network_zone",
+				Label:      zoneID,
+				Attributes: map[string]string{"network_zone_id": zoneID, "zone_id": zoneID},
+			})
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), tiURN, zoneURN, relationDependsOn, map[string]string{
+				"condition_scope": "exclude",
+				"event_id":        event.GetId(),
+				"match_type":      "okta_threat_insight_network_zone",
+			}))
+			addIdentityOrgMembershipLink(links, tenantID, event, zoneURN, orgURN)
+		}
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func oktaThreatInsightExcludeZoneIDs(event *cerebrov1.EventEnvelope) []string {
+	seen := map[string]struct{}{}
+	ids := []string{}
+	add := func(raw string) {
+		for _, value := range splitCSV(raw) {
+			zoneID := durableIdentityConditionReferenceID(value)
+			if zoneID == "" {
+				continue
+			}
+			if _, ok := seen[zoneID]; ok {
+				continue
+			}
+			seen[zoneID] = struct{}{}
+			ids = append(ids, zoneID)
+		}
+	}
+	add(event.GetAttributes()["exclude_zones"])
+	payload := payloadMap(event)
+	if values, ok := payload["exclude_zones"].([]any); ok {
+		for _, value := range values {
+			if zoneID, ok := value.(string); ok {
+				add(zoneID)
+			}
+		}
+	}
+	return ids
 }
 
 type oktaAssetProjectionOptions struct {
