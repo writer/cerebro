@@ -43,8 +43,12 @@ func TargetForAction(action string, finding *ports.FindingRecord, explicit strin
 	if err != nil {
 		return "", err
 	}
+	return TargetForActionSpec(spec, finding, explicit)
+}
+
+func TargetForActionSpec(spec ActionSpec, finding *ports.FindingRecord, explicit string) (string, error) {
 	if spec.ResolveTarget == nil {
-		return "", fmt.Errorf("%w: action %q has no target resolver", ErrInvalidRequest, action)
+		return "", fmt.Errorf("%w: action %q has no target resolver", ErrInvalidRequest, spec.ID)
 	}
 	return spec.ResolveTarget(finding, explicit)
 }

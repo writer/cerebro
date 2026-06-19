@@ -146,11 +146,19 @@ func NewMCPActionProposal(args MCPArguments, findingID string, action string) MC
 
 func MCPGraphActionTarget(args MCPArguments, finding *ports.FindingRecord) (string, error) {
 	graphAction := strings.TrimSpace(mcpStringArg(args, "graph_action"))
+	spec, err := graphactions.DefaultRegistry().Lookup(graphAction)
+	if err != nil {
+		return "", err
+	}
+	return mcpGraphActionTargetForSpec(args, finding, spec)
+}
+
+func mcpGraphActionTargetForSpec(args MCPArguments, finding *ports.FindingRecord, spec graphactions.ActionSpec) (string, error) {
 	target := strings.TrimSpace(mcpStringArg(args, "target"))
 	if target == "" {
-		target = mcpStringArg(args, "email_or_user_id")
+		target = strings.TrimSpace(mcpStringArg(args, "email_or_user_id"))
 	}
-	return graphactions.TargetForAction(graphAction, finding, target)
+	return graphactions.TargetForActionSpec(spec, finding, target)
 }
 
 func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *ports.FindingRecord, action string, args MCPArguments, requiredScope string) error {
@@ -162,7 +170,7 @@ func ApplyMCPGraphActionProposal(proposal MCPActionProposalPayload, finding *por
 	if err != nil {
 		return err
 	}
-	target, err := MCPGraphActionTarget(args, finding)
+	target, err := mcpGraphActionTargetForSpec(args, finding, spec)
 	if err != nil {
 		return err
 	}

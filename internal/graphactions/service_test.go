@@ -256,6 +256,21 @@ func TestDefaultRegistryComesFromGeneratedCatalogMetadata(t *testing.T) {
 	}
 }
 
+func TestTargetForActionSpecUsesProvidedSpec(t *testing.T) {
+	target, err := TargetForActionSpec(ActionSpec{
+		ID: "custom.unregistered",
+		ResolveTarget: func(_ *ports.FindingRecord, explicit string) (string, error) {
+			return "resolved:" + explicit, nil
+		},
+	}, &ports.FindingRecord{ID: "finding-1"}, "target-1")
+	if err != nil {
+		t.Fatalf("TargetForActionSpec() error = %v", err)
+	}
+	if target != "resolved:target-1" {
+		t.Fatalf("target = %q, want resolved target", target)
+	}
+}
+
 func TestCerebroDeviceTargetForFindingDerivesTenantScopedDevice(t *testing.T) {
 	finding := &ports.FindingRecord{
 		TenantID:     "tenant-a",

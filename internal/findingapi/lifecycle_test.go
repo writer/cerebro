@@ -98,6 +98,23 @@ func TestApplyMCPGraphActionProposalUsesCatalogProvider(t *testing.T) {
 	}
 }
 
+func TestMCPGraphActionTargetForSpecUsesValidatedSpec(t *testing.T) {
+	target, err := mcpGraphActionTargetForSpec(MCPArguments{
+		"target": "custom-target",
+	}, eligibleGraphActionFinding(nil), graphactions.ActionSpec{
+		ID: "custom.unregistered",
+		ResolveTarget: func(_ *ports.FindingRecord, explicit string) (string, error) {
+			return "resolved:" + explicit, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcpGraphActionTargetForSpec() error = %v", err)
+	}
+	if target != "resolved:custom-target" {
+		t.Fatalf("target = %q, want resolved custom target", target)
+	}
+}
+
 func TestMCPActionInputPropertiesIncludesCatalogGraphActions(t *testing.T) {
 	graphAction, ok := MCPActionInputProperties()["graph_action"].(map[string]any)
 	if !ok {
