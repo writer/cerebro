@@ -405,10 +405,15 @@ func jobTelemetryAttrs(job *ports.Job) telemetry.Attributes {
 		telemetry.Field{Key: "job.id", Value: job.ID},
 		telemetry.Field{Key: "job.kind", Value: job.Kind},
 		telemetry.Field{Key: "job.status", Value: job.Status},
+		telemetry.Field{Key: "job_id", Value: job.ID},
+		telemetry.Field{Key: "job_kind", Value: job.Kind},
+		telemetry.Field{Key: "job_status", Value: job.Status},
 		telemetry.Field{Key: "tenant_id", Value: job.TenantID},
 		telemetry.Field{Key: "job.tenant_id", Value: job.TenantID},
 		telemetry.Field{Key: "job.subject_type", Value: job.SubjectType},
 		telemetry.Field{Key: "job.subject_id", Value: job.SubjectID},
+		telemetry.Field{Key: "job_subject_type", Value: job.SubjectType},
+		telemetry.Field{Key: "job_subject_id", Value: job.SubjectID},
 		telemetry.Field{Key: "job.progress_percent", Value: job.Progress},
 		telemetry.Field{Key: "job.cancel_requested", Value: job.CancelRequested},
 		telemetry.Field{Key: "job.created_at_unix_ms", Value: unixMilliOrZero(job.CreatedAt)},
@@ -427,6 +432,9 @@ func jobTelemetryAttrs(job *ports.Job) telemetry.Attributes {
 	if runtimeID := jobRuntimeID(job); runtimeID != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "runtime_id", Value: runtimeID})
 		attrs = attrs.WithField(telemetry.Field{Key: "source_runtime_id", Value: runtimeID})
+	}
+	if sourceID := firstStringPayload(job.Payload, "source_id"); sourceID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "source_id", Value: sourceID})
 	}
 	reportID := firstStringPayload(job.Payload, "report_id")
 	if reportID == "" {

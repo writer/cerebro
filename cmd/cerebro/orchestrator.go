@@ -254,6 +254,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 	}
 	ctx = withOrchestratorJobMetadata(ctx, jobMeta)
 	ctx, span := telemetry.StartMain(ctx, "orchestrator.run", telemetry.Attrs(
+		telemetryField("operation", "orchestrator.run"),
 		telemetryField("operation.type", "background_job"),
 		telemetryField("workload.kind", "orchestrator"),
 		telemetryField("job.id", jobMeta.ID),
@@ -263,6 +264,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		telemetryField("job.status", "running"),
 		telemetryField("job.started_at_unix_ms", jobMeta.StartedAt.UnixMilli()),
 		telemetryField("runtime_id", options.Filter.RuntimeID),
+		telemetryField("source_runtime_id", options.Filter.RuntimeID),
 		telemetryField("tenant_id", options.Filter.TenantID),
 		telemetryField("source_id", options.Filter.SourceID),
 		telemetryField("limit", options.Filter.Limit),
@@ -290,8 +292,10 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 			spanAttributes = withTelemetryField(spanAttributes, "error_kind", telemetry.ErrorKind(err))
 		}
 		terminalAttrs := spanAttributes.With(orchestratorJobAttrs(ctx)).With(telemetry.Attrs(
+			telemetryField("operation", "orchestrator.run"),
 			telemetryField("job.status", status),
 			telemetryField("job.status.final", status),
+			telemetryField("job_status", status),
 			telemetryField("job.run_duration_ms", time.Since(jobMeta.StartedAt).Milliseconds()),
 			telemetryField("orchestrator.status", status),
 		))
@@ -802,6 +806,12 @@ func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRu
 	}
 	annotateOrchestratorHealthGateMain(ctx, healthRecord, healthState, healthGate)
 	mainAttrs := attrs.With(telemetry.Attrs(
+		telemetryField("runtime_id", result.RuntimeID),
+		telemetryField("source_runtime_id", result.RuntimeID),
+		telemetryField("source_id", result.SourceID),
+		telemetryField("tenant_id", result.TenantID),
+		telemetryField("job.runtime.status", status),
+		telemetryField("job_runtime_status", status),
 		telemetryField("orchestrator.runtime.last_status", status),
 		telemetryField("orchestrator.runtime.last_runtime_id", result.RuntimeID),
 		telemetryField("orchestrator.runtime.last_source_id", result.SourceID),
