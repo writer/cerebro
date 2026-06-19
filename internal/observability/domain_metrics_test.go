@@ -75,6 +75,30 @@ func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {
 	assertMetricHasAttribute(t, metrics["cerebro.source_projection.records"], "record.kind", "entity_deleted")
 }
 
+func TestRecordGraphActionMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordGraphAction(context.Background(), GraphActionMetrics{
+		Provider:       "Access Approvals",
+		Action:         "identity.okta.suspend_user",
+		Status:         "Succeeded",
+		ExternalStatus: "SUSPENDED",
+		DryRun:         false,
+	})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	metric, ok := metrics["cerebro.graph_action.recorded"]
+	if !ok {
+		t.Fatalf("metric %q missing from %#v", "cerebro.graph_action.recorded", metricNames(metrics))
+	}
+	assertNoForbiddenMetricAttributes(t, metric)
+	assertMetricHasAttribute(t, metric, "provider", "access_approvals")
+	assertMetricHasAttribute(t, metric, "action", "identity.okta.suspend_user")
+	assertMetricHasAttribute(t, metric, "status", "succeeded")
+	assertMetricHasAttribute(t, metric, "external_status", "suspended")
+	assertMetricHasBoolAttribute(t, metric, "dry_run", false)
+}
+
 func TestBoundedMetricValueNormalizesAndBoundsLabels(t *testing.T) {
 	got := boundedMetricValue("Runtime ID With Spaces And / Weird # Chars", "unknown")
 	if got != "runtime_id_with_spaces_and___weird___chars" {
@@ -152,6 +176,18 @@ func assertMetricHasAttribute(t *testing.T, metric metricdata.Metrics, key attri
 		}
 	}
 	t.Fatalf("metric %q missing attribute %s=%q", metric.Name, key, value)
+}
+
+func assertMetricHasBoolAttribute(t *testing.T, metric metricdata.Metrics, key attribute.Key, value bool) {
+	t.Helper()
+	for _, attrs := range metricAttributeSets(metric) {
+		for _, kv := range attrs.ToSlice() {
+			if kv.Key == key && kv.Value.AsBool() == value {
+				return
+			}
+		}
+	}
+	t.Fatalf("metric %q missing attribute %s=%t", metric.Name, key, value)
 }
 
 func metricAttributeSets(metric metricdata.Metrics) []attribute.Set {

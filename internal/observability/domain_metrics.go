@@ -69,6 +69,14 @@ func otelSourceProjectionRecords() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelGraphActionRecorded() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.graph_action.recorded",
+		otelmetric.WithDescription("Total graph action workflow records by bounded provider, action, and status."),
+	)
+	return instrument
+}
+
 // SourceRuntimeSyncMetrics is intentionally shaped for low-cardinality OTEL
 // metrics. Runtime IDs, tenant IDs, resource URNs, evidence IDs, request IDs,
 // and trace IDs belong in spans/wide events, not metric labels.
@@ -99,6 +107,17 @@ type SourceProjectionMetrics struct {
 	LinksProjected    uint32
 	EntitiesDeleted   uint32
 	LinksDeleted      uint32
+}
+
+// GraphActionMetrics is intentionally scoped to provider catalog dimensions.
+// Tenant IDs, finding IDs, resource URNs, external IDs, request IDs, and trace
+// IDs belong in workflow events/spans rather than metric labels.
+type GraphActionMetrics struct {
+	Provider       string
+	Action         string
+	Status         string
+	ExternalStatus string
+	DryRun         bool
 }
 
 func RecordSourceRuntimeSync(ctx context.Context, metrics SourceRuntimeSyncMetrics) {
@@ -139,6 +158,17 @@ func RecordSourceProjection(ctx context.Context, metrics SourceProjectionMetrics
 	recordSourceProjectionRecordCount(ctx, attrs, "link_projected", int64(metrics.LinksProjected))
 	recordSourceProjectionRecordCount(ctx, attrs, "entity_deleted", int64(metrics.EntitiesDeleted))
 	recordSourceProjectionRecordCount(ctx, attrs, "link_deleted", int64(metrics.LinksDeleted))
+}
+
+func RecordGraphAction(ctx context.Context, metrics GraphActionMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("provider", boundedMetricValue(metrics.Provider, "unknown")),
+		attribute.String("action", boundedMetricValue(metrics.Action, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.String("external_status", boundedMetricValue(metrics.ExternalStatus, "none")),
+		attribute.Bool("dry_run", metrics.DryRun),
+	}
+	otelGraphActionRecorded().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 }
 
 func recordSourceRuntimeRecordCount(ctx context.Context, base []attribute.KeyValue, kind string, count int64) {
