@@ -66,7 +66,7 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 	case "cloudflare.load_balancer_pool":
 		return joinProjectionIdentity(attrs, "pool_id", "id")
 	case "cloudflare.worker_script":
-		return joinProjectionIdentity(attrs, "account_id", "script_id", "id")
+		return joinRequiredScopedProjectionIdentity(attrs, "account_id", "script_id", "id")
 	case "trivy.image_scan":
 		return joinProjectionIdentity(attrs, "image_digest")
 	case "trivy.image_package":
@@ -114,6 +114,18 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		"package",
 		"external_id",
 	)
+}
+
+func joinRequiredScopedProjectionIdentity(attrs map[string]string, scopeKey string, keys ...string) string {
+	scope := strings.TrimSpace(attrs[scopeKey])
+	if scope == "" {
+		return ""
+	}
+	identity := firstProjectionValue(attrs, keys...)
+	if identity == "" {
+		return ""
+	}
+	return strings.Join([]string{scope, identity}, "|")
 }
 
 func joinProjectionIdentity(attrs map[string]string, keys ...string) string {
