@@ -5716,6 +5716,58 @@ func TestProjectKubernetesContainerPrefersPodUIDOverWorkloadUID(t *testing.T) {
 	}
 }
 
+func TestProjectKubernetesPodIdentityRequiresPodID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "k8s-container-workload-uid-only",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.container",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"container_name": "api",
+				"namespace":      "payments",
+				"node_name":      "ip-10-0-1-10",
+				"workload_kind":  "ReplicaSet",
+				"workload_name":  "payments-api",
+				"workload_uid":   "replicaset-uid-1",
+			},
+		},
+		{
+			Id:       "k8s-pod-workload-uid-only",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.pod",
+			Attributes: map[string]string{
+				"cluster_id":    "prod-cluster",
+				"namespace":     "payments",
+				"node_name":     "ip-10-0-1-11",
+				"resource_name": "payments-api-abc123",
+				"workload_kind": "ReplicaSet",
+				"workload_name": "payments-api",
+				"workload_uid":  "replicaset-uid-1",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	for _, urn := range []string{
+		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:replicaset-uid-1:api",
+		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:replicaset-uid-1",
+	} {
+		if entity := state.entities[urn]; entity != nil {
+			t.Fatalf("workload UID must not be used as pod identity for %s: %#v", urn, entity)
+		}
+	}
+}
+
 func TestProjectKubernetesPodLinksNamespaceServiceAccountNodeAndImage(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -6104,6 +6156,7 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 				"container_name": "api",
 				"namespace":      "payments",
 				"workload_name":  "payments-api",
+				"workload_uid":   "workload-1",
 			},
 		},
 		{
@@ -6132,7 +6185,7 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 				"namespace":     "payments",
 				"resource_name": "payments-api-abc123",
 				"workload_name": "payments-api",
-				"workload_uid":  "",
+				"workload_uid":  "workload-1",
 			},
 		},
 	}
@@ -6148,8 +6201,10 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 		"urn:cerebro:writer:kubernetes_service_account:payments:api",
 		"urn:cerebro:writer:kubernetes_namespace:payments",
 		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:payments-api:api",
+		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:workload-1:api",
 		"urn:cerebro:writer:kubernetes_node:prod-cluster:payments-api-abc123",
 		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:payments-api-abc123",
+		"urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:workload-1",
 	} {
 		if _, ok := state.entities[urn]; ok {
 			t.Fatalf("sparse event minted placeholder entity %q", urn)
