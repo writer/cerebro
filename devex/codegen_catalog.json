@@ -49,6 +49,55 @@
       ]
     },
     {
+      "id": "openapi-connector-definition",
+      "title": "OpenAPI Connector Definition Codegen",
+      "summary": "Generates sourcegen-ready connector definitions from provider OpenAPI specs by selecting high-value read endpoints, auth, pagination, selectors, and projection templates.",
+      "change_reason": "Provider OpenAPI specs, connector definition inference, or automated platform coverage planning changed",
+      "triggers": [
+        "internal/connectordefinitions/openapigen/**",
+        "tools/openapidefgen/**",
+        "internal/connectordefinitions/**",
+        "internal/sourcegen/**"
+      ],
+      "generator": {
+        "make_target": "openapi-definition-gen-test",
+        "command": [
+          "make",
+          "openapi-definition-gen-test"
+        ],
+        "summary": "Validate OpenAPI-to-connector-definition generation and sourcegen compatibility."
+      },
+      "checks": [
+        {
+          "key": "openapi-definition-gen-test",
+          "summary": "Run OpenAPI connector definition generator tests",
+          "make_target": "openapi-definition-gen-test",
+          "command": [
+            "make",
+            "openapi-definition-gen-test"
+          ],
+          "include_in_pr_generated_step": true
+        },
+        {
+          "key": "sourcegen-test",
+          "summary": "Run source generator and catalog runtime projection tests",
+          "make_target": "sourcegen-test",
+          "command": [
+            "make",
+            "sourcegen-test"
+          ]
+        }
+      ],
+      "outputs": [
+        "internal/connectorcatalog/catalog/<category>.yaml",
+        "sources/<source-id>"
+      ],
+      "ci_jobs": [
+        "catalog",
+        "coverage"
+      ]
+    },
+    {
       "id": "proto",
       "title": "Proto Contracts",
       "summary": "Keeps proto definitions, generated Go/Python outputs, and breaking-change checks aligned.",
