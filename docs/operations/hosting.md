@@ -211,6 +211,10 @@ Cerebro uses these values for proxy-aware URL reconstruction and DPoP `htu` vali
 | `CEREBRO_JETSTREAM_URL` | NATS URL. Setting this can infer the driver. Store credentials in the URL only if your secret manager handles it safely. |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | Subject prefix. Use a stable, environment-specific prefix if multiple logical deployments share a NATS cluster. |
 | `CEREBRO_JETSTREAM_DRAIN_TIMEOUT` | Optional graceful drain timeout for shutdown. |
+| `CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT` | Optional per-process bulkhead for concurrent publishes. Use this when many source runtimes can publish at once. |
+| `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED` | Optional total retry budget for retryable publishes. Keep it above observed stream restore time plus margin. |
+| `CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS`, `CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF`, `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF`, `CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT` | Optional outer retry shape for NATS restarts, transient timeouts, and stream leader stalls. |
+| `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS`, `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT` | Optional inner NATS client retry shape used inside each outer publish attempt. |
 
 NATS JetStream should have durable storage, retention appropriate for replay needs, and monitoring for stream health, consumer lag, and disk pressure.
 

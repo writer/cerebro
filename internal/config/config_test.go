@@ -22,6 +22,13 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "")
@@ -145,6 +152,13 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "12")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "22")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "750ms")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", "9s")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT", "45s")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED", "5m")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS", "6")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT", "800ms")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
 	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "20")
@@ -247,6 +261,27 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.AppendLog.JetStreamPublishMaxInFlight != 12 {
 		t.Fatalf("JetStreamPublishMaxInFlight = %d, want 12", cfg.AppendLog.JetStreamPublishMaxInFlight)
+	}
+	if cfg.AppendLog.JetStreamPublishRetryAttempts != 22 {
+		t.Fatalf("JetStreamPublishRetryAttempts = %d, want 22", cfg.AppendLog.JetStreamPublishRetryAttempts)
+	}
+	if cfg.AppendLog.JetStreamPublishRetryInitialBackoff != 750*time.Millisecond {
+		t.Fatalf("JetStreamPublishRetryInitialBackoff = %v, want 750ms", cfg.AppendLog.JetStreamPublishRetryInitialBackoff)
+	}
+	if cfg.AppendLog.JetStreamPublishRetryMaxBackoff != 9*time.Second {
+		t.Fatalf("JetStreamPublishRetryMaxBackoff = %v, want 9s", cfg.AppendLog.JetStreamPublishRetryMaxBackoff)
+	}
+	if cfg.AppendLog.JetStreamPublishAttemptTimeout != 45*time.Second {
+		t.Fatalf("JetStreamPublishAttemptTimeout = %v, want 45s", cfg.AppendLog.JetStreamPublishAttemptTimeout)
+	}
+	if cfg.AppendLog.JetStreamPublishRetryMaxElapsed != 5*time.Minute {
+		t.Fatalf("JetStreamPublishRetryMaxElapsed = %v, want 5m", cfg.AppendLog.JetStreamPublishRetryMaxElapsed)
+	}
+	if cfg.AppendLog.JetStreamPublishClientRetryAttempts != 6 {
+		t.Fatalf("JetStreamPublishClientRetryAttempts = %d, want 6", cfg.AppendLog.JetStreamPublishClientRetryAttempts)
+	}
+	if cfg.AppendLog.JetStreamPublishClientRetryWait != 800*time.Millisecond {
+		t.Fatalf("JetStreamPublishClientRetryWait = %v, want 800ms", cfg.AppendLog.JetStreamPublishClientRetryWait)
 	}
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
@@ -518,6 +553,14 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "")
@@ -1176,6 +1219,42 @@ func TestLoadRejectsNegativeJetStreamPublishMaxInFlight(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "-1")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidJetStreamPublishRetryBounds(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+	}{
+		{
+			name: "initial backoff exceeds max backoff",
+			env: map[string]string{
+				"CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF": "10s",
+				"CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF":     "1s",
+			},
+		},
+		{
+			name: "attempt timeout exceeds retry budget",
+			env: map[string]string{
+				"CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT":   "5m",
+				"CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED": "30s",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+			t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+			for key, value := range tt.env {
+				t.Setenv(key, value)
+			}
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want non-nil")
+			}
+		})
 	}
 }
 

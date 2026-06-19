@@ -82,6 +82,16 @@ type publishTelemetry struct {
 	AckUnavailable bool
 }
 
+type publishRetryConfig struct {
+	MaxAttempts         int
+	InitialBackoff      time.Duration
+	MaxBackoff          time.Duration
+	ClientRetryAttempts int
+	ClientRetryWait     time.Duration
+	AttemptTimeout      time.Duration
+	MaxElapsed          time.Duration
+}
+
 type jetStreamReplayManager struct {
 	js jetstream.JetStream
 }
@@ -113,6 +123,7 @@ type Log struct {
 	replay        replayManager
 	subjectPrefix string
 	publishSlots  chan struct{}
+	publishRetry  publishRetryConfig
 	canaryMu      sync.Mutex
 	lastCanary    time.Time
 }
@@ -160,11 +171,85 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 		js:            js,
 		replay:        &jetStreamReplayManager{js: js},
 		subjectPrefix: prefix,
+		publishRetry:  publishRetryConfigFromAppendLog(cfg),
 	}
 	if cfg.JetStreamPublishMaxInFlight > 0 {
 		log.publishSlots = make(chan struct{}, cfg.JetStreamPublishMaxInFlight)
 	}
 	return log, nil
+}
+
+func publishRetryConfigFromAppendLog(cfg config.AppendLogConfig) publishRetryConfig {
+	retry := defaultPublishRetryConfig()
+	if cfg.JetStreamPublishRetryAttempts > 0 {
+		retry.MaxAttempts = cfg.JetStreamPublishRetryAttempts
+	}
+	if cfg.JetStreamPublishRetryInitialBackoff > 0 {
+		retry.InitialBackoff = cfg.JetStreamPublishRetryInitialBackoff
+	}
+	if cfg.JetStreamPublishRetryMaxBackoff > 0 {
+		retry.MaxBackoff = cfg.JetStreamPublishRetryMaxBackoff
+	}
+	if cfg.JetStreamPublishClientRetryAttempts > 0 {
+		retry.ClientRetryAttempts = cfg.JetStreamPublishClientRetryAttempts
+	}
+	if cfg.JetStreamPublishClientRetryWait > 0 {
+		retry.ClientRetryWait = cfg.JetStreamPublishClientRetryWait
+	}
+	if cfg.JetStreamPublishAttemptTimeout > 0 {
+		retry.AttemptTimeout = cfg.JetStreamPublishAttemptTimeout
+	}
+	if cfg.JetStreamPublishRetryMaxElapsed > 0 {
+		retry.MaxElapsed = cfg.JetStreamPublishRetryMaxElapsed
+	}
+	if retry.InitialBackoff > retry.MaxBackoff {
+		retry.InitialBackoff = retry.MaxBackoff
+	}
+	if retry.AttemptTimeout > retry.MaxElapsed {
+		retry.AttemptTimeout = retry.MaxElapsed
+	}
+	return retry
+}
+
+func defaultPublishRetryConfig() publishRetryConfig {
+	return publishRetryConfig{
+		MaxAttempts:         publishRetryAttempts,
+		InitialBackoff:      publishRetryInitialBackoff,
+		MaxBackoff:          publishRetryMaxBackoff,
+		ClientRetryAttempts: publishClientRetryAttempts,
+		ClientRetryWait:     publishClientRetryWait,
+		AttemptTimeout:      publishAttemptTimeout,
+		MaxElapsed:          publishRetryMaxElapsed,
+	}
+}
+
+func (l *Log) effectivePublishRetryConfig() publishRetryConfig {
+	if l == nil {
+		return defaultPublishRetryConfig()
+	}
+	retry := l.publishRetry
+	if retry.MaxAttempts <= 0 {
+		retry.MaxAttempts = publishRetryAttempts
+	}
+	if retry.InitialBackoff <= 0 {
+		retry.InitialBackoff = publishRetryInitialBackoff
+	}
+	if retry.MaxBackoff <= 0 {
+		retry.MaxBackoff = publishRetryMaxBackoff
+	}
+	if retry.ClientRetryAttempts <= 0 {
+		retry.ClientRetryAttempts = publishClientRetryAttempts
+	}
+	if retry.ClientRetryWait <= 0 {
+		retry.ClientRetryWait = publishClientRetryWait
+	}
+	if retry.AttemptTimeout <= 0 {
+		retry.AttemptTimeout = publishAttemptTimeout
+	}
+	if retry.MaxElapsed <= 0 {
+		retry.MaxElapsed = publishRetryMaxElapsed
+	}
+	return retry
 }
 
 // Close closes the underlying NATS connection.
@@ -308,23 +393,24 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 }
 
 func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, eventAttrs func() telemetry.Attributes) (publishTelemetry, error) {
+	retry := l.effectivePublishRetryConfig()
 	result := publishTelemetry{
 		Attempts:       0,
-		MaxAttempts:    publishRetryAttempts,
-		RetryBudget:    publishRetryMaxElapsed,
-		AttemptTimeout: publishAttemptTimeout,
-		MaxBackoff:     publishRetryMaxBackoff,
-		ClientRetries:  publishClientRetryAttempts,
-		ClientWait:     publishClientRetryWait,
+		MaxAttempts:    retry.MaxAttempts,
+		RetryBudget:    retry.MaxElapsed,
+		AttemptTimeout: retry.AttemptTimeout,
+		MaxBackoff:     retry.MaxBackoff,
+		ClientRetries:  retry.ClientRetryAttempts,
+		ClientWait:     retry.ClientRetryWait,
 	}
-	backoff := publishRetryInitialBackoff
+	backoff := retry.InitialBackoff
 	started := time.Now()
-	retryCtx, cancelRetry := context.WithTimeout(ctx, publishRetryMaxElapsed)
+	retryCtx, cancelRetry := context.WithTimeout(ctx, retry.MaxElapsed)
 	defer cancelRetry()
 	var err error
 	for attempt := 1; attempt <= result.MaxAttempts; attempt++ {
 		result.Attempts = attempt
-		attemptCtx, cancel := context.WithTimeout(retryCtx, publishAttemptTimeout)
+		attemptCtx, cancel := context.WithTimeout(retryCtx, retry.AttemptTimeout)
 		wait, release, acquireErr := l.acquirePublishSlot(attemptCtx)
 		result.BulkheadWait += wait
 		result.BulkheadLimit = l.publishLimit()
@@ -356,14 +442,14 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 				telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, waitErr)))
 				return result, waitErr
 			}
-			backoff = minDuration(backoff*2, publishRetryMaxBackoff)
+			backoff = minDuration(backoff*2, retry.MaxBackoff)
 			continue
 		}
 		ack, publishErr := l.js.PublishMsg(
 			attemptCtx,
 			msg,
-			jetstream.WithRetryAttempts(publishClientRetryAttempts),
-			jetstream.WithRetryWait(publishClientRetryWait),
+			jetstream.WithRetryAttempts(retry.ClientRetryAttempts),
+			jetstream.WithRetryWait(retry.ClientRetryWait),
 		)
 		release()
 		cancel()
@@ -398,7 +484,7 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 			telemetry.Event(ctx, "jetstream.publish.retry_exhausted", eventAttrs().With(result.attrs()).With(jetstreamErrorTelemetryAttrs(operation, waitErr)))
 			return result, waitErr
 		}
-		backoff = minDuration(backoff*2, publishRetryMaxBackoff)
+		backoff = minDuration(backoff*2, retry.MaxBackoff)
 	}
 	result.Duration = time.Since(started)
 	return result, err
