@@ -681,8 +681,10 @@ config:
         - unknown
         - not_configured
   cerebro:orchestratorEnabled: true
-  cerebro:orchestratorCpu: 2048
-  cerebro:orchestratorMemory: 4096
+  # Source-runtime drain tasks handle bursty graph writes and JetStream publish
+  # retry budgets; keep them sized above the API plane for stream recovery.
+  cerebro:orchestratorCpu: 8192
+  cerebro:orchestratorMemory: 16384
   cerebro:orchestratorScheduleExpression: "rate(30 minutes)"
   cerebro:orchestratorCommand:
     - orchestrator
