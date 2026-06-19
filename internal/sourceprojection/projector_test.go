@@ -6002,6 +6002,18 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 				"service_account_name": "api",
 			},
 		},
+		{
+			Id:       "k8s-container-no-pod-id",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.container",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"container_name": "api",
+				"namespace":      "payments",
+				"workload_name":  "payments-api",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -6014,6 +6026,7 @@ func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
 		"urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:/",
 		"urn:cerebro:writer:kubernetes_service_account:payments:api",
 		"urn:cerebro:writer:kubernetes_namespace:payments",
+		"urn:cerebro:writer:kubernetes_container:prod-cluster:payments:payments-api:api",
 	} {
 		if _, ok := state.entities[urn]; ok {
 			t.Fatalf("sparse event minted placeholder entity %q", urn)

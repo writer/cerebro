@@ -103,6 +103,7 @@ func TestProjectPagerDutyEscalationPolicyTeamsAndTargets(t *testing.T) {
 				"targets": []map[string]any{
 					{"id": "PSC1", "type": "schedule_reference", "summary": "Primary"},
 					{"id": "PU1", "type": "user_reference", "summary": "Alice"},
+					{"id": "PU2", "type": "user_reference_extra", "summary": "Imprecise"},
 				},
 			}},
 		}),
@@ -119,6 +120,7 @@ func TestProjectPagerDutyEscalationPolicyTeamsAndTargets(t *testing.T) {
 	assertProjectedLink(t, state, teamURN, relationContains, escalationURN)
 	assertProjectedLink(t, state, escalationURN, relationDependsOn, scheduleURN)
 	assertProjectedLink(t, state, escalationURN, relationDependsOn, userURN)
+	assertProjectedLinkMissing(t, state, escalationURN, relationDependsOn, "urn:cerebro:writer:pagerduty_user:PU2")
 }
 
 func TestProjectPagerDutyIntegrationServiceVendorDependency(t *testing.T) {

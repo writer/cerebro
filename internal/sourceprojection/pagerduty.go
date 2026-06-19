@@ -282,10 +282,10 @@ func pagerDutyEscalationPolicyTargets(event *cerebrov1.EventEnvelope) []pagerDut
 
 func pagerDutyTargetKind(raw string) string {
 	normalized := strings.ToLower(strings.TrimSpace(raw))
-	switch {
-	case strings.Contains(normalized, "schedule"):
+	switch normalized {
+	case "schedule_reference":
 		return "schedule"
-	case strings.Contains(normalized, "user"):
+	case "user_reference":
 		return "user"
 	default:
 		return ""
