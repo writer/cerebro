@@ -1909,6 +1909,19 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 			t.Fatalf("contract probe telemetry %s = %#v, want %#v; payload=%#v", key, got, want, probePayload)
 		}
 	}
+	syncPayload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync")
+	for key, want := range map[string]any{
+		"source_runtime.sync.records_scanned":          float64(1),
+		"source_runtime.sync.records_accepted":         float64(0),
+		"source_runtime.sync.records_quarantined":      float64(1),
+		"source_runtime.sync.quarantine_present":       true,
+		"source_runtime.sync.acceptance_bucket":        "none",
+		"source_runtime.sync.last_quarantine_category": "missing_required_attribute",
+	} {
+		if got := syncPayload[key]; got != want {
+			t.Fatalf("sync telemetry %s = %#v, want %#v; payload=%#v", key, got, want, syncPayload)
+		}
+	}
 }
 
 func TestEmitSourceRuntimeContractProbeMapsPassingState(t *testing.T) {

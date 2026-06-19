@@ -247,16 +247,18 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
 	var (
-		runtime             *cerebrov1.SourceRuntime
-		eventContracts      []sourcecdk.EventContract
-		contractConfigured  bool
-		runtimeLoadedForRun bool
-		eventsAppended      uint32
-		pagesRead           uint32
-		recordsScanned      uint32
-		recordsRejected     uint32
-		entitiesProjected   uint32
-		linksProjected      uint32
+		runtime                *cerebrov1.SourceRuntime
+		eventContracts         []sourcecdk.EventContract
+		contractConfigured     bool
+		runtimeLoadedForRun    bool
+		eventsAppended         uint32
+		pagesRead              uint32
+		recordsScanned         uint32
+		recordsRejected        uint32
+		entitiesProjected      uint32
+		linksProjected         uint32
+		lastQuarantineCategory string
+		checkpointAdvanced     bool
 	)
 	defer func() {
 		if err != nil {
@@ -268,6 +270,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		telemetry.IncrementMain(ctx, "source_runtime.sync.count", 1)
+		spanAttributes = spanAttributes.With(sourceRuntimeSyncRollupAttributes(recordsScanned, eventsAppended, recordsRejected, lastQuarantineCategory, checkpointAdvanced))
 		spanAttributes = spanAttributes.
 			WithField(telemetry.Field{Key: "source_runtime.sync.contract_configured", Value: contractConfigured}).
 			WithField(telemetry.Field{Key: "source_runtime.sync.runtime_loaded", Value: runtimeLoadedForRun})
@@ -397,6 +400,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				if quarantinableContractError(err) {
 					recordsRejected++
 					category := invalidEventFailureCategory(err)
+					lastQuarantineCategory = category
 					recordRuntimeInvalidEvent(runtime, syncedEvent, category, err, time.Now().UTC(), len(eventContracts) > 0)
 					telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
 						telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
@@ -444,6 +448,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 			return nil, err
 		}
+		checkpointAdvanced = runtimeCheckpointAdvanced(originalCheckpoint, runtime.GetCheckpoint())
 		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
@@ -452,10 +457,12 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "records_scanned", Value: recordsScanned},
 			telemetry.Field{Key: "records_accepted", Value: eventsAppended},
 			telemetry.Field{Key: "records_rejected", Value: recordsRejected},
+			telemetry.Field{Key: "records_quarantined", Value: recordsRejected},
 			telemetry.Field{Key: "events_appended", Value: eventsAppended},
 			telemetry.Field{Key: "entities_projected", Value: entitiesProjected},
 			telemetry.Field{Key: "links_projected", Value: linksProjected},
 			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
+			telemetry.Field{Key: "checkpoint_advanced", Value: checkpointAdvanced},
 			telemetry.Field{Key: "short_circuit_reason", Value: pageShortCircuitReason},
 			telemetry.Field{Key: "reconciliation_reason", Value: pageReconciliationReason},
 		), runtime.GetCheckpoint())
@@ -477,6 +484,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_scanned", Value: recordsScanned})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_accepted", Value: eventsAppended})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_rejected", Value: recordsRejected})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_quarantined", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "events_appended", Value: eventsAppended})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
@@ -620,6 +628,52 @@ func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyn
 		return
 	}
 	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, runtime.Config[runtimeLastFailureCategoryConfigKey], status.ContractConfigured))
+}
+
+func sourceRuntimeSyncRollupAttributes(recordsScanned uint32, recordsAccepted uint32, recordsQuarantined uint32, lastQuarantineCategory string, checkpointAdvanced bool) telemetry.Attributes {
+	lastQuarantineCategory = strings.TrimSpace(lastQuarantineCategory)
+	if lastQuarantineCategory == "" {
+		lastQuarantineCategory = "none"
+	}
+	return telemetry.Attrs(
+		telemetry.Field{Key: "source_runtime.sync.records_scanned", Value: recordsScanned},
+		telemetry.Field{Key: "source_runtime.sync.records_accepted", Value: recordsAccepted},
+		telemetry.Field{Key: "source_runtime.sync.records_quarantined", Value: recordsQuarantined},
+		telemetry.Field{Key: "source_runtime.sync.quarantine_present", Value: recordsQuarantined > 0},
+		telemetry.Field{Key: "source_runtime.sync.acceptance_bucket", Value: sourceRuntimeSyncAcceptanceBucket(recordsScanned, recordsAccepted, recordsQuarantined)},
+		telemetry.Field{Key: "source_runtime.sync.last_quarantine_category", Value: lastQuarantineCategory},
+		telemetry.Field{Key: "source_runtime.sync.checkpoint_advanced", Value: checkpointAdvanced},
+	)
+}
+
+func sourceRuntimeSyncAcceptanceBucket(recordsScanned uint32, recordsAccepted uint32, recordsQuarantined uint32) string {
+	switch {
+	case recordsScanned == 0:
+		return "none"
+	case recordsQuarantined == 0 && recordsAccepted == recordsScanned:
+		return "all"
+	case recordsAccepted == 0:
+		return "none"
+	default:
+		return "partial"
+	}
+}
+
+func runtimeCheckpointAdvanced(before *cerebrov1.SourceCheckpoint, after *cerebrov1.SourceCheckpoint) bool {
+	if sourceCheckpointEmpty(after) {
+		return false
+	}
+	if sourceCheckpointEmpty(before) {
+		return true
+	}
+	return !proto.Equal(before, after)
+}
+
+func sourceCheckpointEmpty(checkpoint *cerebrov1.SourceCheckpoint) bool {
+	if checkpoint == nil {
+		return true
+	}
+	return strings.TrimSpace(checkpoint.GetCursorOpaque()) == "" && timestampValue(checkpoint.GetWatermark()).IsZero()
 }
 
 func clearRuntimeInvalidEvent(config map[string]string) {

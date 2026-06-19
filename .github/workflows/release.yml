@@ -315,7 +315,6 @@ jobs:
           SOURCE_REPOSITORY: ${{ github.repository }}
           TARGET_ENVIRONMENT: ${{ matrix.target_environment }}
           APPLY_MODE: ${{ matrix.apply_mode }}
-          RUNTIME_CONTRACT_BASE: cerebro-runtime-contract-${{ matrix.target_environment }}
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN}" ]; then
@@ -351,7 +350,8 @@ jobs:
             requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             request_id="cerebro-${TARGET_ENVIRONMENT}-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
-            jq -n \
+            payload="$(
+              jq -n \
               --arg tag "${RELEASE_TAG}" \
               --arg digest "${IMAGE_DIGEST}" \
               --arg release_url "https://github.com/${SOURCE_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
@@ -360,9 +360,6 @@ jobs:
               --arg request_id "${request_id}" \
               --arg target_environment "${TARGET_ENVIRONMENT}" \
               --arg apply_mode "${APPLY_MODE}" \
-              --arg runtime_contract "${RUNTIME_CONTRACT_BASE}.json" \
-              --arg runtime_contract_signature "${RUNTIME_CONTRACT_BASE}.json.sig" \
-              --arg runtime_contract_certificate "${RUNTIME_CONTRACT_BASE}.json.pem" \
               '{
                 event_type: "cerebro-release-published",
                 client_payload: {
@@ -373,12 +370,16 @@ jobs:
                   source_ref: $source_ref,
                   request_id: $request_id,
                   target_environment: $target_environment,
-                  apply_mode: $apply_mode,
-                  runtime_contract: $runtime_contract,
-                  runtime_contract_signature: $runtime_contract_signature,
-                  runtime_contract_certificate: $runtime_contract_certificate
+                  apply_mode: $apply_mode
                 }
-              }' | gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input -
+              }'
+            )"
+            payload_keys="$(jq '.client_payload | length' <<<"${payload}")"
+            if [ "${payload_keys}" -gt 10 ]; then
+              echo "ERROR: repository_dispatch client_payload has ${payload_keys} keys; GitHub allows at most 10" >&2
+              exit 1
+            fi
+            gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input - <<<"${payload}"
 
             deadline=$((SECONDS + 120))
             while [ "${SECONDS}" -lt "${deadline}" ]; do

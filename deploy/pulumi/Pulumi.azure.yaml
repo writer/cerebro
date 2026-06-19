@@ -1,0 +1,8 @@
+config:
+  cerebro:cloud: azure
+  cerebro:name: cerebro-azure-example
+  cerebro:image: ghcr.io/writer/cerebro:latest
+  cerebro:apiAuthEnabled: "false"
+  cerebro:publicOrigin: https://cerebro.example.com
+  cerebro:azureLocation: eastus
+encryptionsalt: v1:Oi5k9s+pCKo=:v1:LjQpnfOxABX2GXHJ:h7cjI4cj2VOS4CVqUJtd+zXPZmeZDg==

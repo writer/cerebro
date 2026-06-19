@@ -1,0 +1,11 @@
+config:
+  cerebro:cloud: aws
+  cerebro:name: cerebro-aws-example
+  cerebro:image: ghcr.io/writer/cerebro:latest
+  cerebro:apiAuthEnabled: "false"
+  cerebro:publicOrigin: https://cerebro.example.com
+  cerebro:awsRegion: us-east-1
+  cerebro:awsAvailabilityZones:
+    - us-east-1a
+    - us-east-1b
+encryptionsalt: v1:3bEOV/VxFZI=:v1:HadDLAMOXnVa1xEm:nT2XfUC42lkUoyRLrgX6dZj6zzYG4A==

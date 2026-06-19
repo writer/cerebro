@@ -71,7 +71,7 @@ type RuntimeMetadata struct {
 }
 
 const maxAttributeStringLength = 1024
-const wideEventSchemaVersion = "2026-06-18.1"
+const wideEventSchemaVersion = "2026-06-18.2"
 
 var (
 	runtimeMetadataMu sync.RWMutex
@@ -408,6 +408,12 @@ func AnnotateMain(ctx context.Context, attributes Attributes) {
 	}
 }
 
+func AnnotateMainIfAbsent(ctx context.Context, attributes Attributes) {
+	if span, ok := ctx.Value(mainSpanContextKey{}).(*Span); ok && span != nil {
+		span.annotateIfAbsent(attributes)
+	}
+}
+
 func IncrementMain(ctx context.Context, key string, delta int64) {
 	if strings.TrimSpace(key) == "" || delta == 0 {
 		return
@@ -597,6 +603,31 @@ func (s *Span) annotate(attributes Attributes) {
 	s.mu.Unlock()
 	if s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
 		s.otelSpan.SetAttributes(attributes.OTELAttributes()...)
+	}
+}
+
+func (s *Span) annotateIfAbsent(attributes Attributes) {
+	if s == nil || len(attributes.values) == 0 {
+		return
+	}
+	inserted := Attrs()
+	s.mu.Lock()
+	if s.annotations == nil {
+		s.annotations = map[string]any{}
+	}
+	for key, value := range attributes.values {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		if _, exists := s.annotations[key]; exists {
+			continue
+		}
+		s.annotations[key] = value
+		inserted = inserted.with(key, value)
+	}
+	s.mu.Unlock()
+	if len(inserted.values) > 0 && s.otelSpan != nil && s.otelSpan.SpanContext().IsValid() {
+		s.otelSpan.SetAttributes(inserted.OTELAttributes()...)
 	}
 }
 

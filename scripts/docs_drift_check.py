@@ -26,12 +26,6 @@ FORBIDDEN_DOC_MARKERS = {
 
 
 CONFIG_DEFAULT_DOCS = {
-    "README.md": {
-        "CEREBRO_API_AUTH_ENABLED": (2, "true outside acknowledged dev mode"),
-        "CEREBRO_RATE_LIMIT_ENABLED": (2, "true outside acknowledged dev mode"),
-        "CEREBRO_RATE_LIMIT_RPS": (2, "100"),
-        "CEREBRO_RATE_LIMIT_BURST": (2, "150"),
-    },
     "docs/CONFIG_ENV_VARS.md": {
         "CEREBRO_API_AUTH_ENABLED": (1, "true outside acknowledged dev mode"),
         "CEREBRO_RATE_LIMIT_ENABLED": (1, "true outside acknowledged dev mode"),

@@ -41,6 +41,23 @@ The service can start without optional stores and serve lightweight routes such 
 
 Kuzu and embedded/in-memory database backends are intentionally rejected by config and arch tests.
 
+## Dependencies by operation
+
+External dependency drivers are opt-in. A lightweight server can start without optional stores; durable workflows require the backing store for that operation.
+
+| Operation | Required backing dependencies |
+| --- | --- |
+| `serve`, `/health`, `/sources`, source `check/discover/read` | none beyond provider-specific source config/auth |
+| Connector library and credentialed connector creation | Postgres state store; credentialed creation also requires `CEREBRO_CONNECTOR_CREDENTIAL_KEY` and shared `CEREBRO_CONNECTOR_CREDENTIAL_TRANSIT_PRIVATE_KEY` |
+| `source-runtime put/get` | Postgres state store |
+| `source-runtime sync` | Postgres state store + NATS JetStream append log |
+| Claim, finding, evidence, evaluation, and report run persistence | Postgres state store |
+| Workflow replay | NATS JetStream append log plus configured projection stores |
+| Graph query/ingest operations | Neo4j/Aura graph store; runtime-backed graph operations also need Postgres and/or JetStream |
+| Graph rebuild dry-runs | Postgres state store; replay mode also needs NATS JetStream append log |
+| MCP endpoint | API auth; OAuth mode additionally requires Postgres, public origin, client/upstream config, and capability-token secrets |
+| Device-auth telemetry | API auth, device-auth signing keys, and a device-auth-capable state store |
+
 See [`DURABILITY_CONTRACT.md`](./DURABILITY_CONTRACT.md) for the current
 write-path contract. Source runtime sync and workflow writes are event-backed
 before projection. SDK/runtime claim writes are currently Postgres-backed and
@@ -133,8 +150,12 @@ claims into route-level permission checks.
 Graph action execution is also represented in the bootstrap budget only at the
 transport boundary: route registration, scoped auth policy, request/response
 mapping, tenant-authorized finding lookup, and service dependency wiring. Action
-target selection, provider request shaping, idempotency, and external reference
-mapping stay behind `internal/graphactions` and `internal/graphactionapi`.
+target selection, provider request shaping, idempotency, provider dispatch, and
+external reference mapping stay behind `internal/graphactions` and
+`internal/graphactionapi`. Supported actions are cataloged in
+`internal/graphactions/action_catalog.yaml` and generated into the registry with
+`make graph-action-generate`; new providers add an `ActionProvider` adapter
+rather than branching in bootstrap or handler code.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes

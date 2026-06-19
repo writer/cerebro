@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+SOURCE_CATALOG = ROOT / "docs" / "SOURCES.md"
 CONTROL_INDEX_DOC_FLAGS = {"init-extension", "extension", "profile", "output", "write", "check"}
 CONTROL_INDEX_README_FLAGS = {"init-extension", "extension", "profile", "output", "write"}
 
@@ -34,10 +35,11 @@ def builtin_source_ids() -> list[str]:
     return sorted(set(re.findall(r'name:\s+"([^"]+)"', registry)))
 
 
-def readme_source_ids(readme: str) -> list[str]:
-    match = re.search(r"## Built-in sources\n\n(\| Source ID \|.*?)(?:\n---|\n## )", readme, re.S)
+def documented_source_ids() -> list[str]:
+    source_catalog = read(SOURCE_CATALOG)
+    match = re.search(r"# Built-In Sources\n\n.*?(\| Source ID \|.*?)(?:\n## |\Z)", source_catalog, re.S)
     if not match:
-        fail("README is missing the Built-in sources table")
+        fail("docs/SOURCES.md is missing the Built-In Sources table")
     return sorted(set(re.findall(r"^\| `([^`]+)` \|", match.group(1), re.MULTILINE)))
 
 
@@ -108,9 +110,9 @@ def main() -> int:
         fail(f"README does not mention current Go toolchain {toolchain}")
 
     sources = builtin_source_ids()
-    documented_sources = readme_source_ids(readme)
+    documented_sources = documented_source_ids()
     if documented_sources != sources:
-        fail(f"built-in source table drift: README={documented_sources} registry={sources}")
+        fail(f"built-in source table drift: docs/SOURCES.md={documented_sources} registry={sources}")
 
     commands = usage_commands()
     documented_commands = readme_commands(readme)

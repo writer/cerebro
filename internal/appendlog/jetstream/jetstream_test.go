@@ -2,9 +2,13 @@ package jetstream
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +82,49 @@ func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstr
 	return raw, nil
 }
 
+func captureJetstreamTelemetry(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() error = %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+		_ = writer.Close()
+		_ = reader.Close()
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr pipe: %v", err)
+	}
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr pipe: %v", err)
+	}
+	return string(output)
+}
+
+func jetstreamTelemetryPayloads(t *testing.T, stderr string, kind string, name string) []map[string]any {
+	t.Helper()
+	var payloads []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("telemetry line is not JSON: %v\nline=%s\nstderr=%s", err, line, stderr)
+		}
+		if payload["kind"] == kind && payload["name"] == name {
+			payloads = append(payloads, payload)
+		}
+	}
+	return payloads
+}
+
 func TestAppendPublishesEnvelope(t *testing.T) {
 	pub := &fakePublisher{}
 	log := &Log{js: pub, subjectPrefix: "events"}
@@ -130,6 +177,110 @@ func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
 	}
 }
 
+func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
+	pub := &fakePublisher{
+		publishErrs: []error{
+			errors.New("nats: no response from stream"),
+			nil,
+		},
+	}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-retry-telemetry",
+			Kind: "entity.upsert",
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	if strings.Contains(stderr, "evt-retry-telemetry") {
+		t.Fatalf("raw message id leaked into telemetry: %s", stderr)
+	}
+	retryEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.publish.retry")
+	if len(retryEvents) != 1 {
+		t.Fatalf("retry events = %d, want 1; stderr=%s", len(retryEvents), stderr)
+	}
+	retry := retryEvents[0]
+	if retry["messaging.jetstream.subject"] != "events.entity.upsert" {
+		t.Fatalf("retry subject = %v, want events.entity.upsert", retry["messaging.jetstream.subject"])
+	}
+	if retry["messaging.jetstream.publish.retry_count"] != float64(1) {
+		t.Fatalf("retry count = %v, want 1", retry["messaging.jetstream.publish.retry_count"])
+	}
+	if retry["messaging.jetstream.publish.next_attempt"] != float64(2) {
+		t.Fatalf("next attempt = %v, want 2", retry["messaging.jetstream.publish.next_attempt"])
+	}
+
+	recoveredEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.publish.recovered")
+	if len(recoveredEvents) != 1 {
+		t.Fatalf("recovered events = %d, want 1; stderr=%s", len(recoveredEvents), stderr)
+	}
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	end := spanEnds[0]
+	if end["messaging.message.id.present"] != true {
+		t.Fatalf("message id present = %v, want true", end["messaging.message.id.present"])
+	}
+	if hash, ok := end["messaging.message.id_hash"].(string); !ok || hash == "" {
+		t.Fatalf("message id hash = %v, want non-empty string", end["messaging.message.id_hash"])
+	}
+	if end["messaging.jetstream.publish.retry_count"] != float64(1) {
+		t.Fatalf("span retry count = %v, want 1", end["messaging.jetstream.publish.retry_count"])
+	}
+}
+
+func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
+	pub := &fakePublisher{
+		publishErrs: []error{
+			errors.New("nats: no response from stream"),
+			errors.New("nats: no response from stream"),
+			errors.New("nats: no response from stream"),
+			errors.New("nats: no response from stream"),
+		},
+	}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-exhausted-telemetry",
+			Kind: "entity.upsert",
+		})
+		if err == nil {
+			t.Fatal("Append() error = nil, want non-nil")
+		}
+	})
+
+	if pub.publishCalls != publishRetryAttempts {
+		t.Fatalf("publish calls = %d, want %d", pub.publishCalls, publishRetryAttempts)
+	}
+	if strings.Contains(stderr, "evt-exhausted-telemetry") {
+		t.Fatalf("raw message id leaked into telemetry: %s", stderr)
+	}
+	exhaustedEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.publish.retry_exhausted")
+	if len(exhaustedEvents) != 1 {
+		t.Fatalf("retry_exhausted events = %d, want 1; stderr=%s", len(exhaustedEvents), stderr)
+	}
+	exhausted := exhaustedEvents[0]
+	if exhausted["messaging.jetstream.publish.retry_count"] != float64(publishRetryAttempts-1) {
+		t.Fatalf("exhausted retry count = %v, want %d", exhausted["messaging.jetstream.publish.retry_count"], publishRetryAttempts-1)
+	}
+	if exhausted["messaging.jetstream.publish.max_attempts"] != float64(publishRetryAttempts) {
+		t.Fatalf("exhausted max attempts = %v, want %d", exhausted["messaging.jetstream.publish.max_attempts"], publishRetryAttempts)
+	}
+	errorEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.error")
+	if len(errorEvents) != 1 {
+		t.Fatalf("jetstream.error events = %d, want 1; stderr=%s", len(errorEvents), stderr)
+	}
+	if errorEvents[0]["messaging.jetstream.publish.retry_count"] != float64(publishRetryAttempts-1) {
+		t.Fatalf("jetstream.error retry count = %v, want %d", errorEvents[0]["messaging.jetstream.publish.retry_count"], publishRetryAttempts-1)
+	}
+}
+
 func TestAppendDoesNotRetryWithoutMessageID(t *testing.T) {
 	pub := &fakePublisher{publishErr: errors.New("nats: no response from stream")}
 	log := &Log{js: pub, subjectPrefix: "events"}
@@ -144,7 +295,7 @@ func TestAppendDoesNotRetryWithoutMessageID(t *testing.T) {
 }
 
 func TestJetstreamErrorTelemetryAttrsIncludesAPIErrorDetails(t *testing.T) {
-	attrs := jetstreamErrorTelemetryAttrs(&natsjetstream.APIError{
+	attrs := jetstreamErrorTelemetryAttrs("append", &natsjetstream.APIError{
 		Code:        503,
 		ErrorCode:   natsjetstream.JSErrCodeStreamNotFound,
 		Description: "stream not found",
@@ -164,6 +315,15 @@ func TestJetstreamErrorTelemetryAttrsIncludesAPIErrorDetails(t *testing.T) {
 	}
 	if values["messaging.jetstream.publish.retryable"] != "false" {
 		t.Fatalf("messaging.jetstream.publish.retryable = %q, want false", values["messaging.jetstream.publish.retryable"])
+	}
+}
+
+func TestJetstreamErrorTelemetryAttrsScopesPublishRetryableToAppend(t *testing.T) {
+	attrs := jetstreamErrorTelemetryAttrs("ping", errors.New("nats: no response from stream"))
+	for _, attr := range attrs.OTELAttributes() {
+		if string(attr.Key) == "messaging.jetstream.publish.retryable" {
+			t.Fatalf("unexpected publish retryable attr on ping: %v", attr.Value.AsInterface())
+		}
 	}
 }
 

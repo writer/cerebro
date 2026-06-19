@@ -13,7 +13,7 @@ For capacity SLOs, saturation dashboards, alert templates, autoscaling signals, 
 ## Wide Event Contract
 
 Cerebro follows a wide-event model for request and job debugging. Each top-level
-unit of work emits one canonical span/event with schema version `2026-06-18.1`
+unit of work emits one canonical span/event with schema version `2026-06-18.2`
 and:
 
 - `main=true`
@@ -44,6 +44,17 @@ Main spans include two generic rollup families:
 
 - `dependency.*`: counts and last-seen status for Postgres, Neo4j, Redis, JetStream, outbound HTTP, and graph-agent LLM calls. Use this when you do not yet know which dependency is guilty.
 - `phase.*`: counts and last-seen status for orchestration phases, source sync, graph ingest, GRC dashboard subtasks, and source operations. Use this when one logical job has several internal steps.
+
+Platform jobs created through `/platform/jobs` emit a `platform.job.run` main
+wide event. Treat it as the canonical envelope for async API-triggered work:
+source sync, source orchestration, graph ingest, finding evaluation, reports,
+and future durable job kinds. It carries the job id/kind/status, tenant,
+subject, runtime/report pivots when present, queue latency, run duration,
+cancel state, payload/result/ref key counts, sorted payload/result/ref key names,
+bounded error kind/fingerprint, and lifecycle events such as
+`platform.job.created`, `platform.job.started`, `platform.job.completed`,
+`platform.job.failed`, and `platform.job.cancel_requested`. It intentionally
+does not emit raw payload, result, idempotency key, or error strings.
 
 Orchestrator wide events also carry interpreted source runtime health fields so
 a single `orchestrator.run` span can explain whether work is blocked by source
@@ -86,6 +97,7 @@ Core runtime operations emit structured spans and diagnostic events:
 | --- | --- |
 | `source.http.request` | Hardened source HTTP transport, DNS safety checks, host pinning, retries, upstream status |
 | `source.check`, `source.discover`, `source.read` | Source CDK operations |
+| `platform.job.run` | Durable `/platform/jobs` execution envelope and lifecycle |
 | `source_runtime.sync`, `source_runtime.sync_with_lease` | Runtime sync and lease lifecycle |
 | `source_projection.project` | Per-event projection attempt, status, projected/deleted counts, and tenant/source/runtime drill-down fields |
 | `graph.ingest_runtime` | Graph ingestion runs |
@@ -94,7 +106,7 @@ Core runtime operations emit structured spans and diagnostic events:
 | `postgres.ping`, `postgres.ensure_statements` | Postgres readiness and schema setup |
 | `neo4j.read`, `neo4j.write` | Graph store transactions |
 | `redis.cache.*`, `redis.ping` | Query cache operations, hits/misses, version bumps |
-| `jetstream.ping`, `jetstream.append`, `jetstream.replay` | Append-log health, publish, and replay |
+| `jetstream.ping`, `jetstream.append`, `jetstream.replay` | Append-log health, publish attempts/retries/acks, and replay |
 
 Runtime contract diagnostics emit bounded events for deployment gates and
 alarms:

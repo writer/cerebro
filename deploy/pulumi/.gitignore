@@ -1,0 +1,5 @@
+.pulumi-state/
+.venv/
+__pycache__/
+*.pyc
+uv.lock

@@ -2,8 +2,12 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +88,133 @@ func TestRunRecoversRunnerPanicAndMarksJobFailed(t *testing.T) {
 	}
 	if len(store.events) < 2 || store.events[len(store.events)-1].Type != "failed" {
 		t.Fatalf("events = %#v, want final failed event", store.events)
+	}
+}
+
+func TestRunEmitsPlatformJobWideEventWithoutPayloadValues(t *testing.T) {
+	createdAt := time.Date(2026, 6, 18, 21, 0, 0, 0, time.UTC)
+	store := newMemoryJobStore()
+	store.jobs["job-telemetry"] = &ports.Job{
+		ID:             "job-telemetry",
+		Kind:           KindSourceRuntimeOrchestrate,
+		Status:         ports.JobStatusQueued,
+		TenantID:       "writer",
+		SubjectType:    "source_runtime",
+		SubjectID:      "writer-okta-audit",
+		IdempotencyKey: "idem-secret-value",
+		Payload: map[string]any{
+			"runtime_id": "writer-okta-audit",
+			"api_token":  "raw-secret-token-value",
+		},
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+	}
+	service := New(store)
+	now := createdAt
+	service.now = func() time.Time {
+		now = now.Add(2 * time.Second)
+		return now
+	}
+	service.WithRunner(KindSourceRuntimeOrchestrate, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return map[string]any{
+			"events_appended": 25,
+			"private_result":  "raw-result-private-value",
+		}, map[string]string{"graph_ingest_run_id": "graph-run-1"}, nil
+	})
+
+	stderr := captureJobServiceStderr(t, func() {
+		if err := service.Run(context.Background(), "job-telemetry"); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	})
+
+	payload := jobTelemetrySpanEndPayload(t, stderr, "platform.job.run")
+	for key, want := range map[string]any{
+		"main":                  true,
+		"wide_event":            true,
+		"event.dataset":         "cerebro.wide_events",
+		"job.id":                "job-telemetry",
+		"job.kind":              KindSourceRuntimeOrchestrate,
+		"job.status.final":      ports.JobStatusCompleted,
+		"tenant_id":             "writer",
+		"runtime_id":            "writer-okta-audit",
+		"source_runtime_id":     "writer-okta-audit",
+		"job.payload.key_count": float64(2),
+		"job.payload.keys":      "api_token,runtime_id",
+		"job.result.key_count":  float64(2),
+		"job.result.keys":       "events_appended,private_result",
+		"job.result_ref.keys":   "graph_ingest_run_id",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if got, ok := payload["job.queue_latency_ms"].(float64); !ok || got <= 0 {
+		t.Fatalf("job.queue_latency_ms = %#v, want positive number; payload=%#v", payload["job.queue_latency_ms"], payload)
+	}
+	if got, ok := payload["job.run_duration_ms"].(float64); !ok || got <= 0 {
+		t.Fatalf("job.run_duration_ms = %#v, want positive number; payload=%#v", payload["job.run_duration_ms"], payload)
+	}
+	if strings.Contains(stderr, "raw-secret-token-value") || strings.Contains(stderr, "raw-result-private-value") || strings.Contains(stderr, "idem-secret-value") {
+		t.Fatalf("platform job telemetry leaked raw payload/result/idempotency values: %s", stderr)
+	}
+	if !strings.Contains(stderr, `"name":"platform.job.started"`) || !strings.Contains(stderr, `"name":"platform.job.completed"`) {
+		t.Fatalf("platform job lifecycle events missing from stderr: %s", stderr)
+	}
+}
+
+func TestRunEmitsSinglePlatformJobFailedEvent(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-failed-telemetry"] = &ports.Job{
+		ID:     "job-failed-telemetry",
+		Kind:   KindReportRun,
+		Status: ports.JobStatusQueued,
+	}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, errors.New("runner failed")
+	})
+
+	stderr := captureJobServiceStderr(t, func() {
+		if err := service.Run(context.Background(), "job-failed-telemetry"); err == nil {
+			t.Fatal("Run() error = nil, want runner failure")
+		}
+	})
+
+	failedEvents := jobTelemetryPayloads(t, stderr, "event", "platform.job.failed")
+	if len(failedEvents) != 1 {
+		t.Fatalf("platform.job.failed events = %d, want 1; stderr=%s", len(failedEvents), stderr)
+	}
+	runPayload := jobTelemetrySpanEndPayload(t, stderr, "platform.job.run")
+	if got := runPayload["job.status.final"]; got != ports.JobStatusFailed {
+		t.Fatalf("job.status.final = %#v, want %q; payload=%#v", got, ports.JobStatusFailed, runPayload)
+	}
+}
+
+func TestRunReportTelemetryFallsBackToSubjectID(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-report-telemetry"] = &ports.Job{
+		ID:          "job-report-telemetry",
+		Kind:        KindReportRun,
+		Status:      ports.JobStatusQueued,
+		SubjectType: "report",
+		SubjectID:   "report-subject-id",
+		Payload:     map[string]any{"report_id": "   "},
+	}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, nil
+	})
+
+	stderr := captureJobServiceStderr(t, func() {
+		if err := service.Run(context.Background(), "job-report-telemetry"); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	})
+
+	payload := jobTelemetrySpanEndPayload(t, stderr, "platform.job.run")
+	if got := payload["report_id"]; got != "report-subject-id" {
+		t.Fatalf("report_id = %#v, want SubjectID fallback; payload=%#v", got, payload)
 	}
 }
 
@@ -272,4 +403,54 @@ func cloneStringMap(values map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func captureJobServiceStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func jobTelemetrySpanEndPayload(t *testing.T, stderr string, name string) map[string]any {
+	t.Helper()
+	payloads := jobTelemetryPayloads(t, stderr, "span_end", name)
+	if len(payloads) > 0 {
+		return payloads[0]
+	}
+	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
+	return nil
+}
+
+func jobTelemetryPayloads(t *testing.T, stderr string, kind string, name string) []map[string]any {
+	t.Helper()
+	payloads := []map[string]any{}
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
+		}
+		if payload["kind"] == kind && payload["name"] == name {
+			payloads = append(payloads, payload)
+		}
+	}
+	return payloads
 }

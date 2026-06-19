@@ -476,9 +476,46 @@ func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *tes
 	if report.Totals.Dimensions != 3 || report.Totals.BlindSpots != 2 {
 		t.Fatalf("report totals = %#v", report.Totals)
 	}
+	if report.Gate.Status != "fail" || report.Gate.BlockingReason != "blind_spot" {
+		t.Fatalf("report gate = %#v, want blind_spot failure", report.Gate)
+	}
 	for _, record := range report.Records {
 		if record.TenantID == "other" || record.RuntimeID == "other-okta-application" {
 			t.Fatalf("report leaked other tenant record: %#v", record)
+		}
+	}
+}
+
+func TestEmitSourceCoverageGateTelemetry(t *testing.T) {
+	report := sourcecoverage.Report{
+		Totals: sourcecoverage.Totals{
+			Dimensions:          4,
+			HighValueDimensions: 3,
+			Healthy:             1,
+			Failed:              1,
+			Unconfigured:        1,
+			BlindSpots:          2,
+		},
+	}
+	report.Gate = sourcecoverage.GateForTotals(report.Totals)
+
+	stderr := captureBootstrapStderr(t, func() {
+		emitSourceCoverageGateTelemetry(context.Background(), report)
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                                        "source_coverage.release_gate",
+		"source_coverage.gate.status":                 "fail",
+		"source_coverage.gate.blocking_reason":        "failed",
+		"source_coverage.dimensions.total":            float64(4),
+		"source_coverage.high_value_dimensions.total": float64(3),
+		"source_coverage.healthy_count":               float64(1),
+		"source_coverage.failed_count":                float64(1),
+		"source_coverage.unconfigured_count":          float64(1),
+		"source_coverage.blind_spot_count":            float64(2),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
 	}
 }
