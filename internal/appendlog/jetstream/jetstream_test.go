@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
@@ -154,6 +155,40 @@ func skipPublishRetryWaits(t *testing.T) {
 	})
 }
 
+func TestPublishRetryConfigUsesAppendLogOverrides(t *testing.T) {
+	retry := publishRetryConfigFromAppendLog(config.AppendLogConfig{
+		JetStreamPublishRetryAttempts:       22,
+		JetStreamPublishRetryInitialBackoff: 750 * time.Millisecond,
+		JetStreamPublishRetryMaxBackoff:     9 * time.Second,
+		JetStreamPublishClientRetryAttempts: 6,
+		JetStreamPublishClientRetryWait:     800 * time.Millisecond,
+		JetStreamPublishAttemptTimeout:      45 * time.Second,
+		JetStreamPublishRetryMaxElapsed:     5 * time.Minute,
+	})
+
+	if retry.MaxAttempts != 22 {
+		t.Fatalf("MaxAttempts = %d, want 22", retry.MaxAttempts)
+	}
+	if retry.InitialBackoff != 750*time.Millisecond {
+		t.Fatalf("InitialBackoff = %v, want 750ms", retry.InitialBackoff)
+	}
+	if retry.MaxBackoff != 9*time.Second {
+		t.Fatalf("MaxBackoff = %v, want 9s", retry.MaxBackoff)
+	}
+	if retry.ClientRetryAttempts != 6 {
+		t.Fatalf("ClientRetryAttempts = %d, want 6", retry.ClientRetryAttempts)
+	}
+	if retry.ClientRetryWait != 800*time.Millisecond {
+		t.Fatalf("ClientRetryWait = %v, want 800ms", retry.ClientRetryWait)
+	}
+	if retry.AttemptTimeout != 45*time.Second {
+		t.Fatalf("AttemptTimeout = %v, want 45s", retry.AttemptTimeout)
+	}
+	if retry.MaxElapsed != 5*time.Minute {
+		t.Fatalf("MaxElapsed = %v, want 5m", retry.MaxElapsed)
+	}
+}
+
 func TestAppendPublishesEnvelope(t *testing.T) {
 	pub := &fakePublisher{}
 	log := &Log{js: pub, subjectPrefix: "events"}
@@ -277,6 +312,66 @@ func TestAppendEmitsPublishRetryTelemetry(t *testing.T) {
 	}
 	if end["messaging.jetstream.publish.retry_count"] != float64(1) {
 		t.Fatalf("span retry count = %v, want 1", end["messaging.jetstream.publish.retry_count"])
+	}
+}
+
+func TestAppendRetryTelemetryUsesConfiguredPublishBudget(t *testing.T) {
+	skipPublishRetryWaits(t)
+	pub := &fakePublisher{
+		publishErrs: []error{
+			errors.New("nats: no response from stream"),
+			nil,
+		},
+	}
+	log := &Log{
+		js:            pub,
+		subjectPrefix: "events",
+		publishRetry: publishRetryConfig{
+			MaxAttempts:         7,
+			InitialBackoff:      750 * time.Millisecond,
+			MaxBackoff:          9 * time.Second,
+			ClientRetryAttempts: 6,
+			ClientRetryWait:     800 * time.Millisecond,
+			AttemptTimeout:      45 * time.Second,
+			MaxElapsed:          5 * time.Minute,
+		},
+	}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-configured-retry-telemetry",
+			Kind: "entity.upsert",
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	retryEvents := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.publish.retry")
+	if len(retryEvents) != 1 {
+		t.Fatalf("retry events = %d, want 1; stderr=%s", len(retryEvents), stderr)
+	}
+	retry := retryEvents[0]
+	if retry["messaging.jetstream.publish.max_attempts"] != float64(7) {
+		t.Fatalf("max attempts = %v, want 7", retry["messaging.jetstream.publish.max_attempts"])
+	}
+	if retry["messaging.jetstream.publish.retry_budget_ms"] != float64((5 * time.Minute).Milliseconds()) {
+		t.Fatalf("retry budget = %v, want 5m", retry["messaging.jetstream.publish.retry_budget_ms"])
+	}
+	if retry["messaging.jetstream.publish.attempt_timeout_ms"] != float64((45 * time.Second).Milliseconds()) {
+		t.Fatalf("attempt timeout = %v, want 45s", retry["messaging.jetstream.publish.attempt_timeout_ms"])
+	}
+	if retry["messaging.jetstream.publish.max_backoff_ms"] != float64((9 * time.Second).Milliseconds()) {
+		t.Fatalf("max backoff = %v, want 9s", retry["messaging.jetstream.publish.max_backoff_ms"])
+	}
+	if retry["messaging.jetstream.publish.client_retry_attempts"] != float64(6) {
+		t.Fatalf("client retry attempts = %v, want 6", retry["messaging.jetstream.publish.client_retry_attempts"])
+	}
+	if retry["messaging.jetstream.publish.client_retry_wait_ms"] != float64((800 * time.Millisecond).Milliseconds()) {
+		t.Fatalf("client retry wait = %v, want 800ms", retry["messaging.jetstream.publish.client_retry_wait_ms"])
+	}
+	if retry["messaging.jetstream.publish.next_backoff_ms"] != float64((750 * time.Millisecond).Milliseconds()) {
+		t.Fatalf("next backoff = %v, want 750ms", retry["messaging.jetstream.publish.next_backoff_ms"])
 	}
 }
 

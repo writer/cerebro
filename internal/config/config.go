@@ -73,11 +73,18 @@ type RateLimitConfig struct {
 
 // AppendLogConfig selects and configures the append-log driver.
 type AppendLogConfig struct {
-	Driver                      string
-	JetStreamURL                string
-	JetStreamSubjectPrefix      string
-	JetStreamDrainTimeout       time.Duration
-	JetStreamPublishMaxInFlight int
+	Driver                              string
+	JetStreamURL                        string
+	JetStreamSubjectPrefix              string
+	JetStreamDrainTimeout               time.Duration
+	JetStreamPublishMaxInFlight         int
+	JetStreamPublishRetryAttempts       int
+	JetStreamPublishRetryInitialBackoff time.Duration
+	JetStreamPublishRetryMaxBackoff     time.Duration
+	JetStreamPublishAttemptTimeout      time.Duration
+	JetStreamPublishRetryMaxElapsed     time.Duration
+	JetStreamPublishClientRetryAttempts int
+	JetStreamPublishClientRetryWait     time.Duration
 }
 
 // StateStoreConfig selects and configures the current-state store driver.
@@ -551,6 +558,27 @@ func Load() (Config, error) {
 	if cfg.AppendLog.JetStreamPublishMaxInFlight, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", 0); err != nil {
 		return Config{}, err
 	}
+	if cfg.AppendLog.JetStreamPublishRetryAttempts, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamPublishRetryInitialBackoff, err = parseDurationEnv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamPublishRetryMaxBackoff, err = parseDurationEnv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamPublishAttemptTimeout, err = parseDurationEnv("CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamPublishRetryMaxElapsed, err = parseDurationEnv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamPublishClientRetryAttempts, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamPublishClientRetryWait, err = parseDurationEnv("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT", 0); err != nil {
+		return Config{}, err
+	}
 	if cfg.StateStore.PostgresMaxOpenConns, err = parseIntEnv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", 0); err != nil {
 		return Config{}, err
 	}
@@ -634,6 +662,9 @@ func Load() (Config, error) {
 		}
 		if cfg.AppendLog.JetStreamPublishMaxInFlight < 0 {
 			return Config{}, errors.New("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT must be greater than or equal to 0")
+		}
+		if err := validateJetStreamPublishRetryConfig(cfg.AppendLog); err != nil {
+			return Config{}, err
 		}
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_APPEND_LOG_DRIVER %q", cfg.AppendLog.Driver)
@@ -764,6 +795,24 @@ func validateRequestOriginConfig(cfg RequestOriginConfig) error {
 		if _, _, err := net.ParseCIDR(strings.TrimSpace(rawCIDR)); err != nil {
 			return fmt.Errorf("CEREBRO_TRUSTED_PROXY_CIDRS contains invalid CIDR %q: %w", rawCIDR, err)
 		}
+	}
+	return nil
+}
+
+func validateJetStreamPublishRetryConfig(cfg AppendLogConfig) error {
+	if cfg.JetStreamPublishRetryAttempts < 0 {
+		return errors.New("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS must be greater than or equal to 0")
+	}
+	if cfg.JetStreamPublishClientRetryAttempts < 0 {
+		return errors.New("CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS must be greater than or equal to 0")
+	}
+	if cfg.JetStreamPublishRetryInitialBackoff > 0 && cfg.JetStreamPublishRetryMaxBackoff > 0 &&
+		cfg.JetStreamPublishRetryInitialBackoff > cfg.JetStreamPublishRetryMaxBackoff {
+		return errors.New("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF must be less than or equal to CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF")
+	}
+	if cfg.JetStreamPublishAttemptTimeout > 0 && cfg.JetStreamPublishRetryMaxElapsed > 0 &&
+		cfg.JetStreamPublishAttemptTimeout > cfg.JetStreamPublishRetryMaxElapsed {
+		return errors.New("CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT must be less than or equal to CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED")
 	}
 	return nil
 }
