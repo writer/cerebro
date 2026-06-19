@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/writer/cerebro/internal/findingdsl"
@@ -212,8 +211,6 @@ func TestSafeRepoRelRejectsEscapingOutput(t *testing.T) {
 }
 
 func TestWriteRepoFileUsesReadableGeneratedFileMode(t *testing.T) {
-	oldUmask := syscall.Umask(0)
-	defer syscall.Umask(oldUmask)
 	root := t.TempDir()
 	if err := writeRepoFile(root, "internal/findings/generated.go", []byte("package findings\n")); err != nil {
 		t.Fatalf("writeRepoFile() error = %v", err)

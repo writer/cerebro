@@ -180,7 +180,20 @@ func writeRepoFile(root string, rel string, content []byte) error {
 	if err := rejectSymlink(repoRoot, cleanRel); err != nil {
 		return err
 	}
-	return repoRoot.WriteFile(cleanRel, content, 0o644)
+	file, err := repoRoot.OpenFile(cleanRel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", cleanRel, err)
+	}
+	var writeErr error
+	if _, err := file.Write(content); err != nil {
+		writeErr = fmt.Errorf("write %s: %w", cleanRel, err)
+	} else if err := file.Chmod(0o644); err != nil {
+		writeErr = fmt.Errorf("chmod %s: %w", cleanRel, err)
+	}
+	if err := file.Close(); err != nil && writeErr == nil {
+		writeErr = fmt.Errorf("close %s: %w", cleanRel, err)
+	}
+	return writeErr
 }
 
 func rejectSymlink(root *os.Root, rel string) error {
