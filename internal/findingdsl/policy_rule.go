@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -20,6 +21,8 @@ const (
 	KindPolicyFindingRule = "PolicyFindingRule"
 	ControlMappingRelPath = "policies/cerebro/control-mapping.json"
 )
+
+var graphQueryParamPattern = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`)
 
 type Issue struct {
 	Path    string
@@ -449,6 +452,7 @@ func validatePolicyRuleGraph(path string, graph PolicyRuleGraphFinding) []Issue 
 	}
 	var issues []Issue
 	query := strings.TrimSpace(graph.Query)
+	queryParams := map[string]struct{}{}
 	if query == "" {
 		issues = append(issues, Issue{Path: path, Message: "spec.graph.query is required"})
 	} else {
@@ -458,11 +462,25 @@ func validatePolicyRuleGraph(path string, graph PolicyRuleGraphFinding) []Issue 
 		if containsUnsafeCypherKeyword(query) {
 			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must be read-only and must not contain write/admin Cypher keywords"})
 		}
-		if !cypherReturnsAlias(query, "primary_urn") {
-			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must return primary_urn"})
+		if cypherHasStatementTerminator(query) {
+			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must contain a single read-only Cypher statement"})
 		}
-		if !strings.Contains(strings.ToUpper(query), "LIMIT") && (graph.RowLimit <= 0 || graph.RowLimit > 3000) {
+		for _, alias := range requiredGraphReturnAliases() {
+			if !cypherReturnsAlias(query, alias) {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.query must return %s", alias)})
+			}
+		}
+		if !cypherHasKeyword(query, "LIMIT") && (graph.RowLimit <= 0 || graph.RowLimit > 3000) {
 			issues = append(issues, Issue{Path: path, Message: "spec.graph.query must include LIMIT or spec.graph.rowLimit"})
+		}
+		queryParams = cypherQueryParams(query)
+		for param := range queryParams {
+			if isReservedGraphParam(param) {
+				continue
+			}
+			if _, ok := graph.Params[param]; !ok {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.query references unknown parameter $%s", param)})
+			}
 		}
 	}
 	if graph.RowLimit < 0 || graph.RowLimit > 3000 {
@@ -487,6 +505,18 @@ func validatePolicyRuleGraph(path string, graph PolicyRuleGraphFinding) []Issue 
 		if strings.TrimSpace(key) == "" {
 			issues = append(issues, Issue{Path: path, Message: "spec.graph.params keys must be non-empty"})
 			continue
+		}
+		if !isIdentifier(key) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.params.%s key must be an identifier", key)})
+			continue
+		}
+		if isReservedGraphParam(key) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.params.%s must not override runtime parameter $%s", key, key)})
+		}
+		if query != "" {
+			if _, ok := queryParams[key]; !ok {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("spec.graph.params.%s must be referenced by spec.graph.query as $%s", key, key)})
+			}
 		}
 		switch value.(type) {
 		case nil, string, bool, int, int64, float64:
@@ -840,7 +870,7 @@ func startsWithQueryKeyword(query string) bool {
 }
 
 func startsWithGraphQueryKeyword(query string) bool {
-	upper := strings.ToUpper(strings.TrimSpace(query))
+	upper := strings.ToUpper(strings.TrimSpace(stripCypherLiteralsAndComments(query)))
 	for _, keyword := range []string{"MATCH", "OPTIONAL MATCH", "WITH", "UNWIND"} {
 		if upper == keyword || strings.HasPrefix(upper, keyword+" ") || strings.HasPrefix(upper, keyword+"\n") {
 			return true
@@ -850,7 +880,7 @@ func startsWithGraphQueryKeyword(query string) bool {
 }
 
 func containsUnsafeCypherKeyword(query string) bool {
-	for _, token := range strings.FieldsFunc(strings.ToUpper(query), func(ch rune) bool {
+	for _, token := range strings.FieldsFunc(strings.ToUpper(stripCypherLiteralsAndComments(query)), func(ch rune) bool {
 		return (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_'
 	}) {
 		switch token {
@@ -862,18 +892,229 @@ func containsUnsafeCypherKeyword(query string) bool {
 }
 
 func cypherReturnsAlias(query string, alias string) bool {
-	alias = strings.TrimSpace(alias)
+	alias = strings.ToLower(strings.TrimSpace(alias))
 	if alias == "" {
 		return false
 	}
-	upperQuery := strings.ToUpper(query)
-	upperAlias := strings.ToUpper(alias)
-	for _, marker := range []string{" AS " + upperAlias, "\nAS " + upperAlias, "\tAS " + upperAlias} {
-		if strings.Contains(upperQuery, marker) {
-			return true
+	_, ok := cypherReturnAliases(query)[alias]
+	return ok
+}
+
+func requiredGraphReturnAliases() []string {
+	return []string{"primary_urn", "fingerprint_key", "summary"}
+}
+
+func recommendedGraphReturnAliases() []string {
+	return []string{"primary_label", "primary_type", "severity", "action", "resource_urns", "evidence"}
+}
+
+func isReservedGraphParam(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "tenant_id", "row_limit":
+		return true
+	default:
+		return false
+	}
+}
+
+func cypherQueryParams(query string) map[string]struct{} {
+	params := map[string]struct{}{}
+	for _, match := range graphQueryParamPattern.FindAllStringSubmatch(stripCypherLiteralsAndComments(query), -1) {
+		if len(match) == 2 {
+			params[strings.TrimSpace(match[1])] = struct{}{}
 		}
 	}
-	return strings.Contains(upperQuery, "RETURN "+upperAlias) || strings.Contains(upperQuery, "RETURN DISTINCT "+upperAlias)
+	return params
+}
+
+func cypherReturnAliases(query string) map[string]struct{} {
+	cleaned := stripCypherLiteralsAndComments(query)
+	aliases := map[string]struct{}{}
+	for _, field := range splitCypherReturnFields(cypherReturnClause(cleaned)) {
+		if alias := cypherFieldAlias(field); alias != "" {
+			aliases[alias] = struct{}{}
+		}
+	}
+	return aliases
+}
+
+func cypherReturnClause(query string) string {
+	start := cypherLastKeywordIndex(query, "RETURN")
+	if start < 0 {
+		return ""
+	}
+	clause := query[start+len("RETURN"):]
+	end := len(clause)
+	for _, keyword := range []string{"ORDER BY", "LIMIT", "SKIP"} {
+		if idx := cypherKeywordIndex(clause, keyword); idx >= 0 && idx < end {
+			end = idx
+		}
+	}
+	return strings.TrimSpace(clause[:end])
+}
+
+func splitCypherReturnFields(clause string) []string {
+	var fields []string
+	depth := 0
+	start := 0
+	for idx, ch := range clause {
+		switch ch {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				fields = append(fields, strings.TrimSpace(clause[start:idx]))
+				start = idx + 1
+			}
+		}
+	}
+	if start <= len(clause) {
+		fields = append(fields, strings.TrimSpace(clause[start:]))
+	}
+	return fields
+}
+
+func cypherFieldAlias(field string) string {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return ""
+	}
+	parts := strings.Fields(field)
+	for idx := 0; idx < len(parts)-1; idx++ {
+		if strings.EqualFold(parts[idx], "AS") {
+			alias := cleanCypherAlias(parts[idx+1])
+			if isIdentifier(alias) {
+				return strings.ToLower(alias)
+			}
+			return ""
+		}
+	}
+	if strings.HasPrefix(strings.ToUpper(field), "DISTINCT ") {
+		field = strings.TrimSpace(field[len("DISTINCT "):])
+	}
+	if isIdentifier(field) {
+		return strings.ToLower(field)
+	}
+	return ""
+}
+
+func cleanCypherAlias(alias string) string {
+	return strings.Trim(strings.TrimSpace(alias), ",")
+}
+
+func cypherHasStatementTerminator(query string) bool {
+	return strings.Contains(stripCypherLiteralsAndComments(query), ";")
+}
+
+func cypherHasKeyword(query string, keyword string) bool {
+	return cypherKeywordIndex(stripCypherLiteralsAndComments(query), keyword) >= 0
+}
+
+func cypherKeywordAppearsBefore(query string, first string, second string) bool {
+	cleaned := stripCypherLiteralsAndComments(query)
+	firstIdx := cypherKeywordIndex(cleaned, first)
+	secondIdx := cypherKeywordIndex(cleaned, second)
+	return firstIdx >= 0 && secondIdx >= 0 && firstIdx < secondIdx
+}
+
+func cypherLastKeywordIndex(query string, keyword string) int {
+	last := -1
+	searchStart := 0
+	for searchStart < len(query) {
+		idx := cypherKeywordIndex(query[searchStart:], keyword)
+		if idx < 0 {
+			return last
+		}
+		last = searchStart + idx
+		searchStart = last + len(keyword)
+	}
+	return last
+}
+
+func cypherKeywordIndex(query string, keyword string) int {
+	upper := strings.ToUpper(query)
+	needle := strings.ToUpper(strings.TrimSpace(keyword))
+	if needle == "" {
+		return -1
+	}
+	for offset := 0; offset < len(upper); {
+		idx := strings.Index(upper[offset:], needle)
+		if idx < 0 {
+			return -1
+		}
+		idx += offset
+		beforeOK := idx == 0 || !isIdentByte(upper[idx-1])
+		after := idx + len(needle)
+		afterOK := after == len(upper) || !isIdentByte(upper[after])
+		if beforeOK && afterOK {
+			return idx
+		}
+		offset = idx + len(needle)
+	}
+	return -1
+}
+
+func stripCypherLiteralsAndComments(query string) string {
+	var out strings.Builder
+	out.Grow(len(query))
+	for idx := 0; idx < len(query); {
+		if idx+1 < len(query) && query[idx] == '/' && query[idx+1] == '/' {
+			out.WriteString("  ")
+			idx += 2
+			for idx < len(query) && query[idx] != '\n' {
+				out.WriteByte(' ')
+				idx++
+			}
+			continue
+		}
+		if idx+1 < len(query) && query[idx] == '/' && query[idx+1] == '*' {
+			out.WriteString("  ")
+			idx += 2
+			for idx+1 < len(query) && (query[idx] != '*' || query[idx+1] != '/') {
+				if query[idx] == '\n' {
+					out.WriteByte('\n')
+				} else {
+					out.WriteByte(' ')
+				}
+				idx++
+			}
+			if idx+1 < len(query) {
+				out.WriteString("  ")
+				idx += 2
+			}
+			continue
+		}
+		if query[idx] == '\'' || query[idx] == '"' {
+			quote := query[idx]
+			out.WriteByte(' ')
+			idx++
+			for idx < len(query) {
+				ch := query[idx]
+				if ch == '\n' {
+					out.WriteByte('\n')
+				} else {
+					out.WriteByte(' ')
+				}
+				idx++
+				if ch == quote {
+					if idx < len(query) && query[idx] == quote {
+						out.WriteByte(' ')
+						idx++
+						continue
+					}
+					break
+				}
+			}
+			continue
+		}
+		out.WriteByte(query[idx])
+		idx++
+	}
+	return out.String()
 }
 
 func isIdentifier(value string) bool {
@@ -895,6 +1136,10 @@ func isIdentifier(value string) bool {
 		}
 	}
 	return true
+}
+
+func isIdentByte(ch byte) bool {
+	return ch == '_' || ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9'
 }
 
 func isPolicyID(value string) bool {

@@ -135,6 +135,10 @@ func RunPolicyRuleTestSuite(root string, suitePath string) []Issue {
 	}
 	var out []Issue
 	for idx, testCase := range suite.Cases {
+		if caseIssues := validatePolicyRuleTestCaseAgainstRule(suite.RelPath, rule, idx, testCase); len(caseIssues) != 0 {
+			out = append(out, caseIssues...)
+			continue
+		}
 		got, err := EvaluatePolicyRuleTestCase(rule, testCase)
 		if err != nil {
 			out = append(out, Issue{Path: suite.RelPath, Message: fmt.Sprintf("cases[%d] %q: %v", idx, testCase.Name, err)})
@@ -164,6 +168,126 @@ func EvaluatePolicyRuleTestCase(rule PolicyFindingRule, testCase PolicyRuleTestC
 		return false, fmt.Errorf("policy has no conditions to evaluate")
 	}
 	return EvaluatePolicyConditions(conditions, PolicyResource(testCase.Resource))
+}
+
+func validatePolicyRuleTestCaseAgainstRule(path string, rule PolicyFindingRule, idx int, testCase PolicyRuleTestCase) []Issue {
+	if strings.TrimSpace(rule.Spec.Graph.Query) == "" {
+		return nil
+	}
+	var issues []Issue
+	findingRows := 0
+	requiredColumns := graphFixtureRequiredColumns(rule.Spec.Graph)
+	for rowIdx, row := range testCase.QueryRows {
+		if len(row) == 0 {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d] must not be empty", idx, testCase.Name, rowIdx)})
+			continue
+		}
+		if !testFixtureValuePresent(row["primary_urn"]) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].primary_urn is required for graph rows", idx, testCase.Name, rowIdx)})
+			continue
+		}
+		findingRows++
+		for _, column := range requiredColumns {
+			value, ok := row[column]
+			if !ok {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].%s is required by spec.graph.requiredColumns", idx, testCase.Name, rowIdx, column)})
+				continue
+			}
+			if graphFixtureColumnRequiresValue(column) && !testFixtureValuePresent(value) {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].%s must be non-empty", idx, testCase.Name, rowIdx, column)})
+			}
+		}
+		if severity := strings.TrimSpace(fmt.Sprintf("%v", row["severity"])); severity != "" && severity != "<nil>" {
+			if !stringSetContains([]string{"INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"}, strings.ToUpper(severity)) {
+				issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].severity must be one of info, low, medium, high, critical", idx, testCase.Name, rowIdx)})
+			}
+		}
+		if value, ok := row["resource_urns"]; ok && !testFixtureStringList(value) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].resource_urns must be a list of strings", idx, testCase.Name, rowIdx)})
+		}
+		if value, ok := row["evidence"]; ok && !testFixtureEvidenceList(value) {
+			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q queryRows[%d].evidence must be a list of maps with urn fields", idx, testCase.Name, rowIdx)})
+		}
+	}
+	if testCase.WantFinding && findingRows == 0 {
+		issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q must include at least one graph query row with primary_urn", idx, testCase.Name)})
+	}
+	if !testCase.WantFinding && findingRows != 0 {
+		issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("cases[%d] %q is a passing graph case but includes %d finding row(s)", idx, testCase.Name, findingRows)})
+	}
+	return issues
+}
+
+func graphFixtureRequiredColumns(graph PolicyRuleGraphFinding) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, column := range append(requiredGraphReturnAliases(), graph.RequiredColumns...) {
+		column = strings.TrimSpace(column)
+		if column == "" {
+			continue
+		}
+		if _, ok := seen[column]; ok {
+			continue
+		}
+		seen[column] = struct{}{}
+		out = append(out, column)
+	}
+	return out
+}
+
+func graphFixtureColumnRequiresValue(column string) bool {
+	switch strings.TrimSpace(column) {
+	case "primary_urn", "fingerprint_key", "summary":
+		return true
+	default:
+		return false
+	}
+}
+
+func testFixtureValuePresent(value any) bool {
+	if value == nil {
+		return false
+	}
+	text := strings.TrimSpace(fmt.Sprintf("%v", value))
+	return text != "" && text != "<nil>"
+}
+
+func testFixtureStringList(value any) bool {
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			if !testFixtureValuePresent(item) {
+				return false
+			}
+		}
+		return true
+	case []string:
+		for _, item := range typed {
+			if strings.TrimSpace(item) == "" {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func testFixtureEvidenceList(value any) bool {
+	items, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return false
+		}
+		if !testFixtureValuePresent(entry["urn"]) {
+			return false
+		}
+	}
+	return true
 }
 
 func isPolicyTestRelPath(path string) bool {

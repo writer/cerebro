@@ -173,9 +173,9 @@ func TestGraphPolicyGenerationDefaults(t *testing.T) {
 			SourceKinds: []string{"graph"},
 		},
 		Graph: findingdsl.PolicyRuleGraphFinding{
-			Query:           "MATCH (entity:Entity {tenant_id: $tenant_id}) RETURN entity.urn AS primary_urn LIMIT $row_limit",
+			Query:           "MATCH (entity:Entity {tenant_id: $tenant_id}) RETURN entity.urn AS primary_urn, entity.urn AS fingerprint_key, 'Graph finding' AS summary LIMIT $row_limit",
 			RowLimit:        500,
-			RequiredColumns: []string{"primary_urn"},
+			RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary"},
 		},
 		domain: "graph",
 	}
@@ -194,6 +194,17 @@ func TestGraphPolicyGenerationDefaults(t *testing.T) {
 	}
 	if got := policyEvidenceLabel(policyEvidenceMode(policy)); got != "graph-state" {
 		t.Fatalf("policyEvidenceLabel(graph) = %q, want graph-state", got)
+	}
+}
+
+func TestSafeRepoRelRejectsEscapingOutput(t *testing.T) {
+	for _, value := range []string{"../outside.go", "/tmp/out.go"} {
+		if _, err := safeRepoRel(value); err == nil {
+			t.Fatalf("safeRepoRel(%q) error = nil, want escape rejection", value)
+		}
+	}
+	if got, err := safeRepoRel("internal/findings/policy_rule_catalog_gen.go"); err != nil || got != "internal/findings/policy_rule_catalog_gen.go" {
+		t.Fatalf("safeRepoRel(valid) = %q, %v", got, err)
 	}
 }
 

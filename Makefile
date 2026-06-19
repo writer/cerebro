@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -281,13 +281,16 @@ finding-dsl-migrate: ## Convert legacy JSON policy files to PolicyFindingRule DS
 finding-dsl-test: ## Run PolicyFindingRule fixture suites.
 	go run ./tools/findingdsl test
 
+finding-dsl-lint: ## Run semantic PolicyFindingRule authoring lints.
+	go run ./tools/findingdsl lint
+
 finding-dsl-schema-generate: ## Regenerate PolicyFindingRule JSON Schema.
 	go run ./tools/findingdsl schema --write
 
 finding-dsl-schema-check: ## Verify PolicyFindingRule JSON Schema is current.
 	go run ./tools/findingdsl schema --check
 
-finding-dsl-check: finding-dsl-schema-check finding-dsl-test ## Validate PolicyFindingRule DSL authoring files.
+finding-dsl-check: finding-dsl-schema-check finding-dsl-test finding-dsl-lint ## Validate PolicyFindingRule DSL authoring files.
 	go run ./tools/findingdsl --check
 
 policy-rule-generate: ## Regenerate generated policy rule catalog.

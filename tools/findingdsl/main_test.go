@@ -29,7 +29,7 @@ func TestMigratePolicyFilesRefusesExistingYAML(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "destination already exists") {
 		t.Fatalf("migratePolicyFiles() error = %v, want destination exists error", err)
 	}
-	content, readErr := os.ReadFile(filepath.Join(root, "policies/aws/example.yaml"))
+	content, readErr := os.ReadFile(filepath.Join(root, "policies/aws/example.yaml")) // #nosec G304 -- test path is rooted in t.TempDir.
 	if readErr != nil {
 		t.Fatalf("ReadFile() error = %v", readErr)
 	}
@@ -51,12 +51,13 @@ func TestRunNewWritesGraphPolicy(t *testing.T) {
 		"--name", "Graph Example",
 		"--description", "Example graph policy",
 		"--severity", "low",
-		"--graph-query", "MATCH (entity:Entity {tenant_id: $tenant_id}) RETURN entity.urn AS primary_urn, entity.urn AS fingerprint_key LIMIT $row_limit",
+		"--graph-query", "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE $enabled = true AND entity.relationship_count >= $minimum_count RETURN entity.urn AS primary_urn, entity.urn AS fingerprint_key, 'Graph finding' AS summary LIMIT $row_limit",
 		"--graph-row-limit", "200",
 		"--graph-param", "minimum_count=2",
 		"--graph-param", "enabled=true",
 		"--graph-required-column", "primary_urn",
 		"--graph-required-column", "fingerprint_key",
+		"--graph-required-column", "summary",
 		"--framework", "SOC 2:CC7.1",
 		"--reference", "https://www.iso.org/standard/27001",
 		"--tag", "graph",
@@ -65,7 +66,7 @@ func TestRunNewWritesGraphPolicy(t *testing.T) {
 		t.Fatalf("runNew() error = %v", err)
 	}
 	path := filepath.Join(root, "policies/graph/graph-example.yaml")
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) // #nosec G304 -- test path is rooted in t.TempDir.
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -93,10 +94,10 @@ func TestRunNewWritesGraphPolicy(t *testing.T) {
 func writeToolTestFile(t *testing.T, root string, rel string, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 }

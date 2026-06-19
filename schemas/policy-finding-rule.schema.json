@@ -522,10 +522,13 @@
                 ]
               },
               "description": "Static Cypher parameters added to tenant_id and row_limit.",
+              "propertyNames": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
               "type": "object"
             },
             "query": {
-              "description": "Read-only Cypher query returning graph findings. Must return primary_urn.",
+              "description": "Read-only Cypher query returning graph findings. Must return primary_urn, fingerprint_key, and summary.",
               "type": "string"
             },
             "requiredColumns": {
@@ -533,7 +536,8 @@
               "items": {
                 "type": "string"
               },
-              "type": "array"
+              "type": "array",
+              "uniqueItems": true
             },
             "rowLimit": {
               "description": "Maximum graph rows to read for one rule evaluation.",

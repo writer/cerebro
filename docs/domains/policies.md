@@ -60,10 +60,10 @@ spec:
 | `spec.match.conditions` | Conditional | CEL condition expressions for resource-state policies. |
 | `spec.match.conditionFormat` | Conditional | Must be `cel` when present. |
 | `spec.match.query` | Conditional | SQL/evidence query for query-backed policy rules. |
-| `spec.graph.query` | Conditional | Read-only Cypher query for graph-backed policy rules. Must return `primary_urn`. |
+| `spec.graph.query` | Conditional | Single read-only Cypher query for graph-backed policy rules. Must return `primary_urn`, `fingerprint_key`, and `summary`. |
 | `spec.graph.rowLimit` | No | Optional row cap from 1 to 3000. Required when the query does not include `LIMIT`. |
-| `spec.graph.params` | No | Static scalar Cypher params merged with runtime `tenant_id` and `row_limit`. |
-| `spec.graph.requiredColumns` | No | Return aliases the validator must find in `spec.graph.query`. |
+| `spec.graph.params` | No | Static scalar Cypher params merged with runtime `tenant_id` and `row_limit`; custom params must be referenced by `$name` and cannot override runtime params. |
+| `spec.graph.requiredColumns` | No | Additional return aliases the validator and fixture runner must find in `spec.graph.query` and graph fixture rows. |
 | `spec.input` | No | Evidence input contract: source kinds, event kinds, required claims, required fields, and freshness SLA. |
 | `spec.assert` | Conditional | Structured evidence assertions for policies that evaluate normalized evidence records instead of CEL or SQL. |
 | `spec.context` | No | Graph anchors, graph enrichment, and severity adjustment metadata used to explain and prioritize findings. |
@@ -78,7 +78,7 @@ spec:
 | `spec.mitreAttack` | No | MITRE tactic and technique mappings. |
 | `spec.enabled` | No | Set to `false` to keep a policy in the catalog while disabling generated rule support. |
 
-Every policy must define `spec.graph` or at least one non-graph evaluation mode: `spec.match.conditions`, `spec.match.query`, or `spec.assert`. `spec.graph` is mutually exclusive with `spec.match` and `spec.assert`; `spec.match.conditions` and `spec.match.query` are mutually exclusive.
+Every policy must define `spec.graph` or at least one non-graph evaluation mode: `spec.match.conditions`, `spec.match.query`, or `spec.assert`. `spec.match.conditions` and `spec.assert` may be combined for evidence-backed policy checks. `spec.graph` is mutually exclusive with `spec.match` and `spec.assert`; `spec.match.conditions` and `spec.match.query` are mutually exclusive.
 
 ## Assertion Policies
 
@@ -158,8 +158,15 @@ spec:
       MATCH (entity:Entity {tenant_id: $tenant_id})
       WHERE entity.entity_type <> 'finding'
       RETURN entity.urn AS primary_urn,
+             entity.label AS primary_label,
+             entity.entity_type AS primary_type,
              entity.urn AS fingerprint_key,
-             'Graph entity requires review' AS summary
+             'LOW' AS severity,
+             'Graph entity requires review' AS summary,
+             'Fix graph projection' AS action,
+             [entity.urn] AS resource_urns,
+             [] AS evidence
+      ORDER BY entity.urn
       LIMIT $row_limit
     rowLimit: 500
     requiredColumns:
@@ -173,7 +180,7 @@ spec:
       controls: [CC7.1]
 ```
 
-The graph validator enforces read-only Cypher, a bounded query, scalar params, and returned aliases. Standard aliases consumed by the runtime are `primary_urn`, `primary_label`, `primary_type`, `fingerprint_key`, `severity`, `summary`, `action`, `resource_urns`, and `evidence`.
+The graph validator enforces read-only single-statement Cypher, a bounded query, scalar params, known `$param` references, and returned aliases. Standard aliases consumed by the runtime are `primary_urn`, `primary_label`, `primary_type`, `fingerprint_key`, `severity`, `summary`, `action`, `resource_urns`, and `evidence`. Lint requires graph queries to `ORDER BY` stable keys before `LIMIT`, return the standard aliases, and have a sibling fixture suite with both finding and passing cases.
 
 ## Authoring Commands
 
@@ -208,10 +215,11 @@ go run ./tools/findingdsl new \
   --name "Graph Orphan Non-Finding Node" \
   --description "Detect non-finding graph nodes with no relationships." \
   --severity low \
-  --graph-query 'MATCH (entity:Entity {tenant_id: $tenant_id}) RETURN entity.urn AS primary_urn, entity.urn AS fingerprint_key LIMIT $row_limit' \
+  --graph-query "MATCH (entity:Entity {tenant_id: \$tenant_id}) RETURN entity.urn AS primary_urn, entity.label AS primary_label, entity.entity_type AS primary_type, entity.urn AS fingerprint_key, 'LOW' AS severity, 'Graph entity requires review' AS summary, 'Fix graph projection' AS action, [entity.urn] AS resource_urns, [] AS evidence ORDER BY entity.urn LIMIT \$row_limit" \
   --graph-row-limit 500 \
   --graph-required-column primary_urn \
   --graph-required-column fingerprint_key \
+  --graph-required-column summary \
   --framework "SOC 2:CC7.1" \
   --reference "https://www.iso.org/standard/27001" \
   --tag graph
@@ -222,6 +230,13 @@ Format one file or the full catalog:
 ```bash
 go run ./tools/findingdsl fmt --write policies/aws/aws-s3-public.yaml
 go run ./tools/findingdsl fmt --check
+```
+
+Run semantic lints:
+
+```bash
+go run ./tools/findingdsl lint
+make finding-dsl-lint
 ```
 
 Generate or verify the editor schema:
@@ -256,7 +271,7 @@ cases:
     wantFinding: false
 ```
 
-For query-backed policies, use `queryRows`; any returned row means the policy should produce a finding. For graph-backed policies, `queryRows` should model returned Cypher rows and include `primary_urn` for rows that should emit findings:
+For query-backed policies, use `queryRows`; any returned row means the policy should produce a finding. For graph-backed policies, `queryRows` should model returned Cypher rows. Finding rows must include non-empty `primary_urn`, `fingerprint_key`, and `summary`, plus every alias listed in `spec.graph.requiredColumns`:
 
 ```yaml
 apiVersion: cerebro.writer.com/v1alpha1
@@ -266,6 +281,8 @@ cases:
   - name: returned row fails
     queryRows:
       - primary_urn: urn:cerebro:writer:identity:user-1
+        fingerprint_key: urn:cerebro:writer:identity:user-1
+        summary: Privileged identity has no MFA
     wantFinding: true
   - name: empty result passes
     resource:
