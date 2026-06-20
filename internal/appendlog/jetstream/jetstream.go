@@ -42,6 +42,7 @@ const (
 	publishRetryMaxElapsed     = 90 * time.Second
 	jetstreamCanaryKind        = "cerebro.health.jetstream_canary"
 	jetstreamCanaryMinInterval = time.Minute
+	replayScanWarningThreshold = 500_000
 )
 
 const (
@@ -714,6 +715,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	}
 	if err != nil {
 		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
+		emitJetStreamReplayGuardrail(ctx, scan, time.Since(started), "failed", 0)
 		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
 		return nil, err
 	}
@@ -731,6 +733,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		events = append(events, candidate.event)
 	}
 	recordJetStreamReplayMetrics(ctx, scan, "completed", "", time.Since(started), len(events))
+	emitJetStreamReplayGuardrail(ctx, scan, time.Since(started), "completed", len(events))
 	endAttrs := streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)).
 		WithField(telemetry.Field{Key: "events_returned", Value: len(events)}).
 		WithField(telemetry.Field{Key: "messaging.jetstream.replay.duration_ms", Value: time.Since(started).Milliseconds()})
@@ -757,6 +760,31 @@ func (s replayScanStats) attrs(limit uint32, candidateLimit uint32, ctx context.
 	}
 	return jetstreamReplayScanAttrs(limit, candidateLimit, s.scanned, s.missing, s.subjectMatched, s.decoded, s.matched, s.sequence, ctx).
 		With(jetstreamReplayStrategyAttrs(strategy, s.subjectFilterCount))
+}
+
+func emitJetStreamReplayGuardrail(ctx context.Context, scan replayScanStats, duration time.Duration, status string, returned int) {
+	strategy := strings.TrimSpace(scan.strategy)
+	if strategy == "" {
+		strategy = replayStrategyLegacyReverseScan
+	}
+	legacyScan := strategy == replayStrategyLegacyReverseScan
+	highScan := scan.scanned >= replayScanWarningThreshold
+	if !legacyScan && !highScan {
+		return
+	}
+	telemetry.Event(ctx, "jetstream.replay.guardrail", telemetry.Attrs(
+		telemetry.Field{Key: "messaging.system", Value: "nats"},
+		telemetry.Field{Key: "messaging.operation", Value: "replay"},
+		telemetry.Field{Key: "messaging.jetstream.replay.strategy", Value: strategy},
+		telemetry.Field{Key: "messaging.jetstream.replay.legacy_full_scan", Value: legacyScan},
+		telemetry.Field{Key: "messaging.jetstream.replay.scanned_count", Value: scan.scanned},
+		telemetry.Field{Key: "messaging.jetstream.replay.scan_warning_threshold", Value: replayScanWarningThreshold},
+		telemetry.Field{Key: "messaging.jetstream.replay.high_scan", Value: highScan},
+		telemetry.Field{Key: "messaging.jetstream.replay.duration_ms", Value: duration.Milliseconds()},
+		telemetry.Field{Key: "events_returned", Value: returned},
+		telemetry.Field{Key: "status", Value: strings.TrimSpace(status)},
+		telemetry.Field{Key: "alert.recommended", Value: true},
+	))
 }
 
 func replayLegacyReverse(ctx context.Context, streamName string, state jetstream.StreamState, stream replayStream, subjectPrefixes []string, request ports.ReplayRequest, candidateLimit uint32) ([]replayCandidate, replayScanStats, error) {

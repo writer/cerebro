@@ -194,6 +194,39 @@ func TestRunEmitsSinglePlatformJobFailedEvent(t *testing.T) {
 	}
 }
 
+func TestRunAppendsHeartbeatEvent(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-heartbeat"] = &ports.Job{
+		ID:     "job-heartbeat",
+		Kind:   KindReportRun,
+		Status: ports.JobStatusQueued,
+	}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, nil
+	})
+
+	if err := service.Run(context.Background(), "job-heartbeat"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var heartbeat *ports.JobEvent
+	for _, event := range store.events {
+		if event.Type == "heartbeat" {
+			heartbeat = event
+			break
+		}
+	}
+	if heartbeat == nil {
+		t.Fatalf("heartbeat event missing: %#v", store.events)
+	}
+	if heartbeat.Status != ports.JobStatusRunning {
+		t.Fatalf("heartbeat status = %q, want running", heartbeat.Status)
+	}
+	if heartbeat.Payload["sequence"] != uint64(1) {
+		t.Fatalf("heartbeat sequence = %#v, want 1", heartbeat.Payload["sequence"])
+	}
+}
+
 func TestRunReportTelemetryFallsBackToSubjectID(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-report-telemetry"] = &ports.Job{
@@ -256,6 +289,49 @@ func TestStartAsyncDetachesFromRequestAndWaitCancelsJob(t *testing.T) {
 	case <-cancelled:
 	default:
 		t.Fatal("runner did not observe service cancellation")
+	}
+}
+
+func TestCancelRunningAsyncJobCancelsRunnerContext(t *testing.T) {
+	store := newMemoryJobStore()
+	service := New(store)
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	service.WithRunner(KindReportRun, func(ctx context.Context, _ *ports.Job, _ *Service) (map[string]any, map[string]string, error) {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return nil, nil, ctx.Err()
+	})
+	job, created, err := service.Create(context.Background(), ports.CreateJobRequest{Kind: KindReportRun})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !created {
+		t.Fatal("created = false, want true")
+	}
+	service.StartAsync(context.Background(), job)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("async job did not start")
+	}
+	cancelledJob, err := service.Cancel(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+	if !cancelledJob.CancelRequested {
+		t.Fatal("CancelRequested = false, want true")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not observe job cancellation")
+	}
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), time.Second)
+	defer waitCancel()
+	if err := service.Wait(waitCtx); err != nil {
+		t.Fatalf("Wait() error = %v", err)
 	}
 }
 

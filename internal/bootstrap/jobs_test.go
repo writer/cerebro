@@ -15,20 +15,48 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func TestAuthorizeJobCreateAllowsSourceRuntimeOrchestrate(t *testing.T) {
+func TestAuthorizeJobCreateAllowsRuntimePhaseJobs(t *testing.T) {
 	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		"runtime-1": {Id: "runtime-1", SourceId: "github", TenantId: "writer"},
 	}}
-	tenantID, err := authorizeJobCreate(context.Background(), store, createJobHTTPRequest{
-		Kind:     platformjobs.KindSourceRuntimeOrchestrate,
-		TenantID: "writer",
-		Payload:  map[string]any{"runtime_id": "runtime-1"},
-	})
-	if err != nil {
-		t.Fatalf("authorizeJobCreate() error = %v", err)
+	for _, kind := range []string{
+		platformjobs.KindSourceRuntimeOrchestrate,
+		platformjobs.KindGraphRulesEvaluate,
+		platformjobs.KindFindingCandidatesEvaluate,
+	} {
+		t.Run(kind, func(t *testing.T) {
+			tenantID, err := authorizeJobCreate(context.Background(), store, createJobHTTPRequest{
+				Kind:     kind,
+				TenantID: "writer",
+				Payload:  map[string]any{"runtime_id": "runtime-1"},
+			})
+			if err != nil {
+				t.Fatalf("authorizeJobCreate() error = %v", err)
+			}
+			if tenantID != "writer" {
+				t.Fatalf("authorizeJobCreate() tenantID = %q, want writer", tenantID)
+			}
+		})
 	}
-	if tenantID != "writer" {
-		t.Fatalf("authorizeJobCreate() tenantID = %q, want writer", tenantID)
+}
+
+func TestNewJobServiceRegistersRuntimePhaseJobs(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0"}, Dependencies{StateStore: newA2ATestJobStore()}, nil)
+	for _, kind := range []string{
+		platformjobs.KindGraphRulesEvaluate,
+		platformjobs.KindFindingCandidatesEvaluate,
+	} {
+		t.Run(kind, func(t *testing.T) {
+			_, _, err := app.jobService().Create(context.Background(), ports.CreateJobRequest{
+				Kind:      kind,
+				TenantID:  "writer",
+				SubjectID: "runtime-1",
+				Payload:   map[string]any{"runtime_id": "runtime-1"},
+			})
+			if err != nil {
+				t.Fatalf("Create(%s) error = %v", kind, err)
+			}
+		})
 	}
 }
 

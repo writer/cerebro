@@ -26,6 +26,11 @@ const (
 )
 
 const (
+	DefaultNeo4jQueryTimeout = 2 * time.Minute
+	MaxNeo4jQueryTimeout     = 10 * time.Minute
+)
+
+const (
 	AppendLogDriverJetStream = "jetstream"
 	StateStoreDriverPostgres = "postgres"
 	GraphStoreDriverNeo4j    = "neo4j"
@@ -39,6 +44,7 @@ var (
 	errConfigValueConflict     = errors.New("config value and file are both set")
 	errInvalidOTLPEndpoint     = errors.New("invalid otlp endpoint")
 	errLegacyKuzuPath          = errors.New("CEREBRO_KUZU_PATH is no longer supported")
+	errNeo4jQueryTimeoutHigh   = errors.New("neo4j query timeout too high")
 	errUnsafeOTLPTransportMode = errors.New("unsafe otlp transport mode")
 )
 
@@ -592,7 +598,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
-	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
+	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", DefaultNeo4jQueryTimeout); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphStore.Neo4jQueryTimeout, err = EffectiveNeo4jQueryTimeout(cfg.GraphStore.Neo4jQueryTimeout); err != nil {
 		return Config{}, err
 	}
 	if cfg.GraphActions.AccessApprovals.Timeout, err = parseDurationEnv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", 10*time.Second); err != nil {
@@ -752,6 +761,16 @@ func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 		cfg.PostgresConnMaxIdleTime = defaultPostgresConnMaxIdleTime
 	}
 	return cfg
+}
+
+func EffectiveNeo4jQueryTimeout(timeout time.Duration) (time.Duration, error) {
+	if timeout <= 0 {
+		timeout = DefaultNeo4jQueryTimeout
+	}
+	if timeout > MaxNeo4jQueryTimeout {
+		return 0, fmt.Errorf("%w: CEREBRO_NEO4J_QUERY_TIMEOUT must be at most %s", errNeo4jQueryTimeoutHigh, MaxNeo4jQueryTimeout)
+	}
+	return timeout, nil
 }
 
 func (cfg AuthConfig) HasCredentialMaterial() bool {

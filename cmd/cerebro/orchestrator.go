@@ -299,6 +299,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 			telemetryField("job.run_duration_ms", time.Since(jobMeta.StartedAt).Milliseconds()),
 			telemetryField("orchestrator.status", status),
 		))
+		emitOrchestratorRunTerminalWideEvent(ctx, status, terminalAttrs)
 		if status == "completed" {
 			telemetry.Event(ctx, "platform.job.completed", terminalAttrs)
 		} else {
@@ -473,6 +474,37 @@ func orchestratorShutdownContext(options orchestratorOptions, fallback context.C
 	return fallback
 }
 
+func emitOrchestratorRunTerminalWideEvent(ctx context.Context, status string, attrs telemetry.Attributes) {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "unknown"
+	}
+	telemetry.Event(ctx, "orchestrator.run.finished", telemetry.RuntimeAttributes().With(attrs).With(telemetry.Attrs(
+		telemetryField("event.dataset", "cerebro.wide_events"),
+		telemetryField("event.category", "operation"),
+		telemetryField("event.type", "end"),
+		telemetryField("event.outcome", orchestratorOutcomeForStatus(status)),
+		telemetryField("wide_event", true),
+		telemetryField("wide_event.contract", "orchestrator-run-terminal"),
+		telemetryField("operation.name", "orchestrator.run"),
+		telemetryField("operation.status", status),
+		telemetryField("status", status),
+	)))
+}
+
+func orchestratorOutcomeForStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "success", "succeeded":
+		return "success"
+	case "failed", "error":
+		return "failure"
+	case "skipped", "cancelled", "canceled":
+		return "neutral"
+	default:
+		return "unknown"
+	}
+}
+
 func runOrchestratorIteration(
 	ctx context.Context,
 	lister ports.SourceRuntimeListStore,
@@ -570,35 +602,45 @@ func runOrchestratorIteration(
 			continue
 		}
 		acquiredCount++
-		runtimeCtx, cancelRuntime := context.WithCancel(runtimeCtx)
-		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner, cancelRuntime)
+		syncCtx, cancelSync := context.WithCancel(runtimeCtx)
+		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(syncCtx, leaser, runtime, leaseOwner, cancelSync)
+		releaseSyncLease := func(stage string) bool {
+			cancelSync()
+			released := true
+			if err := stopLeaseRenewal(); err != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", err)
+				runErr = err
+				released = false
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "renew_lease_error_kind", telemetry.ErrorKind(err))
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "source_runtime.lease_release_stage", stage)
+				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "renew_lease", err)
+			}
+			if err := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); err != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", err)
+				runErr = err
+				released = false
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "release_lease_error_kind", telemetry.ErrorKind(err))
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "source_runtime.lease_release_stage", stage)
+				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "release_lease", err)
+			}
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "source_runtime.lease_released_before_downstream", released)
+			return released
+		}
 		syncStartCursorOpaque := orchestratorRuntimeStartCursorOpaque(runtime)
 		syncStarted := time.Now()
-		emitOrchestratorJobPhaseStarted(runtimeCtx, "source_runtime.sync", iteration, runtime, 0)
-		syncResult, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit})
+		emitOrchestratorJobPhaseStarted(syncCtx, "source_runtime.sync", iteration, runtime, 0)
+		syncResult, err := runtimeService.Sync(syncCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit})
 		if err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
 			runErr = err
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_stage", "sync")
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_kind", telemetry.ErrorKind(err))
-			emitOrchestratorJobPhaseEnded(runtimeCtx, "source_runtime.sync", "failed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
+			emitOrchestratorJobPhaseEnded(syncCtx, "source_runtime.sync", "failed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
 				telemetryField("error_kind", telemetry.ErrorKind(err)),
 			))
 			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync", err)
-			cancelRuntime()
-			if renewalErr := stopLeaseRenewal(); renewalErr != nil {
-				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", renewalErr)
-				runErr = renewalErr
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "renew_lease_error_kind", telemetry.ErrorKind(renewalErr))
-				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "renew_lease", renewalErr)
-			}
-			if releaseErr := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); releaseErr != nil {
-				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", releaseErr)
-				runErr = releaseErr
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "release_lease_error_kind", telemetry.ErrorKind(releaseErr))
-				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "release_lease", releaseErr)
-			}
+			releaseSyncLease("sync_failed")
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
 			emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.failed", runtimeStatus, iteration, runtime, runtimeResult, runtimeSpanAttrs)
@@ -614,10 +656,17 @@ func runOrchestratorIteration(
 			}
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
-			emitOrchestratorJobPhaseEnded(runtimeCtx, "source_runtime.sync", "completed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
+			emitOrchestratorJobPhaseEnded(syncCtx, "source_runtime.sync", "completed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
 				telemetryField("pages_read", runtimeResult.PagesRead),
 				telemetryField("events_appended", runtimeResult.EventsAppended),
 			))
+		}
+		if !releaseSyncLease("sync_completed") {
+			result.Runtimes = append(result.Runtimes, runtimeResult)
+			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
+			emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.failed", runtimeStatus, iteration, runtime, runtimeResult, runtimeSpanAttrs)
+			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
+			continue
 		}
 		graphPageLimit := orchestratorGraphPageLimit(options.GraphPageLimit, runtimeResult.PagesRead)
 		resetGraphCheckpoint := runtimeResult.EventsAppended > 0 && syncStartCursorOpaque == ""
@@ -690,19 +739,6 @@ func runOrchestratorIteration(
 			runtimeResult.GraphRules = "skipped"
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
 		}
-		cancelRuntime()
-		if err := stopLeaseRenewal(); err != nil {
-			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", err)
-			runErr = err
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "renew_lease_error_kind", telemetry.ErrorKind(err))
-			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "renew_lease", err)
-		}
-		if err := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); err != nil {
-			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", err)
-			runErr = err
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "release_lease_error_kind", telemetry.ErrorKind(err))
-			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "release_lease", err)
-		}
 		result.Runtimes = append(result.Runtimes, runtimeResult)
 		if runtimeResult.Error == "" {
 			runtimeStatus = "completed"
@@ -731,18 +767,17 @@ func runOrchestratorIteration(
 // runOrchestratorPhase wraps a single post-sync orchestrator step
 // (`finding_rules`, `graph_ingest`, `graph_rules`) with a named telemetry
 // span and a dedicated context timeout. The span surfaces a span_end
-// event per phase — without it, a stall between source_runtime.sync and
+// event per phase. Without it, a stall between source_runtime.sync and
 // orchestrator.runtime is opaque: there's no way to tell which step is
 // blocked from logs alone. The timeout decouples per-phase liveness from
-// the runtime-level lease TTL, so a single Neo4j tx waiting on a row
+// the source-sync lease TTL, so a single Neo4j tx waiting on a row
 // lock or a source.Read() retry storm can't park the iteration
 // indefinitely. On context deadline the phase returns
-// context.DeadlineExceeded, which the caller treats like any other
-// failure (lease releases, next iteration retries).
+// context.DeadlineExceeded, which the caller treats like any other failure.
 //
-// The phase context is derived from runtimeCtx so it still receives
-// lease-renewal cancellation. The generic R parameter lets each phase
-// return its own result type without an interface boxing dance.
+// The phase context is derived from runtimeCtx so it still receives parent
+// cancellation. The generic R parameter lets each phase return its own result
+// type without an interface boxing dance.
 func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iteration uint32, runtime *cerebrov1.SourceRuntime, timeout time.Duration, fn func(context.Context) (R, error)) (R, error) {
 	phaseCtx, cancel := context.WithTimeout(runtimeCtx, timeout)
 	defer cancel()

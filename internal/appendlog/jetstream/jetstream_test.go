@@ -1004,6 +1004,23 @@ func TestReplayEmitsScanTelemetry(t *testing.T) {
 	if _, ok := payload["messaging.jetstream.replay.duration_ms"].(float64); !ok {
 		t.Fatalf("replay duration missing: %#v", payload)
 	}
+	guardrails := jetstreamTelemetryPayloads(t, stderr, "event", "jetstream.replay.guardrail")
+	if len(guardrails) != 1 {
+		t.Fatalf("jetstream.replay.guardrail events = %d, want 1; stderr=%s", len(guardrails), stderr)
+	}
+	guardrail := guardrails[0]
+	for key, want := range map[string]any{
+		"messaging.jetstream.replay.strategy":         replayStrategyLegacyReverseScan,
+		"messaging.jetstream.replay.legacy_full_scan": true,
+		"messaging.jetstream.replay.scanned_count":    float64(3),
+		"messaging.jetstream.replay.high_scan":        false,
+		"alert.recommended":                           true,
+		"status":                                      "completed",
+	} {
+		if got := guardrail[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, guardrail)
+		}
+	}
 }
 
 func TestReplayAppliesDefaultLimit(t *testing.T) {
