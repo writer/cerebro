@@ -54,7 +54,7 @@ func FindDisplayNameInURN(filePath string, source []byte) ([]Finding, error) {
 		if !ok || fn.Body == nil || fn.Name == nil {
 			continue
 		}
-		if !strings.HasSuffix(fn.Name.Name, "URN") {
+		if !strings.HasSuffix(fn.Name.Name, "URN") && !strings.HasSuffix(fn.Name.Name, "EntityID") {
 			continue
 		}
 		ast.Inspect(fn, func(node ast.Node) bool {
@@ -62,7 +62,7 @@ func FindDisplayNameInURN(filePath string, source []byte) ([]Finding, error) {
 			if !ok {
 				return true
 			}
-			if !isCallTo(call, "firstNonEmpty") {
+			if !isCallTo(call, "firstNonEmpty") && !isCallTo(call, "joinProjectionIdentity") && !isCallTo(call, "firstProjectionValue") {
 				return true
 			}
 			for _, arg := range call.Args {

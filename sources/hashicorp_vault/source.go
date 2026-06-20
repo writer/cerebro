@@ -25,7 +25,7 @@ const (
 	familyAuditEvents      = "audit_events"
 )
 
-var templateKeys = []string{"token"}
+var templateKeys = []string{"vault_addr", "token"}
 
 type Source struct {
 	inner         *jsonapi.Source

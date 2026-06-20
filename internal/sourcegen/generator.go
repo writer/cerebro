@@ -945,6 +945,8 @@ func renderSourceGo(request normalizedRequest) string {
 	}
 	fmt.Fprintf(&b, ")\n\n")
 	templateKeys := uniqueStrings(append(append([]string{}, request.ConfigKeys...), request.CredentialKeys...))
+	templateKeys = append(templateKeys, extractTemplateKeys(request.BaseURLTemplate)...)
+	templateKeys = uniqueStrings(templateKeys)
 	fmt.Fprintf(&b, "var templateKeys = []string{%s}\n\n", quotedStrings(templateKeys))
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "var oauthScopes = []string{%s}\n\n", quotedStrings(request.OAuth.Scopes))
@@ -1308,11 +1310,11 @@ func renderProjectionGo(request normalizedRequest) string {
 	}
 	if firstFamilyClass(request.Families, "secret").Name != "" {
 		fmt.Fprintf(&b, "func %sSecretProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
-		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tsecretID := firstNonEmpty(attributes[\"secret_id\"], event.GetId())\n\tsecretURN := projectionURN(tenantID, \"secret\", secretID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: secretURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"secret\", Label: firstNonEmpty(attributes[\"secret_name\"], secretID), Attributes: map[string]string{\"secret_id\": secretID, \"secret_type\": strings.TrimSpace(attributes[\"secret_type\"]), \"secret_status\": strings.TrimSpace(attributes[\"secret_status\"]), \"secret_rotation_enabled\": strings.TrimSpace(attributes[\"secret_rotation_enabled\"]), \"secret_last_rotated_at\": strings.TrimSpace(attributes[\"secret_last_rotated_at\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), secretURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n\n")
+		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tsecretID := firstNonEmpty(attributes[\"secret_id\"], event.GetId())\n\tsecretURN := projectionURN(tenantID, \"secret\", secretID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: secretURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"secret\", Label: firstNonEmpty(attributes[\"secret_name\"], secretID), Attributes: map[string]string{\"secret_id\": secretID, \"secret_type\": strings.TrimSpace(attributes[\"secret_type\"]), \"secret_status\": strings.TrimSpace(attributes[\"secret_status\"]), \"secret_rotation_enabled\": strings.TrimSpace(attributes[\"secret_rotation_enabled\"]), \"secret_last_rotated_at\": strings.TrimSpace(attributes[\"secret_last_rotated_at\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), secretURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n\n")
 	}
 	if firstFamilyClass(request.Families, "policy").Name != "" {
 		fmt.Fprintf(&b, "func %sPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
-		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tpolicyID := firstNonEmpty(attributes[\"policy_id\"], event.GetId())\n\tpolicyURN := projectionURN(tenantID, \"policy\", policyID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: policyURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"policy\", Label: firstNonEmpty(attributes[\"policy_name\"], policyID), Attributes: map[string]string{\"policy_id\": policyID, \"policy_type\": strings.TrimSpace(attributes[\"policy_type\"]), \"policy_status\": strings.TrimSpace(attributes[\"policy_status\"]), \"policy_severity\": strings.TrimSpace(attributes[\"policy_severity\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
+		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tpolicyID := firstNonEmpty(attributes[\"policy_id\"], event.GetId())\n\tpolicyURN := projectionURN(tenantID, \"policy\", policyID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: policyURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"policy\", Label: firstNonEmpty(attributes[\"policy_name\"], policyID), Attributes: map[string]string{\"policy_id\": policyID, \"policy_type\": strings.TrimSpace(attributes[\"policy_type\"]), \"policy_status\": strings.TrimSpace(attributes[\"policy_status\"]), \"policy_severity\": strings.TrimSpace(attributes[\"policy_severity\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
 	return b.String()
 }
@@ -1489,4 +1491,32 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// extractTemplateKeys finds all ${prefix.key} placeholders in a template string
+// and returns the key names, ensuring they are included in templateKeys so
+// renderTemplate can resolve them at runtime.
+func extractTemplateKeys(template string) []string {
+	var keys []string
+	for _, prefix := range []string{"config", "credential", "connection"} {
+		prefixPattern := "${" + prefix + "."
+		search := template
+		for {
+			idx := strings.Index(search, prefixPattern)
+			if idx == -1 {
+				break
+			}
+			search = search[idx+len(prefixPattern):]
+			endIdx := strings.Index(search, "}")
+			if endIdx == -1 {
+				break
+			}
+			key := strings.TrimSpace(search[:endIdx])
+			if key != "" {
+				keys = append(keys, key)
+			}
+			search = search[endIdx+1:]
+		}
+	}
+	return keys
 }
