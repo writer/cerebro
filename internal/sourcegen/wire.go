@@ -156,6 +156,14 @@ func wireSourceRegistry(path, importAlias, importPath, sourceID, loaderEntry str
 			entry := strings.TrimSuffix(loaderEntry, "\n")
 			lines = append(lines[:insertIdx], append([]string{entry}, lines[insertIdx:]...)...)
 			text = strings.Join(lines, "\n")
+		} else {
+			// Source ID sorts after all existing entries; append before the closing brace.
+			marker := "}"
+			idx := strings.LastIndex(text, marker)
+			if idx >= 0 {
+				entry := strings.TrimSuffix(loaderEntry, "\n")
+				text = text[:idx] + entry + "\n" + text[idx:]
+			}
 		}
 	}
 
@@ -225,6 +233,9 @@ func wireDocsReference(path, entry, sourceID string) error {
 	if insertIdx >= 0 {
 		lines = append(lines[:insertIdx], append([]string{entry}, lines[insertIdx:]...)...)
 		text = strings.Join(lines, "\n")
+	} else {
+		// Source ID sorts after all existing entries; append at end of file.
+		text = strings.TrimRight(text, "\n") + "\n" + entry + "\n"
 	}
 
 	return os.WriteFile(path, []byte(text), 0o600) // #nosec G703 -- operator-provided CLI path.

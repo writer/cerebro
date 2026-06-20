@@ -108,6 +108,7 @@ type settings struct {
 	clientSecret             string
 	refreshToken             string
 	tokenURL                 string
+	apiKey                   string
 	oauthScopes              []string
 	oauthTokenParams         map[string]string
 	oauthTokenRequestMethod  string
@@ -244,8 +245,8 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		token:                   firstNonEmpty(configValue(cfg, "token"), configValue(cfg, "api_token"), configValue(cfg, "api_key"), configValue(cfg, "access_token"), configValue(cfg, "jwt"), configValue(cfg, "signature")),
 		username:                configValue(cfg, "username"),
 		password:                configValue(cfg, "password"),
-		clientID:                configValue(cfg, "client_id"),
-		clientSecret:            configValue(cfg, "client_secret"),
+		clientID:                firstNonEmpty(configValue(cfg, "client_id"), configValue(cfg, "access_key")),
+		clientSecret:            firstNonEmpty(configValue(cfg, "client_secret"), configValue(cfg, "secret_key")),
 		refreshToken:            configValue(cfg, "refresh_token"),
 		tokenURL:                firstNonEmpty(configuredTokenURL, s.options.OAuthTokenURL),
 		oauthScopes:             cloneStrings(s.options.OAuthScopes),
@@ -254,6 +255,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		perPage:                 defaultPageSize,
 		region:                  configValue(cfg, "region"),
 		service:                 configValue(cfg, "service"),
+		apiKey:                  configValue(cfg, "api_key"),
 	}
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
@@ -613,13 +615,9 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 	case "aws_sigv4":
 		return s.setAWSSigV4Auth(ctx, req, settings)
 	case "two_step":
-		token := settings.token
-		if token == "" {
-			var err error
-			token, err = s.twoStepAccessToken(ctx, settings)
-			if err != nil {
-				return err
-			}
+		token, err := s.twoStepAccessToken(ctx, settings)
+		if err != nil {
+			return err
 		}
 		return setTokenHeader(req, "Authorization", "Bearer", token, s.options.SourceID)
 	default:
@@ -675,7 +673,7 @@ func (s *Source) setAWSSigV4Auth(_ context.Context, req *http.Request, settings 
 	sortedQuery := make([]string, 0, len(req.URL.Query()))
 	for k, vs := range req.URL.Query() {
 		for _, v := range vs {
-			sortedQuery = append(sortedQuery, url.QueryEscape(k)+"="+url.QueryEscape(v))
+			sortedQuery = append(sortedQuery, rfc3986Escape(k)+"="+rfc3986Escape(v))
 		}
 	}
 	sort.Strings(sortedQuery)
@@ -724,7 +722,7 @@ func (s *Source) setAWSSigV4Auth(_ context.Context, req *http.Request, settings 
 // twoStepAccessToken exchanges an API key for a session token via a two-step
 // flow. It POSTs the api_key to the token_url and caches the result.
 func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (string, error) {
-	apiKey := settings.token
+	apiKey := settings.apiKey
 	if apiKey == "" {
 		return "", fmt.Errorf("%s api_key is required for two_step auth", s.options.SourceID)
 	}
@@ -750,7 +748,14 @@ func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (str
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := s.client.Do(req)
+	client := s.client
+	if client == nil {
+		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
+			SourceID:      s.options.SourceID,
+			AllowLoopback: s.AllowLoopbackBaseURL,
+		})
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("%s two_step token exchange: %w", s.options.SourceID, err)
 	}
@@ -789,6 +794,16 @@ func hmacSHA256(key []byte, data string) []byte {
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte(data))
 	return mac.Sum(nil)
+}
+
+// rfc3986Escape encodes a string per RFC 3986, which AWS SigV4 requires.
+// Unlike url.QueryEscape, it encodes spaces as %20 (not +) and does not
+// encode tilde (~).
+func rfc3986Escape(s string) string {
+	escaped := url.QueryEscape(s)
+	escaped = strings.ReplaceAll(escaped, "+", "%20")
+	escaped = strings.ReplaceAll(escaped, "%7E", "~")
+	return escaped
 }
 
 func setTokenHeader(req *http.Request, header string, scheme string, token string, sourceID string) error {

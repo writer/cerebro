@@ -413,7 +413,7 @@ func authModelConfig(authModel string) (string, string, error) {
 	case AuthModelSignature:
 		return "Signature", "token", nil
 	case AuthModelAWSSigV4:
-		return "AWS4-HMAC-SHA256", "access_key", nil
+		return "AWS4-HMAC-SHA256", "client_id", nil
 	case AuthModelTwoStep:
 		return "Bearer", "api_key", nil
 	default:
