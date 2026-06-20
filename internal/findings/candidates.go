@@ -154,10 +154,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 	}
 	var events []*cerebrov1.EventEnvelope
 	if rulesNeedReplay(runtime, ruleEvaluationStatesFromCandidateStates(states)) {
-		events, err = s.replayer.Replay(ctx, ports.ReplayRequest{
-			RuntimeID: runtimeID,
-			Limit:     normalizedLimit,
-		})
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromCandidateStates(states)))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events for candidates: %w", runtimeID, err)
 			return nil, s.markCandidateEvaluationsFailed(ctx, states, evaluationErr)
@@ -889,6 +886,17 @@ func ruleEvaluationStatesFromCandidateStates(states []*candidateRuleEvaluationSt
 			continue
 		}
 		out = append(out, &ruleEvaluationState{rule: state.rule})
+	}
+	return out
+}
+
+func rulesFromCandidateStates(states []*candidateRuleEvaluationState) []Rule {
+	out := make([]Rule, 0, len(states))
+	for _, state := range states {
+		if state == nil || state.rule == nil {
+			continue
+		}
+		out = append(out, state.rule)
 	}
 	return out
 }

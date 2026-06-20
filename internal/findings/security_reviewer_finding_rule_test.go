@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -157,21 +158,22 @@ func TestSecurityReviewerFindingRuleEntersCandidateEvaluationPipeline(t *testing
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	runtime := securityReviewerRuntime()
+	replayer := &stubReplayer{events: []*cerebrov1.EventEnvelope{
+		securityReviewerEvent("reviewer-finding-1", map[string]string{
+			"file":           "internal/bootstrap/app.go",
+			"line":           "42",
+			"message":        "handler accepts reviewer-controlled redirect target",
+			"repository":     "writer/cerebro",
+			"review_subject": "https://github.com/writer/cerebro/pull/1058",
+			"reviewer":       "security-reviewer",
+			"rule":           "open-redirect",
+			"severity":       "high",
+		}),
+	}}
 	store := &stubFindingStore{}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{
-			securityReviewerEvent("reviewer-finding-1", map[string]string{
-				"file":           "internal/bootstrap/app.go",
-				"line":           "42",
-				"message":        "handler accepts reviewer-controlled redirect target",
-				"repository":     "writer/cerebro",
-				"review_subject": "https://github.com/writer/cerebro/pull/1058",
-				"reviewer":       "security-reviewer",
-				"rule":           "open-redirect",
-				"severity":       "high",
-			}),
-		}},
+		replayer,
 		store,
 		store,
 		store,
@@ -185,6 +187,12 @@ func TestSecurityReviewerFindingRuleEntersCandidateEvaluationPipeline(t *testing
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeCandidateRules() error = %v", err)
+	}
+	if !replayer.request.ExactKindFilters {
+		t.Fatal("Replay().ExactKindFilters = false, want true")
+	}
+	if got, want := replayer.request.KindPrefixes, []string{"security_reviewer.finding"}; !slices.Equal(got, want) {
+		t.Fatalf("Replay().KindPrefixes = %#v, want %#v", got, want)
 	}
 	if got := store.candidateState.upsertCount; got != 1 {
 		t.Fatalf("candidate upserts = %d, want 1", got)

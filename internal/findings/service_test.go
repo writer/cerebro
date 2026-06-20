@@ -764,6 +764,96 @@ func (r *emittingRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
 	return ok
 }
 
+type metadataStubRule struct {
+	*stubRule
+	definition RuleDefinition
+}
+
+func (r *metadataStubRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func TestReplayExactKindFiltersForRulesIntersectRuntimeKind(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-okta-policy-rule",
+		SourceId: "okta",
+		Config:   map[string]string{"family": "policy_rule"},
+	}
+	rules := []Rule{
+		&metadataStubRule{
+			stubRule: &stubRule{
+				spec:               &cerebrov1.RuleSpec{Id: "rule-a"},
+				supportedSourceIDs: map[string]struct{}{"okta": {}},
+			},
+			definition: RuleDefinition{EventKinds: []string{"okta.audit", "okta.policy_rule"}},
+		},
+		&metadataStubRule{
+			stubRule: &stubRule{
+				spec:               &cerebrov1.RuleSpec{Id: "rule-b"},
+				supportedSourceIDs: map[string]struct{}{"okta": {}},
+			},
+			definition: RuleDefinition{EventKinds: []string{"okta.policy_rule"}},
+		},
+		&metadataStubRule{
+			stubRule: &stubRule{
+				spec:               &cerebrov1.RuleSpec{Id: "rule-c"},
+				supportedSourceIDs: map[string]struct{}{"github": {}},
+			},
+			definition: RuleDefinition{EventKinds: []string{"github.audit"}},
+		},
+	}
+
+	request := replayRequestForRules(runtime, runtime.GetId(), 25, rules)
+	if !request.ExactKindFilters {
+		t.Fatal("ExactKindFilters = false, want true")
+	}
+	if got, want := request.KindPrefixes, []string{"okta.policy_rule"}; !slices.Equal(got, want) {
+		t.Fatalf("KindPrefixes = %#v, want %#v", got, want)
+	}
+	if got := request.RuntimeID; got != runtime.GetId() {
+		t.Fatalf("RuntimeID = %q, want %q", got, runtime.GetId())
+	}
+	if got := request.Limit; got != uint32(25) {
+		t.Fatalf("Limit = %d, want 25", got)
+	}
+}
+
+func TestReplayExactKindFiltersForRulesRequireSupportingRuleCoverage(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-okta-policy-rule",
+		SourceId: "okta",
+		Config:   map[string]string{"family": "policy_rule"},
+	}
+	covered := &metadataStubRule{
+		stubRule: &stubRule{
+			spec:               &cerebrov1.RuleSpec{Id: "covered"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		definition: RuleDefinition{EventKinds: []string{"okta.policy_rule"}},
+	}
+	opaque := &stubRule{
+		spec:               &cerebrov1.RuleSpec{Id: "opaque"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+	}
+	if got := replayExactKindFiltersForRules(runtime, []Rule{covered, opaque}); len(got) != 0 {
+		t.Fatalf("replayExactKindFiltersForRules() with opaque supporting rule = %#v, want nil", got)
+	}
+
+	mismatched := &metadataStubRule{
+		stubRule: &stubRule{
+			spec:               &cerebrov1.RuleSpec{Id: "mismatched"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		definition: RuleDefinition{EventKinds: []string{"okta.audit"}},
+	}
+	if got := replayExactKindFiltersForRules(runtime, []Rule{covered, mismatched}); len(got) != 0 {
+		t.Fatalf("replayExactKindFiltersForRules() with uncovered metadata rule = %#v, want nil", got)
+	}
+}
+
 func (r *emittingRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
 	if r == nil || runtime == nil || event == nil || strings.TrimSpace(event.GetId()) != strings.TrimSpace(r.triggerEventID) {
 		return nil, nil
@@ -1012,6 +1102,12 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 	if got := replayer.request.Limit; got != 25 {
 		t.Fatalf("Replay().Limit = %d, want 25", got)
+	}
+	if !replayer.request.ExactKindFilters {
+		t.Fatal("Replay().ExactKindFilters = false, want true")
+	}
+	if got, want := replayer.request.KindPrefixes, []string{"okta.policy_rule"}; !slices.Equal(got, want) {
+		t.Fatalf("Replay().KindPrefixes = %#v, want %#v", got, want)
 	}
 	if len(result.Findings) != 1 {
 		t.Fatalf("len(Findings) = %d, want 1", len(result.Findings))

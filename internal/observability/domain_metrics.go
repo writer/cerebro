@@ -110,6 +110,31 @@ func otelJetStreamPublishMaxAttemptsExhausted() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelJetStreamReplayRequests() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.jetstream.replay.requests",
+		otelmetric.WithDescription("Total JetStream replay requests by strategy, status, and error category."),
+	)
+	return instrument
+}
+
+func otelJetStreamReplayDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.jetstream.replay.duration",
+		otelmetric.WithDescription("JetStream replay duration by strategy, status, and error category."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
+func otelJetStreamReplayRecords() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.jetstream.replay.records",
+		otelmetric.WithDescription("JetStream replay records scanned, decoded, matched, missing, or returned."),
+	)
+	return instrument
+}
+
 // SourceRuntimeSyncMetrics is intentionally shaped for low-cardinality OTEL
 // metrics. Runtime IDs, tenant IDs, resource URNs, evidence IDs, request IDs,
 // and trace IDs belong in spans/wide events, not metric labels.
@@ -164,6 +189,23 @@ type JetStreamPublishMetrics struct {
 	Duration             time.Duration
 	RetryCount           int
 	MaxAttemptsExhausted bool
+}
+
+// JetStreamReplayMetrics is intentionally scoped to operational dimensions.
+// Runtime IDs, tenant IDs, event IDs, subjects, and request IDs belong in spans
+// and wide events rather than metric labels.
+type JetStreamReplayMetrics struct {
+	Strategy             string
+	Status               string
+	ErrorCategory        string
+	Duration             time.Duration
+	Scanned              uint64
+	Missing              uint64
+	SubjectMatched       uint64
+	Decoded              uint64
+	Matched              uint64
+	Returned             uint64
+	SubjectFilterPresent bool
 }
 
 func RecordSourceRuntimeSync(ctx context.Context, metrics SourceRuntimeSyncMetrics) {
@@ -237,6 +279,25 @@ func RecordJetStreamPublish(ctx context.Context, metrics JetStreamPublishMetrics
 	}
 }
 
+func RecordJetStreamReplay(ctx context.Context, metrics JetStreamReplayMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("strategy", boundedMetricValue(metrics.Strategy, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.String("error_category", boundedMetricValue(metrics.ErrorCategory, "none")),
+		attribute.Bool("subject_filter_present", metrics.SubjectFilterPresent),
+	}
+	otelJetStreamReplayRequests().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelJetStreamReplayDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+	recordJetStreamReplayRecordCount(ctx, attrs, "scanned", metrics.Scanned)
+	recordJetStreamReplayRecordCount(ctx, attrs, "missing", metrics.Missing)
+	recordJetStreamReplayRecordCount(ctx, attrs, "subject_matched", metrics.SubjectMatched)
+	recordJetStreamReplayRecordCount(ctx, attrs, "decoded", metrics.Decoded)
+	recordJetStreamReplayRecordCount(ctx, attrs, "matched", metrics.Matched)
+	recordJetStreamReplayRecordCount(ctx, attrs, "returned", metrics.Returned)
+}
+
 func recordSourceRuntimeRecordCount(ctx context.Context, base []attribute.KeyValue, kind string, count int64) {
 	if count <= 0 {
 		return
@@ -251,6 +312,14 @@ func recordSourceProjectionRecordCount(ctx context.Context, base []attribute.Key
 	}
 	attrs := append(cloneMetricAttributes(base), attribute.String("record.kind", kind))
 	otelSourceProjectionRecords().Add(ctx, count, otelmetric.WithAttributes(attrs...))
+}
+
+func recordJetStreamReplayRecordCount(ctx context.Context, base []attribute.KeyValue, kind string, count uint64) {
+	if count == 0 {
+		return
+	}
+	attrs := append(cloneMetricAttributes(base), attribute.String("record.kind", kind))
+	otelJetStreamReplayRecords().Add(ctx, boundedUint64ToInt64(count), otelmetric.WithAttributes(attrs...))
 }
 
 func cloneMetricAttributes(values []attribute.KeyValue) []attribute.KeyValue {
@@ -318,4 +387,12 @@ func maxInt64(value int64, minimum int64) int64 {
 		return minimum
 	}
 	return value
+}
+
+func boundedUint64ToInt64(value uint64) int64 {
+	const maxMetricInt64 = int64(1<<63 - 1)
+	if value > uint64(maxMetricInt64) {
+		return maxMetricInt64
+	}
+	return int64(value) // #nosec G115 -- value is capped above.
 }
