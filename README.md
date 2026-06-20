@@ -41,7 +41,7 @@ docker compose up --build
 
 - A Go bootstrap service built around `net/http`, Connect RPC, and `cmd/cerebro`.
 - Built-in source integrations for cloud, SaaS, identity, endpoint, vulnerability, compliance, and workflow signals.
-- Source runtime sync, append-log replay, claim/finding/report workflows, compliance control coverage, and optional graph projection/query tooling.
+- Source runtime sync, append-log replay, claim/finding/report workflows, compliance control coverage, and optional graph projection, query, and action tooling.
 - Optional MCP, graph-agent, and device-authenticated telemetry surfaces.
 - Policy and FindingRule YAML DSL catalogs, generated detection catalogs, SDK helpers, OpenAPI/Connect contracts, release artifacts, and local validation tooling.
 
