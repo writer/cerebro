@@ -30,6 +30,32 @@ func TestOpenRejectsIncompleteConfig(t *testing.T) {
 	}
 }
 
+func TestOpenAppliesEffectiveNeo4jQueryTimeout(t *testing.T) {
+	store, err := Open(config.GraphStoreConfig{
+		Neo4jURI:      "bolt://127.0.0.1:7687",
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: "password",
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.CloseContext(context.Background())
+	})
+	if store.queryTimeout != config.DefaultNeo4jQueryTimeout {
+		t.Fatalf("query timeout = %v, want %v", store.queryTimeout, config.DefaultNeo4jQueryTimeout)
+	}
+
+	if _, err := Open(config.GraphStoreConfig{
+		Neo4jURI:          "bolt://127.0.0.1:7687",
+		Neo4jUsername:     "neo4j",
+		Neo4jPassword:     "password",
+		Neo4jQueryTimeout: config.MaxNeo4jQueryTimeout + time.Second,
+	}); err == nil {
+		t.Fatal("Open() error = nil, want excessive timeout error")
+	}
+}
+
 func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing.T) {
 	if !strings.Contains(mergeEntityAndLoadAttributesQuery, "e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END") {
 		t.Fatalf("entity merge does not preserve existing labels for fallback labels:\n%s", mergeEntityAndLoadAttributesQuery)

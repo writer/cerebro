@@ -26,6 +26,7 @@ const (
 	KindSourceRuntimeSync         = "source_runtime_sync"
 	KindSourceRuntimeOrchestrate  = "source_runtime_orchestrate"
 	KindGraphIngestRuntime        = "graph_ingest_runtime"
+	KindGraphRulesEvaluate        = "graph_rules_evaluate"
 	KindFindingRulesEvaluate      = "finding_rules_evaluate"
 	KindFindingCandidatesEvaluate = "finding_candidates_evaluate"
 	KindFindingsEvaluate          = "findings_evaluate"
@@ -33,6 +34,8 @@ const (
 	KindVulnDBSyncJobRun          = "vulndb_sync_job_run"
 	KindGraphRebuildDryRun        = "graph_rebuild_dry_run"
 )
+
+const defaultJobHeartbeatInterval = 30 * time.Second
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)
 
@@ -42,12 +45,13 @@ type Service struct {
 	now          func() time.Time
 	nextAsyncID  uint64
 	asyncCancels map[uint64]context.CancelFunc
+	asyncJobs    map[string]uint64
 	wg           sync.WaitGroup
 	mu           sync.Mutex
 }
 
 func New(store ports.JobStore) *Service {
-	return &Service{store: store, runners: map[string]Runner{}, now: func() time.Time { return time.Now().UTC() }, asyncCancels: map[uint64]context.CancelFunc{}}
+	return &Service{store: store, runners: map[string]Runner{}, now: func() time.Time { return time.Now().UTC() }, asyncCancels: map[uint64]context.CancelFunc{}, asyncJobs: map[string]uint64{}}
 }
 
 func (s *Service) WithRunner(kind string, runner Runner) *Service {
@@ -117,7 +121,13 @@ func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:con
 	if s.asyncCancels == nil {
 		s.asyncCancels = map[uint64]context.CancelFunc{}
 	}
+	if s.asyncJobs == nil {
+		s.asyncJobs = map[string]uint64{}
+	}
 	s.asyncCancels[asyncID] = cancel
+	if job.ID != "" {
+		s.asyncJobs[job.ID] = asyncID
+	}
 	s.wg.Add(1)
 	s.mu.Unlock()
 	go func() {
@@ -125,12 +135,30 @@ func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:con
 			cancel()
 			s.mu.Lock()
 			delete(s.asyncCancels, asyncID)
+			if job.ID != "" && s.asyncJobs[job.ID] == asyncID {
+				delete(s.asyncJobs, job.ID)
+			}
 			s.mu.Unlock()
 			s.wg.Done()
 		}()
 		telemetry.Event(runCtx, "platform.job.async_started", jobTelemetryAttrs(job).WithField(telemetry.Field{Key: "job.async_id", Value: asyncID}))
 		_ = s.Run(runCtx, job.ID)
 	}()
+}
+
+func (s *Service) cancelAsyncJob(jobID string) bool {
+	if s == nil || strings.TrimSpace(jobID) == "" {
+		return false
+	}
+	s.mu.Lock()
+	asyncID := s.asyncJobs[strings.TrimSpace(jobID)]
+	cancel := s.asyncCancels[asyncID]
+	s.mu.Unlock()
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	return true
 }
 
 func (s *Service) Wait(ctx context.Context) error {
@@ -160,6 +188,49 @@ func (s *Service) Wait(ctx context.Context) error {
 		return nil
 	case <-ctxDone:
 		return ctx.Err()
+	}
+}
+
+func (s *Service) startHeartbeat(ctx context.Context, job *ports.Job) func() {
+	if s == nil || s.store == nil || job == nil {
+		return func() {}
+	}
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	var sequence uint64
+	emit := func() {
+		sequence++
+		payload := map[string]any{"sequence": sequence}
+		_, _ = s.store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{
+			JobID:   job.ID,
+			Type:    "heartbeat",
+			Status:  ports.JobStatusRunning,
+			Message: "job heartbeat",
+			Payload: payload,
+		})
+		telemetry.Event(ctx, "platform.job.heartbeat", jobTelemetryAttrs(job).With(telemetry.Attrs(
+			telemetry.Field{Key: "job.status", Value: ports.JobStatusRunning},
+			telemetry.Field{Key: "job.heartbeat.sequence", Value: sequence},
+			telemetry.Field{Key: "job.heartbeat.at_unix_ms", Value: s.now().UnixMilli()},
+		)))
+	}
+	emit()
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(defaultJobHeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				emit()
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
 	}
 }
 
@@ -255,6 +326,8 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 		telemetry.Field{Key: "job.queue_latency_ms", Value: jobQueueLatencyMs(job)},
 		telemetry.Field{Key: "job.runner.available", Value: true},
 	)))
+	stopHeartbeat := s.startHeartbeat(ctx, job)
+	defer stopHeartbeat()
 	result, refs, runErr := runner(ctx, job, s)
 	finished := s.now()
 	if runErr != nil {
@@ -382,9 +455,14 @@ func (s *Service) Cancel(ctx context.Context, jobID string) (*ports.Job, error) 
 		return nil, err
 	}
 	_, _ = s.store.AppendJobEvent(ctx, event)
+	cancelledAsync := false
+	if existing.Status == ports.JobStatusRunning {
+		cancelledAsync = s.cancelAsyncJob(existing.ID)
+	}
 	telemetry.Event(ctx, "platform.job.cancel_requested", jobTelemetryAttrs(job).With(telemetry.Attrs(
 		telemetry.Field{Key: "job.cancel_requested", Value: true},
 		telemetry.Field{Key: "job.cancel.transitioned_terminal", Value: event.Type == "cancelled"},
+		telemetry.Field{Key: "job.cancel.async_context_cancelled", Value: cancelledAsync},
 	)))
 	return job, nil
 }

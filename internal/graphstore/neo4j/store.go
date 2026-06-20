@@ -24,6 +24,7 @@ import (
 const defaultIngestRunListLimit = 25
 const maxAttributeMergeRetries = 5
 const defaultProjectionCleanupLimit = 1000
+const neo4jReadWarningThreshold = time.Minute
 const mergeEntityAndLoadAttributesQuery = `MERGE (e:Entity {urn: $urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
 SET e.tenant_id = $tenant_id,
@@ -77,11 +78,15 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 		return nil, errors.New("neo4j password is required")
 	}
 	database := strings.TrimSpace(cfg.Neo4jDatabase)
+	queryTimeout, err := config.EffectiveNeo4jQueryTimeout(cfg.Neo4jQueryTimeout)
+	if err != nil {
+		return nil, err
+	}
 	driver, err := neo4jdriver.NewDriverWithContext(uri, neo4jdriver.BasicAuth(username, cfg.Neo4jPassword, ""))
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
 	}
-	return &Store{driver: driver, database: database, queryTimeout: cfg.Neo4jQueryTimeout}, nil
+	return &Store{driver: driver, database: database, queryTimeout: queryTimeout}, nil
 }
 
 // CloseContext closes the underlying driver.
@@ -1297,13 +1302,17 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 	ctx, span := telemetry.Start(ctx, "neo4j.read", attrs)
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
+	started := time.Now()
 	result, err := session.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		return work(ctx, tx)
 	})
+	duration := time.Since(started)
 	if err != nil {
+		emitNeo4jReadGuardrail(ctx, s.database, "failed", duration, s.queryTimeout, err)
 		neo4jTelemetryError(ctx, span, s.database, "read", err)
 		return nil, err
 	}
+	emitNeo4jReadGuardrail(ctx, s.database, "completed", duration, s.queryTimeout, nil)
 	neo4jAnnotateMain(ctx, s.database, "read", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return result, nil
@@ -1345,6 +1354,36 @@ func neo4jTelemetryError(ctx context.Context, span *telemetry.Span, database str
 		telemetry.Field{Key: "db.namespace", Value: strings.TrimSpace(database)},
 	))
 	telemetry.End(span, "failed", attrs)
+}
+
+func emitNeo4jReadGuardrail(ctx context.Context, database string, status string, duration time.Duration, timeout time.Duration, err error) {
+	slow := duration >= neo4jReadWarningThreshold
+	timedOut := errors.Is(err, context.DeadlineExceeded)
+	if timeout > 0 && duration >= timeout {
+		timedOut = true
+	}
+	if !slow && !timedOut {
+		return
+	}
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "graphstore.neo4j"},
+		telemetry.Field{Key: "operation", Value: "read"},
+		telemetry.Field{Key: "db.system.name", Value: "neo4j"},
+		telemetry.Field{Key: "db.namespace", Value: strings.TrimSpace(database)},
+		telemetry.Field{Key: "db.neo4j.read.duration_ms", Value: duration.Milliseconds()},
+		telemetry.Field{Key: "db.neo4j.read.warning_threshold_ms", Value: neo4jReadWarningThreshold.Milliseconds()},
+		telemetry.Field{Key: "db.neo4j.read.slow", Value: slow},
+		telemetry.Field{Key: "db.neo4j.read.timeout", Value: timedOut},
+		telemetry.Field{Key: "status", Value: strings.TrimSpace(status)},
+		telemetry.Field{Key: "alert.recommended", Value: true},
+	)
+	if timeout > 0 {
+		attrs = attrs.WithField(telemetry.Field{Key: "timeout_ms", Value: timeout.Milliseconds()})
+	}
+	if err != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	}
+	telemetry.Event(ctx, "neo4j.read.guardrail", attrs)
 }
 
 func neo4jAnnotateMain(ctx context.Context, database string, operation string, status string) {

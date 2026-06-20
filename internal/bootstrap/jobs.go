@@ -53,7 +53,9 @@ func (a *App) newJobService() *platformjobs.Service {
 	service.WithRunner(platformjobs.KindSourceRuntimeSync, a.runSourceRuntimeSyncJob)
 	service.WithRunner(platformjobs.KindSourceRuntimeOrchestrate, a.runSourceRuntimeOrchestrateJob)
 	service.WithRunner(platformjobs.KindGraphIngestRuntime, a.runGraphIngestRuntimeJob)
+	service.WithRunner(platformjobs.KindGraphRulesEvaluate, a.runGraphRulesEvaluateJob)
 	service.WithRunner(platformjobs.KindFindingRulesEvaluate, a.runFindingRulesEvaluateJob)
+	service.WithRunner(platformjobs.KindFindingCandidatesEvaluate, a.runFindingCandidatesEvaluateJob)
 	service.WithRunner(platformjobs.KindFindingsEvaluate, a.runFindingsEvaluateJob)
 	service.WithRunner(platformjobs.KindReportRun, a.runReportJob)
 	return service
@@ -228,22 +230,30 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 	if err != nil {
 		return nil, nil, err
 	}
-	graphPayload, err := json.Marshal(graphResult)
+	graphRulesResult, err := a.findingService().EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   stringSlicePayload(job.Payload, "graph_rule_ids"),
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	graphOut := map[string]any{}
-	_ = json.Unmarshal(graphPayload, &graphOut)
-	rulePayload, err := json.Marshal(ruleResult)
+	graphOut, err := jsonResultMap(graphResult)
 	if err != nil {
 		return nil, nil, err
 	}
-	ruleOut := map[string]any{}
-	_ = json.Unmarshal(rulePayload, &ruleOut)
+	ruleOut, err := jsonResultMap(ruleResult)
+	if err != nil {
+		return nil, nil, err
+	}
+	graphRulesOut, err := jsonResultMap(graphRulesResult)
+	if err != nil {
+		return nil, nil, err
+	}
 	result := map[string]any{
 		"sync":          protoToMap(syncResponse),
 		"graph_ingest":  graphOut,
 		"finding_rules": ruleOut,
+		"graph_rules":   graphRulesOut,
 	}
 	refs := map[string]string{}
 	if graphResult.Run.ID != "" {
@@ -271,13 +281,25 @@ func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *p
 	if result.Run.ID != "" {
 		refs["graph_ingest_run_id"] = result.Run.ID
 	}
-	payload, err := json.Marshal(result)
+	out, err := jsonResultMap(result)
+	return out, refs, err
+}
+
+func (a *App) runGraphRulesEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+	if runtimeID == "" {
+		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
+	}
+	result, err := a.findingService().EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   stringSlicePayload(job.Payload, "rule_ids"),
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	out := map[string]any{}
-	_ = json.Unmarshal(payload, &out)
-	return out, refs, nil
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeGraph, grcCacheScopeInventory)
+	out, err := jsonResultMap(result)
+	return out, nil, err
 }
 
 func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
@@ -294,13 +316,26 @@ func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, _ 
 		return nil, nil, err
 	}
 	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
-	payload, err := json.Marshal(result)
+	out, err := jsonResultMap(result)
+	return out, nil, err
+}
+
+func (a *App) runFindingCandidatesEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+	if runtimeID == "" {
+		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
+	}
+	result, err := a.findingService().EvaluateSourceRuntimeCandidateRules(ctx, findings.EvaluateCandidateRulesRequest{
+		RuntimeID:  runtimeID,
+		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
+		EventLimit: uint32Payload(job.Payload, "event_limit"),
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	out := map[string]any{}
-	_ = json.Unmarshal(payload, &out)
-	return out, nil, nil
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
+	out, err := jsonResultMap(result)
+	return out, nil, err
 }
 
 func (a *App) runFindingsEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
@@ -345,7 +380,7 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 		return "", err
 	}
 	switch strings.TrimSpace(request.Kind) {
-	case platformjobs.KindSourceRuntimeSync, platformjobs.KindSourceRuntimeOrchestrate, platformjobs.KindGraphIngestRuntime, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingsEvaluate:
+	case platformjobs.KindSourceRuntimeSync, platformjobs.KindSourceRuntimeOrchestrate, platformjobs.KindGraphIngestRuntime, platformjobs.KindGraphRulesEvaluate, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingCandidatesEvaluate, platformjobs.KindFindingsEvaluate:
 		runtimeID := stringPayload(request.Payload, "runtime_id", request.SubjectID)
 		runtimeTenantID, err := sourceRuntimeTenantID(ctx, sourceRuntimeStore(store), runtimeID, false)
 		if err != nil {
@@ -405,6 +440,16 @@ func protoToMap(message proto.Message) map[string]any {
 	out := map[string]any{}
 	_ = json.Unmarshal(payload, &out)
 	return out
+}
+
+func jsonResultMap(value any) (map[string]any, error) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	_ = json.Unmarshal(payload, &out)
+	return out, nil
 }
 
 func stringPayload(payload map[string]any, key string, fallback string) string {

@@ -105,6 +105,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.GraphStore.Driver != "" {
 		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
 	}
+	if cfg.GraphStore.Neo4jQueryTimeout != DefaultNeo4jQueryTimeout {
+		t.Fatalf("Neo4jQueryTimeout = %v, want %v", cfg.GraphStore.Neo4jQueryTimeout, DefaultNeo4jQueryTimeout)
+	}
 	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 {
 		t.Fatalf("GraphAgentLLM = %#v, want empty/default", cfg.GraphAgentLLM)
 	}
@@ -409,6 +412,19 @@ func TestLoadParsesMountedAPISecretFiles(t *testing.T) {
 	}
 	if got := cfg.Auth.CapabilityTokenSecrets; len(got) != 2 || got[0] != "secret-1" || got[1] != "secret-2" {
 		t.Fatalf("CapabilityTokenSecrets = %#v, want sorted mounted secrets", got)
+	}
+}
+
+func TestLoadRejectsExcessiveNeo4jQueryTimeout(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", (MaxNeo4jQueryTimeout + time.Second).String())
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want excessive Neo4j query timeout error")
+	}
+	if !errors.Is(err, errNeo4jQueryTimeoutHigh) {
+		t.Fatalf("Load() error = %v, want %v", err, errNeo4jQueryTimeoutHigh)
 	}
 }
 

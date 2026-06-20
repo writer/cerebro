@@ -203,11 +203,39 @@ func TestRunOrchestratorPhaseEmitsPlatformJobPhaseEvents(t *testing.T) {
 	}
 }
 
+func TestEmitOrchestratorRunTerminalWideEvent(t *testing.T) {
+	stderr := captureCommandStderr(t, func() {
+		ctx, span := telemetry.StartMain(context.Background(), "orchestrator.run", telemetry.Attrs())
+		emitOrchestratorRunTerminalWideEvent(ctx, "completed", telemetry.Attrs(
+			telemetryField("job.id", "orchestrator-test-job"),
+		))
+		telemetry.End(span, "completed", telemetry.Attrs())
+	})
+
+	events := commandTelemetryPayloads(t, stderr, "event", "orchestrator.run.finished")
+	if len(events) != 1 {
+		t.Fatalf("orchestrator.run.finished events = %d, want 1; stderr=%s", len(events), stderr)
+	}
+	payload := events[0]
+	for key, want := range map[string]any{
+		"event.dataset":       "cerebro.wide_events",
+		"event.type":          "end",
+		"event.outcome":       "success",
+		"wide_event":          true,
+		"wide_event.contract": "orchestrator-run-terminal",
+		"operation.name":      "orchestrator.run",
+		"operation.status":    "completed",
+		"status":              "completed",
+		"job.id":              "orchestrator-test-job",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
 // runOrchestratorPhase must inherit cancellation from the parent runtime
-// context. The orchestrator's lease-renewal goroutine cancels the
-// runtime context when lease renewal fails, and that cancellation must
-// reach the phase function so it doesn't keep working with a stale
-// lease.
+// context so shutdown and caller cancellation reach phase work promptly.
 func TestRunOrchestratorPhaseInheritsParentCancellation(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
 	parent, cancel := context.WithCancel(context.Background())
@@ -656,6 +684,55 @@ func TestRunOrchestratorIterationRunsFindingRulesAfterGraphIngest(t *testing.T) 
 	linkKey := resourceURN + "|has_finding|urn:cerebro:writer:finding:finding-resource-aware"
 	if _, ok := graphStore.links[linkKey]; !ok {
 		t.Fatalf("finding resource link %q missing", linkKey)
+	}
+}
+
+func TestRunOrchestratorIterationReleasesLeaseBeforeGraphIngest(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := &releaseCheckingGraphStore{graphTestStore: newGraphTestStore(), store: store}
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	if !graphStore.checked {
+		t.Fatal("graph ingest did not project any entities")
+	}
+	if store.releaseID != "runtime-1" {
+		t.Fatalf("releaseID = %q, want runtime-1 before graph ingest", store.releaseID)
+	}
+	if result.Runtimes[0].GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", result.Runtimes[0].GraphIngest)
 	}
 }
 
@@ -1465,4 +1542,18 @@ type failingProjectionGraphStore struct {
 
 func (s *failingProjectionGraphStore) UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error {
 	return s.err
+}
+
+type releaseCheckingGraphStore struct {
+	*graphTestStore
+	store   *orchestratorRuntimeStore
+	checked bool
+}
+
+func (s *releaseCheckingGraphStore) UpsertProjectedEntity(ctx context.Context, entity *ports.ProjectedEntity) error {
+	s.checked = true
+	if s.store.releaseID == "" {
+		return errors.New("graph ingest started before runtime lease release")
+	}
+	return s.graphTestStore.UpsertProjectedEntity(ctx, entity)
 }
