@@ -192,8 +192,8 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 		t.Fatalf("len(StageConfirmations) = %d, want 9", len(result.StageConfirmations))
 	}
 	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_path_patterns", "verify_topology", "verify_traversals")
-	if got := result.StageConfirmations[5].AssertionsPassed; got != 7 {
-		t.Fatalf("verify_integrity assertions_passed = %d, want 7", got)
+	if got := result.StageConfirmations[5].AssertionsPassed; got != 8 {
+		t.Fatalf("verify_integrity assertions_passed = %d, want 8", got)
 	}
 	if got := result.StageConfirmations[5].AssertionsFailed; got != 0 {
 		t.Fatalf("verify_integrity assertions_failed = %d, want 0", got)
@@ -235,8 +235,11 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := countValue(result.GraphRelationTypes, "authored"); got != 1 {
 		t.Fatalf("graph relation type authored = %d, want 1", got)
 	}
-	if len(result.GraphAssertions) != 7 {
-		t.Fatalf("len(GraphAssertions) = %d, want 7", len(result.GraphAssertions))
+	if len(result.GraphAssertions) != 8 {
+		t.Fatalf("len(GraphAssertions) = %d, want 8", len(result.GraphAssertions))
+	}
+	if !containsAssertion(result.GraphAssertions, "cross_kind_identity_fragmentation", 0, 0, true) {
+		t.Fatalf("GraphAssertions missing cross_kind_identity_fragmentation: %#v", result.GraphAssertions)
 	}
 	if !containsAssertion(result.GraphAssertions, "tenant_mismatched_relations", 0, 0, true) {
 		t.Fatalf("GraphAssertions missing tenant_mismatched_relations: %#v", result.GraphAssertions)
@@ -658,8 +661,8 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if len(result.GraphTraversals) != 4 {
 		t.Fatalf("len(GraphTraversals) = %d, want 4", len(result.GraphTraversals))
 	}
-	if got := result.StageConfirmations[5].AssertionsPassed; got != 7 {
-		t.Fatalf("verify_integrity assertions_passed = %d, want 7", got)
+	if got := result.StageConfirmations[5].AssertionsPassed; got != 8 {
+		t.Fatalf("verify_integrity assertions_passed = %d, want 8", got)
 	}
 	if got := result.StageConfirmations[6].PatternsVerified; got != 4 {
 		t.Fatalf("verify_path_patterns patterns_verified = %d, want 4", got)

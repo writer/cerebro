@@ -150,6 +150,7 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 		{Name: "self_referential_relations", Expected: 0},
 		{Name: "github_code_repositories_without_owner_link", Expected: 0},
 		{Name: "aws_public_endpoints_without_instance_link", Expected: 0},
+		{Name: "cross_kind_identity_fragmentation", Expected: 0},
 	}
 	for _, entity := range s.entities {
 		if entity.Label == "" {
@@ -178,10 +179,72 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 			checks[4].Actual++
 		}
 	}
+	checks[7].Actual = s.crossKindIdentityFragmentation()
 	for index := range checks {
 		checks[index].Passed = checks[index].Actual == checks[index].Expected
 	}
 	return checks, nil
+}
+
+// crossKindIdentityFragmentation counts pairs of entities that share a tenant and
+// URN id-portion but carry different URN kinds and are not linked to each other.
+// This is the signature of a relationship target that fragments identity: the
+// same real object is projected under two kinds (e.g. a typed node and a runtime
+// stub) that never merge. Directly-linked twins (such as identifier/identity
+// nodes) are intentionally excluded because they are a deliberate paired model.
+func (s *memoryGraphStore) crossKindIdentityFragmentation() int64 {
+	type idKey struct {
+		tenant string
+		id     string
+	}
+	type kindedURN struct {
+		kind string
+		urn  string
+	}
+	groups := map[idKey][]kindedURN{}
+	for _, entity := range s.entities {
+		kind, id, ok := projectionURNKindAndID(entity.URN)
+		if !ok {
+			continue
+		}
+		key := idKey{tenant: entity.TenantID, id: id}
+		groups[key] = append(groups[key], kindedURN{kind: kind, urn: entity.URN})
+	}
+	var fragmented int64
+	for _, group := range groups {
+		for i := 0; i < len(group); i++ {
+			for j := i + 1; j < len(group); j++ {
+				if group[i].kind == group[j].kind {
+					continue
+				}
+				if s.memoryEntitiesLinked(group[i].urn, group[j].urn) {
+					continue
+				}
+				fragmented++
+			}
+		}
+	}
+	return fragmented
+}
+
+func (s *memoryGraphStore) memoryEntitiesLinked(first string, second string) bool {
+	for _, link := range s.links {
+		if (link.FromURN == first && link.ToURN == second) || (link.FromURN == second && link.ToURN == first) {
+			return true
+		}
+	}
+	return false
+}
+
+// projectionURNKindAndID splits a cerebro projection URN of the form
+// urn:cerebro:<tenant>:<kind>:<id...> into its kind and id-portion. The id-portion
+// keeps any trailing colons so multi-segment ids are compared intact.
+func projectionURNKindAndID(urn string) (kind string, id string, ok bool) {
+	parts := strings.SplitN(strings.TrimSpace(urn), ":", 5)
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return "", "", false
+	}
+	return parts[3], parts[4], true
 }
 
 func cloneMemoryAttributes(attributes map[string]string) map[string]string {
