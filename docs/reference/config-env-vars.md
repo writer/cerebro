@@ -32,6 +32,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED` | `90s` | Optional total outer publish retry budget. Set above expected NATS restore time in environments with large streams. |
 | `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS` | `5` | Optional NATS client retry attempts inside each outer publish attempt. |
 | `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT` | `500ms` | Optional NATS client retry wait inside each outer publish attempt. |
+| `CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED` | unset | Optional flag enabling the per-runtime append-log replay index (schema, population job, and read path). Default off; additive and backward compatible. |
 | `CEREBRO_STATE_STORE_DRIVER` | inferred | State-store driver. Supported: `postgres`. |
 | `CEREBRO_POSTGRES_DSN` | unset | Postgres connection string. Setting this infers `postgres`. |
 | `CEREBRO_CONNECTOR_CREDENTIAL_KEY` | unset | High-entropy key used to seal Cerebro-managed connector credentials before storing them in Postgres. Supports `_FILE` via `CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE`. |

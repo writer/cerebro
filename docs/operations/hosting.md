@@ -215,6 +215,7 @@ Cerebro uses these values for proxy-aware URL reconstruction and DPoP `htu` vali
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED` | Optional total retry budget for retryable publishes. Keep it above observed stream restore time plus margin. |
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS`, `CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF`, `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF`, `CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT` | Optional outer retry shape for NATS restarts, transient timeouts, and stream leader stalls. |
 | `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS`, `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT` | Optional inner NATS client retry shape used inside each outer publish attempt. |
+| `CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED` | Optional flag enabling the per-runtime append-log replay index for faster runtime-scoped replays. Default off; additive and backward compatible. |
 
 NATS JetStream should have durable storage, retention appropriate for replay needs, and monitoring for stream health, consumer lag, and disk pressure.
 
