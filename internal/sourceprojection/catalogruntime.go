@@ -36,7 +36,14 @@ func registerCatalogRuntimeProjectorsForEntries(projectors map[string]ProjectFun
 			if kind == "" {
 				continue
 			}
-			if _, exists := projectors[kind]; exists {
+			if existing, exists := projectors[kind]; exists {
+				// A statically promoted projector already owns this kind. Still
+				// apply any declarative entity/relationship spec on top of it so
+				// catalog-declared edges take effect without regenerating the
+				// promoted Go (augment is a no-op when nothing is declared).
+				if existing != nil {
+					projectors[kind] = augmentCatalogRuntimeProjector(sourceID, resource, existing)
+				}
 				continue
 			}
 			projectors[kind] = catalogRuntimeProjectorFor(sourceID, resource)

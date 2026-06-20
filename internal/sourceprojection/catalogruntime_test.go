@@ -300,3 +300,84 @@ func projectedLinksContainRelationFrom(links []*ports.ProjectedLink, fromURN str
 	}
 	return false
 }
+
+func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
+	registry := BuiltinRegistry()
+
+	t.Run("doppler secrets belongs_to project", func(t *testing.T) {
+		projector := registry.projectors["doppler.secrets"]
+		if projector == nil {
+			t.Fatal("missing registered projector for doppler.secrets")
+		}
+		entities, links, err := projector(&cerebrov1.EventEnvelope{
+			Id:       "event-1",
+			TenantId: "tenant",
+			SourceId: "doppler",
+			Kind:     "doppler.secrets",
+			Attributes: map[string]string{
+				"secret_id":   "secret-1",
+				"secret_name": "DATABASE_URL",
+				"project_id":  "proj-1",
+				"evidence_id": "evidence-1",
+			},
+		})
+		if err != nil {
+			t.Fatalf("doppler.secrets projector error = %v", err)
+		}
+		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:doppler_project:proj-1") {
+			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
+		}
+		if !hasProjectedEntityType(entities, "runtime_evidence") {
+			t.Fatalf("evidence node dropped by relationship augmentation: %#v", entities)
+		}
+		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationHasEvidence, "urn:cerebro:tenant:runtime_evidence:evidence-1") {
+			t.Fatalf("has_evidence edge corrupted or dropped by relationship augmentation: %#v", links)
+		}
+	})
+
+	t.Run("hashicorp_vault secrets owned_by user", func(t *testing.T) {
+		projector := registry.projectors["hashicorp_vault.secrets"]
+		if projector == nil {
+			t.Fatal("missing registered projector for hashicorp_vault.secrets")
+		}
+		_, links, err := projector(&cerebrov1.EventEnvelope{
+			Id:       "event-1",
+			TenantId: "tenant",
+			SourceId: "hashicorp_vault",
+			Kind:     "hashicorp_vault.secrets",
+			Attributes: map[string]string{
+				"secret_id":     "secret-1",
+				"secret_name":   "kv/db",
+				"owner_user_id": "user-1",
+			},
+		})
+		if err != nil {
+			t.Fatalf("hashicorp_vault.secrets projector error = %v", err)
+		}
+		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationOwnedBy, "urn:cerebro:tenant:hashicorp_vault_user:user-1") {
+			t.Fatalf("declared owned_by edge not emitted by registered projector: %#v", links)
+		}
+	})
+}
+
+func TestCatalogProjectionPrimaryURNSkipsEvidenceAndIsDeterministic(t *testing.T) {
+	evidenceDotted := &ports.ProjectedEntity{URN: "urn:cerebro:tenant:runtime_evidence:e1", EntityType: "runtime.evidence"}
+	evidenceUnderscore := &ports.ProjectedEntity{URN: "urn:cerebro:tenant:runtime_evidence:e2", EntityType: "runtime_evidence"}
+	secret := &ports.ProjectedEntity{URN: "urn:cerebro:tenant:secret:s1", EntityType: "secret"}
+	runtimeNode := &ports.ProjectedEntity{URN: "urn:cerebro:tenant:runtime_host:h1", EntityType: "runtime.host"}
+
+	orders := [][]*ports.ProjectedEntity{
+		{evidenceUnderscore, runtimeNode, secret},
+		{secret, runtimeNode, evidenceDotted},
+		{runtimeNode, evidenceUnderscore, secret, evidenceDotted},
+	}
+	for _, order := range orders {
+		if got := catalogProjectionPrimaryURN(order); got != secret.URN {
+			t.Fatalf("primary URN = %q, want %q (typed entity preferred, evidence skipped) for order %#v", got, secret.URN, order)
+		}
+	}
+
+	if got := catalogProjectionPrimaryURN([]*ports.ProjectedEntity{evidenceDotted, evidenceUnderscore}); got != "" {
+		t.Fatalf("primary URN = %q, want empty when only evidence entities present", got)
+	}
+}

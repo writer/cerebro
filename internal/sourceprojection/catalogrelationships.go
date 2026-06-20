@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"sort"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -89,16 +90,35 @@ func projectedLinkMap(links []*ports.ProjectedLink) map[string]*ports.ProjectedL
 }
 
 func catalogProjectionPrimaryURN(entities []*ports.ProjectedEntity) string {
+	candidates := make([]*ports.ProjectedEntity, 0, len(entities))
 	for _, entity := range entities {
-		if entity == nil {
+		if entity == nil || strings.TrimSpace(entity.URN) == "" || isProjectionEvidenceEntity(entity) {
 			continue
 		}
-		if strings.TrimSpace(entity.URN) == "" || strings.TrimSpace(entity.EntityType) == "runtime.evidence" {
-			continue
-		}
-		return entity.URN
+		candidates = append(candidates, entity)
 	}
-	return ""
+	if len(candidates) == 0 {
+		return ""
+	}
+	sort.SliceStable(candidates, func(i int, j int) bool {
+		leftRuntime := strings.HasPrefix(strings.TrimSpace(candidates[i].EntityType), "runtime.")
+		rightRuntime := strings.HasPrefix(strings.TrimSpace(candidates[j].EntityType), "runtime.")
+		if leftRuntime != rightRuntime {
+			return !leftRuntime
+		}
+		return candidates[i].URN < candidates[j].URN
+	})
+	return candidates[0].URN
+}
+
+// isProjectionEvidenceEntity reports whether an entity is an evidence node. The
+// generated bases disagree on spelling: asset/finding bases label evidence
+// "runtime.evidence" while the secret bases label it "runtime_evidence". Both
+// must be excluded from primary-anchor selection, otherwise a relationship edge
+// can anchor on (and then rewire/delete) the evidence node.
+func isProjectionEvidenceEntity(entity *ports.ProjectedEntity) bool {
+	entityType := strings.TrimSpace(entity.EntityType)
+	return entityType == "runtime.evidence" || entityType == "runtime_evidence"
 }
 
 func shouldReplaceCatalogProjectionPrimary(entity *ports.ProjectedEntity) bool {
