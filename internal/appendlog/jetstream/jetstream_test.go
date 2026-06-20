@@ -1674,6 +1674,82 @@ func TestReplayRuntimeIndexedExactKindsUseSubjectTail(t *testing.T) {
 	}
 }
 
+func TestReplayRuntimeIndexedSkipsNonExactKindPrefix(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 3, Msgs: 3},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-2", "github.pull_request", "writer-github")),
+				3: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-3", "github.pull_request", "writer-github")),
+			},
+		},
+	}
+	// In non-exact prefix mode the index query is not kind-narrowed, so if it
+	// were consulted it would return the newest all-kind sequences (3, 2), which
+	// post-filter to zero github.audit matches with an empty tail, dropping
+	// evt-1 that the legacy reverse scan finds. The replay must skip the index.
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Sequences: []uint64{3, 2}, Watermark: 3, Available: true}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		RuntimeID:    "writer-github",
+		KindPrefixes: []string{"github.audit"},
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-1"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want %#v (legacy match; index must be skipped)", got, want)
+	}
+	if index.calls != 0 {
+		t.Fatalf("index lookup calls = %d, want 0 for non-exact kind prefix replay", index.calls)
+	}
+}
+
+func TestReplayRuntimeIndexedSkipsUnnarrowedFilters(t *testing.T) {
+	newLog := func(index *fakeRuntimeReplayIndex) *Log {
+		replay := &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{
+					Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+					State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1, Msgs: 1},
+				},
+			},
+			msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+				"CEREBRO_EVENTS": {
+					1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				},
+			},
+		}
+		return &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+	}
+	for _, tt := range []struct {
+		name    string
+		request ports.ReplayRequest
+	}{
+		{name: "attribute filter", request: ports.ReplayRequest{RuntimeID: "writer-github", AttributeEquals: map[string]string{"team": "security"}, Limit: 10}},
+		{name: "tenant filter", request: ports.ReplayRequest{RuntimeID: "writer-github", TenantID: "writer", Limit: 10}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Available: true, Watermark: 1}}
+			log := newLog(index)
+			if _, err := log.Replay(context.Background(), tt.request); err != nil {
+				t.Fatalf("Replay() error = %v", err)
+			}
+			if index.calls != 0 {
+				t.Fatalf("index lookup calls = %d, want 0 when filters are not index-narrowed", index.calls)
+			}
+		})
+	}
+}
+
 func TestScanRuntimeIndexCollectsRuntimeEntries(t *testing.T) {
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{

@@ -722,7 +722,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, nil
 	}
 	resolved := false
-	if l.runtimeIndex != nil && request.RuntimeID != "" {
+	if l.runtimeIndex != nil && runtimeIndexReplayEligible(request) {
 		indexed, indexScan, ok, indexErr := replayRuntimeIndexed(ctx, l.runtimeIndex, stream.Config.Name, stream.State, streamRef, subjectFilters, useSubjectIndex, subjectPrefixes, request, candidateLimit)
 		if indexErr == nil && ok {
 			candidates, scan, resolved = indexed, indexScan, true
@@ -875,6 +875,24 @@ func appendNewestReplayCandidate(candidates []replayCandidate, candidate replayC
 		candidates = candidates[:candidateLimit]
 	}
 	return candidates
+}
+
+// runtimeIndexReplayEligible reports whether a replay can be served from the
+// per-runtime index without risking dropped matches. The index narrows only by
+// runtime id and, in exact-kind mode, exact kinds. Any post-filter the index
+// does not apply (non-exact kind prefixes, attribute-equals, or a tenant
+// filter) could leave fewer than the requested limit of matches among the
+// newest indexed sequences while older matches sit below the watermark, so such
+// requests fall back to the subject/legacy strategies, which collect matched
+// candidates directly.
+func runtimeIndexReplayEligible(request ports.ReplayRequest) bool {
+	if request.RuntimeID == "" {
+		return false
+	}
+	if request.TenantID != "" || len(request.AttributeEquals) > 0 {
+		return false
+	}
+	return request.ExactKindFilters || len(replayKindPrefixes(request)) == 0
 }
 
 // replayRuntimeIndexed resolves a runtime-scoped replay from the per-runtime
