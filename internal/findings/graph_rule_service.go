@@ -8,6 +8,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 // EvaluateGraphRulesRequest scopes one graph-rule evaluation pass over one runtime.
@@ -77,15 +78,20 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	return result, firstErr
 }
 
-func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (*GraphRuleEvaluationResult, error) {
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (result *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
 	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
-	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
-	}
-	result := &GraphRuleEvaluationResult{
+	result = &GraphRuleEvaluationResult{
 		Rule: spec,
 		Run:  run,
+	}
+	queryPresent := false
+	ruleStarted := time.Now()
+	defer func() {
+		emitGraphRuleEvaluationDetail(ctx, runtime, spec, result, queryPresent, time.Since(ruleStarted), err)
+	}()
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return result, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
 	queryRequest := rule.QueryFor(runtime)
 	if strings.TrimSpace(queryRequest.Query) == "" {
@@ -100,6 +106,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		}
 		return result, nil
 	}
+	queryPresent = true
 	rows, err := s.graphQuery.ExecuteReadCypher(ctx, queryRequest)
 	if err != nil {
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
@@ -169,6 +176,59 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, err
 	}
 	return result, nil
+}
+
+func emitGraphRuleEvaluationDetail(ctx context.Context, runtime *cerebrov1.SourceRuntime, spec *cerebrov1.RuleSpec, result *GraphRuleEvaluationResult, queryPresent bool, duration time.Duration, err error) {
+	status := "completed"
+	if err != nil {
+		status = "failed"
+	}
+	ruleID := ""
+	if spec != nil {
+		ruleID = strings.TrimSpace(spec.GetId())
+	}
+	var runID string
+	var rowsRead uint32
+	var findingsEmitted int
+	var evidenceWritten int
+	var truncated bool
+	if result != nil {
+		if result.Run != nil {
+			runID = strings.TrimSpace(result.Run.GetId())
+		}
+		rowsRead = result.RowsRead
+		findingsEmitted = len(result.Findings)
+		evidenceWritten = len(result.Evidence)
+		truncated = result.Truncated
+	}
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "findings.graph_rules"},
+		telemetry.Field{Key: "status", Value: status},
+		telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+		telemetry.Field{Key: "source_runtime_id", Value: runtime.GetId()},
+		telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+		telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+		telemetry.Field{Key: "rule_id", Value: ruleID},
+		telemetry.Field{Key: "run_id", Value: runID},
+		telemetry.Field{Key: "query_present", Value: queryPresent},
+		telemetry.Field{Key: "rows_read", Value: rowsRead},
+		telemetry.Field{Key: "rows_truncated", Value: truncated},
+		telemetry.Field{Key: "findings_emitted", Value: findingsEmitted},
+		telemetry.Field{Key: "evidence_written", Value: evidenceWritten},
+		telemetry.Field{Key: "stale_resolution_skipped", Value: truncated},
+		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
+	)
+	if err != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	}
+	telemetry.IncrementMain(ctx, "finding.graph_rule.evaluation.count", 1)
+	if status == "failed" {
+		telemetry.IncrementMain(ctx, "finding.graph_rule.evaluation.failed.count", 1)
+	}
+	if truncated {
+		telemetry.IncrementMain(ctx, "finding.graph_rule.evaluation.truncated.count", 1)
+	}
+	telemetry.Event(ctx, "finding.graph_rule.evaluation", attrs)
 }
 
 func retiredGraphRule(rule GraphRule) bool {

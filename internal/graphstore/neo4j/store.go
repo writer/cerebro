@@ -2,6 +2,8 @@ package neo4j
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -891,8 +893,11 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 		rowLimit = ports.MaxCypherQueryRows
 	}
 	var rows []ports.CypherRow
+	var truncated bool
+	started := time.Now()
 	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		rows = nil
+		truncated = false
 		result, err := tx.Run(ctx, query, request.Params)
 		if err != nil {
 			return nil, err
@@ -903,6 +908,7 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 		}
 		for result.Next(ctx) {
 			if len(rows) >= rowLimit {
+				truncated = true
 				break
 			}
 			record := result.Record()
@@ -917,8 +923,10 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 		}
 		return nil, result.Err()
 	}); err != nil {
+		emitNeo4jReadCypherDetail(ctx, s.database, query, request.Params, rowLimit, len(rows), truncated, time.Since(started), "failed", err)
 		return nil, fmt.Errorf("execute read cypher: %w", err)
 	}
+	emitNeo4jReadCypherDetail(ctx, s.database, query, request.Params, rowLimit, len(rows), truncated, time.Since(started), "completed", nil)
 	return rows, nil
 }
 
@@ -1384,6 +1392,32 @@ func emitNeo4jReadGuardrail(ctx context.Context, database string, status string,
 		attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 	}
 	telemetry.Event(ctx, "neo4j.read.guardrail", attrs)
+}
+
+func emitNeo4jReadCypherDetail(ctx context.Context, database string, query string, params map[string]any, rowLimit int, rowsReturned int, truncated bool, duration time.Duration, status string, err error) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "component", Value: "graphstore.neo4j"},
+		telemetry.Field{Key: "operation", Value: "read_cypher"},
+		telemetry.Field{Key: "db.system.name", Value: "neo4j"},
+		telemetry.Field{Key: "db.namespace", Value: strings.TrimSpace(database)},
+		telemetry.Field{Key: "cypher.query_hash", Value: safeCypherQueryHash(query)},
+		telemetry.Field{Key: "cypher.query_length", Value: len(query)},
+		telemetry.Field{Key: "cypher.param_count", Value: len(params)},
+		telemetry.Field{Key: "cypher.row_limit", Value: rowLimit},
+		telemetry.Field{Key: "cypher.rows_returned", Value: rowsReturned},
+		telemetry.Field{Key: "cypher.rows_truncated", Value: truncated},
+		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
+		telemetry.Field{Key: "status", Value: strings.TrimSpace(status)},
+	)
+	if err != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+	}
+	telemetry.Event(ctx, "neo4j.read.cypher", attrs)
+}
+
+func safeCypherQueryHash(query string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(query)))
+	return hex.EncodeToString(sum[:8])
 }
 
 func neo4jAnnotateMain(ctx context.Context, database string, operation string, status string) {

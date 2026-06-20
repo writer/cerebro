@@ -2,8 +2,10 @@ package neo4j
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -141,6 +143,40 @@ func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
 		if err := validateReadOnlyCypher(query); err != nil {
 			t.Fatalf("validateReadOnlyCypher(%q) error = %v, want nil", query, err)
 		}
+	}
+}
+
+func TestEmitNeo4jReadCypherDetailDoesNotLeakQueryOrParams(t *testing.T) {
+	stderr := captureNeo4jStderr(t, func() {
+		emitNeo4jReadCypherDetail(context.Background(), "neo4j", "MATCH (n {token: 'raw-secret-token-value'}) RETURN n", map[string]any{
+			"token": "raw-secret-token-value",
+		}, 100, 100, true, 125*time.Millisecond, "completed", nil)
+	})
+	if strings.Contains(stderr, "MATCH") || strings.Contains(stderr, "raw-secret-token-value") || strings.Contains(stderr, "token") {
+		t.Fatalf("neo4j read cypher detail leaked query or params: %s", stderr)
+	}
+	payloads := neo4jTelemetryPayloads(t, stderr, "event", "neo4j.read.cypher")
+	if len(payloads) != 1 {
+		t.Fatalf("neo4j.read.cypher events = %d, want 1; stderr=%s", len(payloads), stderr)
+	}
+	payload := payloads[0]
+	for key, want := range map[string]any{
+		"operation":             "read_cypher",
+		"cypher.query_length":   float64(len("MATCH (n {token: 'raw-secret-token-value'}) RETURN n")),
+		"cypher.param_count":    float64(1),
+		"cypher.row_limit":      float64(100),
+		"cypher.rows_returned":  float64(100),
+		"cypher.rows_truncated": true,
+		"duration_ms":           float64(125),
+		"status":                "completed",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	hash, ok := payload["cypher.query_hash"].(string)
+	if !ok || len(hash) != 16 {
+		t.Fatalf("cypher.query_hash = %#v, want 16-char hash; payload=%#v", payload["cypher.query_hash"], payload)
 	}
 }
 
@@ -786,4 +822,44 @@ func waitForStore(t *testing.T, ctx context.Context, cfg config.GraphStoreConfig
 	}
 	t.Fatalf("neo4j did not become ready: %v", lastErr)
 	return nil
+}
+
+func captureNeo4jStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func neo4jTelemetryPayloads(t *testing.T, stderr string, kind string, name string) []map[string]any {
+	t.Helper()
+	payloads := []map[string]any{}
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", line, err)
+		}
+		if payload["kind"] == kind && payload["name"] == name {
+			payloads = append(payloads, payload)
+		}
+	}
+	return payloads
 }

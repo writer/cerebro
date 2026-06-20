@@ -659,6 +659,9 @@ func runOrchestratorIteration(
 			emitOrchestratorJobPhaseEnded(syncCtx, "source_runtime.sync", "completed", iteration, runtime, time.Since(syncStarted), 0, telemetry.Attrs(
 				telemetryField("pages_read", runtimeResult.PagesRead),
 				telemetryField("events_appended", runtimeResult.EventsAppended),
+				telemetryField("runtime_returned", syncResult.GetRuntime() != nil),
+				telemetryField("next_cursor", syncResult.GetRuntime().GetNextCursor() != nil),
+				telemetryField("checkpoint_cursor", syncResult.GetRuntime().GetCheckpoint().GetCursorOpaque() != ""),
 			))
 		}
 		if !releaseSyncLease("sync_completed") {
@@ -738,6 +741,7 @@ func runOrchestratorIteration(
 		} else {
 			runtimeResult.GraphRules = "skipped"
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
+			emitOrchestratorJobPhaseSkipped(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, options.PhaseTimeout, "graph_ingest_not_caught_up")
 		}
 		result.Runtimes = append(result.Runtimes, runtimeResult)
 		if runtimeResult.Error == "" {
@@ -797,7 +801,7 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 	endAttrs := telemetry.Attrs(
 		telemetryField("duration_ms", durationMs),
 		telemetryField("phase."+phaseKey+".last_duration_ms", durationMs),
-	)
+	).With(orchestratorPhaseDetailAttrs(result))
 	telemetry.MaxMain(phaseCtx, "phase."+phaseKey+".max_duration_ms", durationMs)
 	if err != nil {
 		status = "failed"
@@ -1119,6 +1123,91 @@ func applyGraphRuleCounters(runtimeResult *orchestratorRuntimeResult, graphRules
 	return attrs
 }
 
+func orchestratorPhaseDetailAttrs(result any) telemetry.Attributes {
+	switch value := result.(type) {
+	case *graphingest.RunResult:
+		return orchestratorGraphIngestDetailAttrs(value)
+	case *findings.EvaluateRulesResult:
+		return orchestratorFindingRulesDetailAttrs(value)
+	case *findings.EvaluateGraphRulesResult:
+		return orchestratorGraphRulesDetailAttrs(value)
+	default:
+		return telemetry.Attrs()
+	}
+}
+
+func orchestratorGraphIngestDetailAttrs(result *graphingest.RunResult) telemetry.Attributes {
+	if result == nil || result.Ingest == nil {
+		return telemetry.Attrs()
+	}
+	return telemetry.Attrs(
+		telemetryField("pages_read", result.Ingest.PagesRead),
+		telemetryField("events_read", result.Ingest.EventsRead),
+		telemetryField("entities_projected", result.Ingest.EntitiesProjected),
+		telemetryField("links_projected", result.Ingest.LinksProjected),
+		telemetryField("checkpoint_persisted", result.Ingest.CheckpointPersisted),
+		telemetryField("checkpoint_complete", result.Ingest.CheckpointComplete),
+		telemetryField("checkpoint_already_fresh", result.Ingest.CheckpointAlreadyFresh),
+		telemetryField("checkpoint_resumed", result.Ingest.CheckpointResumed),
+	)
+}
+
+func orchestratorFindingRulesDetailAttrs(result *findings.EvaluateRulesResult) telemetry.Attributes {
+	if result == nil {
+		return telemetry.Attrs()
+	}
+	var findingsEmitted int
+	for _, evaluation := range result.Evaluations {
+		if evaluation != nil {
+			findingsEmitted += len(evaluation.Findings)
+		}
+	}
+	return telemetry.Attrs(
+		telemetryField("events_evaluated", result.EventsEvaluated),
+		telemetryField("evaluations", len(result.Evaluations)),
+		telemetryField("findings_emitted", findingsEmitted),
+		telemetryField("runtime_returned", result.Runtime != nil),
+		telemetryField("events_per_evaluate", averageOrchestratorUint32Int(result.EventsEvaluated, len(result.Evaluations))),
+	)
+}
+
+func orchestratorGraphRulesDetailAttrs(result *findings.EvaluateGraphRulesResult) telemetry.Attributes {
+	if result == nil {
+		return telemetry.Attrs()
+	}
+	var findingsEmitted int
+	var evidenceWritten int
+	var rowsRead uint32
+	var truncated int
+	for _, evaluation := range result.Evaluations {
+		if evaluation == nil {
+			continue
+		}
+		findingsEmitted += len(evaluation.Findings)
+		evidenceWritten += len(evaluation.Evidence)
+		rowsRead += evaluation.RowsRead
+		if evaluation.Truncated {
+			truncated++
+		}
+	}
+	return telemetry.Attrs(
+		telemetryField("evaluations", len(result.Evaluations)),
+		telemetryField("findings_emitted", findingsEmitted),
+		telemetryField("evidence_written", evidenceWritten),
+		telemetryField("rows_read", rowsRead),
+		telemetryField("truncated_rules", truncated),
+		telemetryField("runtime_returned", result.Runtime != nil),
+		telemetryField("rows_per_evaluate", averageOrchestratorUint32Int(rowsRead, len(result.Evaluations))),
+	)
+}
+
+func averageOrchestratorUint32Int(total uint32, count int) float64 {
+	if count <= 0 {
+		return 0
+	}
+	return float64(total) / float64(count)
+}
+
 func orchestratorListFilter(filter ports.SourceRuntimeFilter) ports.SourceRuntimeFilter {
 	if filter.Limit == 0 {
 		filter.Limit = ^uint32(0)
@@ -1286,11 +1375,32 @@ func emitOrchestratorJobPhaseEnded(ctx context.Context, phase string, status str
 		telemetry.IncrementMain(ctx, "job.phase.failed.count", 1)
 		telemetry.IncrementMain(ctx, "job.phase."+phaseKey+".failed.count", 1)
 	}
+	if status == "skipped" {
+		telemetry.IncrementMain(ctx, "job.phase.skipped.count", 1)
+		telemetry.IncrementMain(ctx, "job.phase."+phaseKey+".skipped.count", 1)
+	}
 	eventName := "platform.job.phase.completed"
 	if status == "failed" {
 		eventName = "platform.job.phase.failed"
 	}
+	if status == "skipped" {
+		eventName = "platform.job.phase.skipped"
+	}
 	telemetry.Event(ctx, eventName, orchestratorJobAttrs(ctx).With(orchestratorPhaseEventAttrs(phase, status, iteration, runtime, timeout, duration)).With(extra))
+}
+
+func emitOrchestratorJobPhaseSkipped(ctx context.Context, phase string, iteration uint32, runtime *cerebrov1.SourceRuntime, timeout time.Duration, reason string) {
+	emitOrchestratorJobPhaseEnded(ctx, phase, "skipped", iteration, runtime, 0, timeout, telemetry.Attrs(
+		telemetryField("skip_reason", strings.TrimSpace(reason)),
+		telemetryField("job.phase.skip_reason", strings.TrimSpace(reason)),
+	))
+	telemetry.AnnotateMainPhase(ctx, phase, "skipped", telemetry.Attrs(
+		telemetryField("phase.iteration", iteration),
+		telemetryField("phase.runtime_id", runtime.GetId()),
+		telemetryField("phase.source_id", runtime.GetSourceId()),
+		telemetryField("phase.tenant_id", runtime.GetTenantId()),
+		telemetryField("phase.skip_reason", strings.TrimSpace(reason)),
+	))
 }
 
 func orchestratorPhaseEventAttrs(phase string, status string, iteration uint32, runtime *cerebrov1.SourceRuntime, timeout time.Duration, duration time.Duration) telemetry.Attributes {

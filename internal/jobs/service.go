@@ -50,6 +50,15 @@ type Service struct {
 	mu           sync.Mutex
 }
 
+type PhaseRecord struct {
+	Phase    string
+	Status   string
+	Message  string
+	Payload  map[string]any
+	Duration time.Duration
+	Err      error
+}
+
 func New(store ports.JobStore) *Service {
 	return &Service{store: store, runners: map[string]Runner{}, now: func() time.Time { return time.Now().UTC() }, asyncCancels: map[uint64]context.CancelFunc{}, asyncJobs: map[string]uint64{}}
 }
@@ -232,6 +241,187 @@ func (s *Service) startHeartbeat(ctx context.Context, job *ports.Job) func() {
 		cancel()
 		<-done
 	}
+}
+
+func (s *Service) RecordPhase(ctx context.Context, job *ports.Job, record PhaseRecord) {
+	if s == nil || s.store == nil || job == nil {
+		return
+	}
+	phase := strings.TrimSpace(record.Phase)
+	if phase == "" {
+		phase = "unknown"
+	}
+	status := normalizeJobPhaseStatus(record.Status)
+	message := strings.TrimSpace(record.Message)
+	if message == "" {
+		message = "job phase " + status
+	}
+	safePayload := sanitizeJobPhasePayload(record.Payload)
+	if record.Duration > 0 {
+		safePayload["duration_ms"] = record.Duration.Milliseconds()
+	}
+	if record.Err != nil {
+		safePayload["error_kind"] = telemetry.ErrorKind(record.Err)
+	}
+	safePayload["phase"] = phase
+	_, _ = s.store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{
+		JobID:   job.ID,
+		Type:    jobPhaseEventType(status),
+		Status:  status,
+		Message: strings.TrimSpace(message),
+		Payload: safePayload,
+	})
+	telemetry.Event(ctx, jobPhaseTelemetryEventName(status), jobTelemetryAttrs(job).With(jobPhaseTelemetryAttrs(phase, status, safePayload, record.Duration)))
+}
+
+func normalizeJobPhaseStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running", "started", "start":
+		return ports.JobStatusRunning
+	case "completed", "complete", "success", "succeeded":
+		return ports.JobStatusCompleted
+	case "failed", "failure", "error":
+		return ports.JobStatusFailed
+	case "skipped", "skip":
+		return "skipped"
+	case "cancelled", "canceled":
+		return ports.JobStatusCancelled
+	default:
+		return "unknown"
+	}
+}
+
+func jobPhaseEventType(status string) string {
+	switch normalizeJobPhaseStatus(status) {
+	case ports.JobStatusRunning:
+		return "phase_started"
+	case ports.JobStatusCompleted:
+		return "phase_completed"
+	case ports.JobStatusFailed:
+		return "phase_failed"
+	case ports.JobStatusCancelled:
+		return "phase_cancelled"
+	case "skipped":
+		return "phase_skipped"
+	default:
+		return "phase_event"
+	}
+}
+
+func jobPhaseTelemetryEventName(status string) string {
+	switch normalizeJobPhaseStatus(status) {
+	case ports.JobStatusRunning:
+		return "platform.job.phase.started"
+	case ports.JobStatusFailed:
+		return "platform.job.phase.failed"
+	case ports.JobStatusCancelled:
+		return "platform.job.phase.cancelled"
+	case "skipped":
+		return "platform.job.phase.skipped"
+	default:
+		return "platform.job.phase.completed"
+	}
+}
+
+func jobPhaseTelemetryAttrs(phase string, status string, payload map[string]any, duration time.Duration) telemetry.Attributes {
+	phaseKey := compactJobPhaseKey(phase)
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "job.phase", Value: strings.TrimSpace(phase)},
+		telemetry.Field{Key: "job.phase_key", Value: phaseKey},
+		telemetry.Field{Key: "job.phase.status", Value: normalizeJobPhaseStatus(status)},
+		telemetry.Field{Key: "job_phase", Value: strings.TrimSpace(phase)},
+		telemetry.Field{Key: "job_phase_key", Value: phaseKey},
+		telemetry.Field{Key: "job_phase_status", Value: normalizeJobPhaseStatus(status)},
+		telemetry.Field{Key: "job.phase.detail.key_count", Value: len(payload)},
+		telemetry.Field{Key: "job.phase.detail.keys", Value: strings.Join(sortedAnyMapKeys(payload), ",")},
+	)
+	if duration > 0 {
+		attrs = attrs.WithField(telemetry.Field{Key: "job.phase.duration_ms", Value: duration.Milliseconds()})
+	}
+	for _, key := range sortedAnyMapKeys(payload) {
+		if key == "phase" || sensitiveJobPhaseKey(key) {
+			continue
+		}
+		attrs = attrs.WithField(telemetry.Field{Key: "job.phase.detail." + compactJobPhaseKey(key), Value: payload[key]})
+	}
+	return attrs
+}
+
+func sanitizeJobPhasePayload(payload map[string]any) map[string]any {
+	if len(payload) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(payload))
+	for key, value := range payload {
+		key = strings.TrimSpace(key)
+		if key == "" || sensitiveJobPhaseKey(key) {
+			continue
+		}
+		out[key] = safeJobPhaseValue(value)
+	}
+	return out
+}
+
+func safeJobPhaseValue(value any) any {
+	switch v := value.(type) {
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return v
+	case string:
+		return boundJobPhaseString(v)
+	case map[string]any:
+		return fmt.Sprintf("map[%d]", len(v))
+	case []any:
+		return fmt.Sprintf("list[%d]", len(v))
+	case []string:
+		return fmt.Sprintf("list[%d]", len(v))
+	default:
+		return fmt.Sprintf("%T", value)
+	}
+}
+
+func boundJobPhaseString(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 256 {
+		return value[:256]
+	}
+	return value
+}
+
+func sensitiveJobPhaseKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for _, part := range []string{"secret", "token", "password", "credential", "private_key", "api_key", "apikey", "dsn", "bearer"} {
+		if strings.Contains(key, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func compactJobPhaseKey(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	var out strings.Builder
+	out.Grow(len(value))
+	lastUnderscore := false
+	for _, ch := range value {
+		ok := (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')
+		if ok {
+			out.WriteRune(ch)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			out.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	key := strings.Trim(out.String(), "_")
+	if key == "" {
+		return "unknown"
+	}
+	if len(key) > 64 {
+		return key[:64]
+	}
+	return key
 }
 
 func (s *Service) Run(ctx context.Context, jobID string) (err error) {
