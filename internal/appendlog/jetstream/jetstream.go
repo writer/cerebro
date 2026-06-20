@@ -29,25 +29,28 @@ import (
 )
 
 const (
-	connectTimeout             = 5 * time.Second
-	defaultReplayLimit         = 100
-	maxReplayLimit             = 1000
-	maxReplayCandidates        = 5000
-	publishRetryAttempts       = 10
-	publishRetryInitialBackoff = 250 * time.Millisecond
-	publishRetryMaxBackoff     = 5 * time.Second
-	publishClientRetryAttempts = 5
-	publishClientRetryWait     = 500 * time.Millisecond
-	publishAttemptTimeout      = 30 * time.Second
-	publishRetryMaxElapsed     = 90 * time.Second
-	jetstreamCanaryKind        = "cerebro.health.jetstream_canary"
-	jetstreamCanaryMinInterval = time.Minute
+	connectTimeout               = 5 * time.Second
+	defaultReplayLimit           = 100
+	maxReplayLimit               = 1000
+	maxReplayCandidates          = 5000
+	publishRetryAttempts         = 10
+	publishRetryInitialBackoff   = 250 * time.Millisecond
+	publishRetryMaxBackoff       = 5 * time.Second
+	publishClientRetryAttempts   = 5
+	publishClientRetryWait       = 500 * time.Millisecond
+	publishAttemptTimeout        = 30 * time.Second
+	publishRetryMaxElapsed       = 90 * time.Second
+	jetstreamCanaryKind          = "cerebro.health.jetstream_canary"
+	jetstreamCanaryMinInterval   = time.Minute
+	defaultRuntimeIndexScanBatch = 1000
+	maxRuntimeIndexScanBatch     = 5000
 )
 
 const (
 	replayStrategyEmptyStream       = "empty_stream"
 	replayStrategyLegacyReverseScan = "legacy_reverse_scan"
 	replayStrategySubjectIndex      = "subject_index"
+	replayStrategyRuntimeIndex      = "runtime_index"
 )
 
 var waitBeforePublishRetryFunc = waitBeforePublishRetry
@@ -145,6 +148,18 @@ type Log struct {
 	publishRetry  publishRetryConfig
 	canaryMu      sync.Mutex
 	lastCanary    time.Time
+	runtimeIndex  ports.RuntimeReplayIndex
+}
+
+// SetRuntimeReplayIndex enables runtime-scoped replay acceleration backed by the
+// per-runtime append-log index. A nil index leaves replay on the subject/legacy
+// strategies. Replay stays correct regardless: the index only contributes
+// candidate sequences, and the un-indexed tail is always merged directly.
+func (l *Log) SetRuntimeReplayIndex(index ports.RuntimeReplayIndex) {
+	if l == nil {
+		return
+	}
+	l.runtimeIndex = index
 }
 
 // Open dials JetStream and returns an append-log implementation.
@@ -706,11 +721,20 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		telemetry.End(span, "completed", endAttrs)
 		return nil, nil
 	}
-	if useSubjectIndex {
-		candidates, scan, err = replaySubjectIndexed(ctx, stream.Config.Name, stream.State, streamRef, subjectFilters, request, candidateLimit)
-	} else {
-		scan.strategy = replayStrategyLegacyReverseScan
-		candidates, scan, err = replayLegacyReverse(ctx, stream.Config.Name, stream.State, streamRef, subjectPrefixes, request, candidateLimit)
+	resolved := false
+	if l.runtimeIndex != nil && request.RuntimeID != "" {
+		indexed, indexScan, ok, indexErr := replayRuntimeIndexed(ctx, l.runtimeIndex, stream.Config.Name, stream.State, streamRef, subjectFilters, useSubjectIndex, subjectPrefixes, request, candidateLimit)
+		if indexErr == nil && ok {
+			candidates, scan, resolved = indexed, indexScan, true
+		}
+	}
+	if !resolved {
+		if useSubjectIndex {
+			candidates, scan, err = replaySubjectIndexed(ctx, stream.Config.Name, stream.State, streamRef, subjectFilters, request, candidateLimit)
+		} else {
+			scan.strategy = replayStrategyLegacyReverseScan
+			candidates, scan, err = replayLegacyReverse(ctx, stream.Config.Name, stream.State, streamRef, subjectPrefixes, request, candidateLimit)
+		}
 	}
 	if err != nil {
 		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
@@ -851,6 +875,187 @@ func appendNewestReplayCandidate(candidates []replayCandidate, candidate replayC
 		candidates = candidates[:candidateLimit]
 	}
 	return candidates
+}
+
+// replayRuntimeIndexed resolves a runtime-scoped replay from the per-runtime
+// index for the bulk of history, then always merges the un-indexed tail
+// (watermark, LastSeq] directly from the stream so events appended after the
+// asynchronous indexer's watermark are never missed (the sync-then-evaluate
+// orchestration relies on this). It returns ok=false without error when the
+// index is unpopulated so the caller falls back to the subject/legacy strategies.
+func replayRuntimeIndexed(ctx context.Context, index ports.RuntimeReplayIndex, streamName string, state jetstream.StreamState, stream replayStream, subjectFilters []string, useSubjectIndex bool, subjectPrefixes []string, request ports.ReplayRequest, candidateLimit uint32) ([]replayCandidate, replayScanStats, bool, error) {
+	stats := replayScanStats{strategy: replayStrategyRuntimeIndex, subjectFilterCount: len(subjectFilters)}
+	var kinds []string
+	if request.ExactKindFilters {
+		kinds = replayKindPrefixes(request)
+	}
+	lookup, err := index.LookupRuntimeReplay(ctx, ports.RuntimeIndexQuery{
+		RuntimeID: request.RuntimeID,
+		Kinds:     kinds,
+		Limit:     candidateLimit,
+	})
+	if err != nil {
+		return nil, stats, false, err
+	}
+	if !lookup.Available {
+		return nil, stats, false, nil
+	}
+	candidates := make([]replayCandidate, 0, candidateLimit)
+	seen := make(map[uint64]struct{}, candidateLimit)
+	for _, seq := range lookup.Sequences {
+		raw, err := stream.GetMsg(ctx, seq)
+		if err != nil {
+			if errors.Is(err, jetstream.ErrMsgNotFound) {
+				stats.missing++
+				continue
+			}
+			stats.sequence = seq
+			return nil, stats, false, fmt.Errorf("get indexed replay message %s:%d: %w", streamName, seq, err)
+		}
+		if raw == nil {
+			stats.missing++
+			continue
+		}
+		stats.scanned++
+		stats.subjectMatched++
+		event, err := decodeReplayEvent(raw)
+		if err != nil {
+			stats.sequence = seq
+			return nil, stats, false, fmt.Errorf("decode indexed replay message %s:%d: %w", streamName, seq, err)
+		}
+		stats.decoded++
+		if !matchesReplayRequest(event, request) {
+			continue
+		}
+		stats.matched++
+		if _, ok := seen[seq]; ok {
+			continue
+		}
+		seen[seq] = struct{}{}
+		candidates = appendNewestReplayCandidate(candidates, replayCandidate{event: event, seq: seq}, candidateLimit)
+	}
+	if lookup.Watermark < state.LastSeq {
+		tailState := jetstream.StreamState{FirstSeq: lookup.Watermark + 1, LastSeq: state.LastSeq}
+		var (
+			tail     []replayCandidate
+			tailScan replayScanStats
+			tailErr  error
+		)
+		if useSubjectIndex {
+			tail, tailScan, tailErr = replaySubjectIndexed(ctx, streamName, tailState, stream, subjectFilters, request, candidateLimit)
+		} else {
+			tail, tailScan, tailErr = replayLegacyReverse(ctx, streamName, tailState, stream, subjectPrefixes, request, candidateLimit)
+		}
+		if tailErr != nil {
+			return nil, stats, false, tailErr
+		}
+		stats.scanned += tailScan.scanned
+		stats.missing += tailScan.missing
+		stats.subjectMatched += tailScan.subjectMatched
+		stats.decoded += tailScan.decoded
+		stats.matched += tailScan.matched
+		for _, candidate := range tail {
+			if _, ok := seen[candidate.seq]; ok {
+				continue
+			}
+			seen[candidate.seq] = struct{}{}
+			candidates = appendNewestReplayCandidate(candidates, candidate, candidateLimit)
+		}
+	}
+	return candidates, stats, true, nil
+}
+
+// ScanRuntimeIndex walks the stream forward from fromSeq, decoding up to batch
+// messages into per-runtime index entries. It skips the purged prefix via the
+// stream's FirstSeq and returns the new watermark (highest sequence examined),
+// letting the population job advance incrementally and idempotently.
+func (l *Log) ScanRuntimeIndex(ctx context.Context, fromSeq uint64, batch uint32) (ports.RuntimeIndexScan, error) {
+	ctx, span := telemetry.Start(ctx, "jetstream.runtime_index_scan", jetstreamTelemetryAttrs("runtime_index_scan"))
+	if l == nil || l.replay == nil {
+		err := errors.New("jetstream is not configured")
+		jetstreamTelemetryError(ctx, span, "runtime_index_scan", err)
+		return ports.RuntimeIndexScan{}, err
+	}
+	if batch == 0 {
+		batch = defaultRuntimeIndexScanBatch
+	}
+	if batch > maxRuntimeIndexScanBatch {
+		batch = maxRuntimeIndexScanBatch
+	}
+	stream, err := l.replayStream(ctx)
+	if err != nil {
+		jetstreamTelemetryError(ctx, span, "runtime_index_scan", err)
+		return ports.RuntimeIndexScan{}, err
+	}
+	lower := fromSeq
+	if first := stream.State.FirstSeq; first > 0 && lower+1 < first {
+		lower = first - 1
+	}
+	last := stream.State.LastSeq
+	if last == 0 || lower >= last {
+		watermark := lower
+		if watermark < fromSeq {
+			watermark = fromSeq
+		}
+		telemetry.End(span, "completed", telemetry.Attrs())
+		return ports.RuntimeIndexScan{Watermark: watermark, CaughtUp: true}, nil
+	}
+	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
+	if err != nil {
+		err = fmt.Errorf("open index scan stream %q: %w", stream.Config.Name, err)
+		jetstreamTelemetryError(ctx, span, "runtime_index_scan", err)
+		return ports.RuntimeIndexScan{}, err
+	}
+	end := lower + uint64(batch)
+	if end > last {
+		end = last
+	}
+	entries := make([]ports.RuntimeIndexEntry, 0, batch)
+	for seq := lower + 1; seq <= end; seq++ {
+		raw, err := streamRef.GetMsg(ctx, seq)
+		if err != nil {
+			if errors.Is(err, jetstream.ErrMsgNotFound) {
+				continue
+			}
+			err = fmt.Errorf("get index scan message %s:%d: %w", stream.Config.Name, seq, err)
+			jetstreamTelemetryError(ctx, span, "runtime_index_scan", err)
+			return ports.RuntimeIndexScan{}, err
+		}
+		if raw == nil {
+			continue
+		}
+		event, err := decodeReplayEvent(raw)
+		if err != nil {
+			err = fmt.Errorf("decode index scan message %s:%d: %w", stream.Config.Name, seq, err)
+			jetstreamTelemetryError(ctx, span, "runtime_index_scan", err)
+			return ports.RuntimeIndexScan{}, err
+		}
+		if entry, ok := runtimeIndexEntry(event, raw.Sequence); ok {
+			entries = append(entries, entry)
+		}
+	}
+	telemetry.End(span, "completed", telemetry.Attrs())
+	return ports.RuntimeIndexScan{Entries: entries, Watermark: end, CaughtUp: end >= last}, nil
+}
+
+func runtimeIndexEntry(event *cerebrov1.EventEnvelope, seq uint64) (ports.RuntimeIndexEntry, bool) {
+	if event == nil {
+		return ports.RuntimeIndexEntry{}, false
+	}
+	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
+	if runtimeID == "" {
+		return ports.RuntimeIndexEntry{}, false
+	}
+	entry := ports.RuntimeIndexEntry{
+		RuntimeID: runtimeID,
+		Seq:       seq,
+		TenantID:  strings.TrimSpace(event.GetTenantId()),
+		Kind:      strings.TrimSpace(event.GetKind()),
+	}
+	if occurredAt, ok := replayEventTime(event); ok {
+		entry.OccurredAt = occurredAt
+	}
+	return entry, true
 }
 
 func recordJetStreamReplayMetrics(ctx context.Context, scan replayScanStats, status string, errorCategory string, duration time.Duration, returned int) {

@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	graphstoreneo4j "github.com/writer/cerebro/internal/graphstore/neo4j"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
@@ -59,6 +60,13 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		closers = append(closers, func(context.Context) error {
 			return stateStore.Close()
 		})
+	}
+	if cfg.AppendLog.JetStreamRuntimeIndexEnabled {
+		if index, ok := deps.StateStore.(ports.RuntimeReplayIndex); ok && !isNilInterface(index) {
+			if appendLog, ok := deps.AppendLog.(*appendlogjetstream.Log); ok && appendLog != nil {
+				appendLog.SetRuntimeReplayIndex(index)
+			}
+		}
 	}
 	switch cfg.GraphStore.Driver {
 	case "":

@@ -85,6 +85,7 @@ type AppendLogConfig struct {
 	JetStreamPublishRetryMaxElapsed     time.Duration
 	JetStreamPublishClientRetryAttempts int
 	JetStreamPublishClientRetryWait     time.Duration
+	JetStreamRuntimeIndexEnabled        bool
 }
 
 // StateStoreConfig selects and configures the current-state store driver.
@@ -556,6 +557,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.AppendLog.JetStreamPublishMaxInFlight, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamRuntimeIndexEnabled, err = parseBoolEnv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED"); err != nil {
 		return Config{}, err
 	}
 	if cfg.AppendLog.JetStreamPublishRetryAttempts, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", 0); err != nil {

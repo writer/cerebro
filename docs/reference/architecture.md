@@ -172,6 +172,12 @@ the JSON-RPC contract, event subscription contract, and idempotency contract.
 Outbound webhook delivery remains a governed event contract until backed by a
 source/runtime adapter and durable delivery store.
 
+The append-log runtime replay index is populated by a global maintenance job
+whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap
+budget includes only the job registration, admin authorization, payload
+adaptation, and dependency wiring that binds the append log's index source and
+the state store's index writer into that domain entry point.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.

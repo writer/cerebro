@@ -22,6 +22,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
+	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", "")
@@ -152,6 +153,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "12")
+	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "true")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "22")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "750ms")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", "9s")
@@ -261,6 +263,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.AppendLog.JetStreamPublishMaxInFlight != 12 {
 		t.Fatalf("JetStreamPublishMaxInFlight = %d, want 12", cfg.AppendLog.JetStreamPublishMaxInFlight)
+	}
+	if !cfg.AppendLog.JetStreamRuntimeIndexEnabled {
+		t.Fatalf("JetStreamRuntimeIndexEnabled = %v, want true", cfg.AppendLog.JetStreamRuntimeIndexEnabled)
 	}
 	if cfg.AppendLog.JetStreamPublishRetryAttempts != 22 {
 		t.Fatalf("JetStreamPublishRetryAttempts = %d, want 22", cfg.AppendLog.JetStreamPublishRetryAttempts)
@@ -554,6 +559,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
+	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF", "")
