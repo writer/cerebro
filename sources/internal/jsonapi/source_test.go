@@ -166,6 +166,39 @@ func TestReadMergesBareDetailObjectWhenAllowed(t *testing.T) {
 	}
 }
 
+func TestReadUsesFamilyMethod(t *testing.T) {
+	var gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		if r.URL.Path != "/devices/search" {
+			t.Fatalf("request path = %q, want /devices/search", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "device-1", "name": "macbook-1"}})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "device",
+		Path:    "/devices/search",
+		Method:  http.MethodPost,
+		URNKind: "test_device",
+		IDKeys:  []string{"id"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("request method = %q, want POST", gotMethod)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+}
+
 func TestReadUsesBasicAuth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))

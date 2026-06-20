@@ -60,6 +60,7 @@ type Family struct {
 	Singleton             bool
 	RequireID             bool
 	IncrementalWatermark  bool
+	Method                string
 }
 
 // Options configures a JSON API-backed source adapter.
@@ -119,6 +120,7 @@ type settings struct {
 	privateEndpointAllowlist []string
 	region                   string
 	service                  string
+	familyMethod             string
 }
 
 type cachedOAuthToken struct {
@@ -271,6 +273,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if !ok {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
 	}
+	resolved.familyMethod = strings.TrimSpace(family.Method)
 	if s.options.RequireTenantID && resolved.tenantID == "" {
 		return resolved, fmt.Errorf("%s tenant_id is required", s.options.SourceID)
 	}
@@ -517,7 +520,11 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	method := http.MethodGet
+	if familyMethod := strings.TrimSpace(settings.familyMethod); familyMethod != "" {
+		method = familyMethod
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
@@ -751,15 +758,16 @@ func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (str
 	client := s.client
 	if client == nil {
 		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
-			SourceID:      s.options.SourceID,
-			AllowLoopback: s.AllowLoopbackBaseURL,
+			SourceID:                 s.options.SourceID,
+			AllowLoopback:            s.AllowLoopbackBaseURL,
+			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
+			LookupIPAddrs:            lookupIPAddrs(s),
 		})
 	}
-	resp, err := client.Do(req)
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return "", fmt.Errorf("%s two_step token exchange: %w", s.options.SourceID, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("%s two_step token exchange returned status %d", s.options.SourceID, resp.StatusCode)
 	}
@@ -769,7 +777,7 @@ func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (str
 		Token       string `json:"token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tokenResp); err != nil {
+	if err := json.Unmarshal(resp.Body, &tokenResp); err != nil {
 		return "", fmt.Errorf("%s two_step token decode: %w", s.options.SourceID, err)
 	}
 	token := firstNonEmpty(tokenResp.AccessToken, tokenResp.Token)
