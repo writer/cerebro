@@ -161,6 +161,100 @@ func TestCatalogRuntimeAssetProjectionRequiresStableResourceIdentity(t *testing.
 	}
 }
 
+func TestCatalogRuntimeProjectionRelationships(t *testing.T) {
+	resource := connectordefinitions.ResourceFamily{
+		ID: "secrets",
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: "secret",
+			Fields: map[string]string{
+				"owner_user_id": "created_by.id",
+				"vault_id":      "mount_accessor",
+			},
+			Entity: &connectordefinitions.ProjectionEntitySpec{
+				EntityType:     "secret",
+				URNKind:        "secret",
+				IDAttributes:   []string{"secret_id"},
+				LabelAttribute: "secret_name",
+			},
+			Relationships: []connectordefinitions.ProjectionRelationshipSpec{
+				{
+					Relation: "belongs_to",
+					To: connectordefinitions.ProjectionEntitySpec{
+						EntityType:   "hashicorp_vault.vault",
+						URNKind:      "hashicorp_vault_vault",
+						IDAttributes: []string{"vault_id"},
+					},
+					MatchType: "secret_vault",
+				},
+				{
+					Relation:           "owned_by",
+					RequiredAttributes: []string{"owner_user_id"},
+					To: connectordefinitions.ProjectionEntitySpec{
+						EntityType:   "hashicorp_vault.user",
+						URNKind:      "hashicorp_vault_user",
+						IDAttributes: []string{"owner_user_id"},
+					},
+					MatchType: "secret_owner",
+				},
+			},
+		},
+	}
+	projector := catalogRuntimeProjectorFor("hashicorp_vault", resource)
+	entities, links, err := projector(&cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "hashicorp_vault",
+		Kind:     "hashicorp_vault.secrets",
+		Attributes: map[string]string{
+			"resource_id":    "secret-1",
+			"resource_type":  "secret",
+			"secret_id":      "secret-1",
+			"secret_name":    "database/password",
+			"vault_id":       "kv",
+			"owner_user_id":  "user-1",
+			"source_runtime": "runtime-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("projector error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "secret") || !hasProjectedEntityType(entities, "hashicorp_vault.vault") || !hasProjectedEntityType(entities, "hashicorp_vault.user") {
+		t.Fatalf("entities missing deep relationship endpoints: %#v", entities)
+	}
+	if hasProjectedEntityType(entities, "runtime.secret") {
+		t.Fatalf("projection.entity should replace flat runtime secret entity: %#v", entities)
+	}
+	if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:hashicorp_vault_vault:kv") {
+		t.Fatalf("secret-vault link missing: %#v", links)
+	}
+	if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationOwnedBy, "urn:cerebro:tenant:hashicorp_vault_user:user-1") {
+		t.Fatalf("secret-owner link missing: %#v", links)
+	}
+
+	entities, links, err = projector(&cerebrov1.EventEnvelope{
+		Id:       "event-2",
+		TenantId: "tenant",
+		SourceId: "hashicorp_vault",
+		Kind:     "hashicorp_vault.secrets",
+		Attributes: map[string]string{
+			"resource_id":   "secret-2",
+			"resource_type": "secret",
+			"secret_id":     "secret-2",
+			"secret_name":   "database/username",
+			"vault_id":      "kv",
+		},
+	})
+	if err != nil {
+		t.Fatalf("projector without owner error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "secret") || !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-2", relationBelongsTo, "urn:cerebro:tenant:hashicorp_vault_vault:kv") {
+		t.Fatalf("missing required owner should not suppress base entity or vault link: entities=%#v links=%#v", entities, links)
+	}
+	if projectedLinksContainRelationFrom(links, "urn:cerebro:tenant:secret:secret-2", relationOwnedBy) {
+		t.Fatalf("owner link emitted despite missing owner_user_id: %#v", links)
+	}
+}
+
 func TestCatalogRuntimeFindingProjectionRequiresStableFindingIdentity(t *testing.T) {
 	entities, links, err := catalogRuntimeFindingProjections(&cerebrov1.EventEnvelope{
 		Id:       "event-ephemeral",
@@ -183,6 +277,24 @@ func TestCatalogRuntimeFindingProjectionRequiresStableFindingIdentity(t *testing
 func hasProjectedEntityType(entities []*ports.ProjectedEntity, entityType string) bool {
 	for _, entity := range entities {
 		if entity.EntityType == entityType {
+			return true
+		}
+	}
+	return false
+}
+
+func projectedLinksContain(links []*ports.ProjectedLink, fromURN string, relation string, toURN string) bool {
+	for _, link := range links {
+		if link.FromURN == fromURN && link.Relation == relation && link.ToURN == toURN {
+			return true
+		}
+	}
+	return false
+}
+
+func projectedLinksContainRelationFrom(links []*ports.ProjectedLink, fromURN string, relation string) bool {
+	for _, link := range links {
+		if link.FromURN == fromURN && link.Relation == relation {
 			return true
 		}
 	}

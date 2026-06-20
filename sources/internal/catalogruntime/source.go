@@ -179,6 +179,14 @@ func projectionClass(resource connectordefinitions.ResourceFamily) string {
 	switch strings.TrimSpace(resource.Projection.Template) {
 	case "finding", "vulnerability":
 		return "finding"
+	case "secret":
+		return "secret"
+	case "policy":
+		return "policy"
+	case "deployment":
+		return "deployment"
+	case "alert":
+		return "alert"
 	case "identity_user", "identity_group", "group_membership", "audit_event", "evidence_cas_reference":
 		return strings.TrimSpace(resource.Projection.Template)
 	default:
@@ -199,6 +207,14 @@ func idKeys(resource connectordefinitions.ResourceFamily, class string) []string
 		keys = append(keys, "membership_id", "id", "group_id", "member_id", "user_id", "email")
 	case "audit_event":
 		keys = append(keys, "event_id", "id", "uuid", "request_id")
+	case "secret":
+		keys = append(keys, "secret_id", "id", "key", "sid", "name")
+	case "policy":
+		keys = append(keys, "policy_id", "id", "control_id", "key", "sid")
+	case "deployment":
+		keys = append(keys, "deployment_id", "id", "name", "uid")
+	case "alert":
+		keys = append(keys, "alert_id", "id", "sid", "incident_id", "uuid")
 	default:
 		keys = append(keys, "id", "urn", "resource_urn", "name")
 	}
@@ -246,6 +262,36 @@ func attributePaths(resource connectordefinitions.ResourceFamily, class string) 
 		attrs["event_type"] = "event_type|event_name|action|type"
 		attrs["actor_id"] = "actor_id|actor.id|actorId|user_id|user.id"
 		attrs["actor_email"] = "actor_email|actor.email|email|user.email"
+	case "secret":
+		attrs["secret_id"] = "secret_id|id|key|sid|name"
+		attrs["secret_name"] = "secret_name|name|display_name|label|title"
+		attrs["secret_type"] = "secret_type|type|kind"
+		attrs["secret_status"] = "secret_status|status|state"
+		attrs["secret_rotation_enabled"] = "secret_rotation_enabled|rotation_enabled|auto_rotate"
+		attrs["secret_last_rotated_at"] = "secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at"
+	case "policy":
+		attrs["policy_id"] = "policy_id|id|control_id|key|sid"
+		attrs["policy_name"] = "policy_name|name|display_name|title|label"
+		attrs["policy_type"] = "policy_type|type|kind|category"
+		attrs["policy_status"] = "policy_status|status|state|enabled"
+		attrs["policy_severity"] = "severity|risk|priority"
+	case "deployment":
+		attrs["deployment_id"] = "deployment_id|id|name|uid"
+		attrs["deployment_name"] = "deployment_name|name|display_name|title|label"
+		attrs["deployment_environment"] = "environment|env|stage|target"
+		attrs["deployment_status"] = "status|state|ready"
+		attrs["deployment_url"] = "url|deployment_url|endpoint|domain"
+		attrs["deployment_commit_sha"] = "commit_sha|commit|sha|revision|git_sha"
+		attrs["deployment_branch"] = "branch|ref|git_branch|head_branch"
+	case "alert":
+		attrs["alert_id"] = "alert_id|id|sid|incident_id|uuid"
+		attrs["alert_name"] = "alert_name|name|title|summary|subject"
+		attrs["alert_severity"] = "severity|priority|level|risk"
+		attrs["alert_status"] = "status|state|resolved|acknowledged"
+		attrs["alert_type"] = "alert_type|type|category|kind"
+		attrs["alert_source"] = "source|alert_source|monitor|check"
+		attrs["alert_fired_at"] = "fired_at|triggered_at|created_at|occurred_at|timestamp"
+		attrs["alert_resolved_at"] = "resolved_at|closed_at|acknowledged_at"
 	}
 	if resource.Projection != nil {
 		for key, value := range resource.Projection.Fields {

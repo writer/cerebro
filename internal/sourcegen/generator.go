@@ -117,6 +117,7 @@ type familyData struct {
 	PageSizeParams        []string
 	RequiredAttributes    []string
 	RequiredPayloadFields []string
+	Projection            *connectordefinitions.ProjectionSpec
 }
 
 type oauthClientCredentialsData struct {
@@ -655,6 +656,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			PageSizeParams:        pageSizeParamsForResource(resource),
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
+			Projection:            resource.Projection,
 		})
 	}
 	return families, nil
@@ -1181,6 +1183,13 @@ func attributePathsForFamily(family familyData) map[string]string {
 		base["alert_resolved_at"] = "resolved_at|closed_at|acknowledged_at"
 		base["alert_description"] = "description|summary|message|body"
 	}
+	if family.Projection != nil {
+		for key, value := range family.Projection.Fields {
+			if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+				base[strings.TrimSpace(key)] = strings.TrimSpace(value)
+			}
+		}
+	}
 	return base
 }
 
@@ -1336,35 +1345,84 @@ func renderProjectionGo(request normalizedRequest) string {
 	sourcePrefix := lowerCamelIdentifier(request.SourceID)
 	var b strings.Builder
 	fmt.Fprintf(&b, "package sourceprojection\n\n")
+	fmt.Fprintf(&b, "import (\n")
 	if projectionNeedsStrings(request.Families) {
-		fmt.Fprintf(&b, "import (\n\t\"strings\"\n\n\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
-	} else {
-		fmt.Fprintf(&b, "import (\n\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
+		fmt.Fprintf(&b, "\t\"strings\"\n\n")
+	}
+	fmt.Fprintf(&b, "\tcerebrov1 \"github.com/writer/cerebro/gen/cerebro/v1\"\n")
+	if projectionNeedsConnectordefinitions(request.Families) {
+		fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/connectordefinitions\"\n")
+	}
+	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
+	for _, family := range request.Families {
+		if projectionFamilyNeedsAugmentation(family) {
+			fmt.Fprintf(&b, "var %sProjectionResource = connectordefinitions.ResourceFamily{\n\tID: %s,\n\tProjection: &connectordefinitions.ProjectionSpec{\n", family.ProjectorName, strconv.Quote(family.Name))
+			renderProjectionSpecLiteral(&b, family.Projection, "\t\t")
+			fmt.Fprintf(&b, "\t},\n}\n\n")
+		}
 	}
 	for _, family := range request.Families {
 		switch family.Class {
 		case "asset":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sAssetProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"AssetProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		case "finding":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sFindingProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"FindingProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		case "secret":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sSecretProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"SecretProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		case "policy":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sPolicyProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"PolicyProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		case "deployment":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sDeploymentProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"DeploymentProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		case "alert":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sAlertProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"AlertProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		case "identity_user":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityUserProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			if projectionFamilyNeedsAugmentation(family) {
+				fmt.Fprintf(&b, "\treturn projectCatalogRuntimeWithRelationships(%s, %sProjectionResource, func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\t\treturn identityUserProjections(event, identityProjectionProfile{Provider: %s})\n\t}, event)\n", strconv.Quote(request.SourceID), family.ProjectorName, strconv.Quote(request.SourceID))
+			} else {
+				fmt.Fprintf(&b, "\treturn identityUserProjections(event, identityProjectionProfile{Provider: %s})\n", strconv.Quote(request.SourceID))
+			}
+			fmt.Fprintf(&b, "}\n\n")
 		case "identity_group":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityGroupProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			if projectionFamilyNeedsAugmentation(family) {
+				fmt.Fprintf(&b, "\treturn projectCatalogRuntimeWithRelationships(%s, %sProjectionResource, func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\t\treturn identityGroupProjections(event, identityProjectionProfile{Provider: %s})\n\t}, event)\n", strconv.Quote(request.SourceID), family.ProjectorName, strconv.Quote(request.SourceID))
+			} else {
+				fmt.Fprintf(&b, "\treturn identityGroupProjections(event, identityProjectionProfile{Provider: %s})\n", strconv.Quote(request.SourceID))
+			}
+			fmt.Fprintf(&b, "}\n\n")
 		case "group_membership":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityGroupMembershipProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			if projectionFamilyNeedsAugmentation(family) {
+				fmt.Fprintf(&b, "\treturn projectCatalogRuntimeWithRelationships(%s, %sProjectionResource, func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\t\treturn identityGroupMembershipProjections(event, identityProjectionProfile{Provider: %s})\n\t}, event)\n", strconv.Quote(request.SourceID), family.ProjectorName, strconv.Quote(request.SourceID))
+			} else {
+				fmt.Fprintf(&b, "\treturn identityGroupMembershipProjections(event, identityProjectionProfile{Provider: %s})\n", strconv.Quote(request.SourceID))
+			}
+			fmt.Fprintf(&b, "}\n\n")
 		case "audit_event":
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityAuditProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			if projectionFamilyNeedsAugmentation(family) {
+				fmt.Fprintf(&b, "\treturn projectCatalogRuntimeWithRelationships(%s, %sProjectionResource, func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\t\treturn identityAuditProjections(event, identityProjectionProfile{Provider: %s})\n\t}, event)\n", strconv.Quote(request.SourceID), family.ProjectorName, strconv.Quote(request.SourceID))
+			} else {
+				fmt.Fprintf(&b, "\treturn identityAuditProjections(event, identityProjectionProfile{Provider: %s})\n", strconv.Quote(request.SourceID))
+			}
+			fmt.Fprintf(&b, "}\n\n")
 		default:
-			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn runtimeEvidenceProjections(event)\n}\n\n", family.ProjectorName)
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			renderProjectionDispatchReturn(&b, request.SourceID, family, "runtimeEvidenceProjections")
+			fmt.Fprintf(&b, "}\n\n")
 		}
 	}
 	if firstFamilyClass(request.Families, "asset").Name != "" {
@@ -1392,6 +1450,85 @@ func renderProjectionGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\talertID := firstNonEmpty(attributes[\"alert_id\"], event.GetId())\n\talertURN := projectionURN(tenantID, \"alert\", alertID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: alertURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"alert\", Label: firstNonEmpty(attributes[\"alert_name\"], alertID), Attributes: map[string]string{\"alert_id\": alertID, \"alert_severity\": strings.TrimSpace(attributes[\"alert_severity\"]), \"alert_status\": strings.TrimSpace(attributes[\"alert_status\"]), \"alert_type\": strings.TrimSpace(attributes[\"alert_type\"]), \"alert_source\": strings.TrimSpace(attributes[\"alert_source\"]), \"alert_fired_at\": strings.TrimSpace(attributes[\"alert_fired_at\"]), \"alert_resolved_at\": strings.TrimSpace(attributes[\"alert_resolved_at\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
 	return b.String()
+}
+
+func projectionNeedsConnectordefinitions(families []familyData) bool {
+	for _, family := range families {
+		if projectionFamilyNeedsAugmentation(family) {
+			return true
+		}
+	}
+	return false
+}
+
+func projectionFamilyNeedsAugmentation(family familyData) bool {
+	return family.Projection != nil && (family.Projection.Entity != nil || len(family.Projection.Relationships) != 0)
+}
+
+func renderProjectionDispatchReturn(b *strings.Builder, sourceID string, family familyData, baseFunc string) {
+	if projectionFamilyNeedsAugmentation(family) {
+		fmt.Fprintf(b, "\treturn projectCatalogRuntimeWithRelationships(%s, %sProjectionResource, %s, event)\n", strconv.Quote(sourceID), family.ProjectorName, baseFunc)
+		return
+	}
+	fmt.Fprintf(b, "\treturn %s(event)\n", baseFunc)
+}
+
+func renderProjectionSpecLiteral(b *strings.Builder, projection *connectordefinitions.ProjectionSpec, indent string) {
+	if projection == nil {
+		return
+	}
+	if strings.TrimSpace(projection.Template) != "" {
+		fmt.Fprintf(b, "%sTemplate: %s,\n", indent, strconv.Quote(projection.Template))
+	}
+	if len(projection.Fields) != 0 {
+		fmt.Fprintf(b, "%sFields: map[string]string{%s},\n", indent, renderedAttributeMap(projection.Fields))
+	}
+	if projection.Entity != nil {
+		fmt.Fprintf(b, "%sEntity: &connectordefinitions.ProjectionEntitySpec{\n", indent)
+		renderProjectionEntitySpecLiteral(b, *projection.Entity, indent+"\t")
+		fmt.Fprintf(b, "%s},\n", indent)
+	}
+	if len(projection.Relationships) != 0 {
+		fmt.Fprintf(b, "%sRelationships: []connectordefinitions.ProjectionRelationshipSpec{\n", indent)
+		for _, relationship := range projection.Relationships {
+			fmt.Fprintf(b, "%s\t{\n", indent)
+			fmt.Fprintf(b, "%s\t\tRelation: %s,\n", indent, strconv.Quote(relationship.Relation))
+			if relationship.From != nil {
+				fmt.Fprintf(b, "%s\t\tFrom: &connectordefinitions.ProjectionEntitySpec{\n", indent)
+				renderProjectionEntitySpecLiteral(b, *relationship.From, indent+"\t\t\t")
+				fmt.Fprintf(b, "%s\t\t},\n", indent)
+			}
+			fmt.Fprintf(b, "%s\t\tTo: connectordefinitions.ProjectionEntitySpec{\n", indent)
+			renderProjectionEntitySpecLiteral(b, relationship.To, indent+"\t\t\t")
+			fmt.Fprintf(b, "%s\t\t},\n", indent)
+			if len(relationship.RequiredAttributes) != 0 {
+				fmt.Fprintf(b, "%s\t\tRequiredAttributes: []string{%s},\n", indent, quotedStrings(relationship.RequiredAttributes))
+			}
+			if len(relationship.LinkAttributes) != 0 {
+				fmt.Fprintf(b, "%s\t\tLinkAttributes: []string{%s},\n", indent, quotedStrings(relationship.LinkAttributes))
+			}
+			if strings.TrimSpace(relationship.MatchType) != "" {
+				fmt.Fprintf(b, "%s\t\tMatchType: %s,\n", indent, strconv.Quote(relationship.MatchType))
+			}
+			fmt.Fprintf(b, "%s\t},\n", indent)
+		}
+		fmt.Fprintf(b, "%s},\n", indent)
+	}
+}
+
+func renderProjectionEntitySpecLiteral(b *strings.Builder, entity connectordefinitions.ProjectionEntitySpec, indent string) {
+	if strings.TrimSpace(entity.EntityType) != "" {
+		fmt.Fprintf(b, "%sEntityType: %s,\n", indent, strconv.Quote(entity.EntityType))
+	}
+	if strings.TrimSpace(entity.URNKind) != "" {
+		fmt.Fprintf(b, "%sURNKind: %s,\n", indent, strconv.Quote(entity.URNKind))
+	}
+	if len(entity.IDAttributes) != 0 {
+		fmt.Fprintf(b, "%sIDAttributes: []string{%s},\n", indent, quotedStrings(entity.IDAttributes))
+	}
+	if strings.TrimSpace(entity.LabelAttribute) != "" {
+		fmt.Fprintf(b, "%sLabelAttribute: %s,\n", indent, strconv.Quote(entity.LabelAttribute))
+	}
 }
 
 func projectionNeedsStrings(families []familyData) bool {

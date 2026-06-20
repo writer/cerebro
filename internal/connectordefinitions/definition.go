@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -28,15 +29,41 @@ const (
 var (
 	ErrInvalidDefinition = errors.New("invalid connector definition")
 
-	idPattern         = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
-	definitionIDRun   = regexp.MustCompile(`[^a-z0-9_-]+`)
-	templateVar       = regexp.MustCompile(`\$\{([a-z]+)\.([a-z][a-z0-9_-]*)\}`)
-	statusIdentifier  = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	stageOrder        = []string{StageDraft, StageSandbox, StagePilot, StageApproved, StageCertified}
-	supportedMethods  = map[string]struct{}{"GET": {}, "POST": {}}
-	paginationTypes   = map[string]struct{}{"": {}, "none": {}, "cursor": {}, "page": {}, "offset": {}, "link": {}, "next_url": {}}
-	incrementalStates = map[string]struct{}{"": {}, "high_watermark": {}, "opaque_cursor": {}}
-	stageRank         = map[string]int{
+	idPattern           = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+	entityTypePattern   = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
+	definitionIDRun     = regexp.MustCompile(`[^a-z0-9_-]+`)
+	templateVar         = regexp.MustCompile(`\$\{([a-z]+)\.([a-z][a-z0-9_-]*)\}`)
+	statusIdentifier    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	stageOrder          = []string{StageDraft, StageSandbox, StagePilot, StageApproved, StageCertified}
+	supportedMethods    = map[string]struct{}{"GET": {}, "POST": {}}
+	paginationTypes     = map[string]struct{}{"": {}, "none": {}, "cursor": {}, "page": {}, "offset": {}, "link": {}, "next_url": {}}
+	incrementalStates   = map[string]struct{}{"": {}, "high_watermark": {}, "opaque_cursor": {}}
+	projectionRelations = map[string]struct{}{
+		"attached_to": {},
+		"belongs_to":  {},
+		"contains":    {},
+		"member_of":   {},
+		"owned_by":    {},
+	}
+	unstableProjectionAttributes = map[string]struct{}{
+		"created_at":      {},
+		"cursor":          {},
+		"event_id":        {},
+		"idempotency_key": {},
+		"last_seen_at":    {},
+		"next_cursor":     {},
+		"observed_at":     {},
+		"page":            {},
+		"page_token":      {},
+		"pagination":      {},
+		"request_id":      {},
+		"run_id":          {},
+		"source_event_id": {},
+		"timestamp":       {},
+		"updated_at":      {},
+		"uuid":            {},
+	}
+	stageRank = map[string]int{
 		StageDraft:     0,
 		StageSandbox:   1,
 		StagePilot:     2,
@@ -175,8 +202,30 @@ type EventMappingSpec struct {
 
 // ProjectionSpec describes a generic projector template for emitted events.
 type ProjectionSpec struct {
-	Template string            `json:"template,omitempty"`
-	Fields   map[string]string `json:"fields,omitempty"`
+	Template      string                       `json:"template,omitempty"`
+	Fields        map[string]string            `json:"fields,omitempty"`
+	Entity        *ProjectionEntitySpec        `json:"entity,omitempty"`
+	Relationships []ProjectionRelationshipSpec `json:"relationships,omitempty"`
+}
+
+// ProjectionEntitySpec describes how a projected entity URN is built from
+// already-emitted event attributes.
+type ProjectionEntitySpec struct {
+	EntityType     string   `json:"entity_type,omitempty"`
+	URNKind        string   `json:"urn_kind,omitempty"`
+	IDAttributes   []string `json:"id_attributes,omitempty"`
+	LabelAttribute string   `json:"label_attribute,omitempty"`
+}
+
+// ProjectionRelationshipSpec describes one declarative graph edge emitted from
+// already-emitted event attributes.
+type ProjectionRelationshipSpec struct {
+	Relation           string                `json:"relation"`
+	From               *ProjectionEntitySpec `json:"from,omitempty"`
+	To                 ProjectionEntitySpec  `json:"to"`
+	RequiredAttributes []string              `json:"required_attributes,omitempty"`
+	LinkAttributes     []string              `json:"link_attributes,omitempty"`
+	MatchType          string                `json:"match_type,omitempty"`
 }
 
 // CoverageDimensionSpec mirrors sourcecdk coverage dimensions without coupling
@@ -604,11 +653,172 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 	if family.Event.SchemaRef != "" && strings.ContainsAny(family.Event.SchemaRef, "\r\n\t ") {
 		add(blocking("schema_ref_"+family.ID, "Schema ref", "Schema refs must not contain whitespace."))
 	}
+	validateProjectionIntegrationFields(family, add)
 	for _, dimension := range family.Coverage {
 		if strings.TrimSpace(dimension.Type) == "" || strings.TrimSpace(dimension.Support) == "" {
 			add(blocking("coverage_"+family.ID, "Coverage", "Coverage dimensions need type and support."))
 		}
 	}
+}
+
+func validateProjectionIntegrationFields(family ResourceFamily, add func(ValidationCheck)) {
+	if family.Projection == nil {
+		return
+	}
+	projection := family.Projection
+	attributes := knownProjectionAttributes(family)
+	if projection.Entity != nil {
+		validateProjectionEntity(family.ID, "projection_entity", *projection.Entity, add)
+		validateProjectionAttributeRefs(family.ID, "projection_entity", projection.Entity.IDAttributes, attributes, add)
+		if projection.Entity.LabelAttribute != "" {
+			validateProjectionAttributeRefs(family.ID, "projection_entity_label", []string{projection.Entity.LabelAttribute}, attributes, add)
+		}
+	}
+	if len(projection.Relationships) == 0 {
+		return
+	}
+	if strings.ReplaceAll(projection.Template, "-", "_") == "audit_event" {
+		add(blocking("projection_relationships_"+family.ID, "Projection relationships", "Audit event families cannot emit durable graph relationships in v1."))
+	}
+	if len(projection.Relationships) > 8 {
+		add(blocking("projection_relationships_"+family.ID, "Projection relationships", "Projection relationships are capped at eight per family."))
+	}
+	for i, relationship := range projection.Relationships {
+		id := fmt.Sprintf("projection_relationship_%s_%d", family.ID, i)
+		if _, ok := projectionRelations[relationship.Relation]; !ok {
+			add(blocking(id+"_relation", "Projection relationship", "Use one of belongs_to, contains, owned_by, member_of, or attached_to."))
+		}
+		if strings.TrimSpace(relationship.MatchType) == "" {
+			add(blocking(id+"_match_type", "Projection relationship match type", "Add a stable match_type explaining the relationship source."))
+		}
+		if relationship.From != nil {
+			validateProjectionEntity(family.ID, id+"_from", *relationship.From, add)
+			validateProjectionAttributeRefs(family.ID, id+"_from", relationship.From.IDAttributes, attributes, add)
+			if relationship.From.LabelAttribute != "" {
+				validateProjectionAttributeRefs(family.ID, id+"_from_label", []string{relationship.From.LabelAttribute}, attributes, add)
+			}
+		}
+		validateProjectionEntity(family.ID, id+"_to", relationship.To, add)
+		validateProjectionAttributeRefs(family.ID, id+"_to", relationship.To.IDAttributes, attributes, add)
+		if relationship.To.LabelAttribute != "" {
+			validateProjectionAttributeRefs(family.ID, id+"_to_label", []string{relationship.To.LabelAttribute}, attributes, add)
+		}
+		validateProjectionAttributeRefs(family.ID, id+"_required", relationship.RequiredAttributes, attributes, add)
+		validateProjectionAttributeRefs(family.ID, id+"_link", relationship.LinkAttributes, attributes, add)
+	}
+}
+
+func validateProjectionEntity(familyID string, id string, entity ProjectionEntitySpec, add func(ValidationCheck)) {
+	if !entityTypePattern.MatchString(strings.TrimSpace(entity.EntityType)) {
+		add(blocking(id+"_"+familyID+"_entity_type", "Projection entity type", "Projection entity_type must use dotted lowercase identifier syntax."))
+	}
+	if !idPattern.MatchString(strings.TrimSpace(entity.URNKind)) {
+		add(blocking(id+"_"+familyID+"_urn_kind", "Projection URN kind", "Projection urn_kind must be a lowercase identifier."))
+	}
+	if len(entity.IDAttributes) == 0 {
+		add(blocking(id+"_"+familyID+"_id_attributes", "Projection entity identity", "Projection entities need at least one id_attribute."))
+	}
+}
+
+func validateProjectionAttributeRefs(familyID string, id string, refs []string, known map[string]struct{}, add func(ValidationCheck)) {
+	for _, ref := range refs {
+		attr := strings.TrimSpace(ref)
+		if attr == "" {
+			continue
+		}
+		if unstableProjectionAttribute(attr) {
+			add(blocking(id+"_"+familyID+"_unstable_"+normalizeDefinitionID(attr), "Projection attribute stability", "Projection relationships cannot use event IDs, timestamps, cursors, request IDs, run IDs, or other ephemeral anchors."))
+			continue
+		}
+		if _, ok := known[attr]; !ok {
+			add(blocking(id+"_"+familyID+"_attribute_"+normalizeDefinitionID(attr), "Projection attribute", "Projection relationship attributes must be emitted by projection.fields, event.required_attributes, or known template defaults."))
+		}
+	}
+}
+
+func unstableProjectionAttribute(attribute string) bool {
+	normalized := canonicalProjectionAttribute(attribute)
+	if _, ok := unstableProjectionAttributes[normalized]; ok {
+		return true
+	}
+	return strings.HasSuffix(normalized, "_timestamp") || strings.HasSuffix(normalized, "_cursor") || strings.HasSuffix(normalized, "_request_id") || strings.HasSuffix(normalized, "_run_id")
+}
+
+func canonicalProjectionAttribute(attribute string) string {
+	var b strings.Builder
+	lastUnderscore := true
+	lastUpper := false
+	for _, r := range strings.TrimSpace(attribute) {
+		switch {
+		case r == '.' || r == '-' || unicode.IsSpace(r):
+			if !lastUnderscore {
+				b.WriteByte('_')
+				lastUnderscore = true
+				lastUpper = false
+			}
+		case unicode.IsUpper(r):
+			if b.Len() > 0 && !lastUnderscore && !lastUpper {
+				b.WriteByte('_')
+			}
+			b.WriteRune(unicode.ToLower(r))
+			lastUnderscore = false
+			lastUpper = true
+		default:
+			b.WriteRune(unicode.ToLower(r))
+			lastUnderscore = r == '_'
+			lastUpper = false
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func knownProjectionAttributes(family ResourceFamily) map[string]struct{} {
+	known := map[string]struct{}{
+		"external_id":     {},
+		"family":          {},
+		"observed_at":     {},
+		"provider":        {},
+		"resource_id":     {},
+		"resource_name":   {},
+		"resource_type":   {},
+		"resource_urn":    {},
+		"source_provider": {},
+	}
+	addKnown := func(values ...string) {
+		for _, value := range values {
+			if value = strings.TrimSpace(value); value != "" {
+				known[value] = struct{}{}
+			}
+		}
+	}
+	addKnown(family.Event.RequiredAttributes...)
+	addKnown(family.IDField, family.NameField, family.UpdatedAtField)
+	switch strings.TrimSpace(family.Projection.Template) {
+	case "finding", "vulnerability":
+		addKnown("finding_id", "severity", "status", "title", "description")
+	case "identity_user":
+		addKnown("user_id", "email", "display_name", "status")
+	case "identity_group":
+		addKnown("group_id", "group_email", "group_name")
+	case "group_membership":
+		addKnown("group_id", "member_id", "member_email")
+	case "audit_event":
+		addKnown("event_type", "actor_id", "actor_email")
+	case "secret":
+		addKnown("secret_id", "secret_name", "secret_type", "secret_status", "secret_rotation_enabled", "secret_last_rotated_at")
+	case "policy":
+		addKnown("policy_id", "policy_name", "policy_type", "policy_status", "policy_severity")
+	case "deployment":
+		addKnown("deployment_id", "deployment_name", "deployment_environment", "deployment_status", "deployment_url", "deployment_commit_sha", "deployment_branch")
+	case "alert":
+		addKnown("alert_id", "alert_name", "alert_severity", "alert_status", "alert_type", "alert_source", "alert_fired_at", "alert_resolved_at")
+	}
+	if family.Projection != nil {
+		for key := range family.Projection.Fields {
+			addKnown(key)
+		}
+	}
+	return known
 }
 
 func normalizeIdentifier(value string) string {
@@ -772,7 +982,41 @@ func normalizeProjectionSpec(projection *ProjectionSpec) *ProjectionSpec {
 	next := *projection
 	next.Template = normalizeIdentifier(next.Template)
 	next.Fields = normalizeStringMap(next.Fields)
+	next.Entity = normalizeProjectionEntitySpec(next.Entity)
+	next.Relationships = normalizeProjectionRelationshipSpecs(next.Relationships)
 	return &next
+}
+
+func normalizeProjectionEntitySpec(entity *ProjectionEntitySpec) *ProjectionEntitySpec {
+	if entity == nil {
+		return nil
+	}
+	next := *entity
+	next.EntityType = strings.TrimSpace(next.EntityType)
+	next.URNKind = normalizeIdentifier(next.URNKind)
+	next.IDAttributes = normalizeOrderedStringList(next.IDAttributes)
+	next.LabelAttribute = strings.TrimSpace(next.LabelAttribute)
+	return &next
+}
+
+func normalizeProjectionRelationshipSpecs(relationships []ProjectionRelationshipSpec) []ProjectionRelationshipSpec {
+	if len(relationships) == 0 {
+		return nil
+	}
+	normalized := make([]ProjectionRelationshipSpec, 0, len(relationships))
+	for _, relationship := range relationships {
+		relationship.Relation = normalizeIdentifier(relationship.Relation)
+		relationship.From = normalizeProjectionEntitySpec(relationship.From)
+		to := normalizeProjectionEntitySpec(&relationship.To)
+		if to != nil {
+			relationship.To = *to
+		}
+		relationship.RequiredAttributes = normalizeOrderedStringList(relationship.RequiredAttributes)
+		relationship.LinkAttributes = normalizeOrderedStringList(relationship.LinkAttributes)
+		relationship.MatchType = normalizeIdentifier(relationship.MatchType)
+		normalized = append(normalized, relationship)
+	}
+	return normalized
 }
 
 func normalizeCoverageDimensionSpec(familyID string, dimension CoverageDimensionSpec) CoverageDimensionSpec {
@@ -844,6 +1088,23 @@ func normalizeStringList(values []string) []string {
 		normalized = append(normalized, trimmed)
 	}
 	sort.Strings(normalized)
+	return normalized
+}
+
+func normalizeOrderedStringList(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
 	return normalized
 }
 
