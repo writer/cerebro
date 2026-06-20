@@ -90,6 +90,67 @@ func TestMemoryGraphStoreIntegrityChecksLinkageGuardrails(t *testing.T) {
 	}
 }
 
+func TestMemoryGraphStoreFlagsCrossKindIdentityFragmentation(t *testing.T) {
+	store, err := newMemoryGraphStore()
+	if err != nil {
+		t.Fatalf("newMemoryGraphStore() error = %v", err)
+	}
+	scratch := store.(*memoryGraphStore)
+	ctx := context.Background()
+
+	for _, entity := range []*ports.ProjectedEntity{
+		{
+			URN:        "urn:cerebro:writer:doppler_project:proj-1",
+			TenantID:   "writer",
+			SourceID:   "doppler",
+			EntityType: "doppler.project",
+			Label:      "Platform",
+		},
+		{
+			URN:        "urn:cerebro:writer:runtime_project:proj-1",
+			TenantID:   "writer",
+			SourceID:   "doppler",
+			EntityType: "runtime.project",
+			Label:      "proj-1",
+		},
+		{
+			URN:        "urn:cerebro:writer:identifier:email:user@example.test",
+			TenantID:   "writer",
+			SourceID:   "vault",
+			EntityType: "identifier.email",
+			Label:      "user@example.test",
+		},
+		{
+			URN:        "urn:cerebro:writer:identity:email:user@example.test",
+			TenantID:   "writer",
+			SourceID:   "vault",
+			EntityType: "identity.email",
+			Label:      "user@example.test",
+		},
+	} {
+		if err := scratch.UpsertProjectedEntity(ctx, entity); err != nil {
+			t.Fatalf("UpsertProjectedEntity(%s) error = %v", entity.URN, err)
+		}
+	}
+	if err := scratch.UpsertProjectedLink(ctx, &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "vault",
+		FromURN:  "urn:cerebro:writer:identifier:email:user@example.test",
+		Relation: "represents_identity",
+		ToURN:    "urn:cerebro:writer:identity:email:user@example.test",
+	}); err != nil {
+		t.Fatalf("UpsertProjectedLink() error = %v", err)
+	}
+
+	checks, err := scratch.IntegrityChecks(ctx)
+	if err != nil {
+		t.Fatalf("IntegrityChecks() error = %v", err)
+	}
+	if got := memoryIntegrityActual(checks, "cross_kind_identity_fragmentation"); got != 1 {
+		t.Fatalf("cross_kind_identity_fragmentation = %d, want 1 (only the unlinked doppler/runtime pair, linked identifier/identity twins excluded)", got)
+	}
+}
+
 func TestMemoryGraphStoreSuppressesBroadTwoHopPathSummaries(t *testing.T) {
 	store, err := newMemoryGraphStore()
 	if err != nil {
