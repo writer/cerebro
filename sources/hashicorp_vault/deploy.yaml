@@ -1,5 +1,6 @@
 sourceId: hashicorp_vault
 secretKeys:
+  - HASHICORP_VAULT_ADDR
   - HASHICORP_VAULT_TOKEN
 runtimes:
   - localId: users
