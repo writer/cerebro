@@ -107,6 +107,7 @@ type familyData struct {
 	ConstName             string
 	ProjectorName         string
 	Path                  string
+	Method                string
 	URNKind               string
 	EventKind             string
 	SchemaRef             string
@@ -644,6 +645,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			ConstName:             "family" + pascalIdentifier(name),
 			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
 			Path:                  resource.Path,
+			Method:                methodForResource(resource),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
 			SchemaRef:             schemaRef,
@@ -656,6 +658,14 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 		})
 	}
 	return families, nil
+}
+
+func methodForResource(resource connectordefinitions.ResourceFamily) string {
+	method := strings.ToUpper(strings.TrimSpace(resource.Method))
+	if method == "" || method == "GET" {
+		return ""
+	}
+	return method
 }
 
 func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
@@ -996,6 +1006,9 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\t\tName: %s,\n", family.ConstName)
 		fmt.Fprintf(&b, "\t\t\t\tPath: %s,\n", strconv.Quote(family.Path))
+		if strings.TrimSpace(family.Method) != "" {
+			fmt.Fprintf(&b, "\t\t\t\tMethod: %s,\n", strconv.Quote(family.Method))
+		}
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
@@ -1338,6 +1351,10 @@ func renderProjectionGo(request normalizedRequest) string {
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sSecretProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
 		case "policy":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sPolicyProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+		case "deployment":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sDeploymentProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
+		case "alert":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn %sAlertProjections(event)\n}\n\n", family.ProjectorName, sourcePrefix)
 		case "identity_user":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\treturn identityUserProjections(event, identityProjectionProfile{Provider: %s})\n}\n\n", family.ProjectorName, strconv.Quote(request.SourceID))
 		case "identity_group":

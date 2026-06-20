@@ -157,12 +157,18 @@ func wireSourceRegistry(path, importAlias, importPath, sourceID, loaderEntry str
 			lines = append(lines[:insertIdx], append([]string{entry}, lines[insertIdx:]...)...)
 			text = strings.Join(lines, "\n")
 		} else {
-			// Source ID sorts after all existing entries; append before the closing brace.
-			marker := "}"
-			idx := strings.LastIndex(text, marker)
-			if idx >= 0 {
+			// Source ID sorts after all existing entries; append at end of the loaders slice.
+			// Find the slice's closing brace by looking for }\n\n followed by a comment or func.
+			sliceEnd := strings.Index(text, "\n}\n\n// Builtin")
+			if sliceEnd < 0 {
+				sliceEnd = strings.Index(text, "\n}\n\nfunc ")
+			}
+			if sliceEnd < 0 {
+				sliceEnd = strings.Index(text, "\n}\n")
+			}
+			if sliceEnd >= 0 {
 				entry := strings.TrimSuffix(loaderEntry, "\n")
-				text = text[:idx] + entry + "\n" + text[idx:]
+				text = text[:sliceEnd+1] + entry + "\n" + text[sliceEnd+1:]
 			}
 		}
 	}
