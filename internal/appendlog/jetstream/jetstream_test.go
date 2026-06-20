@@ -1520,3 +1520,299 @@ func rawReplayMsg(t *testing.T, subject string, event *cerebrov1.EventEnvelope) 
 	}
 	return &natsjetstream.RawStreamMsg{Subject: subject, Data: payload}
 }
+
+type fakeRuntimeReplayIndex struct {
+	result ports.RuntimeIndexResult
+	err    error
+	query  ports.RuntimeIndexQuery
+	calls  int
+}
+
+func (f *fakeRuntimeReplayIndex) LookupRuntimeReplay(_ context.Context, query ports.RuntimeIndexQuery) (ports.RuntimeIndexResult, error) {
+	f.calls++
+	f.query = query
+	return f.result, f.err
+}
+
+func replayedEventIDs(events []*cerebrov1.EventEnvelope) []string {
+	ids := make([]string, 0, len(events))
+	for _, event := range events {
+		ids = append(ids, event.GetId())
+	}
+	return ids
+}
+
+func TestReplayRuntimeIndexedMergesUnindexedTail(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 5, Msgs: 5},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "other-runtime")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "other-runtime")),
+				5: rawReplayMsg(t, "events.github.audit", replayEvent("evt-5", "github.audit", "writer-github")),
+			},
+		},
+	}
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Sequences: []uint64{3, 1}, Watermark: 3, Available: true}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 10})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-1", "evt-3", "evt-5"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want %#v (index seqs plus tail-merged evt-5)", got, want)
+	}
+	if index.calls != 1 {
+		t.Fatalf("index lookup calls = %d, want 1", index.calls)
+	}
+	if index.query.RuntimeID != "writer-github" {
+		t.Fatalf("index query runtime = %q, want writer-github", index.query.RuntimeID)
+	}
+}
+
+func TestReplayRuntimeIndexedFallsBackWhenUnavailable(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 2, Msgs: 2},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "other-runtime")),
+			},
+		},
+	}
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Available: false}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 10})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-1"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want %#v via fallback", got, want)
+	}
+	if index.calls != 1 {
+		t.Fatalf("index lookup calls = %d, want 1", index.calls)
+	}
+}
+
+func TestReplayRuntimeIndexedSkipsPurgedSequences(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 3, Msgs: 2},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+			},
+		},
+	}
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Sequences: []uint64{3, 2}, Watermark: 3, Available: true}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 10})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-3"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want %#v (seq 2 purged by retention)", got, want)
+	}
+}
+
+func TestReplayRuntimeIndexedExactKindsUseSubjectTail(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4, Msgs: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-2", "github.pull_request", "writer-github")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+			},
+		},
+	}
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Sequences: []uint64{1}, Watermark: 2, Available: true}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		RuntimeID:        "writer-github",
+		KindPrefixes:     []string{"github.audit"},
+		ExactKindFilters: true,
+		Limit:            10,
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-1", "evt-3", "evt-4"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want %#v", got, want)
+	}
+	if got, want := index.query.Kinds, []string{"github.audit"}; !slices.Equal(got, want) {
+		t.Fatalf("index query kinds = %#v, want %#v", got, want)
+	}
+	if replay.nextForCalls == 0 {
+		t.Fatal("subject-index tail expected to use GetNextMsgForSubject")
+	}
+}
+
+func TestReplayRuntimeIndexedSkipsNonExactKindPrefix(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 3, Msgs: 3},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-2", "github.pull_request", "writer-github")),
+				3: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-3", "github.pull_request", "writer-github")),
+			},
+		},
+	}
+	// In non-exact prefix mode the index query is not kind-narrowed, so if it
+	// were consulted it would return the newest all-kind sequences (3, 2), which
+	// post-filter to zero github.audit matches with an empty tail, dropping
+	// evt-1 that the legacy reverse scan finds. The replay must skip the index.
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Sequences: []uint64{3, 2}, Watermark: 3, Available: true}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		RuntimeID:    "writer-github",
+		KindPrefixes: []string{"github.audit"},
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-1"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want %#v (legacy match; index must be skipped)", got, want)
+	}
+	if index.calls != 0 {
+		t.Fatalf("index lookup calls = %d, want 0 for non-exact kind prefix replay", index.calls)
+	}
+}
+
+func TestReplayRuntimeIndexedSkipsUnnarrowedFilters(t *testing.T) {
+	newLog := func(index *fakeRuntimeReplayIndex) *Log {
+		replay := &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{
+					Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+					State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1, Msgs: 1},
+				},
+			},
+			msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+				"CEREBRO_EVENTS": {
+					1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				},
+			},
+		}
+		return &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+	}
+	for _, tt := range []struct {
+		name    string
+		request ports.ReplayRequest
+	}{
+		{name: "attribute filter", request: ports.ReplayRequest{RuntimeID: "writer-github", AttributeEquals: map[string]string{"team": "security"}, Limit: 10}},
+		{name: "tenant filter", request: ports.ReplayRequest{RuntimeID: "writer-github", TenantID: "writer", Limit: 10}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Available: true, Watermark: 1}}
+			log := newLog(index)
+			if _, err := log.Replay(context.Background(), tt.request); err != nil {
+				t.Fatalf("Replay() error = %v", err)
+			}
+			if index.calls != 0 {
+				t.Fatalf("index lookup calls = %d, want 0 when filters are not index-narrowed", index.calls)
+			}
+		})
+	}
+}
+
+func TestScanRuntimeIndexCollectsRuntimeEntries(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4, Msgs: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "other-runtime")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+				4: rawReplayMsg(t, "events.ignored", replayEvent("evt-4", "ignored", "")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	scan, err := log.ScanRuntimeIndex(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatalf("ScanRuntimeIndex() error = %v", err)
+	}
+	if scan.Watermark != 4 || !scan.CaughtUp {
+		t.Fatalf("scan watermark/caughtUp = %d/%v, want 4/true", scan.Watermark, scan.CaughtUp)
+	}
+	if len(scan.Entries) != 3 {
+		t.Fatalf("scan entries = %d, want 3 (empty-runtime message skipped)", len(scan.Entries))
+	}
+	first := scan.Entries[0]
+	if first.RuntimeID != "writer-github" || first.Seq != 1 || first.Kind != "github.audit" {
+		t.Fatalf("first entry = %#v, want writer-github seq 1 github.audit", first)
+	}
+}
+
+func TestScanRuntimeIndexSkipsPurgedPrefix(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 3, LastSeq: 4, Msgs: 2},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	scan, err := log.ScanRuntimeIndex(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatalf("ScanRuntimeIndex() error = %v", err)
+	}
+	if scan.Watermark != 4 || !scan.CaughtUp {
+		t.Fatalf("scan watermark/caughtUp = %d/%v, want 4/true", scan.Watermark, scan.CaughtUp)
+	}
+	if len(scan.Entries) != 2 {
+		t.Fatalf("scan entries = %d, want 2", len(scan.Entries))
+	}
+	if replay.getMsgCalls != 2 {
+		t.Fatalf("getMsgCalls = %d, want 2 (purged prefix 1..2 skipped)", replay.getMsgCalls)
+	}
+}

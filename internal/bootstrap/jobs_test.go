@@ -109,3 +109,35 @@ func TestWriteJobErrorKeepsClientErrorsActionable(t *testing.T) {
 		t.Fatalf("error body = %q, want actionable client error", body["error"])
 	}
 }
+
+func TestAuthorizeJobCreateAppendLogRuntimeIndexRequiresAdmin(t *testing.T) {
+	store := &stubRuntimeStore{}
+	adminCtx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Roles: []string{roleCerebroAdmin}},
+	})
+	if _, err := authorizeJobCreate(adminCtx, store, createJobHTTPRequest{Kind: platformjobs.KindAppendLogRuntimeIndex}); err != nil {
+		t.Fatalf("authorizeJobCreate() admin error = %v, want nil", err)
+	}
+	nonAdminCtx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{},
+	})
+	if _, err := authorizeJobCreate(nonAdminCtx, store, createJobHTTPRequest{Kind: platformjobs.KindAppendLogRuntimeIndex}); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("authorizeJobCreate() non-admin error = %v, want errScopeForbidden", err)
+	}
+}
+
+func TestRunAppendLogRuntimeIndexJobRejectsWhenDisabled(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0"}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	if _, _, err := app.runAppendLogRuntimeIndexJob(context.Background(), &ports.Job{}, nil); !errors.Is(err, platformjobs.ErrInvalidRequest) {
+		t.Fatalf("runAppendLogRuntimeIndexJob() disabled error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestRunAppendLogRuntimeIndexJobRequiresIndexCapableDeps(t *testing.T) {
+	cfg := config.Config{HTTPAddr: "127.0.0.1:0"}
+	cfg.AppendLog.JetStreamRuntimeIndexEnabled = true
+	app := New(cfg, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	if _, _, err := app.runAppendLogRuntimeIndexJob(context.Background(), &ports.Job{}, nil); !errors.Is(err, platformjobs.ErrRuntimeUnavailable) {
+		t.Fatalf("runAppendLogRuntimeIndexJob() error = %v, want ErrRuntimeUnavailable", err)
+	}
+}

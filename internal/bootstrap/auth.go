@@ -585,6 +585,20 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	return nil
 }
 
+// authorizeJobAdmin gates global (no-tenant) maintenance jobs on the admin role.
+// When no auth context is present (e.g. auth disabled) it allows the request,
+// consistent with authorizeTenantID.
+func authorizeJobAdmin(ctx context.Context) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok {
+		return nil
+	}
+	if !principalHasAdminRole(auth.principal) {
+		return errScopeForbidden
+	}
+	return nil
+}
+
 func authorizeFindingCandidatePromotion(ctx context.Context) error {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
 	if !ok {

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/appendlogindex"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
@@ -56,6 +57,9 @@ func (a *App) newJobService() *platformjobs.Service {
 	service.WithRunner(platformjobs.KindFindingRulesEvaluate, a.runFindingRulesEvaluateJob)
 	service.WithRunner(platformjobs.KindFindingsEvaluate, a.runFindingsEvaluateJob)
 	service.WithRunner(platformjobs.KindReportRun, a.runReportJob)
+	if a.cfg.AppendLog.JetStreamRuntimeIndexEnabled {
+		service.WithRunner(platformjobs.KindAppendLogRuntimeIndex, a.runAppendLogRuntimeIndexJob)
+	}
 	return service
 }
 
@@ -320,6 +324,33 @@ func (a *App) runFindingsEvaluateJob(ctx context.Context, job *ports.Job, _ *pla
 	return protoToMap(findingResponse(result)), nil, nil
 }
 
+// runAppendLogRuntimeIndexJob is the global (no runtime scope) maintenance job
+// that advances the per-runtime append-log replay index. Bootstrap only adapts
+// dependencies and payload; the population logic lives in appendlogindex.
+func (a *App) runAppendLogRuntimeIndexJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+	if !a.cfg.AppendLog.JetStreamRuntimeIndexEnabled {
+		return nil, nil, fmt.Errorf("%w: append log runtime index is disabled", platformjobs.ErrInvalidRequest)
+	}
+	source, ok := a.deps.AppendLog.(ports.RuntimeIndexSource)
+	if !ok || isNilInterface(source) {
+		return nil, nil, fmt.Errorf("%w: append log does not support runtime indexing", platformjobs.ErrRuntimeUnavailable)
+	}
+	writer, ok := a.deps.StateStore.(ports.RuntimeIndexWriter)
+	if !ok || isNilInterface(writer) {
+		return nil, nil, fmt.Errorf("%w: state store does not support runtime indexing", platformjobs.ErrRuntimeUnavailable)
+	}
+	result, err := appendlogindex.Populate(ctx, source, writer, uint32Payload(job.Payload, "batch"), uint32Payload(job.Payload, "max_batches"))
+	if err != nil {
+		return nil, nil, err
+	}
+	return map[string]any{
+		"indexed_entries": result.IndexedEntries,
+		"batches":         result.Batches,
+		"watermark":       result.Watermark,
+		"caught_up":       result.CaughtUp,
+	}, nil, nil
+}
+
 func (a *App) runReportJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
 	reportID := stringPayload(job.Payload, "report_id", job.SubjectID)
 	if reportID == "" {
@@ -368,6 +399,11 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 			return "", err
 		}
 		return firstNonEmpty(request.TenantID, reportTenantID), nil
+	case platformjobs.KindAppendLogRuntimeIndex:
+		if err := authorizeJobAdmin(ctx); err != nil {
+			return "", err
+		}
+		return "", nil
 	default:
 		return "", fmt.Errorf("%w: unsupported job kind %q", platformjobs.ErrInvalidRequest, strings.TrimSpace(request.Kind))
 	}
