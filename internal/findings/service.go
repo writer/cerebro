@@ -311,10 +311,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	var events []*cerebrov1.EventEnvelope
 	if rule.SupportsRuntime(runtime) {
-		events, err = s.replayer.Replay(ctx, ports.ReplayRequest{
-			RuntimeID: runtimeID,
-			Limit:     normalizedLimit,
-		})
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, []Rule{rule}))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
 			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
@@ -448,10 +445,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	var events []*cerebrov1.EventEnvelope
 	if rulesNeedReplay(runtime, states) {
-		events, err = s.replayer.Replay(ctx, ports.ReplayRequest{
-			RuntimeID: runtimeID,
-			Limit:     normalizedLimit,
-		})
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromEvaluationStates(states)))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
@@ -567,6 +561,74 @@ func rulesNeedReplay(runtime *cerebrov1.SourceRuntime, states []*ruleEvaluationS
 		}
 	}
 	return false
+}
+
+func replayRequestForRules(runtime *cerebrov1.SourceRuntime, runtimeID string, limit uint32, rules []Rule) ports.ReplayRequest {
+	request := ports.ReplayRequest{
+		RuntimeID: strings.TrimSpace(runtimeID),
+		Limit:     limit,
+	}
+	kindPrefixes := replayExactKindFiltersForRules(runtime, rules)
+	if len(kindPrefixes) > 0 {
+		request.KindPrefixes = kindPrefixes
+		request.ExactKindFilters = true
+	}
+	return request
+}
+
+func replayExactKindFiltersForRules(runtime *cerebrov1.SourceRuntime, rules []Rule) []string {
+	runtimeKind := strings.TrimSpace(runtimeConfiguredEventKind(runtime))
+	seen := map[string]struct{}{}
+	supportingRules := 0
+	for _, rule := range rules {
+		if rule == nil || !rule.SupportsRuntime(runtime) {
+			continue
+		}
+		supportingRules++
+		metadataRule, ok := rule.(MetadataRule)
+		if !ok {
+			return nil
+		}
+		definition := metadataRule.RuleMetadata()
+		if len(definition.EventKinds) == 0 {
+			return nil
+		}
+		matchedRuleKind := false
+		for _, rawKind := range definition.EventKinds {
+			kind := strings.TrimSpace(rawKind)
+			if kind == "" {
+				continue
+			}
+			if runtimeKind != "" && kind != runtimeKind {
+				continue
+			}
+			seen[kind] = struct{}{}
+			matchedRuleKind = true
+		}
+		if !matchedRuleKind {
+			return nil
+		}
+	}
+	if supportingRules == 0 {
+		return nil
+	}
+	kinds := make([]string, 0, len(seen))
+	for kind := range seen {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
+}
+
+func rulesFromEvaluationStates(states []*ruleEvaluationState) []Rule {
+	rules := make([]Rule, 0, len(states))
+	for _, state := range states {
+		if state == nil || state.rule == nil {
+			continue
+		}
+		rules = append(rules, state.rule)
+	}
+	return rules
 }
 
 // ListFindings loads persisted findings for one runtime.

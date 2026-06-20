@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,13 +54,14 @@ func (f *fakePublisher) PublishMsg(_ context.Context, msg *nats.Msg, _ ...natsje
 }
 
 type fakeReplayManager struct {
-	streams     []*natsjetstream.StreamInfo
-	msgs        map[string]map[uint64]*natsjetstream.RawStreamMsg
-	err         error
-	getMsgErr   error
-	msgFunc     func(stream string, seq uint64) *natsjetstream.RawStreamMsg
-	streamCalls int
-	getMsgCalls int
+	streams      []*natsjetstream.StreamInfo
+	msgs         map[string]map[uint64]*natsjetstream.RawStreamMsg
+	err          error
+	getMsgErr    error
+	msgFunc      func(stream string, seq uint64) *natsjetstream.RawStreamMsg
+	streamCalls  int
+	getMsgCalls  int
+	nextForCalls int
 }
 
 func (f *fakeReplayManager) Streams(context.Context) ([]*natsjetstream.StreamInfo, error) {
@@ -79,7 +82,7 @@ type fakeReplayStream struct {
 	msgs    map[uint64]*natsjetstream.RawStreamMsg
 }
 
-func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstream.GetMsgOpt) (*natsjetstream.RawStreamMsg, error) {
+func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64) (*natsjetstream.RawStreamMsg, error) {
 	if f.manager != nil {
 		f.manager.getMsgCalls++
 		if f.manager.getMsgErr != nil {
@@ -93,7 +96,40 @@ func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstr
 	if raw == nil {
 		return nil, natsjetstream.ErrMsgNotFound
 	}
-	return raw, nil
+	cloned := *raw
+	if cloned.Sequence == 0 {
+		cloned.Sequence = seq
+	}
+	return &cloned, nil
+}
+
+func (f *fakeReplayStream) GetNextMsgForSubject(_ context.Context, seq uint64, subject string) (*natsjetstream.RawStreamMsg, error) {
+	if f.manager != nil {
+		f.manager.nextForCalls++
+		if f.manager.getMsgErr != nil {
+			return nil, f.manager.getMsgErr
+		}
+	}
+	maxSeq := seq
+	for current := range f.msgs {
+		if current > maxSeq {
+			maxSeq = current
+		}
+	}
+	for current := seq; current <= maxSeq; current++ {
+		raw := f.msgs[current]
+		if raw == nil && f.manager != nil && f.manager.msgFunc != nil {
+			raw = f.manager.msgFunc(f.stream, current)
+		}
+		if raw != nil && raw.Subject == subject {
+			cloned := *raw
+			if cloned.Sequence == 0 {
+				cloned.Sequence = current
+			}
+			return &cloned, nil
+		}
+	}
+	return nil, natsjetstream.ErrMsgNotFound
 }
 
 func captureJetstreamTelemetry(t *testing.T, fn func()) string {
@@ -829,6 +865,89 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 	}
 }
 
+func TestReplayExactKindFiltersUseSubjectIndex(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 5, Msgs: 5},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-2", "github.pull_request", "writer-github")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "other-runtime")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+				5: rawReplayMsg(t, "events.ignored", replayEvent("evt-5", "ignored", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		events, err := log.Replay(context.Background(), ports.ReplayRequest{
+			RuntimeID:        "writer-github",
+			KindPrefixes:     []string{"github.audit"},
+			ExactKindFilters: true,
+			Limit:            2,
+		})
+		if err != nil {
+			t.Fatalf("Replay() error = %v", err)
+		}
+		if len(events) != 2 {
+			t.Fatalf("len(events) = %d, want 2", len(events))
+		}
+		if events[0].GetId() != "evt-1" || events[1].GetId() != "evt-4" {
+			t.Fatalf("replayed ids = [%q, %q], want [evt-1, evt-4]", events[0].GetId(), events[1].GetId())
+		}
+	})
+
+	if replay.getMsgCalls != 0 {
+		t.Fatalf("legacy GetMsg calls = %d, want 0", replay.getMsgCalls)
+	}
+	if replay.nextForCalls == 0 {
+		t.Fatal("NextFor subject calls = 0, want subject-index replay")
+	}
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.replay")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.replay span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	payload := spanEnds[0]
+	for key, want := range map[string]any{
+		"messaging.jetstream.replay.strategy":              replayStrategySubjectIndex,
+		"messaging.jetstream.replay.subject_indexed":       true,
+		"messaging.jetstream.replay.legacy_full_scan":      false,
+		"messaging.jetstream.replay.subject_filter_count":  float64(1),
+		"messaging.jetstream.replay.scanned_count":         float64(3),
+		"messaging.jetstream.replay.subject_matched_count": float64(3),
+		"messaging.jetstream.replay.decoded_count":         float64(3),
+		"messaging.jetstream.replay.matched_count":         float64(2),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func TestAppendNewestReplayCandidateKeepsNewestSequences(t *testing.T) {
+	var candidates []replayCandidate
+	for _, seq := range []uint64{100, 1, 2, 3, 101, 4} {
+		candidates = appendNewestReplayCandidate(candidates, replayCandidate{seq: seq}, 3)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].seq < candidates[j].seq
+	})
+	got := []uint64{candidates[0].seq, candidates[1].seq, candidates[2].seq}
+	want := []uint64{4, 100, 101}
+	if !slices.Equal(got, want) {
+		t.Fatalf("kept sequences = %#v, want %#v", got, want)
+	}
+}
+
 func TestReplayEmitsScanTelemetry(t *testing.T) {
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
@@ -873,6 +992,9 @@ func TestReplayEmitsScanTelemetry(t *testing.T) {
 		"messaging.jetstream.replay.subject_matched_count": float64(2),
 		"messaging.jetstream.replay.decoded_count":         float64(2),
 		"messaging.jetstream.replay.matched_count":         float64(2),
+		"messaging.jetstream.replay.strategy":              replayStrategyLegacyReverseScan,
+		"messaging.jetstream.replay.subject_indexed":       false,
+		"messaging.jetstream.replay.legacy_full_scan":      true,
 		"events_returned":                                  float64(2),
 	} {
 		if got := payload[key]; got != want {

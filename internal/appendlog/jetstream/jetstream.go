@@ -44,6 +44,12 @@ const (
 	jetstreamCanaryMinInterval = time.Minute
 )
 
+const (
+	replayStrategyEmptyStream       = "empty_stream"
+	replayStrategyLegacyReverseScan = "legacy_reverse_scan"
+	replayStrategySubjectIndex      = "subject_index"
+)
+
 var waitBeforePublishRetryFunc = waitBeforePublishRetry
 
 type publisher interface {
@@ -57,7 +63,8 @@ type replayManager interface {
 }
 
 type replayStream interface {
-	GetMsg(context.Context, uint64, ...jetstream.GetMsgOpt) (*jetstream.RawStreamMsg, error)
+	GetMsg(context.Context, uint64) (*jetstream.RawStreamMsg, error)
+	GetNextMsgForSubject(context.Context, uint64, string) (*jetstream.RawStreamMsg, error)
 }
 
 type publishTelemetry struct {
@@ -113,7 +120,19 @@ func (m *jetStreamReplayManager) Stream(ctx context.Context, stream string) (rep
 	if err != nil {
 		return nil, err
 	}
-	return streamRef, nil
+	return &jetStreamReplayStream{stream: streamRef}, nil
+}
+
+type jetStreamReplayStream struct {
+	stream jetstream.Stream
+}
+
+func (s *jetStreamReplayStream) GetMsg(ctx context.Context, seq uint64) (*jetstream.RawStreamMsg, error) {
+	return s.stream.GetMsg(ctx, seq)
+}
+
+func (s *jetStreamReplayStream) GetNextMsgForSubject(ctx context.Context, seq uint64, subject string) (*jetstream.RawStreamMsg, error) {
+	return s.stream.GetMsg(ctx, seq, jetstream.WithGetMsgSubject(subject))
 }
 
 // Log is the JetStream-backed append-log implementation.
@@ -670,51 +689,33 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, err
 	}
 	started := time.Now()
-	var scanned, missing, subjectMatched, decoded, matched uint64
-	candidates := make([]replayCandidate, 0, limit)
+	var candidates []replayCandidate
+	var scan replayScanStats
+	subjectFilters, useSubjectIndex, err := exactReplaySubjectFilters(prefix, request)
+	if err != nil {
+		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, 0, 0, 0, 0, 0, 0, ctx)))
+		return nil, err
+	}
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
+		recordJetStreamReplayMetrics(ctx, replayScanStats{strategy: replayStrategyEmptyStream, subjectFilterCount: len(subjectFilters)}, "completed", "", time.Since(started), 0)
 		endAttrs := streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, 0, 0, 0, 0, 0, 0, ctx)).
+			With(jetstreamReplayStrategyAttrs(replayStrategyEmptyStream, len(subjectFilters))).
 			WithField(telemetry.Field{Key: "events_returned", Value: 0}).
 			WithField(telemetry.Field{Key: "messaging.jetstream.replay.duration_ms", Value: time.Since(started).Milliseconds()})
 		jetstreamAnnotateMain(ctx, "replay", "completed", endAttrs)
 		telemetry.End(span, "completed", endAttrs)
 		return nil, nil
 	}
-	for seq := stream.State.LastSeq; ; seq-- {
-		scanned++
-		raw, err := streamRef.GetMsg(ctx, seq)
-		if err != nil {
-			if errors.Is(err, jetstream.ErrMsgNotFound) {
-				missing++
-				if seq == stream.State.FirstSeq {
-					break
-				}
-				continue
-			}
-			err = fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
-			jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, scanned, missing, subjectMatched, decoded, matched, seq, ctx)))
-			return nil, err
-		}
-		if raw != nil && replaySubjectMatchesAnyPrefix(raw.Subject, subjectPrefixes) {
-			subjectMatched++
-			event, err := decodeReplayEvent(raw)
-			if err != nil {
-				err = fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
-				jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, scanned, missing, subjectMatched, decoded, matched, seq, ctx)))
-				return nil, err
-			}
-			decoded++
-			if matchesReplayRequest(event, request) {
-				matched++
-				candidates = append(candidates, replayCandidate{event: event, seq: seq})
-				if countAtLeastUint32(len(candidates), candidateLimit) {
-					break
-				}
-			}
-		}
-		if seq == stream.State.FirstSeq {
-			break
-		}
+	if useSubjectIndex {
+		candidates, scan, err = replaySubjectIndexed(ctx, stream.Config.Name, stream.State, streamRef, subjectFilters, request, candidateLimit)
+	} else {
+		scan.strategy = replayStrategyLegacyReverseScan
+		candidates, scan, err = replayLegacyReverse(ctx, stream.Config.Name, stream.State, streamRef, subjectPrefixes, request, candidateLimit)
+	}
+	if err != nil {
+		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
+		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
+		return nil, err
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return replayCandidateNewer(candidates[i], candidates[j])
@@ -729,12 +730,143 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	for _, candidate := range candidates {
 		events = append(events, candidate.event)
 	}
-	endAttrs := streamAttrs.With(jetstreamReplayScanAttrs(limit, candidateLimit, scanned, missing, subjectMatched, decoded, matched, 0, ctx)).
+	recordJetStreamReplayMetrics(ctx, scan, "completed", "", time.Since(started), len(events))
+	endAttrs := streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)).
 		WithField(telemetry.Field{Key: "events_returned", Value: len(events)}).
 		WithField(telemetry.Field{Key: "messaging.jetstream.replay.duration_ms", Value: time.Since(started).Milliseconds()})
 	jetstreamAnnotateMain(ctx, "replay", "completed", endAttrs)
 	telemetry.End(span, "completed", endAttrs)
 	return events, nil
+}
+
+type replayScanStats struct {
+	scanned            uint64
+	missing            uint64
+	subjectMatched     uint64
+	decoded            uint64
+	matched            uint64
+	sequence           uint64
+	strategy           string
+	subjectFilterCount int
+}
+
+func (s replayScanStats) attrs(limit uint32, candidateLimit uint32, ctx context.Context) telemetry.Attributes {
+	strategy := strings.TrimSpace(s.strategy)
+	if strategy == "" {
+		strategy = replayStrategyLegacyReverseScan
+	}
+	return jetstreamReplayScanAttrs(limit, candidateLimit, s.scanned, s.missing, s.subjectMatched, s.decoded, s.matched, s.sequence, ctx).
+		With(jetstreamReplayStrategyAttrs(strategy, s.subjectFilterCount))
+}
+
+func replayLegacyReverse(ctx context.Context, streamName string, state jetstream.StreamState, stream replayStream, subjectPrefixes []string, request ports.ReplayRequest, candidateLimit uint32) ([]replayCandidate, replayScanStats, error) {
+	stats := replayScanStats{strategy: replayStrategyLegacyReverseScan}
+	candidates := make([]replayCandidate, 0, candidateLimit)
+	for seq := state.LastSeq; ; seq-- {
+		stats.scanned++
+		raw, err := stream.GetMsg(ctx, seq)
+		if err != nil {
+			if errors.Is(err, jetstream.ErrMsgNotFound) {
+				stats.missing++
+				if seq == state.FirstSeq {
+					break
+				}
+				continue
+			}
+			stats.sequence = seq
+			return nil, stats, fmt.Errorf("get replay message %s:%d: %w", streamName, seq, err)
+		}
+		if raw != nil && replaySubjectMatchesAnyPrefix(raw.Subject, subjectPrefixes) {
+			stats.subjectMatched++
+			event, err := decodeReplayEvent(raw)
+			if err != nil {
+				stats.sequence = seq
+				return nil, stats, fmt.Errorf("decode replay message %s:%d: %w", streamName, seq, err)
+			}
+			stats.decoded++
+			if matchesReplayRequest(event, request) {
+				stats.matched++
+				candidates = append(candidates, replayCandidate{event: event, seq: seq})
+				if countAtLeastUint32(len(candidates), candidateLimit) {
+					break
+				}
+			}
+		}
+		if seq == state.FirstSeq {
+			break
+		}
+	}
+	return candidates, stats, nil
+}
+
+func replaySubjectIndexed(ctx context.Context, streamName string, state jetstream.StreamState, stream replayStream, subjects []string, request ports.ReplayRequest, candidateLimit uint32) ([]replayCandidate, replayScanStats, error) {
+	stats := replayScanStats{strategy: replayStrategySubjectIndex, subjectFilterCount: len(subjects)}
+	candidates := make([]replayCandidate, 0, candidateLimit)
+	for _, subject := range subjects {
+		for seq := state.FirstSeq; seq <= state.LastSeq; {
+			raw, err := stream.GetNextMsgForSubject(ctx, seq, subject)
+			if err != nil {
+				if errors.Is(err, jetstream.ErrMsgNotFound) {
+					stats.missing++
+					break
+				}
+				stats.sequence = seq
+				return nil, stats, fmt.Errorf("get replay message %s:%d subject %q: %w", streamName, seq, subject, err)
+			}
+			if raw == nil || raw.Sequence == 0 || raw.Sequence > state.LastSeq {
+				stats.missing++
+				break
+			}
+			if raw.Sequence < seq {
+				stats.sequence = seq
+				return nil, stats, fmt.Errorf("get replay message %s:%d subject %q returned older sequence %d", streamName, seq, subject, raw.Sequence)
+			}
+			stats.scanned++
+			stats.subjectMatched++
+			event, err := decodeReplayEvent(raw)
+			if err != nil {
+				stats.sequence = raw.Sequence
+				return nil, stats, fmt.Errorf("decode replay message %s:%d: %w", streamName, raw.Sequence, err)
+			}
+			stats.decoded++
+			if matchesReplayRequest(event, request) {
+				stats.matched++
+				candidates = appendNewestReplayCandidate(candidates, replayCandidate{event: event, seq: raw.Sequence}, candidateLimit)
+			}
+			if raw.Sequence == ^uint64(0) {
+				break
+			}
+			seq = raw.Sequence + 1
+		}
+	}
+	return candidates, stats, nil
+}
+
+func appendNewestReplayCandidate(candidates []replayCandidate, candidate replayCandidate, candidateLimit uint32) []replayCandidate {
+	candidates = append(candidates, candidate)
+	if countGreaterThanUint32(len(candidates), candidateLimit) {
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return replayCandidateNewer(candidates[i], candidates[j])
+		})
+		candidates = candidates[:candidateLimit]
+	}
+	return candidates
+}
+
+func recordJetStreamReplayMetrics(ctx context.Context, scan replayScanStats, status string, errorCategory string, duration time.Duration, returned int) {
+	observability.RecordJetStreamReplay(ctx, observability.JetStreamReplayMetrics{
+		Strategy:             scan.strategy,
+		Status:               status,
+		ErrorCategory:        errorCategory,
+		Duration:             duration,
+		Scanned:              scan.scanned,
+		Missing:              scan.missing,
+		SubjectMatched:       scan.subjectMatched,
+		Decoded:              scan.decoded,
+		Matched:              scan.matched,
+		Returned:             uint64(returned), // #nosec G115 -- returned is len(events), always non-negative.
+		SubjectFilterPresent: scan.subjectFilterCount > 0,
+	})
 }
 
 func (l *Log) shouldRunCanary(now time.Time) bool {
@@ -920,6 +1052,19 @@ func jetstreamReplayScanAttrs(limit uint32, candidateLimit uint32, scanned uint6
 	return attrs
 }
 
+func jetstreamReplayStrategyAttrs(strategy string, subjectFilterCount int) telemetry.Attributes {
+	strategy = strings.TrimSpace(strategy)
+	if strategy == "" {
+		strategy = replayStrategyLegacyReverseScan
+	}
+	return telemetry.Attrs(
+		telemetry.Field{Key: "messaging.jetstream.replay.strategy", Value: strategy},
+		telemetry.Field{Key: "messaging.jetstream.replay.subject_filter_count", Value: subjectFilterCount},
+		telemetry.Field{Key: "messaging.jetstream.replay.subject_indexed", Value: strategy == replayStrategySubjectIndex},
+		telemetry.Field{Key: "messaging.jetstream.replay.legacy_full_scan", Value: strategy == replayStrategyLegacyReverseScan},
+	)
+}
+
 func contextDeadlineBudgetMs(ctx context.Context) int64 {
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -1066,6 +1211,31 @@ func replaySubjectPrefixes(prefix string, request ports.ReplayRequest) []string 
 		subjectPrefixes = append(subjectPrefixes, replaySubjectPrefix(prefix, kindPrefix))
 	}
 	return subjectPrefixes
+}
+
+func exactReplaySubjectFilters(prefix string, request ports.ReplayRequest) ([]string, bool, error) {
+	if !request.ExactKindFilters {
+		return nil, false, nil
+	}
+	kindPrefixes := replayKindPrefixes(request)
+	if len(kindPrefixes) == 0 {
+		return nil, false, nil
+	}
+	subjects := make([]string, 0, len(kindPrefixes))
+	seen := map[string]struct{}{}
+	for _, kindPrefix := range kindPrefixes {
+		subject, err := eventSubject(prefix, kindPrefix)
+		if err != nil {
+			return nil, false, err
+		}
+		if _, ok := seen[subject]; ok {
+			continue
+		}
+		seen[subject] = struct{}{}
+		subjects = append(subjects, subject)
+	}
+	sort.Strings(subjects)
+	return subjects, len(subjects) > 0, nil
 }
 
 func replaySubjectMatchesPrefix(subject string, prefix string) bool {
@@ -1237,12 +1407,13 @@ func normalizeReplayLimit(limit uint32) uint32 {
 
 func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
 	normalized := ports.ReplayRequest{
-		RuntimeID:       strings.TrimSpace(req.RuntimeID),
-		KindPrefix:      strings.TrimSpace(req.KindPrefix),
-		KindPrefixes:    normalizeReplayKindPrefixes(req.KindPrefixes),
-		TenantID:        strings.TrimSpace(req.TenantID),
-		AttributeEquals: make(map[string]string, len(req.AttributeEquals)),
-		Limit:           req.Limit,
+		RuntimeID:        strings.TrimSpace(req.RuntimeID),
+		KindPrefix:       strings.TrimSpace(req.KindPrefix),
+		KindPrefixes:     normalizeReplayKindPrefixes(req.KindPrefixes),
+		ExactKindFilters: req.ExactKindFilters,
+		TenantID:         strings.TrimSpace(req.TenantID),
+		AttributeEquals:  make(map[string]string, len(req.AttributeEquals)),
+		Limit:            req.Limit,
 	}
 	for key, value := range req.AttributeEquals {
 		trimmedKey := strings.TrimSpace(key)
