@@ -99,11 +99,13 @@ func DefaultGrammar() Grammar {
 			"opaque_cursor",
 		},
 		ProjectionTemplates: []string{
+			"alert",
 			"app_entitlement",
 			"asset",
 			"audit_event",
 			"cloud_resource",
 			"compliance_control",
+			"deployment",
 			"endpoint_device",
 			"finding",
 			"group_membership",
