@@ -144,14 +144,14 @@ func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
 		operations := pair.item.Operations()
 		methods := sortedOperationMethods(operations)
 		for _, method := range methods {
-			if method != "GET" {
-				continue
-			}
 			operation := operations[method]
 			if operation == nil || operation.Deprecated {
 				continue
 			}
 			schema := responseSchema(operation)
+			if method != "GET" && (method != "POST" || !isPostListing(operation, schema)) {
+				continue
+			}
 			selector, listKey, itemSchema, ok := recordShape(pair.path, schema)
 			if !ok {
 				continue
@@ -171,7 +171,7 @@ func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
 				ID:             familyID,
 				Label:          titleFromID(familyID),
 				Path:           renderedPath,
-				Method:         "GET",
+				Method:         method,
 				RecordSelector: selector,
 				ListKey:        listKey,
 				IDField:        idField,
@@ -420,6 +420,28 @@ func normalizeServerURL(value string) string {
 	return strings.TrimRight(parsed.String(), "/")
 }
 
+// isPostListing determines whether a POST operation is a listing endpoint
+// (returns an array of records) rather than a creation/action endpoint.
+// A POST is considered a listing endpoint if its response schema is an array
+// or an object with an array field (same shape as GET listing endpoints).
+func isPostListing(_ *openapi3.Operation, schema *openapi3.SchemaRef) bool {
+	value := schemaValue(schema)
+	if value == nil {
+		return false
+	}
+	if isSchemaType(value, "array") {
+		return true
+	}
+	if isSchemaType(value, "object") && value.Properties != nil {
+		for _, prop := range value.Properties {
+			if isArraySchema(prop) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func responseSchema(operation *openapi3.Operation) *openapi3.SchemaRef {
 	if operation == nil || operation.Responses == nil {
 		return nil
@@ -642,10 +664,14 @@ func projectionTemplate(familyID, path string, operation *openapi3.Operation, pr
 		return "identity_user"
 	case containsAny(resourceText, "group", "team", "role", "organization", "workspace"):
 		return "identity_group"
-	case containsAny(text, "finding", "alert", "vulnerability", "vuln", "issue", "incident", "risk", "detection", "threat"):
+	case containsAny(text, "alert", "alarm", "notification", "incident", "pager", "siren"):
+		return "alert"
+	case containsAny(text, "finding", "vulnerability", "vuln", "issue", "risk", "detection", "threat"):
 		return "finding"
 	case containsAny(resourceText, "secret", "credential", "token", "password", "api_key", "apikey", "vault"):
 		return "secret"
+	case containsAny(text, "deployment", "deploy", "release", "build"):
+		return "deployment"
 	case containsAny(text, "policy", "compliance", "control", "rule", "standard", "framework", "baseline", "posture"):
 		return "policy"
 	case containsAny(text, "evidence", "case", "artifact"):
@@ -687,6 +713,16 @@ func projectionSpec(template, familyID, idField, nameField string, properties ma
 		fields["policy_id"] = firstNonEmpty(idField, "id")
 		fields["policy_name"] = firstNonEmpty(nameField, idField)
 		fields["policy_type"] = familyID
+	case "deployment":
+		fields["deployment_id"] = firstNonEmpty(idField, "id")
+		fields["deployment_name"] = firstNonEmpty(nameField, idField)
+		fields["deployment_environment"] = chooseField(properties, []string{"environment", "env", "stage", "target"})
+		fields["deployment_status"] = chooseField(properties, []string{"status", "state", "ready"})
+	case "alert":
+		fields["alert_id"] = firstNonEmpty(idField, "id")
+		fields["alert_name"] = firstNonEmpty(nameField, chooseField(properties, []string{"title", "summary", "subject"}), idField)
+		fields["alert_severity"] = chooseField(properties, []string{"severity", "priority", "level", "risk"})
+		fields["alert_status"] = chooseField(properties, []string{"status", "state", "resolved"})
 	case "evidence_cas_reference":
 		fields["evidence_id"] = firstNonEmpty(idField, "id")
 		fields["evidence_type"] = familyID
@@ -931,6 +967,10 @@ func coverageID(template, familyID string) string {
 		return "secrets"
 	case "policy":
 		return "policies"
+	case "deployment":
+		return "deployments"
+	case "alert":
+		return "alerts"
 	default:
 		return familyID
 	}
@@ -946,6 +986,10 @@ func coverageType(template string) string {
 		return "entity_family"
 	case "policy":
 		return "lifecycle_state"
+	case "deployment":
+		return "deployment_state"
+	case "alert":
+		return "alert_state"
 	default:
 		return "entity_family"
 	}
@@ -966,6 +1010,10 @@ func highValueBonus(template, familyID, path string) int {
 	case "secret":
 		return 25
 	case "policy":
+		return 20
+	case "deployment":
+		return 15
+	case "alert":
 		return 20
 	}
 	text := strings.ToLower(strings.Join([]string{familyID, path}, " "))

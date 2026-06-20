@@ -11,7 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcegen"
 )
 
-const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [catalog=true] [definition=<definition.json>] [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json>]"
+const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [catalog=true] [definition=<definition.json>] [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json> | wire <source-id> [output_dir=<dir>] [dry_run=true] | validate <source-id> [output_dir=<dir>]]"
 
 type sourceRuntimeSDKNewRequest struct {
 	sourcegen.Request
@@ -35,6 +35,10 @@ func runSourceRuntimeSDK(args []string) error {
 		return printJSON(result)
 	case "classify":
 		return runSourceRuntimeSDKClassify(args[1:])
+	case "wire":
+		return runSourceRuntimeSDKWire(args[1:])
+	case "validate":
+		return runSourceRuntimeSDKValidate(args[1:])
 	default:
 		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
 	}
@@ -211,4 +215,55 @@ func parseSourceRuntimeSDKNewArgs(args []string) (sourceRuntimeSDKNewRequest, er
 		},
 		CatalogDefinition: catalogDefinition,
 	}, nil
+}
+
+func runSourceRuntimeSDKWire(args []string) error {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
+	}
+	sourceID := strings.TrimSpace(args[0])
+	values := map[string]string{}
+	for _, arg := range args[1:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return fmt.Errorf("invalid wire argument %q; want key=value", arg)
+		}
+		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	dryRun, err := parseBoolValue(values["dry_run"])
+	if err != nil {
+		return fmt.Errorf("parse dry_run: %w", err)
+	}
+	result, err := sourcegen.Wire(sourcegen.WireRequest{
+		SourceID:  sourceID,
+		OutputDir: firstNonEmptyCLI(values["output_dir"], "."),
+		DryRun:    dryRun,
+	})
+	if err != nil {
+		return err
+	}
+	return printJSON(result)
+}
+
+func runSourceRuntimeSDKValidate(args []string) error {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
+	}
+	sourceID := strings.TrimSpace(args[0])
+	values := map[string]string{}
+	for _, arg := range args[1:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return fmt.Errorf("invalid validate argument %q; want key=value", arg)
+		}
+		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	result, err := sourcegen.Validate(sourcegen.ValidateRequest{
+		SourceID:  sourceID,
+		OutputDir: firstNonEmptyCLI(values["output_dir"], "."),
+	})
+	if err != nil {
+		return err
+	}
+	return printJSON(result)
 }

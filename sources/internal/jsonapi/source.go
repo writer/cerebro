@@ -116,6 +116,8 @@ type settings struct {
 	query                    url.Values
 	perPage                  int
 	privateEndpointAllowlist []string
+	region                   string
+	service                  string
 }
 
 type cachedOAuthToken struct {
@@ -250,6 +252,8 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		oauthTokenParams:        cloneStringMap(s.options.OAuthTokenParams),
 		oauthTokenRequestMethod: firstNonEmpty(configValue(cfg, "token_request_auth_method"), s.options.OAuthTokenRequestAuthMethod),
 		perPage:                 defaultPageSize,
+		region:                  configValue(cfg, "region"),
+		service:                 configValue(cfg, "service"),
 	}
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
@@ -606,6 +610,18 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 		return setTokenHeader(req, "Authorization", "Bearer", settings.token, s.options.SourceID)
 	case "signature":
 		return setTokenHeader(req, "Authorization", firstNonEmpty(s.options.TokenScheme, "Signature"), settings.token, s.options.SourceID)
+	case "aws_sigv4":
+		return s.setAWSSigV4Auth(ctx, req, settings)
+	case "two_step":
+		token := settings.token
+		if token == "" {
+			var err error
+			token, err = s.twoStepAccessToken(ctx, settings)
+			if err != nil {
+				return err
+			}
+		}
+		return setTokenHeader(req, "Authorization", "Bearer", token, s.options.SourceID)
 	default:
 		return fmt.Errorf("%s auth model %q is not supported by jsonapi", s.options.SourceID, authModel)
 	}
@@ -631,6 +647,148 @@ func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error
 	signature := hex.EncodeToString(mac.Sum(nil))
 	req.SetBasicAuth(integrationKey, signature)
 	return nil
+}
+
+// setAWSSigV4Auth signs the request with AWS Signature Version 4.
+// It uses access_key/secret_key from config (mapped to clientID/clientSecret)
+// and derives region and service from the request URL host or config values.
+func (s *Source) setAWSSigV4Auth(_ context.Context, req *http.Request, settings settings) error {
+	accessKey := firstNonEmpty(settings.clientID, settings.username)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.password)
+	if accessKey == "" || secretKey == "" {
+		return fmt.Errorf("%s access_key and secret_key are required for aws_sigv4 auth", s.options.SourceID)
+	}
+	region := firstNonEmpty(settings.region, "us-east-1")
+	service := firstNonEmpty(settings.service, "execute-api")
+
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+
+	req.Header.Set("X-Amz-Date", amzDate)
+
+	// Build canonical request.
+	canonicalURI := req.URL.EscapedPath()
+	if canonicalURI == "" {
+		canonicalURI = "/"
+	}
+	sortedQuery := make([]string, 0, len(req.URL.Query()))
+	for k, vs := range req.URL.Query() {
+		for _, v := range vs {
+			sortedQuery = append(sortedQuery, url.QueryEscape(k)+"="+url.QueryEscape(v))
+		}
+	}
+	sort.Strings(sortedQuery)
+	canonicalQuery := strings.Join(sortedQuery, "&")
+
+	payloadHash := "UNSIGNED-PAYLOAD"
+	if req.Body == nil {
+		payloadHash = sha256Hex([]byte(""))
+	}
+
+	canonicalHeaders := "host:" + req.URL.Host + "\n" + "x-amz-date:" + amzDate + "\n"
+	signedHeaders := "host;x-amz-date"
+
+	canonicalRequest := strings.Join([]string{
+		req.Method,
+		canonicalURI,
+		canonicalQuery,
+		canonicalHeaders + "\n",
+		signedHeaders,
+		payloadHash,
+	}, "\n")
+
+	// Build string to sign.
+	credentialScope := dateStamp + "/" + region + "/" + service + "/aws4_request"
+	stringToSign := strings.Join([]string{
+		"AWS4-HMAC-SHA256",
+		amzDate,
+		credentialScope,
+		sha256Hex([]byte(canonicalRequest)),
+	}, "\n")
+
+	// Calculate signing key.
+	kDate := hmacSHA256([]byte("AWS4"+secretKey), dateStamp)
+	kRegion := hmacSHA256(kDate, region)
+	kService := hmacSHA256(kRegion, service)
+	kSigning := hmacSHA256(kService, "aws4_request")
+
+	signature := hex.EncodeToString(hmacSHA256(kSigning, stringToSign))
+
+	authHeader := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+		accessKey, credentialScope, signedHeaders, signature)
+	req.Header.Set("Authorization", authHeader)
+	return nil
+}
+
+// twoStepAccessToken exchanges an API key for a session token via a two-step
+// flow. It POSTs the api_key to the token_url and caches the result.
+func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (string, error) {
+	apiKey := settings.token
+	if apiKey == "" {
+		return "", fmt.Errorf("%s api_key is required for two_step auth", s.options.SourceID)
+	}
+	tokenURL := settings.tokenURL
+	if tokenURL == "" {
+		return "", fmt.Errorf("%s token_url is required for two_step auth", s.options.SourceID)
+	}
+
+	cacheKey := "two_step:" + tokenURL
+	s.oauthTokenMu.Lock()
+	defer s.oauthTokenMu.Unlock()
+
+	now := time.Now()
+	if cached, ok := s.oauthTokens[cacheKey]; ok && cached.accessToken != "" && cached.expiresAt.After(now.Add(time.Minute)) {
+		return cached.accessToken, nil
+	}
+
+	body := url.Values{"api_key": {apiKey}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(body.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("%s two_step token request: %w", s.options.SourceID, err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%s two_step token exchange: %w", s.options.SourceID, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s two_step token exchange returned status %d", s.options.SourceID, resp.StatusCode)
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		Token       string `json:"token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tokenResp); err != nil {
+		return "", fmt.Errorf("%s two_step token decode: %w", s.options.SourceID, err)
+	}
+	token := firstNonEmpty(tokenResp.AccessToken, tokenResp.Token)
+	if token == "" {
+		return "", fmt.Errorf("%s two_step token exchange returned empty token", s.options.SourceID)
+	}
+
+	expiresAt := now.Add(time.Hour)
+	if tokenResp.ExpiresIn > 0 {
+		expiresAt = now.Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	}
+	s.oauthTokens[cacheKey] = cachedOAuthToken{accessToken: token, expiresAt: expiresAt}
+	return token, nil
+}
+
+func sha256Hex(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
+}
+
+func hmacSHA256(key []byte, data string) []byte {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(data))
+	return mac.Sum(nil)
 }
 
 func setTokenHeader(req *http.Request, header string, scheme string, token string, sourceID string) error {
@@ -1290,7 +1448,7 @@ func normalizedAuthModel(value string) string {
 		return "bearer_token"
 	case "api_key", "api_token":
 		return "api_key"
-	case "basic", "duo_hmac", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none":
+	case "basic", "duo_hmac", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none", "aws_sigv4", "two_step":
 		return value
 	default:
 		return value

@@ -44,8 +44,8 @@ func TestGenerateBuildsSourcegenReadyDefinition(t *testing.T) {
 		t.Fatalf("user pagination = %#v", users.Pagination)
 	}
 	alert := familyByID(t, definition.ResourceFamilies, "alert")
-	if alert.Projection == nil || alert.Projection.Template != "finding" {
-		t.Fatalf("alert projection = %#v, want finding", alert.Projection)
+	if alert.Projection == nil || alert.Projection.Template != "alert" {
+		t.Fatalf("alert projection = %#v, want alert", alert.Projection)
 	}
 	if report.EndpointCount != 4 || len(report.Selected) != 4 {
 		t.Fatalf("report = %#v", report)
