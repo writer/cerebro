@@ -148,6 +148,137 @@ func TestValidateBlocksUnsupportedResourceMethods(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsProjectionRelationships(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "secrets",
+			Path:    "/v1/secrets",
+			IDField: "id",
+			Event: EventMappingSpec{
+				Kind:      "example.secrets",
+				SchemaRef: "example/secrets/v1",
+			},
+			Projection: &ProjectionSpec{
+				Template: "secret",
+				Fields: map[string]string{
+					"vault_id": "mount_accessor|mount_path",
+				},
+				Relationships: []ProjectionRelationshipSpec{{
+					Relation: "belongs_to",
+					To: ProjectionEntitySpec{
+						EntityType:   "example.vault",
+						URNKind:      "example_vault",
+						IDAttributes: []string{"vault_id"},
+					},
+					MatchType: "secret_vault",
+				}},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Validation.Status != ValidationReady {
+		t.Fatalf("validation status = %q, want ready: %#v", definition.Validation.Status, definition.Validation.Checks)
+	}
+	relationship := definition.ResourceFamilies[0].Projection.Relationships[0]
+	if relationship.Relation != "belongs_to" || relationship.MatchType != "secret_vault" {
+		t.Fatalf("relationship normalization = %#v", relationship)
+	}
+}
+
+func TestValidateBlocksUnsafeProjectionRelationships(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{
+			{
+				ID:      "assets",
+				Path:    "/v1/assets",
+				IDField: "id",
+				Event: EventMappingSpec{
+					Kind:      "example.assets",
+					SchemaRef: "example/assets/v1",
+				},
+				Projection: &ProjectionSpec{
+					Template: "asset",
+					Fields:   map[string]string{"eventID": "eventID"},
+					Relationships: []ProjectionRelationshipSpec{{
+						Relation: "depends_on",
+						To: ProjectionEntitySpec{
+							EntityType:   "example.run",
+							URNKind:      "example_run",
+							IDAttributes: []string{"eventID"},
+						},
+					}},
+				},
+			},
+			{
+				ID:      "audit_events",
+				Path:    "/v1/audit",
+				IDField: "id",
+				Event: EventMappingSpec{
+					Kind:      "example.audit_events",
+					SchemaRef: "example/audit_events/v1",
+				},
+				Projection: &ProjectionSpec{
+					Template: "audit-event",
+					Fields:   map[string]string{"actor_user_id": "actor.id"},
+					Relationships: []ProjectionRelationshipSpec{{
+						Relation: "owned_by",
+						To: ProjectionEntitySpec{
+							EntityType:   "example.user",
+							URNKind:      "example_user",
+							IDAttributes: []string{"actor_user_id"},
+						},
+						MatchType: "audit_owner",
+					}},
+				},
+			},
+			{
+				ID:      "policies",
+				Path:    "/v1/policies",
+				IDField: "id",
+				Event: EventMappingSpec{
+					Kind:      "example.policies",
+					SchemaRef: "example/policies/v1",
+					URNKind:   "policy_urn_kind",
+				},
+				Projection: &ProjectionSpec{
+					Template: "policy",
+					Relationships: []ProjectionRelationshipSpec{{
+						Relation: "owned_by",
+						To: ProjectionEntitySpec{
+							EntityType:   "example.owner",
+							URNKind:      "example_owner",
+							IDAttributes: []string{"policy_urn_kind"},
+						},
+						MatchType: "policy_owner",
+					}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	for _, want := range []string{
+		"projection_relationship_assets_0_relation",
+		"projection_relationship_assets_0_match_type",
+		"projection_relationship_assets_0_to_assets_unstable_eventid",
+		"projection_relationships_audit_events",
+		"projection_relationship_policies_0_to_policies_attribute_policy_urn_kind",
+	} {
+		if !hasBlockingCheck(definition.Validation.Checks, want) {
+			t.Fatalf("validation checks = %#v, want blocker %q", definition.Validation.Checks, want)
+		}
+	}
+}
+
 func TestValidateBlocksProtocolRelativeResourcePaths(t *testing.T) {
 	for _, path := range []string{"//evil.example/v1/assets", `/\evil.example\v1\assets`} {
 		t.Run(path, func(t *testing.T) {

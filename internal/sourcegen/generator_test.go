@@ -186,6 +186,149 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionCarriesProjectionRelationships(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-example_vault",
+			TenantID:      "tenant-a",
+			SourceID:      "example_vault",
+			DisplayName:   "Example Vault",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/health",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "secrets",
+				Path:           "/v1/secrets",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_vault.secrets",
+					SchemaRef: "example_vault/secrets/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "secret",
+					Fields: map[string]string{
+						"owner_user_id": "created_by.id",
+						"vault_id":      "mount_accessor",
+					},
+					Entity: &connectordefinitions.ProjectionEntitySpec{
+						EntityType:     "secret",
+						URNKind:        "secret",
+						IDAttributes:   []string{"secret_id"},
+						LabelAttribute: "secret_name",
+					},
+					Relationships: []connectordefinitions.ProjectionRelationshipSpec{{
+						Relation: "belongs_to",
+						To: connectordefinitions.ProjectionEntitySpec{
+							EntityType:   "example_vault.vault",
+							URNKind:      "example_vault_vault",
+							IDAttributes: []string{"vault_id"},
+						},
+						MatchType: "secret_vault",
+					}},
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/example_vault/source.go")
+	for _, want := range []string{`"owner_user_id": "created_by.id"`, `"vault_id": "mount_accessor"`} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("generated source missing relationship attribute path %q:\n%s", want, source)
+		}
+	}
+	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/example_vault.go")
+	for _, want := range []string{
+		`"github.com/writer/cerebro/internal/connectordefinitions"`,
+		"projectCatalogRuntimeWithRelationships",
+		"connectordefinitions.ProjectionRelationshipSpec",
+		`MatchType: "secret_vault"`,
+	} {
+		if !strings.Contains(projection, want) {
+			t.Fatalf("generated projection missing %q:\n%s", want, projection)
+		}
+	}
+}
+
+func TestGenerateDefinitionCarriesAuditEventProjectionEntity(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-example_audit",
+			TenantID:      "tenant-a",
+			SourceID:      "example_audit",
+			DisplayName:   "Example Audit",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/health",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "audit_events",
+				Path:           "/v1/audit",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_audit.audit_events",
+					SchemaRef: "example_audit/audit_events/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "audit_event",
+					Fields:   map[string]string{"audit_id": "id"},
+					Entity: &connectordefinitions.ProjectionEntitySpec{
+						EntityType:   "example_audit.audit_event",
+						URNKind:      "example_audit_event",
+						IDAttributes: []string{"audit_id"},
+					},
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/example_audit.go")
+	for _, want := range []string{
+		"projectCatalogRuntimeWithRelationships",
+		"identityAuditProjections",
+		`EntityType:`,
+		`"example_audit.audit_event"`,
+	} {
+		if !strings.Contains(projection, want) {
+			t.Fatalf("generated audit projection missing %q:\n%s", want, projection)
+		}
+	}
+}
+
 func TestGenerateDefinitionHealthPathWithQueryUsesRequestURI(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{

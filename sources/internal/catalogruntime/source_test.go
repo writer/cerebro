@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
@@ -215,6 +216,30 @@ func TestProjectionFieldsOverrideClassDefaults(t *testing.T) {
 	}
 	if attrs["title"] == "" {
 		t.Fatal("title default missing")
+	}
+}
+
+func TestSecretProjectionTemplateDefaults(t *testing.T) {
+	resource := connectordefinitions.ResourceFamily{
+		ID: "secrets",
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: "secret",
+		},
+	}
+	if got := projectionClass(resource); got != "secret" {
+		t.Fatalf("projectionClass() = %q, want secret", got)
+	}
+	keys := idKeys(resource, "secret")
+	for _, want := range []string{"secret_id", "id"} {
+		if !slices.Contains(keys, want) {
+			t.Fatalf("idKeys() = %#v, want %q", keys, want)
+		}
+	}
+	attrs := attributePaths(resource, "secret")
+	for _, want := range []string{"secret_id", "secret_name"} {
+		if attrs[want] == "" {
+			t.Fatalf("attributePaths()[%q] missing in %#v", want, attrs)
+		}
 	}
 }
 

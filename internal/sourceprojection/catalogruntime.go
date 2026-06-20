@@ -62,30 +62,32 @@ func catalogRuntimeProjectorFor(sourceID string, resource connectordefinitions.R
 	if resource.Projection != nil {
 		template = strings.TrimSpace(resource.Projection.Template)
 	}
+	var base ProjectFunc
 	switch template {
 	case "identity_user":
-		return func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return identityUserProjections(event, identityProjectionProfile{Provider: sourceID})
 		}
 	case "identity_group":
-		return func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return identityGroupProjections(event, identityProjectionProfile{Provider: sourceID})
 		}
 	case "group_membership":
-		return func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: sourceID})
 		}
 	case "audit_event":
-		return func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return identityAuditProjections(event, identityProjectionProfile{Provider: sourceID})
 		}
 	case "evidence_cas_reference":
-		return runtimeEvidenceProjections
+		base = runtimeEvidenceProjections
 	case "finding", "vulnerability":
-		return catalogRuntimeFindingProjections
+		base = catalogRuntimeFindingProjections
 	default:
-		return catalogRuntimeAssetProjections
+		base = catalogRuntimeAssetProjections
 	}
+	return augmentCatalogRuntimeProjector(sourceID, resource, base)
 }
 
 func catalogRuntimeAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
