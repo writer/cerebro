@@ -1,0 +1,13 @@
+sourceId: akeyless
+secretKeys:
+  - AKEYLESS_API_TOKEN
+runtimes:
+  - localId: items
+    config:
+      family: items
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2/item
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:AKEYLESS_API_TOKEN

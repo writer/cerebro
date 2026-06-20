@@ -1,0 +1,15 @@
+sourceId: hashicorp_vault
+secretKeys:
+  - HASHICORP_VAULT_ADDR
+  - HASHICORP_VAULT_TOKEN
+runtimes:
+  - localId: users
+    config:
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/sys/health
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      vault_addr: env:HASHICORP_VAULT_ADDR
+      token: env:HASHICORP_VAULT_TOKEN

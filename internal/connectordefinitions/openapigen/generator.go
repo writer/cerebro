@@ -160,11 +160,11 @@ func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
 			staticSegments := staticPathSegments(pair.path)
 			familyID := familyIDFromPath(pair.path)
 			properties := schemaProperties(itemSchema)
-			idField := chooseField(properties, []string{"id", "uuid", "uid", "key", "slug", "name", "email"})
+			idField := chooseField(properties, []string{"id", "uuid", "uid", "sid", "key", "slug", "name", "email", "uri", "self", "ref", "handle", "external_id", "object_id", "resource_id", "asset_id", "record_id", "item_id", "entity_id", "guid", "_id"})
 			if idField == "" {
 				idField = "id"
 			}
-			nameField := chooseField(properties, []string{"name", "display_name", "displayName", "title", "login", "username", "email", "slug"})
+			nameField := chooseField(properties, []string{"name", "display_name", "displayName", "title", "friendly_name", "label", "login", "username", "email", "slug", "summary", "description", "subject", "hostname", "url", "self"})
 			template := projectionTemplate(familyID, pair.path, operation, properties)
 			eventKind := eventKind(sourceID, familyID)
 			resource := connectordefinitions.ResourceFamily{
@@ -558,22 +558,26 @@ func chooseField(properties map[string]*openapi3.SchemaRef, candidates []string)
 
 func paginationSpec(pathItem *openapi3.PathItem, operation *openapi3.Operation) *connectordefinitions.PaginationSpec {
 	names := queryParameterNames(pathItem, operation)
-	has := func(values ...string) string {
+	lowerNames := map[string]string{}
+	for name := range names {
+		lowerNames[strings.ToLower(name)] = name
+	}
+	hasCI := func(values ...string) string {
 		for _, value := range values {
-			if _, ok := names[value]; ok {
-				return value
+			if original, ok := lowerNames[strings.ToLower(value)]; ok {
+				return original
 			}
 		}
 		return ""
 	}
-	pageSize := has("per_page", "page_size", "limit", "max_results", "maxResults")
+	pageSize := hasCI("per_page", "page_size", "pagesize", "limit", "max_results", "maxresults", "perpage", "take", "count")
 	switch {
-	case has("cursor", "page_token", "pageToken", "next_cursor", "nextCursor", "starting_after", "after") != "":
-		return &connectordefinitions.PaginationSpec{Type: "cursor", CursorParam: has("cursor", "page_token", "pageToken", "next_cursor", "nextCursor", "starting_after", "after"), PageSizeParam: pageSize, PageSize: 100}
-	case has("page") != "":
-		return &connectordefinitions.PaginationSpec{Type: "page", PageParam: "page", PageSizeParam: pageSize, StartPage: 1, InjectFirstPage: true, PageSize: 100}
-	case has("offset", "skip") != "":
-		return &connectordefinitions.PaginationSpec{Type: "offset", OffsetParam: has("offset", "skip"), LimitParam: pageSize, PageSize: 100}
+	case hasCI("cursor", "page_token", "pagetoken", "next_cursor", "nextcursor", "nexttoken", "next_token", "starting_after", "startingafter", "after", "ending_before", "endingbefore", "before") != "":
+		return &connectordefinitions.PaginationSpec{Type: "cursor", CursorParam: hasCI("cursor", "page_token", "pagetoken", "next_cursor", "nextcursor", "nexttoken", "next_token", "starting_after", "startingafter", "after", "ending_before", "endingbefore", "before"), PageSizeParam: pageSize, PageSize: 100}
+	case hasCI("page") != "":
+		return &connectordefinitions.PaginationSpec{Type: "page", PageParam: hasCI("page"), PageSizeParam: pageSize, StartPage: 1, InjectFirstPage: true, PageSize: 100}
+	case hasCI("offset", "skip") != "":
+		return &connectordefinitions.PaginationSpec{Type: "offset", OffsetParam: hasCI("offset", "skip"), LimitParam: pageSize, PageSize: 100}
 	case pageSize != "":
 		return &connectordefinitions.PaginationSpec{Type: "page", PageSizeParam: pageSize, PageSize: 100}
 	default:
@@ -640,6 +644,10 @@ func projectionTemplate(familyID, path string, operation *openapi3.Operation, pr
 		return "identity_group"
 	case containsAny(text, "finding", "alert", "vulnerability", "vuln", "issue", "incident", "risk", "detection", "threat"):
 		return "finding"
+	case containsAny(resourceText, "secret", "credential", "token", "password", "api_key", "apikey", "vault"):
+		return "secret"
+	case containsAny(text, "policy", "compliance", "control", "rule", "standard", "framework", "baseline", "posture"):
+		return "policy"
 	case containsAny(text, "evidence", "case", "artifact"):
 		return "evidence_cas_reference"
 	case hasFindingShape(properties):
@@ -671,6 +679,14 @@ func projectionSpec(template, familyID, idField, nameField string, properties ma
 		fields["resource_id"] = firstNonEmpty(idField, "id")
 		fields["resource_name"] = firstNonEmpty(nameField, idField)
 		fields["resource_type"] = familyID
+	case "secret":
+		fields["secret_id"] = firstNonEmpty(idField, "id")
+		fields["secret_name"] = firstNonEmpty(nameField, idField)
+		fields["secret_type"] = familyID
+	case "policy":
+		fields["policy_id"] = firstNonEmpty(idField, "id")
+		fields["policy_name"] = firstNonEmpty(nameField, idField)
+		fields["policy_type"] = familyID
 	case "evidence_cas_reference":
 		fields["evidence_id"] = firstNonEmpty(idField, "id")
 		fields["evidence_type"] = familyID
@@ -911,6 +927,10 @@ func coverageID(template, familyID string) string {
 		return "audit_events"
 	case "finding":
 		return "findings"
+	case "secret":
+		return "secrets"
+	case "policy":
+		return "policies"
 	default:
 		return familyID
 	}
@@ -922,6 +942,10 @@ func coverageType(template string) string {
 		return "audit_event"
 	case "finding":
 		return "remediation_state"
+	case "secret":
+		return "entity_family"
+	case "policy":
+		return "lifecycle_state"
 	default:
 		return "entity_family"
 	}
@@ -939,6 +963,10 @@ func highValueBonus(template, familyID, path string) int {
 		return 30
 	case "identity_user", "identity_group", "group_membership":
 		return 25
+	case "secret":
+		return 25
+	case "policy":
+		return 20
 	}
 	text := strings.ToLower(strings.Join([]string{familyID, path}, " "))
 	if containsAny(text, "asset", "device", "endpoint", "repository", "repo", "permission", "role", "secret", "token", "key", "package", "dependency", "workflow", "runner", "hook", "installation", "organization") {

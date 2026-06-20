@@ -5,6 +5,7 @@ import (
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	akeylessource "github.com/writer/cerebro/sources/akeyless"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
@@ -16,6 +17,7 @@ import (
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
+	dopplersource "github.com/writer/cerebro/sources/doppler"
 	duosource "github.com/writer/cerebro/sources/duo"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
@@ -23,6 +25,7 @@ import (
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	grcsource "github.com/writer/cerebro/sources/grc"
+	hashicorpvaultsource "github.com/writer/cerebro/sources/hashicorp_vault"
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
@@ -62,6 +65,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "anthropic",
 		load: func() (sourcecdk.Source, error) {
 			return anthropicsource.New()
+		},
+	},
+	{
+		name: "akeyless",
+		load: func() (sourcecdk.Source, error) {
+			return akeylessource.New()
 		},
 	},
 	{
@@ -119,6 +128,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "doppler",
+		load: func() (sourcecdk.Source, error) {
+			return dopplersource.New()
+		},
+	},
+	{
 		name: "email_domain_health",
 		load: func() (sourcecdk.Source, error) {
 			return emaildomainhealthsource.New()
@@ -146,6 +161,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "grc",
 		load: func() (sourcecdk.Source, error) {
 			return grcsource.New()
+		},
+	},
+	{
+		name: "hashicorp_vault",
+		load: func() (sourcecdk.Source, error) {
+			return hashicorpvaultsource.New()
 		},
 	},
 	{
