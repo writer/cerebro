@@ -168,7 +168,7 @@ func wireSourceRegistry(path, importAlias, importPath, sourceID, loaderEntry str
 			}
 			if sliceEnd >= 0 {
 				entry := strings.TrimSuffix(loaderEntry, "\n")
-				text = text[:sliceEnd+1] + "\t" + entry + "\n" + text[sliceEnd+1:]
+				text = text[:sliceEnd+1] + entry + "\n" + text[sliceEnd+1:]
 			}
 		}
 	}
