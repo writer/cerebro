@@ -39,7 +39,6 @@ func TestRebuildDryRunMergesDopplerSecretProjectWithoutFragmentation(t *testing.
 			result := replayDryRun(t, "writer-doppler", "doppler", order.events)
 
 			projectURN := "urn:cerebro:writer:doppler_project:proj-1"
-			secretURN := "urn:cerebro:writer:secret:secret-1"
 			if result.GraphNodes != 2 {
 				t.Fatalf("GraphNodes = %d, want 2 (entities=%#v)", result.GraphNodes, result.PreviewEntities)
 			}
@@ -49,7 +48,7 @@ func TestRebuildDryRunMergesDopplerSecretProjectWithoutFragmentation(t *testing.
 			if !containsEntityURN(result.PreviewEntities, projectURN) {
 				t.Fatalf("missing merged doppler_project node: %#v", result.PreviewEntities)
 			}
-			if !containsLink(result.PreviewLinks, secretURN, "belongs_to", projectURN) {
+			if !containsLink(result.PreviewLinks, "urn:cerebro:writer:secret:secret-1", "belongs_to", projectURN) {
 				t.Fatalf("missing belongs_to edge to merged project: %#v", result.PreviewLinks)
 			}
 			if !containsAssertion(result.GraphAssertions, "cross_kind_identity_fragmentation", 0, 0, true) {
@@ -80,9 +79,8 @@ func TestRebuildDryRunMergesHashicorpVaultSecretOwnerWithUser(t *testing.T) {
 	}
 	result := replayDryRun(t, "writer-vault", "hashicorp_vault", events)
 
-	secretURN := "urn:cerebro:writer:secret:vsecret-1"
 	userURN := "urn:cerebro:writer:hashicorp_vault_user:user-1"
-	if !containsLink(result.PreviewLinks, secretURN, "owned_by", userURN) {
+	if !containsLink(result.PreviewLinks, "urn:cerebro:writer:secret:vsecret-1", "owned_by", userURN) {
 		t.Fatalf("missing owned_by edge: %#v", result.PreviewLinks)
 	}
 	hasOutgoing := false
@@ -117,7 +115,7 @@ func replayDryRun(t *testing.T, runtimeID string, sourceID string, events []*cer
 	result, err := service.RebuildDryRun(context.Background(), Request{
 		Mode:         modeReplay,
 		RuntimeID:    runtimeID,
-		EventLimit:   uint32(len(events)),
+		EventLimit:   uint32(len(events)), // #nosec G115 -- test event counts are tiny and fit uint32
 		PreviewLimit: 20,
 	})
 	if err != nil {
