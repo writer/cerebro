@@ -52,3 +52,27 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("event id is empty: %#v", event)
 	}
 }
+
+func TestSecretEmitsOwnerJoinAttribute(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "secret-1", "name": "API Key", "secret_id": "secret-1", "owner_id": "user-1"}}})
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familySecrets, "token": "test-token"})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["owner_user_id"]; got != "user-1" {
+		t.Fatalf("owner_user_id = %q, want user-1 (attrs=%#v)", got, pull.Events[0].Attributes)
+	}
+}
