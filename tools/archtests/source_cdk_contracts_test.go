@@ -8,22 +8,18 @@ import (
 )
 
 var helperDuplicationGrandfatheredSources = map[string]struct{}{
-	"akeyless":          {},
 	"archetype":         {},
 	"aurelius":          {},
 	"aws":               {},
-	"auth0":             {},
 	"azure":             {},
 	"cerebro":           {},
 	"cosmo":             {},
-	"doppler":           {},
 	"emaildomainhealth": {},
 	"evidencecas":       {},
 	"gcp":               {},
 	"github":            {},
 	"googleworkspace":   {},
 	"grc":               {},
-	"hashicorp_vault":   {},
 	"okta":              {},
 	"panopticon":        {},
 	"sentinelone":       {},
