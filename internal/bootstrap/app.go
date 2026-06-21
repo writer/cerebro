@@ -3429,6 +3429,14 @@ func grcInventoryAssetReportStore(store ports.StateStore) ports.GRCInventoryAsse
 	return reportStore
 }
 
+func grcFindingDispositionStore(store ports.StateStore) ports.GRCFindingDispositionStore {
+	dispositionStore, ok := store.(ports.GRCFindingDispositionStore)
+	if !ok || isNilInterface(dispositionStore) {
+		return nil
+	}
+	return dispositionStore
+}
+
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
 	if !ok || isNilInterface(replayer) {

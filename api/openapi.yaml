@@ -1848,6 +1848,31 @@ paths:
       responses:
         '200':
           description: GRC-friendly finding list.
+  /grc/findings/triage:
+    post:
+      summary: Bulk update finding triage dispositions
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, finding_ids, disposition]
+              properties:
+                tenant_id:
+                  type: string
+                finding_ids:
+                  type: array
+                  items:
+                    type: string
+                disposition:
+                  type: string
+                  enum: [open, in_triage, risk_accepted, false_positive, resolved]
+      responses:
+        '200':
+          description: Updated finding triage dispositions.
   /grc/controls:
     get:
       summary: GRC control posture
