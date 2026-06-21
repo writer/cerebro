@@ -7,7 +7,6 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -104,19 +103,6 @@ type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"`
 	TokenType   string `json:"token_type"`
-}
-
-type responseError struct {
-	statusCode int
-	message    string
-}
-
-func (e *responseError) Error() string {
-	return e.message
-}
-
-func (e *responseError) StatusCode() int {
-	return e.statusCode
 }
 
 // New constructs the GRC source.
@@ -296,7 +282,7 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 		return nil, "", err
 	}
 	response, err := s.listPage(ctx, settings, path, cursor, pageSize, token)
-	if err != nil && isUnauthorizedResponse(err) {
+	if err != nil && sourcecdk.IsHTTPStatus(err, http.StatusUnauthorized) {
 		s.invalidateToken(settings)
 		token, tokenErr := s.token(ctx, settings)
 		if tokenErr != nil {
@@ -373,10 +359,10 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 		if err == nil {
 			break
 		}
-		if !isRetryableTokenResponse(err) || attempt >= len(backoffs) {
+		if !sourcecdk.IsRetryableHTTPStatus(err) || attempt >= len(backoffs) {
 			return "", fmt.Errorf("request grc token: %w", err)
 		}
-		if sleepErr := sleepContext(ctx, backoffs[attempt]); sleepErr != nil {
+		if sleepErr := sourcecdk.SleepContext(ctx, backoffs[attempt]); sleepErr != nil {
 			return "", fmt.Errorf("request grc token retry: %w", sleepErr)
 		}
 	}
@@ -430,33 +416,6 @@ func (s *Source) invalidateToken(settings settings) {
 	}
 	s.accessToken = ""
 	s.tokenExpiresAt = time.Time{}
-}
-
-func isUnauthorizedResponse(err error) bool {
-	var responseErr *responseError
-	return errors.As(err, &responseErr) && responseErr.statusCode == http.StatusUnauthorized
-}
-
-func isRetryableTokenResponse(err error) bool {
-	var responseErr *responseError
-	if !errors.As(err, &responseErr) {
-		return false
-	}
-	return responseErr.statusCode == http.StatusTooManyRequests || responseErr.statusCode >= http.StatusInternalServerError
-}
-
-func sleepContext(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 func (s *Source) doJSON(req *http.Request, target any) error {
@@ -1459,7 +1418,7 @@ func decodeResponseError(statusCode int, body []byte) error {
 	if message == "" {
 		message = http.StatusText(statusCode)
 	}
-	return &responseError{statusCode: statusCode, message: message}
+	return &sourcecdk.HTTPStatusError{Code: statusCode, Message: message}
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {
