@@ -521,7 +521,7 @@ func sourceEvent(settings settings, raw json.RawMessage) (*primitives.Event, err
 
 func userEvent(settings settings, record userRecord) (*primitives.Event, error) {
 	occurredAt := firstParsedTime(record.LastLoginTime, record.CreationTime)
-	payload, err := payloadWithRaw(record.raw, map[string]any{"domain": settings.domain})
+	payload, err := sourcecdk.NewPayloadOverlay().Set("domain", settings.domain).MergeRawJSON(record.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -538,7 +538,7 @@ func userEvent(settings settings, record userRecord) (*primitives.Event, error) 
 }
 
 func groupEvent(settings settings, record groupRecord) (*primitives.Event, error) {
-	payload, err := payloadWithRaw(record.raw, map[string]any{"domain": settings.domain})
+	payload, err := sourcecdk.NewPayloadOverlay().Set("domain", settings.domain).MergeRawJSON(record.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +555,7 @@ func groupEvent(settings settings, record groupRecord) (*primitives.Event, error
 }
 
 func groupMemberEvent(settings settings, record memberRecord) (*primitives.Event, error) {
-	payload, err := payloadWithRaw(record.raw, map[string]any{"domain": settings.domain, "group_key": settings.groupKey})
+	payload, err := sourcecdk.NewPayloadOverlay().Set("domain", settings.domain).Set("group_key", settings.groupKey).MergeRawJSON(record.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -572,7 +572,7 @@ func groupMemberEvent(settings settings, record memberRecord) (*primitives.Event
 }
 
 func roleAssignmentEvent(settings settings, record roleAssignmentRecord) (*primitives.Event, error) {
-	payload, err := payloadWithRaw(record.raw, map[string]any{"domain": settings.domain})
+	payload, err := sourcecdk.NewPayloadOverlay().Set("domain", settings.domain).MergeRawJSON(record.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -596,7 +596,7 @@ func auditSourceEvent(settings settings, record auditRecord) (*primitives.Event,
 		eventName = record.Events[0].Name
 		eventType = record.Events[0].Type
 	}
-	payload, err := payloadWithRaw(record.raw, map[string]any{"domain": settings.domain})
+	payload, err := sourcecdk.NewPayloadOverlay().Set("domain", settings.domain).MergeRawJSON(record.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -727,19 +727,6 @@ func discoverURN(settings settings, raw json.RawMessage) (sourcecdk.URN, error) 
 	kind := strings.TrimPrefix(strings.ReplaceAll(event.Kind, ".", "_"), "google_workspace_")
 	id := firstNonEmpty(event.Attributes["user_id"], event.Attributes["group_id"], event.Attributes["role_assignment_id"], event.Attributes["event_type"])
 	return sourcecdk.ParseURN("urn:cerebro:" + settings.domain + ":google_workspace_" + kind + ":" + id)
-}
-
-func payloadWithRaw(raw json.RawMessage, extra map[string]any) ([]byte, error) {
-	payload := map[string]any{}
-	if len(raw) != 0 {
-		if err := json.Unmarshal(raw, &payload); err != nil {
-			return nil, err
-		}
-	}
-	for key, value := range extra {
-		payload[key] = value
-	}
-	return json.Marshal(payload)
 }
 
 func firstParsedTime(values ...string) time.Time {
