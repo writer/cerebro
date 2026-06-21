@@ -126,7 +126,7 @@ func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourc
 	_ = ctx
 	values := cfg.Values()
 	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(defaultBaseURLTemplate) != "" {
-		baseURL, err := renderTemplate(defaultBaseURLTemplate, cfg)
+		baseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 		if err != nil {
 			return sourcecdk.Config{}, err
 		}
@@ -138,35 +138,6 @@ func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourc
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 	path := firstNonEmpty(configValue(cfg, "health_path"), defaultHealthPath)
 	return s.inner.CheckPath(ctx, cfg, path, nil)
-}
-
-func renderTemplate(template string, cfg sourcecdk.Config) (string, error) {
-	rendered := strings.TrimSpace(template)
-	for _, key := range templateKeys {
-		for _, prefix := range []string{"config", "credential", "connection"} {
-			placeholder := "${" + prefix + "." + key + "}"
-			if !strings.Contains(rendered, placeholder) {
-				continue
-			}
-			value, err := requiredConfigValue(cfg, key)
-			if err != nil {
-				return "", err
-			}
-			rendered = strings.ReplaceAll(rendered, placeholder, value)
-		}
-	}
-	if strings.Contains(rendered, "${") {
-		return "", fmt.Errorf("%w: %s template %q contains unresolved variable", sourcecdk.ErrInvalidConfig, sourceID, template)
-	}
-	return rendered, nil
-}
-
-func requiredConfigValue(cfg sourcecdk.Config, key string) (string, error) {
-	value := strings.TrimSpace(configValue(cfg, key))
-	if value == "" {
-		return "", fmt.Errorf("%w: %s %s is required", sourcecdk.ErrInvalidConfig, sourceID, key)
-	}
-	return value, nil
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
