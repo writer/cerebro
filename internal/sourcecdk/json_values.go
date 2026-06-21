@@ -7,13 +7,19 @@ import (
 	"time"
 )
 
-// JSONScalarString coerces a decoded JSON scalar (string, json.Number, float64,
-// or bool) into a trimmed string. Strings and json.Number values are trimmed of
-// surrounding whitespace, float64 values are formatted without an exponent, and
-// bool values become "true"/"false". Any other value, including nil, maps, and
-// slices, yields the empty string.
-func JSONScalarString(value interface{}) string {
-	switch typed := value.(type) {
+// JSONScalar boxes a decoded JSON value (as produced by encoding/json into a
+// map[string]any) so it can be coerced to typed forms at a source boundary
+// without exposing an untyped parameter in an exported signature.
+type JSONScalar struct {
+	Value any
+}
+
+// String coerces the boxed scalar (string, json.Number, float64, or bool) into a
+// trimmed string. json.Number and string values are whitespace-trimmed, float64
+// values are formatted without an exponent, and bool values become
+// "true"/"false". Any other value, including nil, maps, and slices, yields "".
+func (s JSONScalar) String() string {
+	switch typed := s.Value.(type) {
 	case string:
 		return strings.TrimSpace(typed)
 	case json.Number:
@@ -27,11 +33,11 @@ func JSONScalarString(value interface{}) string {
 	}
 }
 
-// ParseScalarTime coerces value to a string via JSONScalarString and parses it
-// against layouts in order, returning the first successful parse normalized to
-// UTC. A zero Time is returned when value is empty or matches no layout.
-func ParseScalarTime(value interface{}, layouts ...string) time.Time {
-	raw := strings.TrimSpace(JSONScalarString(value))
+// Time coerces the boxed scalar to a string and parses it against layouts in
+// order, returning the first successful parse normalized to UTC. A zero Time is
+// returned when the value is empty or matches no layout.
+func (s JSONScalar) Time(layouts ...string) time.Time {
+	raw := strings.TrimSpace(s.String())
 	if raw == "" {
 		return time.Time{}
 	}

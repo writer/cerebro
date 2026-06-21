@@ -381,7 +381,7 @@ var nativeTimeLayouts = []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999",
 
 func firstNativeTime(item map[string]interface{}, keys ...string) time.Time {
 	for _, key := range keys {
-		if parsed := sourcecdk.ParseScalarTime(item[key], nativeTimeLayouts...); !parsed.IsZero() {
+		if parsed := (sourcecdk.JSONScalar{Value: item[key]}).Time(nativeTimeLayouts...); !parsed.IsZero() {
 			return parsed
 		}
 	}
@@ -389,7 +389,7 @@ func firstNativeTime(item map[string]interface{}, keys ...string) time.Time {
 }
 
 func nativeString(item map[string]interface{}, key string) string {
-	return sourcecdk.JSONScalarString(item[key])
+	return (sourcecdk.JSONScalar{Value: item[key]}).String()
 }
 
 func nestedString(item map[string]interface{}, key, nestedKey string) string {
@@ -397,7 +397,7 @@ func nestedString(item map[string]interface{}, key, nestedKey string) string {
 	if !ok {
 		return ""
 	}
-	return sourcecdk.JSONScalarString(nested[nestedKey])
+	return (sourcecdk.JSONScalar{Value: nested[nestedKey]}).String()
 }
 
 func firstString(values ...string) string {
