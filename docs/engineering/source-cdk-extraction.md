@@ -34,3 +34,29 @@ Legacy sources above the 300 LOC budget are grandfathered with exact no-growth c
 | `panopticon` | 781 | Separate request plumbing from emitted record construction. |
 | `sentinelone` | 2089 | Extract API paging, agent/application readers, and shared response normalization. |
 | `vulnview` | 1042 | Split feed/client access from vulnerability record normalization. |
+
+## Cross-Source Duplication Guardrail
+
+`tools/archtests/source_helper_duplication_test.go` fails when the same function
+body (structurally identical, ignoring the function name) of meaningful size
+appears in two or more source packages. Duplication across sources is the signal
+that provider-agnostic behavior should live in `internal/sourcecdk` instead of
+being copy-pasted per source. The fingerprint ignores the function name, so
+renamed copies are still detected.
+
+Known, pre-existing duplication is captured in an allowlist that acts as a
+ratchet: a new copy-paste fails the build, and each entry is removed when its
+shared logic is lifted into the Source CDK. The current extraction backlog is:
+
+| Shared behavior | Sources | Disposition |
+| --- | --- | --- |
+| `renderTemplate` config-placeholder expansion | `akeyless`, `auth0`, `doppler`, `hashicorp_vault` | Extract pure helper into Source CDK |
+| `runtimeConfig` accessor | `akeyless`, `doppler`, `hashicorp_vault` | Extract into Source CDK config helper |
+| `pullFromRecords` paging loop | `grc`, `vulnview` | Extract into Source CDK record pull |
+| `checkpointCursor` encode/decode | `okta`, `sentinelone` | Extract into Source CDK cursor |
+| `watermarkString` formatting | `aurelius`, `panopticon` | Extract into Source CDK watermark helper |
+| `valueString` JSON scalar formatting | `cosmo`, `vulnview` | Fold into Source CDK JSON value helpers |
+| provider URN parsing | `aws`, `azure` | Consolidate cautiously (provider-specific identifiers) |
+| provider URN construction | `okta`, `sentinelone` | Consolidate into Source CDK URN helper |
+| `New` constructor scaffold | `azure`, `gcp`, `googleworkspace` | Needs a generic CDK builder to deduplicate |
+| `New` constructor scaffold | `archetype`, `sdk`, `trustedendpoint` | Structural boilerplate for sample/fixture sources |

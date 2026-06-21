@@ -54,7 +54,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - A new source may not exceed 300 LOC excluding generated code and fixtures. Within that budget, it may not call `net/http`, `database/sql`, `context.Background`, or `os.Getenv` directly. It may not write to JetStream, Postgres, or Neo4j.
 - Why: budgets force the CDK to absorb shared concerns. Once a source is allowed to grow without bound it pulls retry, pagination, auth, error mapping, and store coupling back into itself, and the previous architecture returns.
-- Enforced in: `tools/archtests/source_packages_test.go`, `tools/linters/noenvoutsidecmd`, and `tools/linters/nobackgroundctx`.
+- Enforced in: `tools/archtests/source_packages_test.go`, `tools/archtests/source_helper_duplication_test.go`, `tools/linters/noenvoutsidecmd`, and `tools/linters/nobackgroundctx`.
 - What would change this: a CDK affordance that demonstrably needs to be solved at the substrate, not in any one source. The fix lands in the CDK, not as a per-source exception.
 
 ### Sources do not own normalization, persistence, or graph projection.
