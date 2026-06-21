@@ -4023,7 +4023,7 @@ func listCloudTrailEvents(ctx context.Context, clients awsClients, settings sett
 		input.LookupAttributes = []cloudtrailtypes.LookupAttribute{{AttributeKey: cloudtrailtypes.LookupAttributeKey(settings.cloudTrail.lookupKey), AttributeValue: awssdk.String(settings.cloudTrail.lookupValue)}}
 	}
 	if !resume && firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since) != "" {
-		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since), now)
+		parsed, err := sourcecdk.ParseTimeSelector(firstNonEmpty(settings.cloudTrail.startTime, settings.cloudTrail.since), now)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws start_time: %w", err)
 		}
@@ -4735,59 +4735,6 @@ func awsDNSSuffix(region string) string {
 		return "amazonaws.com.cn"
 	}
 	return "amazonaws.com"
-}
-
-func parseAWSTimeSelector(value string, now time.Time) (time.Time, error) {
-	trimmed := strings.TrimSpace(value)
-	if strings.HasPrefix(strings.ToUpper(trimmed), "P") {
-		duration, err := parseSimpleISODuration(trimmed)
-		if err != nil {
-			return time.Time{}, err
-		}
-		return now.Add(-duration), nil
-	}
-	return time.Parse(time.RFC3339, trimmed)
-}
-
-func parseSimpleISODuration(value string) (time.Duration, error) {
-	normalized := strings.ToUpper(strings.TrimSpace(value))
-	if normalized == "" || normalized[0] != 'P' {
-		return 0, fmt.Errorf("duration must start with P")
-	}
-	remaining := strings.TrimPrefix(normalized, "P")
-	days := 0
-	if index := strings.Index(remaining, "D"); index >= 0 {
-		parsed, err := strconv.Atoi(remaining[:index])
-		if err != nil {
-			return 0, err
-		}
-		days = parsed
-		remaining = remaining[index+1:]
-	}
-	hours := 0
-	minutes := 0
-	if strings.HasPrefix(remaining, "T") {
-		remaining = strings.TrimPrefix(remaining, "T")
-		if index := strings.Index(remaining, "H"); index >= 0 {
-			parsed, err := strconv.Atoi(remaining[:index])
-			if err != nil {
-				return 0, err
-			}
-			hours = parsed
-			remaining = remaining[index+1:]
-		}
-		if index := strings.Index(remaining, "M"); index >= 0 {
-			parsed, err := strconv.Atoi(remaining[:index])
-			if err != nil {
-				return 0, err
-			}
-			minutes = parsed
-		}
-	}
-	if days == 0 && hours == 0 && minutes == 0 {
-		return 0, fmt.Errorf("duration must include days, hours, or minutes")
-	}
-	return time.Duration(days)*24*time.Hour + time.Duration(hours)*time.Hour + time.Duration(minutes)*time.Minute, nil
 }
 
 func cloudTrailActor(event cloudtrailtypes.Event, detail cloudTrailDetail) cloudTrailUserIdentity {
