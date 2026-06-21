@@ -1003,26 +1003,7 @@ func firstValueString(values map[string]any, keys ...string) string {
 }
 
 func valueString(value any) string {
-	switch v := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return strings.TrimSpace(v)
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(v)
-	case []any:
-		parts := make([]string, 0, len(v))
-		for _, item := range v {
-			if value := valueString(item); value != "" {
-				parts = append(parts, value)
-			}
-		}
-		return strings.Join(parts, ",")
-	default:
-		return strings.TrimSpace(fmt.Sprint(v))
-	}
+	return sourcecdk.JSONScalar{Value: value}.Flattened()
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {

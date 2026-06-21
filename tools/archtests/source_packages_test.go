@@ -17,7 +17,7 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"aurelius":        612,
 	"aws":             19070,
 	"azure":           2842,
-	"cosmo":           1011,
+	"cosmo":           992,
 	"gcp":             2095,
 	"github":          2028,
 	"googleworkspace": 815,
@@ -25,7 +25,7 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"okta":            2257,
 	"panopticon":      770,
 	"sentinelone":     2077,
-	"vulnview":        1020,
+	"vulnview":        1001,
 }
 
 func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
