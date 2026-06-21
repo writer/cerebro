@@ -15,16 +15,16 @@ const newSourcePackageLOCBudget = 300
 // source grows, move shared behavior into the Source CDK instead of raising it.
 var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"aurelius":        623,
-	"aws":             19121,
+	"aws":             19070,
 	"azure":           2842,
-	"cosmo":           1104,
+	"cosmo":           1012,
 	"gcp":             2095,
 	"github":          2028,
-	"googleworkspace": 827,
+	"googleworkspace": 815,
 	"grc":             1343,
-	"okta":            2361,
+	"okta":            2269,
 	"panopticon":      781,
-	"sentinelone":     2181,
+	"sentinelone":     2089,
 	"vulnview":        1042,
 }
 
