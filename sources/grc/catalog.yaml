@@ -20,6 +20,79 @@ emitted_kinds:
   - grc.person
   - grc.user
   - grc.integration
+event_contracts:
+  - kind: grc.framework
+    schema_ref: grc/framework/v1
+    required_attributes:
+      - family
+  - kind: grc.control
+    schema_ref: grc/control/v1
+    required_attributes:
+      - family
+  - kind: grc.control_test
+    schema_ref: grc/control_test/v1
+    required_attributes:
+      - family
+  - kind: grc.policy
+    schema_ref: grc/policy/v1
+    required_attributes:
+      - family
+  - kind: grc.document
+    schema_ref: grc/document/v1
+    required_attributes:
+      - family
+  - kind: grc.contract
+    schema_ref: grc/contract/v1
+    required_attributes:
+      - family
+  - kind: grc.regulatory_notification
+    schema_ref: grc/regulatory_notification/v1
+    required_attributes:
+      - family
+  - kind: grc.recovery_objective
+    schema_ref: grc/recovery_objective/v1
+    required_attributes:
+      - family
+  - kind: grc.authorization_package
+    schema_ref: grc/authorization_package/v1
+    required_attributes:
+      - family
+  - kind: grc.poam_item
+    schema_ref: grc/poam_item/v1
+    required_attributes:
+      - family
+  - kind: grc.training_attestation
+    schema_ref: grc/training_attestation/v1
+    required_attributes:
+      - family
+  - kind: grc.vendor
+    schema_ref: grc/vendor/v1
+    required_attributes:
+      - family
+  - kind: grc.vulnerability
+    schema_ref: grc/vulnerability/v1
+    required_attributes:
+      - family
+  - kind: grc.vulnerable_asset
+    schema_ref: grc/vulnerable_asset/v1
+    required_attributes:
+      - family
+  - kind: grc.risk_scenario
+    schema_ref: grc/risk_scenario/v1
+    required_attributes:
+      - family
+  - kind: grc.person
+    schema_ref: grc/person/v1
+    required_attributes:
+      - family
+  - kind: grc.user
+    schema_ref: grc/user/v1
+    required_attributes:
+      - family
+  - kind: grc.integration
+    schema_ref: grc/integration/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: compliance
   authority_domain: grc

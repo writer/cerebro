@@ -111,6 +111,37 @@ func stringInSlice(values []string, needle string) bool {
 	return false
 }
 
+type ledgerRuntimeStore struct {
+	runtimeStore
+	calls []string
+}
+
+func (s *ledgerRuntimeStore) BeginSourceRuntimePage(_ context.Context, attempt ports.SourceRuntimePageAttempt) error {
+	s.calls = append(s.calls, "begin")
+	if len(attempt.Events) == 0 {
+		return errors.New("ledger attempt events are required")
+	}
+	return nil
+}
+
+func (s *ledgerRuntimeStore) MarkSourceRuntimePageAppended(context.Context, string) error {
+	s.calls = append(s.calls, "appended")
+	return nil
+}
+
+func (s *ledgerRuntimeStore) MarkSourceRuntimePageProjected(_ context.Context, _ string, projection ports.SourceRuntimePageProjection) error {
+	s.calls = append(s.calls, "projected")
+	if projection.EntitiesProjected == 0 {
+		return errors.New("ledger projection counts are required")
+	}
+	return nil
+}
+
+func (s *ledgerRuntimeStore) CommitSourceRuntimePage(_ context.Context, _ string, runtime *cerebrov1.SourceRuntime) error {
+	s.calls = append(s.calls, "committed")
+	return s.runtimeStore.PutSourceRuntime(context.Background(), runtime)
+}
+
 type appendLog struct {
 	err    error
 	events []*cerebrov1.EventEnvelope
@@ -1235,6 +1266,39 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 	if store.putCount != 2 {
 		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
+	}
+}
+
+func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &ledgerRuntimeStore{runtimeStore: runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				Config:   map[string]string{"token": "test"},
+			},
+		},
+	}}
+	log := &appendLog{}
+	projector := &projector{result: ports.ProjectionResult{EntitiesProjected: 1, LinksProjected: 2}}
+	service := New(registry, store, log, projector)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	wantCalls := []string{"begin", "appended", "projected", "committed"}
+	if got := strings.Join(store.calls, ","); got != strings.Join(wantCalls, ",") {
+		t.Fatalf("ledger calls = %v, want %v", store.calls, wantCalls)
+	}
+	if store.putCount != 1 {
+		t.Fatalf("PutSourceRuntime calls through ledger commit = %d, want 1", store.putCount)
+	}
+	if len(log.events) != 1 || len(projector.events) != 1 {
+		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
 	}
 }
 

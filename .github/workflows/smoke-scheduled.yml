@@ -47,6 +47,8 @@ jobs:
         run: |
           # Health endpoint should return 200
           curl -sf http://localhost:8080/healthz || (echo "Health check failed"; exit 1)
+          curl -sf -H 'Authorization: Bearer local-dev-key' http://localhost:8080/sources >/dev/null || (echo "Sources endpoint failed"; exit 1)
+          curl -sf -H 'Authorization: Bearer local-dev-key' 'http://localhost:8080/source-runtimes?tenant_id=local' >/dev/null || (echo "State-backed source runtimes endpoint failed"; exit 1)
 
           echo "Core endpoints verified"
 

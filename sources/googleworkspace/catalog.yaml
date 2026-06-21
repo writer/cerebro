@@ -18,6 +18,27 @@ families:
     incremental: watermark
   - id: user
     incremental: watermark
+event_contracts:
+  - kind: google_workspace.audit
+    schema_ref: google_workspace/audit/v1
+    required_attributes:
+      - family
+  - kind: google_workspace.group
+    schema_ref: google_workspace/group/v1
+    required_attributes:
+      - family
+  - kind: google_workspace.group_member
+    schema_ref: google_workspace/group_member/v1
+    required_attributes:
+      - family
+  - kind: google_workspace.role_assignment
+    schema_ref: google_workspace/role_assignment/v1
+    required_attributes:
+      - family
+  - kind: google_workspace.user
+    schema_ref: google_workspace/user/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: identity
   authority_domain: google_workspace

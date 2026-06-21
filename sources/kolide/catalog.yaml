@@ -8,6 +8,31 @@ emitted_kinds:
   - kolide.software
   - kolide.user_device
   - kolide.vulnerability
+event_contracts:
+  - kind: kolide.check
+    schema_ref: kolide/check/v1
+    required_attributes:
+      - family
+  - kind: kolide.device
+    schema_ref: kolide/device/v1
+    required_attributes:
+      - family
+  - kind: kolide.issue
+    schema_ref: kolide/issue/v1
+    required_attributes:
+      - family
+  - kind: kolide.software
+    schema_ref: kolide/software/v1
+    required_attributes:
+      - family
+  - kind: kolide.user_device
+    schema_ref: kolide/user_device/v1
+    required_attributes:
+      - family
+  - kind: kolide.vulnerability
+    schema_ref: kolide/vulnerability/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: endpoint
   authority_domain: kolide

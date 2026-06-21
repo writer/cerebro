@@ -83,8 +83,8 @@ func openAIProviderChecks(config map[string]string, policy resourcescope.Policy)
 	return []Check{{
 		ID:         "openai_admin_api_key",
 		Label:      "OpenAI Admin API key",
-		Status:     "warning",
-		Severity:   "warning",
+		Status:     "blocked",
+		Severity:   "error",
 		Detail:     "OpenAI governance families read Admin API endpoints and require an Admin API key; record credential_kind=admin_api_key when configuring this runtime.",
 		NextAction: "use_openai_admin_api_key",
 	}}
@@ -111,8 +111,8 @@ func anthropicProviderChecks(config map[string]string, policy resourcescope.Poli
 			checks = append(checks, Check{
 				ID:         "anthropic_org_admin_oauth",
 				Label:      "Anthropic org admin OAuth",
-				Status:     "warning",
-				Severity:   "warning",
+				Status:     "blocked",
+				Severity:   "error",
 				Detail:     "Service account and workload identity federation families require an org:admin OAuth bearer token; set auth_model=bearer_token and record credential_scopes=org:admin when configuring this runtime.",
 				NextAction: "use_anthropic_org_admin_oauth",
 			})
@@ -122,8 +122,8 @@ func anthropicProviderChecks(config map[string]string, policy resourcescope.Poli
 			checks = append(checks, Check{
 				ID:         "anthropic_compliance_scope",
 				Label:      "Anthropic compliance scope",
-				Status:     "warning",
-				Severity:   "warning",
+				Status:     "blocked",
+				Severity:   "error",
 				Detail:     "Compliance Activity Feed reads use x-api-key and require read:compliance_activities on an Admin API key or Compliance Access Key; record credential_kind and credential_scopes to make that explicit.",
 				NextAction: "confirm_anthropic_compliance_scope",
 			})
@@ -154,8 +154,8 @@ func anthropicProviderChecks(config map[string]string, policy resourcescope.Poli
 			checks = append(checks, Check{
 				ID:         "anthropic_spend_limit_scope",
 				Label:      "Anthropic spend-limit scope",
-				Status:     "warning",
-				Severity:   "warning",
+				Status:     "blocked",
+				Severity:   "error",
 				Detail:     "Read-only spend-limit families require an Enterprise scoped Admin API key with read:spend_limits in x-api-key; record credential_kind=scoped_admin_api_key and credential_scopes=read:spend_limits.",
 				NextAction: "confirm_anthropic_spend_limit_scope",
 			})
@@ -178,8 +178,8 @@ func anthropicComplianceAccessKeyCheck(authModel string, credentialKind string, 
 	return []Check{{
 		ID:         preflight.ID,
 		Label:      preflight.Label,
-		Status:     "warning",
-		Severity:   "warning",
+		Status:     "blocked",
+		Severity:   "error",
 		Detail:     preflight.Detail,
 		NextAction: "confirm_anthropic_compliance_scope",
 	}}

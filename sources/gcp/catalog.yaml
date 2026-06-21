@@ -185,6 +185,371 @@ runtime_families:
   - vpc_access_connector
   - workload_identity_pool
   - workload_identity_provider
+event_contracts:
+  - kind: asset.data_sensitivity
+    schema_ref: asset/data_sensitivity/v1
+    required_attributes:
+      - resource_id
+  - kind: gcp.aiplatform_dataset
+    schema_ref: gcp/aiplatform_dataset/v1
+    required_attributes:
+      - family
+  - kind: gcp.aiplatform_endpoint
+    schema_ref: gcp/aiplatform_endpoint/v1
+    required_attributes:
+      - family
+  - kind: gcp.artifact_registry_image
+    schema_ref: gcp/artifact_registry_image/v1
+    required_attributes:
+      - family
+  - kind: gcp.artifact_registry_repository
+    schema_ref: gcp/artifact_registry_repository/v1
+    required_attributes:
+      - family
+  - kind: gcp.audit
+    schema_ref: gcp/audit/v1
+    required_attributes:
+      - family
+  - kind: gcp.binary_authorization_attestor
+    schema_ref: gcp/binary_authorization_attestor/v1
+    required_attributes:
+      - family
+  - kind: gcp.binary_authorization_policy
+    schema_ref: gcp/binary_authorization_policy/v1
+    required_attributes:
+      - family
+  - kind: gcp.bigquery_dataset
+    schema_ref: gcp/bigquery_dataset/v1
+    required_attributes:
+      - family
+  - kind: gcp.bigquery_table
+    schema_ref: gcp/bigquery_table/v1
+    required_attributes:
+      - family
+  - kind: gcp.bigtable_instance
+    schema_ref: gcp/bigtable_instance/v1
+    required_attributes:
+      - family
+  - kind: gcp.bigtable_table
+    schema_ref: gcp/bigtable_table/v1
+    required_attributes:
+      - family
+  - kind: gcp.certificate_manager_certificate
+    schema_ref: gcp/certificate_manager_certificate/v1
+    required_attributes:
+      - family
+  - kind: gcp.certificate_manager_certificate_map
+    schema_ref: gcp/certificate_manager_certificate_map/v1
+    required_attributes:
+      - family
+  - kind: gcp.certificate_manager_certificate_map_entry
+    schema_ref: gcp/certificate_manager_certificate_map_entry/v1
+    required_attributes:
+      - family
+  - kind: gcp.certificate_manager_dns_authorization
+    schema_ref: gcp/certificate_manager_dns_authorization/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_function
+    schema_ref: gcp/cloud_function/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_ids_endpoint
+    schema_ref: gcp/cloud_ids_endpoint/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_scheduler_job
+    schema_ref: gcp/cloud_scheduler_job/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_run_revision
+    schema_ref: gcp/cloud_run_revision/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_run_service
+    schema_ref: gcp/cloud_run_service/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_sql_database
+    schema_ref: gcp/cloud_sql_database/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_sql_instance
+    schema_ref: gcp/cloud_sql_instance/v1
+    required_attributes:
+      - family
+  - kind: gcp.cloud_sql_user
+    schema_ref: gcp/cloud_sql_user/v1
+    required_attributes:
+      - family
+  - kind: gcp.container_registry
+    schema_ref: gcp/container_registry/v1
+    required_attributes:
+      - family
+  - kind: gcp.container_vulnerability
+    schema_ref: gcp/container_vulnerability/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_address
+    schema_ref: gcp/compute_address/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_backend_bucket
+    schema_ref: gcp/compute_backend_bucket/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_backend_service
+    schema_ref: gcp/compute_backend_service/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_disk
+    schema_ref: gcp/compute_disk/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_external_vpn_gateway
+    schema_ref: gcp/compute_external_vpn_gateway/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_firewall
+    schema_ref: gcp/compute_firewall/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_forwarding_rule
+    schema_ref: gcp/compute_forwarding_rule/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_health_check
+    schema_ref: gcp/compute_health_check/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_instance
+    schema_ref: gcp/compute_instance/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_instance_group
+    schema_ref: gcp/compute_instance_group/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_instance_group_manager
+    schema_ref: gcp/compute_instance_group_manager/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_instance_template
+    schema_ref: gcp/compute_instance_template/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_interconnect
+    schema_ref: gcp/compute_interconnect/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_interconnect_attachment
+    schema_ref: gcp/compute_interconnect_attachment/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_network_endpoint_group
+    schema_ref: gcp/compute_network_endpoint_group/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_network_firewall_policy
+    schema_ref: gcp/compute_network_firewall_policy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_network
+    schema_ref: gcp/compute_network/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_packet_mirroring
+    schema_ref: gcp/compute_packet_mirroring/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_route
+    schema_ref: gcp/compute_route/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_router
+    schema_ref: gcp/compute_router/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_security_policy
+    schema_ref: gcp/compute_security_policy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_ssl_certificate
+    schema_ref: gcp/compute_ssl_certificate/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_ssl_policy
+    schema_ref: gcp/compute_ssl_policy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_subnetwork
+    schema_ref: gcp/compute_subnetwork/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_target_grpc_proxy
+    schema_ref: gcp/compute_target_grpc_proxy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_target_http_proxy
+    schema_ref: gcp/compute_target_http_proxy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_target_https_proxy
+    schema_ref: gcp/compute_target_https_proxy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_target_ssl_proxy
+    schema_ref: gcp/compute_target_ssl_proxy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_target_tcp_proxy
+    schema_ref: gcp/compute_target_tcp_proxy/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_target_vpn_gateway
+    schema_ref: gcp/compute_target_vpn_gateway/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_url_map
+    schema_ref: gcp/compute_url_map/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_vpn_gateway
+    schema_ref: gcp/compute_vpn_gateway/v1
+    required_attributes:
+      - family
+  - kind: gcp.compute_vpn_tunnel
+    schema_ref: gcp/compute_vpn_tunnel/v1
+    required_attributes:
+      - family
+  - kind: gcp.dns_managed_zone
+    schema_ref: gcp/dns_managed_zone/v1
+    required_attributes:
+      - family
+  - kind: gcp.dns_record_set
+    schema_ref: gcp/dns_record_set/v1
+    required_attributes:
+      - family
+  - kind: gcp.effective_permission
+    schema_ref: gcp/effective_permission/v1
+    required_attributes:
+      - family
+  - kind: gcp.gcs_bucket
+    schema_ref: gcp/gcs_bucket/v1
+    required_attributes:
+      - family
+  - kind: gcp.gcs_object
+    schema_ref: gcp/gcs_object/v1
+    required_attributes:
+      - family
+  - kind: gcp.gke_cluster
+    schema_ref: gcp/gke_cluster/v1
+    required_attributes:
+      - family
+  - kind: gcp.gke_node_pool
+    schema_ref: gcp/gke_node_pool/v1
+    required_attributes:
+      - family
+  - kind: gcp.group
+    schema_ref: gcp/group/v1
+    required_attributes:
+      - family
+  - kind: gcp.group_membership
+    schema_ref: gcp/group_membership/v1
+    required_attributes:
+      - family
+  - kind: gcp.iam_role_assignment
+    schema_ref: gcp/iam_role_assignment/v1
+    required_attributes:
+      - family
+  - kind: gcp.kms_key
+    schema_ref: gcp/kms_key/v1
+    required_attributes:
+      - family
+  - kind: gcp.logging_metric
+    schema_ref: gcp/logging_metric/v1
+    required_attributes:
+      - family
+  - kind: gcp.logging_project_sink
+    schema_ref: gcp/logging_project_sink/v1
+    required_attributes:
+      - family
+  - kind: gcp.monitoring_alert_policy
+    schema_ref: gcp/monitoring_alert_policy/v1
+    required_attributes:
+      - family
+  - kind: gcp.monitoring_notification_channel
+    schema_ref: gcp/monitoring_notification_channel/v1
+    required_attributes:
+      - family
+  - kind: gcp.org_policy
+    schema_ref: gcp/org_policy/v1
+    required_attributes:
+      - family
+  - kind: gcp.pubsub_subscription
+    schema_ref: gcp/pubsub_subscription/v1
+    required_attributes:
+      - family
+  - kind: gcp.pubsub_topic
+    schema_ref: gcp/pubsub_topic/v1
+    required_attributes:
+      - family
+  - kind: gcp.resourcemanager_project
+    schema_ref: gcp/resourcemanager_project/v1
+    required_attributes:
+      - family
+  - kind: gcp.resource_exposure
+    schema_ref: gcp/resource_exposure/v1
+    required_attributes:
+      - family
+  - kind: gcp.secret_manager_secret
+    schema_ref: gcp/secret_manager_secret/v1
+    required_attributes:
+      - family
+  - kind: gcp.secret_manager_version
+    schema_ref: gcp/secret_manager_version/v1
+    required_attributes:
+      - family
+  - kind: gcp.security_center_finding
+    schema_ref: gcp/security_center_finding/v1
+    required_attributes:
+      - family
+  - kind: gcp.service_account
+    schema_ref: gcp/service_account/v1
+    required_attributes:
+      - family
+  - kind: gcp.service_account_impersonation
+    schema_ref: gcp/service_account_impersonation/v1
+    required_attributes:
+      - family
+  - kind: gcp.service_account_key
+    schema_ref: gcp/service_account_key/v1
+    required_attributes:
+      - family
+  - kind: gcp.service_usage_service
+    schema_ref: gcp/service_usage_service/v1
+    required_attributes:
+      - family
+  - kind: gcp.spanner_database
+    schema_ref: gcp/spanner_database/v1
+    required_attributes:
+      - family
+  - kind: gcp.spanner_instance
+    schema_ref: gcp/spanner_instance/v1
+    required_attributes:
+      - family
+  - kind: gcp.vpc_access_connector
+    schema_ref: gcp/vpc_access_connector/v1
+    required_attributes:
+      - family
+  - kind: gcp.workload_identity_pool
+    schema_ref: gcp/workload_identity_pool/v1
+    required_attributes:
+      - family
+  - kind: gcp.workload_identity_provider
+    schema_ref: gcp/workload_identity_provider/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: cloud
   authority_domain: gcp
