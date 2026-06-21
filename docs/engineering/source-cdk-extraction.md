@@ -22,7 +22,7 @@ Legacy sources above the 300 LOC budget are grandfathered with exact no-growth c
 
 | Source | Current LOC Budget | Extraction Pressure |
 | --- | ---: | --- |
-| `aurelius` | 623 | Split source orchestration from record mapping and shared request plumbing. |
+| `aurelius` | 612 | Split source orchestration from record mapping and shared request plumbing. |
 | `aws` | 19070 | Extract common AWS client/session, pagination, ARN parsing, and resource-family traversal helpers. |
 | `azure` | 2842 | Extract subscription traversal, client factories, and paginated resource readers. |
 | `cosmo` | 1011 | Move shared API pagination and response normalization into reusable source helpers. |
@@ -31,7 +31,7 @@ Legacy sources above the 300 LOC budget are grandfathered with exact no-growth c
 | `googleworkspace` | 815 | Extract API client setup and paginated directory readers. |
 | `grc` | 1321 | Keep control/evidence shaping out of source orchestration and push common mapping into shared helpers. |
 | `okta` | 2257 | Extract client, pagination, and identity/group/application readers into smaller units. |
-| `panopticon` | 781 | Separate request plumbing from emitted record construction. |
+| `panopticon` | 770 | Separate request plumbing from emitted record construction. |
 | `sentinelone` | 2077 | Extract API paging, agent/application readers, and shared response normalization. |
 | `vulnview` | 1020 | Split feed/client access from vulnerability record normalization. |
 
@@ -50,7 +50,6 @@ shared logic is lifted into the Source CDK. The current extraction backlog is:
 
 | Shared behavior | Sources | Disposition |
 | --- | --- | --- |
-| `watermarkString` formatting | `aurelius`, `panopticon` | Extract into Source CDK watermark helper |
 | `valueString` JSON scalar formatting | `cosmo`, `vulnview` | Fold into Source CDK JSON value helpers |
 | provider URN parsing | `aws`, `azure` | Consolidate cautiously (provider-specific identifiers) |
 | provider URN construction | `okta`, `sentinelone` | Consolidate into Source CDK URN helper |
