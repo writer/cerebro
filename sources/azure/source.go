@@ -959,7 +959,7 @@ func listUsers(ctx context.Context, source *Source, settings settings, pageToken
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/users"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure user", func(record *userRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure user", func(record *userRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, graphNext(response), err
 }
 
@@ -969,7 +969,7 @@ func listGroups(ctx context.Context, source *Source, settings settings, pageToke
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/groups"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure group", func(record *groupRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure group", func(record *groupRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	return records, graphNext(response), err
 }
 
@@ -980,7 +980,7 @@ func listGroupMemberships(ctx context.Context, source *Source, settings settings
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure group member", func(record *graphPrincipalRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure group member", func(record *graphPrincipalRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, graphNext(response), err
@@ -993,7 +993,7 @@ func listAppRoleAssignments(ctx context.Context, source *Source, settings settin
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure app role assignment", func(record *appRoleAssignmentRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure app role assignment", func(record *appRoleAssignmentRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, graphNext(response), err
@@ -1005,7 +1005,7 @@ func listApplications(ctx context.Context, source *Source, settings settings, pa
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/applications"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure application", func(record *applicationRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure application", func(record *applicationRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, graphNext(response), err
@@ -1033,7 +1033,7 @@ func listServicePrincipals(ctx context.Context, source *Source, settings setting
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/servicePrincipals"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure service principal", func(record *servicePrincipalRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure service principal", func(record *servicePrincipalRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, graphNext(response), err
@@ -1071,7 +1071,7 @@ func listDirectoryRoleAssignments(ctx context.Context, source *Source, settings 
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/roleManagement/directory/roleAssignments"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure directory role assignment", func(record *directoryRoleAssignmentRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure directory role assignment", func(record *directoryRoleAssignmentRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, graphNext(response), err
@@ -1091,7 +1091,7 @@ func listDirectoryAuditsWithCheckpoint(ctx context.Context, source *Source, sett
 	if err := getGraphJSON(ctx, source, settings, firstNonEmpty(pageToken, "/v1.0/auditLogs/directoryAudits"), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure directory audit", func(record *directoryAuditRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure directory audit", func(record *directoryAuditRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, graphNext(response), err
@@ -1104,7 +1104,7 @@ func listIAMRoleAssignmentsBase(ctx context.Context, source *Source, settings se
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure rbac role assignment", func(record *armRoleAssignmentRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure rbac role assignment", func(record *armRoleAssignmentRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	if err != nil {
@@ -1156,7 +1156,7 @@ func listAssetMetadata(ctx context.Context, source *Source, settings settings, p
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure resource metadata", func(record *armResourceRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure resource metadata", func(record *armResourceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.Next, err
@@ -1169,7 +1169,7 @@ func listARMTypedResources(ctx context.Context, source *Source, settings setting
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.Next, err
@@ -1237,7 +1237,7 @@ func listSubnets(ctx context.Context, source *Source, settings settings, pageTok
 	if err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(rawRecords, "azure subnet", func(record *armTypedResourceRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(rawRecords, "azure subnet", func(record *armTypedResourceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, next, err
@@ -1345,7 +1345,7 @@ func listSQLDatabasesForServer(ctx context.Context, source *Source, settings set
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	databases, err := decodeAzureRecords(response.Value, "azure sql database", func(record *armTypedResourceRecord, raw json.RawMessage) {
+	databases, err := sourcecdk.DecodeRecords(response.Value, "azure sql database", func(record *armTypedResourceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	if err != nil {
@@ -1417,7 +1417,7 @@ func listKeyVaultChildrenForVault(ctx context.Context, source *Source, settings 
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	children, err := decodeAzureRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
+	children, err := sourcecdk.DecodeRecords(response.Value, label, func(record *armTypedResourceRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	if err != nil {
@@ -1497,7 +1497,7 @@ func listAzureARMChildrenForParent(ctx context.Context, source *Source, settings
 		}
 		return nil, "", err
 	}
-	children, err := decodeAzureRecords(response.Value, definition.Label, func(record *armTypedResourceRecord, raw json.RawMessage) {
+	children, err := sourcecdk.DecodeRecords(response.Value, definition.Label, func(record *armTypedResourceRecord, raw json.RawMessage) {
 		*record = inheritAzureResourceContext(*record, parent)
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
@@ -1538,7 +1538,7 @@ func listResourceExposures(ctx context.Context, source *Source, settings setting
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	nsgs, err := decodeAzureRecords(response.Value, "azure network security group", func(record *nsgRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	nsgs, err := sourcecdk.DecodeRecords(response.Value, "azure network security group", func(record *nsgRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
 	if err != nil {
 		return nil, "", err
 	}
@@ -1570,7 +1570,7 @@ func listActivityLogsWithCheckpoint(ctx context.Context, source *Source, setting
 	if err := getARMJSON(ctx, source, settings, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), &response); err != nil {
 		return nil, "", err
 	}
-	records, err := decodeAzureRecords(response.Value, "azure activity log", func(record *activityLogRecord, raw json.RawMessage) {
+	records, err := sourcecdk.DecodeRecords(response.Value, "azure activity log", func(record *activityLogRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.Next, err
@@ -2636,21 +2636,6 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func decodeAzureRecords[T any](rawRecords []json.RawMessage, label string, setRaw func(*T, json.RawMessage)) ([]T, error) {
-	records := make([]T, 0, len(rawRecords))
-	for _, raw := range rawRecords {
-		var record T
-		if err := json.Unmarshal(raw, &record); err != nil {
-			return nil, fmt.Errorf("decode %s: %w", label, err)
-		}
-		if setRaw != nil {
-			setRaw(&record, raw)
-		}
-		records = append(records, record)
-	}
-	return records, nil
 }
 
 func azurePullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error)) (sourcecdk.Pull, error) {
