@@ -561,100 +561,26 @@ func auditScope(entry *gogithub.AuditEntry, raw map[string]any, settings setting
 }
 
 func rawString(raw map[string]any, key string) string {
-	value, ok := raw[key]
-	if !ok {
-		return ""
-	}
-	stringValue, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(stringValue)
+	return sourcecdk.JSONObject(raw).String(key)
 }
 
 func rawScalarString(raw map[string]any, key string) string {
-	value, ok := raw[key]
-	if !ok {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case bool:
-		return strconv.FormatBool(typed)
-	case float64:
-		return strconv.FormatInt(int64(typed), 10)
-	case int:
-		return strconv.Itoa(typed)
-	case int64:
-		return strconv.FormatInt(typed, 10)
-	case map[string]any, []any:
-		encoded, err := json.Marshal(typed)
-		if err != nil {
-			return ""
-		}
-		return string(encoded)
-	default:
-		return ""
-	}
+	return sourcecdk.JSONObject(raw).ScalarString(key)
 }
 
 func rawBool(raw map[string]any, key string) bool {
-	value, ok := raw[key]
-	if !ok {
-		return false
-	}
-	boolValue, ok := value.(bool)
-	if !ok {
-		return false
-	}
-	return boolValue
+	return sourcecdk.JSONObject(raw).Bool(key)
 }
 
 func boolString(raw map[string]any, key string) string {
-	value, ok := raw[key]
-	if !ok {
-		return ""
-	}
-	boolValue, ok := value.(bool)
-	if !ok {
-		return ""
-	}
-	return strconv.FormatBool(boolValue)
+	return sourcecdk.JSONObject(raw).BoolString(key)
 }
 
-// rawInt64 reads a numeric field from the raw audit log payload. The GitHub
-// audit log API returns IDs as JSON numbers, which json.Unmarshal turns into
-// float64 inside map[string]any; encoding/json never falls back to int64 for
-// untyped maps. We round to int64 here so the projector sees stable integer
-// IDs and the actor_id == org_id comparison in the rule is exact.
+// rawInt64 coerces a numeric raw audit field to a stable int64 so the projector
+// sees exact IDs (e.g. the actor_id == org_id comparison) even though JSON
+// numbers decode as float64 inside an untyped map.
 func rawInt64(raw map[string]any, key string) int64 {
-	value, ok := raw[key]
-	if !ok || value == nil {
-		return 0
-	}
-	switch typed := value.(type) {
-	case float64:
-		return int64(typed)
-	case int:
-		return int64(typed)
-	case int64:
-		return typed
-	case json.Number:
-		value, err := typed.Int64()
-		if err != nil {
-			return 0
-		}
-		return value
-	case string:
-		value, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-		if err != nil {
-			return 0
-		}
-		return value
-	default:
-		return 0
-	}
+	return sourcecdk.JSONObject(raw).Int64(key)
 }
 
 // positiveInt64String returns the decimal form of a positive int64 or empty

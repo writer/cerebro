@@ -376,7 +376,7 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 	if serverPaged(cursor, pageSize, len(records), response.NextCursor) {
 		return records, strings.TrimSpace(response.NextCursor), nil
 	}
-	return pageRecords(records, cursor, pageSize)
+	return sourcecdk.PageByOffset(records, cursor, pageSize)
 }
 
 func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor string, pageSize int) ([]record, string, error) {
@@ -424,7 +424,7 @@ func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor st
 			})
 		}
 	}
-	page, nextAlertOffset, err := pageRecords(records, strconv.Itoa(alertOffset), pageSize)
+	page, nextAlertOffset, err := sourcecdk.PageByOffset(records, strconv.Itoa(alertOffset), pageSize)
 	if err != nil {
 		return nil, "", err
 	}
@@ -488,29 +488,6 @@ func encodeDNSAlertCursor(assetCursor string, alertOffset string) string {
 		return ""
 	}
 	return "dns:" + base64.RawURLEncoding.EncodeToString(payload)
-}
-
-func pageRecords(records []record, cursor string, pageSize int) ([]record, string, error) {
-	offset := 0
-	if strings.TrimSpace(cursor) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(cursor))
-		if err != nil || parsed < 0 {
-			return nil, "", fmt.Errorf("invalid VulnView cursor %q", cursor)
-		}
-		offset = parsed
-	}
-	if offset >= len(records) {
-		return nil, "", nil
-	}
-	end := offset + pageSize
-	if end > len(records) {
-		end = len(records)
-	}
-	next := ""
-	if end < len(records) {
-		next = strconv.Itoa(end)
-	}
-	return records[offset:end], next, nil
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, requestPath string, query url.Values, target any) error {
