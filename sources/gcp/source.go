@@ -1924,7 +1924,7 @@ func artifactImageEvent(settings settings, record gcpcloud.ArtifactImageRecord) 
 
 func resourceExposureEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
 	allowed := firewallPrimaryAllowed(record)
-	sourceCIDR := firstPublicCIDR(record.SourceRanges)
+	sourceCIDR := sourcecdk.FirstOpenCIDR(record.SourceRanges)
 	resourceID := firstNonEmpty(record.ID, record.Name)
 	attributes := map[string]string{
 		"action":            "allow",
@@ -2107,17 +2107,7 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 }
 
 func firewallPublicIngress(record firewallRecord) bool {
-	return strings.EqualFold(record.Direction, "INGRESS") && !record.Disabled && firstPublicCIDR(record.SourceRanges) != "" && len(record.Allowed) != 0
-}
-
-func firstPublicCIDR(values []string) string {
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "0.0.0.0/0" || trimmed == "::/0" {
-			return trimmed
-		}
-	}
-	return ""
+	return strings.EqualFold(record.Direction, "INGRESS") && !record.Disabled && sourcecdk.FirstOpenCIDR(record.SourceRanges) != "" && len(record.Allowed) != 0
 }
 
 func firewallPrimaryAllowed(record firewallRecord) gcpcloud.ComputeFirewallAllowed {
