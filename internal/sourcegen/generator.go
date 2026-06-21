@@ -851,6 +851,11 @@ func renderCatalog(request normalizedRequest) string {
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - %s\n", family.EventKind)
 	}
+	fmt.Fprintf(&b, "kind_lifecycle:\n")
+	for _, family := range request.Families {
+		fmt.Fprintf(&b, "  - kind: %s\n", family.EventKind)
+		fmt.Fprintf(&b, "    status: active\n")
+	}
 	fmt.Fprintf(&b, "coverage_contract:\n")
 	fmt.Fprintf(&b, "  owner_domain: source_runtime\n")
 	fmt.Fprintf(&b, "  authority_domain: %s\n", request.SourceID)
@@ -1034,18 +1039,15 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn err\n\t}\n\tif err := s.checkHealth(ctx, runtimeCfg); err != nil {\n\t\treturn err\n\t}\n\treturn s.inner.Check(ctx, runtimeCfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn s.inner.Discover(ctx, runtimeCfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn sourcecdk.Pull{}, err\n\t}\n\treturn s.inner.Read(ctx, runtimeCfg, cursor)\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tvalues := cfg.Values()\n\tif strings.TrimSpace(values[\"base_url\"]) == \"\" && strings.TrimSpace(defaultBaseURLTemplate) != \"\" {\n\t\tbaseURL, err := renderTemplate(defaultBaseURLTemplate, cfg)\n\t\tif err != nil {\n\t\t\treturn sourcecdk.Config{}, err\n\t\t}\n\t\tvalues[\"base_url\"] = baseURL\n\t}\n")
+	fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tvalues := cfg.Values()\n\tif strings.TrimSpace(values[\"base_url\"]) == \"\" && strings.TrimSpace(defaultBaseURLTemplate) != \"\" {\n\t\tbaseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)\n\t\tif err != nil {\n\t\t\treturn sourcecdk.Config{}, err\n\t\t}\n\t\tvalues[\"base_url\"] = baseURL\n\t}\n")
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "\tif s == nil {\n\t\treturn sourcecdk.Config{}, fmt.Errorf(\"%%s source is required\", sourceID)\n\t}\n\ttoken, err := s.tokenCache.Token(ctx, cfg, sourcehttp.ClientCredentialsOptions{\n\t\tSourceID: sourceID,\n\t\tTokenURLTemplate: oauthTokenURLTemplate,\n\t\tTemplateKeys: templateKeys,\n\t\tScopes: oauthScopes,\n\t\tScopeSeparator: oauthScopeSeparator,\n\t\tTokenParams: oauthTokenParams,\n\t\tExpirationBuffer: oauthTokenExpirationBuffer,\n\t\tAllowLoopback: s.allowLoopback,\n\t})\n\tif err != nil {\n\t\treturn sourcecdk.Config{}, err\n\t}\n\tvalues[\"token\"] = token\n")
 	} else {
 		fmt.Fprintf(&b, "\t_ = ctx\n")
 	}
 	fmt.Fprintf(&b, "\treturn sourcecdk.NewConfig(values), nil\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {\n\tpath := firstNonEmpty(configValue(cfg, \"health_path\"), defaultHealthPath)\n\treturn s.inner.CheckPath(ctx, cfg, path, nil)\n}\n\n")
-	b.WriteString("func renderTemplate(template string, cfg sourcecdk.Config) (string, error) {\n\trendered := strings.TrimSpace(template)\n\tfor _, key := range templateKeys {\n\t\tfor _, prefix := range []string{\"config\", \"credential\", \"connection\"} {\n\t\t\tplaceholder := \"${\" + prefix + \".\" + key + \"}\"\n\t\t\tif !strings.Contains(rendered, placeholder) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tvalue, err := requiredConfigValue(cfg, key)\n\t\t\tif err != nil {\n\t\t\t\treturn \"\", err\n\t\t\t}\n\t\t\trendered = strings.ReplaceAll(rendered, placeholder, value)\n\t\t}\n\t}\n\tif strings.Contains(rendered, \"${\") {\n\t\treturn \"\", fmt.Errorf(\"%w: %s template %q contains unresolved variable\", sourcecdk.ErrInvalidConfig, sourceID, template)\n\t}\n\treturn rendered, nil\n}\n\n")
-	b.WriteString("func requiredConfigValue(cfg sourcecdk.Config, key string) (string, error) {\n\tvalue := strings.TrimSpace(configValue(cfg, key))\n\tif value == \"\" {\n\t\treturn \"\", fmt.Errorf(\"%w: %s %s is required\", sourcecdk.ErrInvalidConfig, sourceID, key)\n\t}\n\treturn value, nil\n}\n\n")
+	fmt.Fprintf(&b, "func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {\n\tpath := firstNonEmpty(sourcecdk.ConfigValue(cfg, \"health_path\"), defaultHealthPath)\n\treturn s.inner.CheckPath(ctx, cfg, path, nil)\n}\n\n")
 	fmt.Fprintf(&b, "func loadSpec() (*cerebrov1.SourceSpec, error) {\n\tspecBytes, err := catalogFS.ReadFile(\"catalog.yaml\")\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"read catalog: %%w\", err)\n\t}\n\tspec, err := sourcecdk.LoadCatalog(specBytes)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"load catalog: %%w\", err)\n\t}\n\treturn spec, nil\n}\n\n")
-	fmt.Fprintf(&b, "func configValue(cfg sourcecdk.Config, key string) string {\n\tvalue, _ := cfg.Lookup(key)\n\treturn value\n}\n\n")
 	fmt.Fprintf(&b, "func firstNonEmpty(values ...string) string {\n\tfor _, value := range values {\n\t\tif strings.TrimSpace(value) != \"\" {\n\t\t\treturn strings.TrimSpace(value)\n\t\t}\n\t}\n\treturn \"\"\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) allowLoopbackForTest() {\n\tif s != nil && s.inner != nil {\n\t\ts.inner.AllowLoopbackBaseURL = true\n\t\ts.allowLoopback = true\n\t}\n}\n")
 	return b.String()

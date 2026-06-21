@@ -146,6 +146,26 @@ func TestSourceOperationTelemetryRecordsFailures(t *testing.T) {
 	}
 }
 
+func TestSourceOperationTelemetryUsesSourceErrorKind(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&errorSource{err: sourcecdk.WrapSourceError(sourcecdk.ErrorKindRateLimited, "failing", "read", errors.New("slow down"))})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry)
+
+	stderr := captureSourceOpsStderr(t, func() {
+		_, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "failing"})
+		if err == nil {
+			t.Fatal("Check() error = nil, want source error")
+		}
+	})
+
+	payload := sourceOpsTelemetryPayload(t, stderr, "source.check")
+	if got := payload["error_kind"]; got != string(sourcecdk.ErrorKindRateLimited) {
+		t.Fatalf("error_kind = %#v, want %q; payload=%#v", got, sourcecdk.ErrorKindRateLimited, payload)
+	}
+}
+
 func TestCheckRejectsInternalRuntimeConfigKeys(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

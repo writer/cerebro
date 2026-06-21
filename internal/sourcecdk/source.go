@@ -173,6 +173,7 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 		}
 		source = sourceWithCatalogEventContracts(source, id)
 		source = sourceWithCatalogCoverageContract(source, id)
+		source = sourceWithCatalogLifecycleContract(source, id)
 		indexed[id] = source
 	}
 	return &Registry{sources: indexed}, nil
@@ -270,6 +271,61 @@ func sourceWithCatalogCoverageContract(source Source, sourceID string) Source {
 	return &catalogCoverageSource{Source: source, coverage: cloneCoverageContract(*contract)}
 }
 
+type catalogLifecycleSource struct {
+	Source
+	lifecycle LifecycleContract
+}
+
+func (s *catalogLifecycleSource) LifecycleContract() LifecycleContract {
+	if s == nil {
+		return LifecycleContract{}
+	}
+	return cloneLifecycleContract(s.lifecycle)
+}
+
+func (s *catalogLifecycleSource) EventContracts() []EventContract {
+	if s == nil {
+		return nil
+	}
+	provider, ok := s.Source.(EventContractProvider)
+	if !ok {
+		return nil
+	}
+	return cloneEventContracts(provider.EventContracts())
+}
+
+func (s *catalogLifecycleSource) CoverageContract() CoverageContract {
+	if s == nil {
+		return CoverageContract{}
+	}
+	provider, ok := s.Source.(CoverageContractProvider)
+	if !ok {
+		return CoverageContract{}
+	}
+	return cloneCoverageContract(provider.CoverageContract())
+}
+
+func (s *catalogLifecycleSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
+	if s == nil || sourceIsNil(s.Source) {
+		return Pull{}, fmt.Errorf("source is required")
+	}
+	if reader, ok := s.Source.(CheckpointAwareSource); ok {
+		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+	}
+	return s.Read(ctx, cfg, cursor)
+}
+
+func sourceWithCatalogLifecycleContract(source Source, sourceID string) Source {
+	if _, ok := source.(LifecycleContractProvider); ok {
+		return source
+	}
+	contract := catalogLifecycleContractForSource(sourceID)
+	if contract == nil {
+		return source
+	}
+	return &catalogLifecycleSource{Source: source, lifecycle: cloneLifecycleContract(*contract)}
+}
+
 func sourceIsNil(source Source) bool {
 	if source == nil {
 		return true
@@ -330,6 +386,31 @@ func (r *Registry) CoverageContracts() []CoverageContract {
 			continue
 		}
 		contracts = append(contracts, cloneCoverageContract(contract))
+	}
+	return contracts
+}
+
+// LifecycleContracts returns source lifecycle contracts sorted by source ID.
+func (r *Registry) LifecycleContracts() []LifecycleContract {
+	if r == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(r.sources))
+	for id := range r.sources {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	contracts := make([]LifecycleContract, 0, len(ids))
+	for _, id := range ids {
+		provider, ok := r.sources[id].(LifecycleContractProvider)
+		if !ok {
+			continue
+		}
+		contract := provider.LifecycleContract()
+		if len(contract.Kinds) == 0 {
+			continue
+		}
+		contracts = append(contracts, cloneLifecycleContract(contract))
 	}
 	return contracts
 }
