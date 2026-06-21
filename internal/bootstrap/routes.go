@@ -86,6 +86,7 @@ func (app *App) registerReportRoutes(mux *http.ServeMux) {
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCDashboard))
+	registerHTTPRoute(mux, "GET /grc/trends", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("trends", time.Minute, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCTrends))
 	registerHTTPRoute(mux, "POST /grc/ask", routeSurfacePlatformHTTP, app.handleGRCAsk)
 	registerHTTPRoute(mux, "GET /grc/findings", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("findings", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCFindings))
 	registerHTTPRoute(mux, "GET /grc/controls", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("controls", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControls))

@@ -1765,6 +1765,34 @@ paths:
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+  /grc/trends:
+    get:
+      summary: GRC finding trends
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum:
+              - day
+              - week
+              - month
+            default: day
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 366
+            default: 90
+      responses:
+        '200':
+          description: Time-bucketed finding flow series with opened, closed, severity splits, and a reconstructed open backlog per bucket.
   /grc/ask:
     post:
       summary: Ask natural-language questions over the GRC graph
