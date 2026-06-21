@@ -130,7 +130,7 @@ func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (str
 	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
 WITH finding_scope AS (
-  SELECT status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee, control_refs_json
+  SELECT id, status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee, control_refs_json
   FROM findings
   WHERE ` + whereFindings + `
 ),
@@ -165,6 +165,7 @@ evidence_summary AS (
     SELECT finding_id, COUNT(*) AS evidence_count
     FROM finding_evidence
     WHERE ` + whereEvidence + `
+      AND finding_id IN (SELECT id FROM finding_scope)
     GROUP BY finding_id
   ) counts
 )

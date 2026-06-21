@@ -498,6 +498,9 @@ func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
 	if payload.Summary.OpenFindings != 40 {
 		t.Fatalf("summary open findings = %d, want unpaginated total 40", payload.Summary.OpenFindings)
 	}
+	if payload.Summary.EvidenceItems != 40 {
+		t.Fatalf("summary evidence items = %d, want unpaginated total 40 (not the %d-row preview)", payload.Summary.EvidenceItems, grcDashboardPreviewLimit)
+	}
 	if store.aggregateCalls != 1 {
 		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
 	}
@@ -965,22 +968,26 @@ func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, reque
 	if err != nil {
 		return ports.GRCDashboardAggregate{}, err
 	}
-	count, err := s.CountFindingEvidence(ctx, request.EvidenceRequest)
-	if err != nil {
-		return ports.GRCDashboardAggregate{}, err
-	}
+	// Mirror the real aggregate query: evidence counts follow the open finding
+	// scope (every matching finding), not the windowed preview finding-id list.
 	countsByFindingID := map[string]int{}
+	total := 0
+	status := strings.TrimSpace(request.FindingRequest.Status)
 	for _, evidence := range s.findingEvidence {
-		if evidence == nil {
+		if evidence == nil || !findingEvidenceMatches(request.EvidenceRequest, evidence) {
 			continue
 		}
-		for _, findingID := range request.EvidenceRequest.FindingIDs {
-			if evidence.GetFindingId() == findingID {
-				countsByFindingID[findingID]++
-			}
+		finding, ok := s.findings[evidence.GetFindingId()]
+		if !ok {
+			continue
 		}
+		if status != "" && !strings.EqualFold(strings.TrimSpace(finding.Status), status) {
+			continue
+		}
+		countsByFindingID[evidence.GetFindingId()]++
+		total++
 	}
-	return ports.GRCDashboardAggregate{FindingSummary: summary, EvidenceCount: count, EvidenceCountsByFindingID: countsByFindingID}, nil
+	return ports.GRCDashboardAggregate{FindingSummary: summary, EvidenceCount: total, EvidenceCountsByFindingID: countsByFindingID}, nil
 }
 
 type stubGRCEvidenceHeaderStore struct {
