@@ -52,6 +52,8 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		"- demo_source.asset_host",
 		"- demo_source.finding_vulnerability",
 		"- demo_source.evidence_cas_reference",
+		"kind_lifecycle:",
+		"status: active",
 		"coverage_contract:",
 		"authority_domain: demo_source",
 		"families: [asset_host]",
@@ -449,7 +451,7 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 		"TokenURLTemplate: oauthTokenURLTemplate",
 		"sourcehttp.ClientCredentialsCache",
 		"oauthTokenExpirationBuffer",
-		"renderTemplate(defaultBaseURLTemplate",
+		"sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)

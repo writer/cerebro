@@ -158,7 +158,7 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (_
 }
 
 func sourceOperationError(err error) error {
-	if errors.Is(err, sourcecdk.ErrInvalidConfig) {
+	if errors.Is(err, sourcecdk.ErrInvalidConfig) || sourcecdk.SourceErrorKind(err) == sourcecdk.ErrorKindInvalidConfig {
 		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	return err
@@ -258,6 +258,10 @@ func annotateMainSourceOperation(ctx context.Context, operation string, status s
 }
 
 func sourceOperationTelemetryErrorKind(err error) string {
+	var sourceErr *sourcecdk.SourceError
+	if errors.As(err, &sourceErr) && sourceErr != nil && sourceErr.Kind != "" {
+		return string(sourceErr.Kind)
+	}
 	switch {
 	case errors.Is(err, ErrSourceNotFound):
 		return "source_not_found"

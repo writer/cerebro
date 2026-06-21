@@ -12,32 +12,28 @@ import (
 )
 
 var (
-	catalogEventContracts    sync.Map
-	catalogCoverageContracts sync.Map
+	catalogEventContracts     sync.Map
+	catalogCoverageContracts  sync.Map
+	catalogLifecycleContracts sync.Map
 )
 
 type catalogFile struct {
-	ID             string                 `yaml:"id"`
-	Name           string                 `yaml:"name"`
-	Description    string                 `yaml:"description"`
-	EmittedKinds   []string               `yaml:"emitted_kinds"`
-	KindLifecycle  []catalogKindLifecycle `yaml:"kind_lifecycle"`
-	Families       []CatalogFamily        `yaml:"families"`
-	EventContracts []EventContract        `yaml:"event_contracts"`
-	Coverage       CoverageContract       `yaml:"coverage_contract"`
-}
-
-type catalogKindLifecycle struct {
-	Kind        string `yaml:"kind"`
-	Status      string `yaml:"status"`
-	Replacement string `yaml:"replacement"`
+	ID             string           `yaml:"id"`
+	Name           string           `yaml:"name"`
+	Description    string           `yaml:"description"`
+	EmittedKinds   []string         `yaml:"emitted_kinds"`
+	KindLifecycle  []KindLifecycle  `yaml:"kind_lifecycle"`
+	Families       []CatalogFamily  `yaml:"families"`
+	EventContracts []EventContract  `yaml:"event_contracts"`
+	Coverage       CoverageContract `yaml:"coverage_contract"`
 }
 
 type SourceCatalog struct {
-	Spec             *cerebrov1.SourceSpec
-	Families         []CatalogFamily
-	EventContracts   []EventContract
-	CoverageContract *CoverageContract
+	Spec              *cerebrov1.SourceSpec
+	Families          []CatalogFamily
+	EventContracts    []EventContract
+	CoverageContract  *CoverageContract
+	LifecycleContract *LifecycleContract
 }
 
 // CatalogFamily declares optional per-family source catalog capabilities.
@@ -86,7 +82,8 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCatalogLifecycle(catalog.KindLifecycle); err != nil {
+	lifecycleContract, err := normalizeLifecycleContract(catalog.ID, emittedKinds, catalog.KindLifecycle)
+	if err != nil {
 		return nil, err
 	}
 	families, err := normalizeCatalogFamilies(catalog.Families)
@@ -103,17 +100,23 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	}
 	registerCatalogEventContracts(catalog.ID, eventContracts)
 	registerCatalogCoverageContract(catalog.ID, coverageContract)
+	registerCatalogLifecycleContract(catalog.ID, lifecycleContract)
 	var coverage *CoverageContract
 	if len(coverageContract.Dimensions) > 0 {
 		cloned := cloneCoverageContract(coverageContract)
 		coverage = &cloned
+	}
+	var lifecycle *LifecycleContract
+	if len(lifecycleContract.Kinds) > 0 {
+		cloned := cloneLifecycleContract(lifecycleContract)
+		lifecycle = &cloned
 	}
 	return &SourceCatalog{Spec: &cerebrov1.SourceSpec{
 		Id:           catalog.ID,
 		Name:         catalog.Name,
 		Description:  catalog.Description,
 		EmittedKinds: emittedKinds,
-	}, Families: families, EventContracts: eventContracts, CoverageContract: coverage}, nil
+	}, Families: families, EventContracts: eventContracts, CoverageContract: coverage, LifecycleContract: lifecycle}, nil
 }
 
 func registerCatalogEventContracts(sourceID string, contracts []EventContract) {
@@ -165,6 +168,31 @@ func catalogCoverageContractForSource(sourceID string) *CoverageContract {
 	return &cloned
 }
 
+func registerCatalogLifecycleContract(sourceID string, contract LifecycleContract) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return
+	}
+	if len(contract.Kinds) == 0 {
+		catalogLifecycleContracts.Delete(sourceID)
+		return
+	}
+	catalogLifecycleContracts.Store(sourceID, cloneLifecycleContract(contract))
+}
+
+func catalogLifecycleContractForSource(sourceID string) *LifecycleContract {
+	value, ok := catalogLifecycleContracts.Load(strings.TrimSpace(sourceID))
+	if !ok {
+		return nil
+	}
+	contract, ok := value.(LifecycleContract)
+	if !ok {
+		return nil
+	}
+	cloned := cloneLifecycleContract(contract)
+	return &cloned
+}
+
 func normalizeCatalogKinds(values []string) ([]string, error) {
 	kinds := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
@@ -183,34 +211,6 @@ func normalizeCatalogKinds(values []string) ([]string, error) {
 		kinds = append(kinds, kind)
 	}
 	return kinds, nil
-}
-
-func validateCatalogLifecycle(entries []catalogKindLifecycle) error {
-	seen := map[string]struct{}{}
-	for _, entry := range entries {
-		kind := strings.TrimSpace(entry.Kind)
-		status := strings.ToLower(strings.TrimSpace(entry.Status))
-		if kind == "" {
-			return fmt.Errorf("kind_lifecycle kind is required")
-		}
-		if !validEventKind(kind) {
-			return fmt.Errorf("kind_lifecycle kind %q must use dot-separated lowercase identifiers", kind)
-		}
-		if _, ok := seen[kind]; ok {
-			return fmt.Errorf("duplicate kind_lifecycle kind %q", kind)
-		}
-		seen[kind] = struct{}{}
-		switch status {
-		case "active", "planned", "deprecated", "retired":
-		default:
-			return fmt.Errorf("kind_lifecycle kind %q has invalid status %q", kind, entry.Status)
-		}
-		replacement := strings.TrimSpace(entry.Replacement)
-		if replacement != "" && !validEventKind(replacement) {
-			return fmt.Errorf("kind_lifecycle kind %q has invalid replacement %q", kind, replacement)
-		}
-	}
-	return nil
 }
 
 func normalizeCatalogFamilies(families []CatalogFamily) ([]CatalogFamily, error) {

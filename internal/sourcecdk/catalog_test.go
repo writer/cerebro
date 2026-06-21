@@ -46,21 +46,27 @@ emitted_kinds:
 }
 
 func TestLoadCatalogValidatesKindLifecycle(t *testing.T) {
-	spec, err := LoadCatalog([]byte(`
+	catalog, err := LoadSourceCatalog([]byte(`
 id: github
 name: GitHub
 description: GitHub source
 emitted_kinds:
   - github.audit
 kind_lifecycle:
+  - kind: github.audit
+    status: active
   - kind: github.secret_scanning
     status: planned
 `))
 	if err != nil {
-		t.Fatalf("LoadCatalog() error = %v", err)
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
 	}
+	spec := catalog.Spec
 	if len(spec.EmittedKinds) != 1 || spec.EmittedKinds[0] != "github.audit" {
 		t.Fatalf("EmittedKinds = %#v, want active emitted kind only", spec.EmittedKinds)
+	}
+	if catalog.LifecycleContract == nil || len(catalog.LifecycleContract.Kinds) != 2 {
+		t.Fatalf("LifecycleContract = %#v, want two lifecycle entries", catalog.LifecycleContract)
 	}
 }
 
@@ -293,6 +299,44 @@ coverage_contract:
 	}
 }
 
+func TestNewRegistryPreservesCatalogLifecycleContracts(t *testing.T) {
+	_, err := LoadSourceCatalog([]byte(`
+id: lifecycle_source
+name: Lifecycle Source
+emitted_kinds:
+  - lifecycle_source.event
+kind_lifecycle:
+  - kind: lifecycle_source.event
+    status: active
+  - kind: lifecycle_source.old_event
+    status: deprecated
+    replacement: lifecycle_source.event
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	registry, err := NewRegistry(catalogTestSource{id: "lifecycle_source"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registered, ok := registry.Get("lifecycle_source")
+	if !ok {
+		t.Fatal("registry missing lifecycle_source")
+	}
+	provider, ok := registered.(LifecycleContractProvider)
+	if !ok {
+		t.Fatalf("registered source does not implement LifecycleContractProvider")
+	}
+	contract := provider.LifecycleContract()
+	if contract.SourceID != "lifecycle_source" || len(contract.Kinds) != 2 {
+		t.Fatalf("LifecycleContract() = %#v, want lifecycle_source contract", contract)
+	}
+	contracts := registry.LifecycleContracts()
+	if len(contracts) != 1 || contracts[0].SourceID != "lifecycle_source" {
+		t.Fatalf("LifecycleContracts() = %#v, want lifecycle_source", contracts)
+	}
+}
+
 func TestNewRegistryPreservesCatalogCheckpointAwareSources(t *testing.T) {
 	_, err := LoadSourceCatalog([]byte(`
 id: checkpoint_catalog_source
@@ -390,6 +434,35 @@ kind_lifecycle:
     status: maybe
 `)); err == nil {
 		t.Fatal("LoadCatalog() error = nil, want invalid lifecycle status error")
+	}
+}
+
+func TestLoadCatalogRejectsActiveLifecycleKindNotEmitted(t *testing.T) {
+	if _, err := LoadCatalog([]byte(`
+id: github
+name: GitHub
+emitted_kinds:
+  - github.audit
+kind_lifecycle:
+  - kind: github.secret_scanning
+    status: active
+`)); err == nil {
+		t.Fatal("LoadCatalog() error = nil, want active not emitted lifecycle error")
+	}
+}
+
+func TestLoadCatalogRejectsDanglingLifecycleReplacement(t *testing.T) {
+	if _, err := LoadCatalog([]byte(`
+id: github
+name: GitHub
+emitted_kinds:
+  - github.audit
+kind_lifecycle:
+  - kind: github.audit
+    status: deprecated
+    replacement: github.next
+`)); err == nil {
+		t.Fatal("LoadCatalog() error = nil, want dangling replacement error")
 	}
 }
 
