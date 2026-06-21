@@ -109,6 +109,13 @@ rule coverage, evidence freshness, control status behavior, custom profile
 resolution, report metadata construction, and export rendering stay behind that
 domain package.
 
+The GRC finding-trends route adds a small HTTP adapter that resolves request
+scope, parses the interval and window parameters, fans out per-tenant runtime
+queries to the `GRCFindingTrendsStore` port, merges the returned buckets across
+tenants, and reconstructs the running open backlog before JSON response mapping.
+The time-bucketed aggregation, severity classification, and open-at-window-start
+baseline stay behind `internal/statestore/postgres`.
+
 The agent platform graph preflight contract lives in `internal/agentplatform`.
 The bootstrap budget includes the HTTP and MCP request/response mapping needed
 to force authenticated tenant context, expose preflight to agents, and attach

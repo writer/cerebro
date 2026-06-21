@@ -317,6 +317,160 @@ func joinGRCErrors(errs <-chan error) error {
 	return joined
 }
 
+const (
+	grcTrendsDefaultDays = uint32(90)
+	grcTrendsMaxDays     = uint32(366)
+)
+
+type grcTrendPoint struct {
+	Date           string `json:"date"`
+	Opened         int    `json:"opened"`
+	OpenedCritical int    `json:"opened_critical"`
+	OpenedHigh     int    `json:"opened_high"`
+	Closed         int    `json:"closed"`
+	OpenTotal      int    `json:"open_total"`
+}
+
+type grcTrendsResponse struct {
+	Interval    string          `json:"interval"`
+	Start       time.Time       `json:"start"`
+	End         time.Time       `json:"end"`
+	Points      []grcTrendPoint `json:"points"`
+	GeneratedAt time.Time       `json:"generated_at"`
+}
+
+func (a *App) handleGRCTrends(w http.ResponseWriter, r *http.Request) {
+	scope, err := grcScopeFromRequest(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	interval, days, err := grcTrendsParamsFromRequest(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	end := time.Now().UTC()
+	start := end.AddDate(0, 0, -int(days))
+	runtimes, err := a.grcListRuntimes(r, scope)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	trends, err := a.grcFindingTrends(r, runtimes, start, end, interval)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, grcTrendsResponse{
+		Interval:    interval,
+		Start:       start,
+		End:         end,
+		Points:      grcBuildTrendPoints(trends),
+		GeneratedAt: time.Now().UTC(),
+	})
+}
+
+func grcTrendsParamsFromRequest(r *http.Request) (string, uint32, error) {
+	interval := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("interval")))
+	if interval == "" {
+		interval = "day"
+	}
+	switch interval {
+	case "day", "week", "month":
+	default:
+		return "", 0, fmt.Errorf("%w: interval must be day, week, or month", errInvalidHTTPRequest)
+	}
+	days, err := uint32QueryParam(r, "days")
+	if err != nil {
+		return "", 0, err
+	}
+	if days == 0 {
+		days = grcTrendsDefaultDays
+	}
+	if days > grcTrendsMaxDays {
+		days = grcTrendsMaxDays
+	}
+	return interval, days, nil
+}
+
+func (a *App) grcFindingTrends(r *http.Request, runtimes []*cerebrov1.SourceRuntime, start, end time.Time, interval string) (*ports.GRCFindingTrends, error) {
+	store := findingStore(a.deps.StateStore)
+	provider, ok := store.(grcFindingTrendsProvider)
+	if !ok {
+		return nil, findings.ErrRuntimeUnavailable
+	}
+	runtimeIDsByTenant := map[string][]string{}
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		tenantID := strings.TrimSpace(runtime.GetTenantId())
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		if tenantID == "" || runtimeID == "" {
+			continue
+		}
+		runtimeIDsByTenant[tenantID] = append(runtimeIDsByTenant[tenantID], runtimeID)
+	}
+	merged := map[time.Time]*ports.GRCFindingTrendPoint{}
+	openAtStart := 0
+	for tenantID, runtimeIDs := range runtimeIDsByTenant {
+		trends, err := provider.SummarizeGRCFindingTrends(r.Context(), ports.GRCFindingTrendsRequest{
+			FindingRequest: ports.ListFindingsRequest{TenantID: tenantID, RuntimeIDs: runtimeIDs},
+			Start:          start,
+			End:            end,
+			Interval:       interval,
+		})
+		if err != nil {
+			return nil, err
+		}
+		openAtStart += trends.OpenAtStart
+		for _, point := range trends.Points {
+			key := point.BucketStart.UTC()
+			agg := merged[key]
+			if agg == nil {
+				agg = &ports.GRCFindingTrendPoint{BucketStart: key}
+				merged[key] = agg
+			}
+			agg.Opened += point.Opened
+			agg.OpenedCritical += point.OpenedCritical
+			agg.OpenedHigh += point.OpenedHigh
+			agg.Closed += point.Closed
+		}
+	}
+	points := make([]ports.GRCFindingTrendPoint, 0, len(merged))
+	for _, point := range merged {
+		points = append(points, *point)
+	}
+	sort.Slice(points, func(i, j int) bool {
+		return points[i].BucketStart.Before(points[j].BucketStart)
+	})
+	return &ports.GRCFindingTrends{Points: points, OpenAtStart: openAtStart}, nil
+}
+
+func grcBuildTrendPoints(trends *ports.GRCFindingTrends) []grcTrendPoint {
+	if trends == nil {
+		return []grcTrendPoint{}
+	}
+	running := trends.OpenAtStart
+	points := make([]grcTrendPoint, 0, len(trends.Points))
+	for _, point := range trends.Points {
+		running += point.Opened - point.Closed
+		if running < 0 {
+			running = 0
+		}
+		points = append(points, grcTrendPoint{
+			Date:           point.BucketStart.UTC().Format("2006-01-02"),
+			Opened:         point.Opened,
+			OpenedCritical: point.OpenedCritical,
+			OpenedHigh:     point.OpenedHigh,
+			Closed:         point.Closed,
+			OpenTotal:      running,
+		})
+	}
+	return points
+}
+
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
@@ -654,6 +808,10 @@ type grcFindingEvidenceHeaderLister interface {
 
 type grcFindingHeaderLister interface {
 	ListGRCFindings(context.Context, ports.ListFindingsRequest) ([]*ports.FindingRecord, error)
+}
+
+type grcFindingTrendsProvider interface {
+	SummarizeGRCFindingTrends(context.Context, ports.GRCFindingTrendsRequest) (ports.GRCFindingTrends, error)
 }
 
 func grcDashboardTelemetryAttrs() telemetry.Attributes {
