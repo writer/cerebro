@@ -20,7 +20,6 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
-	"github.com/writer/cerebro/internal/sourceidentity"
 )
 
 //go:embed catalog.yaml
@@ -682,7 +681,7 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 }
 
 func recordURN(settings settings, family string, id string) (sourcecdk.URN, error) {
-	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(id, "unknown")))
+	return sourcecdk.URNFor(normalizeID(settings.tenantID), family, sourcecdk.StableExternalID(id, "unknown"))
 }
 
 func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
@@ -728,7 +727,7 @@ func eventFromRecord(settings settings, family string, record record) *primitive
 }
 
 func eventID(settings settings, family string, recordID string) string {
-	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, sourceidentity.HashedExternalIDKey(recordID, "unknown")}, "-")
+	return strings.Join([]string{sourceID, normalizeID(settings.tenantID), family, sourcecdk.StableExternalID(recordID, "unknown")}, "-")
 }
 
 func attributesFor(family string, values map[string]any) map[string]string {

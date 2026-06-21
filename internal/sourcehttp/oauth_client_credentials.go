@@ -44,11 +44,11 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 	if c == nil {
 		return "", fmt.Errorf("%s oauth token cache is required", sourceID(options.SourceID))
 	}
-	configuredTokenURL := configValue(cfg, "token_url")
+	configuredTokenURL := sourcecdk.ConfigValue(cfg, "token_url")
 	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(options.TokenURLTemplate) != "" && !providerManagedTokenURLOverrideAllowed(configuredTokenURL, options.AllowLoopback) {
 		return "", fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID))
 	}
-	tokenURL, err := renderTemplate(firstNonEmpty(configuredTokenURL, options.TokenURLTemplate), cfg, options)
+	tokenURL, err := sourcecdk.RenderConfigTemplate(sourceID(options.SourceID), firstNonEmpty(configuredTokenURL, options.TokenURLTemplate), cfg, options.TemplateKeys)
 	if err != nil {
 		return "", err
 	}
@@ -56,11 +56,11 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 	if err != nil {
 		return "", err
 	}
-	clientID, err := requiredConfigValue(cfg, "client_id", options)
+	clientID, err := sourcecdk.RequiredConfigValue(sourceID(options.SourceID), cfg, "client_id")
 	if err != nil {
 		return "", err
 	}
-	clientSecret, err := requiredConfigValue(cfg, "client_secret", options)
+	clientSecret, err := sourcecdk.RequiredConfigValue(sourceID(options.SourceID), cfg, "client_secret")
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +69,7 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 		form.Set("scope", scope)
 	}
 	for key, template := range options.TokenParams {
-		value, err := renderTemplate(template, cfg, options)
+		value, err := sourcecdk.RenderConfigTemplate(sourceID(options.SourceID), template, cfg, options.TemplateKeys)
 		if err != nil {
 			return "", err
 		}
@@ -145,27 +145,6 @@ func clientCredentialsCacheKey(sourceID string, tokenURL string, form url.Values
 	return hex.EncodeToString(sum[:])
 }
 
-func renderTemplate(template string, cfg sourcecdk.Config, options ClientCredentialsOptions) (string, error) {
-	rendered := strings.TrimSpace(template)
-	for _, key := range options.TemplateKeys {
-		for _, prefix := range []string{"config", "credential", "connection"} {
-			placeholder := "${" + prefix + "." + key + "}"
-			if !strings.Contains(rendered, placeholder) {
-				continue
-			}
-			value, err := requiredConfigValue(cfg, key, options)
-			if err != nil {
-				return "", err
-			}
-			rendered = strings.ReplaceAll(rendered, placeholder, value)
-		}
-	}
-	if strings.Contains(rendered, "${") {
-		return "", fmt.Errorf("%w: %s template %q contains unresolved variable", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID), template)
-	}
-	return rendered, nil
-}
-
 func normalizeOAuthURL(raw string, options ClientCredentialsOptions) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -186,19 +165,6 @@ func normalizeOAuthURL(raw string, options ClientCredentialsOptions) (string, er
 		path = "/"
 	}
 	return baseURL + path, nil
-}
-
-func requiredConfigValue(cfg sourcecdk.Config, key string, options ClientCredentialsOptions) (string, error) {
-	value := strings.TrimSpace(configValue(cfg, key))
-	if value == "" {
-		return "", fmt.Errorf("%w: %s %s is required", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID), key)
-	}
-	return value, nil
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
 }
 
 func sourceID(value string) string {

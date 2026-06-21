@@ -140,11 +140,11 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 
 func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	values := cfg.Values()
-	if err := validateAuth0Domain(configValue(cfg, "domain")); err != nil {
+	if err := validateAuth0Domain(sourcecdk.ConfigValue(cfg, "domain")); err != nil {
 		return sourcecdk.Config{}, err
 	}
 	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(defaultBaseURLTemplate) != "" {
-		baseURL, err := renderTemplate(defaultBaseURLTemplate, cfg)
+		baseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 		if err != nil {
 			return sourcecdk.Config{}, err
 		}
@@ -185,11 +185,11 @@ func validateAuth0Domain(value string) error {
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	baseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, configValue(cfg, "base_url"), s != nil && s.allowLoopback)
+	baseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, sourcecdk.ConfigValue(cfg, "base_url"), s != nil && s.allowLoopback)
 	if err != nil {
 		return err
 	}
-	path := firstNonEmpty(configValue(cfg, "health_path"), defaultHealthPath)
+	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
 	path, err = sourcehttp.NormalizeRequestPath(sourceID, path)
 	if err != nil {
 		return err
@@ -199,7 +199,7 @@ func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 		return fmt.Errorf("build %s health request: %w", sourceID, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if token := strings.TrimSpace(firstNonEmpty(configValue(cfg, "token"), configValue(cfg, "api_token"))); token != "" {
+	if token := strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "token"), sourcecdk.ConfigValue(cfg, "api_token"))); token != "" {
 		req.Header.Set("Authorization", tokenScheme+" "+token)
 	}
 	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s != nil && s.allowLoopback, Timeout: 10 * time.Second})
@@ -213,35 +213,6 @@ func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 	return nil
 }
 
-func renderTemplate(template string, cfg sourcecdk.Config) (string, error) {
-	rendered := strings.TrimSpace(template)
-	for _, key := range templateKeys {
-		for _, prefix := range []string{"config", "credential", "connection"} {
-			placeholder := "${" + prefix + "." + key + "}"
-			if !strings.Contains(rendered, placeholder) {
-				continue
-			}
-			value, err := requiredConfigValue(cfg, key)
-			if err != nil {
-				return "", err
-			}
-			rendered = strings.ReplaceAll(rendered, placeholder, value)
-		}
-	}
-	if strings.Contains(rendered, "${") {
-		return "", fmt.Errorf("%w: %s template %q contains unresolved variable", sourcecdk.ErrInvalidConfig, sourceID, template)
-	}
-	return rendered, nil
-}
-
-func requiredConfigValue(cfg sourcecdk.Config, key string) (string, error) {
-	value := strings.TrimSpace(configValue(cfg, key))
-	if value == "" {
-		return "", fmt.Errorf("%w: %s %s is required", sourcecdk.ErrInvalidConfig, sourceID, key)
-	}
-	return value, nil
-}
-
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	specBytes, err := catalogFS.ReadFile("catalog.yaml")
 	if err != nil {
@@ -252,11 +223,6 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
 }
 
 func firstNonEmpty(values ...string) string {
