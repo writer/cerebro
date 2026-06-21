@@ -699,28 +699,12 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 }
 
 func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
-	if len(records) == 0 {
-		pull := sourcecdk.Pull{}
-		if strings.TrimSpace(next) != "" {
-			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strings.TrimSpace(next)}
-		}
-		return pull, nil
-	}
-	events := make([]*primitives.Event, 0, len(records))
-	for _, record := range records {
-		events = append(events, eventFromRecord(settings, family, record))
-	}
-	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: checkpointCursor(next, records[len(records)-1].ID),
+	return sourcecdk.PullFromRecords(records, next,
+		func(rec record) (*primitives.Event, error) {
+			return eventFromRecord(settings, family, rec), nil
 		},
-	}
-	if next != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-	}
-	return pull, nil
+		func(rec record) string { return strings.TrimSpace(rec.ID) },
+	)
 }
 
 func eventFromRecord(settings settings, family string, record record) *primitives.Event {
@@ -1056,13 +1040,6 @@ func addQuery(query url.Values, key string, value string) {
 	if strings.TrimSpace(value) != "" {
 		query.Set(key, strings.TrimSpace(value))
 	}
-}
-
-func checkpointCursor(next string, fallback string) string {
-	if strings.TrimSpace(next) != "" {
-		return strings.TrimSpace(next)
-	}
-	return strings.TrimSpace(fallback)
 }
 
 func stableID(parts ...string) string {
