@@ -2,7 +2,9 @@ package findings
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -222,6 +224,76 @@ func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing
 	if got := persisted.Status; got != findingStatusOpen {
 		t.Fatalf("stale finding status = %q, want still %q (truncated cypher view must not auto-resolve)", got, findingStatusOpen)
 	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesEmitsTelemetryDetail(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{
+		cypherRows: []ports.CypherRow{
+			{Values: map[string]any{"label": "row-1"}},
+			{Values: map[string]any{"label": "row-2"}},
+		},
+	}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "telemetry-rule"},
+		sourceID: "okta",
+		query: ports.CypherQueryRequest{
+			Query:    "MATCH (n {token: 'raw-secret-token-value'}) RETURN n",
+			Params:   map[string]any{"token": "raw-secret-token-value"},
+			RowLimit: 2,
+		},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	stderr := captureFindingStderr(t, func() {
+		if _, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"}); err != nil {
+			t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+		}
+	})
+	if strings.Contains(stderr, "raw-secret-token-value") || strings.Contains(stderr, "MATCH") {
+		t.Fatalf("graph rule telemetry leaked query or params: %s", stderr)
+	}
+	payload := graphRuleEvaluationTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                     "finding.graph_rule.evaluation",
+		"status":                   "completed",
+		"runtime_id":               "runtime-okta",
+		"source_id":                "okta",
+		"tenant_id":                "writer",
+		"rule_id":                  "telemetry-rule",
+		"query_present":            true,
+		"rows_read":                float64(2),
+		"rows_truncated":           true,
+		"findings_emitted":         float64(0),
+		"evidence_written":         float64(0),
+		"stale_resolution_skipped": true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func graphRuleEvaluationTelemetryPayload(t *testing.T, stderr string) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("decode telemetry JSON %q: %v", line, err)
+		}
+		if payload["name"] == "finding.graph_rule.evaluation" {
+			return payload
+		}
+	}
+	t.Fatalf("finding.graph_rule.evaluation telemetry not found: %s", stderr)
+	return nil
 }
 
 func TestEvaluateSourceRuntimeGraphRulesRequiresGraphQuery(t *testing.T) {

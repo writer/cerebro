@@ -227,6 +227,75 @@ func TestRunAppendsHeartbeatEvent(t *testing.T) {
 	}
 }
 
+func TestRecordPhaseAppendsSanitizedEventAndTelemetry(t *testing.T) {
+	store := newMemoryJobStore()
+	service := New(store)
+	job := &ports.Job{
+		ID:        "job-phase",
+		Kind:      KindSourceRuntimeOrchestrate,
+		Status:    ports.JobStatusRunning,
+		TenantID:  "writer",
+		SubjectID: "runtime-okta",
+	}
+
+	stderr := captureJobServiceStderr(t, func() {
+		service.RecordPhase(context.Background(), job, PhaseRecord{
+			Phase:   "orchestrator.graph_ingest",
+			Status:  ports.JobStatusCompleted,
+			Message: "graph ingest completed",
+			Payload: map[string]any{
+				"entities_projected": 7,
+				"api_token":          "raw-secret-token-value",
+				"headers":            map[string]any{"authorization": "bearer raw-secret-token-value"},
+			},
+			Duration: 1500 * time.Millisecond,
+		})
+	})
+
+	if len(store.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(store.events))
+	}
+	event := store.events[0]
+	if event.Type != "phase_completed" || event.Status != ports.JobStatusCompleted {
+		t.Fatalf("event type/status = %q/%q, want phase_completed/completed", event.Type, event.Status)
+	}
+	if event.Payload["api_token"] != nil {
+		t.Fatalf("sensitive payload key persisted: %#v", event.Payload)
+	}
+	if event.Payload["headers"] != "map[1]" {
+		t.Fatalf("headers payload = %#v, want structural summary", event.Payload["headers"])
+	}
+	if strings.Contains(stderr, "raw-secret-token-value") {
+		t.Fatalf("phase telemetry leaked secret value: %s", stderr)
+	}
+	payloads := jobTelemetryPayloads(t, stderr, "event", "platform.job.phase.completed")
+	if len(payloads) != 1 {
+		t.Fatalf("platform.job.phase.completed events = %d, want 1; stderr=%s", len(payloads), stderr)
+	}
+	payload := payloads[0]
+	for key, want := range map[string]any{
+		"job.id":                              "job-phase",
+		"job.phase":                           "orchestrator.graph_ingest",
+		"job.phase.status":                    ports.JobStatusCompleted,
+		"job.phase.detail.entities_projected": float64(7),
+		"job.phase.detail.headers":            "map[1]",
+		"job.phase.detail.duration_ms":        float64(1500),
+		"job.phase.detail.keys":               "duration_ms,entities_projected,headers,phase",
+		"job.phase.duration_ms":               float64(1500),
+		"job.phase_key":                       "orchestrator_graph_ingest",
+		"job_phase_key":                       "orchestrator_graph_ingest",
+		"job_phase_status":                    ports.JobStatusCompleted,
+		"job.phase.detail.key_count":          float64(4),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("%s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["job.phase.detail.api_token"]; ok {
+		t.Fatalf("sensitive telemetry detail key emitted: %#v", payload)
+	}
+}
+
 func TestRunReportTelemetryFallsBackToSubjectID(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-report-telemetry"] = &ports.Job{

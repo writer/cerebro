@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -15,6 +14,8 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
+	"github.com/writer/cerebro/internal/jobobservability"
+	"github.com/writer/cerebro/internal/jobpayload"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -186,15 +187,17 @@ func (a *App) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, jobResponse{Job: job})
 }
 
-func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, service *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	response, err := a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        runtimeID,
-		PageLimit: uint32Payload(job.Payload, "page_limit"),
-	}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
+	response, err := jobobservability.RunPhase(ctx, service, job, "source_runtime.sync", "source runtime sync", jobobservability.SourceRuntimeSyncPayload, func() (*cerebrov1.SyncSourceRuntimeResponse, error) {
+		return a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
+			Id:        runtimeID,
+			PageLimit: jobpayload.Uint32(job.Payload, "page_limit"),
+		}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -202,37 +205,45 @@ func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, _ *pl
 	return protoToMap(response), nil, nil
 }
 
-func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, service *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	syncResponse, err := a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        runtimeID,
-		PageLimit: uint32Payload(job.Payload, "page_limit"),
-	}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
-	if err != nil {
-		return nil, nil, err
-	}
-	graphResult, err := a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
-		RuntimeID: runtimeID,
-		PageLimit: uint32Payload(job.Payload, "graph_page_limit"),
-		Trigger:   "platform_orchestration_job",
+	syncResponse, err := jobobservability.RunPhase(ctx, service, job, "source_runtime.sync", "source runtime sync", jobobservability.SourceRuntimeSyncPayload, func() (*cerebrov1.SyncSourceRuntimeResponse, error) {
+		return a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
+			Id:        runtimeID,
+			PageLimit: jobpayload.Uint32(job.Payload, "page_limit"),
+		}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	ruleResult, err := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
-		RuntimeID:  runtimeID,
-		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
-		EventLimit: uint32Payload(job.Payload, "event_limit"),
+	graphResult, err := jobobservability.RunPhase(ctx, service, job, "orchestrator.graph_ingest", "graph ingest", jobobservability.GraphIngestPayload, func() (*graphingest.RunResult, error) {
+		return a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
+			RuntimeID: runtimeID,
+			PageLimit: jobpayload.Uint32(job.Payload, "graph_page_limit"),
+			Trigger:   "platform_orchestration_job",
+		})
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	graphRulesResult, err := a.findingService().EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
-		RuntimeID: runtimeID,
-		RuleIDs:   stringSlicePayload(job.Payload, "graph_rule_ids"),
+	ruleResult, err := jobobservability.RunPhase(ctx, service, job, "orchestrator.finding_rules", "finding rules", jobobservability.FindingRulesPayload, func() (*findings.EvaluateRulesResult, error) {
+		return a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+			RuntimeID:  runtimeID,
+			RuleIDs:    jobpayload.StringSlice(job.Payload, "rule_ids"),
+			EventLimit: jobpayload.Uint32(job.Payload, "event_limit"),
+		})
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	graphRulesResult, err := jobobservability.RunPhase(ctx, service, job, "orchestrator.graph_rules", "graph rules", jobobservability.GraphRulesPayload, func() (*findings.EvaluateGraphRulesResult, error) {
+		return a.findingService().EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
+			RuntimeID: runtimeID,
+			RuleIDs:   jobpayload.StringSlice(job.Payload, "graph_rule_ids"),
+		})
 	})
 	if err != nil {
 		return nil, nil, err
@@ -263,15 +274,17 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 	return result, refs, nil
 }
 
-func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, service *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	result, err := a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
-		RuntimeID: runtimeID,
-		PageLimit: uint32Payload(job.Payload, "page_limit"),
-		Trigger:   "platform_job",
+	result, err := jobobservability.RunPhase(ctx, service, job, "graph_ingest_runtime", "graph ingest", jobobservability.GraphIngestPayload, func() (*graphingest.RunResult, error) {
+		return a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
+			RuntimeID: runtimeID,
+			PageLimit: jobpayload.Uint32(job.Payload, "page_limit"),
+			Trigger:   "platform_job",
+		})
 	})
 	if err != nil {
 		return nil, nil, err
@@ -285,14 +298,16 @@ func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *p
 	return out, refs, err
 }
 
-func (a *App) runGraphRulesEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+func (a *App) runGraphRulesEvaluateJob(ctx context.Context, job *ports.Job, service *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	result, err := a.findingService().EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
-		RuntimeID: runtimeID,
-		RuleIDs:   stringSlicePayload(job.Payload, "rule_ids"),
+	result, err := jobobservability.RunPhase(ctx, service, job, "graph_rules_evaluate", "graph rules", jobobservability.GraphRulesPayload, func() (*findings.EvaluateGraphRulesResult, error) {
+		return a.findingService().EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
+			RuntimeID: runtimeID,
+			RuleIDs:   jobpayload.StringSlice(job.Payload, "rule_ids"),
+		})
 	})
 	if err != nil {
 		return nil, nil, err
@@ -302,15 +317,17 @@ func (a *App) runGraphRulesEvaluateJob(ctx context.Context, job *ports.Job, _ *p
 	return out, nil, err
 }
 
-func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, service *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	result, err := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
-		RuntimeID:  runtimeID,
-		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
-		EventLimit: uint32Payload(job.Payload, "event_limit"),
+	result, err := jobobservability.RunPhase(ctx, service, job, "finding_rules_evaluate", "finding rules", jobobservability.FindingRulesPayload, func() (*findings.EvaluateRulesResult, error) {
+		return a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+			RuntimeID:  runtimeID,
+			RuleIDs:    jobpayload.StringSlice(job.Payload, "rule_ids"),
+			EventLimit: jobpayload.Uint32(job.Payload, "event_limit"),
+		})
 	})
 	if err != nil {
 		return nil, nil, err
@@ -320,15 +337,17 @@ func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, _ 
 	return out, nil, err
 }
 
-func (a *App) runFindingCandidatesEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+func (a *App) runFindingCandidatesEvaluateJob(ctx context.Context, job *ports.Job, service *platformjobs.Service) (map[string]any, map[string]string, error) {
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	result, err := a.findingService().EvaluateSourceRuntimeCandidateRules(ctx, findings.EvaluateCandidateRulesRequest{
-		RuntimeID:  runtimeID,
-		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
-		EventLimit: uint32Payload(job.Payload, "event_limit"),
+	result, err := jobobservability.RunPhase(ctx, service, job, "finding_candidates_evaluate", "candidate rules", jobobservability.CandidateRulesPayload, func() (*findings.EvaluateCandidateRulesResult, error) {
+		return a.findingService().EvaluateSourceRuntimeCandidateRules(ctx, findings.EvaluateCandidateRulesRequest{
+			RuntimeID:  runtimeID,
+			RuleIDs:    jobpayload.StringSlice(job.Payload, "rule_ids"),
+			EventLimit: jobpayload.Uint32(job.Payload, "event_limit"),
+		})
 	})
 	if err != nil {
 		return nil, nil, err
@@ -339,14 +358,14 @@ func (a *App) runFindingCandidatesEvaluateJob(ctx context.Context, job *ports.Jo
 }
 
 func (a *App) runFindingsEvaluateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
+	runtimeID := jobpayload.String(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
 	result, err := a.findingService().EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  runtimeID,
-		RuleID:     stringPayload(job.Payload, "rule_id", ""),
-		EventLimit: uint32Payload(job.Payload, "event_limit"),
+		RuleID:     jobpayload.String(job.Payload, "rule_id", ""),
+		EventLimit: jobpayload.Uint32(job.Payload, "event_limit"),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -356,11 +375,11 @@ func (a *App) runFindingsEvaluateJob(ctx context.Context, job *ports.Job, _ *pla
 }
 
 func (a *App) runReportJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
-	reportID := stringPayload(job.Payload, "report_id", job.SubjectID)
+	reportID := jobpayload.String(job.Payload, "report_id", job.SubjectID)
 	if reportID == "" {
 		return nil, nil, fmt.Errorf("%w: report_id is required", platformjobs.ErrInvalidRequest)
 	}
-	parameters := stringMapPayload(job.Payload, "parameters")
+	parameters := jobpayload.StringMap(job.Payload, "parameters")
 	if job.TenantID != "" && parameters["tenant_id"] == "" {
 		parameters["tenant_id"] = job.TenantID
 	}
@@ -381,7 +400,7 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 	}
 	switch strings.TrimSpace(request.Kind) {
 	case platformjobs.KindSourceRuntimeSync, platformjobs.KindSourceRuntimeOrchestrate, platformjobs.KindGraphIngestRuntime, platformjobs.KindGraphRulesEvaluate, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingCandidatesEvaluate, platformjobs.KindFindingsEvaluate:
-		runtimeID := stringPayload(request.Payload, "runtime_id", request.SubjectID)
+		runtimeID := jobpayload.String(request.Payload, "runtime_id", request.SubjectID)
 		runtimeTenantID, err := sourceRuntimeTenantID(ctx, sourceRuntimeStore(store), runtimeID, false)
 		if err != nil {
 			return "", err
@@ -391,7 +410,7 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 		}
 		return firstNonEmpty(request.TenantID, runtimeTenantID), nil
 	case platformjobs.KindReportRun:
-		parameters := stringMapPayload(request.Payload, "parameters")
+		parameters := jobpayload.StringMap(request.Payload, "parameters")
 		if request.TenantID != "" && parameters["tenant_id"] == "" {
 			parameters["tenant_id"] = request.TenantID
 		}
@@ -450,83 +469,4 @@ func jsonResultMap(value any) (map[string]any, error) {
 	out := map[string]any{}
 	_ = json.Unmarshal(payload, &out)
 	return out, nil
-}
-
-func stringPayload(payload map[string]any, key string, fallback string) string {
-	if value, ok := payload[key]; ok {
-		switch typed := value.(type) {
-		case string:
-			if strings.TrimSpace(typed) != "" {
-				return strings.TrimSpace(typed)
-			}
-		}
-	}
-	return strings.TrimSpace(fallback)
-}
-
-func uint32Payload(payload map[string]any, key string) uint32 {
-	value, ok := payload[key]
-	if !ok {
-		return 0
-	}
-	switch typed := value.(type) {
-	case float64:
-		if typed > 0 {
-			return uint32(typed)
-		}
-	case json.Number:
-		parsed, _ := strconv.ParseUint(string(typed), 10, 32)
-		return uint32(parsed)
-	case string:
-		parsed, _ := strconv.ParseUint(strings.TrimSpace(typed), 10, 32)
-		return uint32(parsed)
-	}
-	return 0
-}
-
-func stringSlicePayload(payload map[string]any, key string) []string {
-	value, ok := payload[key]
-	if !ok {
-		return nil
-	}
-	switch typed := value.(type) {
-	case []string:
-		return typed
-	case []any:
-		values := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
-				values = append(values, strings.TrimSpace(text))
-			}
-		}
-		return values
-	case string:
-		if strings.TrimSpace(typed) == "" {
-			return nil
-		}
-		return []string{strings.TrimSpace(typed)}
-	default:
-		return nil
-	}
-}
-
-func stringMapPayload(payload map[string]any, key string) map[string]string {
-	result := map[string]string{}
-	value, ok := payload[key]
-	if !ok {
-		return result
-	}
-	switch typed := value.(type) {
-	case map[string]string:
-		for k, v := range typed {
-			result[k] = v
-		}
-	case map[string]any:
-		for k, v := range typed {
-			if text, ok := v.(string); ok {
-				result[k] = text
-			}
-		}
-	}
-	return result
 }
