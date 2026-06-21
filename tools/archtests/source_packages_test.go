@@ -25,7 +25,7 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"okta":            2361,
 	"panopticon":      820,
 	"sentinelone":     2181,
-	"vulnview":        1064,
+	"vulnview":        1042,
 }
 
 func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
