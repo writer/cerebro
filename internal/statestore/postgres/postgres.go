@@ -38,6 +38,7 @@ type Store struct {
 	runtimeBlocklistReady        bool
 	grcInventoryScopeReady       bool
 	grcInventoryAssetReportReady bool
+	grcFindingDispositionReady   bool
 	connectorCredentialReady     bool
 	connectorDefinitionReady     bool
 	appendLogRuntimeIndexReady   bool

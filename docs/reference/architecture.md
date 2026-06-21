@@ -116,6 +116,14 @@ tenants, and reconstructs the running open backlog before JSON response mapping.
 The time-bucketed aggregation, severity classification, and open-at-window-start
 baseline stay behind `internal/statestore/postgres`.
 
+The GRC finding-triage route adds a small HTTP adapter that decodes the bulk
+disposition request, validates the disposition, authorizes the target tenant,
+and maps the upserted records to JSON. Operator dispositions overlay projected
+findings through a dedicated `grc_finding_dispositions` table behind the
+`GRCFindingDispositionStore` port, so finding re-projection cannot clobber triage
+decisions; the bulk upsert, lookup, and disposition merge stay behind
+`internal/statestore/postgres`.
+
 The agent platform graph preflight contract lives in `internal/agentplatform`.
 The bootstrap budget includes the HTTP and MCP request/response mapping needed
 to force authenticated tenant context, expose preflight to agents, and attach

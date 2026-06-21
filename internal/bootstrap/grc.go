@@ -84,6 +84,7 @@ type grcFindingItem struct {
 }
 
 type GRCFindingWorkflowMetadata struct {
+	Disposition     string                     `json:"disposition,omitempty"`
 	StatusReason    string                     `json:"status_reason,omitempty"`
 	Assignee        string                     `json:"assignee,omitempty"`
 	DueAt           *time.Time                 `json:"due_at,omitempty"`
@@ -515,8 +516,10 @@ func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
 		}
 		evidenceCounts = grcEvidenceCounts(evidence)
 	}
+	items := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts)
+	grcApplyFindingDispositions(items, a.grcFindingDispositions(r, findings))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"findings":     grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts),
+		"findings":     items,
 		"generated_at": time.Now().UTC(),
 	})
 }
