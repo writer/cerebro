@@ -377,30 +377,19 @@ func (p nativeAPIPage) nextPage() int {
 	return 0
 }
 
+var nativeTimeLayouts = []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999", "2006-01-02T15:04:05", "2006-01-02"}
+
 func firstNativeTime(item map[string]interface{}, keys ...string) time.Time {
 	for _, key := range keys {
-		if parsed := parseNativeTime(item[key]); !parsed.IsZero() {
+		if parsed := (sourcecdk.JSONScalar{Value: item[key]}).Time(nativeTimeLayouts...); !parsed.IsZero() {
 			return parsed
 		}
 	}
 	return time.Time{}
 }
 
-func parseNativeTime(value interface{}) time.Time {
-	raw := strings.TrimSpace(nativeValueString(value))
-	if raw == "" {
-		return time.Time{}
-	}
-	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999", "2006-01-02T15:04:05", "2006-01-02"} {
-		if parsed, err := time.Parse(layout, raw); err == nil {
-			return parsed.UTC()
-		}
-	}
-	return time.Time{}
-}
-
 func nativeString(item map[string]interface{}, key string) string {
-	return nativeValueString(item[key])
+	return (sourcecdk.JSONScalar{Value: item[key]}).String()
 }
 
 func nestedString(item map[string]interface{}, key, nestedKey string) string {
@@ -408,7 +397,7 @@ func nestedString(item map[string]interface{}, key, nestedKey string) string {
 	if !ok {
 		return ""
 	}
-	return nativeValueString(nested[nestedKey])
+	return (sourcecdk.JSONScalar{Value: nested[nestedKey]}).String()
 }
 
 func firstString(values ...string) string {
@@ -418,21 +407,6 @@ func firstString(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func nativeValueString(value interface{}) string {
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case json.Number:
-		return strings.TrimSpace(typed.String())
-	case float64:
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(typed)
-	default:
-		return ""
-	}
 }
 
 func apiResponseError(statusCode int, payload []byte) error {

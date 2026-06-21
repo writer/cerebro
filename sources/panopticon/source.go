@@ -338,7 +338,7 @@ func validateRawFamilyContract(kind string, attributes map[string]string, payloa
 		if !ok || strings.TrimSpace(attribute) == "" {
 			return fmt.Errorf("kind %q missing required attribute %q", kind, key)
 		}
-		payloadValue := payloadAttributeString(payload[key])
+		payloadValue := (sourcecdk.JSONScalar{Value: payload[key]}).String()
 		if payloadValue == "" {
 			return fmt.Errorf("kind %q missing required payload field %q", kind, key)
 		}
@@ -347,7 +347,7 @@ func validateRawFamilyContract(kind string, attributes map[string]string, payloa
 		}
 	}
 	if kind == kindAlert || kind == kindCase {
-		if payloadAttributeString(payload["title"]) == "" {
+		if (sourcecdk.JSONScalar{Value: payload["title"]}).String() == "" {
 			return fmt.Errorf("kind %q missing required payload field %q", kind, "title")
 		}
 	}
@@ -365,7 +365,7 @@ func validateFamilyContract(event *primitives.Event) error {
 	}
 	for _, key := range required {
 		attribute := strings.TrimSpace(event.GetAttributes()[key])
-		payloadValue := payloadAttributeString(payload[key])
+		payloadValue := (sourcecdk.JSONScalar{Value: payload[key]}).String()
 		if attribute == "" {
 			return fmt.Errorf("kind %q missing required attribute %q", event.GetKind(), key)
 		}
@@ -377,7 +377,7 @@ func validateFamilyContract(event *primitives.Event) error {
 		}
 	}
 	if event.GetKind() == kindAlert || event.GetKind() == kindCase {
-		if payloadAttributeString(payload["title"]) == "" {
+		if (sourcecdk.JSONScalar{Value: payload["title"]}).String() == "" {
 			return fmt.Errorf("kind %q missing required payload field %q", event.GetKind(), "title")
 		}
 	}
@@ -405,7 +405,7 @@ func promotePayloadAttributes(kind string, attributes map[string]string, payload
 		if _, ok := attributes[key]; ok {
 			continue
 		}
-		if value := payloadAttributeString(payload[key]); value != "" {
+		if value := (sourcecdk.JSONScalar{Value: payload[key]}).String(); value != "" {
 			attributes[key] = value
 		}
 	}
@@ -421,20 +421,5 @@ func payloadPromotedAttributeKeys(kind string) []string {
 		return []string{"ioc_id", "ioc_type", "value"}
 	default:
 		return nil
-	}
-}
-
-func payloadAttributeString(value interface{}) string {
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case json.Number:
-		return strings.TrimSpace(typed.String())
-	case float64:
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(typed)
-	default:
-		return ""
 	}
 }

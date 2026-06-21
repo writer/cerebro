@@ -5,9 +5,7 @@
 package aurelius
 
 import (
-	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"embed"
 	"encoding/json"
@@ -569,52 +567,22 @@ func (s *Source) readArchive(ctx context.Context, client s3API, bucket, key stri
 }
 
 func readArchiveRecords(reader io.Reader, key string, decompressedLimitBytes int64) ([]aureliusRecord, error) {
-	if strings.HasSuffix(key, ".gz") {
-		gz, err := gzip.NewReader(reader)
-		if err != nil {
-			return nil, fmt.Errorf("gunzip: %w", err)
-		}
-		defer func() { _ = gz.Close() }()
-		reader = gz
-	}
-	counter := &countingReader{reader: io.LimitReader(reader, decompressedLimitBytes+1)}
-	scanner := bufio.NewScanner(counter)
-	scanner.Buffer(make([]byte, 0, 64<<10), maxLineBytes)
-	records := make([]aureliusRecord, 0, 64)
-	line := 0
-	for scanner.Scan() {
-		if counter.bytesRead > decompressedLimitBytes {
+	lines, err := sourcecdk.ReadNDJSONArchive(reader, strings.HasSuffix(key, ".gz"), decompressedLimitBytes, maxLineBytes)
+	if err != nil {
+		if errors.Is(err, sourcecdk.ErrNDJSONDecompressedTooLarge) {
 			return nil, fmt.Errorf("%w: %d bytes", ErrDecompressedObjectTooLarge, decompressedLimitBytes)
 		}
-		line++
-		text := bytes.TrimSpace(scanner.Bytes())
-		if len(text) == 0 {
-			continue
-		}
+		return nil, err
+	}
+	records := make([]aureliusRecord, 0, len(lines))
+	for index, line := range lines {
 		var rec aureliusRecord
-		if err := json.Unmarshal(text, &rec); err != nil {
-			return nil, fmt.Errorf("decode line %d: %w", line, err)
+		if err := json.Unmarshal(line, &rec); err != nil {
+			return nil, fmt.Errorf("decode line %d: %w", index+1, err)
 		}
 		records = append(records, rec)
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan archive: %w", err)
-	}
-	if counter.bytesRead > decompressedLimitBytes {
-		return nil, fmt.Errorf("%w: %d bytes", ErrDecompressedObjectTooLarge, decompressedLimitBytes)
-	}
 	return records, nil
-}
-
-type countingReader struct {
-	reader    io.Reader
-	bytesRead int64
-}
-
-func (r *countingReader) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
-	r.bytesRead += int64(n)
-	return n, err
 }
 
 func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primitives.Event, error) {
