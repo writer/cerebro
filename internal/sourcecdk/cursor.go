@@ -161,6 +161,23 @@ func NextAfterOrPageCursor(after string, nextPageToken string, nextPage int) str
 	return ""
 }
 
+// ResolveCursorOpaque resolves the opaque checkpoint cursor for record-paging
+// sources: it prefers the trimmed next page token, then the trimmed fallback id,
+// then the latest observed event time rendered as RFC3339Nano. It returns an
+// empty string when none are available.
+func ResolveCursorOpaque(next string, fallback string, occurredAt time.Time) string {
+	if next = strings.TrimSpace(next); next != "" {
+		return next
+	}
+	if fallback = strings.TrimSpace(fallback); fallback != "" {
+		return fallback
+	}
+	if occurredAt.IsZero() {
+		return ""
+	}
+	return occurredAt.UTC().Format(time.RFC3339Nano)
+}
+
 func normalizedCursorValues(values []string) []string {
 	if len(values) == 0 {
 		return nil

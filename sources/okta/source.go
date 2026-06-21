@@ -1282,7 +1282,7 @@ func oktaPullFromRecordsWithCursor[T any](records []T, next string, build func(T
 		Events: events,
 		Checkpoint: &cerebrov1.SourceCheckpoint{
 			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: checkpointCursor(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
+			CursorOpaque: sourcecdk.ResolveCursorOpaque(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
 		},
 	}
 	if next != "" {
@@ -1722,19 +1722,6 @@ func parseLink(value string) (string, string) {
 		return link, strings.Trim(rawValue, "\"")
 	}
 	return link, ""
-}
-
-func checkpointCursor(next string, fallback string, occurredAt time.Time) string {
-	if strings.TrimSpace(next) != "" {
-		return strings.TrimSpace(next)
-	}
-	if strings.TrimSpace(fallback) != "" {
-		return strings.TrimSpace(fallback)
-	}
-	if occurredAt.IsZero() {
-		return ""
-	}
-	return occurredAt.UTC().Format(time.RFC3339Nano)
 }
 
 func utcTime(value *time.Time) *time.Time {
