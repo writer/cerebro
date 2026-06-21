@@ -50,7 +50,6 @@ shared logic is lifted into the Source CDK. The current extraction backlog is:
 
 | Shared behavior | Sources | Disposition |
 | --- | --- | --- |
-| `runtimeConfig` accessor | `akeyless`, `doppler`, `hashicorp_vault` | Extract into Source CDK config helper |
 | `pullFromRecords` paging loop | `grc`, `vulnview` | Extract into Source CDK record pull |
 | `checkpointCursor` encode/decode | `okta`, `sentinelone` | Extract into Source CDK cursor |
 | `watermarkString` formatting | `aurelius`, `panopticon` | Extract into Source CDK watermark helper |
