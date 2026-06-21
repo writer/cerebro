@@ -47,3 +47,20 @@ func RenderConfigTemplate(sourceID string, template string, cfg Config, keys []s
 	}
 	return rendered, nil
 }
+
+// ResolveBaseURLConfig returns cfg with its "base_url" value rendered from
+// template when "base_url" is unset and template is non-empty. The template is
+// expanded with RenderConfigTemplate using keys, and sourceID labels validation
+// errors. When "base_url" is already set or template is empty, the configuration
+// values are returned unchanged.
+func ResolveBaseURLConfig(sourceID string, template string, cfg Config, keys []string) (Config, error) {
+	values := cfg.Values()
+	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(template) != "" {
+		baseURL, err := RenderConfigTemplate(sourceID, template, cfg, keys)
+		if err != nil {
+			return Config{}, err
+		}
+		values["base_url"] = baseURL
+	}
+	return NewConfig(values), nil
+}

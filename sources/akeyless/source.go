@@ -137,15 +137,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	_ = ctx
-	values := cfg.Values()
-	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(defaultBaseURLTemplate) != "" {
-		baseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
-		if err != nil {
-			return sourcecdk.Config{}, err
-		}
-		values["base_url"] = baseURL
-	}
-	return sourcecdk.NewConfig(values), nil
+	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
