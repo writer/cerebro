@@ -21,11 +21,11 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"gcp":             2095,
 	"github":          2028,
 	"googleworkspace": 815,
-	"grc":             1343,
+	"grc":             1321,
 	"okta":            2269,
 	"panopticon":      781,
 	"sentinelone":     2089,
-	"vulnview":        1042,
+	"vulnview":        1020,
 }
 
 func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
