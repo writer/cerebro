@@ -10,6 +10,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/grctrends"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -19,17 +20,20 @@ func TestGRCBuildTrendPointsReconstructsRunningBacklog(t *testing.T) {
 		OpenAtStart: 10,
 		Points: []ports.GRCFindingTrendPoint{
 			{BucketStart: base, Opened: 3, OpenedCritical: 1, OpenedHigh: 1, Closed: 1},
-			{BucketStart: base.AddDate(0, 0, 1), Opened: 0, Closed: 4},
+			{BucketStart: base.AddDate(0, 0, 1), Opened: 0, Closed: 4, ClosedDurationSecondsTotal: float64((2 * time.Hour).Seconds()), ClosedDurationCount: 1},
 			{BucketStart: base.AddDate(0, 0, 2), Opened: 2, Closed: 0},
 		},
 	}
 
-	points := grcBuildTrendPoints(trends)
+	points := grctrends.BuildPoints(trends)
 	if len(points) != 3 {
 		t.Fatalf("points = %d, want 3", len(points))
 	}
 	if points[0].Date != "2026-03-01" {
 		t.Fatalf("points[0].Date = %q, want 2026-03-01", points[0].Date)
+	}
+	if points[1].AvgTimeToCloseSeconds != (2 * time.Hour).Seconds() {
+		t.Fatalf("points[1].AvgTimeToCloseSeconds = %v, want %v", points[1].AvgTimeToCloseSeconds, (2 * time.Hour).Seconds())
 	}
 	for i, want := range []int{12, 8, 10} { // 10+3-1; 12+0-4; 8+2-0
 		if points[i].OpenTotal != want {
@@ -45,13 +49,13 @@ func TestGRCBuildTrendPointsClampsBacklogAtZero(t *testing.T) {
 			{BucketStart: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Closed: 5},
 		},
 	}
-	if got := grcBuildTrendPoints(trends)[0].OpenTotal; got != 0 {
+	if got := grctrends.BuildPoints(trends)[0].OpenTotal; got != 0 {
 		t.Fatalf("OpenTotal = %d, want 0 (clamped)", got)
 	}
 }
 
 func TestGRCBuildTrendPointsNilReturnsEmptySlice(t *testing.T) {
-	points := grcBuildTrendPoints(nil)
+	points := grctrends.BuildPoints(nil)
 	if points == nil || len(points) != 0 {
 		t.Fatalf("points = %#v, want empty non-nil slice", points)
 	}
@@ -59,29 +63,29 @@ func TestGRCBuildTrendPointsNilReturnsEmptySlice(t *testing.T) {
 
 func TestGRCTrendsParamsFromRequestDefaults(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/grc/trends", nil)
-	interval, days, err := grcTrendsParamsFromRequest(r)
+	params, err := grctrends.ParseParams(r.URL.Query(), grcTrendsDefaultDays, grcTrendsMaxDays)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if interval != "day" || days != grcTrendsDefaultDays {
-		t.Fatalf("interval=%q days=%d, want day/%d", interval, days, grcTrendsDefaultDays)
+	if params.Interval != "day" || params.Days != grcTrendsDefaultDays {
+		t.Fatalf("interval=%q days=%d, want day/%d", params.Interval, params.Days, grcTrendsDefaultDays)
 	}
 }
 
 func TestGRCTrendsParamsFromRequestClampsDays(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/grc/trends?days=100000&interval=week", nil)
-	interval, days, err := grcTrendsParamsFromRequest(r)
+	params, err := grctrends.ParseParams(r.URL.Query(), grcTrendsDefaultDays, grcTrendsMaxDays)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if interval != "week" || days != grcTrendsMaxDays {
-		t.Fatalf("interval=%q days=%d, want week/%d", interval, days, grcTrendsMaxDays)
+	if params.Interval != "week" || params.Days != grcTrendsMaxDays {
+		t.Fatalf("interval=%q days=%d, want week/%d", params.Interval, params.Days, grcTrendsMaxDays)
 	}
 }
 
 func TestGRCTrendsParamsFromRequestRejectsInterval(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/grc/trends?interval=hour", nil)
-	if _, _, err := grcTrendsParamsFromRequest(r); err == nil {
+	if _, err := grctrends.ParseParams(r.URL.Query(), grcTrendsDefaultDays, grcTrendsMaxDays); err == nil {
 		t.Fatalf("expected error for unsupported interval")
 	}
 }
@@ -100,8 +104,9 @@ func (s *stubGRCTrendsStore) SummarizeGRCFindingTrends(_ context.Context, reques
 		OpenAtStart: 5,
 		Points: []ports.GRCFindingTrendPoint{
 			{BucketStart: base, Opened: 2, OpenedCritical: 1, Closed: 0},
-			{BucketStart: base.AddDate(0, 0, 1), Opened: 0, Closed: 3},
+			{BucketStart: base.AddDate(0, 0, 1), Opened: 0, Closed: 3, ClosedHigh: 1, ClosedSLABreached: 1, ClosedDurationSecondsTotal: float64(time.Hour.Seconds()), ClosedDurationCount: 1},
 		},
+		AgingBuckets: []ports.GRCAgingBucket{{ID: "0-7", Label: "0-7 days", MaxDays: 7, Count: 2}},
 	}, nil
 }
 
@@ -123,7 +128,7 @@ func TestHandleGRCTrendsReturnsSeries(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /grc/trends status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	var payload grcTrendsResponse
+	var payload grctrends.Response
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode /grc/trends: %v", err)
 	}
@@ -138,6 +143,12 @@ func TestHandleGRCTrendsReturnsSeries(t *testing.T) {
 	}
 	if payload.Points[0].OpenedCritical != 1 {
 		t.Fatalf("opened_critical = %d, want 1", payload.Points[0].OpenedCritical)
+	}
+	if payload.Points[1].ClosedHigh != 1 || payload.Points[1].ClosedSLABreached != 1 {
+		t.Fatalf("closed high/sla = %d/%d, want 1/1", payload.Points[1].ClosedHigh, payload.Points[1].ClosedSLABreached)
+	}
+	if len(payload.AgingBuckets) != 1 || payload.AgingBuckets[0].Count != 2 {
+		t.Fatalf("aging buckets = %#v, want one count=2", payload.AgingBuckets)
 	}
 	if store.calls != 1 {
 		t.Fatalf("trends store calls = %d, want 1", store.calls)

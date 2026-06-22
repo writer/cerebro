@@ -1992,6 +1992,14 @@ paths:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: framework
+          in: query
+          schema:
+            type: string
         - name: interval
           in: query
           schema:
@@ -2008,9 +2016,29 @@ paths:
             minimum: 1
             maximum: 366
             default: 90
+        - name: compare
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: mttr_target_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: backlog_target
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: sla_target_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
       responses:
         '200':
-          description: Time-bucketed finding flow series with opened, closed, severity splits, and a reconstructed open backlog per bucket.
+          description: Time-bucketed finding flow series with opened, closed, severity splits, aging buckets, MTTR, target overlays, comparison deltas, and a reconstructed open backlog per bucket.
   /grc/ask:
     post:
       summary: Ask natural-language questions over the GRC graph
@@ -2060,6 +2088,44 @@ paths:
           schema:
             type: string
         - name: policy_id
+          in: query
+          schema:
+            type: string
+        - name: framework
+          in: query
+          schema:
+            type: string
+        - name: opened_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: opened_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: closed_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: closed_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: age_min_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: age_max_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: sla_status
           in: query
           schema:
             type: string
