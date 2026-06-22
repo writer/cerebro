@@ -1,6 +1,7 @@
 name: CodeQL
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -16,7 +17,6 @@ jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

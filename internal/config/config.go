@@ -735,6 +735,9 @@ func Load() (Config, error) {
 	if len(cfg.RateLimit.ExemptPaths) == 0 {
 		cfg.RateLimit.ExemptPaths = []string{"/healthz", "/livez", "/metrics", "/.well-known/"}
 	}
+	if err := validateSharedTenantCredentialScope(cfg.Auth); err != nil {
+		return Config{}, err
+	}
 
 	return cfg, nil
 }
@@ -760,6 +763,34 @@ func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 
 func (cfg AuthConfig) HasCredentialMaterial() bool {
 	return len(cfg.APIKeys) > 0 || len(cfg.APICredentials) > 0 || len(cfg.CapabilityTokenSecrets) > 0
+}
+
+func validateSharedTenantCredentialScope(cfg AuthConfig) error {
+	if !cfg.Enabled || len(cfg.AllowedTenants) == 0 {
+		return nil
+	}
+	for index, key := range cfg.APIKeys {
+		if strings.TrimSpace(key.TenantID) == "" {
+			return fmt.Errorf("CEREBRO_API_KEYS[%d] must set tenant_id when CEREBRO_ALLOWED_TENANTS is configured", index)
+		}
+	}
+	for index, credential := range cfg.APICredentials {
+		if strings.TrimSpace(credential.TenantID) != "" || len(credential.AllowedTenants) != 0 || containsCredentialRole(credential.Roles, "cerebro.admin") || containsCredentialRole(credential.Roles, "admin") {
+			continue
+		}
+		return fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] must set tenant_id or allowed_tenants when CEREBRO_ALLOWED_TENANTS is configured", index)
+	}
+	return nil
+}
+
+func containsCredentialRole(values []string, want string) bool {
+	want = strings.TrimSpace(want)
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func readConfigValue(name string) (string, error) {

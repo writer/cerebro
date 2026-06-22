@@ -22,6 +22,87 @@ emitted_kinds:
   - okta.threat_insight
   - okta.trusted_origin
   - okta.user
+event_contracts:
+  - kind: okta.audit
+    schema_ref: okta/audit/v1
+    required_attributes:
+      - family
+  - kind: okta.admin_role
+    schema_ref: okta/admin_role/v1
+    required_attributes:
+      - family
+  - kind: okta.api_token
+    schema_ref: okta/api_token/v1
+    required_attributes:
+      - family
+  - kind: okta.app_assignment
+    schema_ref: okta/app_assignment/v1
+    required_attributes:
+      - family
+  - kind: okta.application
+    schema_ref: okta/application/v1
+    required_attributes:
+      - family
+  - kind: okta.authorization_server
+    schema_ref: okta/authorization_server/v1
+    required_attributes:
+      - family
+  - kind: okta.authenticator
+    schema_ref: okta/authenticator/v1
+    required_attributes:
+      - family
+  - kind: okta.brand
+    schema_ref: okta/brand/v1
+    required_attributes:
+      - family
+  - kind: okta.device_assurance
+    schema_ref: okta/device_assurance/v1
+    required_attributes:
+      - family
+  - kind: okta.event_hook
+    schema_ref: okta/event_hook/v1
+    required_attributes:
+      - family
+  - kind: okta.group
+    schema_ref: okta/group/v1
+    required_attributes:
+      - family
+  - kind: okta.group_membership
+    schema_ref: okta/group_membership/v1
+    required_attributes:
+      - family
+  - kind: okta.identity_provider
+    schema_ref: okta/identity_provider/v1
+    required_attributes:
+      - family
+  - kind: okta.inline_hook
+    schema_ref: okta/inline_hook/v1
+    required_attributes:
+      - family
+  - kind: okta.log_stream
+    schema_ref: okta/log_stream/v1
+    required_attributes:
+      - family
+  - kind: okta.network_zone
+    schema_ref: okta/network_zone/v1
+    required_attributes:
+      - family
+  - kind: okta.policy_rule
+    schema_ref: okta/policy_rule/v1
+    required_attributes:
+      - family
+  - kind: okta.threat_insight
+    schema_ref: okta/threat_insight/v1
+    required_attributes:
+      - family
+  - kind: okta.trusted_origin
+    schema_ref: okta/trusted_origin/v1
+    required_attributes:
+      - family
+  - kind: okta.user
+    schema_ref: okta/user/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: identity
   authority_domain: okta

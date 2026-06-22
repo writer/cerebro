@@ -17,6 +17,35 @@ runtime_families:
   - group
   - site
   - threat
+event_contracts:
+  - kind: sentinelone.activity
+    schema_ref: sentinelone/activity/v1
+    required_attributes:
+      - family
+  - kind: sentinelone.agent
+    schema_ref: sentinelone/agent/v1
+    required_attributes:
+      - family
+  - kind: sentinelone.application_inventory
+    schema_ref: sentinelone/application_inventory/v1
+    required_attributes:
+      - family
+  - kind: sentinelone.exclusion
+    schema_ref: sentinelone/exclusion/v1
+    required_attributes:
+      - family
+  - kind: sentinelone.group
+    schema_ref: sentinelone/group/v1
+    required_attributes:
+      - family
+  - kind: sentinelone.site
+    schema_ref: sentinelone/site/v1
+    required_attributes:
+      - family
+  - kind: sentinelone.threat
+    schema_ref: sentinelone/threat/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: endpoint
   authority_domain: sentinelone

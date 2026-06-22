@@ -337,6 +337,71 @@ kind_lifecycle:
 	}
 }
 
+func TestNewRegistryPreservesCatalogCoverageAndLifecycleWithEventContracts(t *testing.T) {
+	_, err := LoadSourceCatalog([]byte(`
+id: combined_contract_source
+name: Combined Contract Source
+emitted_kinds:
+  - combined_contract_source.event
+event_contracts:
+  - kind: combined_contract_source.event
+    schema_ref: combined_contract_source/event/v1
+    required_attributes:
+      - tenant_id
+coverage_contract:
+  owner_domain: code
+  dimensions:
+    - id: incremental
+      type: incremental_sync
+      title: Incremental sync
+      support: supported
+kind_lifecycle:
+  - kind: combined_contract_source.event
+    status: active
+  - kind: combined_contract_source.legacy
+    status: deprecated
+    replacement: combined_contract_source.event
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	registry, err := NewRegistry(catalogTestSource{id: "combined_contract_source"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registered, ok := registry.Get("combined_contract_source")
+	if !ok {
+		t.Fatal("registry missing combined_contract_source")
+	}
+	eventProvider, ok := registered.(EventContractProvider)
+	if !ok {
+		t.Fatalf("registered source does not implement EventContractProvider")
+	}
+	if got := eventProvider.EventContracts(); len(got) != 1 || got[0].Kind != "combined_contract_source.event" {
+		t.Fatalf("EventContracts() = %#v, want combined_contract_source.event", got)
+	}
+	coverageProvider, ok := registered.(CoverageContractProvider)
+	if !ok {
+		t.Fatalf("registered source does not implement CoverageContractProvider")
+	}
+	if got := coverageProvider.CoverageContract(); got.SourceID != "combined_contract_source" || len(got.Dimensions) != 1 {
+		t.Fatalf("CoverageContract() = %#v, want combined_contract_source contract", got)
+	}
+	lifecycleProvider, ok := registered.(LifecycleContractProvider)
+	if !ok {
+		t.Fatalf("registered source does not implement LifecycleContractProvider")
+	}
+	if got := lifecycleProvider.LifecycleContract(); got.SourceID != "combined_contract_source" || len(got.Kinds) != 2 {
+		t.Fatalf("LifecycleContract() = %#v, want combined_contract_source contract", got)
+	}
+	if contracts := registry.CoverageContracts(); len(contracts) != 1 || contracts[0].SourceID != "combined_contract_source" {
+		t.Fatalf("CoverageContracts() = %#v, want combined_contract_source", contracts)
+	}
+	if contracts := registry.LifecycleContracts(); len(contracts) != 1 || contracts[0].SourceID != "combined_contract_source" {
+		t.Fatalf("LifecycleContracts() = %#v, want combined_contract_source", contracts)
+	}
+}
+
 func TestNewRegistryPreservesCatalogCheckpointAwareSources(t *testing.T) {
 	_, err := LoadSourceCatalog([]byte(`
 id: checkpoint_catalog_source

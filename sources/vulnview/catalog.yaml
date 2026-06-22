@@ -7,6 +7,27 @@ emitted_kinds:
   - vulnview.vulnerability
   - vulnview.asset
   - vulnview.dns_alert
+event_contracts:
+  - kind: vulnview.site
+    schema_ref: vulnview/site/v1
+    required_attributes:
+      - family
+  - kind: vulnview.scan
+    schema_ref: vulnview/scan/v1
+    required_attributes:
+      - family
+  - kind: vulnview.vulnerability
+    schema_ref: vulnview/vulnerability/v1
+    required_attributes:
+      - family
+  - kind: vulnview.asset
+    schema_ref: vulnview/asset/v1
+    required_attributes:
+      - family
+  - kind: vulnview.dns_alert
+    schema_ref: vulnview/dns_alert/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: security
   authority_domain: vulnview

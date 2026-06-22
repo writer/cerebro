@@ -3,6 +3,11 @@ name: SDK Push Source
 description: Generic push-based source used by SDK-onboarded applications.
 emitted_kinds:
   - sdk.integration_posture
+event_contracts:
+  - kind: sdk.integration_posture
+    schema_ref: sdk/integration_posture/v1
+    required_attributes:
+      - resource_urn
 coverage_contract:
   owner_domain: platform
   authority_domain: sdk

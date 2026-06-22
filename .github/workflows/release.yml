@@ -62,8 +62,18 @@ jobs:
             command: make build
           - name: test
             command: make test
+          - name: race
+            command: make test-race
+          - name: coverage
+            command: make cover
           - name: sdk
             command: make sdk-test
+          - name: sdk-dependency-audit
+            command: make sdk-dependency-audit
+          - name: script-test
+            command: make script-test
+          - name: mcp
+            command: make mcp-contract-check mcp-sdk-compat
           - name: lint
             command: make lint
           - name: proto
@@ -72,10 +82,20 @@ jobs:
             command: make openapi-check openapi-lint
           - name: catalog
             command: make catalog-check detection-catalog-check
+          - name: graph-actions
+            command: make graph-action-check
+          - name: finding-dsl
+            command: make finding-dsl-check
+          - name: policy-rule
+            command: make policy-rule-check
+          - name: docs-drift
+            command: make docs-drift-check
           - name: readme
             command: make readme-check
           - name: oss-audit
             command: make oss-audit
+          - name: govulncheck
+            command: make govulncheck
           - name: release-smoke
             command: make release-smoke
           - name: docker-smoke

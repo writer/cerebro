@@ -21,6 +21,7 @@ DOCKER_BUILD_RETRY_SLEEP ?= 10
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 COVER_PACKAGES ?= ./internal/runtimeresponse ./internal/graphagent ./internal/deviceauth ./internal/sourceprojection ./internal/findings
 COVERAGE_OUT ?= tmp/coverage.out
+COVERAGE_MIN ?= 80.0
 SDK_PYTHON_VENV ?= tmp/sdk-python-test-venv
 SDK_PYTHON_BUILD_VENV ?= tmp/sdk-python-build-venv
 SDK_PYTHON_DIST ?= tmp/sdk-python-dist
@@ -106,6 +107,8 @@ cover: ## Run Go coverage for high-stakes packages.
 	mkdir -p "$(dir $(COVERAGE_OUT))"
 	go test -covermode=atomic -coverprofile="$(COVERAGE_OUT)" $(COVER_PACKAGES)
 	go tool cover -func="$(COVERAGE_OUT)"
+	@total=$$(go tool cover -func="$(COVERAGE_OUT)" | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \
+	python3 -c 'import sys; got=float(sys.argv[1]); want=float(sys.argv[2]); print(f"coverage {got:.1f}% meets required {want:.1f}%") if got >= want else sys.exit(f"coverage {got:.1f}% is below required {want:.1f}%")' "$$total" "$(COVERAGE_MIN)"
 
 test-coverage: cover ## Alias for coverage validation.
 
@@ -465,4 +468,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check graph-action-check finding-dsl-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check graph-action-check finding-dsl-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

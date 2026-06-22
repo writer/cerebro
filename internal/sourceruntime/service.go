@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -388,6 +389,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
 		pagesRead++
+		acceptedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, event)
 			if syncedEvent == nil {
@@ -419,17 +421,54 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				}
 				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
 			}
+			acceptedEvents = append(acceptedEvents, syncedEvent)
+		}
+		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
+		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
+		if ledgerEnabled {
+			if err := ledger.BeginSourceRuntimePage(ctx, ports.SourceRuntimePageAttempt{
+				AttemptID:      attemptID,
+				RuntimeID:      runtime.GetId(),
+				SourceID:       runtime.GetSourceId(),
+				TenantID:       runtime.GetTenantId(),
+				PageNumber:     pageNumber,
+				RecordsScanned: recordsScanned,
+				Events:         acceptedEvents,
+			}); err != nil {
+				return nil, err
+			}
+		}
+		pageEntitiesProjected := uint32(0)
+		pageLinksProjected := uint32(0)
+		for _, syncedEvent := range acceptedEvents {
 			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
 				return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
 			}
 			eventsAppended++
-			if s.projector != nil {
+		}
+		if ledgerEnabled {
+			if err := ledger.MarkSourceRuntimePageAppended(ctx, attemptID); err != nil {
+				return nil, err
+			}
+		}
+		if s.projector != nil {
+			for _, syncedEvent := range acceptedEvents {
 				result, err := s.projector.Project(ctx, syncedEvent)
 				if err != nil {
 					return nil, fmt.Errorf("project source event %q: %w", syncedEvent.GetId(), err)
 				}
 				entitiesProjected += result.EntitiesProjected
 				linksProjected += result.LinksProjected
+				pageEntitiesProjected += result.EntitiesProjected
+				pageLinksProjected += result.LinksProjected
+			}
+		}
+		if ledgerEnabled {
+			if err := ledger.MarkSourceRuntimePageProjected(ctx, attemptID, ports.SourceRuntimePageProjection{
+				EntitiesProjected: pageEntitiesProjected,
+				LinksProjected:    pageLinksProjected,
+			}); err != nil {
+				return nil, err
 			}
 		}
 		runtime.LastSyncedAt = timestamppb.Now()
@@ -445,8 +484,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			ShortCircuitReason:   shortCircuitReason,
 			ReconciliationReason: reconciliationReason,
 		})
-		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
-			return nil, err
+		if ledgerEnabled {
+			if err := ledger.CommitSourceRuntimePage(ctx, attemptID, runtime); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+				return nil, err
+			}
 		}
 		checkpointAdvanced = runtimeCheckpointAdvanced(originalCheckpoint, runtime.GetCheckpoint())
 		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
@@ -1277,6 +1322,16 @@ func progressConfigHash(config map[string]string) string {
 		hash.Write([]byte(config[key]))
 		hash.Write([]byte{0})
 	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func sourceRuntimePageAttemptID(runtimeID string, pageNumber uint32, started time.Time) string {
+	hash := sha256.New()
+	hash.Write([]byte(strings.TrimSpace(runtimeID)))
+	hash.Write([]byte{0})
+	hash.Write([]byte(started.UTC().Format(time.RFC3339Nano)))
+	hash.Write([]byte{0})
+	hash.Write([]byte(strconv.FormatUint(uint64(pageNumber), 10)))
 	return hex.EncodeToString(hash.Sum(nil))
 }
 

@@ -50,6 +50,7 @@ jobs:
       INPUT_MAX_P95_MS: ${{ github.event.inputs.max_p95_ms }}
       SECRET_BASE_URL: ${{ secrets.CEREBRO_LOAD_SMOKE_BASE_URL }}
       CEREBRO_LOAD_SMOKE_BEARER_TOKEN: ${{ secrets.CEREBRO_LOAD_SMOKE_BEARER_TOKEN }}
+      EVENT_NAME: ${{ github.event_name }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
@@ -59,6 +60,10 @@ jobs:
         run: |
           target_url="${INPUT_BASE_URL:-$SECRET_BASE_URL}"
           if [ -z "$target_url" ]; then
+            if [ "$EVENT_NAME" = "schedule" ]; then
+              echo "Scheduled load smoke requires CEREBRO_LOAD_SMOKE_BASE_URL."
+              exit 1
+            fi
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "No load-smoke target configured; set the CEREBRO_LOAD_SMOKE_BASE_URL secret or pass base_url manually."
             exit 0
