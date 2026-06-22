@@ -3,6 +3,7 @@ package proactivetriage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -148,7 +149,8 @@ func TestRunDoesNotDiscloseForeignTenantOnScopeMismatch(t *testing.T) {
 	if !errors.Is(err, ErrTenantScopeMismatch) {
 		t.Fatalf("Run() error = %v, want ErrTenantScopeMismatch", err)
 	}
-	if strings.Contains(err.Error(), foreignTenant) {
-		t.Fatalf("error discloses foreign tenant id: %q", err.Error())
+	// Inspect the rendered error to ensure the foreign tenant id is not leaked.
+	if rendered := fmt.Sprintf("%v", err); strings.Contains(rendered, foreignTenant) {
+		t.Fatalf("error discloses foreign tenant id: %q", rendered)
 	}
 }
