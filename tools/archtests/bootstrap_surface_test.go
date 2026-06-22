@@ -18,8 +18,9 @@ import (
 // saved-ask-query request/response mapping and tenant-scoped CRUD handlers;
 // durable storage lives in internal/statestore/postgres and the AskQueryStore
 // port, so the additions stay within bootstrap's routing, auth, and composition
-// responsibility.
-const bootstrapProductionGoLineBudget = 24618
+// responsibility. The ask-query write scope constant keeps saved-query mutation
+// routes from reusing a read-only scope.
+const bootstrapProductionGoLineBudget = 24619
 
 type bootstrapFileLineCount struct {
 	path  string
