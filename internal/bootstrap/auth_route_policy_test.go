@@ -86,6 +86,37 @@ func TestGraphActionHTTPRoutesRequireDedicatedScope(t *testing.T) {
 	}
 }
 
+func TestAskQueryHTTPRoutesRequireWriteScope(t *testing.T) {
+	readPolicy := httpRoutePolicyFor(http.MethodGet, "/ask-queries")
+	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+		t.Fatalf("GET /ask-queries policy = %#v, want read scope", readPolicy)
+	}
+
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/ask-queries"},
+		{method: http.MethodPatch, path: "/ask-queries/query-1"},
+		{method: http.MethodDelete, path: "/ask-queries/query-1"},
+	} {
+		policy := httpRoutePolicyFor(tt.method, tt.path)
+		if policy.Scope != scopeAskQueriesWrite || policy.AdminOnly {
+			t.Fatalf("%s %s policy = %#v, want ask queries write scope", tt.method, tt.path, policy)
+		}
+
+		readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+		if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
+			t.Fatalf("read-only principal authorized for %s %s: %v", tt.method, tt.path, err)
+		}
+
+		writer := authPrincipal{Scopes: []string{scopeAskQueriesWrite}}
+		if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
+			t.Fatalf("ask query writer rejected for %s %s: %v", tt.method, tt.path, err)
+		}
+	}
+}
+
 func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
 	policy := httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")
 	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {

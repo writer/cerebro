@@ -19,6 +19,7 @@ const (
 	ScopeConnectorsWrite           = "cerebro.connectors.write"
 	ScopeJobsWrite                 = "cerebro.jobs.write"
 	ScopeSourceRuntimesWrite       = "cerebro.source_runtimes.write"
+	ScopeAskQueriesWrite           = "cerebro.ask_queries.write"
 
 	RoleCerebroAdmin            = "cerebro.admin"
 	RoleCerebroViewer           = "cerebro.viewer"
@@ -48,6 +49,7 @@ var allScopes = []string{
 	ScopeConnectorsWrite,
 	ScopeJobsWrite,
 	ScopeSourceRuntimesWrite,
+	ScopeAskQueriesWrite,
 }
 
 var roleScopes = map[string][]string{
@@ -60,21 +62,24 @@ var roleScopes = map[string][]string{
 		ScopeFindingCandidatePromote,
 		ScopeFindingLifecycleWrite,
 		ScopeGRCInventoryWrite,
+		ScopeAskQueriesWrite,
 	},
 	"analyst": {
 		ScopeCosmoSecurityRead,
 		ScopeFindingCandidatePromote,
 		ScopeFindingLifecycleWrite,
 		ScopeGRCInventoryWrite,
+		ScopeAskQueriesWrite,
 	},
 	"editor": {
 		ScopeCosmoSecurityRead,
 		ScopeFindingCandidatePromote,
 		ScopeFindingLifecycleWrite,
 		ScopeGRCInventoryWrite,
+		ScopeAskQueriesWrite,
 	},
-	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite},
-	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeGRCInventoryWrite},
+	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeAskQueriesWrite},
+	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeGRCInventoryWrite, ScopeAskQueriesWrite},
 	RoleCerebroConnectorManager: {
 		ScopeCosmoSecurityRead,
 		ScopeConnectorCredentialsRead,

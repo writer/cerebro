@@ -14,11 +14,13 @@ import (
 // bootstrapProductionGoLineBudget ratchets the raw line count of non-test Go in
 // internal/bootstrap. grc_export.go adds GRC findings/controls CSV export
 // handlers, and report_schedules.go adds scheduled-report request/response
-// mapping plus the thin scheduler composition loop. Durable schedule storage
-// lives in internal/statestore/postgres and report evaluation in internal/reports,
-// so these additions stay within bootstrap's routing, auth, and composition
-// responsibility.
-const bootstrapProductionGoLineBudget = 24334
+// mapping plus the thin scheduler composition loop. ask_queries.go adds
+// saved-ask-query request/response mapping and tenant-scoped CRUD handlers;
+// durable storage lives in internal/statestore/postgres and the AskQueryStore
+// port, so the additions stay within bootstrap's routing, auth, and composition
+// responsibility. The ask-query write scope constant keeps saved-query mutation
+// routes from reusing a read-only scope.
+const bootstrapProductionGoLineBudget = 24619
 
 type bootstrapFileLineCount struct {
 	path  string
