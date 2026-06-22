@@ -92,14 +92,26 @@ func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 			rule:    newGitHubProgrammaticCredentialReviewRule(),
 			runtime: runtime,
 			row: ports.CypherRow{Values: map[string]any{
-				"primary_urn":     "urn:cerebro:writer:github_credential:deploy_key@repo",
-				"primary_label":   "deploy_key",
+				"primary_urn":     "urn:cerebro:writer:github_credential:personal_access_token:token-1",
+				"primary_label":   "token-1",
 				"primary_type":    "github.credential",
-				"fingerprint_key": "urn:cerebro:writer:github_credential:deploy_key@repo",
-				"severity":        "MEDIUM",
-				"summary":         "GitHub programmatic access resource deploy_key needs owner/scope review",
-				"action":          "review",
-				"resource_urns":   []any{"urn:cerebro:writer:github_credential:deploy_key@repo"},
+				"fingerprint_key": "urn:cerebro:writer:github_credential:personal_access_token:token-1",
+				"severity":        "HIGH",
+				"summary":         "Active GitHub personal access token token-1 needs owner, scope, and rotation review",
+				"action":          "Validate owner, business need, org/repo boundary, scopes in evidence, last use, and rotation; revoke unused or undocumented programmatic access",
+				"resource_urns": []any{
+					"urn:cerebro:writer:github_credential:personal_access_token:token-1",
+					"urn:cerebro:writer:github_code_repository:writer/cerebro",
+				},
+				"evidence": []any{
+					map[string]any{"urn": "urn:cerebro:writer:github_credential:personal_access_token:token-1", "label": "token-1", "entity_type": "github.credential", "relation": "credential", "attributes_json": `{"credential_type":"personal_access_token","repository":"writer/cerebro","scope":"repo,workflow","status":"active"}`},
+					map[string]any{"urn": "urn:cerebro:writer:github_code_repository:writer/cerebro", "label": "writer/cerebro", "entity_type": "github.code.repository", "relation": "belongs_to", "attributes_json": `{}`},
+				},
+				"finding_attributes": map[string]any{ // #nosec G101 -- test credential fields are graph identifiers, not secret material.
+					"github_credential_urn": "urn:cerebro:writer:github_credential:personal_access_token:token-1",
+					"credential_type":       "personal_access_token",
+					"credential_status":     "active",
+				},
 			}},
 		},
 		{
@@ -188,6 +200,67 @@ func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 	}
 }
 
+func TestGitHubProgrammaticCredentialReviewRuleEmitsActionableContext(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	graphRule, ok := newGitHubProgrammaticCredentialReviewRule().(GraphRule)
+	if !ok {
+		t.Fatal("GitHub credential rule does not implement GraphRule")
+	}
+	row := ports.CypherRow{Values: map[string]any{
+		"primary_urn":     "urn:cerebro:writer:github_credential:integration_installation:3263165911",
+		"primary_label":   "3263165911",
+		"primary_type":    "github.credential",
+		"fingerprint_key": "urn:cerebro:writer:github_credential:integration_installation:3263165911",
+		"severity":        "MEDIUM",
+		"summary":         "Active GitHub App installation 3263165911 needs owner, scope, and rotation review",
+		"action":          "Validate owner, business need, org/repo boundary, scopes in evidence, last use, and rotation; revoke unused or undocumented programmatic access",
+		"resource_urns": []any{
+			"urn:cerebro:writer:github_credential:integration_installation:3263165911",
+			"urn:cerebro:writer:github_org:writer",
+		},
+		"evidence": []any{
+			map[string]any{"urn": "urn:cerebro:writer:github_credential:integration_installation:3263165911", "label": "3263165911", "entity_type": "github.credential", "relation": "credential", "attributes_json": `{"credential_type":"integration_installation","github_app_id":"3263165911","org":"writer","status":"active"}`},
+			map[string]any{"urn": "urn:cerebro:writer:github_org:writer", "label": "writer", "entity_type": "github.org", "relation": "belongs_to", "attributes_json": `{}`},
+		},
+		"finding_attributes": map[string]any{ // #nosec G101 -- test credential fields are graph identifiers, not secret material.
+			"github_credential_urn":   "urn:cerebro:writer:github_credential:integration_installation:3263165911",
+			"credential_type":         "integration_installation",
+			"credential_status":       "active",
+			"credential_scope_source": "org_attribute",
+		},
+	}}
+	findings, err := graphRule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows returned %d findings, want 1", len(findings))
+	}
+	finding := findings[0]
+	if strings.Contains(finding.Summary, "programmatic access resource") {
+		t.Fatalf("summary kept opaque fallback wording: %q", finding.Summary)
+	}
+	for _, want := range []string{"GitHub App installation", "3263165911", "owner, scope, and rotation"} {
+		if !strings.Contains(finding.Summary, want) {
+			t.Fatalf("summary missing %q: %q", want, finding.Summary)
+		}
+	}
+	for key, want := range map[string]string{ // #nosec G101 -- expected credential fields are graph identifiers, not secret material.
+		"github_credential_urn":   "urn:cerebro:writer:github_credential:integration_installation:3263165911",
+		"credential_type":         "integration_installation",
+		"credential_status":       "active",
+		"credential_scope_source": "org_attribute",
+		"graph_evidence_count":    "2",
+	} {
+		if got := finding.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+	if len(finding.GraphEvidenceRows) != 2 {
+		t.Fatalf("GraphEvidenceRows length = %d, want 2", len(finding.GraphEvidenceRows))
+	}
+}
+
 func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 	tests := []struct {
 		name string
@@ -205,9 +278,9 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 			want: []string{`entity_type: 'aws.ecs.task_definition'`, `relation: 'runs_as'`, `relation: 'depends_on'`, `relation: 'can_reach'`, `relation: 'member_of'`, `relation: 'attached_to'`, `access.relation IN ['can_admin', 'can_assume', 'can_impersonate', 'can_perform']`, `duration('P30D')`},
 		},
 		{
-			name: "github credentials exclude inactive resources",
+			name: "github credentials require active non-public-key resources with evidence",
 			rule: newGitHubProgrammaticCredentialReviewRule(),
-			want: []string{`entity_type: 'github.credential'`, `"status":"inactive"`},
+			want: []string{`entity_type: 'github.credential'`, `"status":"active"`, `AND NOT attrs CONTAINS '"credential_type":"public_key"'`, `finding_attributes`, `attributes_json: attrs`, `relation: 'belongs_to'`, `relation: 'acted_on'`},
 		},
 		{
 			name: "okta threat insight checks for blocking mode",
