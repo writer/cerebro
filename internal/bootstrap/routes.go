@@ -86,7 +86,12 @@ func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
 func (app *App) registerReportRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /reports", routeSurfacePlatformHTTP, app.handleListReportDefinitions)
 	registerHTTPRoute(mux, "POST /reports/{reportID}/runs", routeSurfacePlatformHTTP, app.handleRunReport)
+	registerHTTPRoute(mux, "GET /report-runs", routeSurfacePlatformHTTP, app.handleListReportRuns)
 	registerHTTPRoute(mux, "GET /report-runs/{runID}", routeSurfacePlatformHTTP, app.handleGetReportRun)
+	registerHTTPRoute(mux, "GET /report-schedules", routeSurfacePlatformHTTP, app.handleListReportSchedules)
+	registerHTTPRoute(mux, "POST /report-schedules", routeSurfacePlatformHTTP, app.handleCreateReportSchedule)
+	registerHTTPRoute(mux, "PATCH /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleUpdateReportSchedule)
+	registerHTTPRoute(mux, "DELETE /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleDeleteReportSchedule)
 }
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {

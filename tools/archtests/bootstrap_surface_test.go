@@ -11,11 +11,14 @@ import (
 	"testing"
 )
 
-// Architecture note: bumped for grc_export.go, the GRC findings/controls CSV
-// export handlers. CSV serialization is request/response mapping of already
-// modeled finding/control items (a bootstrap responsibility), so it stays in
-// the composition layer rather than a new domain package.
-const bootstrapProductionGoLineBudget = 23872
+// bootstrapProductionGoLineBudget ratchets the raw line count of non-test Go in
+// internal/bootstrap. grc_export.go adds GRC findings/controls CSV export
+// handlers, and report_schedules.go adds scheduled-report request/response
+// mapping plus the thin scheduler composition loop. Durable schedule storage
+// lives in internal/statestore/postgres and report evaluation in internal/reports,
+// so these additions stay within bootstrap's routing, auth, and composition
+// responsibility.
+const bootstrapProductionGoLineBudget = 24334
 
 type bootstrapFileLineCount struct {
 	path  string

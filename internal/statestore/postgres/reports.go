@@ -84,6 +84,82 @@ func (s *Store) GetReportRun(ctx context.Context, reportRunID string) (*cerebrov
 	return run, nil
 }
 
+// ListReportRuns returns recent persisted report runs newest-first, scoped by
+// tenant (read from the run parameters) and optionally by report id.
+func (s *Store) ListReportRuns(ctx context.Context, filter ports.ReportRunFilter) ([]*cerebrov1.ReportRun, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureReportRunTable(ctx); err != nil {
+		return nil, err
+	}
+	clauses := []string{}
+	args := []any{}
+	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
+		args = append(args, tenantID)
+		clauses = append(clauses, fmt.Sprintf("report_run_json->'parameters'->>'tenant_id' = $%d", len(args)))
+	}
+	if reportID := strings.TrimSpace(filter.ReportID); reportID != "" {
+		args = append(args, reportID)
+		clauses = append(clauses, fmt.Sprintf("report_run_json->>'report_id' = $%d", len(args)))
+	}
+	where := ""
+	if len(clauses) > 0 {
+		where = "WHERE " + strings.Join(clauses, " AND ")
+	}
+	limit := reportRunListLimit(filter.Limit)
+	args = append(args, limit)
+	// #nosec G201 -- clauses use fixed JSONB column predicates and all values remain parameterized.
+	query := fmt.Sprintf(`
+SELECT report_run_json::text
+FROM report_runs
+%s
+ORDER BY created_at DESC
+LIMIT $%d`, where, len(args))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list report runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	runs := []*cerebrov1.ReportRun{}
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("scan report run: %w", err)
+		}
+		run := &cerebrov1.ReportRun{}
+		if err := protojson.Unmarshal([]byte(payload), run); err != nil {
+			return nil, fmt.Errorf("decode report run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
+}
+
+func reportRunListLimit(limit uint32) uint32 {
+	const (
+		defaultLimit uint32 = 50
+		maxLimit     uint32 = 200
+	)
+	switch {
+	case limit == 0:
+		return defaultLimit
+	case limit > maxLimit:
+		return maxLimit
+	default:
+		return limit
+	}
+}
+
 func (s *Store) ensureReportRunTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.reportRunTableReady, "report run", ensureReportRunStatements)
+	return s.ensureReportTables(ctx)
+}
+
+// ensureReportTables creates the report_runs and report_schedules tables under a
+// single readiness flag so both are provisioned on first use.
+func (s *Store) ensureReportTables(ctx context.Context) error {
+	statements := make([]string, 0, len(ensureReportRunStatements)+len(ensureReportScheduleStatements))
+	statements = append(statements, ensureReportRunStatements...)
+	statements = append(statements, ensureReportScheduleStatements...)
+	return s.ensureStatements(ctx, &s.reportTablesReady, "report", statements)
 }
