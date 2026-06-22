@@ -16,9 +16,17 @@ import (
 type riskScoringConfigRequest struct {
 	TenantID        string                                   `json:"tenant_id"`
 	Thresholds      ports.RiskScoringLevelThresholds         `json:"thresholds"`
-	Signals         ports.RiskScoringSignalThresholds        `json:"signals"`
+	Signals         riskScoringSignalThresholdsRequest       `json:"signals"`
 	RelationWeights map[string]int                           `json:"relation_weights"`
 	FactorWeights   map[string]ports.RiskScoringFactorWeight `json:"factor_weights"`
+}
+
+type riskScoringSignalThresholdsRequest struct {
+	EPSSHigh                    *float64 `json:"epss_high"`
+	EPSSElevated                *float64 `json:"epss_elevated"`
+	CVSSCritical                *float64 `json:"cvss_critical"`
+	CVSSHigh                    *float64 `json:"cvss_high"`
+	PrivateNetworkLikelihoodCap *int     `json:"private_network_likelihood_cap"`
 }
 
 type riskScoringConfigResponse struct {
@@ -75,13 +83,7 @@ func (a *App) handlePutRiskScoringConfig(w http.ResponseWriter, r *http.Request)
 		writeRiskScoringConfigError(w, fmt.Errorf("%w: tenant_id is required", findings.ErrInvalidRequest))
 		return
 	}
-	config, err := findings.NormalizeRiskScoringConfig(ports.RiskScoringConfig{
-		TenantID:        tenantID,
-		Thresholds:      request.Thresholds,
-		Signals:         request.Signals,
-		RelationWeights: request.RelationWeights,
-		FactorWeights:   request.FactorWeights,
-	})
+	config, err := request.riskScoringConfig(tenantID)
 	if err != nil {
 		writeRiskScoringConfigError(w, fmt.Errorf("%w: %w", findings.ErrInvalidRequest, err))
 		return
@@ -95,7 +97,7 @@ func (a *App) handlePutRiskScoringConfig(w http.ResponseWriter, r *http.Request)
 		writeRiskScoringConfigError(w, err)
 		return
 	}
-	normalized, err := findings.NormalizeRiskScoringConfig(*stored)
+	normalized, err := findings.NormalizeCompleteRiskScoringConfig(*stored)
 	if err != nil {
 		writeRiskScoringConfigError(w, fmt.Errorf("%w: %w", findings.ErrInvalidRequest, err))
 		return
@@ -139,7 +141,7 @@ func (a *App) effectiveRiskScoringConfig(ctx context.Context, tenantID string) (
 		}
 		return ports.RiskScoringConfig{}, false, err
 	}
-	normalized, err := findings.NormalizeRiskScoringConfig(*stored)
+	normalized, err := findings.NormalizeCompleteRiskScoringConfig(*stored)
 	if err != nil {
 		return ports.RiskScoringConfig{}, false, fmt.Errorf("%w: %w", findings.ErrInvalidRequest, err)
 	}
@@ -166,6 +168,37 @@ func newRiskScoringConfigView(config ports.RiskScoringConfig, persisted bool) ri
 		view.UpdatedAt = config.UpdatedAt.UTC().Format(time.RFC3339)
 	}
 	return view
+}
+
+func (request riskScoringConfigRequest) riskScoringConfig(tenantID string) (ports.RiskScoringConfig, error) {
+	config := findings.DefaultRiskScoringConfig(tenantID)
+	if request.Thresholds.Critical != 0 {
+		config.Thresholds.Critical = request.Thresholds.Critical
+	}
+	if request.Thresholds.High != 0 {
+		config.Thresholds.High = request.Thresholds.High
+	}
+	if request.Thresholds.Medium != 0 {
+		config.Thresholds.Medium = request.Thresholds.Medium
+	}
+	if request.Signals.EPSSHigh != nil {
+		config.Signals.EPSSHigh = *request.Signals.EPSSHigh
+	}
+	if request.Signals.EPSSElevated != nil {
+		config.Signals.EPSSElevated = *request.Signals.EPSSElevated
+	}
+	if request.Signals.CVSSCritical != nil {
+		config.Signals.CVSSCritical = *request.Signals.CVSSCritical
+	}
+	if request.Signals.CVSSHigh != nil {
+		config.Signals.CVSSHigh = *request.Signals.CVSSHigh
+	}
+	if request.Signals.PrivateNetworkLikelihoodCap != nil {
+		config.Signals.PrivateNetworkLikelihoodCap = *request.Signals.PrivateNetworkLikelihoodCap
+	}
+	config.RelationWeights = request.RelationWeights
+	config.FactorWeights = request.FactorWeights
+	return findings.NormalizeCompleteRiskScoringConfig(config)
 }
 
 func riskScoringConfigStore(store ports.StateStore) ports.RiskScoringConfigStore {

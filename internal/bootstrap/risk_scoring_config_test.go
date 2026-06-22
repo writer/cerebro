@@ -82,7 +82,7 @@ func TestHandlePutRiskScoringConfigPersistsOverride(t *testing.T) {
 	if stored == nil {
 		t.Fatal("config was not persisted")
 	}
-	if stored.Thresholds.Critical != 90 || stored.Signals.EPSSHigh != 0.75 || stored.RelationWeights["can_admin"] != 12 {
+	if stored.Thresholds.Critical != 90 || stored.Signals.EPSSHigh != 0.75 || stored.Signals.CVSSHigh != 7 || stored.RelationWeights["can_admin"] != 12 {
 		t.Fatalf("stored config = %#v", stored)
 	}
 	var response riskScoringConfigResponse
@@ -91,6 +91,34 @@ func TestHandlePutRiskScoringConfigPersistsOverride(t *testing.T) {
 	}
 	if !response.Persisted || response.Config.ModelVersion == "" {
 		t.Fatalf("response = %#v, want persisted config with model version", response)
+	}
+}
+
+func TestHandlePutRiskScoringConfigPreservesZeroSignals(t *testing.T) {
+	store := newStubRiskScoringConfigStore()
+	app := askQueryTestApp(store)
+	body := `{"signals":{"epss_high":0,"epss_elevated":0,"cvss_critical":1,"cvss_high":0,"private_network_likelihood_cap":0}}`
+	recorder := httptest.NewRecorder()
+	app.handlePutRiskScoringConfig(recorder, askQueryTestRequest(http.MethodPut, "/grc/risk-scoring-config", body))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	stored := store.configs["local"]
+	if stored == nil {
+		t.Fatal("config was not persisted")
+	}
+	if stored.Signals.EPSSHigh != 0 || stored.Signals.EPSSElevated != 0 || stored.Signals.CVSSCritical != 1 || stored.Signals.CVSSHigh != 0 || stored.Signals.PrivateNetworkLikelihoodCap != 0 {
+		t.Fatalf("stored signals = %#v, want explicit zero values preserved", stored.Signals)
+	}
+	if got := stored.FactorWeights["private_network_context"].LikelihoodCap; got != 0 {
+		t.Fatalf("private network factor cap = %d, want 0", got)
+	}
+	var response riskScoringConfigResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Config.Signals.EPSSHigh != 0 || response.Config.Signals.PrivateNetworkLikelihoodCap != 0 {
+		t.Fatalf("response signals = %#v, want explicit zero values preserved", response.Config.Signals)
 	}
 }
 

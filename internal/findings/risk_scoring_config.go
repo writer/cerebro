@@ -116,6 +116,40 @@ func NormalizeRiskScoringConfig(input ports.RiskScoringConfig) (ports.RiskScorin
 		}
 		normalized.FactorWeights[name] = weight
 	}
+	syncPrivateNetworkCap(&normalized)
+	normalized.CreatedAt = input.CreatedAt
+	normalized.UpdatedAt = input.UpdatedAt
+	if err := ValidateRiskScoringConfig(normalized); err != nil {
+		return ports.RiskScoringConfig{}, err
+	}
+	return normalized, nil
+}
+
+// NormalizeCompleteRiskScoringConfig normalizes a fully materialized config while
+// preserving explicit zero-valued signal thresholds.
+func NormalizeCompleteRiskScoringConfig(input ports.RiskScoringConfig) (ports.RiskScoringConfig, error) {
+	normalized := DefaultRiskScoringConfig(input.TenantID)
+	if input.Thresholds != (ports.RiskScoringLevelThresholds{}) {
+		normalized.Thresholds = input.Thresholds
+	}
+	if input.Signals != (ports.RiskScoringSignalThresholds{}) {
+		normalized.Signals = input.Signals
+	}
+	for key, weight := range input.RelationWeights {
+		name := normalizeRiskScoringKey(key)
+		if name == "" {
+			return ports.RiskScoringConfig{}, fmt.Errorf("relation weight key is required")
+		}
+		normalized.RelationWeights[name] = weight
+	}
+	for key, weight := range input.FactorWeights {
+		name := normalizeRiskScoringKey(key)
+		if name == "" {
+			return ports.RiskScoringConfig{}, fmt.Errorf("factor weight key is required")
+		}
+		normalized.FactorWeights[name] = weight
+	}
+	syncPrivateNetworkCap(&normalized)
 	normalized.CreatedAt = input.CreatedAt
 	normalized.UpdatedAt = input.UpdatedAt
 	if err := ValidateRiskScoringConfig(normalized); err != nil {
@@ -172,12 +206,24 @@ func normalizeRiskScoringKey(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+func syncPrivateNetworkCap(config *ports.RiskScoringConfig) {
+	if config == nil {
+		return
+	}
+	if config.FactorWeights == nil {
+		config.FactorWeights = map[string]ports.RiskScoringFactorWeight{}
+	}
+	weight := config.FactorWeights["private_network_context"]
+	weight.LikelihoodCap = config.Signals.PrivateNetworkLikelihoodCap
+	config.FactorWeights["private_network_context"] = weight
+}
+
 func riskScoringSettingsFromConfig(config *ports.RiskScoringConfig) riskScoringSettings {
 	if config == nil {
 		defaultConfig := DefaultRiskScoringConfig("")
 		return riskScoringSettings{config: defaultConfig, modelVersion: defaultFindingRiskModelVersion}
 	}
-	normalized, err := NormalizeRiskScoringConfig(*config)
+	normalized, err := NormalizeCompleteRiskScoringConfig(*config)
 	if err != nil {
 		defaultConfig := DefaultRiskScoringConfig("")
 		return riskScoringSettings{config: defaultConfig, modelVersion: defaultFindingRiskModelVersion}
@@ -236,7 +282,7 @@ func applyRiskScoringFactor(settings riskScoringSettings, key string, reason str
 	*likelihood += weight.Likelihood
 	*impact += weight.Impact
 	*confidence += weight.Confidence
-	if weight.LikelihoodCap > 0 {
+	if weight.LikelihoodCap > 0 || normalizeRiskScoringKey(key) == "private_network_context" {
 		*likelihood = min(*likelihood, weight.LikelihoodCap)
 	}
 	if strings.TrimSpace(reason) != "" {

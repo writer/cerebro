@@ -361,6 +361,34 @@ func TestAnalyzeFindingRiskContextWithConfigUsesCustomThresholds(t *testing.T) {
 	}
 }
 
+func TestEnrichFindingRiskWithConfigUsesCustomThresholdLevels(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.Thresholds.Critical = 95
+	config.Thresholds.High = 80
+	config.Thresholds.Medium = 60
+	finding := &ports.FindingRecord{
+		ID:       "finding-custom-levels",
+		TenantID: "writer",
+		Severity: "LOW",
+		Status:   findingStatusOpen,
+		FindingRisk: ports.FindingRisk{
+			RiskScore:       75,
+			LikelihoodScore: 75,
+			ImpactScore:     75,
+		},
+		Attributes: map[string]string{},
+	}
+
+	enriched := enrichFindingRiskWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if enriched.LikelihoodLevel != "medium" || enriched.ImpactLevel != "medium" {
+		t.Fatalf("levels = %q/%q, want medium/medium under custom thresholds", enriched.LikelihoodLevel, enriched.ImpactLevel)
+	}
+	if got := enriched.Attributes[FindingEffectiveSeverityAttribute]; got != "MEDIUM" {
+		t.Fatalf("effective severity = %q, want MEDIUM", got)
+	}
+}
+
 func TestAnalyzeFindingRiskContextWithConfigUsesFactorWeights(t *testing.T) {
 	config := DefaultRiskScoringConfig("writer")
 	config.FactorWeights["external_exposure"] = ports.RiskScoringFactorWeight{Likelihood: 5}
@@ -375,6 +403,22 @@ func TestAnalyzeFindingRiskContextWithConfigUsesFactorWeights(t *testing.T) {
 	}
 	if !stringSliceContains(customContext.Reasons, "external_exposure") {
 		t.Fatalf("Risk reasons = %#v, want external_exposure reason preserved", customContext.Reasons)
+	}
+}
+
+func TestAnalyzeFindingRiskContextWithConfigUsesPrivateNetworkSignalCap(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.Signals.PrivateNetworkLikelihoodCap = 5
+	finding := compoundRiskFinding("finding-private-network-cap", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes["private_network"] = "true"
+
+	context := AnalyzeFindingRiskContextWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if context.LikelihoodScore != 5 {
+		t.Fatalf("LikelihoodScore = %d, want signal cap 5", context.LikelihoodScore)
+	}
+	if !stringSliceContains(context.Reasons, "private_network_context") {
+		t.Fatalf("Risk reasons = %#v, want private_network_context", context.Reasons)
 	}
 }
 

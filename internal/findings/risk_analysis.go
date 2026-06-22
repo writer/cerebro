@@ -669,10 +669,6 @@ func clampScore(score int) int {
 	}
 }
 
-func riskLevelFromScore(score int) string {
-	return RiskLevelFromScoreWithConfig(score, nil)
-}
-
 // RiskLevelFromScoreWithConfig maps a score to a risk level using optional thresholds.
 func RiskLevelFromScoreWithConfig(score int, config *ports.RiskScoringConfig) string {
 	return riskScoringSettingsFromConfig(config).level(score)

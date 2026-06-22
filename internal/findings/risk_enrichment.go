@@ -33,10 +33,10 @@ func enrichFindingRiskWithConfig(record *ports.FindingRecord, now time.Time, con
 		record.ConfidenceScore = evaluation.ConfidenceScore
 	}
 	if strings.TrimSpace(record.LikelihoodLevel) == "" {
-		record.LikelihoodLevel = riskLevelFromScore(record.LikelihoodScore)
+		record.LikelihoodLevel = RiskLevelFromScoreWithConfig(record.LikelihoodScore, config)
 	}
 	if strings.TrimSpace(record.ImpactLevel) == "" {
-		record.ImpactLevel = riskLevelFromScore(record.ImpactScore)
+		record.ImpactLevel = RiskLevelFromScoreWithConfig(record.ImpactScore, config)
 	}
 	if record.RiskScore <= 0 {
 		record.RiskScore = productRiskScore(record.LikelihoodScore, record.ImpactScore)

@@ -22,8 +22,9 @@ import (
 // routes from reusing a read-only scope. risk_scoring_config.go adds the thin
 // HTTP request/response mapping for tenant-scoped scoring overrides; validation
 // and defaulting live in internal/findings, and storage lives behind the
-// RiskScoringConfigStore port.
-const bootstrapProductionGoLineBudget = 24780
+// RiskScoringConfigStore port. The zero-preserving signal request shape keeps
+// OpenAPI-permitted values distinguishable at the HTTP boundary.
+const bootstrapProductionGoLineBudget = 24813
 
 type bootstrapFileLineCount struct {
 	path  string
