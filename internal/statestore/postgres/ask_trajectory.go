@@ -128,5 +128,5 @@ WHERE trace_id = $1`,
 }
 
 func (s *Store) ensureAskTrajectoryTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.askTrajectoryReady, "ask trajectory", ensureAskTrajectoryStatements)
+	return s.ensureStatements(ctx, &s.ask.trajectory, "ask trajectory", ensureAskTrajectoryStatements)
 }

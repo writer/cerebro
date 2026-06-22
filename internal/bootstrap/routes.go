@@ -30,6 +30,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerOAuthRoutes(mux)
 	app.registerAgentPlatformRoutes(mux)
 	app.registerReportRoutes(mux)
+	app.registerAskQueryRoutes(mux)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
 	app.registerSourceRoutes(mux)
@@ -92,6 +93,13 @@ func (app *App) registerReportRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /report-schedules", routeSurfacePlatformHTTP, app.handleCreateReportSchedule)
 	registerHTTPRoute(mux, "PATCH /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleUpdateReportSchedule)
 	registerHTTPRoute(mux, "DELETE /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleDeleteReportSchedule)
+}
+
+func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /ask-queries", routeSurfacePlatformHTTP, app.handleListAskQueries)
+	registerHTTPRoute(mux, "POST /ask-queries", routeSurfacePlatformHTTP, app.handleCreateAskQuery)
+	registerHTTPRoute(mux, "PATCH /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleUpdateAskQuery)
+	registerHTTPRoute(mux, "DELETE /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleDeleteAskQuery)
 }
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {

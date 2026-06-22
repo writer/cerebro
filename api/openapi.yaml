@@ -1886,6 +1886,90 @@ paths:
       responses:
         '204':
           description: Report schedule deleted.
+  /ask-queries:
+    get:
+      summary: List saved ask queries
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Saved ask queries for the tenant, pinned first then newest-first.
+    post:
+      summary: Create saved ask query
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - question
+              properties:
+                tenant_id:
+                  type: string
+                name:
+                  type: string
+                question:
+                  type: string
+                scope_urn:
+                  type: string
+                model:
+                  type: string
+                pinned:
+                  type: boolean
+      responses:
+        '201':
+          description: Created saved ask query.
+  /ask-queries/{queryID}:
+    patch:
+      summary: Update saved ask query
+      tags:
+        - GRC
+      parameters:
+        - name: queryID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                question:
+                  type: string
+                scope_urn:
+                  type: string
+                model:
+                  type: string
+                pinned:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated saved ask query.
+    delete:
+      summary: Delete saved ask query
+      tags:
+        - GRC
+      parameters:
+        - name: queryID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Saved ask query deleted.
   /grc/dashboard:
     get:
       summary: GRC operator dashboard

@@ -25,6 +25,15 @@ type findingIntelReady struct {
 	memory    bool
 }
 
+// askTablesReady tracks lazy schema creation for the ask-domain auxiliary
+// tables (agent trajectory capture and saved ask queries). Grouping these flags
+// keeps the Store field count within the structural budget while still giving
+// each table a persistent, process-lifetime readiness flag.
+type askTablesReady struct {
+	trajectory bool
+	savedQuery bool
+}
+
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
 	db                           *sql.DB
@@ -42,7 +51,7 @@ type Store struct {
 	mcpOAuthTablesReady          bool
 	startupLeaseTableReady       bool
 	schemaMigrationsReady        bool
-	askTrajectoryReady           bool
+	ask                          askTablesReady
 	jobTablesReady               bool
 	runtimeBlocklistReady        bool
 	grcInventoryScopeReady       bool
