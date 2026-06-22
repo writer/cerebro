@@ -103,7 +103,7 @@ jobs:
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve-tag.outputs.tag }}
@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [resolve-tag, release-verify]
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve-tag.outputs.tag }}
@@ -144,7 +144,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
@@ -204,7 +204,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
@@ -448,7 +448,7 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
       TARGET_ENVIRONMENT: ${{ matrix.target_environment }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
