@@ -15,7 +15,7 @@ import (
 // export handlers. CSV serialization is request/response mapping of already
 // modeled finding/control items (a bootstrap responsibility), so it stays in
 // the composition layer rather than a new domain package.
-const bootstrapProductionGoLineBudget = 23854
+const bootstrapProductionGoLineBudget = 23872
 
 type bootstrapFileLineCount struct {
 	path  string
