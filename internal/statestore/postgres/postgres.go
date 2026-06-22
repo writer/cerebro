@@ -24,6 +24,7 @@ type Store struct {
 	projectionTablesReady        bool
 	findingTablesReady           bool
 	reportRunTableReady          bool
+	reportScheduleTableReady     bool
 	sourceRuntimeTableReady      bool
 	findingEvidenceReady         bool
 	findingEvaluationRunReady    bool

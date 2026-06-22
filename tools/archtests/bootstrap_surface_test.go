@@ -11,7 +11,14 @@ import (
 	"testing"
 )
 
-const bootstrapProductionGoLineBudget = 23714
+// bootstrapProductionGoLineBudget ratchets the raw line count of non-test Go in
+// internal/bootstrap. report_schedules.go (the scheduled-report-delivery feature)
+// adds HTTP request/response mapping for the schedule CRUD endpoints, the
+// report-runs listing, and the thin background scheduler loop that enqueues due
+// runs through the existing job service. The durable schedule storage lives in
+// internal/statestore/postgres and the report evaluation in internal/reports, so
+// this stays within bootstrap's routing, auth, and composition responsibility.
+const bootstrapProductionGoLineBudget = 24171
 
 type bootstrapFileLineCount struct {
 	path  string

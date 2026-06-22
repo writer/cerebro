@@ -3033,7 +3033,7 @@ var sourceErrorMappings = []bootstrapErrorMapping{
 }
 
 var reportErrorMappings = []bootstrapErrorMapping{
-	{match: matchesAnyError(reports.ErrReportNotFound, ports.ErrReportRunNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(reports.ErrReportNotFound, ports.ErrReportRunNotFound, ports.ErrReportScheduleNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
 	{match: matchesAnyError(reports.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(reports.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }

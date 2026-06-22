@@ -1776,6 +1776,22 @@ paths:
       responses:
         '200':
           description: Report run.
+  /report-runs:
+    get:
+      summary: List report runs
+      tags:
+        - Reports
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: report_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Recent durable report runs newest-first.
   /report-runs/{runID}:
     get:
       summary: Get report run
@@ -1786,6 +1802,90 @@ paths:
       responses:
         '200':
           description: Report run.
+  /report-schedules:
+    get:
+      summary: List report schedules
+      tags:
+        - Reports
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Saved fixed-interval report schedules for the tenant.
+    post:
+      summary: Create report schedule
+      tags:
+        - Reports
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - report_id
+                - interval_seconds
+              properties:
+                tenant_id:
+                  type: string
+                report_id:
+                  type: string
+                interval_seconds:
+                  type: integer
+                  format: int64
+                enabled:
+                  type: boolean
+                parameters:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '201':
+          description: Created report schedule.
+  /report-schedules/{scheduleID}:
+    patch:
+      summary: Update report schedule
+      tags:
+        - Reports
+      parameters:
+        - name: scheduleID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interval_seconds:
+                  type: integer
+                  format: int64
+                enabled:
+                  type: boolean
+                parameters:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Updated report schedule.
+    delete:
+      summary: Delete report schedule
+      tags:
+        - Reports
+      parameters:
+        - name: scheduleID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Report schedule deleted.
   /grc/dashboard:
     get:
       summary: GRC operator dashboard

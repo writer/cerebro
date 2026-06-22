@@ -127,6 +127,7 @@ func serve() error {
 	defer stop()
 	grcWarmupDone := startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
 	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)
+	reportSchedulerDone := app.StartReportScheduler(ctx, log.Printf)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -148,7 +149,7 @@ func serve() error {
 		if err := <-errCh; err != nil {
 			return fmt.Errorf("serve: %w", err)
 		}
-		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone)
+		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone, reportSchedulerDone)
 		return nil
 	}
 }
