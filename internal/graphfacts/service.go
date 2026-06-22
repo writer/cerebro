@@ -2,6 +2,8 @@ package graphfacts
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -27,17 +29,23 @@ type Service struct {
 }
 
 type ListRequest struct {
-	TenantID      string
-	RuntimeID     string
-	FactID        string
-	SubjectURN    string
-	Predicate     string
-	ObjectURN     string
-	ObjectValue   string
-	ClaimType     string
-	Status        string
-	SourceEventID string
-	Limit         uint32
+	TenantID          string
+	RuntimeID         string
+	FactID            string
+	SubjectURN        string
+	Predicate         string
+	ObjectURN         string
+	ObjectValue       string
+	ClaimType         string
+	Status            string
+	SourceEventID     string
+	Limit             uint32
+	Cursor            string
+	IncludeAttributes bool
+	OmitAttributes    bool
+	IncludeEvidence   bool
+	EvidenceLimit     uint32
+	Compact           bool
 }
 
 type ExplainRequest struct {
@@ -50,8 +58,25 @@ type ExplainRequest struct {
 	ObjectValue string
 }
 
+type TraceRequest struct {
+	TenantID          string
+	RuntimeID         string
+	FactID            string
+	SubjectURN        string
+	Predicate         string
+	ObjectURN         string
+	ObjectValue       string
+	Limit             uint32
+	IncludeAttributes bool
+	OmitAttributes    bool
+	IncludeEvidence   bool
+	EvidenceLimit     uint32
+}
+
 type ListResponse struct {
-	Facts []Fact `json:"facts"`
+	Facts      []Fact `json:"facts"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    bool   `json:"has_more"`
 }
 
 type ExplainResponse struct {
@@ -60,6 +85,20 @@ type ExplainResponse struct {
 	Evidence    []Evidence `json:"evidence,omitempty"`
 	Freshness   Freshness  `json:"freshness"`
 	Explanation string     `json:"explanation"`
+}
+
+type TraceResponse struct {
+	Anchor       ExplainResponse `json:"anchor"`
+	RelatedFacts []Fact          `json:"related_facts,omitempty"`
+	Steps        []TraceStep     `json:"steps"`
+	NextCursor   string          `json:"next_cursor,omitempty"`
+	HasMore      bool            `json:"has_more"`
+}
+
+type TraceStep struct {
+	Kind        string `json:"kind"`
+	Description string `json:"description"`
+	FactID      string `json:"fact_id,omitempty"`
 }
 
 type Fact struct {
@@ -78,6 +117,7 @@ type Fact struct {
 	ValidTo       string            `json:"valid_to,omitempty"`
 	Confidence    string            `json:"confidence,omitempty"`
 	Attributes    map[string]string `json:"attributes,omitempty"`
+	Evidence      []Evidence        `json:"evidence,omitempty"`
 }
 
 type FactEdge struct {
@@ -112,30 +152,48 @@ func (s *Service) List(ctx context.Context, request ListRequest) (ListResponse, 
 	if strings.TrimSpace(request.TenantID) == "" && strings.TrimSpace(request.RuntimeID) == "" {
 		return ListResponse{}, fmt.Errorf("%w: tenant_id or runtime_id is required", ErrInvalidRequest)
 	}
+	limit := normalizeLimit(request.Limit)
+	cursor, err := decodeCursor(request.Cursor)
+	if err != nil {
+		return ListResponse{}, err
+	}
 	records, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
-		RuntimeID:     strings.TrimSpace(request.RuntimeID),
-		TenantID:      strings.TrimSpace(request.TenantID),
-		ClaimID:       strings.TrimSpace(request.FactID),
-		SubjectURN:    strings.TrimSpace(request.SubjectURN),
-		Predicate:     strings.TrimSpace(request.Predicate),
-		ObjectURN:     strings.TrimSpace(request.ObjectURN),
-		ObjectValue:   strings.TrimSpace(request.ObjectValue),
-		ClaimType:     strings.TrimSpace(request.ClaimType),
-		Status:        strings.TrimSpace(request.Status),
-		SourceEventID: strings.TrimSpace(request.SourceEventID),
-		Limit:         normalizeLimit(request.Limit),
+		RuntimeID:       strings.TrimSpace(request.RuntimeID),
+		TenantID:        strings.TrimSpace(request.TenantID),
+		ClaimID:         strings.TrimSpace(request.FactID),
+		SubjectURN:      strings.TrimSpace(request.SubjectURN),
+		Predicate:       strings.TrimSpace(request.Predicate),
+		ObjectURN:       strings.TrimSpace(request.ObjectURN),
+		ObjectValue:     strings.TrimSpace(request.ObjectValue),
+		ClaimType:       strings.TrimSpace(request.ClaimType),
+		Status:          strings.TrimSpace(request.Status),
+		SourceEventID:   strings.TrimSpace(request.SourceEventID),
+		Limit:           limit + 1,
+		AfterObservedAt: cursor.ObservedAt,
+		AfterUpdatedAt:  cursor.UpdatedAt,
+		AfterID:         cursor.ID,
 	})
 	if err != nil {
 		return ListResponse{}, err
+	}
+	hasMore := len(records) > int(limit)
+	if hasMore {
+		records = records[:limit]
 	}
 	facts := make([]Fact, 0, len(records))
 	for _, record := range records {
 		if record == nil {
 			continue
 		}
-		facts = append(facts, factFromRecord(record))
+		fact := factFromRecord(record)
+		shapeFact(&fact, request)
+		facts = append(facts, fact)
 	}
-	return ListResponse{Facts: facts}, nil
+	nextCursor := ""
+	if hasMore && len(records) != 0 {
+		nextCursor = encodeCursor(records[len(records)-1])
+	}
+	return ListResponse{Facts: facts, NextCursor: nextCursor, HasMore: hasMore}, nil
 }
 
 func (s *Service) Explain(ctx context.Context, request ExplainRequest) (ExplainResponse, error) {
@@ -170,6 +228,72 @@ func (s *Service) Explain(ctx context.Context, request ExplainRequest) (ExplainR
 	}, nil
 }
 
+func (s *Service) Trace(ctx context.Context, request TraceRequest) (TraceResponse, error) {
+	anchor, err := s.Explain(ctx, ExplainRequest{
+		TenantID:    request.TenantID,
+		RuntimeID:   request.RuntimeID,
+		FactID:      request.FactID,
+		SubjectURN:  request.SubjectURN,
+		Predicate:   request.Predicate,
+		ObjectURN:   request.ObjectURN,
+		ObjectValue: request.ObjectValue,
+	})
+	if err != nil {
+		return TraceResponse{}, err
+	}
+	list, err := s.List(ctx, ListRequest{
+		TenantID:          request.TenantID,
+		RuntimeID:         firstNonEmpty(request.RuntimeID, anchor.Fact.RuntimeID),
+		SubjectURN:        anchor.Fact.SubjectURN,
+		Limit:             firstNonZero(request.Limit, 10),
+		IncludeAttributes: request.IncludeAttributes,
+		OmitAttributes:    request.OmitAttributes,
+		IncludeEvidence:   request.IncludeEvidence,
+		EvidenceLimit:     request.EvidenceLimit,
+	})
+	if err != nil {
+		return TraceResponse{}, err
+	}
+	related := make([]Fact, 0, len(list.Facts))
+	for _, fact := range list.Facts {
+		if fact.ID != anchor.Fact.ID {
+			related = append(related, fact)
+		}
+	}
+	steps := []TraceStep{{
+		Kind:        "anchor_fact",
+		Description: explanationForFact(anchor.Fact),
+		FactID:      anchor.Fact.ID,
+	}}
+	if anchor.Edge != nil {
+		steps = append(steps, TraceStep{
+			Kind:        "projected_edge",
+			Description: fmt.Sprintf("The relation fact projects an edge from %s to %s.", anchor.Edge.FromURN, anchor.Edge.ToURN),
+			FactID:      anchor.Fact.ID,
+		})
+	}
+	if len(anchor.Evidence) != 0 {
+		steps = append(steps, TraceStep{
+			Kind:        "evidence",
+			Description: fmt.Sprintf("%d evidence pointer(s) support the anchor fact.", len(anchor.Evidence)),
+			FactID:      anchor.Fact.ID,
+		})
+	}
+	if len(related) != 0 {
+		steps = append(steps, TraceStep{
+			Kind:        "related_facts",
+			Description: fmt.Sprintf("%d additional fact(s) share the same subject.", len(related)),
+		})
+	}
+	return TraceResponse{
+		Anchor:       anchor,
+		RelatedFacts: related,
+		Steps:        steps,
+		NextCursor:   list.NextCursor,
+		HasMore:      list.HasMore,
+	}, nil
+}
+
 func normalizeLimit(limit uint32) uint32 {
 	switch {
 	case limit == 0:
@@ -199,6 +323,26 @@ func factFromRecord(record *ports.ClaimRecord) Fact {
 		ValidTo:       formatTime(record.ValidTo),
 		Confidence:    firstNonEmpty(attributes["confidence"], attributes["confidence_score"]),
 		Attributes:    publicFactAttributes(attributes),
+	}
+}
+
+func shapeFact(fact *Fact, request ListRequest) {
+	if fact == nil {
+		return
+	}
+	if request.IncludeEvidence {
+		fact.Evidence = limitEvidence(evidenceForFact(*fact), request.EvidenceLimit)
+	}
+	if request.Compact {
+		fact.RuntimeID = ""
+		fact.TenantID = ""
+		fact.SourceEventID = ""
+		fact.ObservedAt = ""
+		fact.ValidFrom = ""
+		fact.ValidTo = ""
+	}
+	if request.Compact || request.OmitAttributes {
+		fact.Attributes = nil
 	}
 }
 
@@ -244,6 +388,19 @@ func evidenceForFact(fact Fact) []Evidence {
 		return out[i].Kind < out[j].Kind
 	})
 	return out
+}
+
+func limitEvidence(values []Evidence, limit uint32) []Evidence {
+	if len(values) == 0 {
+		return nil
+	}
+	if limit == 0 || limit > 25 {
+		limit = 5
+	}
+	if len(values) > int(limit) {
+		values = values[:limit]
+	}
+	return values
 }
 
 func freshnessForFact(fact Fact) Freshness {
@@ -328,9 +485,61 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func firstNonZero(values ...uint32) uint32 {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
+}
+
 func formatTime(value time.Time) string {
 	if value.IsZero() {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339)
+}
+
+type pageCursor struct {
+	ID         string    `json:"id"`
+	ObservedAt time.Time `json:"observed_at,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func encodeCursor(record *ports.ClaimRecord) string {
+	if record == nil || strings.TrimSpace(record.ID) == "" || record.UpdatedAt.IsZero() {
+		return ""
+	}
+	payload, err := json.Marshal(pageCursor{
+		ID:         strings.TrimSpace(record.ID),
+		ObservedAt: record.ObservedAt.UTC(),
+		UpdatedAt:  record.UpdatedAt.UTC(),
+	})
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeCursor(value string) (pageCursor, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return pageCursor{}, nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return pageCursor{}, fmt.Errorf("%w: invalid cursor", ErrInvalidRequest)
+	}
+	var cursor pageCursor
+	if err := json.Unmarshal(payload, &cursor); err != nil {
+		return pageCursor{}, fmt.Errorf("%w: invalid cursor", ErrInvalidRequest)
+	}
+	if strings.TrimSpace(cursor.ID) == "" || cursor.UpdatedAt.IsZero() {
+		return pageCursor{}, fmt.Errorf("%w: invalid cursor", ErrInvalidRequest)
+	}
+	cursor.ID = strings.TrimSpace(cursor.ID)
+	cursor.ObservedAt = cursor.ObservedAt.UTC()
+	cursor.UpdatedAt = cursor.UpdatedAt.UTC()
+	return cursor, nil
 }

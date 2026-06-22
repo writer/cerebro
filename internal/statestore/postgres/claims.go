@@ -215,13 +215,26 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 	addFilter("claim_type", request.ClaimType)
 	addCaseFoldFilter("status", request.Status)
 	addFilter("source_event_id", request.SourceEventID)
+	if !request.AfterUpdatedAt.IsZero() && strings.TrimSpace(request.AfterID) != "" {
+		args = append(args, nullableTime(request.AfterObservedAt), request.AfterUpdatedAt.UTC(), strings.TrimSpace(request.AfterID))
+		observedAtArg := len(args) - 2
+		updatedAtArg := len(args) - 1
+		idArg := len(args)
+		clauses = append(clauses, fmt.Sprintf(`(
+  COALESCE(observed_at, '-infinity'::timestamptz) < COALESCE($%d::timestamptz, '-infinity'::timestamptz)
+  OR (
+    COALESCE(observed_at, '-infinity'::timestamptz) = COALESCE($%d::timestamptz, '-infinity'::timestamptz)
+    AND (updated_at < $%d OR (updated_at = $%d AND id > $%d))
+  )
+)`, observedAtArg, observedAtArg, updatedAtArg, updatedAtArg, idArg))
+	}
 
 	// #nosec G202 -- clauses are assembled only from fixed column names above; values remain parameterized.
 	query := `
-SELECT runtime_id, tenant_id, claim_json::text
+SELECT runtime_id, tenant_id, claim_json::text, updated_at
 FROM claims
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
+ORDER BY COALESCE(observed_at, '-infinity'::timestamptz) DESC, updated_at DESC, id`
 	if limit := claimListLimit(request.Limit); limit > 0 {
 		args = append(args, int64(limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
@@ -241,13 +254,15 @@ ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
 		var storedRuntimeID string
 		var tenantID string
 		var claimJSON string
-		if err := rows.Scan(&storedRuntimeID, &tenantID, &claimJSON); err != nil {
+		var updatedAt time.Time
+		if err := rows.Scan(&storedRuntimeID, &tenantID, &claimJSON, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan claim row: %w", err)
 		}
 		record, err := claimRecordFromJSON(storedRuntimeID, tenantID, claimJSON)
 		if err != nil {
 			return nil, err
 		}
+		record.UpdatedAt = updatedAt
 		claims = append(claims, record)
 	}
 	if err := rows.Err(); err != nil {

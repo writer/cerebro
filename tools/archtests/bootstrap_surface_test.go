@@ -21,8 +21,9 @@ import (
 // responsibility. The ask-query write scope constant keeps saved-query mutation
 // routes from reusing a read-only scope. Graph-fact MCP tools add only typed
 // request/response mapping over the graphfacts domain service and the existing
-// ClaimStore-backed graph-fact substrate.
-const bootstrapProductionGoLineBudget = 24731
+// ClaimStore-backed graph-fact substrate, including cursor/resource/toolset
+// MCP surface mapping while fact shaping and trace behavior stay in graphfacts.
+const bootstrapProductionGoLineBudget = 25093
 
 type bootstrapFileLineCount struct {
 	path  string

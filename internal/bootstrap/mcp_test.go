@@ -146,6 +146,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.paths",
 		"cerebro.graph.facts.list",
 		"cerebro.graph.facts.explain",
+		"cerebro.graph.facts.trace",
 		"cerebro.agent.preflight",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
@@ -209,6 +210,7 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.graph.paths":                     {Markers: []string{"GET /platform/graph/attack-paths"}},
 	"cerebro.graph.facts.list":                {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.graph.facts.explain":             {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
+	"cerebro.graph.facts.trace":               {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
@@ -681,8 +683,8 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 		t.Fatalf("prompts/list error = %#v", promptsResp["error"])
 	}
 	prompts := promptsResp["result"].(map[string]any)["prompts"].([]any)
-	if len(prompts) != 3 {
-		t.Fatalf("len(prompts) = %d, want 3", len(prompts))
+	if len(prompts) != 4 {
+		t.Fatalf("len(prompts) = %d, want 4", len(prompts))
 	}
 
 	promptResp, _ := postMCP(t, server, "", map[string]any{
@@ -1858,6 +1860,7 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 				Status:        "asserted",
 				SourceEventID: "event-1",
 				ObservedAt:    time.Date(2026, 6, 22, 14, 0, 0, 0, time.UTC),
+				UpdatedAt:     time.Date(2026, 6, 22, 14, 1, 0, 0, time.UTC),
 				Attributes:    map[string]string{"confidence": "high", "evidence_urn": "urn:cerebro:writer:evidence:evidence-1"},
 			},
 		},
@@ -1889,7 +1892,7 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 	if got := facts[0].(map[string]any)["id"]; got != "fact-1" {
 		t.Fatalf("fact id = %#v, want fact-1", got)
 	}
-	if store.claimListRequest.Predicate != "owned_by" || store.claimListRequest.Limit != 5 {
+	if store.claimListRequest.Predicate != "owned_by" || store.claimListRequest.Limit != 6 {
 		t.Fatalf("claim list request = %#v", store.claimListRequest)
 	}
 
@@ -1913,6 +1916,29 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 	evidence := explain["evidence"].([]any)
 	if len(evidence) != 2 {
 		t.Fatalf("len(evidence) = %d, want source event plus evidence URN", len(evidence))
+	}
+
+	traceResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.facts.trace",
+			"arguments": map[string]any{
+				"runtime_id":         "runtime-1",
+				"fact_id":            "fact-1",
+				"include_evidence":   true,
+				"evidence_limit":     2,
+				"include_attributes": false,
+			},
+		},
+	})
+	if traceResp["error"] != nil {
+		t.Fatalf("graph facts trace error = %#v", traceResp["error"])
+	}
+	trace := traceResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if len(trace["steps"].([]any)) < 2 {
+		t.Fatalf("trace steps = %#v, want provenance steps", trace["steps"])
 	}
 }
 

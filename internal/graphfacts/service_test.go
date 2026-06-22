@@ -42,6 +42,7 @@ func TestListReturnsGraphFactsFromClaims(t *testing.T) {
 		Status:        "asserted",
 		SourceEventID: "event-1",
 		ObservedAt:    observedAt,
+		UpdatedAt:     observedAt.Add(time.Minute),
 		Attributes:    map[string]string{"confidence": "high", "empty": " ", "private_context": "should-not-leak"},
 	}}}
 	service := New(store)
@@ -55,8 +56,8 @@ func TestListReturnsGraphFactsFromClaims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if store.lastRequest.Limit != maxListLimit {
-		t.Fatalf("ListClaims limit = %d, want %d", store.lastRequest.Limit, maxListLimit)
+	if store.lastRequest.Limit != maxListLimit+1 {
+		t.Fatalf("ListClaims limit = %d, want %d", store.lastRequest.Limit, maxListLimit+1)
 	}
 	if got := len(response.Facts); got != 1 {
 		t.Fatalf("len(Facts) = %d, want 1", got)
@@ -70,6 +71,50 @@ func TestListReturnsGraphFactsFromClaims(t *testing.T) {
 	}
 	if _, ok := fact.Attributes["private_context"]; ok {
 		t.Fatalf("sensitive attribute was not filtered: %#v", fact.Attributes)
+	}
+}
+
+func TestListReturnsCursorWhenMoreFactsExist(t *testing.T) {
+	observedAt := time.Date(2026, 6, 22, 14, 0, 0, 0, time.UTC)
+	store := &stubClaimStore{claims: []*ports.ClaimRecord{
+		{
+			ID:          "fact-1",
+			RuntimeID:   "runtime-1",
+			TenantID:    "writer",
+			SubjectURN:  "urn:cerebro:writer:asset:one",
+			Predicate:   "has_status",
+			ObjectValue: "ok",
+			ClaimType:   "attribute",
+			Status:      "asserted",
+			ObservedAt:  observedAt,
+			UpdatedAt:   observedAt.Add(time.Minute),
+		},
+		{
+			ID:          "fact-2",
+			RuntimeID:   "runtime-1",
+			TenantID:    "writer",
+			SubjectURN:  "urn:cerebro:writer:asset:two",
+			Predicate:   "has_status",
+			ObjectValue: "ok",
+			ClaimType:   "attribute",
+			Status:      "asserted",
+			ObservedAt:  observedAt.Add(-time.Minute),
+			UpdatedAt:   observedAt,
+		},
+	}}
+	response, err := New(store).List(context.Background(), ListRequest{TenantID: "writer", Limit: 1})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(response.Facts) != 1 || !response.HasMore || response.NextCursor == "" {
+		t.Fatalf("response = %#v, want one fact with next cursor", response)
+	}
+	cursor, err := decodeCursor(response.NextCursor)
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	if cursor.ID != "fact-1" || !cursor.UpdatedAt.Equal(observedAt.Add(time.Minute)) {
+		t.Fatalf("cursor = %#v, want fact-1 cursor", cursor)
 	}
 }
 
@@ -91,6 +136,7 @@ func TestExplainReturnsEdgeEvidenceAndFreshness(t *testing.T) {
 		ClaimType:     "relation",
 		Status:        "asserted",
 		SourceEventID: "event-1",
+		UpdatedAt:     time.Date(2026, 6, 22, 14, 1, 0, 0, time.UTC),
 		Attributes: map[string]string{
 			"evidence_urn": "urn:cerebro:writer:evidence:1, urn:cerebro:writer:evidence:2",
 		},

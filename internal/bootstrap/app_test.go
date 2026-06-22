@@ -889,8 +889,10 @@ func (s *stubRuntimeStore) ListClaims(_ context.Context, request ports.ListClaim
 		left := claims[i]
 		right := claims[j]
 		switch {
-		case left.ObservedAt.Equal(right.ObservedAt):
+		case left.ObservedAt.Equal(right.ObservedAt) && left.UpdatedAt.Equal(right.UpdatedAt):
 			return left.ID < right.ID
+		case left.ObservedAt.Equal(right.ObservedAt):
+			return left.UpdatedAt.After(right.UpdatedAt)
 		case left.ObservedAt.IsZero():
 			return false
 		case right.ObservedAt.IsZero():
@@ -7880,6 +7882,7 @@ func cloneClaim(claim *ports.ClaimRecord) *ports.ClaimRecord {
 		ObservedAt:    claim.ObservedAt,
 		ValidFrom:     claim.ValidFrom,
 		ValidTo:       claim.ValidTo,
+		UpdatedAt:     claim.UpdatedAt,
 		Attributes:    attributes,
 	}
 }
@@ -7888,7 +7891,10 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 	if claim == nil {
 		return false
 	}
-	if strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if request.RuntimeID != "" && strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(claim.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
 	if request.ClaimID != "" && strings.TrimSpace(claim.ID) != strings.TrimSpace(request.ClaimID) {
@@ -7915,7 +7921,25 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 	if request.SourceEventID != "" && strings.TrimSpace(claim.SourceEventID) != strings.TrimSpace(request.SourceEventID) {
 		return false
 	}
+	if !request.AfterUpdatedAt.IsZero() && strings.TrimSpace(request.AfterID) != "" && !claimAfterCursor(claim, request) {
+		return false
+	}
 	return true
+}
+
+func claimAfterCursor(claim *ports.ClaimRecord, request ports.ListClaimsRequest) bool {
+	claimObserved := claim.ObservedAt
+	cursorObserved := request.AfterObservedAt
+	switch {
+	case claimObserved.IsZero() != cursorObserved.IsZero():
+		return claimObserved.IsZero()
+	case !claimObserved.Equal(cursorObserved):
+		return claimObserved.Before(cursorObserved)
+	case !claim.UpdatedAt.Equal(request.AfterUpdatedAt):
+		return claim.UpdatedAt.Before(request.AfterUpdatedAt)
+	default:
+		return strings.TrimSpace(claim.ID) > strings.TrimSpace(request.AfterID)
+	}
 }
 
 func containsTrimmed(values []string, expected string) bool {
