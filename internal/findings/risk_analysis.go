@@ -467,12 +467,18 @@ func appendFindingAttackPath(paths []FindingAttackPath, seen map[string]struct{}
 
 // AnalyzeFindingRiskContext scores one finding with source-agnostic contextual risk signals.
 func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) FindingRiskContext {
+	return AnalyzeFindingRiskContextWithConfig(finding, now, nil)
+}
+
+// AnalyzeFindingRiskContextWithConfig scores one finding with tenant-specific risk scoring overrides.
+func AnalyzeFindingRiskContextWithConfig(finding *ports.FindingRecord, now time.Time, config *ports.RiskScoringConfig) FindingRiskContext {
 	if finding == nil {
 		return FindingRiskContext{}
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	settings := riskScoringSettingsFromConfig(config)
 	attributes := finding.Attributes
 	likelihood := 10
 	impact := 10
@@ -480,52 +486,40 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 	reasons := []string{}
 	severity := strings.ToUpper(strings.TrimSpace(firstNonEmpty(attributes[FindingSourceSeverityAttribute], attributes["rule_severity"], finding.Severity)))
 	if severityScore := compoundRiskSeverityScore(severity); severityScore > 0 {
-		likelihood += severityScore * 6
-		impact += severityScore * 8
-		reasons = append(reasons, "severity:"+severity)
+		applyRiskScoringFactor(settings, "severity", "severity:"+severity, ports.RiskScoringFactorWeight{Likelihood: severityScore * 6, Impact: severityScore * 8}, &likelihood, &impact, &confidence, &reasons)
 	}
 	status := strings.ToLower(strings.TrimSpace(finding.Status))
 	if status == "" || status == findingStatusOpen {
-		likelihood += 5
-		reasons = append(reasons, "active")
+		applyRiskScoringFactor(settings, "active", "active", ports.RiskScoringFactorWeight{Likelihood: 5}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if !finding.DueAt.IsZero() && finding.DueAt.Before(now) {
-		impact += 5
-		reasons = append(reasons, "overdue")
+		applyRiskScoringFactor(settings, "overdue", "overdue", ports.RiskScoringFactorWeight{Impact: 5}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if observedAt := findingObservedAt(finding); !observedAt.IsZero() {
 		age := now.Sub(observedAt)
 		switch {
 		case age >= 0 && age <= 24*time.Hour:
-			likelihood += 5
-			reasons = append(reasons, "recent_24h")
+			applyRiskScoringFactor(settings, "recent_24h", "recent_24h", ports.RiskScoringFactorWeight{Likelihood: 5}, &likelihood, &impact, &confidence, &reasons)
 		case age >= 0 && age <= 7*24*time.Hour:
-			likelihood += 2
-			reasons = append(reasons, "recent_7d")
+			applyRiskScoringFactor(settings, "recent_7d", "recent_7d", ports.RiskScoringFactorWeight{Likelihood: 2}, &likelihood, &impact, &confidence, &reasons)
 		}
 	}
 	if eventCount := len(uniqueSortedStrings(finding.EventIDs)); eventCount > 1 {
-		likelihood += min(eventCount*2, 10)
-		confidence += 3
-		reasons = append(reasons, "multiple_events")
+		applyRiskScoringFactor(settings, "multiple_events", "multiple_events", ports.RiskScoringFactorWeight{Likelihood: min(eventCount*2, 10), Confidence: 3}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if resourceCount := len(uniqueSortedStrings(finding.ResourceURNs)); resourceCount > 1 {
-		impact += min(resourceCount*2, 12)
-		reasons = append(reasons, "multiple_resources")
+		applyRiskScoringFactor(settings, "multiple_resources", "multiple_resources", ports.RiskScoringFactorWeight{Impact: min(resourceCount*2, 12)}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if len(finding.ControlRefs) > 0 {
-		impact += min(len(finding.ControlRefs)*2, 8)
-		reasons = append(reasons, "mapped_controls")
+		applyRiskScoringFactor(settings, "mapped_controls", "mapped_controls", ports.RiskScoringFactorWeight{Impact: min(len(finding.ControlRefs)*2, 8)}, &likelihood, &impact, &confidence, &reasons)
 	}
 	action := strings.ToLower(compoundRiskAction(finding))
 	if containsAny(action, "disable", "delete", "destroy", "remove", "revoke", "bypass", "override", "public", "expose") {
-		likelihood += 12
-		reasons = append(reasons, "risky_action")
+		applyRiskScoringFactor(settings, "risky_action", "risky_action", ports.RiskScoringFactorWeight{Likelihood: 12}, &likelihood, &impact, &confidence, &reasons)
 	}
 	criticality := strings.ToLower(firstNonEmpty(attributes["asset_criticality"], attributes["criticality"], attributes["business_criticality"], attributes["tier"]))
 	if containsAny(criticality, "critical", "high", "crown", "tier0", "tier-0") {
-		impact += 35
-		reasons = append(reasons, "critical_asset")
+		applyRiskScoringFactor(settings, "critical_asset", "critical_asset", ports.RiskScoringFactorWeight{Impact: 35}, &likelihood, &impact, &confidence, &reasons)
 	}
 	publicExposure := findingAttributeBool(attributes, "internet_exposed", "public", "externally_exposed", "external_exposure", "is_public", "is_internet_facing")
 	reachabilityPath := publicExposure || findingAttributeBool(attributes, "reachable", "directly_reachable", "internet_reachable", "can_reach")
@@ -533,93 +527,71 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		reachabilityPath = true
 	}
 	if publicExposure {
-		likelihood += 35
-		reasons = append(reasons, "external_exposure")
+		applyRiskScoringFactor(settings, "external_exposure", "external_exposure", ports.RiskScoringFactorWeight{Likelihood: 35}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if findingAttributeBool(attributes, "privileged", "actor_privileged", "admin", "is_admin", "has_admin") {
-		likelihood += 10
-		impact += 15
-		reasons = append(reasons, "privileged_actor")
+		applyRiskScoringFactor(settings, "privileged_actor", "privileged_actor", ports.RiskScoringFactorWeight{Likelihood: 10, Impact: 15}, &likelihood, &impact, &confidence, &reasons)
 	}
 	activeExploit := findingActiveThreatSignal(attributes, action)
 	if activeExploit {
-		likelihood += 25
-		reasons = append(reasons, "active_threat")
+		applyRiskScoringFactor(settings, "active_threat", "active_threat", ports.RiskScoringFactorWeight{Likelihood: 25}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if findingAttributeBool(attributes, "is_kev", "kev", "known_exploited", "known_exploited_vulnerability") {
-		likelihood += 35
-		reasons = append(reasons, "known_exploited")
+		applyRiskScoringFactor(settings, "known_exploited", "known_exploited", ports.RiskScoringFactorWeight{Likelihood: 35}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if epss, ok := findingAttributeFloat(attributes, "epss_score", "epss", "exploit_probability"); ok {
 		switch {
-		case epss >= 0.7:
-			likelihood += 25
-			reasons = append(reasons, "epss_high")
-		case epss >= 0.2:
-			likelihood += 12
-			reasons = append(reasons, "epss_elevated")
+		case epss >= settings.config.Signals.EPSSHigh:
+			applyRiskScoringFactor(settings, "epss_high", "epss_high", ports.RiskScoringFactorWeight{Likelihood: 25}, &likelihood, &impact, &confidence, &reasons)
+		case epss >= settings.config.Signals.EPSSElevated:
+			applyRiskScoringFactor(settings, "epss_elevated", "epss_elevated", ports.RiskScoringFactorWeight{Likelihood: 12}, &likelihood, &impact, &confidence, &reasons)
 		}
 	}
 	if findingAttributeBool(attributes, "exploit_available", "public_exploit", "weaponized_exploit") {
-		likelihood += 20
-		reasons = append(reasons, "exploit_available")
+		applyRiskScoringFactor(settings, "exploit_available", "exploit_available", ports.RiskScoringFactorWeight{Likelihood: 20}, &likelihood, &impact, &confidence, &reasons)
 	}
 	exploitMaturity := strings.ToLower(firstNonEmpty(attributes["exploit_maturity"], attributes["exploit_status"]))
 	if containsAny(exploitMaturity, "weaponized", "functional", "poc", "proof") {
-		likelihood += 15
-		reasons = append(reasons, "exploit_maturity:"+exploitMaturity)
+		applyRiskScoringFactor(settings, "exploit_maturity", "exploit_maturity:"+exploitMaturity, ports.RiskScoringFactorWeight{Likelihood: 15}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if cvss, ok := findingAttributeFloat(attributes, "cvss_score", "cvss", "base_score"); ok {
 		switch {
-		case cvss >= 9:
-			likelihood += 10
-			impact += 10
-			reasons = append(reasons, "cvss_critical")
-		case cvss >= 7:
-			likelihood += 5
-			impact += 5
-			reasons = append(reasons, "cvss_high")
+		case cvss >= settings.config.Signals.CVSSCritical:
+			applyRiskScoringFactor(settings, "cvss_critical", "cvss_critical", ports.RiskScoringFactorWeight{Likelihood: 10, Impact: 10}, &likelihood, &impact, &confidence, &reasons)
+		case cvss >= settings.config.Signals.CVSSHigh:
+			applyRiskScoringFactor(settings, "cvss_high", "cvss_high", ports.RiskScoringFactorWeight{Likelihood: 5, Impact: 5}, &likelihood, &impact, &confidence, &reasons)
 		}
 	}
 	dataClass := strings.ToLower(firstNonEmpty(attributes["data_classification"], attributes["sensitivity"], attributes["data_sensitivity"]))
 	if dataClassificationSensitive(dataClass) {
-		impact += 25
-		reasons = append(reasons, "sensitive_data")
+		applyRiskScoringFactor(settings, "sensitive_data", "sensitive_data", ports.RiskScoringFactorWeight{Impact: 25}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if findingAttributeBool(attributes, "crown_jewel", "contains_secrets") {
-		impact += 35
-		reasons = append(reasons, "crown_jewel")
+		applyRiskScoringFactor(settings, "crown_jewel", "crown_jewel", ports.RiskScoringFactorWeight{Impact: 35}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if findingAttributeBool(attributes, "contains_pii", "contains_phi", "contains_pci", "has_sensitive_data", "has_sensitive_data_access") {
-		impact += 20
-		reasons = append(reasons, "regulated_or_sensitive_data")
+		applyRiskScoringFactor(settings, "regulated_or_sensitive_data", "regulated_or_sensitive_data", ports.RiskScoringFactorWeight{Impact: 20}, &likelihood, &impact, &confidence, &reasons)
 	}
 	environment := strings.ToLower(firstNonEmpty(attributes["environment"], attributes["env"], attributes["stage"], attributes["site_name"]))
 	if isProductionEnvironment(environment) {
-		impact += 15
-		reasons = append(reasons, "production_environment")
+		applyRiskScoringFactor(settings, "production_environment", "production_environment", ports.RiskScoringFactorWeight{Impact: 15}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if findingAttributeBool(attributes, "can_admin", "admin_reachable", "privileged_access", "has_admin_path") || containsAny(action, "can_admin", "can_assume", "can_impersonate") {
-		impact += 20
-		reasons = append(reasons, "privilege_or_control_plane")
+		applyRiskScoringFactor(settings, "privilege_or_control_plane", "privilege_or_control_plane", ports.RiskScoringFactorWeight{Impact: 20}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if blastRadius, ok := findingAttributeInt(attributes, "blast_radius", "affected_users", "reachable_resource_count", "admin_reachable_count", "sensitive_data_path_count"); ok && blastRadius > 0 {
-		impact += min(blastRadius, 20)
-		reasons = append(reasons, "blast_radius")
+		applyRiskScoringFactor(settings, "blast_radius", "blast_radius", ports.RiskScoringFactorWeight{Impact: min(blastRadius, 20)}, &likelihood, &impact, &confidence, &reasons)
 	}
 	networkScope := strings.ToLower(firstNonEmpty(attributes["network_scope"], attributes["cidr_scope"], attributes["ip_scope"], attributes["subnet_scope"], attributes["exposure_scope"]))
 	privateNetwork := findingAttributeBool(attributes, "private_network", "private_subnet") || containsAny(networkScope, "private", "rfc1918", "loopback", "link-local", "unique-local")
 	if privateNetwork && !reachabilityPath && !activeExploit {
-		likelihood = min(likelihood, 35)
-		reasons = append(reasons, "private_network_context")
+		applyRiskScoringFactor(settings, "private_network_context", "private_network_context", ports.RiskScoringFactorWeight{LikelihoodCap: settings.config.Signals.PrivateNetworkLikelihoodCap}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if len(finding.GraphEvidenceRows) > 0 {
-		confidence += 5
-		reasons = append(reasons, "graph_evidence")
+		applyRiskScoringFactor(settings, "graph_evidence", "graph_evidence", ports.RiskScoringFactorWeight{Confidence: 5}, &likelihood, &impact, &confidence, &reasons)
 	}
 	if len(finding.ResourceURNs) == 0 && len(finding.EventIDs) == 0 {
-		confidence -= 15
-		reasons = append(reasons, "limited_evidence")
+		applyRiskScoringFactor(settings, "limited_evidence", "limited_evidence", ports.RiskScoringFactorWeight{Confidence: -15}, &likelihood, &impact, &confidence, &reasons)
 	}
 	likelihood = clampScore(likelihood)
 	impact = clampScore(impact)
@@ -628,13 +600,13 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 	reasons = uniqueSortedStrings(reasons)
 	return FindingRiskContext{
 		Score:             riskScore,
-		EffectiveSeverity: EffectiveSeverityFromRiskScore(riskScore),
+		EffectiveSeverity: settings.severity(riskScore),
 		LikelihoodScore:   likelihood,
 		ImpactScore:       impact,
 		ConfidenceScore:   confidence,
-		LikelihoodLevel:   riskLevelFromScore(likelihood),
-		ImpactLevel:       riskLevelFromScore(impact),
-		RiskModelVersion:  defaultFindingRiskModelVersion,
+		LikelihoodLevel:   settings.level(likelihood),
+		ImpactLevel:       settings.level(impact),
+		RiskModelVersion:  settings.modelVersion,
 		Reasons:           reasons,
 		Factors:           riskFactorsFromReasons(reasons, finding, now),
 	}
@@ -698,40 +670,33 @@ func clampScore(score int) int {
 }
 
 func riskLevelFromScore(score int) string {
-	switch {
-	case score >= 85:
-		return "critical"
-	case score >= 70:
-		return "high"
-	case score >= 40:
-		return "medium"
-	case score > 0:
-		return "low"
-	default:
-		return ""
-	}
+	return RiskLevelFromScoreWithConfig(score, nil)
+}
+
+// RiskLevelFromScoreWithConfig maps a score to a risk level using optional thresholds.
+func RiskLevelFromScoreWithConfig(score int, config *ports.RiskScoringConfig) string {
+	return riskScoringSettingsFromConfig(config).level(score)
 }
 
 func EffectiveSeverityFromRiskScore(score int) string {
-	switch riskLevelFromScore(score) {
-	case "critical":
-		return "CRITICAL"
-	case "high":
-		return "HIGH"
-	case "medium":
-		return "MEDIUM"
-	case "low":
-		return "LOW"
-	default:
-		return ""
-	}
+	return EffectiveSeverityFromRiskScoreWithConfig(score, nil)
+}
+
+// EffectiveSeverityFromRiskScoreWithConfig maps a score to severity using optional thresholds.
+func EffectiveSeverityFromRiskScoreWithConfig(score int, config *ports.RiskScoringConfig) string {
+	return riskScoringSettingsFromConfig(config).severity(score)
 }
 
 func weightedAttackPathScore(steps []FindingAttackPathStep) (int, []string) {
+	return weightedAttackPathScoreWithConfig(steps, nil)
+}
+
+func weightedAttackPathScoreWithConfig(steps []FindingAttackPathStep, config *ports.RiskScoringConfig) (int, []string) {
+	settings := riskScoringSettingsFromConfig(config)
 	score := 0
 	reasons := make([]string, 0, len(steps))
 	for _, step := range steps {
-		weight := attackPathRelationWeight(step.Relation)
+		weight := riskScoringRelationWeight(settings, step.Relation)
 		score += weight
 		if weight > 0 {
 			reasons = append(reasons, "edge_weight:"+strings.TrimSpace(step.Relation)+":"+strconv.Itoa(weight))
@@ -741,27 +706,6 @@ func weightedAttackPathScore(steps []FindingAttackPathStep) (int, []string) {
 		score += len(steps) * 2
 	}
 	return score, uniqueSortedStrings(reasons)
-}
-
-func attackPathRelationWeight(relation string) int {
-	switch strings.ToLower(strings.TrimSpace(relation)) {
-	case "can_admin":
-		return 10
-	case "can_assume", "can_impersonate", "can_perform":
-		return 8
-	case "can_reach":
-		return 7
-	case "acted_on", "has_evidence", "supports":
-		return 5
-	case "assigned_to", "member_of", "runs_as":
-		return 4
-	case "has_finding":
-		return 3
-	case "has_identifier", "has_classification", "tagged_as":
-		return 1
-	default:
-		return 2
-	}
 }
 
 func riskContextForFindings(findings []*ports.FindingRecord) FindingRiskContext {

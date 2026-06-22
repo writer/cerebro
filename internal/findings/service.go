@@ -1221,6 +1221,16 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 				current = loaded
 			}
 		}
+		config, err := s.riskScoringConfigForFinding(ctx, current)
+		if err != nil {
+			return err
+		}
+		if config != nil {
+			current, err = s.persistFindingRisk(ctx, current, time.Now().UTC())
+			if err != nil {
+				return fmt.Errorf("refresh finding %q backfilled risk: %w", finding.ID, err)
+			}
+		}
 		revision := fmt.Sprintf("startup-risk-backfill|%s|%s", revisionTime, strings.TrimSpace(current.ID))
 		if err := s.projectFindingAnchorRevision(ctx, current, revision); err != nil {
 			return fmt.Errorf("project finding %q backfilled risk: %w", current.ID, err)
@@ -1801,12 +1811,16 @@ func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.Find
 	return stored, err
 }
 
-func (s *Service) upsertFindingWithRiskAndNewness(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, bool, error) {
+func (s *Service) upsertFindingWithRiskAndNewness(ctx context.Context, finding *ports.FindingRecord, _ *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, bool, error) {
 	merged, existing, err := s.mergeExistingFindingEvidence(ctx, finding)
 	if err != nil {
 		return nil, false, err
 	}
-	enriched := enrichFindingRisk(merged, runtime, now)
+	config, err := s.riskScoringConfigForFinding(ctx, merged)
+	if err != nil {
+		return nil, false, err
+	}
+	enriched := enrichFindingRiskWithConfig(merged, now, config)
 	stored, err := s.store.UpsertFinding(ctx, enriched)
 	if err != nil {
 		return nil, false, err
@@ -1985,14 +1999,18 @@ func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.Finding
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	recomputed := recomputeFindingRisk(finding, now)
+	config, err := s.riskScoringConfigForFinding(ctx, finding)
+	if err != nil {
+		return nil, err
+	}
+	recomputed := recomputeFindingRiskWithConfig(finding, now, config)
 	if updater, ok := s.store.(interface {
 		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
 	}); ok {
 		return updater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
 			FindingID:   strings.TrimSpace(recomputed.ID),
 			FindingRisk: recomputed.FindingRisk,
-			Attributes:  findingRiskAttributes(recomputed),
+			Attributes:  findingRiskAttributesWithConfig(recomputed, config),
 		})
 	}
 	stored, err := s.store.UpsertFinding(ctx, recomputed)
@@ -2000,6 +2018,28 @@ func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.Finding
 		return nil, err
 	}
 	return stored, nil
+}
+
+func (s *Service) riskScoringConfigForFinding(ctx context.Context, finding *ports.FindingRecord) (*ports.RiskScoringConfig, error) {
+	if s == nil || s.store == nil || finding == nil {
+		return nil, nil
+	}
+	store, ok := s.store.(ports.RiskScoringConfigStore)
+	if !ok {
+		return nil, nil
+	}
+	tenantID := strings.TrimSpace(finding.TenantID)
+	if tenantID == "" {
+		return nil, nil
+	}
+	config, err := store.GetRiskScoringConfig(ctx, tenantID)
+	if err == nil {
+		return config, nil
+	}
+	if errors.Is(err, ports.ErrRiskScoringConfigNotFound) {
+		return nil, nil
+	}
+	return nil, fmt.Errorf("load risk scoring config for tenant %q: %w", tenantID, err)
 }
 
 func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {

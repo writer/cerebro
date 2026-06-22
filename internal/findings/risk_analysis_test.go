@@ -339,6 +339,77 @@ func TestEffectiveSeverityFromRiskScore(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextWithConfigUsesCustomThresholds(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.Thresholds.Critical = 95
+	config.Thresholds.High = 80
+	config.Thresholds.Medium = 60
+	finding := compoundRiskFinding("finding-custom-thresholds", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes["internet_exposed"] = "true"
+
+	defaultContext := AnalyzeFindingRiskContext(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC))
+	customContext := AnalyzeFindingRiskContextWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if defaultContext.Score != customContext.Score {
+		t.Fatalf("custom thresholds changed score %d -> %d", defaultContext.Score, customContext.Score)
+	}
+	if defaultContext.EffectiveSeverity == customContext.EffectiveSeverity {
+		t.Fatalf("EffectiveSeverity = %q for both default and custom thresholds, want threshold-driven change", customContext.EffectiveSeverity)
+	}
+	if customContext.RiskModelVersion == FindingRiskModelVersion {
+		t.Fatalf("RiskModelVersion = %q, want config-scoped model version", customContext.RiskModelVersion)
+	}
+}
+
+func TestAnalyzeFindingRiskContextWithConfigUsesFactorWeights(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.FactorWeights["external_exposure"] = ports.RiskScoringFactorWeight{Likelihood: 5}
+	finding := compoundRiskFinding("finding-custom-factor", "rule-1", "MEDIUM", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes["internet_exposed"] = "true"
+
+	defaultContext := AnalyzeFindingRiskContext(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC))
+	customContext := AnalyzeFindingRiskContextWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if customContext.LikelihoodScore >= defaultContext.LikelihoodScore {
+		t.Fatalf("LikelihoodScore = %d, want below default %d", customContext.LikelihoodScore, defaultContext.LikelihoodScore)
+	}
+	if !stringSliceContains(customContext.Reasons, "external_exposure") {
+		t.Fatalf("Risk reasons = %#v, want external_exposure reason preserved", customContext.Reasons)
+	}
+}
+
+func TestWeightedAttackPathScoreWithConfigUsesRelationWeights(t *testing.T) {
+	steps := []FindingAttackPathStep{
+		{FromURN: "a", Relation: "can_admin", ToURN: "b"},
+		{FromURN: "b", Relation: "member_of", ToURN: "c"},
+	}
+	defaultScore, _ := weightedAttackPathScore(steps)
+	config := DefaultRiskScoringConfig("writer")
+	config.RelationWeights["can_admin"] = 1
+	config.RelationWeights["member_of"] = 1
+	customScore, reasons := weightedAttackPathScoreWithConfig(steps, &config)
+	if customScore >= defaultScore {
+		t.Fatalf("customScore = %d, want below default %d", customScore, defaultScore)
+	}
+	if !stringSliceContains(reasons, "edge_weight:can_admin:1") {
+		t.Fatalf("reasons = %#v, want custom relation weight reason", reasons)
+	}
+}
+
+func TestNormalizeRiskScoringConfigValidatesThresholdOrder(t *testing.T) {
+	_, err := NormalizeRiskScoringConfig(ports.RiskScoringConfig{
+		TenantID: "writer",
+		Thresholds: ports.RiskScoringLevelThresholds{
+			Critical: 70,
+			High:     80,
+			Medium:   40,
+		},
+	})
+	if err == nil {
+		t.Fatal("NormalizeRiskScoringConfig accepted inverted thresholds")
+	}
+}
+
 func TestAnalyzeFindingRiskContextUsesSourceSeverityForScoring(t *testing.T) {
 	finding := compoundRiskFinding("finding-calibrated", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
 	finding.Attributes[FindingSourceSeverityAttribute] = "LOW"

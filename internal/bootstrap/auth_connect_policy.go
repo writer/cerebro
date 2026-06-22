@@ -20,6 +20,7 @@ const (
 	scopeJobsWrite                 = "cerebro.jobs.write"
 	scopeSourceRuntimesWrite       = "cerebro.source_runtimes.write"
 	scopeAskQueriesWrite           = "cerebro.ask_queries.write"
+	scopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 )
 
 type connectProcedureAuthPolicy struct {
