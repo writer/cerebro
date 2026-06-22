@@ -306,12 +306,7 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 }
 
 func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
-		SourceID:      "github",
-		Timeout:       sourceHTTPTimeout,
-		AllowLoopback: allowLoopback,
-		LookupIPAddrs: lookupIPAddrs,
-	})
+	return sourcehttp.HardenSourceClient(client, "github", sourceHTTPTimeout, allowLoopback, lookupIPAddrs)
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (_ settings, err error) {
