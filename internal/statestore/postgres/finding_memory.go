@@ -203,8 +203,7 @@ func (s *Store) SimilarFindingMemory(ctx context.Context, request ports.SimilarF
 }
 
 func (s *Store) ensureFindingMemoryTables(ctx context.Context) error {
-	ready := false
-	return s.ensureStatements(ctx, &ready, "finding_memory", ensureFindingMemoryStatements)
+	return s.ensureStatements(ctx, &s.findingIntel.memory, "finding_memory", ensureFindingMemoryStatements)
 }
 
 type findingMemoryScanner interface {

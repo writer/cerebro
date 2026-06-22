@@ -565,7 +565,7 @@ func validateFindingCandidate(candidate *ports.FindingCandidateRecord) error {
 }
 
 func (s *Store) ensureFindingCandidateTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.findingCandidateReady, "finding candidate", ensureFindingCandidateStatements)
+	return s.ensureStatements(ctx, &s.findingIntel.candidate, "finding candidate", ensureFindingCandidateStatements)
 }
 
 func findingCandidateRunListQuery(request ports.ListFindingCandidatesRequest) (string, []any, error) {

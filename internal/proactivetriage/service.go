@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -98,7 +99,7 @@ func (s Service) Run(ctx context.Context, request RunRequest) (*RunResult, error
 			continue
 		}
 		if strings.TrimSpace(finding.TenantID) != tenantID {
-			return nil, fmt.Errorf("%w: finding %q belongs to tenant %q", ErrTenantScopeMismatch, finding.ID, finding.TenantID)
+			return nil, fmt.Errorf("%w: finding %q does not belong to the requested tenant", ErrTenantScopeMismatch, finding.ID)
 		}
 		memoryHints, err := s.memoryHints(ctx, finding)
 		if err != nil {
@@ -299,8 +300,21 @@ func payloadUint32(payload map[string]any, key string) uint32 {
 	if payload == nil {
 		return 0
 	}
-	if value, ok := payload[key].(uint32); ok {
-		return value
+	switch v := payload[key].(type) {
+	case uint32:
+		return v
+	case float64:
+		if v >= 0 && v <= float64(math.MaxUint32) {
+			return uint32(v)
+		}
+	case int:
+		if v >= 0 && uint64(v) <= math.MaxUint32 {
+			return uint32(v)
+		}
+	case int64:
+		if v >= 0 && uint64(v) <= math.MaxUint32 {
+			return uint32(v)
+		}
 	}
 	return 0
 }

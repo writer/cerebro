@@ -16,6 +16,15 @@ import (
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
+// findingIntelReady tracks lazy schema creation for the finding-intelligence
+// auxiliary tables (candidate staging and finding memory). Grouping these flags
+// keeps the Store field count within the structural budget while still giving
+// each table a persistent, process-lifetime readiness flag.
+type findingIntelReady struct {
+	candidate bool
+	memory    bool
+}
+
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
 	db                           *sql.DB
@@ -27,7 +36,7 @@ type Store struct {
 	sourceRuntimeTableReady      bool
 	findingEvidenceReady         bool
 	findingEvaluationRunReady    bool
-	findingCandidateReady        bool
+	findingIntel                 findingIntelReady
 	vulnDBTablesReady            bool
 	deviceAuthTablesReady        bool
 	mcpOAuthTablesReady          bool

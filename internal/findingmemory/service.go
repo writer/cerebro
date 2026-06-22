@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/ports"
@@ -263,6 +264,9 @@ func truncate(value string, max int) string {
 	value = strings.TrimSpace(value)
 	if max <= 0 || len(value) <= max {
 		return value
+	}
+	for max > 0 && !utf8.ValidString(value[:max]) {
+		max--
 	}
 	return value[:max]
 }

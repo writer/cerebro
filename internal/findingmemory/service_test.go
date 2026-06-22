@@ -2,8 +2,10 @@ package findingmemory
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -56,5 +58,20 @@ func TestMemoryFromFindingBuildsTenantScopedRecord(t *testing.T) {
 	}
 	if record.Confidence != 0.8 {
 		t.Fatalf("confidence = %v, want 0.8", record.Confidence)
+	}
+}
+
+func TestTruncateKeepsValidUTF8AtRuneBoundary(t *testing.T) {
+	// Each "é" is two bytes, so cutting at byte 11 lands mid-rune.
+	value := strings.Repeat("é", 100)
+	got := truncate(value, 11)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncate produced invalid UTF-8: %q", got)
+	}
+	if len(got) > 11 {
+		t.Fatalf("truncate returned %d bytes, want <= 11", len(got))
+	}
+	if want := strings.Repeat("é", 5); got != want {
+		t.Fatalf("truncate = %q, want %q", got, want)
 	}
 }
