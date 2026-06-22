@@ -11,7 +11,11 @@ import (
 	"testing"
 )
 
-const bootstrapProductionGoLineBudget = 23714
+// Architecture note: bumped for grc_export.go, the GRC findings/controls CSV
+// export handlers. CSV serialization is request/response mapping of already
+// modeled finding/control items (a bootstrap responsibility), so it stays in
+// the composition layer rather than a new domain package.
+const bootstrapProductionGoLineBudget = 23872
 
 type bootstrapFileLineCount struct {
 	path  string

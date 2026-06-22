@@ -1907,6 +1907,42 @@ paths:
       responses:
         '200':
           description: Updated finding triage dispositions.
+  /grc/findings/export:
+    get:
+      summary: Export GRC findings as CSV
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: resource_urn
+          in: query
+          schema:
+            type: string
+        - name: policy_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Auditor-friendly CSV of the full findings dataset.
+          content:
+            text/csv:
+              schema:
+                type: string
   /grc/controls:
     get:
       summary: GRC control posture
@@ -1920,6 +1956,22 @@ paths:
       responses:
         '200':
           description: Control status grouped from mapped findings and evidence.
+  /grc/controls/export:
+    get:
+      summary: Export GRC control posture as CSV
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+      responses:
+        '200':
+          description: Auditor-friendly CSV of the full control posture dataset.
+          content:
+            text/csv:
+              schema:
+                type: string
   /grc/evidence:
     get:
       summary: GRC evidence library

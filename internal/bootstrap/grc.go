@@ -473,15 +473,32 @@ func grcBuildTrendPoints(trends *ports.GRCFindingTrends) []grcTrendPoint {
 }
 
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
-	scope, err := grcScopeFromRequest(r)
+	items, err := a.grcFindingItemsFromRequest(r, 0)
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"findings":     items,
+		"generated_at": time.Now().UTC(),
+	})
+}
+
+// grcFindingItemsFromRequest gathers risk-inbox finding items for a request,
+// shared by the JSON list handler and the CSV export. A non-zero limitOverride
+// replaces the request's scope limit (the export pulls the full dataset).
+func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) ([]grcFindingItem, error) {
+	scope, err := grcScopeFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
+	}
+	limit := scope.Limit
+	if limitOverride > 0 {
+		limit = limitOverride
 	}
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	if status == "" {
@@ -497,69 +514,74 @@ func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
 		ResourceURN: strings.TrimSpace(r.URL.Query().Get("resource_urn")),
 		EventID:     strings.TrimSpace(r.URL.Query().Get("event_id")),
 		PolicyID:    strings.TrimSpace(r.URL.Query().Get("policy_id")),
-		Limit:       scope.Limit,
+		Limit:       limit,
 	})
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
 	}
 	evidenceCounts, counted, err := a.grcEvidenceCountsByFindingID(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
 	}
 	if !counted {
-		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
+		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: limit})
 		if err != nil {
-			writeGRCError(w, err)
-			return
+			return nil, err
 		}
 		evidenceCounts = grcEvidenceCounts(evidence)
 	}
 	items := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts)
 	grcApplyFindingDispositions(items, a.grcFindingDispositions(r, findings))
+	return items, nil
+}
+
+func (a *App) handleGRCControls(w http.ResponseWriter, r *http.Request) {
+	controls, err := a.grcControlItemsFromRequest(r, 0)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"findings":     items,
+		"controls":     controls,
 		"generated_at": time.Now().UTC(),
 	})
 }
 
-func (a *App) handleGRCControls(w http.ResponseWriter, r *http.Request) {
+// grcControlItemsFromRequest groups open findings into control posture rows,
+// shared by the JSON list handler and the CSV export. A non-zero limitOverride
+// replaces the request's scope limit (the export pulls the full dataset).
+func (a *App) grcControlItemsFromRequest(r *http.Request, limitOverride uint32) ([]grcControlItem, error) {
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
 	}
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
 	}
-	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
+	limit := scope.Limit
+	if limitOverride > 0 {
+		limit = limitOverride
+	}
+	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: limit})
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
 	}
 	evidenceCounts, counted, err := a.grcEvidenceCountsByFindingID(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
 	if err != nil {
-		writeGRCError(w, err)
-		return
+		return nil, err
 	}
 	var evidenceItems []grcEvidenceItem
 	if !counted {
-		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
+		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: limit})
 		if err != nil {
-			writeGRCError(w, err)
-			return
+			return nil, err
 		}
 		evidenceCounts = grcEvidenceCounts(evidence)
 		evidenceItems = grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	}
 	items := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"controls":     grcControlItems(items, evidenceItems),
-		"generated_at": time.Now().UTC(),
-	})
+	return grcControlItems(items, evidenceItems), nil
 }
 
 func (a *App) handleGRCEvidence(w http.ResponseWriter, r *http.Request) {
