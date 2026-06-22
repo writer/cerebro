@@ -107,7 +107,9 @@ type stubFindingCandidateState struct {
 	runs              map[string]*ports.FindingCandidateRun
 	candidates        map[string]*ports.FindingCandidateRecord
 	listRequest       ports.ListFindingCandidatesRequest
+	expirationRequest ports.FindingCandidateExpiration
 	upsertCount       int
+	expireCount       int
 	markPromotedCount int
 	markRejectedCount int
 	beforeMarkPromote func()
@@ -695,6 +697,50 @@ func (s *stubFindingStore) ListFindingCandidates(_ context.Context, request port
 		candidates = append(candidates, cloneFindingCandidate(candidate))
 	}
 	return candidates, nil
+}
+
+func (s *stubFindingStore) ExpireStaleFindingCandidates(_ context.Context, request ports.FindingCandidateExpiration) (int, error) {
+	s.candidateState.expireCount++
+	s.candidateState.expirationRequest = request
+	eventIDs := map[string]struct{}{}
+	for _, eventID := range request.EvaluatedEventIDs {
+		if eventID = strings.TrimSpace(eventID); eventID != "" {
+			eventIDs[eventID] = struct{}{}
+		}
+	}
+	if len(eventIDs) == 0 {
+		return 0, nil
+	}
+	expired := 0
+	for id, candidate := range s.candidateState.candidates {
+		if strings.TrimSpace(candidate.TenantID) != strings.TrimSpace(request.TenantID) ||
+			strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) ||
+			strings.TrimSpace(candidate.RuleID) != strings.TrimSpace(request.RuleID) ||
+			strings.TrimSpace(candidate.Status) != findingCandidateStatusCandidate ||
+			strings.TrimSpace(candidate.LastRunID) == strings.TrimSpace(request.RunID) ||
+			(!candidate.UpdatedAt.IsZero() && !candidate.UpdatedAt.Before(request.RunStartedAt)) ||
+			!candidateFindingOverlapsEvaluatedEvent(candidate.Finding, eventIDs) {
+			continue
+		}
+		cloned := cloneFindingCandidate(candidate)
+		cloned.Status = findingCandidateStatusExpired
+		cloned.UpdatedAt = time.Now().UTC()
+		s.candidateState.candidates[id] = cloned
+		expired++
+	}
+	return expired, nil
+}
+
+func candidateFindingOverlapsEvaluatedEvent(finding *ports.FindingRecord, eventIDs map[string]struct{}) bool {
+	if finding == nil {
+		return false
+	}
+	for _, eventID := range finding.EventIDs {
+		if _, ok := eventIDs[strings.TrimSpace(eventID)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
@@ -2864,6 +2910,83 @@ func TestEvaluateSourceRuntimeCandidateRulesDoesNotWriteProductionFindings(t *te
 	}
 }
 
+func TestEvaluateSourceRuntimeCandidateRulesExpiresStaleCandidates(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-2",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	stale := &ports.FindingCandidateRecord{
+		ID:          "candidate-stale",
+		TenantID:    "writer",
+		RuntimeID:   "writer-okta-audit",
+		RuleID:      "rule-a",
+		Fingerprint: "fingerprint-stale",
+		Status:      findingCandidateStatusCandidate,
+		Finding: &ports.FindingRecord{
+			ID:        "finding-stale",
+			TenantID:  "writer",
+			RuntimeID: "writer-okta-audit",
+			RuleID:    "rule-a",
+			EventIDs:  []string{"okta-audit-1"},
+		},
+		LastRunID: "candidate-run-old",
+		UpdatedAt: time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC),
+	}
+	replayer := &stubReplayer{events: []*cerebrov1.EventEnvelope{
+		newAuditEvent("okta-audit-1", "policy.rule.activate", "SUCCESS"),
+		newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+	}}
+	store := &stubFindingStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-audit",
+				TenantID:      "writer",
+				SourceEventID: "okta-audit-2",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{stale.ID: cloneFindingCandidate(stale)},
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithFindingCandidateStore(store)
+
+	result, err := service.EvaluateSourceRuntimeCandidateRules(context.Background(), EvaluateCandidateRulesRequest{
+		RuntimeID:  "writer-okta-audit",
+		EventLimit: 2,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeCandidateRules() error = %v", err)
+	}
+	if got := len(result.Evaluations[0].Candidates); got != 1 {
+		t.Fatalf("new candidates = %d, want 1", got)
+	}
+	if got := store.candidateState.candidates[stale.ID].Status; got != findingCandidateStatusExpired {
+		t.Fatalf("stale candidate status = %q, want %q", got, findingCandidateStatusExpired)
+	}
+	if got := store.candidateState.expireCount; got != 1 {
+		t.Fatalf("expire calls = %d, want 1", got)
+	}
+	if got := store.candidateState.expirationRequest.EvaluatedEventIDs; !slices.Equal(got, []string{"okta-audit-1", "okta-audit-2"}) {
+		t.Fatalf("expiration evaluated events = %v, want both replayed events", got)
+	}
+}
+
 func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testing.T) {
 	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
 	finding := &ports.FindingRecord{
@@ -3123,6 +3246,52 @@ func TestPromoteFindingCandidateAlreadyPromotedReturnsExistingFinding(t *testing
 	}
 	if got := len(appendLog.events); got != 0 {
 		t.Fatalf("append log events = %d, want 0", got)
+	}
+}
+
+func TestExpiredFindingCandidateCannotBePromotedOrRejected(t *testing.T) {
+	candidate := &ports.FindingCandidateRecord{
+		ID:        "candidate-1",
+		TenantID:  "writer",
+		RuntimeID: "writer-okta-audit",
+		RuleID:    "rule-a",
+		Status:    findingCandidateStatusExpired,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+	}
+	service := New(&stubRuntimeStore{}, nil, store, store, store, store).WithFindingCandidateStore(store)
+
+	_, promoteErr := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           candidate.ID,
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Reviewed.",
+		ChangeTicket:          "SEC-1",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if !errors.Is(promoteErr, ErrInvalidRequest) {
+		t.Fatalf("PromoteFindingCandidate() error = %v, want expired candidate rejection", promoteErr)
+	}
+	if got := store.upsertCount; got != 0 {
+		t.Fatalf("production upserts after expired promote = %d, want 0", got)
+	}
+	if got := store.candidateState.markPromotedCount; got != 0 {
+		t.Fatalf("mark promoted calls after expired promote = %d, want 0", got)
+	}
+
+	_, rejectErr := service.RejectFindingCandidate(context.Background(), RejectCandidateRequest{
+		CandidateID: candidate.ID,
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "No longer reproduced.",
+	})
+	if !errors.Is(rejectErr, ErrInvalidRequest) {
+		t.Fatalf("RejectFindingCandidate() error = %v, want expired candidate rejection", rejectErr)
+	}
+	if got := store.candidateState.markRejectedCount; got != 0 {
+		t.Fatalf("mark rejected calls after expired reject = %d, want 0", got)
 	}
 }
 

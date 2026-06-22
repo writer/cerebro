@@ -21,6 +21,7 @@ import (
 
 const (
 	findingCandidateStatusCandidate = "candidate"
+	findingCandidateStatusExpired   = "expired"
 	findingCandidateStatusPromoted  = "promoted"
 	findingCandidateStatusRejected  = "rejected"
 	findingCandidateDecisionType    = "finding_candidate_promotion"
@@ -104,11 +105,12 @@ type RejectCandidateResult struct {
 }
 
 type candidateRuleEvaluationState struct {
-	rule          Rule
-	run           *ports.FindingCandidateRun
-	result        *FindingCandidateEvaluationResult
-	eventsMatched uint32
-	failed        bool
+	rule              Rule
+	run               *ports.FindingCandidateRun
+	result            *FindingCandidateEvaluationResult
+	eventsMatched     uint32
+	evaluatedEventIDs []string
+	failed            bool
 }
 
 // EvaluateSourceRuntimeCandidateRules evaluates real runtime events into isolated
@@ -174,6 +176,9 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 				continue
 			}
 			state.run.EventsEvaluated++
+			if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+				state.evaluatedEventIDs = append(state.evaluatedEventIDs, eventID)
+			}
 			matchedEvent := false
 			for _, record := range emitted {
 				if record == nil {
@@ -211,6 +216,16 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 		state.run.Candidates = boundedUint32(len(state.result.Candidates))
 		state.run.Status = "completed"
 		state.run.FinishedAt = time.Now().UTC()
+		if _, err := s.candidateStore.ExpireStaleFindingCandidates(ctx, ports.FindingCandidateExpiration{
+			TenantID:          strings.TrimSpace(runtime.GetTenantId()),
+			RuntimeID:         runtimeID,
+			RuleID:            state.run.RuleID,
+			RunID:             state.run.ID,
+			EvaluatedEventIDs: state.evaluatedEventIDs,
+			RunStartedAt:      state.run.StartedAt,
+		}); err != nil {
+			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("expire stale finding candidates for run %q: %w", state.run.ID, err))
+		}
 		if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {
 			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("persist finding candidate run %q: %w", state.run.ID, err))
 		}
@@ -307,6 +322,9 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
 		return nil, fmt.Errorf("%w: rejected finding candidate cannot be promoted", ErrInvalidRequest)
 	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusExpired) {
+		return nil, fmt.Errorf("%w: expired finding candidate cannot be promoted", ErrInvalidRequest)
+	}
 	if candidate.Finding == nil {
 		return nil, fmt.Errorf("%w: finding candidate has no finding snapshot", ErrInvalidRequest)
 	}
@@ -399,6 +417,9 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
 		return nil, fmt.Errorf("%w: promoted finding candidate cannot be rejected", ErrInvalidRequest)
 	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusExpired) {
+		return nil, fmt.Errorf("%w: expired finding candidate cannot be rejected", ErrInvalidRequest)
+	}
 	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
 		emitFindingCandidateRejectionTelemetry(ctx, "already_rejected", candidate, strings.TrimSpace(candidate.DecisionID), startedAt)
 		return &RejectCandidateResult{Candidate: candidate, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
@@ -438,6 +459,8 @@ func (s *Service) findingCandidateLifecycleConflict(ctx context.Context, candida
 	switch strings.TrimSpace(current.Status) {
 	case findingCandidateStatusPromoted:
 		return fmt.Errorf("%w: promoted finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
+	case findingCandidateStatusExpired:
+		return fmt.Errorf("%w: expired finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
 	case findingCandidateStatusRejected:
 		return fmt.Errorf("%w: rejected finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
 	default:
