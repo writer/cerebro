@@ -99,9 +99,15 @@ func writeGRCCSV(w http.ResponseWriter, filename string, header []string, rows [
 		http.Error(w, "failed to encode export", http.StatusInternalServerError)
 		return
 	}
-	if err := writer.WriteAll(rows); err != nil {
-		http.Error(w, "failed to encode export", http.StatusInternalServerError)
-		return
+	for _, row := range rows {
+		sanitized := make([]string, len(row))
+		for i, value := range row {
+			sanitized[i] = grcCSVSanitizeCell(value)
+		}
+		if err := writer.Write(sanitized); err != nil {
+			http.Error(w, "failed to encode export", http.StatusInternalServerError)
+			return
+		}
 	}
 	writer.Flush()
 	if err := writer.Error(); err != nil {
@@ -113,4 +119,16 @@ func writeGRCCSV(w http.ResponseWriter, filename string, header []string, rows [
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(buffer.Bytes())
+}
+
+func grcCSVSanitizeCell(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	default:
+		return value
+	}
 }

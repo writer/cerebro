@@ -95,6 +95,52 @@ func indexCSVByColumn(records [][]string, column string) map[string]map[string]s
 	return rows
 }
 
+func TestWriteGRCCSVSanitizesSpreadsheetFormulaCells(t *testing.T) {
+	rows := [][]string{
+		{"=HYPERLINK(\"http://example.invalid\")"},
+		{"+SUM(1,1)"},
+		{"-10"},
+		{"@cmd"},
+		{"\t=SUM(1,1)"},
+		{"\r=SUM(1,1)"},
+		{"plain"},
+	}
+	recorder := httptest.NewRecorder()
+	writeGRCCSV(recorder, "test.csv", []string{"value"}, rows)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	records, err := csv.NewReader(recorder.Body).ReadAll()
+	if err != nil {
+		t.Fatalf("parse csv: %v", err)
+	}
+	want := []string{
+		"value",
+		"'=HYPERLINK(\"http://example.invalid\")",
+		"'+SUM(1,1)",
+		"'-10",
+		"'@cmd",
+		"'\t=SUM(1,1)",
+		"'\r=SUM(1,1)",
+		"plain",
+	}
+	if len(records) != len(want) {
+		t.Fatalf("records = %#v, want %d rows", records, len(want))
+	}
+	for i, record := range records {
+		if len(record) != 1 || record[0] != want[i] {
+			t.Fatalf("record[%d] = %#v, want %q", i, record, want[i])
+		}
+	}
+	if rows[0][0] != "=HYPERLINK(\"http://example.invalid\")" {
+		t.Fatalf("writeGRCCSV mutated caller row: %q", rows[0][0])
+	}
+	if got := grcCSVSanitizeCell(""); got != "" {
+		t.Fatalf("empty cell sanitized to %q, want empty", got)
+	}
+}
+
 func TestGRCFindingsExportReturnsCSV(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	tenantID, runtimeID := "tenant", "runtime-alpha"
