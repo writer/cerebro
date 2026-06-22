@@ -166,7 +166,7 @@ func PlanDefinition(request DefinitionRequest) (*PromotionPlan, error) {
 		Detail:   "Generated health receipt records freshness SLOs and runtime health endpoint.",
 	})
 	addStep(PromotionPlanStep{
-		ID:       "promotion." + firstNonEmptyPlan(plan.NextStage, "certified"),
+		ID:       "promotion." + firstNonEmptyString(plan.NextStage, "certified"),
 		Title:    "Lifecycle promotion",
 		Category: "promotion",
 		Status:   lifecycleStatus(definition),
@@ -235,15 +235,6 @@ func titleFromPlanID(id string) string {
 }
 
 func firstString(values []string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-func firstNonEmptyPlan(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
