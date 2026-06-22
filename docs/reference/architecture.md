@@ -131,6 +131,13 @@ that preflight envelope to graph reasoning responses. Bootstrap also maps
 preflight tenant-required blockers into the graph reasoning boundary's
 invalid-request error shape.
 
+The graph-fact read model lives in `internal/graphfacts` and treats persisted
+claims as the fact substrate for typed graph tools. The bootstrap budget includes
+only MCP argument decoding, tenant/runtime authorization, limit normalization,
+and JSON response mapping for listing and explaining graph facts; fact shaping,
+edge explanation, freshness, and evidence pointers stay behind the graphfacts
+domain package.
+
 The security-agent control plane also lives in `internal/agentplatform`. The
 bootstrap budget includes only the HTTP route registration, auth policy, and
 request/response mapping for exposing the registry, authorizing packet URNs

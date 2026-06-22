@@ -144,6 +144,8 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.neighborhood",
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
+		"cerebro.graph.facts.list",
+		"cerebro.graph.facts.explain",
 		"cerebro.agent.preflight",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
@@ -205,6 +207,8 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.graph.neighborhood":              {Markers: []string{"GET /platform/graph/neighborhood"}},
 	"cerebro.graph.impact":                    {Markers: []string{"GET /platform/graph/impact"}},
 	"cerebro.graph.paths":                     {Markers: []string{"GET /platform/graph/attack-paths"}},
+	"cerebro.graph.facts.list":                {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
+	"cerebro.graph.facts.explain":             {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
@@ -1834,6 +1838,81 @@ func TestMCPGraphNeighborhood(t *testing.T) {
 	}
 	if graph.neighborhoodRootURN != "urn:cerebro:writer:asset:prod-db" || graph.neighborhoodLimit != 5 {
 		t.Fatalf("graph query = (%q, %d)", graph.neighborhoodRootURN, graph.neighborhoodLimit)
+	}
+}
+
+func TestMCPGraphFactsListAndExplain(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-1": {Id: "runtime-1", TenantId: "writer", SourceId: "github"},
+		},
+		claims: map[string]*ports.ClaimRecord{
+			"fact-1": {
+				ID:            "fact-1",
+				RuntimeID:     "runtime-1",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:github_code_repository:repo-1",
+				Predicate:     "owned_by",
+				ObjectURN:     "urn:cerebro:writer:identity:email:alice@example.com",
+				ClaimType:     "relation",
+				Status:        "asserted",
+				SourceEventID: "event-1",
+				ObservedAt:    time.Date(2026, 6, 22, 14, 0, 0, 0, time.UTC),
+				Attributes:    map[string]string{"confidence": "high", "evidence_urn": "urn:cerebro:writer:evidence:evidence-1"},
+			},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	listResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.facts.list",
+			"arguments": map[string]any{
+				"runtime_id": "runtime-1",
+				"predicate":  "owned_by",
+				"limit":      5,
+			},
+		},
+	})
+	if listResp["error"] != nil {
+		t.Fatalf("graph facts list error = %#v", listResp["error"])
+	}
+	listContent := listResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	facts := listContent["facts"].([]any)
+	if len(facts) != 1 {
+		t.Fatalf("len(facts) = %d, want 1", len(facts))
+	}
+	if got := facts[0].(map[string]any)["id"]; got != "fact-1" {
+		t.Fatalf("fact id = %#v, want fact-1", got)
+	}
+	if store.claimListRequest.Predicate != "owned_by" || store.claimListRequest.Limit != 5 {
+		t.Fatalf("claim list request = %#v", store.claimListRequest)
+	}
+
+	explainResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.graph.facts.explain",
+			"arguments": map[string]any{"runtime_id": "runtime-1", "fact_id": "fact-1"},
+		},
+	})
+	if explainResp["error"] != nil {
+		t.Fatalf("graph facts explain error = %#v", explainResp["error"])
+	}
+	explain := explainResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	edge := explain["edge"].(map[string]any)
+	if edge["relation"] != "owned_by" || edge["status"] != "asserted" {
+		t.Fatalf("edge = %#v, want owned_by asserted edge", edge)
+	}
+	evidence := explain["evidence"].([]any)
+	if len(evidence) != 2 {
+		t.Fatalf("len(evidence) = %d, want source event plus evidence URN", len(evidence))
 	}
 }
 

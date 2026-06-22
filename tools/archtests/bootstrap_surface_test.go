@@ -19,8 +19,10 @@ import (
 // durable storage lives in internal/statestore/postgres and the AskQueryStore
 // port, so the additions stay within bootstrap's routing, auth, and composition
 // responsibility. The ask-query write scope constant keeps saved-query mutation
-// routes from reusing a read-only scope.
-const bootstrapProductionGoLineBudget = 24619
+// routes from reusing a read-only scope. Graph-fact MCP tools add only typed
+// request/response mapping over the graphfacts domain service and the existing
+// ClaimStore-backed graph-fact substrate.
+const bootstrapProductionGoLineBudget = 24731
 
 type bootstrapFileLineCount struct {
 	path  string

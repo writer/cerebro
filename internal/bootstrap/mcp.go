@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -574,6 +575,10 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphImpact(r, args)
 	case "cerebro.graph.paths":
 		return app.mcpGraphPaths(r, args)
+	case "cerebro.graph.facts.list":
+		return app.mcpGraphFactsList(r, args)
+	case "cerebro.graph.facts.explain":
+		return app.mcpGraphFactsExplain(r, args)
 	case "cerebro.agent.preflight":
 		return app.mcpAgentPreflight(r, args)
 	case "cerebro.graph.reason":
@@ -1441,6 +1446,92 @@ func (app *App) mcpGraphPaths(r *http.Request, args map[string]any) (any, error)
 	return mcpAddResponseMetadata(value, mcpResponseMetadata(limitApplied, mcpMapArrayCount(value, "paths"), nil)), nil
 }
 
+func (app *App) mcpGraphFactsList(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", defaultMCPListLimit, maxMCPListLimit)
+	if err != nil {
+		return nil, err
+	}
+	request, err := app.mcpGraphFactsListRequest(r, args, limit)
+	if err != nil {
+		return nil, err
+	}
+	response, err := app.graphFactsService().List(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpResponseMetadata(limit, len(response.Facts), nil)), nil
+}
+
+func (app *App) mcpGraphFactsExplain(r *http.Request, args map[string]any) (any, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpStringArg(args, "tenant_id"))
+	if err != nil {
+		return nil, err
+	}
+	request := graphfacts.ExplainRequest{
+		TenantID:    tenantID,
+		RuntimeID:   mcpStringArg(args, "runtime_id"),
+		FactID:      mcpStringArg(args, "fact_id"),
+		SubjectURN:  mcpStringArg(args, "subject_urn"),
+		Predicate:   mcpStringArg(args, "predicate"),
+		ObjectURN:   mcpStringArg(args, "object_urn"),
+		ObjectValue: mcpStringArg(args, "object_value"),
+	}
+	if request.RuntimeID != "" {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), request.RuntimeID); err != nil {
+			return nil, err
+		}
+	}
+	for _, urn := range []string{request.SubjectURN, request.ObjectURN} {
+		if strings.HasPrefix(strings.TrimSpace(urn), "urn:cerebro:") {
+			if err := authorizeCerebroURNTenant(r.Context(), urn); err != nil {
+				return nil, err
+			}
+		}
+	}
+	response, err := app.graphFactsService().Explain(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	return jsonValue(response)
+}
+
+func (app *App) mcpGraphFactsListRequest(r *http.Request, args map[string]any, limit int) (graphfacts.ListRequest, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpStringArg(args, "tenant_id"))
+	if err != nil {
+		return graphfacts.ListRequest{}, err
+	}
+	request := graphfacts.ListRequest{
+		TenantID:      tenantID,
+		RuntimeID:     mcpStringArg(args, "runtime_id"),
+		FactID:        mcpStringArg(args, "fact_id"),
+		SubjectURN:    mcpStringArg(args, "subject_urn"),
+		Predicate:     mcpStringArg(args, "predicate"),
+		ObjectURN:     mcpStringArg(args, "object_urn"),
+		ObjectValue:   mcpStringArg(args, "object_value"),
+		ClaimType:     mcpStringArg(args, "fact_type"),
+		Status:        mcpStringArg(args, "status"),
+		SourceEventID: mcpStringArg(args, "source_event_id"),
+		Limit:         boundedUint32(limit),
+	}
+	if request.RuntimeID != "" {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), request.RuntimeID); err != nil {
+			return graphfacts.ListRequest{}, err
+		}
+	}
+	for _, urn := range []string{request.SubjectURN, request.ObjectURN} {
+		if strings.HasPrefix(strings.TrimSpace(urn), "urn:cerebro:") {
+			if err := authorizeCerebroURNTenant(r.Context(), urn); err != nil {
+				return graphfacts.ListRequest{}, err
+			}
+		}
+	}
+	return request, nil
+}
+
 func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
 	request := graphagent.AskRequest{
 		TenantID: mcpStringArg(args, "tenant_id"),
@@ -2026,6 +2117,47 @@ func mcpTools() []mcpTool {
 			}, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Graph Attack Paths"),
+		},
+		{
+			Name:        "cerebro.graph.facts.list",
+			Title:       "List Graph Facts",
+			Description: "List graph facts backed by runtime claims, including subject, predicate, object, status, freshness, confidence, and evidence pointers.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":       map[string]any{"type": "string"},
+				"runtime_id":      map[string]any{"type": "string"},
+				"fact_id":         map[string]any{"type": "string"},
+				"subject_urn":     map[string]any{"type": "string"},
+				"predicate":       map[string]any{"type": "string"},
+				"object_urn":      map[string]any{"type": "string"},
+				"object_value":    map[string]any{"type": "string"},
+				"fact_type":       map[string]any{"type": "string", "enum": []string{"existence", "attribute", "relation", "classification"}},
+				"status":          map[string]any{"type": "string", "enum": []string{"asserted", "retracted", "refuted", "superseded"}},
+				"source_event_id": map[string]any{"type": "string"},
+				"limit":           mcpLimitSchema(maxMCPListLimit, "graph facts"),
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"facts": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("List Graph Facts"),
+		},
+		{
+			Name:        "cerebro.graph.facts.explain",
+			Title:       "Explain Graph Fact",
+			Description: "Explain why a graph fact or edge exists, returning the supporting fact, projected edge shape, evidence pointers, and freshness state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":    map[string]any{"type": "string"},
+				"runtime_id":   map[string]any{"type": "string"},
+				"fact_id":      map[string]any{"type": "string"},
+				"subject_urn":  map[string]any{"type": "string"},
+				"predicate":    map[string]any{"type": "string"},
+				"object_urn":   map[string]any{"type": "string"},
+				"object_value": map[string]any{"type": "string"},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"fact":      map[string]any{"type": "object"},
+				"edge":      map[string]any{"type": "object"},
+				"evidence":  map[string]any{"type": "array"},
+				"freshness": map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Explain Graph Fact"),
 		},
 		{
 			Name:        "cerebro.agent.preflight",
