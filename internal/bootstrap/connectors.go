@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectordiagnostics"
 	"github.com/writer/cerebro/internal/connectorpreflight"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/ports"
@@ -151,19 +152,21 @@ type connectorLibraryResponse struct {
 }
 
 type connectorDetailResponse struct {
-	GeneratedAt string                     `json:"generated_at"`
-	TenantID    string                     `json:"tenant_id,omitempty"`
-	Connector   connectorCatalogEntry      `json:"connector"`
-	Summary     connectorOperationsSummary `json:"summary"`
-	Connections []connectorConnectionView  `json:"connections"`
-	Activity    []connectorActivityView    `json:"activity"`
+	GeneratedAt        string                       `json:"generated_at"`
+	TenantID           string                       `json:"tenant_id,omitempty"`
+	Connector          connectorCatalogEntry        `json:"connector"`
+	Summary            connectorOperationsSummary   `json:"summary"`
+	Connections        []connectorConnectionView    `json:"connections"`
+	Activity           []connectorActivityView      `json:"activity"`
+	DiagnosticTimeline []connectordiagnostics.Entry `json:"diagnostic_timeline,omitempty"`
 }
 
 type connectorActivityResponse struct {
-	GeneratedAt string                  `json:"generated_at"`
-	TenantID    string                  `json:"tenant_id,omitempty"`
-	SourceID    string                  `json:"source_id"`
-	Activity    []connectorActivityView `json:"activity"`
+	GeneratedAt        string                       `json:"generated_at"`
+	TenantID           string                       `json:"tenant_id,omitempty"`
+	SourceID           string                       `json:"source_id"`
+	Activity           []connectorActivityView      `json:"activity"`
+	DiagnosticTimeline []connectordiagnostics.Entry `json:"diagnostic_timeline,omitempty"`
 }
 
 type connectorOperationsSummary struct {
@@ -404,6 +407,7 @@ type connectorPreflightResponse struct {
 	Checks             []connectorPreflightCheckView   `json:"checks"`
 	ScopePreview       connectorScopePreviewView       `json:"scope_preview"`
 	CredentialBoundary connectorCredentialBoundaryView `json:"credential_boundary"`
+	DiagnosticTimeline []connectordiagnostics.Entry    `json:"diagnostic_timeline,omitempty"`
 }
 
 type connectorPreflightCheckView struct {
@@ -653,13 +657,15 @@ func (a *App) handleGetConnector(w http.ResponseWriter, r *http.Request) {
 	}
 	connections := connectorConnectionsFromHealth(health.Runtimes)
 	activity := connectorActivityFromHealth(health.Runtimes)
+	timeline := connectordiagnostics.FromHealth(health.Runtimes)
 	writeJSON(w, http.StatusOK, connectorDetailResponse{
-		GeneratedAt: health.GeneratedAt,
-		TenantID:    tenantID,
-		Connector:   entry,
-		Summary:     connectorOperationsSummaryFromHealth(entry, health.Runtimes),
-		Connections: connections,
-		Activity:    activity,
+		GeneratedAt:        health.GeneratedAt,
+		TenantID:           tenantID,
+		Connector:          entry,
+		Summary:            connectorOperationsSummaryFromHealth(entry, health.Runtimes),
+		Connections:        connections,
+		Activity:           activity,
+		DiagnosticTimeline: timeline,
 	})
 }
 
@@ -695,11 +701,13 @@ func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request
 		}
 	}
 	activity := connectorActivityFromHealth(health.Runtimes)
+	timeline := connectordiagnostics.FromHealth(health.Runtimes)
 	writeJSON(w, http.StatusOK, connectorActivityResponse{
-		GeneratedAt: health.GeneratedAt,
-		TenantID:    tenantID,
-		SourceID:    entry.SourceID,
-		Activity:    limitConnectorActivity(activity, activityLimit),
+		GeneratedAt:        health.GeneratedAt,
+		TenantID:           tenantID,
+		SourceID:           entry.SourceID,
+		Activity:           limitConnectorActivity(activity, activityLimit),
+		DiagnosticTimeline: connectordiagnostics.Limit(timeline, activityLimit),
 	})
 }
 
@@ -2212,6 +2220,30 @@ func (r *connectorPreflightResponse) finalizePreflight() {
 		r.Summary = "Preflight passed. This connection is ready to save."
 		r.NextAction = "save_connection"
 	}
+	r.DiagnosticTimeline = connectordiagnostics.FromPreflight(connectordiagnostics.Preflight{
+		GeneratedAt: r.GeneratedAt,
+		SourceID:    r.SourceID,
+		RuntimeID:   r.RuntimeID,
+		TenantID:    r.TenantID,
+		Status:      r.Status,
+		Summary:     r.Summary,
+		NextAction:  r.NextAction,
+		Checks:      connectorPreflightDiagnosticChecks(r.Checks),
+	})
+}
+
+func connectorPreflightDiagnosticChecks(checks []connectorPreflightCheckView) []connectordiagnostics.PreflightCheck {
+	diagnostics := make([]connectordiagnostics.PreflightCheck, 0, len(checks))
+	for _, check := range checks {
+		diagnostics = append(diagnostics, connectordiagnostics.PreflightCheck{
+			ID:         check.ID,
+			Label:      check.Label,
+			Status:     check.Status,
+			Detail:     check.Detail,
+			NextAction: check.NextAction,
+		})
+	}
+	return diagnostics
 }
 
 func (a *App) connectorPreflightStore(storeID string) (connectorStoreView, bool) {

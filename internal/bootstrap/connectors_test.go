@@ -2298,6 +2298,153 @@ func TestConnectorActivityLimitTruncatesActivityRows(t *testing.T) {
 	}
 }
 
+func TestConnectorActivityIncludesDiagnosticTimeline(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {
+			Id:           "runtime-a",
+			SourceId:     "bootstrap_token",
+			TenantId:     "tenant-a",
+			LastSyncedAt: timestamppb.New(now.Add(-time.Hour)),
+			Config: map[string]string{
+				"family":                           "audit",
+				runtimeContractProbeStateConfigKey: "passing",
+				runtimeRecordsAcceptedConfigKey:    "10",
+			},
+		},
+	}}}
+	graph := &stubGraphStore{ingestRuns: map[string]graphstore.IngestRun{
+		"graph-a": {
+			ID:                "graph-a",
+			RuntimeID:         "runtime-a",
+			Status:            "completed",
+			StartedAt:         now.Add(-30 * time.Minute).Format(time.RFC3339Nano),
+			FinishedAt:        now.Add(-25 * time.Minute).Format(time.RFC3339Nano),
+			EntitiesProjected: 12,
+			LinksProjected:    7,
+		},
+	}}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: store, GraphStore: graph}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?tenant_id=tenant-a")
+	if err != nil {
+		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors/{sourceID}/activity status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		DiagnosticTimeline []struct {
+			Stage             string `json:"stage"`
+			StageOrder        int    `json:"stage_order"`
+			Status            string `json:"status"`
+			CorrelationID     string `json:"correlation_id"`
+			EntitiesProjected int64  `json:"entities_projected"`
+		} `json:"diagnostic_timeline"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.DiagnosticTimeline) < 4 {
+		t.Fatalf("diagnostic timeline length = %d, want at least 4: %#v", len(payload.DiagnosticTimeline), payload.DiagnosticTimeline)
+	}
+	stages := map[string]struct {
+		status            string
+		correlationID     string
+		entitiesProjected int64
+	}{}
+	for _, entry := range payload.DiagnosticTimeline {
+		stages[entry.Stage] = struct {
+			status            string
+			correlationID     string
+			entitiesProjected int64
+		}{status: entry.Status, correlationID: entry.CorrelationID, entitiesProjected: entry.EntitiesProjected}
+	}
+	for _, stage := range []string{"setup", "source_sync", "contract_probe", "graph_projection"} {
+		if _, ok := stages[stage]; !ok {
+			t.Fatalf("diagnostic timeline missing stage %q: %#v", stage, payload.DiagnosticTimeline)
+		}
+	}
+	if got := stages["graph_projection"].correlationID; got != "graph-a" {
+		t.Fatalf("graph correlation_id = %q, want graph-a", got)
+	}
+	if got := stages["graph_projection"].entitiesProjected; got != 12 {
+		t.Fatalf("graph entities_projected = %d, want 12", got)
+	}
+	if got := stages["contract_probe"].status; got != "success" {
+		t.Fatalf("contract probe status = %q, want success", got)
+	}
+}
+
+func TestConnectorPreflightIncludesDiagnosticTimeline(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/connectors/bootstrap_token/preflight", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/preflight error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors/{sourceID}/preflight status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Status             string `json:"status"`
+		DiagnosticTimeline []struct {
+			Stage        string `json:"stage"`
+			Status       string `json:"status"`
+			FailureClass string `json:"failure_class"`
+			NextAction   string `json:"next_action"`
+		} `json:"diagnostic_timeline"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != "blocked" {
+		t.Fatalf("preflight status = %q, want blocked", payload.Status)
+	}
+	if len(payload.DiagnosticTimeline) < 2 {
+		t.Fatalf("diagnostic timeline length = %d, want at least 2: %#v", len(payload.DiagnosticTimeline), payload.DiagnosticTimeline)
+	}
+	if got := payload.DiagnosticTimeline[0].Stage; got != "preflight" {
+		t.Fatalf("timeline[0].stage = %q, want preflight", got)
+	}
+	if got := payload.DiagnosticTimeline[0].FailureClass; got != "preflight_blocked" {
+		t.Fatalf("timeline[0].failure_class = %q, want preflight_blocked", got)
+	}
+	if got := payload.DiagnosticTimeline[0].NextAction; got != "fix_blocking_checks" {
+		t.Fatalf("timeline[0].next_action = %q, want fix_blocking_checks", got)
+	}
+}
+
 func TestConnectorConnectionStoresEnvironmentManagedReference(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)
