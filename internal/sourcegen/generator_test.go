@@ -188,6 +188,96 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 }
 
+func TestPlanDefinitionBuildsPromotionChecklist(t *testing.T) {
+	plan, err := PlanDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-example_idp",
+			TenantID:      "tenant-a",
+			SourceID:      "example_idp",
+			DisplayName:   "Example IDP",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL:      "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{Path: "/v1/me"},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "example_idp.user",
+					SchemaRef: "example_idp/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{
+					Type:    "entity_family",
+					Support: "supported",
+				}},
+			}},
+		},
+		OutputDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() error = %v", err)
+	}
+	if plan.Status != PlanStatusReady || plan.NextStage != connectordefinitions.StageSandbox {
+		t.Fatalf("plan status/next = %q/%q, want ready/sandbox", plan.Status, plan.NextStage)
+	}
+	if plan.Scaffold == nil || len(plan.Scaffold.Files) == 0 || plan.Metrics.GeneratedFiles == 0 {
+		t.Fatalf("plan scaffold = %#v, metrics = %#v", plan.Scaffold, plan.Metrics)
+	}
+	if len(plan.Checklist) == 0 || len(plan.Commands) == 0 {
+		t.Fatalf("plan checklist/commands empty: %#v", plan)
+	}
+	for _, step := range plan.Checklist {
+		if step.ID == "source_cdk.scaffold" && step.Status == PlanStatusReady {
+			return
+		}
+	}
+	t.Fatalf("plan missing ready source_cdk.scaffold step: %#v", plan.Checklist)
+}
+
+func TestPlanDefinitionReportsGrammarBlockers(t *testing.T) {
+	plan, err := PlanDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-a-example_api",
+			TenantID:    "tenant-a",
+			SourceID:    "example_api",
+			DisplayName: "Example API",
+			Auth:        connectordefinitions.AuthSpec{Model: "none"},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL:      "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{Path: "/v1/me"},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:      "assets",
+				Path:    "/v1/assets",
+				Method:  "DELETE",
+				IDField: "id",
+			}},
+		},
+		OutputDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("PlanDefinition() error = %v", err)
+	}
+	if plan.Status != PlanStatusBlocked {
+		t.Fatalf("plan status = %q, want blocked", plan.Status)
+	}
+	if len(plan.Blockers) == 0 {
+		t.Fatalf("plan blockers empty: %#v", plan)
+	}
+}
+
 func TestGenerateDefinitionCarriesProjectionRelationships(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{

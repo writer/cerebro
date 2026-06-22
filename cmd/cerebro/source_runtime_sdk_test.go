@@ -158,6 +158,58 @@ func TestRunSourceRuntimeSDKNewFromDefinitionDryRun(t *testing.T) {
 	}
 }
 
+func TestRunSourceRuntimeSDKPlanFromDefinition(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "definition.json")
+	payload := []byte(`{
+		"schema_version": "cerebro.integration/v1",
+		"id": "tenant-a-example_idp",
+		"tenant_id": "tenant-a",
+		"source_id": "example_idp",
+		"display_name": "Example IDP",
+		"auth": {
+			"model": "bearer_token",
+			"credential_fields": [{"key": "token", "secret": true, "reference_only": true}]
+		},
+		"transport": {
+			"base_url": "https://api.example.test",
+			"verification": {"path": "/v1/me"}
+		},
+		"resource_families": [{
+			"id": "users",
+			"path": "/v1/users",
+			"record_selector": "$.data[*]",
+			"id_field": "id",
+			"event": {"kind": "example_idp.user", "schema_ref": "example_idp/user/v1"},
+			"projection": {"template": "identity_user"},
+			"coverage": [{"type": "entity_family", "support": "supported"}]
+		}]
+	}`)
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("write definition: %v", err)
+	}
+	stdout := captureCommandStdout(t, func() {
+		err := runSourceRuntime([]string{"sdk", "plan", path, "freshness_expectation=2h", "output_dir=" + dir})
+		if err != nil {
+			t.Fatalf("runSourceRuntime sdk plan error = %v", err)
+		}
+	})
+	var plan struct {
+		Status    string `json:"status"`
+		NextStage string `json:"next_stage"`
+		Scaffold  struct {
+			SourceID string   `json:"source_id"`
+			Files    []string `json:"files"`
+		} `json:"scaffold"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &plan); err != nil {
+		t.Fatalf("unmarshal plan output: %v\n%s", err, stdout)
+	}
+	if plan.Status != "ready" || plan.NextStage != "sandbox" || plan.Scaffold.SourceID != "example_idp" || len(plan.Scaffold.Files) == 0 {
+		t.Fatalf("plan = %#v, want ready example_idp scaffold", plan)
+	}
+}
+
 func TestRunSourceRuntimeSDKNewFromDefinitionComparesNormalizedSourceID(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "definition.json")

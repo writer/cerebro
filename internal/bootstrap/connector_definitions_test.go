@@ -13,7 +13,12 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcegen"
 )
+
+type testConnectorDefinitionPlanResponse struct {
+	Plan *sourcegen.PromotionPlan `json:"plan"`
+}
 
 func (s *connectorTestStore) PutConnectorDefinition(_ context.Context, record *ports.ConnectorDefinitionRecord) (*ports.ConnectorDefinitionRecord, error) {
 	if s.definitions == nil {
@@ -336,6 +341,99 @@ func TestConnectorDefinitionValidateDoesNotRequireStore(t *testing.T) {
 	}
 	if len(validation.Promotion.RequiredGates) == 0 {
 		t.Fatalf("required gates = %#v, want blocking gates", validation.Promotion.RequiredGates)
+	}
+}
+
+func TestConnectorDefinitionPlanDoesNotRequireStore(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/connector-definitions/plan", "application/json", stringsReader(t, `{
+		"definition": {
+			"tenant_id": "tenant-a",
+			"source_id": "example_idp",
+			"display_name": "Example IDP",
+			"runtime": "json_api",
+			"auth": {"model": "bearer_token", "credential_fields": [{"key": "token", "secret": true, "reference_only": true}]},
+			"transport": {"base_url": "https://api.example.test", "verification": {"path": "/v1/me"}},
+			"resource_families": [{
+				"id": "users",
+				"path": "/v1/users",
+				"record_selector": "$.data[*]",
+				"id_field": "id",
+				"event": {"kind": "example_idp.user", "schema_ref": "example_idp/user/v1"},
+				"projection": {"template": "identity_user"},
+				"coverage": [{"type": "entity_family", "support": "supported"}]
+			}]
+		},
+		"freshness_expectation": "2h"
+	}`))
+	if err != nil {
+		t.Fatalf("POST /connector-definitions/plan error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions/plan status = %d, want 200", resp.StatusCode)
+	}
+	var planned testConnectorDefinitionPlanResponse
+	if err := json.NewDecoder(resp.Body).Decode(&planned); err != nil {
+		t.Fatalf("decode plan response: %v", err)
+	}
+	if planned.Plan == nil || planned.Plan.Status != "ready" || planned.Plan.Scaffold == nil {
+		t.Fatalf("plan = %#v, want ready scaffold plan", planned.Plan)
+	}
+}
+
+func TestConnectorDefinitionStoredPromotionPlan(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createResp, err := server.Client().Post(server.URL+"/connector-definitions", "application/json", stringsReader(t, `{
+		"tenant_id": "tenant-a",
+		"source_id": "example_idp",
+		"display_name": "Example IDP",
+		"runtime": "json_api",
+		"auth": {"model": "none"},
+		"transport": {"base_url": "https://api.example.test", "verification": {"path": "/v1/me"}},
+		"resource_families": [{
+			"id": "users",
+			"path": "/v1/users",
+			"record_selector": "$.data[*]",
+			"id_field": "id",
+			"event": {"kind": "example_idp.user", "schema_ref": "example_idp/user/v1"},
+			"projection": {"template": "identity_user"},
+			"coverage": [{"type": "entity_family", "support": "supported"}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
+	}
+	var created connectorDefinitionResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	planResp, err := server.Client().Get(server.URL + "/connector-definitions/" + created.Definition.ID + "/promotion-plan")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/promotion-plan error = %v", err)
+	}
+	defer closeResponseBody(t, planResp)
+	if planResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connector-definitions/{id}/promotion-plan status = %d, want 200", planResp.StatusCode)
+	}
+	var planned testConnectorDefinitionPlanResponse
+	if err := json.NewDecoder(planResp.Body).Decode(&planned); err != nil {
+		t.Fatalf("decode plan response: %v", err)
+	}
+	if planned.Plan == nil || planned.Plan.Definition.ID != created.Definition.ID || planned.Plan.NextStage != connectordefinitions.StageSandbox {
+		t.Fatalf("plan = %#v, want stored definition plan", planned.Plan)
 	}
 }
 

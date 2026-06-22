@@ -424,7 +424,7 @@ func pullFromRecords[T any](records []T, next string, build func(T) (*primitives
 		Events: events,
 		Checkpoint: &cerebrov1.SourceCheckpoint{
 			Watermark:    events[len(events)-1].OccurredAt,
-			CursorOpaque: checkpointCursor(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
+			CursorOpaque: sourcecdk.ResolveCursorOpaque(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
 		},
 	}
 	if next != "" {
@@ -668,19 +668,6 @@ func wrapLookupError(subject string, err error) error {
 		return fmt.Errorf("%s not found", subject)
 	}
 	return fmt.Errorf("%s: %w", subject, err)
-}
-
-func checkpointCursor(next string, fallback string, occurredAt time.Time) string {
-	if strings.TrimSpace(next) != "" {
-		return strings.TrimSpace(next)
-	}
-	if strings.TrimSpace(fallback) != "" {
-		return strings.TrimSpace(fallback)
-	}
-	if occurredAt.IsZero() {
-		return ""
-	}
-	return occurredAt.UTC().Format(time.RFC3339Nano)
 }
 
 func firstNonEmpty(values ...string) string {

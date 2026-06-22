@@ -11,7 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcegen"
 )
 
-const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [catalog=true] [definition=<definition.json>] [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json> | wire <source-id> [output_dir=<dir>] [dry_run=true] | validate <source-id> [output_dir=<dir>]]"
+const sourceRuntimeSDKNewUsage = "usage: %s source-runtime sdk [new <source-id> [catalog=true] [definition=<definition.json>] [source_type=json_api] [auth_model=bearer_token|api_token|api_key] [asset_schemas=<schema[,schema]>] [finding_schemas=<schema[,schema]>] [freshness_expectation=<duration>] [failure_modes=<mode[,mode]>] [name=<name>] [description=<description>] [health_path=<path>] [output_dir=<dir>] [dry_run=true] [force=true] | classify <definition.json> | plan <definition.json> [freshness_expectation=<duration>] [health_path=<path>] [output_dir=<dir>] | wire <source-id> [output_dir=<dir>] [dry_run=true] | validate <source-id> [output_dir=<dir>]]"
 
 type sourceRuntimeSDKNewRequest struct {
 	sourcegen.Request
@@ -35,6 +35,8 @@ func runSourceRuntimeSDK(args []string) error {
 		return printJSON(result)
 	case "classify":
 		return runSourceRuntimeSDKClassify(args[1:])
+	case "plan":
+		return runSourceRuntimeSDKPlan(args[1:])
 	case "wire":
 		return runSourceRuntimeSDKWire(args[1:])
 	case "validate":
@@ -126,6 +128,40 @@ func runSourceRuntimeSDKClassify(args []string) error {
 		return err
 	}
 	return printJSON(report)
+}
+
+func runSourceRuntimeSDKPlan(args []string) error {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		return usageError(fmt.Sprintf(sourceRuntimeSDKNewUsage, os.Args[0]))
+	}
+	values := map[string]string{}
+	for _, arg := range args[1:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return fmt.Errorf("invalid plan argument %q; want key=value", arg)
+		}
+		key = strings.TrimSpace(key)
+		switch key {
+		case "freshness_expectation", "freshness", "health_path", "output_dir":
+			values[key] = strings.TrimSpace(value)
+		default:
+			return fmt.Errorf("unsupported plan argument %q", key)
+		}
+	}
+	definition, err := readConnectorDefinition(args[0])
+	if err != nil {
+		return err
+	}
+	plan, err := sourcegen.PlanDefinition(sourcegen.DefinitionRequest{
+		Definition:           definition,
+		FreshnessExpectation: firstNonEmptyCLI(values["freshness_expectation"], values["freshness"]),
+		HealthPath:           values["health_path"],
+		OutputDir:            firstNonEmptyCLI(values["output_dir"], "."),
+	})
+	if err != nil {
+		return err
+	}
+	return printJSON(plan)
 }
 
 func readConnectorDefinition(path string) (connectordefinitions.Definition, error) {

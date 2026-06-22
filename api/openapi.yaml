@@ -796,6 +796,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectorDefinitionValidationResponse'
+  /connector-definitions/plan:
+    post:
+      summary: Build a Source CDK promotion plan without persisting it
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinitionPlanRequest'
+      responses:
+        '200':
+          description: Checklist, blockers, and dry-run scaffold for Source CDK promotion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionPlanResponse'
   /connector-definitions/{definitionID}:
     get:
       summary: Get a dynamic connector definition
@@ -831,6 +849,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/{definitionID}/promotion-plan:
+    get:
+      summary: Get a Source CDK promotion plan for a stored connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      responses:
+        '200':
+          description: Checklist, blockers, and dry-run scaffold for Source CDK promotion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionPlanResponse'
+        '404':
+          description: Connector definition was not found.
   /connector-definitions/{definitionID}/promote:
     post:
       summary: Promote a dynamic connector definition lifecycle stage
@@ -5472,6 +5506,177 @@ components:
           $ref: '#/components/schemas/ConnectorDefinitionValidation'
         promotion:
           $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+    ConnectorDefinitionPlanRequest:
+      type: object
+      required:
+        - definition
+      properties:
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        freshness_expectation:
+          type: string
+        health_path:
+          type: string
+        output_dir:
+          type: string
+    ConnectorDefinitionPlanResponse:
+      type: object
+      required:
+        - plan
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        plan:
+          $ref: '#/components/schemas/SourceCDKPromotionPlan'
+    SourceCDKPromotionPlan:
+      type: object
+      required:
+        - generated_at
+        - definition
+        - support
+        - status
+        - summary
+        - checklist
+        - metrics
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        support:
+          $ref: '#/components/schemas/ConnectorDefinitionSupportReport'
+        status:
+          type: string
+          enum: [ready, warning, blocked]
+        summary:
+          type: string
+        next_stage:
+          type: string
+        checklist:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCDKPromotionPlanStep'
+        blockers:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        metrics:
+          $ref: '#/components/schemas/SourceCDKPromotionPlanMetrics'
+        scaffold:
+          $ref: '#/components/schemas/SourceCDKScaffoldPlan'
+        commands:
+          type: array
+          items:
+            type: string
+    SourceCDKPromotionPlanStep:
+      type: object
+      required:
+        - id
+        - title
+        - category
+        - status
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [ready, warning, blocked]
+        detail:
+          type: string
+        action:
+          type: string
+        blocking:
+          type: boolean
+    SourceCDKPromotionPlanMetrics:
+      type: object
+      properties:
+        resource_families:
+          type: integer
+        config_fields:
+          type: integer
+        credential_fields:
+          type: integer
+        scope_options:
+          type: integer
+        generated_files:
+          type: integer
+        ready_checks:
+          type: integer
+        warning_checks:
+          type: integer
+        blocked_checks:
+          type: integer
+    SourceCDKScaffoldPlan:
+      type: object
+      properties:
+        source_id:
+          type: string
+        source_type:
+          type: string
+        auth_model:
+          type: string
+        dry_run:
+          type: boolean
+        files:
+          type: array
+          items:
+            type: string
+        health_endpoint:
+          type: string
+        source_health_receipt:
+          type: string
+        pr_body:
+          type: string
+        next_steps:
+          type: array
+          items:
+            type: string
+    ConnectorDefinitionSupportReport:
+      type: object
+      properties:
+        definition_id:
+          type: string
+        source_id:
+          type: string
+        grammar_version:
+          type: string
+        verdict:
+          type: string
+          enum: [supported, extension_required, bespoke_required]
+        supported_features:
+          type: array
+          items:
+            type: string
+        missing_features:
+          type: array
+          items:
+            type: string
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              category:
+                type: string
+              status:
+                type: string
+                enum: [ready, missing]
+              detail:
+                type: string
+        validation:
+          $ref: '#/components/schemas/ConnectorDefinitionValidation'
     ConnectorDefinitionPromotionResponse:
       type: object
       required:

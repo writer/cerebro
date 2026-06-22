@@ -16,7 +16,6 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 		},
 		EvidenceRequest: ports.ListFindingEvidenceRequest{
 			RuntimeIDs: []string{"tenant-runtime-a", "tenant-runtime-b"},
-			FindingIDs: []string{"finding-1", "finding-2"},
 		},
 	})
 	if err != nil {
@@ -24,6 +23,7 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 	}
 	for _, fragment := range []string{
 		"WITH finding_scope AS",
+		"SELECT id, status,",
 		"COUNT(*) FILTER (WHERE LOWER(status) = 'open') AS open_findings",
 		"jsonb_array_elements",
 		"jsonb_build_object('framework_name', framework_name, 'control_id', control_id)",
@@ -32,19 +32,21 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 		"GROUP BY finding_id",
 		"FROM finding_evidence",
 		"runtime_id IN ($5, $6)",
-		"finding_id IN ($7, $8)",
+		"finding_id IN (SELECT id FROM finding_scope)",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("aggregate query missing %q:\n%s", fragment, query)
 		}
 	}
-	for _, forbidden := range []string{`E'\x00'`, `|| E'`, "control_key"} {
+	// The dashboard evidence total must follow finding_scope (all open findings),
+	// not a windowed preview finding-id list, so no positional finding_id filter.
+	for _, forbidden := range []string{`E'\x00'`, `|| E'`, "control_key", "finding_id IN ($7"} {
 		if strings.Contains(query, forbidden) {
 			t.Fatalf("aggregate query must not contain %q:\n%s", forbidden, query)
 		}
 	}
-	if len(args) != 8 {
-		t.Fatalf("aggregate query args len = %d, want 8 (%v)", len(args), args)
+	if len(args) != 6 {
+		t.Fatalf("aggregate query args len = %d, want 6 (%v)", len(args), args)
 	}
 }
 

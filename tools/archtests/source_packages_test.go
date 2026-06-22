@@ -14,18 +14,18 @@ const newSourcePackageLOCBudget = 300
 // sources. If a source shrinks, lower its ceiling in the same change; if a
 // source grows, move shared behavior into the Source CDK instead of raising it.
 var grandfatheredSourcePackageLOCBudgets = map[string]int{
-	"aurelius":        623,
+	"aurelius":        612,
 	"aws":             19070,
 	"azure":           2842,
-	"cosmo":           1011,
+	"cosmo":           992,
 	"gcp":             2095,
 	"github":          2028,
 	"googleworkspace": 815,
-	"grc":             1343,
-	"okta":            2269,
-	"panopticon":      781,
-	"sentinelone":     2089,
-	"vulnview":        1042,
+	"grc":             1321,
+	"okta":            2257,
+	"panopticon":      770,
+	"sentinelone":     2077,
+	"vulnview":        1001,
 }
 
 func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {

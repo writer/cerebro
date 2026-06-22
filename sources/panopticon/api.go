@@ -222,7 +222,7 @@ func recordsPull(records []panopticonRecord, cursorState, next panopticonAPICurs
 		}
 	}
 	pull := sourcecdk.Pull{Events: events}
-	watermarkValue := watermarkString(watermark, parseAPIWatermark(cursorState.Watermark))
+	watermarkValue := sourcecdk.WatermarkString(watermark, parseAPIWatermark(cursorState.Watermark))
 	if next.hasMore() {
 		next.Watermark = watermarkValue
 		opaque := encodeAPICursor(next)
