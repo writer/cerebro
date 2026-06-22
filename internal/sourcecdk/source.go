@@ -206,6 +206,40 @@ func (s *catalogContractSource) EventContracts() []EventContract {
 	return cloneEventContracts(s.contracts)
 }
 
+func (s *catalogContractSource) CoverageContract() CoverageContract {
+	if s == nil {
+		return CoverageContract{}
+	}
+	provider, ok := s.Source.(CoverageContractProvider)
+	if ok {
+		return cloneCoverageContract(provider.CoverageContract())
+	}
+	if sourceIsNil(s.Source) {
+		return CoverageContract{}
+	}
+	if contract := catalogCoverageContractForSource(s.Source.Spec().Id); contract != nil {
+		return cloneCoverageContract(*contract)
+	}
+	return CoverageContract{}
+}
+
+func (s *catalogContractSource) LifecycleContract() LifecycleContract {
+	if s == nil {
+		return LifecycleContract{}
+	}
+	provider, ok := s.Source.(LifecycleContractProvider)
+	if ok {
+		return cloneLifecycleContract(provider.LifecycleContract())
+	}
+	if sourceIsNil(s.Source) {
+		return LifecycleContract{}
+	}
+	if contract := catalogLifecycleContractForSource(s.Source.Spec().Id); contract != nil {
+		return cloneLifecycleContract(*contract)
+	}
+	return LifecycleContract{}
+}
+
 func (s *catalogContractSource) ReadWithCheckpoint(ctx context.Context, cfg Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (Pull, error) {
 	if s == nil || sourceIsNil(s.Source) {
 		return Pull{}, fmt.Errorf("source is required")

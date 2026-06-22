@@ -5,6 +5,19 @@ emitted_kinds:
   - kandji.application
   - kandji.device
   - kandji.vulnerability
+event_contracts:
+  - kind: kandji.application
+    schema_ref: kandji/application/v1
+    required_attributes:
+      - family
+  - kind: kandji.device
+    schema_ref: kandji/device/v1
+    required_attributes:
+      - family
+  - kind: kandji.vulnerability
+    schema_ref: kandji/vulnerability/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: endpoint
   authority_domain: kandji

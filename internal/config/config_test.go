@@ -1053,6 +1053,32 @@ func TestLoadRejectsRoleCredentialWithoutTenant(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsUnscopedAPIKeyWhenSharedTenantAllowlistConfigured(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_ALLOWED_TENANTS", "writer,security")
+	t.Setenv("CEREBRO_API_KEYS", "token:ci")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want unscoped API key rejection")
+	}
+}
+
+func TestLoadAcceptsTenantScopedAPIKeyWhenSharedTenantAllowlistConfigured(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_ALLOWED_TENANTS", "writer,security")
+	t.Setenv("CEREBRO_API_KEYS", "token:ci:writer")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.APIKeys[0].TenantID != "writer" {
+		t.Fatalf("TenantID = %q, want writer", cfg.Auth.APIKeys[0].TenantID)
+	}
+}
+
 func TestLoadRejectsUnknownAPICredentialRole(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")

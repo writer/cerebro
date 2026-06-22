@@ -141,6 +141,283 @@ runtime_families:
   - virtual_machine_scale_set
   - virtual_machine_scale_set_instance
   - virtual_network
+event_contracts:
+  - kind: asset.data_sensitivity
+    schema_ref: asset/data_sensitivity/v1
+    required_attributes:
+      - resource_id
+  - kind: azure.activity_log
+    schema_ref: azure/activity_log/v1
+    required_attributes:
+      - family
+  - kind: azure.activity_log_alert
+    schema_ref: azure/activity_log_alert/v1
+    required_attributes:
+      - family
+  - kind: azure.aks_cluster
+    schema_ref: azure/aks_cluster/v1
+    required_attributes:
+      - family
+  - kind: azure.aks_node_pool
+    schema_ref: azure/aks_node_pool/v1
+    required_attributes:
+      - family
+  - kind: azure.app_role_assignment
+    schema_ref: azure/app_role_assignment/v1
+    required_attributes:
+      - family
+  - kind: azure.app_service
+    schema_ref: azure/app_service/v1
+    required_attributes:
+      - family
+  - kind: azure.application
+    schema_ref: azure/application/v1
+    required_attributes:
+      - family
+  - kind: azure.application_container
+    schema_ref: azure/application_container/v1
+    required_attributes:
+      - family
+  - kind: azure.application_gateway
+    schema_ref: azure/application_gateway/v1
+    required_attributes:
+      - family
+  - kind: azure.application_insight
+    schema_ref: azure/application_insight/v1
+    required_attributes:
+      - family
+  - kind: azure.authorization_policy
+    schema_ref: azure/authorization_policy/v1
+    required_attributes:
+      - family
+  - kind: azure.cognitive_services_account
+    schema_ref: azure/cognitive_services_account/v1
+    required_attributes:
+      - family
+  - kind: azure.cognitive_services_deployment
+    schema_ref: azure/cognitive_services_deployment/v1
+    required_attributes:
+      - family
+  - kind: azure.container_registry
+    schema_ref: azure/container_registry/v1
+    required_attributes:
+      - family
+  - kind: azure.cosmos_account
+    schema_ref: azure/cosmos_account/v1
+    required_attributes:
+      - family
+  - kind: azure.cosmos_postgresql
+    schema_ref: azure/cosmos_postgresql/v1
+    required_attributes:
+      - family
+  - kind: azure.cosmos_postgresql_firewall_rule
+    schema_ref: azure/cosmos_postgresql_firewall_rule/v1
+    required_attributes:
+      - family
+  - kind: azure.databricks_workspace
+    schema_ref: azure/databricks_workspace/v1
+    required_attributes:
+      - family
+  - kind: azure.defender_config
+    schema_ref: azure/defender_config/v1
+    required_attributes:
+      - family
+  - kind: azure.diagnostic_setting
+    schema_ref: azure/diagnostic_setting/v1
+    required_attributes:
+      - family
+  - kind: azure.diagnostic_setting_resource
+    schema_ref: azure/diagnostic_setting_resource/v1
+    required_attributes:
+      - family
+  - kind: azure.credential
+    schema_ref: azure/credential/v1
+    required_attributes:
+      - family
+  - kind: azure.directory_audit
+    schema_ref: azure/directory_audit/v1
+    required_attributes:
+      - family
+  - kind: azure.directory_role_assignment
+    schema_ref: azure/directory_role_assignment/v1
+    required_attributes:
+      - family
+  - kind: azure.effective_permission
+    schema_ref: azure/effective_permission/v1
+    required_attributes:
+      - family
+  - kind: azure.function_app
+    schema_ref: azure/function_app/v1
+    required_attributes:
+      - family
+  - kind: azure.group
+    schema_ref: azure/group/v1
+    required_attributes:
+      - family
+  - kind: azure.group_membership
+    schema_ref: azure/group_membership/v1
+    required_attributes:
+      - family
+  - kind: azure.iam_role_assignment
+    schema_ref: azure/iam_role_assignment/v1
+    required_attributes:
+      - family
+  - kind: azure.key_vault
+    schema_ref: azure/key_vault/v1
+    required_attributes:
+      - family
+  - kind: azure.key_vault_key
+    schema_ref: azure/key_vault_key/v1
+    required_attributes:
+      - family
+  - kind: azure.key_vault_secret
+    schema_ref: azure/key_vault_secret/v1
+    required_attributes:
+      - family
+  - kind: azure.load_balancer
+    schema_ref: azure/load_balancer/v1
+    required_attributes:
+      - family
+  - kind: azure.log_alert
+    schema_ref: azure/log_alert/v1
+    required_attributes:
+      - family
+  - kind: azure.machine_learning_compute
+    schema_ref: azure/machine_learning_compute/v1
+    required_attributes:
+      - family
+  - kind: azure.machine_learning_workspace
+    schema_ref: azure/machine_learning_workspace/v1
+    required_attributes:
+      - family
+  - kind: azure.managed_disk
+    schema_ref: azure/managed_disk/v1
+    required_attributes:
+      - family
+  - kind: azure.metric_alert_rule
+    schema_ref: azure/metric_alert_rule/v1
+    required_attributes:
+      - family
+  - kind: azure.mysql_server
+    schema_ref: azure/mysql_server/v1
+    required_attributes:
+      - family
+  - kind: azure.network_security_group
+    schema_ref: azure/network_security_group/v1
+    required_attributes:
+      - family
+  - kind: azure.policy_assignment
+    schema_ref: azure/policy_assignment/v1
+    required_attributes:
+      - family
+  - kind: azure.postgresql_firewall_rule
+    schema_ref: azure/postgresql_firewall_rule/v1
+    required_attributes:
+      - family
+  - kind: azure.postgresql_server
+    schema_ref: azure/postgresql_server/v1
+    required_attributes:
+      - family
+  - kind: azure.public_ip_address
+    schema_ref: azure/public_ip_address/v1
+    required_attributes:
+      - family
+  - kind: azure.resource_exposure
+    schema_ref: azure/resource_exposure/v1
+    required_attributes:
+      - family
+  - kind: azure.role
+    schema_ref: azure/role/v1
+    required_attributes:
+      - family
+  - kind: azure.route_table
+    schema_ref: azure/route_table/v1
+    required_attributes:
+      - family
+  - kind: azure.security_contact
+    schema_ref: azure/security_contact/v1
+    required_attributes:
+      - family
+  - kind: azure.security_setting
+    schema_ref: azure/security_setting/v1
+    required_attributes:
+      - family
+  - kind: azure.server_vulnerability
+    schema_ref: azure/server_vulnerability/v1
+    required_attributes:
+      - family
+  - kind: azure.server_vulnerability_subassessment
+    schema_ref: azure/server_vulnerability_subassessment/v1
+    required_attributes:
+      - family
+  - kind: azure.service_principal
+    schema_ref: azure/service_principal/v1
+    required_attributes:
+      - family
+  - kind: azure.sql_database
+    schema_ref: azure/sql_database/v1
+    required_attributes:
+      - family
+  - kind: azure.sql_managed_instance
+    schema_ref: azure/sql_managed_instance/v1
+    required_attributes:
+      - family
+  - kind: azure.sql_managed_instance_tde
+    schema_ref: azure/sql_managed_instance_tde/v1
+    required_attributes:
+      - family
+  - kind: azure.sql_server
+    schema_ref: azure/sql_server/v1
+    required_attributes:
+      - family
+  - kind: azure.sql_server_on_virtual_machine
+    schema_ref: azure/sql_server_on_virtual_machine/v1
+    required_attributes:
+      - family
+  - kind: azure.storage_account
+    schema_ref: azure/storage_account/v1
+    required_attributes:
+      - family
+  - kind: azure.storage_container
+    schema_ref: azure/storage_container/v1
+    required_attributes:
+      - family
+  - kind: azure.storage_queue
+    schema_ref: azure/storage_queue/v1
+    required_attributes:
+      - family
+  - kind: azure.subnet
+    schema_ref: azure/subnet/v1
+    required_attributes:
+      - family
+  - kind: azure.synapse_sql_pool
+    schema_ref: azure/synapse_sql_pool/v1
+    required_attributes:
+      - family
+  - kind: azure.user
+    schema_ref: azure/user/v1
+    required_attributes:
+      - family
+  - kind: azure.virtual_machine
+    schema_ref: azure/virtual_machine/v1
+    required_attributes:
+      - family
+  - kind: azure.virtual_machine_extension
+    schema_ref: azure/virtual_machine_extension/v1
+    required_attributes:
+      - family
+  - kind: azure.virtual_machine_scale_set
+    schema_ref: azure/virtual_machine_scale_set/v1
+    required_attributes:
+      - family
+  - kind: azure.virtual_machine_scale_set_instance
+    schema_ref: azure/virtual_machine_scale_set_instance/v1
+    required_attributes:
+      - family
+  - kind: azure.virtual_network
+    schema_ref: azure/virtual_network/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: cloud
   authority_domain: azure

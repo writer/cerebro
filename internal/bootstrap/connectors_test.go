@@ -1435,8 +1435,8 @@ func TestOpenAIProviderPreflightChecksCredentialRequirements(t *testing.T) {
 			if check == nil {
 				t.Fatalf("openai_admin_api_key check missing from %#v", checks)
 			}
-			if check.Status != "warning" || check.NextAction != "use_openai_admin_api_key" {
-				t.Fatalf("check = %#v, want warning action use_openai_admin_api_key", check)
+			if check.Status != "blocked" || check.NextAction != "use_openai_admin_api_key" {
+				t.Fatalf("check = %#v, want blocked action use_openai_admin_api_key", check)
 			}
 		})
 	}
@@ -1515,8 +1515,8 @@ func TestAnthropicProviderPreflightChecksCredentialRequirements(t *testing.T) {
 			if check == nil {
 				t.Fatalf("check %q missing from %#v", test.wantCheck, checks)
 			}
-			if check.Status != "warning" || check.NextAction != test.wantAction {
-				t.Fatalf("check = %#v, want warning action %q", check, test.wantAction)
+			if check.Status != "blocked" || check.NextAction != test.wantAction {
+				t.Fatalf("check = %#v, want blocked action %q", check, test.wantAction)
 			}
 		})
 	}

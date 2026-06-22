@@ -6,6 +6,23 @@ emitted_kinds:
   - cosmo.message
   - cosmo.session
   - cosmo.survey_feedback
+event_contracts:
+  - kind: cosmo.fact
+    schema_ref: cosmo/fact/v1
+    required_attributes:
+      - record_id
+  - kind: cosmo.message
+    schema_ref: cosmo/message/v1
+    required_attributes:
+      - record_id
+  - kind: cosmo.session
+    schema_ref: cosmo/session/v1
+    required_attributes:
+      - record_id
+  - kind: cosmo.survey_feedback
+    schema_ref: cosmo/survey_feedback/v1
+    required_attributes:
+      - record_id
 coverage_contract:
   owner_domain: product_telemetry
   authority_domain: cosmo

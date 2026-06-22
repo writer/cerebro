@@ -157,6 +157,14 @@ emitted_kinds:
   - aws.sso_permission_set
   - aws.wafv2_web_acl
   - aws.lambda_function
+  - aws.app_runner_service
+  - aws.global_accelerator_accelerator
+  - aws.global_accelerator_endpoint_group
+  - aws.global_accelerator_listener
+  - aws.identity_store_group
+  - aws.identity_store_group_membership
+  - aws.identity_store_user
+  - aws.organizations_root
   # awscollectorgen:emitted-kinds (insert new kinds above this line)
 runtime_families:
   - access_key
@@ -316,6 +324,659 @@ runtime_families:
   - wafv2_web_acl
   - lambda_function
   # awscollectorgen:runtime-families (insert new families above this line)
+event_contracts:
+  - kind: aws.access_key
+    schema_ref: aws/access_key/v1
+    required_attributes:
+      - family
+  - kind: aws.access_analyzer
+    schema_ref: aws/access_analyzer/v1
+    required_attributes:
+      - family
+  - kind: aws.acm_certificate
+    schema_ref: aws/acm_certificate/v1
+    required_attributes:
+      - family
+  - kind: aws.apprunner_service
+    schema_ref: aws/apprunner_service/v1
+    required_attributes:
+      - family
+  - kind: aws.appsync_graphql_api
+    schema_ref: aws/appsync_graphql_api/v1
+    required_attributes:
+      - family
+  - kind: asset.data_sensitivity
+    schema_ref: asset/data_sensitivity/v1
+    required_attributes:
+      - resource_id
+  - kind: aws.batch_compute_environment
+    schema_ref: aws/batch_compute_environment/v1
+    required_attributes:
+      - family
+  - kind: aws.batch_job_queue
+    schema_ref: aws/batch_job_queue/v1
+    required_attributes:
+      - family
+  - kind: aws.backup_vault
+    schema_ref: aws/backup_vault/v1
+    required_attributes:
+      - family
+  - kind: aws.backup_plan
+    schema_ref: aws/backup_plan/v1
+    required_attributes:
+      - family
+  - kind: aws.backup_protected_resource
+    schema_ref: aws/backup_protected_resource/v1
+    required_attributes:
+      - family
+  - kind: aws.backup_recovery_point
+    schema_ref: aws/backup_recovery_point/v1
+    required_attributes:
+      - family
+  - kind: aws.bedrock_custom_model
+    schema_ref: aws/bedrock_custom_model/v1
+    required_attributes:
+      - family
+  - kind: aws.bedrock_provisioned_model_throughput
+    schema_ref: aws/bedrock_provisioned_model_throughput/v1
+    required_attributes:
+      - family
+  - kind: aws.codebuild_project
+    schema_ref: aws/codebuild_project/v1
+    required_attributes:
+      - family
+  - kind: aws.codebuild_source_credential
+    schema_ref: aws/codebuild_source_credential/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudtrail
+    schema_ref: aws/cloudtrail/v1
+    required_attributes:
+      - family
+  - kind: aws.config_recorder
+    schema_ref: aws/config_recorder/v1
+    required_attributes:
+      - family
+  - kind: aws.dynamodb_backup
+    schema_ref: aws/dynamodb_backup/v1
+    required_attributes:
+      - family
+  - kind: aws.dynamodb_stream
+    schema_ref: aws/dynamodb_stream/v1
+    required_attributes:
+      - family
+  - kind: aws.dynamodb_table
+    schema_ref: aws/dynamodb_table/v1
+    required_attributes:
+      - family
+  - kind: aws.datasync_location
+    schema_ref: aws/datasync_location/v1
+    required_attributes:
+      - family
+  - kind: aws.datasync_task
+    schema_ref: aws/datasync_task/v1
+    required_attributes:
+      - family
+  - kind: aws.docdb_cluster
+    schema_ref: aws/docdb_cluster/v1
+    required_attributes:
+      - family
+  - kind: aws.docdb_instance
+    schema_ref: aws/docdb_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.ebs_snapshot
+    schema_ref: aws/ebs_snapshot/v1
+    required_attributes:
+      - family
+  - kind: aws.ebs_volume
+    schema_ref: aws/ebs_volume/v1
+    required_attributes:
+      - family
+  - kind: aws.ec2_ebs_encryption_by_default
+    schema_ref: aws/ec2_ebs_encryption_by_default/v1
+    required_attributes:
+      - family
+  - kind: aws.ec2_ami
+    schema_ref: aws/ec2_ami/v1
+    required_attributes:
+      - family
+  - kind: aws.athena_data_catalog
+    schema_ref: aws/athena_data_catalog/v1
+    required_attributes:
+      - family
+  - kind: aws.athena_workgroup
+    schema_ref: aws/athena_workgroup/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudwatch_alarm
+    schema_ref: aws/cloudwatch_alarm/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudwatch_log_group
+    schema_ref: aws/cloudwatch_log_group/v1
+    required_attributes:
+      - family
+  - kind: aws.ec2_instance
+    schema_ref: aws/ec2_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.vpc
+    schema_ref: aws/vpc/v1
+    required_attributes:
+      - family
+  - kind: aws.subnet
+    schema_ref: aws/subnet/v1
+    required_attributes:
+      - family
+  - kind: aws.security_group
+    schema_ref: aws/security_group/v1
+    required_attributes:
+      - family
+  - kind: aws.route_table
+    schema_ref: aws/route_table/v1
+    required_attributes:
+      - family
+  - kind: aws.network_acl
+    schema_ref: aws/network_acl/v1
+    required_attributes:
+      - family
+  - kind: aws.internet_gateway
+    schema_ref: aws/internet_gateway/v1
+    required_attributes:
+      - family
+  - kind: aws.nat_gateway
+    schema_ref: aws/nat_gateway/v1
+    required_attributes:
+      - family
+  - kind: aws.vpc_flow_log
+    schema_ref: aws/vpc_flow_log/v1
+    required_attributes:
+      - family
+  - kind: aws.vpc_endpoint
+    schema_ref: aws/vpc_endpoint/v1
+    required_attributes:
+      - family
+  - kind: aws.ecr_public_repository
+    schema_ref: aws/ecr_public_repository/v1
+    required_attributes:
+      - family
+  - kind: aws.ecr_repository
+    schema_ref: aws/ecr_repository/v1
+    required_attributes:
+      - family
+  - kind: aws.ecs_service
+    schema_ref: aws/ecs_service/v1
+    required_attributes:
+      - family
+  - kind: aws.ecs_task
+    schema_ref: aws/ecs_task/v1
+    required_attributes:
+      - family
+  - kind: aws.ecs_task_definition
+    schema_ref: aws/ecs_task_definition/v1
+    required_attributes:
+      - family
+  - kind: aws.efs_access_point
+    schema_ref: aws/efs_access_point/v1
+    required_attributes:
+      - family
+  - kind: aws.efs_file_system
+    schema_ref: aws/efs_file_system/v1
+    required_attributes:
+      - family
+  - kind: aws.efs_mount_target
+    schema_ref: aws/efs_mount_target/v1
+    required_attributes:
+      - family
+  - kind: aws.eks_cluster
+    schema_ref: aws/eks_cluster/v1
+    required_attributes:
+      - family
+  - kind: aws.eks_nodegroup
+    schema_ref: aws/eks_nodegroup/v1
+    required_attributes:
+      - family
+  - kind: aws.eks_fargate_profile
+    schema_ref: aws/eks_fargate_profile/v1
+    required_attributes:
+      - family
+  - kind: aws.eks_pod_identity_association
+    schema_ref: aws/eks_pod_identity_association/v1
+    required_attributes:
+      - family
+  - kind: aws.elasticache_cluster
+    schema_ref: aws/elasticache_cluster/v1
+    required_attributes:
+      - family
+  - kind: aws.elasticache_replication_group
+    schema_ref: aws/elasticache_replication_group/v1
+    required_attributes:
+      - family
+  - kind: aws.elasticache_subnet_group
+    schema_ref: aws/elasticache_subnet_group/v1
+    required_attributes:
+      - family
+  - kind: aws.globalaccelerator_accelerator
+    schema_ref: aws/globalaccelerator_accelerator/v1
+    required_attributes:
+      - family
+  - kind: aws.globalaccelerator_listener
+    schema_ref: aws/globalaccelerator_listener/v1
+    required_attributes:
+      - family
+  - kind: aws.globalaccelerator_endpoint_group
+    schema_ref: aws/globalaccelerator_endpoint_group/v1
+    required_attributes:
+      - family
+  - kind: aws.vpclattice_service
+    schema_ref: aws/vpclattice_service/v1
+    required_attributes:
+      - family
+  - kind: aws.vpclattice_listener
+    schema_ref: aws/vpclattice_listener/v1
+    required_attributes:
+      - family
+  - kind: aws.vpclattice_target_group
+    schema_ref: aws/vpclattice_target_group/v1
+    required_attributes:
+      - family
+  - kind: aws.elbv2_load_balancer
+    schema_ref: aws/elbv2_load_balancer/v1
+    required_attributes:
+      - family
+  - kind: aws.elbv2_listener
+    schema_ref: aws/elbv2_listener/v1
+    required_attributes:
+      - family
+  - kind: aws.elbv2_target_group
+    schema_ref: aws/elbv2_target_group/v1
+    required_attributes:
+      - family
+  - kind: aws.apigateway_rest_api
+    schema_ref: aws/apigateway_rest_api/v1
+    required_attributes:
+      - family
+  - kind: aws.apigateway_method
+    schema_ref: aws/apigateway_method/v1
+    required_attributes:
+      - family
+  - kind: aws.apigateway_stage
+    schema_ref: aws/apigateway_stage/v1
+    required_attributes:
+      - family
+  - kind: aws.apigateway_route
+    schema_ref: aws/apigateway_route/v1
+    required_attributes:
+      - family
+  - kind: aws.apigateway_integration
+    schema_ref: aws/apigateway_integration/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudfront_distribution
+    schema_ref: aws/cloudfront_distribution/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudfront_origin_access_control
+    schema_ref: aws/cloudfront_origin_access_control/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudfront_key_group
+    schema_ref: aws/cloudfront_key_group/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudfront_public_key
+    schema_ref: aws/cloudfront_public_key/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudfront_response_headers_policy
+    schema_ref: aws/cloudfront_response_headers_policy/v1
+    required_attributes:
+      - family
+  - kind: aws.effective_permission
+    schema_ref: aws/effective_permission/v1
+    required_attributes:
+      - family
+  - kind: aws.guardduty_detector
+    schema_ref: aws/guardduty_detector/v1
+    required_attributes:
+      - family
+  - kind: aws.guardduty_finding
+    schema_ref: aws/guardduty_finding/v1
+    required_attributes:
+      - family
+  - kind: aws.eventbridge_archive
+    schema_ref: aws/eventbridge_archive/v1
+    required_attributes:
+      - family
+  - kind: aws.eventbridge_event_bus
+    schema_ref: aws/eventbridge_event_bus/v1
+    required_attributes:
+      - family
+  - kind: aws.eventbridge_pipe
+    schema_ref: aws/eventbridge_pipe/v1
+    required_attributes:
+      - family
+  - kind: aws.eventbridge_rule
+    schema_ref: aws/eventbridge_rule/v1
+    required_attributes:
+      - family
+  - kind: aws.firehose_delivery_stream
+    schema_ref: aws/firehose_delivery_stream/v1
+    required_attributes:
+      - family
+  - kind: aws.glue_crawler
+    schema_ref: aws/glue_crawler/v1
+    required_attributes:
+      - family
+  - kind: aws.glue_database
+    schema_ref: aws/glue_database/v1
+    required_attributes:
+      - family
+  - kind: aws.glue_job
+    schema_ref: aws/glue_job/v1
+    required_attributes:
+      - family
+  - kind: aws.glue_table
+    schema_ref: aws/glue_table/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_account_password_policy
+    schema_ref: aws/iam_account_password_policy/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_account_summary
+    schema_ref: aws/iam_account_summary/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_credential_report
+    schema_ref: aws/iam_credential_report/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_group
+    schema_ref: aws/iam_group/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_group_membership
+    schema_ref: aws/iam_group_membership/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_policy
+    schema_ref: aws/iam_policy/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_role
+    schema_ref: aws/iam_role/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_role_assignment
+    schema_ref: aws/iam_role_assignment/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_role_trust
+    schema_ref: aws/iam_role_trust/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_saml_provider
+    schema_ref: aws/iam_saml_provider/v1
+    required_attributes:
+      - family
+  - kind: aws.iam_user
+    schema_ref: aws/iam_user/v1
+    required_attributes:
+      - family
+  - kind: aws.identity_center_account_assignment
+    schema_ref: aws/identity_center_account_assignment/v1
+    required_attributes:
+      - family
+  - kind: aws.identity_center_permission_set
+    schema_ref: aws/identity_center_permission_set/v1
+    required_attributes:
+      - family
+  - kind: aws.inspector2_finding
+    schema_ref: aws/inspector2_finding/v1
+    required_attributes:
+      - family
+  - kind: aws.macie2_finding
+    schema_ref: aws/macie2_finding/v1
+    required_attributes:
+      - family
+  - kind: aws.network_firewall
+    schema_ref: aws/network_firewall/v1
+    required_attributes:
+      - family
+  - kind: aws.fsx_file_system
+    schema_ref: aws/fsx_file_system/v1
+    required_attributes:
+      - family
+  - kind: aws.kinesis_stream
+    schema_ref: aws/kinesis_stream/v1
+    required_attributes:
+      - family
+  - kind: aws.kms_key
+    schema_ref: aws/kms_key/v1
+    required_attributes:
+      - family
+  - kind: aws.lakeformation_lf_tag
+    schema_ref: aws/lakeformation_lf_tag/v1
+    required_attributes:
+      - family
+  - kind: aws.lakeformation_permission
+    schema_ref: aws/lakeformation_permission/v1
+    required_attributes:
+      - family
+  - kind: aws.lakeformation_resource
+    schema_ref: aws/lakeformation_resource/v1
+    required_attributes:
+      - family
+  - kind: aws.msk_cluster
+    schema_ref: aws/msk_cluster/v1
+    required_attributes:
+      - family
+  - kind: aws.neptune_cluster
+    schema_ref: aws/neptune_cluster/v1
+    required_attributes:
+      - family
+  - kind: aws.neptune_instance
+    schema_ref: aws/neptune_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.identitystore_group
+    schema_ref: aws/identitystore_group/v1
+    required_attributes:
+      - family
+  - kind: aws.identitystore_group_membership
+    schema_ref: aws/identitystore_group_membership/v1
+    required_attributes:
+      - family
+  - kind: aws.identitystore_user
+    schema_ref: aws/identitystore_user/v1
+    required_attributes:
+      - family
+  - kind: aws.organizations_account
+    schema_ref: aws/organizations_account/v1
+    required_attributes:
+      - family
+  - kind: aws.organizations_organizational_unit
+    schema_ref: aws/organizations_organizational_unit/v1
+    required_attributes:
+      - family
+  - kind: aws.organizations_policy
+    schema_ref: aws/organizations_policy/v1
+    required_attributes:
+      - family
+  - kind: aws.opensearch_domain
+    schema_ref: aws/opensearch_domain/v1
+    required_attributes:
+      - family
+  - kind: aws.opensearch_serverless_collection
+    schema_ref: aws/opensearch_serverless_collection/v1
+    required_attributes:
+      - family
+  - kind: aws.opensearch_serverless_security_policy
+    schema_ref: aws/opensearch_serverless_security_policy/v1
+    required_attributes:
+      - family
+  - kind: aws.public_endpoint
+    schema_ref: aws/public_endpoint/v1
+    required_attributes:
+      - family
+  - kind: aws.rds_db_snapshot
+    schema_ref: aws/rds_db_snapshot/v1
+    required_attributes:
+      - family
+  - kind: aws.rds_instance
+    schema_ref: aws/rds_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.redshift_cluster
+    schema_ref: aws/redshift_cluster/v1
+    required_attributes:
+      - family
+  - kind: aws.resource_exposure
+    schema_ref: aws/resource_exposure/v1
+    required_attributes:
+      - family
+  - kind: aws.route53_resolver_endpoint
+    schema_ref: aws/route53_resolver_endpoint/v1
+    required_attributes:
+      - family
+  - kind: aws.route53_resolver_rule
+    schema_ref: aws/route53_resolver_rule/v1
+    required_attributes:
+      - family
+  - kind: aws.s3_access_point
+    schema_ref: aws/s3_access_point/v1
+    required_attributes:
+      - family
+  - kind: aws.s3_bucket
+    schema_ref: aws/s3_bucket/v1
+    required_attributes:
+      - family
+  - kind: aws.s3_multi_region_access_point
+    schema_ref: aws/s3_multi_region_access_point/v1
+    required_attributes:
+      - family
+  - kind: aws.sagemaker_endpoint_configuration
+    schema_ref: aws/sagemaker_endpoint_configuration/v1
+    required_attributes:
+      - family
+  - kind: aws.sagemaker_model
+    schema_ref: aws/sagemaker_model/v1
+    required_attributes:
+      - family
+  - kind: aws.sagemaker_model_package_group
+    schema_ref: aws/sagemaker_model_package_group/v1
+    required_attributes:
+      - family
+  - kind: aws.sagemaker_notebook_instance
+    schema_ref: aws/sagemaker_notebook_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.sagemaker_training_job
+    schema_ref: aws/sagemaker_training_job/v1
+    required_attributes:
+      - family
+  - kind: aws.scheduler_schedule
+    schema_ref: aws/scheduler_schedule/v1
+    required_attributes:
+      - family
+  - kind: aws.scheduler_schedule_group
+    schema_ref: aws/scheduler_schedule_group/v1
+    required_attributes:
+      - family
+  - kind: aws.secret
+    schema_ref: aws/secret/v1
+    required_attributes:
+      - family
+  - kind: aws.securityhub_finding
+    schema_ref: aws/securityhub_finding/v1
+    required_attributes:
+      - family
+  - kind: aws.sns_topic
+    schema_ref: aws/sns_topic/v1
+    required_attributes:
+      - family
+  - kind: aws.sqs_queue
+    schema_ref: aws/sqs_queue/v1
+    required_attributes:
+      - family
+  - kind: aws.ssm_association
+    schema_ref: aws/ssm_association/v1
+    required_attributes:
+      - family
+  - kind: aws.ssm_document
+    schema_ref: aws/ssm_document/v1
+    required_attributes:
+      - family
+  - kind: aws.ssm_managed_instance
+    schema_ref: aws/ssm_managed_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.ssm_parameter
+    schema_ref: aws/ssm_parameter/v1
+    required_attributes:
+      - family
+  - kind: aws.stepfunctions_activity
+    schema_ref: aws/stepfunctions_activity/v1
+    required_attributes:
+      - family
+  - kind: aws.stepfunctions_state_machine
+    schema_ref: aws/stepfunctions_state_machine/v1
+    required_attributes:
+      - family
+  - kind: aws.sso_account_assignment
+    schema_ref: aws/sso_account_assignment/v1
+    required_attributes:
+      - family
+  - kind: aws.sso_instance
+    schema_ref: aws/sso_instance/v1
+    required_attributes:
+      - family
+  - kind: aws.sso_permission_set
+    schema_ref: aws/sso_permission_set/v1
+    required_attributes:
+      - family
+  - kind: aws.wafv2_web_acl
+    schema_ref: aws/wafv2_web_acl/v1
+    required_attributes:
+      - family
+  - kind: aws.lambda_function
+    schema_ref: aws/lambda_function/v1
+    required_attributes:
+      - family
+  - kind: aws.organizations_root
+    schema_ref: aws/organizations_root/v1
+    required_attributes:
+      - family
+  - kind: aws.global_accelerator_endpoint_group
+    schema_ref: aws/global_accelerator_endpoint_group/v1
+    required_attributes:
+      - family
+  - kind: aws.identity_store_group
+    schema_ref: aws/identity_store_group/v1
+    required_attributes:
+      - family
+  - kind: aws.identity_store_group_membership
+    schema_ref: aws/identity_store_group_membership/v1
+    required_attributes:
+      - family
+  - kind: aws.identity_store_user
+    schema_ref: aws/identity_store_user/v1
+    required_attributes:
+      - family
+  - kind: aws.global_accelerator_listener
+    schema_ref: aws/global_accelerator_listener/v1
+    required_attributes:
+      - family
+  - kind: aws.global_accelerator_accelerator
+    schema_ref: aws/global_accelerator_accelerator/v1
+    required_attributes:
+      - family
+  - kind: aws.app_runner_service
+    schema_ref: aws/app_runner_service/v1
+    required_attributes:
+      - family
 coverage_contract:
   owner_domain: cloud
   authority_domain: aws

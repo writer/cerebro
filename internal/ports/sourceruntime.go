@@ -24,6 +24,33 @@ type SourceRuntimeBatchStore interface {
 	PutSourceRuntimes(context.Context, []*cerebrov1.SourceRuntime) error
 }
 
+// SourceRuntimePageAttempt records one source-runtime page commit attempt.
+type SourceRuntimePageAttempt struct {
+	AttemptID      string
+	RuntimeID      string
+	SourceID       string
+	TenantID       string
+	PageNumber     uint32
+	RecordsScanned uint32
+	Events         []*cerebrov1.EventEnvelope
+}
+
+// SourceRuntimePageProjection records projection counts for one page attempt.
+type SourceRuntimePageProjection struct {
+	EntitiesProjected uint32
+	LinksProjected    uint32
+}
+
+// SourceRuntimePageLedgerStore durably records page commit state and outbox
+// events. CommitSourceRuntimePage must atomically persist runtime progress and
+// mark the page committed.
+type SourceRuntimePageLedgerStore interface {
+	BeginSourceRuntimePage(context.Context, SourceRuntimePageAttempt) error
+	MarkSourceRuntimePageAppended(context.Context, string) error
+	MarkSourceRuntimePageProjected(context.Context, string, SourceRuntimePageProjection) error
+	CommitSourceRuntimePage(context.Context, string, *cerebrov1.SourceRuntime) error
+}
+
 // SourceRuntimeFilter scopes persisted source runtime listing.
 type SourceRuntimeFilter struct {
 	RuntimeID  string
