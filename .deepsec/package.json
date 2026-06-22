@@ -6,7 +6,7 @@
   "type": "module",
   "workspaces": [],
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.2",
-    "deepsec": "^2.0.12"
+    "@anthropic-ai/sdk": "^0.105.0",
+    "deepsec": "^2.1.2"
   }
 }
