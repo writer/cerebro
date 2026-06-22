@@ -47,8 +47,12 @@ jobs:
         run: |
           # Health endpoint should return 200
           curl -sf http://localhost:8080/healthz || (echo "Health check failed"; exit 1)
-          curl -sf -H 'Authorization: Bearer local-dev-key' http://localhost:8080/sources >/dev/null || (echo "Sources endpoint failed"; exit 1)
-          curl -sf -H 'Authorization: Bearer local-dev-key' 'http://localhost:8080/source-runtimes?tenant_id=local' >/dev/null || (echo "State-backed source runtimes endpoint failed"; exit 1)
+          api_key="$(docker compose exec -T cerebro printenv CEREBRO_API_KEYS)"
+          api_key="${api_key%%:*}"
+          test -n "$api_key" || (echo "Smoke API key unavailable"; exit 1)
+          auth_header="Authorization: Bearer ${api_key}"
+          curl -sf -H "$auth_header" http://localhost:8080/sources >/dev/null || (echo "Sources endpoint failed"; exit 1)
+          curl -sf -H "$auth_header" 'http://localhost:8080/source-runtimes?tenant_id=local' >/dev/null || (echo "State-backed source runtimes endpoint failed"; exit 1)
 
           echo "Core endpoints verified"
 
