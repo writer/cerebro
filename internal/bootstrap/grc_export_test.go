@@ -72,7 +72,7 @@ func parseCSVResponse(t *testing.T, resp *http.Response) [][]string {
 	return records
 }
 
-func indexCSVByColumn(records [][]string, column string) (map[string]map[string]string, []string) {
+func indexCSVByColumn(records [][]string, column string) map[string]map[string]string {
 	header := records[0]
 	columnIndex := -1
 	for i, name := range header {
@@ -92,7 +92,7 @@ func indexCSVByColumn(records [][]string, column string) (map[string]map[string]
 			rows[record[columnIndex]] = row
 		}
 	}
-	return rows, header
+	return rows
 }
 
 func TestGRCFindingsExportReturnsCSV(t *testing.T) {
@@ -120,7 +120,7 @@ func TestGRCFindingsExportReturnsCSV(t *testing.T) {
 			t.Fatalf("header[%d] = %q, want %q", i, records[0][i], want)
 		}
 	}
-	rows, _ := indexCSVByColumn(records, "id")
+	rows := indexCSVByColumn(records, "id")
 	finding1, ok := rows["finding-1"]
 	if !ok {
 		t.Fatalf("finding-1 row missing: %#v", rows)
@@ -164,7 +164,7 @@ func TestGRCControlsExportReturnsCSV(t *testing.T) {
 			t.Fatalf("header[%d] = %q, want %q", i, records[0][i], want)
 		}
 	}
-	rows, _ := indexCSVByColumn(records, "control_id")
+	rows := indexCSVByColumn(records, "control_id")
 	control, ok := rows["CC6.1"]
 	if !ok {
 		t.Fatalf("CC6.1 control row missing: %#v", rows)
