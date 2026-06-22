@@ -137,9 +137,9 @@ func (s *ledgerRuntimeStore) MarkSourceRuntimePageProjected(_ context.Context, _
 	return nil
 }
 
-func (s *ledgerRuntimeStore) CommitSourceRuntimePage(_ context.Context, _ string, runtime *cerebrov1.SourceRuntime) error {
+func (s *ledgerRuntimeStore) CommitSourceRuntimePage(ctx context.Context, _ string, runtime *cerebrov1.SourceRuntime) error {
 	s.calls = append(s.calls, "committed")
-	return s.runtimeStore.PutSourceRuntime(context.Background(), runtime)
+	return s.PutSourceRuntime(ctx, runtime)
 }
 
 type appendLog struct {

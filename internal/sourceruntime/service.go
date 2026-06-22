@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1330,7 +1331,7 @@ func sourceRuntimePageAttemptID(runtimeID string, pageNumber uint32, started tim
 	hash.Write([]byte{0})
 	hash.Write([]byte(started.UTC().Format(time.RFC3339Nano)))
 	hash.Write([]byte{0})
-	hash.Write([]byte(fmt.Sprintf("%d", pageNumber)))
+	hash.Write([]byte(strconv.FormatUint(uint64(pageNumber), 10)))
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
