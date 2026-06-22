@@ -118,20 +118,28 @@ type FindingRecord struct {
 
 // ListFindingsRequest scopes one finding query.
 type ListFindingsRequest struct {
-	TenantID           string
-	RuntimeID          string
-	RuntimeIDs         []string
-	FindingID          string
-	RuleID             string
-	Severity           string
-	Status             string
-	ResourceURN        string
-	EventID            string
-	PolicyID           string
-	LastObservedBefore time.Time
-	Limit              uint32
-	PriorityOrder      bool
-	Order              FindingOrder
+	TenantID            string
+	RuntimeID           string
+	RuntimeIDs          []string
+	FindingID           string
+	RuleID              string
+	Severity            string
+	Status              string
+	ResourceURN         string
+	EventID             string
+	PolicyID            string
+	Framework           string
+	FirstObservedFrom   time.Time
+	FirstObservedBefore time.Time
+	StatusUpdatedFrom   time.Time
+	StatusUpdatedBefore time.Time
+	LastObservedBefore  time.Time
+	MinAgeDays          uint32
+	MaxAgeDays          uint32
+	SLAStatus           string
+	Limit               uint32
+	PriorityOrder       bool
+	Order               FindingOrder
 }
 
 // FindingOrder controls persisted finding list sort order.

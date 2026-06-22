@@ -35,20 +35,35 @@ type GRCFindingTrendsRequest struct {
 	Interval       string
 }
 
+// GRCAgingBucket summarizes the age distribution of currently open findings.
+type GRCAgingBucket struct {
+	ID      string
+	Label   string
+	MinDays int
+	MaxDays int
+	Count   int
+}
+
 // GRCFindingTrendPoint holds one bucket of finding flow counts.
 type GRCFindingTrendPoint struct {
-	BucketStart    time.Time
-	Opened         int
-	OpenedCritical int
-	OpenedHigh     int
-	Closed         int
+	BucketStart                time.Time
+	Opened                     int
+	OpenedCritical             int
+	OpenedHigh                 int
+	Closed                     int
+	ClosedCritical             int
+	ClosedHigh                 int
+	ClosedSLABreached          int
+	ClosedDurationSecondsTotal float64
+	ClosedDurationCount        int
 }
 
 // GRCFindingTrends is the bucketed trend series plus the open backlog at the
 // window start, which lets callers reconstruct a running open total.
 type GRCFindingTrends struct {
-	Points      []GRCFindingTrendPoint
-	OpenAtStart int
+	Points       []GRCFindingTrendPoint
+	OpenAtStart  int
+	AgingBuckets []GRCAgingBucket
 }
 
 // GRCFindingTrendsStore provides a purpose-built time-bucketed trend aggregation.

@@ -323,6 +323,46 @@ func TestFindingGRCListQueryAvoidsFullPayload(t *testing.T) {
 	}
 }
 
+func TestFindingFilterClausesSupportTrendDrilldownFilters(t *testing.T) {
+	openedAfter := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	openedBefore := openedAfter.AddDate(0, 0, 7)
+	closedAfter := time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC)
+	closedBefore := closedAfter.AddDate(0, 0, 7)
+	clauses, args, err := findingFilterClauses(ports.ListFindingsRequest{
+		TenantID:            "tenant",
+		RuntimeIDs:          []string{"runtime-alpha"},
+		Framework:           "SOC 2",
+		FirstObservedFrom:   openedAfter,
+		FirstObservedBefore: openedBefore,
+		StatusUpdatedFrom:   closedAfter,
+		StatusUpdatedBefore: closedBefore,
+		MinAgeDays:          8,
+		MaxAgeDays:          30,
+		SLAStatus:           "overdue",
+	})
+	if err != nil {
+		t.Fatalf("findingFilterClauses() error = %v", err)
+	}
+	query := strings.Join(clauses, " AND ")
+	for _, fragment := range []string{
+		"jsonb_array_elements",
+		"first_observed_at >= $4",
+		"first_observed_at < $5",
+		"status_updated_at >= $6",
+		"status_updated_at < $7",
+		"first_observed_at <= NOW() - ($8::int * INTERVAL '1 day')",
+		"first_observed_at > NOW() - (($9::int + 1) * INTERVAL '1 day')",
+		"due_at < NOW()",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingFilterClauses() missing %q in %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 9 {
+		t.Fatalf("len(args) = %d, want 9", got)
+	}
+}
+
 func TestFindingCandidateListQueryRequiresTenantAndScope(t *testing.T) {
 	if _, _, err := findingCandidateListQuery(ports.ListFindingCandidatesRequest{RuntimeID: "writer-okta-audit"}); err == nil {
 		t.Fatal("findingCandidateListQuery() error = nil, want tenant error")

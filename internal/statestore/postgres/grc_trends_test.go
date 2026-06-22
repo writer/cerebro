@@ -27,6 +27,8 @@ func TestGRCFindingTrendsSeriesQueryStructure(t *testing.T) {
 		"FILTER (WHERE scope.effective_severity = 'HIGH')",
 		"LOWER(scope.status) <> 'open'",
 		"scope.status_updated_at IS NOT NULL",
+		"closed_sla_breached",
+		"closed_duration_seconds_total",
 		"LEFT JOIN opened",
 		"LEFT JOIN closed",
 		"ORDER BY buckets.bucket_start",
