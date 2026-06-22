@@ -33,6 +33,7 @@ const (
 	KindVulnDBSyncJobRun          = "vulndb_sync_job_run"
 	KindGraphRebuildDryRun        = "graph_rebuild_dry_run"
 	KindAppendLogRuntimeIndex     = "append_log_runtime_index"
+	KindProactiveFindingTriage    = "proactive_finding_triage"
 )
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)
