@@ -1413,6 +1413,11 @@
         "Approved deploy keys, service accounts, or GitHub Apps with documented owner, scope, and rotation process."
       ],
       "runbook": "Confirm owner, scope, last-use/need, and rotation for the credential or integration; remove unused access or document the exception.",
+      "required_attributes": [
+        "credential_status",
+        "credential_type",
+        "github_credential_urn"
+      ],
       "fingerprint_fields": [
         "github_credential_urn"
       ],

@@ -444,6 +444,11 @@ func (r *coordinationGraphRule) EvaluateRows(_ context.Context, runtime *cerebro
 		for key, value := range r.definition.AttributeMap() {
 			attributes["rule_"+key] = value
 		}
+		for key, value := range coordinationRowStringMap(row, "finding_attributes") {
+			if _, exists := attributes[key]; !exists {
+				attributes[key] = value
+			}
+		}
 		trimEmptyAttributes(attributes)
 		findings = append(findings, &ports.FindingRecord{
 			ID:                fingerprint,
@@ -499,6 +504,34 @@ func coordinationRowStrings(row ports.CypherRow, key string) []string {
 		if text != "" && text != "<nil>" {
 			result = append(result, text)
 		}
+	}
+	return result
+}
+
+func coordinationRowStringMap(row ports.CypherRow, key string) map[string]string {
+	if row.Values == nil {
+		return nil
+	}
+	value, ok := row.Values[key]
+	if !ok || value == nil {
+		return nil
+	}
+	result := map[string]string{}
+	switch typed := value.(type) {
+	case map[string]string:
+		for key, value := range typed {
+			result[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	case map[string]any:
+		for key, value := range typed {
+			result[strings.TrimSpace(key)] = strings.TrimSpace(fmt.Sprintf("%v", value))
+		}
+	default:
+		return nil
+	}
+	trimEmptyAttributes(result)
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }
