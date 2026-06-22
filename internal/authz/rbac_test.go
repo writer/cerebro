@@ -3,6 +3,15 @@ package authz
 import "testing"
 
 func TestAskQueriesWriteScopeRoleExpansion(t *testing.T) {
+	assertGRCContentWriteScopeExpansion(t, ScopeAskQueriesWrite)
+}
+
+func TestRiskScoringWriteScopeRoleExpansion(t *testing.T) {
+	assertGRCContentWriteScopeExpansion(t, ScopeRiskScoringWrite)
+}
+
+func assertGRCContentWriteScopeExpansion(t *testing.T, scope string) {
+	t.Helper()
 	for _, role := range []string{
 		RoleCerebroAnalyst,
 		"analyst",
@@ -11,8 +20,8 @@ func TestAskQueriesWriteScopeRoleExpansion(t *testing.T) {
 		RoleCerebroGRCReviewer,
 		RoleCerebroAdmin,
 	} {
-		if !hasScope(ScopesForRoles([]string{role}), ScopeAskQueriesWrite) {
-			t.Fatalf("role %q did not expand to %s", role, ScopeAskQueriesWrite)
+		if !hasScope(ScopesForRoles([]string{role}), scope) {
+			t.Fatalf("role %q did not expand to %s", role, scope)
 		}
 	}
 
@@ -26,8 +35,8 @@ func TestAskQueriesWriteScopeRoleExpansion(t *testing.T) {
 		RoleCerebroSourceManager,
 		RoleCerebroJobManager,
 	} {
-		if hasScope(ScopesForRoles([]string{role}), ScopeAskQueriesWrite) {
-			t.Fatalf("role %q unexpectedly expanded to %s", role, ScopeAskQueriesWrite)
+		if hasScope(ScopesForRoles([]string{role}), scope) {
+			t.Fatalf("role %q unexpectedly expanded to %s", role, scope)
 		}
 	}
 }
