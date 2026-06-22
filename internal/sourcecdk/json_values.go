@@ -2,6 +2,7 @@ package sourcecdk
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -47,4 +48,24 @@ func (s JSONScalar) Time(layouts ...string) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+// Flattened renders the boxed JSON value as a string. Scalar values follow the
+// same rules as String; []any values become their comma-joined non-empty
+// elements; any other value is rendered via fmt.Sprint and trimmed.
+func (s JSONScalar) Flattened() string {
+	switch v := s.Value.(type) {
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			if value := (JSONScalar{Value: item}).Flattened(); value != "" {
+				parts = append(parts, value)
+			}
+		}
+		return strings.Join(parts, ",")
+	case nil, string, float64, bool:
+		return s.String()
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
 }

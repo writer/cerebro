@@ -29,14 +29,10 @@ const duplicateFunctionMinNodes = 50
 // add new entries to silence a fresh copy-paste; instead lift the shared logic
 // into internal/sourcecdk. Remove an entry when its extraction lands.
 var allowlistedSourceDuplicates = map[string]string{
-	"grc.pullFromRecords|vulnview.pullFromRecords":        "record paging loop; extract into Source CDK record pull (#956)",
-	"okta.checkpointCursor|sentinelone.checkpointCursor":  "checkpoint cursor encode/decode; extract into Source CDK cursor (#956)",
-	"aurelius.watermarkString|panopticon.watermarkString": "watermark formatting; extract into Source CDK watermark helper (#956)",
-	"cosmo.valueString|vulnview.valueString":              "JSON scalar formatting; candidate for Source CDK JSON value helpers (#956)",
-	"aws.parseAWSURNs|azure.parseAzureURNs":               "provider URN parsing with provider-specific identifiers; consolidate cautiously (#956)",
-	"okta.oktaURNsFor|sentinelone.urnsFor":                "provider URN construction; consolidate into Source CDK URN helper (#956)",
-	"azure.New|gcp.New|googleworkspace.New":               "constructor scaffold building a concrete *Source; needs a generic CDK builder to deduplicate (#684)",
-	"archetype.New|sdk.New|trustedendpoint.New":           "constructor scaffold for sample/fixture sources; structural boilerplate (#684)",
+	"aws.parseAWSURNs|azure.parseAzureURNs":     "provider URN parsing with provider-specific identifiers; consolidate cautiously (#956)",
+	"okta.oktaURNsFor|sentinelone.urnsFor":      "provider URN construction; consolidate into Source CDK URN helper (#956)",
+	"azure.New|gcp.New|googleworkspace.New":     "constructor scaffold building a concrete *Source; needs a generic CDK builder to deduplicate (#684)",
+	"archetype.New|sdk.New|trustedendpoint.New": "constructor scaffold for sample/fixture sources; structural boilerplate (#684)",
 }
 
 // TestSourcePackagesDoNotDuplicateExtractableHelpers fails when the same

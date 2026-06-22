@@ -261,18 +261,6 @@ func firstConfigValue(cfg sourcecdk.Config, keys ...string) string {
 	return ""
 }
 
-func watermarkString(watermark time.Time, fallback time.Time) string {
-	if !watermark.IsZero() && !fallback.IsZero() && fallback.After(watermark) {
-		watermark = fallback
-	} else if watermark.IsZero() {
-		watermark = fallback
-	}
-	if watermark.IsZero() {
-		return ""
-	}
-	return watermark.UTC().Format(time.RFC3339Nano)
-}
-
 func buildEvent(rec panopticonRecord, kind, schemaRef string) (*primitives.Event, error) {
 	if strings.TrimSpace(rec.ID) == "" {
 		return nil, errors.New("id is required")

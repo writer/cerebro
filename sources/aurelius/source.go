@@ -381,18 +381,6 @@ func cursorWatermark(cursor aureliusCursor) time.Time {
 	return value.UTC()
 }
 
-func watermarkString(watermark time.Time, fallback time.Time) string {
-	if !watermark.IsZero() && !fallback.IsZero() && fallback.After(watermark) {
-		watermark = fallback
-	} else if watermark.IsZero() {
-		watermark = fallback
-	}
-	if watermark.IsZero() {
-		return ""
-	}
-	return watermark.UTC().Format(time.RFC3339Nano)
-}
-
 func discoverFamily(st settings, urnPrefix string) ([]sourcecdk.URN, error) {
 	urnRaw := urnPrefix + url.PathEscape(st.bucket+"/"+strings.TrimSuffix(st.prefix, "/"))
 	urn, err := sourcecdk.ParseURN(urnRaw)
@@ -489,12 +477,12 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 						LastKey:      lastKey,
 						PartialKey:   key,
 						RecordOffset: nextRecord,
-						Watermark:    watermarkString(watermark, priorWatermark),
+						Watermark:    sourcecdk.WatermarkString(watermark, priorWatermark),
 					})
 				} else {
 					lastKey = key
 					if objectIndex < len(listing.Contents)-1 || awssdk.ToBool(listing.IsTruncated) {
-						nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: watermarkString(watermark, priorWatermark)})
+						nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: sourcecdk.WatermarkString(watermark, priorWatermark)})
 					}
 				}
 				break
@@ -507,14 +495,14 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 	}
 	pull := sourcecdk.Pull{Events: events}
 	if nextCursor == "" && awssdk.ToBool(listing.IsTruncated) && lastKey != "" {
-		nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: watermarkString(watermark, priorWatermark)})
+		nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: sourcecdk.WatermarkString(watermark, priorWatermark)})
 	}
 	if nextCursor != "" {
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
 	}
 	checkpointCursor := nextCursor
 	if checkpointCursor == "" && lastKey != "" {
-		checkpointCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: watermarkString(watermark, priorWatermark)})
+		checkpointCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: sourcecdk.WatermarkString(watermark, priorWatermark)})
 	}
 	madeProgress := lastKey != "" && lastKey != startAfter
 	if checkpointCursor != "" && (!watermark.IsZero() || cursor != nil || nextCursor != "" || madeProgress) {

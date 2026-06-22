@@ -314,6 +314,21 @@ func IncrementalCursor(source string, family string, token string, checkpoint *c
 	return opaque
 }
 
+// WatermarkString returns the later of watermark and fallback, rendered as a
+// UTC RFC3339Nano string. It prefers watermark on ties and returns an empty
+// string when both times are zero.
+func WatermarkString(watermark time.Time, fallback time.Time) string {
+	if !watermark.IsZero() && !fallback.IsZero() && fallback.After(watermark) {
+		watermark = fallback
+	} else if watermark.IsZero() {
+		watermark = fallback
+	}
+	if watermark.IsZero() {
+		return ""
+	}
+	return watermark.UTC().Format(time.RFC3339Nano)
+}
+
 func checkpointHasWatermark(checkpoint *cerebrov1.SourceCheckpoint) bool {
 	return checkpoint != nil && checkpoint.GetWatermark() != nil && !checkpoint.GetWatermark().AsTime().IsZero()
 }
