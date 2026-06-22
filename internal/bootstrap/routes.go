@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -8,7 +9,11 @@ import (
 
 	cerebrov1connect "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceplanapi"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 type bootstrapRouteSurface string
@@ -149,9 +154,11 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /connectors/credential-key", routeSurfacePlatformHTTP, app.handleConnectorCredentialKey)
 	registerHTTPRoute(mux, "GET /connector-definitions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitions)
 	registerHTTPRoute(mux, "POST /connector-definitions", routeSurfacePlatformHTTP, app.handleCreateConnectorDefinition)
+	registerHTTPRoute(mux, "POST /connector-definitions/plan", routeSurfacePlatformHTTP, sourceplanapi.HandleDefinitionPlan(app.sourcePlanAPIDeps()))
 	registerHTTPRoute(mux, "POST /connector-definitions/validate", routeSurfacePlatformHTTP, app.handleValidateConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handleGetConnectorDefinition)
 	registerHTTPRoute(mux, "PUT /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handlePutConnectorDefinition)
+	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}/promotion-plan", routeSurfacePlatformHTTP, sourceplanapi.HandleStoredPromotionPlan(app.sourcePlanAPIDeps()))
 	registerHTTPRoute(mux, "POST /connector-definitions/{definitionID}/promote", routeSurfacePlatformHTTP, app.handlePromoteConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connectors/{sourceID}", routeSurfacePlatformHTTP, app.handleGetConnector)
 	registerHTTPRoute(mux, "GET /connectors/{sourceID}/activity", routeSurfacePlatformHTTP, app.handleListConnectorActivity)
@@ -162,6 +169,29 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/credentials/{credentialID}/revoke", routeSurfacePlatformHTTP, app.handleRevokeConnectorCredential)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/preflight", routeSurfacePlatformHTTP, app.handlePreflightConnectorConnection)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/connections", routeSurfacePlatformHTTP, app.handleCreateConnectorConnection)
+}
+
+func (app *App) sourcePlanAPIDeps() sourceplanapi.Dependencies {
+	return sourceplanapi.Dependencies{EffectiveTenant: effectiveTenantFilter, GetDefinition: app.connectorDefinitionForPlan, WriteJSON: writeJSON, WriteError: writeConnectorError, InvalidRequest: connectorcredentials.ErrInvalidRequest}
+}
+
+func (app *App) connectorDefinitionForPlan(ctx context.Context, definitionID string) (connectordefinitions.Definition, error) {
+	store := connectorDefinitionStore(app.deps.StateStore)
+	if store == nil {
+		return connectordefinitions.Definition{}, sourceruntime.ErrRuntimeUnavailable
+	}
+	record, err := store.GetConnectorDefinition(ctx, definitionID)
+	if err != nil {
+		return connectordefinitions.Definition{}, err
+	}
+	definition, err := connectorDefinitionFromRecord(record)
+	if err != nil {
+		return connectordefinitions.Definition{}, err
+	}
+	if err := authorizeTenantID(ctx, definition.TenantID); err != nil {
+		return connectordefinitions.Definition{}, err
+	}
+	return definition, nil
 }
 
 func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {

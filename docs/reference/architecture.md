@@ -162,6 +162,11 @@ the HTTP/Connect boundary. Domain packages still own the underlying GRC,
 finding, evidence, and inventory semantics; bootstrap only translates principal
 claims into route-level permission checks.
 
+Source CDK promotion planning lives behind `internal/sourcegen` and
+`internal/sourceplanapi`. The bootstrap budget includes only route registration,
+scoped authorization, stored-definition lookup, and response wiring for the
+connector definition promotion-plan endpoints.
+
 Graph action execution is also represented in the bootstrap budget only at the
 transport boundary: route registration, scoped auth policy, request/response
 mapping, tenant-authorized finding lookup, and service dependency wiring. Action
