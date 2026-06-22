@@ -2280,6 +2280,9 @@ func TestConnectorActivityLimitTruncatesActivityRows(t *testing.T) {
 			Type      string `json:"type"`
 			RuntimeID string `json:"runtime_id"`
 		} `json:"activity"`
+		DiagnosticTimeline []struct {
+			Stage string `json:"stage"`
+		} `json:"diagnostic_timeline"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -2289,6 +2292,18 @@ func TestConnectorActivityLimitTruncatesActivityRows(t *testing.T) {
 	}
 	if got := payload.Activity[0].RuntimeID; got != "runtime-a" {
 		t.Fatalf("activity[0].runtime_id = %q, want runtime-a", got)
+	}
+	if len(payload.DiagnosticTimeline) <= len(payload.Activity) {
+		t.Fatalf("diagnostic timeline length = %d, want more than limited activity rows", len(payload.DiagnosticTimeline))
+	}
+	hasGraphStage := false
+	for _, entry := range payload.DiagnosticTimeline {
+		if entry.Stage == "graph_projection" {
+			hasGraphStage = true
+		}
+	}
+	if !hasGraphStage {
+		t.Fatalf("diagnostic timeline missing graph_projection stage: %#v", payload.DiagnosticTimeline)
 	}
 	if got := store.sourceRuntimeListFilter.Limit; got != connectorActivityMaxLimit {
 		t.Fatalf("runtime list limit = %d, want connector fetch limit %d", got, connectorActivityMaxLimit)
@@ -2336,7 +2351,7 @@ func TestConnectorActivityIncludesDiagnosticTimeline(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?tenant_id=tenant-a")
+	resp, err := server.Client().Get(server.URL + "/connectors/bootstrap_token/activity?tenant_id=tenant-a&limit=2")
 	if err != nil {
 		t.Fatalf("GET /connectors/{sourceID}/activity error = %v", err)
 	}

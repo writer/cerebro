@@ -707,7 +707,7 @@ func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request
 		TenantID:           tenantID,
 		SourceID:           entry.SourceID,
 		Activity:           limitConnectorActivity(activity, activityLimit),
-		DiagnosticTimeline: connectordiagnostics.Limit(timeline, activityLimit),
+		DiagnosticTimeline: timeline,
 	})
 }
 
