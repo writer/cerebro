@@ -23,8 +23,7 @@ type Store struct {
 	claimTablesReady             bool
 	projectionTablesReady        bool
 	findingTablesReady           bool
-	reportRunTableReady          bool
-	reportScheduleTableReady     bool
+	reportTablesReady            bool
 	sourceRuntimeTableReady      bool
 	findingEvidenceReady         bool
 	findingEvaluationRunReady    bool

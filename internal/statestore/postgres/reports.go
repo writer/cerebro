@@ -152,5 +152,14 @@ func reportRunListLimit(limit uint32) uint32 {
 }
 
 func (s *Store) ensureReportRunTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.reportRunTableReady, "report run", ensureReportRunStatements)
+	return s.ensureReportTables(ctx)
+}
+
+// ensureReportTables creates the report_runs and report_schedules tables under a
+// single readiness flag so both are provisioned on first use.
+func (s *Store) ensureReportTables(ctx context.Context) error {
+	statements := make([]string, 0, len(ensureReportRunStatements)+len(ensureReportScheduleStatements))
+	statements = append(statements, ensureReportRunStatements...)
+	statements = append(statements, ensureReportScheduleStatements...)
+	return s.ensureStatements(ctx, &s.reportTablesReady, "report", statements)
 }

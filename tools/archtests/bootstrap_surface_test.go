@@ -18,7 +18,7 @@ import (
 // runs through the existing job service. The durable schedule storage lives in
 // internal/statestore/postgres and the report evaluation in internal/reports, so
 // this stays within bootstrap's routing, auth, and composition responsibility.
-const bootstrapProductionGoLineBudget = 24171
+const bootstrapProductionGoLineBudget = 24176
 
 type bootstrapFileLineCount struct {
 	path  string

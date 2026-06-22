@@ -32,7 +32,7 @@ var ensureReportScheduleStatements = []string{
 const reportScheduleColumns = `id, tenant_id, report_id, parameters_json::text, interval_seconds, enabled, next_run_at, last_run_at, created_at, updated_at`
 
 func (s *Store) ensureReportScheduleTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.reportScheduleTableReady, "report schedule", ensureReportScheduleStatements)
+	return s.ensureReportTables(ctx)
 }
 
 // PutReportSchedule upserts one saved report schedule.

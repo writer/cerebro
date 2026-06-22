@@ -102,7 +102,7 @@ func reportScheduleTestApp(store ports.StateStore) *App {
 	return New(config.Config{HTTPAddr: "127.0.0.1:0"}, Dependencies{StateStore: store}, nil)
 }
 
-func reportScheduleTestRequest(method, target, body, tenantID string) *http.Request {
+func reportScheduleTestRequest(method, target, body string) *http.Request {
 	var reader *strings.Reader
 	if body != "" {
 		reader = strings.NewReader(body)
@@ -111,7 +111,7 @@ func reportScheduleTestRequest(method, target, body, tenantID string) *http.Requ
 	}
 	request := httptest.NewRequest(method, target, reader)
 	return request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
-		principal: authPrincipal{TenantID: tenantID},
+		principal: authPrincipal{TenantID: "local"},
 	}))
 }
 
@@ -121,7 +121,7 @@ func TestHandleCreateReportScheduleValidatesAndPersists(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	body := `{"report_id":"finding-summary","interval_seconds":3600,"parameters":{"runtime_ids":"rt-1"}}`
-	app.handleCreateReportSchedule(recorder, reportScheduleTestRequest(http.MethodPost, "/report-schedules", body, "local"))
+	app.handleCreateReportSchedule(recorder, reportScheduleTestRequest(http.MethodPost, "/report-schedules", body))
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want %d (body %s)", recorder.Code, http.StatusCreated, recorder.Body.String())
 	}
@@ -161,7 +161,7 @@ func TestHandleCreateReportScheduleRejectsInvalidInput(t *testing.T) {
 			store := newStubReportScheduleStore()
 			app := reportScheduleTestApp(store)
 			recorder := httptest.NewRecorder()
-			app.handleCreateReportSchedule(recorder, reportScheduleTestRequest(http.MethodPost, "/report-schedules", tc.body, "local"))
+			app.handleCreateReportSchedule(recorder, reportScheduleTestRequest(http.MethodPost, "/report-schedules", tc.body))
 			if recorder.Code != tc.want {
 				t.Fatalf("status = %d, want %d (body %s)", recorder.Code, tc.want, recorder.Body.String())
 			}
@@ -179,7 +179,7 @@ func TestHandleListReportSchedulesScopesToTenant(t *testing.T) {
 	app := reportScheduleTestApp(store)
 
 	recorder := httptest.NewRecorder()
-	app.handleListReportSchedules(recorder, reportScheduleTestRequest(http.MethodGet, "/report-schedules", "", "local"))
+	app.handleListReportSchedules(recorder, reportScheduleTestRequest(http.MethodGet, "/report-schedules", ""))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("list status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
 	}
@@ -199,7 +199,7 @@ func TestHandleUpdateReportScheduleAppliesPatchAndScopesTenant(t *testing.T) {
 	app := reportScheduleTestApp(store)
 
 	recorder := httptest.NewRecorder()
-	request := reportScheduleTestRequest(http.MethodPatch, "/report-schedules/a", `{"enabled":false}`, "local")
+	request := reportScheduleTestRequest(http.MethodPatch, "/report-schedules/a", `{"enabled":false}`)
 	request.SetPathValue("scheduleID", "a")
 	app.handleUpdateReportSchedule(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -210,7 +210,7 @@ func TestHandleUpdateReportScheduleAppliesPatchAndScopesTenant(t *testing.T) {
 	}
 
 	crossRecorder := httptest.NewRecorder()
-	crossRequest := reportScheduleTestRequest(http.MethodPatch, "/report-schedules/b", `{"enabled":false}`, "local")
+	crossRequest := reportScheduleTestRequest(http.MethodPatch, "/report-schedules/b", `{"enabled":false}`)
 	crossRequest.SetPathValue("scheduleID", "b")
 	app.handleUpdateReportSchedule(crossRecorder, crossRequest)
 	if crossRecorder.Code != http.StatusNotFound {
@@ -228,7 +228,7 @@ func TestHandleDeleteReportScheduleScopesTenant(t *testing.T) {
 	app := reportScheduleTestApp(store)
 
 	recorder := httptest.NewRecorder()
-	request := reportScheduleTestRequest(http.MethodDelete, "/report-schedules/a", "", "local")
+	request := reportScheduleTestRequest(http.MethodDelete, "/report-schedules/a", "")
 	request.SetPathValue("scheduleID", "a")
 	app.handleDeleteReportSchedule(recorder, request)
 	if recorder.Code != http.StatusNoContent {
@@ -239,7 +239,7 @@ func TestHandleDeleteReportScheduleScopesTenant(t *testing.T) {
 	}
 
 	crossRecorder := httptest.NewRecorder()
-	crossRequest := reportScheduleTestRequest(http.MethodDelete, "/report-schedules/b", "", "local")
+	crossRequest := reportScheduleTestRequest(http.MethodDelete, "/report-schedules/b", "")
 	crossRequest.SetPathValue("scheduleID", "b")
 	app.handleDeleteReportSchedule(crossRecorder, crossRequest)
 	if crossRecorder.Code != http.StatusNotFound {
@@ -292,7 +292,7 @@ func TestHandleListReportRunsReturnsRecentRuns(t *testing.T) {
 	app := reportScheduleTestApp(store)
 
 	recorder := httptest.NewRecorder()
-	app.handleListReportRuns(recorder, reportScheduleTestRequest(http.MethodGet, "/report-runs", "", "local"))
+	app.handleListReportRuns(recorder, reportScheduleTestRequest(http.MethodGet, "/report-runs", ""))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("list runs status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
 	}
