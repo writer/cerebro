@@ -440,20 +440,6 @@ func TestWeightedAttackPathScoreWithConfigUsesRelationWeights(t *testing.T) {
 	}
 }
 
-func TestNormalizeRiskScoringConfigValidatesThresholdOrder(t *testing.T) {
-	_, err := NormalizeRiskScoringConfig(ports.RiskScoringConfig{
-		TenantID: "writer",
-		Thresholds: ports.RiskScoringLevelThresholds{
-			Critical: 70,
-			High:     80,
-			Medium:   40,
-		},
-	})
-	if err == nil {
-		t.Fatal("NormalizeRiskScoringConfig accepted inverted thresholds")
-	}
-}
-
 func TestAnalyzeFindingRiskContextUsesSourceSeverityForScoring(t *testing.T) {
 	finding := compoundRiskFinding("finding-calibrated", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
 	finding.Attributes[FindingSourceSeverityAttribute] = "LOW"
@@ -550,7 +536,7 @@ func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testi
 func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 	finding := compoundRiskFinding("cloud-1", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_secret_store:prod-secrets", "public_network_ingress")
 	finding.Attributes["internet_exposed"] = "true"
-	paths := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, map[string]*ports.EntityNeighborhood{
+	neighborhoods := map[string]*ports.EntityNeighborhood{
 		"cloud": {
 			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
 			Neighbors: []*ports.NeighborhoodNode{
@@ -564,7 +550,8 @@ func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 				{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-1"},
 			},
 		},
-	}, FindingExposureAnalysisOptions{Limit: 10})
+	}
+	paths := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, neighborhoods, FindingExposureAnalysisOptions{Limit: 10})
 	if len(paths) < 2 {
 		t.Fatalf("len(paths) = %d, want at least 2", len(paths))
 	}
@@ -573,6 +560,23 @@ func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 	}
 	if !stringSliceContains(paths[0].Reasons, "edge_weight:can_reach:7") {
 		t.Fatalf("top path reasons = %#v, want can_reach weight", paths[0].Reasons)
+	}
+
+	config := DefaultRiskScoringConfig("writer")
+	config.RelationWeights["can_reach"] = 1
+	config.RelationWeights["member_of"] = 20
+	weighted := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, neighborhoods, FindingExposureAnalysisOptions{
+		Limit:             10,
+		RiskScoringConfig: &config,
+	})
+	if len(weighted) < 2 {
+		t.Fatalf("len(weighted) = %d, want at least 2", len(weighted))
+	}
+	if got := weighted[0].Steps[0].Relation; got != "member_of" {
+		t.Fatalf("custom top path relation = %q, want member_of from configured relation weights; paths=%#v", got, weighted)
+	}
+	if !stringSliceContains(weighted[0].Reasons, "edge_weight:member_of:20") {
+		t.Fatalf("custom top path reasons = %#v, want configured member_of weight", weighted[0].Reasons)
 	}
 }
 

@@ -30,6 +30,7 @@ type FindingExposureAnalysisOptions struct {
 	CorrelationWindow   time.Duration
 	CorrelationPatterns []FindingCorrelationPattern
 	GraphNeighborhoods  map[string]*ports.EntityNeighborhood
+	RiskScoringConfig   *ports.RiskScoringConfig
 }
 
 // FindingExposureAnalysisReport combines generic compound risk, temporal correlation, and graph path summaries.
@@ -145,7 +146,7 @@ func AnalyzeFindingCorrelations(records []*ports.FindingRecord, options FindingE
 		compoundRiskKindType,
 	} {
 		for _, bucket := range groupCompoundRiskFindings(records, kind) {
-			correlation := newFindingCorrelation(bucket, window)
+			correlation := newFindingCorrelation(bucket, window, options.RiskScoringConfig)
 			if correlation.Kind == "" {
 				continue
 			}
@@ -202,7 +203,7 @@ func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket comp
 	if window <= 0 {
 		window = defaultFindingCorrelationWindow
 	}
-	matched := findingsMatchingRuleSetWithinWindow(bucket.findings, pattern.RuleIDs, window)
+	matched := findingsMatchingRuleSetWithinWindow(bucket.findings, pattern.RuleIDs, window, options.RiskScoringConfig)
 	if len(matched) < len(pattern.RuleIDs) {
 		return FindingCorrelation{}
 	}
@@ -211,7 +212,7 @@ func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket comp
 	if evidence.FindingCount < len(pattern.RuleIDs) {
 		return FindingCorrelation{}
 	}
-	context := riskContextForFindings(matched)
+	context := riskContextForFindingsWithConfig(matched, options.RiskScoringConfig)
 	score := context.Score + pattern.ScoreBonus + evidence.FindingCount*3 + len(evidence.RuleIDs)*4
 	reasons := append([]string{"pattern:" + pattern.ID, "shared_" + bucket.kind}, pattern.Reasons...)
 	reasons = append(reasons, context.Reasons...)
@@ -231,7 +232,7 @@ func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket comp
 	}
 }
 
-func findingsMatchingRuleSetWithinWindow(records []*ports.FindingRecord, ruleIDs []string, window time.Duration) []*ports.FindingRecord {
+func findingsMatchingRuleSetWithinWindow(records []*ports.FindingRecord, ruleIDs []string, window time.Duration, config *ports.RiskScoringConfig) []*ports.FindingRecord {
 	matched := findingsMatchingRuleSet(records, ruleIDs)
 	if len(matched) < len(ruleIDs) {
 		return nil
@@ -270,7 +271,7 @@ func findingsMatchingRuleSetWithinWindow(records []*ports.FindingRecord, ruleIDs
 				continue
 			}
 			windowEnd := findingObservedAt(windowRecords[len(windowRecords)-1])
-			score := riskContextForFindings(windowRecords).Score + len(windowRecords)
+			score := riskContextForFindingsWithConfig(windowRecords, config).Score + len(windowRecords)
 			if best == nil || windowEnd.After(bestEnd) || (windowEnd.Equal(bestEnd) && score > bestScore) {
 				best = append([]*ports.FindingRecord(nil), windowRecords...)
 				bestEnd = windowEnd
@@ -321,7 +322,7 @@ func containsWantedRuleSet(seen map[string]struct{}, wanted map[string]struct{})
 	return true
 }
 
-func newFindingCorrelation(bucket compoundRiskBucket, window time.Duration) FindingCorrelation {
+func newFindingCorrelation(bucket compoundRiskBucket, window time.Duration, config *ports.RiskScoringConfig) FindingCorrelation {
 	findings := nonNilFindings(bucket.findings)
 	if len(findings) < 2 {
 		return FindingCorrelation{}
@@ -359,7 +360,7 @@ func newFindingCorrelation(bucket compoundRiskBucket, window time.Duration) Find
 			correlationKind = "temporal_ordered"
 		}
 	}
-	context := riskContextForFindings(findings)
+	context := riskContextForFindingsWithConfig(findings, config)
 	score := context.Score + evidence.FindingCount + len(ruleIDs)*3
 	if correlationKind == "temporal_ordered" {
 		score += 5
@@ -401,17 +402,17 @@ func AnalyzeFindingAttackPaths(records []*ports.FindingRecord, neighborhoods map
 				continue
 			}
 			steps := []FindingAttackPathStep{typedAttackPathStep(hasFinding, nodes)}
-			paths = appendFindingAttackPath(paths, seen, finding, findingURN, steps)
+			paths = appendFindingAttackPath(paths, seen, finding, findingURN, steps, options.RiskScoringConfig)
 			for _, upstream := range relationsByTo[hasFinding.FromURN] {
 				if upstream.FromURN == findingURN || upstream.Relation == "has_finding" {
 					continue
 				}
 				steps := []FindingAttackPathStep{typedAttackPathStep(upstream, nodes), typedAttackPathStep(hasFinding, nodes)}
-				paths = appendFindingAttackPath(paths, seen, finding, findingURN, steps)
+				paths = appendFindingAttackPath(paths, seen, finding, findingURN, steps, options.RiskScoringConfig)
 			}
 			for _, upstream := range syntheticActorEdges(finding, hasFinding.FromURN, nodes) {
 				steps := []FindingAttackPathStep{typedAttackPathStep(upstream, nodes), typedAttackPathStep(hasFinding, nodes)}
-				paths = appendFindingAttackPath(paths, seen, finding, findingURN, steps)
+				paths = appendFindingAttackPath(paths, seen, finding, findingURN, steps, options.RiskScoringConfig)
 			}
 		}
 	}
@@ -435,7 +436,7 @@ func AnalyzeFindingAttackPaths(records []*ports.FindingRecord, neighborhoods map
 	return paths
 }
 
-func appendFindingAttackPath(paths []FindingAttackPath, seen map[string]struct{}, finding *ports.FindingRecord, findingURN string, steps []FindingAttackPathStep) []FindingAttackPath {
+func appendFindingAttackPath(paths []FindingAttackPath, seen map[string]struct{}, finding *ports.FindingRecord, findingURN string, steps []FindingAttackPathStep, config *ports.RiskScoringConfig) []FindingAttackPath {
 	if len(steps) == 0 {
 		return paths
 	}
@@ -448,8 +449,8 @@ func appendFindingAttackPath(paths []FindingAttackPath, seen map[string]struct{}
 		return paths
 	}
 	seen[key] = struct{}{}
-	context := AnalyzeFindingRiskContext(finding, time.Time{})
-	weightScore, weightReasons := weightedAttackPathScore(steps)
+	context := AnalyzeFindingRiskContextWithConfig(finding, time.Time{}, config)
+	weightScore, weightReasons := weightedAttackPathScoreWithConfig(steps, config)
 	score := context.Score + weightScore
 	pattern := attackPathPattern(steps)
 	reasons := append([]string{"graph_path", "pattern:" + pattern}, context.Reasons...)
@@ -705,10 +706,14 @@ func weightedAttackPathScoreWithConfig(steps []FindingAttackPathStep, config *po
 }
 
 func riskContextForFindings(findings []*ports.FindingRecord) FindingRiskContext {
+	return riskContextForFindingsWithConfig(findings, nil)
+}
+
+func riskContextForFindingsWithConfig(findings []*ports.FindingRecord, config *ports.RiskScoringConfig) FindingRiskContext {
 	score := 0
 	reasons := []string{}
 	for _, finding := range findings {
-		context := AnalyzeFindingRiskContext(finding, time.Time{})
+		context := AnalyzeFindingRiskContextWithConfig(finding, time.Time{}, config)
 		score += context.Score
 		reasons = append(reasons, context.Reasons...)
 	}

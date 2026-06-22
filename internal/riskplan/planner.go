@@ -148,7 +148,7 @@ func actionPlanSeeds(tenantID string, findings []*ports.FindingRecord, options O
 		if finding == nil {
 			continue
 		}
-		context := findinganalysis.AnalyzeFindingRiskContext(finding, options.Now)
+		context := findinganalysis.AnalyzeFindingRiskContextWithConfig(finding, options.Now, options.RiskScoringConfig)
 		for _, generator := range options.Generators {
 			if generator == nil {
 				continue
@@ -318,6 +318,7 @@ func actionPlanCandidates(findings []*ports.FindingRecord, seeds []aggregatedCan
 				Limit:              10,
 				GraphNeighborhoods: options.GraphNeighborhoods,
 				Now:                options.Now,
+				RiskScoringConfig:  options.RiskScoringConfig,
 			})
 			if report.RiskScoreReduction <= 0 && report.AttackPathScoreReduction <= 0 && report.AttackPathCountReduction <= 0 {
 				status = SimulationStatusNoExpectedRisk

@@ -75,56 +75,6 @@ func DefaultRiskScoringConfig(tenantID string) ports.RiskScoringConfig {
 	}
 }
 
-// NormalizeRiskScoringConfig merges a partial tenant override with defaults.
-func NormalizeRiskScoringConfig(input ports.RiskScoringConfig) (ports.RiskScoringConfig, error) {
-	normalized := DefaultRiskScoringConfig(input.TenantID)
-	if input.Thresholds.Critical != 0 {
-		normalized.Thresholds.Critical = input.Thresholds.Critical
-	}
-	if input.Thresholds.High != 0 {
-		normalized.Thresholds.High = input.Thresholds.High
-	}
-	if input.Thresholds.Medium != 0 {
-		normalized.Thresholds.Medium = input.Thresholds.Medium
-	}
-	if input.Signals.EPSSHigh != 0 {
-		normalized.Signals.EPSSHigh = input.Signals.EPSSHigh
-	}
-	if input.Signals.EPSSElevated != 0 {
-		normalized.Signals.EPSSElevated = input.Signals.EPSSElevated
-	}
-	if input.Signals.CVSSCritical != 0 {
-		normalized.Signals.CVSSCritical = input.Signals.CVSSCritical
-	}
-	if input.Signals.CVSSHigh != 0 {
-		normalized.Signals.CVSSHigh = input.Signals.CVSSHigh
-	}
-	if input.Signals.PrivateNetworkLikelihoodCap != 0 {
-		normalized.Signals.PrivateNetworkLikelihoodCap = input.Signals.PrivateNetworkLikelihoodCap
-	}
-	for key, weight := range input.RelationWeights {
-		name := normalizeRiskScoringKey(key)
-		if name == "" {
-			return ports.RiskScoringConfig{}, fmt.Errorf("relation weight key is required")
-		}
-		normalized.RelationWeights[name] = weight
-	}
-	for key, weight := range input.FactorWeights {
-		name := normalizeRiskScoringKey(key)
-		if name == "" {
-			return ports.RiskScoringConfig{}, fmt.Errorf("factor weight key is required")
-		}
-		normalized.FactorWeights[name] = weight
-	}
-	syncPrivateNetworkCap(&normalized)
-	normalized.CreatedAt = input.CreatedAt
-	normalized.UpdatedAt = input.UpdatedAt
-	if err := ValidateRiskScoringConfig(normalized); err != nil {
-		return ports.RiskScoringConfig{}, err
-	}
-	return normalized, nil
-}
-
 // NormalizeCompleteRiskScoringConfig normalizes a fully materialized config while
 // preserving explicit zero-valued signal thresholds.
 func NormalizeCompleteRiskScoringConfig(input ports.RiskScoringConfig) (ports.RiskScoringConfig, error) {

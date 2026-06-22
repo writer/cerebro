@@ -23,8 +23,10 @@ import (
 // HTTP request/response mapping for tenant-scoped scoring overrides; validation
 // and defaulting live in internal/findings, and storage lives behind the
 // RiskScoringConfigStore port. The zero-preserving signal request shape keeps
-// OpenAPI-permitted values distinguishable at the HTTP boundary.
-const bootstrapProductionGoLineBudget = 24813
+// OpenAPI-permitted values distinguishable at the HTTP boundary. MCP risk action
+// plan mapping now loads that same tenant config and passes it into the domain
+// planner without moving scoring behavior into bootstrap.
+const bootstrapProductionGoLineBudget = 24823
 
 type bootstrapFileLineCount struct {
 	path  string
