@@ -29,23 +29,22 @@ type Service struct {
 }
 
 type ListRequest struct {
-	TenantID          string
-	RuntimeID         string
-	FactID            string
-	SubjectURN        string
-	Predicate         string
-	ObjectURN         string
-	ObjectValue       string
-	ClaimType         string
-	Status            string
-	SourceEventID     string
-	Limit             uint32
-	Cursor            string
-	IncludeAttributes bool
-	OmitAttributes    bool
-	IncludeEvidence   bool
-	EvidenceLimit     uint32
-	Compact           bool
+	TenantID        string
+	RuntimeID       string
+	FactID          string
+	SubjectURN      string
+	Predicate       string
+	ObjectURN       string
+	ObjectValue     string
+	ClaimType       string
+	Status          string
+	SourceEventID   string
+	Limit           uint32
+	Cursor          string
+	OmitAttributes  bool
+	IncludeEvidence bool
+	EvidenceLimit   uint32
+	Compact         bool
 }
 
 type ExplainRequest struct {
@@ -59,18 +58,17 @@ type ExplainRequest struct {
 }
 
 type TraceRequest struct {
-	TenantID          string
-	RuntimeID         string
-	FactID            string
-	SubjectURN        string
-	Predicate         string
-	ObjectURN         string
-	ObjectValue       string
-	Limit             uint32
-	IncludeAttributes bool
-	OmitAttributes    bool
-	IncludeEvidence   bool
-	EvidenceLimit     uint32
+	TenantID        string
+	RuntimeID       string
+	FactID          string
+	SubjectURN      string
+	Predicate       string
+	ObjectURN       string
+	ObjectValue     string
+	Limit           uint32
+	OmitAttributes  bool
+	IncludeEvidence bool
+	EvidenceLimit   uint32
 }
 
 type ListResponse struct {
@@ -242,14 +240,13 @@ func (s *Service) Trace(ctx context.Context, request TraceRequest) (TraceRespons
 		return TraceResponse{}, err
 	}
 	list, err := s.List(ctx, ListRequest{
-		TenantID:          request.TenantID,
-		RuntimeID:         firstNonEmpty(request.RuntimeID, anchor.Fact.RuntimeID),
-		SubjectURN:        anchor.Fact.SubjectURN,
-		Limit:             firstNonZero(request.Limit, 10),
-		IncludeAttributes: request.IncludeAttributes,
-		OmitAttributes:    request.OmitAttributes,
-		IncludeEvidence:   request.IncludeEvidence,
-		EvidenceLimit:     request.EvidenceLimit,
+		TenantID:        request.TenantID,
+		RuntimeID:       firstNonEmpty(request.RuntimeID, anchor.Fact.RuntimeID),
+		SubjectURN:      anchor.Fact.SubjectURN,
+		Limit:           firstNonZero(request.Limit, 10),
+		OmitAttributes:  request.OmitAttributes,
+		IncludeEvidence: request.IncludeEvidence,
+		EvidenceLimit:   request.EvidenceLimit,
 	})
 	if err != nil {
 		return TraceResponse{}, err

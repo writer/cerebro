@@ -1498,23 +1498,18 @@ func (app *App) mcpGraphFactsExplain(r *http.Request, args map[string]any) (any,
 		ObjectURN:   mcpStringArg(args, "object_urn"),
 		ObjectValue: mcpStringArg(args, "object_value"),
 	}
-	if request.RuntimeID != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), request.RuntimeID); err != nil {
-			return nil, err
-		}
-	}
-	for _, urn := range []string{request.SubjectURN, request.ObjectURN} {
-		if strings.HasPrefix(strings.TrimSpace(urn), "urn:cerebro:") {
-			if err := authorizeCerebroURNTenant(r.Context(), urn); err != nil {
-				return nil, err
-			}
-		}
+	if err := app.authorizeMCPGraphFactSelectors(r, request.RuntimeID, request.SubjectURN, request.ObjectURN); err != nil {
+		return nil, err
 	}
 	response, err := app.graphFactsService().Explain(r.Context(), request)
 	if err != nil {
 		return nil, err
 	}
-	return jsonValue(response)
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpResponseMetadata(0, 1, nil)), nil
 }
 
 func (app *App) mcpGraphFactsTrace(r *http.Request, args map[string]any) (any, error) {
@@ -1539,17 +1534,8 @@ func (app *App) mcpGraphFactsTrace(r *http.Request, args map[string]any) (any, e
 		EvidenceLimit:   boundedUint32(mcpOptionalLimit(args, "evidence_limit", 5, 25)),
 		OmitAttributes:  mcpBoolArg(args, "compact") || mcpExplicitFalseArg(args, "include_attributes"),
 	}
-	if request.RuntimeID != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), request.RuntimeID); err != nil {
-			return nil, err
-		}
-	}
-	for _, urn := range []string{request.SubjectURN, request.ObjectURN} {
-		if strings.HasPrefix(strings.TrimSpace(urn), "urn:cerebro:") {
-			if err := authorizeCerebroURNTenant(r.Context(), urn); err != nil {
-				return nil, err
-			}
-		}
+	if err := app.authorizeMCPGraphFactSelectors(r, request.RuntimeID, request.SubjectURN, request.ObjectURN); err != nil {
+		return nil, err
 	}
 	response, err := app.graphFactsService().Trace(r.Context(), request)
 	if err != nil {
@@ -1594,19 +1580,26 @@ func (app *App) mcpGraphFactsListRequest(r *http.Request, args map[string]any, l
 		Compact:         mcpBoolArg(args, "compact"),
 		OmitAttributes:  mcpBoolArg(args, "compact") || mcpExplicitFalseArg(args, "include_attributes"),
 	}
-	if request.RuntimeID != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), request.RuntimeID); err != nil {
-			return graphfacts.ListRequest{}, err
+	if err := app.authorizeMCPGraphFactSelectors(r, request.RuntimeID, request.SubjectURN, request.ObjectURN); err != nil {
+		return graphfacts.ListRequest{}, err
+	}
+	return request, nil
+}
+
+func (app *App) authorizeMCPGraphFactSelectors(r *http.Request, runtimeID string, urns ...string) error {
+	if strings.TrimSpace(runtimeID) != "" {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID); err != nil {
+			return mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
 		}
 	}
-	for _, urn := range []string{request.SubjectURN, request.ObjectURN} {
+	for _, urn := range urns {
 		if strings.HasPrefix(strings.TrimSpace(urn), "urn:cerebro:") {
 			if err := authorizeCerebroURNTenant(r.Context(), urn); err != nil {
-				return graphfacts.ListRequest{}, err
+				return mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
 			}
 		}
 	}
-	return request, nil
+	return nil
 }
 
 func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
@@ -3262,7 +3255,7 @@ func mcpEnforceMaxBytes(value any, args map[string]any) error {
 	if err != nil {
 		return err
 	}
-	if len(payload) <= int(maxBytes) {
+	if uint64(len(payload)) <= uint64(maxBytes) {
 		return nil
 	}
 	return fmt.Errorf("%w: response exceeds max_bytes; narrow filters, lower limit, or enable compact", errInvalidHTTPRequest)

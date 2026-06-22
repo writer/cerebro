@@ -125,6 +125,30 @@ func TestListRequiresTenantOrRuntimeScope(t *testing.T) {
 	}
 }
 
+func TestListOmitsAttributesWhenRequested(t *testing.T) {
+	store := &stubClaimStore{claims: []*ports.ClaimRecord{{
+		ID:          "fact-1",
+		RuntimeID:   "runtime-1",
+		TenantID:    "writer",
+		SubjectURN:  "urn:cerebro:writer:asset:prod-db",
+		Predicate:   "has_status",
+		ObjectValue: "ok",
+		ClaimType:   "attribute",
+		Status:      "asserted",
+		Attributes:  map[string]string{"confidence": "high", "owner": "security"},
+	}}}
+	response, err := New(store).List(context.Background(), ListRequest{TenantID: "writer", OmitAttributes: true})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(response.Facts) != 1 {
+		t.Fatalf("len(Facts) = %d, want 1", len(response.Facts))
+	}
+	if response.Facts[0].Attributes != nil {
+		t.Fatalf("Attributes = %#v, want nil", response.Facts[0].Attributes)
+	}
+}
+
 func TestExplainReturnsEdgeEvidenceAndFreshness(t *testing.T) {
 	store := &stubClaimStore{claims: []*ports.ClaimRecord{{
 		ID:            "fact-1",
