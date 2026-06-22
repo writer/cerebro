@@ -20,10 +20,9 @@ func newGitHubProgrammaticCredentialReviewRule() Rule {
 			"https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token",
 			"https://docs.github.com/en/apps/using-github-apps/reviewing-and-revoking-authorization-of-github-apps",
 		},
-		FalsePositives:     []string{"Approved deploy keys, service accounts, or GitHub Apps with documented owner, scope, and rotation process."},
-		Runbook:            "Confirm owner, scope, last-use/need, and rotation for the credential or integration; remove unused access or document the exception.",
-		RequiredAttributes: []string{"github_credential_urn", "credential_type", "credential_status"},
-		FingerprintFields:  []string{"github_credential_urn"},
+		FalsePositives:    []string{"Approved deploy keys, service accounts, or GitHub Apps with documented owner, scope, and rotation process."},
+		Runbook:           "Confirm owner, scope, last-use/need, and rotation for the credential or integration; remove unused access or document the exception.",
+		FingerprintFields: []string{"github_credential_urn"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
