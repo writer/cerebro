@@ -247,7 +247,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		var err error
 		ctx, aggregateSpan := telemetry.Start(parent, "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
 		aggregateRequest := r.WithContext(ctx)
-		aggregate, err = a.grcDashboardAggregate(aggregateRequest, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{FindingIDs: findingIDs})
+		aggregate, err = a.grcDashboardAggregate(aggregateRequest, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{})
 		if err == nil && aggregate == nil {
 			findingSummary, err = a.grcFindingSummary(aggregateRequest, runtimes, grcFindingFilter{Status: "open"})
 			if err == nil {
