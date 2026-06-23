@@ -34,10 +34,12 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `kolide` | Kolide device posture source | configured catalog families |
 | `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
 | `linode` | Linode source | linode.credential, linode.event, linode.issue, linode.user |
+| `meraki` | Cisco Meraki Dashboard API source | event types, organizations, Meraki auth users, access policies |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
 | `openai` | OpenAI organization governance source | audit logs, users, invites, groups, roles, projects, project access, service accounts, API keys, usage/costs, retention, spend alerts, certificates, rate limits, model/tool permissions |
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
 | `panopticon` | Panopticon security operations API source | cases by default; alerts and IOCs explicitly |
+| `probely` | Probely web vulnerability scanning source | findings needing attention, events, users, frameworks |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; optional declared inventory URN discovery; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
