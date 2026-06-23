@@ -87,11 +87,7 @@ type PutRuntimesResponse struct {
 
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
-	service := &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
-	if definitionStore, ok := store.(ports.ConnectorDefinitionStore); ok {
-		service.definitionStore = definitionStore
-	}
-	return service
+	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
 }
 
 // WithConfigResolver configures runtime source config secret resolution.

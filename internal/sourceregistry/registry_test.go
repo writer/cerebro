@@ -1,9 +1,11 @@
 package sourceregistry
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
 func TestBuiltin(t *testing.T) {
@@ -178,5 +180,31 @@ func TestBuiltinRegistersEveryGenerateableCatalogSource(t *testing.T) {
 		if _, ok := registry.Get(entry.Definition.SourceID); !ok {
 			t.Fatalf("registry missing generateable catalog source %s", entry.Definition.SourceID)
 		}
+	}
+}
+
+func TestDynamicDefinitionSourceRejectsBlockedDefinition(t *testing.T) {
+	_, err := DynamicDefinitionSource(connectordefinitions.Definition{
+		ID:          "example",
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Runtime:     connectordefinitions.RuntimeJSONAPI,
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: "${config.base_url}",
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:      "assets",
+			Path:    "https://api.example.test/v1/assets",
+			Method:  "POST",
+			IDField: "id",
+		}},
+	})
+	if err == nil {
+		t.Fatal("DynamicDefinitionSource() error = nil, want blocked definition error")
+	}
+	if !errors.Is(err, connectordefinitions.ErrInvalidDefinition) {
+		t.Fatalf("DynamicDefinitionSource() error = %v, want blocked definition error", err)
 	}
 }

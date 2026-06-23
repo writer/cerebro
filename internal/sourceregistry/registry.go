@@ -265,7 +265,14 @@ var builtinSourceLoaders = []builtinSourceLoader{
 // DynamicDefinitionSource adapts a stored dynamic connector definition into the
 // source layer without exposing concrete source packages to callers.
 func DynamicDefinitionSource(definition connectordefinitions.Definition) (sourcecdk.Source, error) {
-	return catalogruntimesource.NewDefinition(definition)
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		return nil, err
+	}
+	if normalized.Validation.Status == connectordefinitions.ValidationBlocked {
+		return nil, fmt.Errorf("%w: connector definition %q is blocked: %s", connectordefinitions.ErrInvalidDefinition, normalized.SourceID, normalized.Validation.Summary)
+	}
+	return catalogruntimesource.NewDefinition(normalized)
 }
 
 // Builtin constructs the in-process source registry for the rewrite skeleton.
