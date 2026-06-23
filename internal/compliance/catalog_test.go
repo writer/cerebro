@@ -161,6 +161,44 @@ func TestBuiltinFrameworksIncludesUpcomingFrameworks(t *testing.T) {
 	}
 }
 
+func TestBuiltinFrameworksIncludesMaturityAndGapActions(t *testing.T) {
+	response, err := BuiltinFrameworks(time.Unix(0, 0).UTC())
+	if err != nil {
+		t.Fatalf("BuiltinFrameworks() error = %v", err)
+	}
+	var soc2, upcoming *FrameworkSummary
+	for idx := range response.Frameworks {
+		framework := &response.Frameworks[idx]
+		switch framework.Name {
+		case "SOC 2":
+			soc2 = framework
+		case "NIST AI RMF 1.0":
+			upcoming = framework
+		}
+	}
+	if soc2 == nil {
+		t.Fatal("SOC 2 framework not found")
+	}
+	if soc2.Coverage.SelectedControls == 0 {
+		t.Fatalf("SOC 2 selected controls = %d, want non-zero", soc2.Coverage.SelectedControls)
+	}
+	if soc2.Maturity.Status == "" || soc2.Maturity.Summary == "" {
+		t.Fatalf("SOC 2 maturity = %#v, want populated status and summary", soc2.Maturity)
+	}
+	if len(soc2.GapActions) == 0 {
+		t.Fatal("SOC 2 gap actions empty")
+	}
+	if upcoming == nil {
+		t.Fatal("NIST AI RMF 1.0 framework not found")
+	}
+	if upcoming.Maturity.Status != "planning" {
+		t.Fatalf("upcoming maturity status = %q, want planning", upcoming.Maturity.Status)
+	}
+	if len(upcoming.GapActions) != 1 || upcoming.GapActions[0].Code != "plan_framework_scope" {
+		t.Fatalf("upcoming gap actions = %#v, want planning action", upcoming.GapActions)
+	}
+}
+
 func TestMergeControlCatalogsAllowsCustomPacksToMapToBuiltins(t *testing.T) {
 	builtin := loadTestCatalog(t, `
 version: "2026-06-17"
