@@ -18,6 +18,10 @@ import (
 	"text/template"
 )
 
+// TemplateData is the constraint for data passed to template rendering methods.
+// Any struct that holds template context satisfies this interface.
+type TemplateData interface{}
+
 // Engine loads and renders templates from an embedded filesystem.
 type Engine struct {
 	templates *template.Template
@@ -63,7 +67,7 @@ type RenderResult struct {
 }
 
 // Render executes a named template with the given data.
-func (e *Engine) Render(name string, data any) (RenderResult, error) {
+func (e *Engine) Render(name string, data TemplateData) (RenderResult, error) {
 	var buf bytes.Buffer
 	if err := e.templates.ExecuteTemplate(&buf, name, data); err != nil {
 		return RenderResult{}, fmt.Errorf("render %s: %w", name, err)
@@ -72,7 +76,7 @@ func (e *Engine) Render(name string, data any) (RenderResult, error) {
 }
 
 // RenderGo executes a named template and formats the result as Go source.
-func (e *Engine) RenderGo(name string, data any) (RenderResult, error) {
+func (e *Engine) RenderGo(name string, data TemplateData) (RenderResult, error) {
 	result, err := e.Render(name, data)
 	if err != nil {
 		return result, err
@@ -86,7 +90,7 @@ func (e *Engine) RenderGo(name string, data any) (RenderResult, error) {
 }
 
 // RenderToFile renders a template and writes it to a file path.
-func (e *Engine) RenderToFile(name string, data any, outPath string, goFormat bool) error {
+func (e *Engine) RenderToFile(name string, data TemplateData, outPath string, goFormat bool) error {
 	var result RenderResult
 	var err error
 	if goFormat {
@@ -104,7 +108,7 @@ func (e *Engine) RenderToFile(name string, data any, outPath string, goFormat bo
 }
 
 // RenderString renders a template to a string.
-func (e *Engine) RenderString(name string, data any) (string, error) {
+func (e *Engine) RenderString(name string, data TemplateData) (string, error) {
 	result, err := e.Render(name, data)
 	if err != nil {
 		return "", err
