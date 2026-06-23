@@ -44,6 +44,7 @@ type Registry struct {
 func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 	registry := &Registry{
 		projectors:                      make(map[string]ProjectFunc, len(projectors)),
+		handlers:                        make(map[string]ProjectionHandler),
 		connectorDefinitionFingerprints: map[string]string{},
 		connectorDefinitionKinds:        map[string]map[string]struct{}{},
 		connectorDefinitionBases:        map[string]ProjectFunc{},
