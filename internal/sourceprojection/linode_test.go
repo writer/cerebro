@@ -18,6 +18,12 @@ func TestLinodeFindingProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected finding links")
 	}
+	if !hasProjectedEntityType(entities, "runtime_evidence") {
+		t.Fatalf("expected runtime evidence entity, got %#v", entities)
+	}
+	if !projectedLinksContain(links, "urn:cerebro:tenant:runtime_evidence:evidence-1", relationSupports, "urn:cerebro:tenant:finding:finding-1") {
+		t.Fatalf("expected evidence support link, got %#v", links)
+	}
 }
 
 func TestLinodeSecretProjection(t *testing.T) {

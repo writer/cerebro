@@ -1,8 +1,13 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectorimport"
 )
 
 func TestSanitizeControlChars(t *testing.T) {
@@ -27,5 +32,30 @@ func TestIsSwaggerV2(t *testing.T) {
 	}
 	if isSwaggerV2([]byte("openapi: 3.0.0\n")) {
 		t.Error("expected OpenAPI 3 not to be detected as swagger 2.0")
+	}
+}
+
+func TestWriteDefinitionJSONSanitizesSourceID(t *testing.T) {
+	dir := t.TempDir()
+	outcomes := []connectorimport.Outcome{{
+		SourceID: "../../evil/source",
+		Verdict:  connectorimport.VerdictSupported,
+		Definition: connectordefinitions.Definition{
+			ID:       "test",
+			SourceID: "evil/source",
+		},
+	}}
+	written, err := writeDefinitionJSON(dir, outcomes)
+	if err != nil {
+		t.Fatalf("writeDefinitionJSON() error = %v", err)
+	}
+	if written != 1 {
+		t.Fatalf("written = %d, want 1", written)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "evil_source.json")); err != nil {
+		t.Fatalf("expected sanitized definition file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "..", "evil", "source.json")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected escaped definition file stat error = %v", err)
 	}
 }

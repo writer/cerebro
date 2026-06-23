@@ -72,7 +72,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - avatar
+      - user.id
   - kind: discord.role
     schema_ref: discord/role/v1
     required_attributes:

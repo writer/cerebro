@@ -25,7 +25,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "title": "Managed Issue", "severity": "high", "status": "open", "created": "2026-05-01T00:00:00Z", "updated_at": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
@@ -46,5 +46,17 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+	if got := event.Attributes["severity"]; got != "high" {
+		t.Fatalf("severity = %q, want high", got)
+	}
+	if got := event.Attributes["status"]; got != "open" {
+		t.Fatalf("status = %q, want open", got)
+	}
+	if got := event.Attributes["title"]; got != "Managed Issue" {
+		t.Fatalf("title = %q, want Managed Issue", got)
+	}
+	if got := event.Attributes["name"]; got != "Managed Issue" {
+		t.Fatalf("name = %q, want Managed Issue", got)
 	}
 }

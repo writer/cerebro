@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strings"
 
 	"github.com/writer/cerebro/internal/connectorimport"
 )
-
-var safeSourceIDPattern = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
 
 // writeDefinitionJSON writes each catalog-ready outcome's connector definition
 // as <dir>/<source_id>.json. These files are consumable directly by
@@ -32,12 +30,41 @@ func writeDefinitionJSON(dir string, outcomes []connectorimport.Outcome) (int, e
 		if err != nil {
 			return written, fmt.Errorf("marshal definition %s: %w", outcome.SourceID, err)
 		}
-		sanitizedID := safeSourceIDPattern.ReplaceAllString(outcome.SourceID, "_")
-		path := filepath.Join(dir, sanitizedID+".json")
+		filename, err := definitionFileName(outcome.SourceID)
+		if err != nil {
+			return written, err
+		}
+		path := filepath.Join(dir, filename+".json")
 		if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
 			return written, fmt.Errorf("write definition %s: %w", path, err)
 		}
 		written++
 	}
 	return written, nil
+}
+
+func definitionFileName(sourceID string) (string, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return "", fmt.Errorf("source_id is required")
+	}
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range sourceID {
+		allowed := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
+		if allowed {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	filename := strings.Trim(b.String(), "_-.")
+	if filename == "" {
+		return "", fmt.Errorf("source_id %q does not contain a safe filename", sourceID)
+	}
+	return filename, nil
 }

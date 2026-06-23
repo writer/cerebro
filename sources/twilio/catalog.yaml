@@ -70,4 +70,4 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - event_sid
