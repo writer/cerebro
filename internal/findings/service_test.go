@@ -3391,6 +3391,27 @@ func TestExpiredFindingCandidateCannotBePromotedOrRejected(t *testing.T) {
 	}
 }
 
+func TestFindingCandidateListTelemetryCountsExcludeExpiredCandidates(t *testing.T) {
+	now := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	counts := findingCandidateListTelemetryCounts([]*ports.FindingCandidateRecord{
+		{Status: findingCandidateStatusCandidate, LastObservedAt: now.Add(-8 * 24 * time.Hour)},
+		{Status: findingCandidateStatusCandidate, LastObservedAt: now},
+		{Status: findingCandidateStatusPromoted, LastObservedAt: now.Add(-8 * 24 * time.Hour)},
+		{Status: findingCandidateStatusRejected, LastObservedAt: now.Add(-8 * 24 * time.Hour)},
+		{Status: findingCandidateStatusExpired, LastObservedAt: now.Add(-8 * 24 * time.Hour)},
+	}, now)
+
+	if counts.candidateCount != 5 || counts.promotedCount != 1 || counts.rejectedCount != 1 || counts.expiredCount != 1 {
+		t.Fatalf("counts = %#v, want one promoted, rejected, and expired candidate among five", counts)
+	}
+	if got := counts.openCount(); got != 2 {
+		t.Fatalf("openCount = %d, want only live candidate statuses counted open", got)
+	}
+	if counts.staleCount != 1 {
+		t.Fatalf("staleCount = %d, want expired/promoted/rejected candidates excluded", counts.staleCount)
+	}
+}
+
 func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.T) {
 	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
 	finding := &ports.FindingRecord{

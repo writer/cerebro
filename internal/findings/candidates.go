@@ -770,34 +770,17 @@ func emitFindingCandidateRunTelemetry(ctx context.Context, run *ports.FindingCan
 }
 
 func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, candidates []*ports.FindingCandidateRecord, request ListCandidatesRequest) {
-	candidateCount, promotedCount, rejectedCount, staleCount := 0, 0, 0, 0
-	now := time.Now().UTC()
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
-		candidateCount++
-		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
-			promotedCount++
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
-			rejectedCount++
-			continue
-		}
-		if !candidate.LastObservedAt.IsZero() && now.Sub(candidate.LastObservedAt.UTC()) > 7*24*time.Hour {
-			staleCount++
-		}
-	}
+	counts := findingCandidateListTelemetryCounts(candidates, time.Now().UTC())
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(runtimeID)},
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(request.RuleID)},
 		telemetry.Field{Key: "status_filter", Value: strings.TrimSpace(request.Status)},
-		telemetry.Field{Key: "candidate_count", Value: candidateCount},
-		telemetry.Field{Key: "promoted_count", Value: promotedCount},
-		telemetry.Field{Key: "rejected_count", Value: rejectedCount},
-		telemetry.Field{Key: "open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
-		telemetry.Field{Key: "stale_candidate_count", Value: staleCount},
+		telemetry.Field{Key: "candidate_count", Value: counts.candidateCount},
+		telemetry.Field{Key: "promoted_count", Value: counts.promotedCount},
+		telemetry.Field{Key: "rejected_count", Value: counts.rejectedCount},
+		telemetry.Field{Key: "expired_count", Value: counts.expiredCount},
+		telemetry.Field{Key: "open_candidate_count", Value: counts.openCount()},
+		telemetry.Field{Key: "stale_candidate_count", Value: counts.staleCount},
 	)
 	telemetry.Event(ctx, "finding_candidate.list", attrs)
 	telemetry.IncrementMain(ctx, "finding_candidate.list.count", 1)
@@ -805,12 +788,50 @@ func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, ca
 		telemetry.Field{Key: "finding_candidate.runtime_id", Value: strings.TrimSpace(runtimeID)},
 		telemetry.Field{Key: "finding_candidate.rule_id", Value: strings.TrimSpace(request.RuleID)},
 		telemetry.Field{Key: "finding_candidate.status_filter", Value: strings.TrimSpace(request.Status)},
-		telemetry.Field{Key: "finding_candidate.candidate_count", Value: candidateCount},
-		telemetry.Field{Key: "finding_candidate.promoted_count", Value: promotedCount},
-		telemetry.Field{Key: "finding_candidate.rejected_count", Value: rejectedCount},
-		telemetry.Field{Key: "finding_candidate.open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
-		telemetry.Field{Key: "finding_candidate.stale_candidate_count", Value: staleCount},
+		telemetry.Field{Key: "finding_candidate.candidate_count", Value: counts.candidateCount},
+		telemetry.Field{Key: "finding_candidate.promoted_count", Value: counts.promotedCount},
+		telemetry.Field{Key: "finding_candidate.rejected_count", Value: counts.rejectedCount},
+		telemetry.Field{Key: "finding_candidate.expired_count", Value: counts.expiredCount},
+		telemetry.Field{Key: "finding_candidate.open_candidate_count", Value: counts.openCount()},
+		telemetry.Field{Key: "finding_candidate.stale_candidate_count", Value: counts.staleCount},
 	))
+}
+
+type findingCandidateTelemetryCounts struct {
+	candidateCount int
+	promotedCount  int
+	rejectedCount  int
+	expiredCount   int
+	staleCount     int
+}
+
+func (counts findingCandidateTelemetryCounts) openCount() int {
+	return counts.candidateCount - counts.promotedCount - counts.rejectedCount - counts.expiredCount
+}
+
+func findingCandidateListTelemetryCounts(candidates []*ports.FindingCandidateRecord, now time.Time) findingCandidateTelemetryCounts {
+	counts := findingCandidateTelemetryCounts{}
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		counts.candidateCount++
+		switch {
+		case strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted):
+			counts.promotedCount++
+			continue
+		case strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected):
+			counts.rejectedCount++
+			continue
+		case strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusExpired):
+			counts.expiredCount++
+			continue
+		}
+		if !candidate.LastObservedAt.IsZero() && now.Sub(candidate.LastObservedAt.UTC()) > 7*24*time.Hour {
+			counts.staleCount++
+		}
+	}
+	return counts
 }
 
 func emitFindingCandidatePromotionTelemetry(ctx context.Context, outcome string, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, decisionID string, startedAt time.Time) {
