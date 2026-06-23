@@ -46,6 +46,34 @@ func TestGRCControlArchetypesEndpointReturnsReusableControls(t *testing.T) {
 	}
 }
 
+func TestGRCFrameworksEndpointReturnsLifecycleMetadata(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/frameworks")
+	if err != nil {
+		t.Fatalf("GET /grc/frameworks error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/frameworks status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload compliance.FrameworksResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode frameworks: %v", err)
+	}
+	var foundUpcoming bool
+	for _, framework := range payload.Frameworks {
+		if framework.Name == "NIST AI RMF 1.0" && framework.Lifecycle == compliance.FrameworkLifecycleUpcoming {
+			foundUpcoming = true
+		}
+	}
+	if !foundUpcoming {
+		t.Fatalf("frameworks = %#v, want upcoming NIST AI RMF", payload.Frameworks)
+	}
+}
+
 func TestGRCControlPackPreviewEndpointReturnsYAMLFilesAndCoverage(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())

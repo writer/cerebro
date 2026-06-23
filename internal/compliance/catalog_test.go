@@ -3,6 +3,7 @@ package compliance
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildCatalogIndexAcceptsRichCustomControlPack(t *testing.T) {
@@ -99,6 +100,64 @@ frameworks:
 	}
 	if !issueContains(issues, "maps_to[0] Missing M-1 is not declared") {
 		t.Fatalf("issues = %#v, want missing mapping target", issues)
+	}
+}
+
+func TestBuildCatalogIndexAllowsUpcomingFrameworkWithoutControls(t *testing.T) {
+	catalog := loadTestCatalog(t, `
+version: "2026-06-17"
+frameworks:
+  - id: planned
+    name: Planned Framework
+    lifecycle: upcoming
+`)
+	index, issues := BuildCatalogIndex(catalog)
+	if len(issues) != 0 {
+		t.Fatalf("BuildCatalogIndex() issues = %#v, want none", issues)
+	}
+	controls, ok := index.FrameworkControls(ControlRef{FrameworkID: "planned"})
+	if !ok {
+		t.Fatal("FrameworkControls(planned) not found")
+	}
+	if len(controls) != 0 {
+		t.Fatalf("FrameworkControls(planned) = %#v, want no controls", controls)
+	}
+}
+
+func TestBuildCatalogIndexRejectsUnknownFrameworkLifecycle(t *testing.T) {
+	catalog := loadTestCatalog(t, `
+version: "2026-06-17"
+frameworks:
+  - id: planned
+    name: Planned Framework
+    lifecycle: later
+`)
+	_, issues := BuildCatalogIndex(catalog)
+	if !issueContains(issues, "frameworks[0].lifecycle must be one of active, upcoming") {
+		t.Fatalf("issues = %#v, want invalid lifecycle", issues)
+	}
+}
+
+func TestBuiltinFrameworksIncludesUpcomingFrameworks(t *testing.T) {
+	response, err := BuiltinFrameworks(time.Unix(0, 0).UTC())
+	if err != nil {
+		t.Fatalf("BuiltinFrameworks() error = %v", err)
+	}
+	var found bool
+	for _, framework := range response.Frameworks {
+		if framework.Name != "NIST AI RMF 1.0" {
+			continue
+		}
+		found = true
+		if framework.Lifecycle != FrameworkLifecycleUpcoming {
+			t.Fatalf("NIST AI RMF lifecycle = %q, want upcoming", framework.Lifecycle)
+		}
+		if framework.ControlCount != 0 || framework.FamilyCount != 0 {
+			t.Fatalf("NIST AI RMF counts = %d/%d, want 0/0", framework.FamilyCount, framework.ControlCount)
+		}
+	}
+	if !found {
+		t.Fatal("NIST AI RMF 1.0 not found")
 	}
 }
 

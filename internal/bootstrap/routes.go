@@ -115,6 +115,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/controls", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("controls", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControls))
 	registerHTTPRoute(mux, "GET /grc/controls/export", routeSurfacePlatformHTTP, app.handleGRCControlsExport)
 	registerHTTPRoute(mux, "GET /grc/evidence", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("evidence", time.Minute, grcCacheScopeEvidence, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCEvidence))
+	registerHTTPRoute(mux, "GET /grc/frameworks", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("frameworks", 5*time.Minute), app.handleGRCFrameworks))
 	registerHTTPRoute(mux, "GET /grc/control-archetypes", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.archetypes", 5*time.Minute), app.handleGRCControlArchetypes))
 	registerHTTPRoute(mux, "GET /grc/control-profiles", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.profiles", 5*time.Minute), app.handleGRCControlProfiles))
 	registerHTTPRoute(mux, "GET /grc/control-coverage", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.coverage", 5*time.Minute), app.handleGRCControlCoverage))

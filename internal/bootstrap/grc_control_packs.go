@@ -22,6 +22,15 @@ func (a *App) handleGRCControlArchetypes(w http.ResponseWriter, _ *http.Request)
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (a *App) handleGRCFrameworks(w http.ResponseWriter, _ *http.Request) {
+	response, err := compliance.BuiltinFrameworks(time.Now().UTC())
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (a *App) handleGRCControlProfiles(w http.ResponseWriter, r *http.Request) {
 	response, err := compliance.BuiltinControlProfiles(r.URL.Query()["profile"], time.Now().UTC())
 	if err != nil {

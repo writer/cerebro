@@ -82,29 +82,30 @@ type FindingItem struct {
 }
 
 type ControlItem struct {
-	FrameworkName    string        `json:"framework_name"`
-	FrameworkID      string        `json:"framework_id,omitempty"`
-	FrameworkVersion string        `json:"framework_version,omitempty"`
-	FamilyID         string        `json:"family_id,omitempty"`
-	FamilyName       string        `json:"family_name,omitempty"`
-	ControlID        string        `json:"control_id"`
-	Title            string        `json:"title,omitempty"`
-	OwnerDomain      string        `json:"owner_domain,omitempty"`
-	Status           string        `json:"status"`
-	OpenFindings     int           `json:"open_findings"`
-	CriticalFindings int           `json:"critical_findings"`
-	HighFindings     int           `json:"high_findings"`
-	EvidenceItems    int           `json:"evidence_items"`
-	MissingEvidence  int           `json:"missing_evidence_items,omitempty"`
-	StaleEvidence    int           `json:"stale_evidence_items,omitempty"`
-	Expectations     int           `json:"evidence_expectations,omitempty"`
-	EvidenceScore    int           `json:"evidence_score"`
-	EvidenceQuality  string        `json:"evidence_quality,omitempty"`
-	AuditSummary     string        `json:"audit_summary,omitempty"`
-	MappedRules      []string      `json:"mapped_rules,omitempty"`
-	Reasons          []string      `json:"reasons,omitempty"`
-	Tags             []string      `json:"tags,omitempty"`
-	Findings         []FindingItem `json:"findings,omitempty"`
+	FrameworkName      string        `json:"framework_name"`
+	FrameworkID        string        `json:"framework_id,omitempty"`
+	FrameworkVersion   string        `json:"framework_version,omitempty"`
+	FrameworkLifecycle string        `json:"framework_lifecycle,omitempty"`
+	FamilyID           string        `json:"family_id,omitempty"`
+	FamilyName         string        `json:"family_name,omitempty"`
+	ControlID          string        `json:"control_id"`
+	Title              string        `json:"title,omitempty"`
+	OwnerDomain        string        `json:"owner_domain,omitempty"`
+	Status             string        `json:"status"`
+	OpenFindings       int           `json:"open_findings"`
+	CriticalFindings   int           `json:"critical_findings"`
+	HighFindings       int           `json:"high_findings"`
+	EvidenceItems      int           `json:"evidence_items"`
+	MissingEvidence    int           `json:"missing_evidence_items,omitempty"`
+	StaleEvidence      int           `json:"stale_evidence_items,omitempty"`
+	Expectations       int           `json:"evidence_expectations,omitempty"`
+	EvidenceScore      int           `json:"evidence_score"`
+	EvidenceQuality    string        `json:"evidence_quality,omitempty"`
+	AuditSummary       string        `json:"audit_summary,omitempty"`
+	MappedRules        []string      `json:"mapped_rules,omitempty"`
+	Reasons            []string      `json:"reasons,omitempty"`
+	Tags               []string      `json:"tags,omitempty"`
+	Findings           []FindingItem `json:"findings,omitempty"`
 }
 
 type ReportMetadata struct {
@@ -369,25 +370,26 @@ func ControlItemsFromPacket(packetControls []compliance.ControlEvidencePacketCon
 	controls := make([]ControlItem, 0, len(packetControls))
 	for _, packetControl := range packetControls {
 		item := ControlItem{
-			FrameworkName:    packetControl.Control.FrameworkName,
-			FrameworkID:      packetControl.Control.FrameworkID,
-			FrameworkVersion: packetControl.Control.FrameworkVersion,
-			FamilyID:         packetControl.Control.FamilyID,
-			FamilyName:       packetControl.Control.FamilyName,
-			ControlID:        packetControl.Control.ControlID,
-			Title:            packetControl.Control.Title,
-			OwnerDomain:      packetControl.Control.OwnerDomain,
-			Status:           string(packetControl.Status),
-			EvidenceItems:    len(packetControl.Evidence.Summary.EvidenceIDs),
-			MissingEvidence:  len(packetControl.Evidence.Summary.MissingEvidenceIDs),
-			StaleEvidence:    len(packetControl.Evidence.Summary.StaleEvidenceIDs),
-			Expectations:     len(packetControl.Evidence.Expectations),
-			EvidenceScore:    packetControl.Readiness.Score,
-			EvidenceQuality:  string(packetControl.Readiness.Rating),
-			AuditSummary:     packetControl.Readiness.Summary,
-			MappedRules:      append([]string(nil), packetControl.MappedRules...),
-			Reasons:          append([]string(nil), packetControl.Reasons...),
-			Tags:             append([]string(nil), packetControl.Tags...),
+			FrameworkName:      packetControl.Control.FrameworkName,
+			FrameworkID:        packetControl.Control.FrameworkID,
+			FrameworkVersion:   packetControl.Control.FrameworkVersion,
+			FrameworkLifecycle: packetControl.Control.FrameworkLifecycle,
+			FamilyID:           packetControl.Control.FamilyID,
+			FamilyName:         packetControl.Control.FamilyName,
+			ControlID:          packetControl.Control.ControlID,
+			Title:              packetControl.Control.Title,
+			OwnerDomain:        packetControl.Control.OwnerDomain,
+			Status:             string(packetControl.Status),
+			EvidenceItems:      len(packetControl.Evidence.Summary.EvidenceIDs),
+			MissingEvidence:    len(packetControl.Evidence.Summary.MissingEvidenceIDs),
+			StaleEvidence:      len(packetControl.Evidence.Summary.StaleEvidenceIDs),
+			Expectations:       len(packetControl.Evidence.Expectations),
+			EvidenceScore:      packetControl.Readiness.Score,
+			EvidenceQuality:    string(packetControl.Readiness.Rating),
+			AuditSummary:       packetControl.Readiness.Summary,
+			MappedRules:        append([]string(nil), packetControl.MappedRules...),
+			Reasons:            append([]string(nil), packetControl.Reasons...),
+			Tags:               append([]string(nil), packetControl.Tags...),
 		}
 		for _, packetFinding := range packetControl.Findings {
 			finding := findingsByID[packetFinding.ID]

@@ -2,9 +2,27 @@ package compliance
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
+
+type FrameworkSummary struct {
+	ID           string   `json:"id,omitempty"`
+	Name         string   `json:"name"`
+	Version      string   `json:"framework_version,omitempty"`
+	Lifecycle    string   `json:"lifecycle"`
+	Description  string   `json:"description,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	FamilyCount  int      `json:"family_count"`
+	ControlCount int      `json:"control_count"`
+}
+
+type FrameworksResponse struct {
+	Version     string             `json:"version"`
+	Frameworks  []FrameworkSummary `json:"frameworks"`
+	GeneratedAt time.Time          `json:"generated_at"`
+}
 
 type ControlArchetypesResponse struct {
 	Version     string             `json:"version"`
@@ -31,6 +49,40 @@ type ControlPackResponse struct {
 type ControlPackIssueResponse struct {
 	Issues      []ValidationIssue `json:"issues"`
 	GeneratedAt time.Time         `json:"generated_at"`
+}
+
+func BuiltinFrameworks(generatedAt time.Time) (FrameworksResponse, error) {
+	catalog, err := LoadBuiltinControlCatalog()
+	if err != nil {
+		return FrameworksResponse{}, fmt.Errorf("load control catalog: %w", err)
+	}
+	frameworks := make([]FrameworkSummary, 0, len(catalog.Frameworks))
+	for _, framework := range catalog.Frameworks {
+		summary := FrameworkSummary{
+			ID:          strings.TrimSpace(framework.ID),
+			Name:        strings.TrimSpace(framework.Name),
+			Version:     strings.TrimSpace(framework.Version),
+			Lifecycle:   normalizeFrameworkLifecycle(framework.Lifecycle),
+			Description: strings.TrimSpace(framework.Description),
+			Tags:        sortedUniqueStrings(framework.Tags),
+			FamilyCount: len(framework.Families),
+		}
+		for _, family := range framework.Families {
+			summary.ControlCount += len(family.Controls)
+		}
+		frameworks = append(frameworks, summary)
+	}
+	sort.Slice(frameworks, func(i, j int) bool {
+		if frameworks[i].Lifecycle != frameworks[j].Lifecycle {
+			return frameworks[i].Lifecycle < frameworks[j].Lifecycle
+		}
+		return frameworks[i].Name < frameworks[j].Name
+	})
+	return FrameworksResponse{
+		Version:     strings.TrimSpace(catalog.Version),
+		Frameworks:  frameworks,
+		GeneratedAt: generatedAt,
+	}, nil
 }
 
 func BuiltinControlArchetypes(generatedAt time.Time) (ControlArchetypesResponse, error) {
