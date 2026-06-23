@@ -4439,7 +4439,9 @@ func publicEndpointEvent(settings settings, endpoint awsPublicEndpoint) (*primit
 func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitives.Event, error) {
 	detail := cloudTrailDetail{}
 	if raw := awssdk.ToString(event.CloudTrailEvent); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &detail)
+		if unmarshalErr := json.Unmarshal([]byte(raw), &detail); unmarshalErr != nil {
+			return nil, fmt.Errorf("cloudtrail: unmarshal event detail: %w", unmarshalErr)
+		}
 	}
 	resourceID, resourceType := cloudTrailResource(event, detail)
 	actor := cloudTrailActor(event, detail)

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -125,7 +126,10 @@ var (
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
-	app, _ := NewWithError(cfg, deps, sources)
+	app, err := NewWithError(cfg, deps, sources)
+	if err != nil {
+		log.Printf("bootstrap: app initialization error: %v", err)
+	}
 	return app
 }
 

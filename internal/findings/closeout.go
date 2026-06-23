@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -194,7 +195,11 @@ func (s *Service) startCloseoutRunHeartbeat(ctx context.Context, runID string) f
 		for {
 			select {
 			case <-ticker.C:
-				_ = s.closeoutStore.RefreshCloseoutRunHeartbeat(heartbeatCtx, runID, time.Now().UTC())
+				if err := s.closeoutStore.RefreshCloseoutRunHeartbeat(heartbeatCtx, runID, time.Now().UTC()); err != nil {
+					telemetry.CaptureError(heartbeatCtx, "closeout.heartbeat.refresh_failed", err, telemetry.Attrs(
+						telemetry.Field{Key: "run_id", Value: runID},
+					))
+				}
 			case <-heartbeatCtx.Done():
 				return
 			}
@@ -375,14 +380,19 @@ func (s *Service) executeCloseoutRun(ctx context.Context, req CloseoutRequest, s
 	result = &CloseoutResult{RunID: runID, AppliedCount: initialApplied, ProposedCount: initialProposed}
 	finishBackground := func(status, errMessage string, applied int) {
 		bgCtx := context.WithoutCancel(ctx)
-		_ = s.closeoutStore.FinishCloseoutRun(bgCtx, ports.CloseoutRunFinish{
+		if finishErr := s.closeoutStore.FinishCloseoutRun(bgCtx, ports.CloseoutRunFinish{
 			RunID:         runID,
 			Status:        status,
 			ErrorMessage:  errMessage,
 			ProposedCount: result.ProposedCount,
 			AppliedCount:  applied,
 			FinishedAt:    time.Now().UTC(),
-		})
+		}); finishErr != nil {
+			telemetry.CaptureError(bgCtx, "closeout.finish_run_failed", finishErr, telemetry.Attrs(
+				telemetry.Field{Key: "run_id", Value: runID},
+				telemetry.Field{Key: "status", Value: status},
+			))
+		}
 	}
 	defer func() {
 		if rec := recover(); rec != nil {

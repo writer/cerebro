@@ -499,7 +499,7 @@ func validateFixtureContracts(root string, sourceDir string, contracts []sourcec
 	if !info.IsDir() {
 		return nil
 	}
-	_ = filepath.WalkDir(testdata, func(path string, entry fs.DirEntry, err error) error {
+	if walkErr := filepath.WalkDir(testdata, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() || filepath.Ext(path) != ".json" {
 			return nil
 		}
@@ -519,7 +519,9 @@ func validateFixtureContracts(root string, sourceDir string, contracts []sourcec
 			issues = append(issues, issue{path: rel, message: err.Error()})
 		}
 		return nil
-	})
+	}); walkErr != nil {
+		issues = append(issues, issue{path: slashRel(root, testdata), message: "walk testdata: " + walkErr.Error()})
+	}
 	return issues
 }
 
