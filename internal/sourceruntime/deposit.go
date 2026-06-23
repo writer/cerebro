@@ -139,6 +139,7 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 	}
 	for _, event := range events {
 		if err := s.appendLog.Append(ctx, event); err != nil {
+			_ = s.recordDepositRuntimeFailure(context.WithoutCancel(ctx), runtime, response, boundedUint32(len(events))+response.RecordsRejected, req.FullStateMarker, err)
 			return nil, fmt.Errorf("append deposit source event %q: %w", event.GetId(), err)
 		}
 		response.EventsAppended++
@@ -147,6 +148,7 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 		for _, event := range events {
 			result, err := s.projector.Project(ctx, event)
 			if err != nil {
+				_ = s.recordDepositRuntimeFailure(context.WithoutCancel(ctx), runtime, response, boundedUint32(len(events))+response.RecordsRejected, req.FullStateMarker, err)
 				return nil, fmt.Errorf("project deposit source event %q: %w", event.GetId(), err)
 			}
 			response.EntitiesProjected += result.EntitiesProjected
@@ -172,6 +174,30 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 	}
 	response.Runtime = redactRuntime(runtime)
 	return response, nil
+}
+
+func (s *Service) recordDepositRuntimeFailure(ctx context.Context, runtime *cerebrov1.SourceRuntime, response *DepositResponse, recordsScanned uint32, fullStateMarker bool, cause error) error {
+	if s == nil || s.store == nil || runtime == nil || response == nil || cause == nil {
+		return nil
+	}
+	if runtime.Config == nil {
+		runtime.Config = map[string]string{}
+	}
+	updateRuntimeSyncStatus(runtime, runtimeSyncStatus{
+		Status:               "failed",
+		RecordsScanned:       recordsScanned,
+		RecordsAccepted:      response.EventsAppended,
+		RecordsRejected:      response.RecordsRejected,
+		EntitiesProjected:    response.EntitiesProjected,
+		LinksProjected:       response.LinksProjected,
+		CompletedAt:          time.Now().UTC(),
+		ContractConfigured:   true,
+		ShortCircuitReason:   "deposit_ingest",
+		ReconciliationReason: depositReconciliationReason(fullStateMarker),
+	})
+	setRuntimeConfig(runtime.Config, runtimeLastFailureCategoryConfigKey, sourceRuntimeFailureCategory(cause))
+	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, runtime.Config[runtimeLastFailureCategoryConfigKey], true))
+	return s.store.PutSourceRuntime(ctx, runtime)
 }
 
 func (s *Service) lookupConnectorDefinition(ctx context.Context, sourceID string, tenantID string) (connectordefinitions.Definition, error) {

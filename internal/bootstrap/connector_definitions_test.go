@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -16,6 +17,21 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcegen"
 )
+
+type failAfterAppendLog struct {
+	failAfter int
+	events    []*cerebrov1.EventEnvelope
+}
+
+func (l *failAfterAppendLog) Ping(context.Context) error { return nil }
+
+func (l *failAfterAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	if len(l.events) >= l.failAfter {
+		return errors.New("append failed")
+	}
+	l.events = append(l.events, event)
+	return nil
+}
 
 type testConnectorDefinitionPlanResponse struct {
 	Plan *sourcegen.PromotionPlan `json:"plan"`
@@ -624,6 +640,94 @@ func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
 	}
 	if got := runtime.GetConfig()[runtimeRecordsAcceptedConfigKey]; got != "1" {
 		t.Fatalf("runtime records accepted = %q, want 1", got)
+	}
+}
+
+func TestConnectorDepositRecordsRuntimeFailureAfterPartialAppend(t *testing.T) {
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "custom_deposit",
+		DisplayName: "Custom Deposit",
+		Runtime:     connectordefinitions.RuntimeJSONAPI,
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Ingest: connectordefinitions.IngestSpec{
+			Mode: connectordefinitions.IngestModeDeposit,
+			Deposit: &connectordefinitions.DepositIngestSpec{
+				ResourceFamilies: []string{"assets"},
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:         "assets",
+			Label:      "Assets",
+			IDField:    "id",
+			NameField:  "name",
+			Event:      connectordefinitions.EventMappingSpec{Kind: "custom_deposit.assets", SchemaRef: "custom_deposit/assets/v1"},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	definitionJSON, err := json.Marshal(definition)
+	if err != nil {
+		t.Fatalf("marshal definition: %v", err)
+	}
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-deposit": {
+				Id:       "runtime-deposit",
+				SourceId: "custom_deposit",
+				TenantId: "tenant-a",
+				Config:   map[string]string{},
+			},
+		}},
+		definitions: map[string]*ports.ConnectorDefinitionRecord{
+			definition.ID: {
+				ID:             definition.ID,
+				TenantID:       definition.TenantID,
+				SourceID:       definition.SourceID,
+				DisplayName:    definition.DisplayName,
+				Runtime:        definition.Runtime,
+				Stage:          definition.Stage,
+				DefinitionJSON: definitionJSON,
+			},
+		},
+	}
+	appendLog := &failAfterAppendLog{failAfter: 1}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: store,
+		GraphStore: store,
+		AppendLog:  appendLog,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"tenant_id":"tenant-a","runtime_id":"runtime-deposit","family_id":"assets","batch_id":"batch-1","records":[{"id":"asset-1","name":"Asset One"},{"id":"asset-2","name":"Asset Two"}]}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/custom_deposit/deposits", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/deposits error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("POST /connectors/{sourceID}/deposits status = %d, want 500", resp.StatusCode)
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("append log events = %d, want one partial append", len(appendLog.events))
+	}
+	runtime, err := store.GetSourceRuntime(context.Background(), "runtime-deposit")
+	if err != nil {
+		t.Fatalf("GetSourceRuntime() error = %v", err)
+	}
+	for key, want := range map[string]string{
+		runtimeStatusConfigKey:              "failed",
+		runtimeRecordsScannedConfigKey:      "2",
+		runtimeRecordsAcceptedConfigKey:     "1",
+		runtimeRecordsRejectedConfigKey:     "0",
+		runtimeLastFailureCategoryConfigKey: "sync_failed",
+	} {
+		if got := runtime.GetConfig()[key]; got != want {
+			t.Fatalf("runtime config[%s] = %q, want %q", key, got, want)
+		}
 	}
 }
 
