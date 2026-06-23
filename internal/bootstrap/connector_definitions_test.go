@@ -272,6 +272,93 @@ func TestConnectorDefinitionVersionsEndpointListsImmutableHistory(t *testing.T) 
 	}
 }
 
+func TestConnectorDefinitionVersionsEndpointReturnsNotFound(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connector-definitions/missing-definition/versions")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET versions status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointRejectsCrossTenantPrincipal(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	definition := putTestConnectorDefinition(t, store, connectordefinitions.Definition{
+		TenantID:    "tenant-b",
+		SourceID:    "example_api",
+		DisplayName: "Example API",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "tenant-a-key",
+				Principal: "tenant-a-admin",
+				TenantID:  "tenant-a",
+			}},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/connector-definitions/"+definition.ID+"/versions", nil)
+	if err != nil {
+		t.Fatalf("NewRequest versions: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer tenant-a-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET versions status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointRejectsMalformedSnapshot(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	definition := putTestConnectorDefinition(t, store, connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "example_api",
+		DisplayName: "Example API",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	store.definitionVersions[definition.ID][0].DefinitionJSON = []byte(`{"source_id":`)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connector-definitions/" + definition.ID + "/versions")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("GET versions status = %d, want 500", resp.StatusCode)
+	}
+}
+
 func TestTenantConnectorDefinitionAppearsAsRunnableConnector(t *testing.T) {
 	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
@@ -834,6 +921,32 @@ func TestConnectorDefinitionListRequiresDefinitionStore(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("GET /connector-definitions status = %d, want 503", resp.StatusCode)
 	}
+}
+
+func putTestConnectorDefinition(t *testing.T, store *connectorTestStore, definition connectordefinitions.Definition) connectordefinitions.Definition {
+	t.Helper()
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatalf("marshal connector definition: %v", err)
+	}
+	record, err := store.PutConnectorDefinition(context.Background(), &ports.ConnectorDefinitionRecord{
+		ID:             normalized.ID,
+		TenantID:       normalized.TenantID,
+		SourceID:       normalized.SourceID,
+		DisplayName:    normalized.DisplayName,
+		Runtime:        normalized.Runtime,
+		Stage:          normalized.Stage,
+		DefinitionJSON: payload,
+	})
+	if err != nil {
+		t.Fatalf("PutConnectorDefinition() error = %v", err)
+	}
+	normalized.CurrentVersion = record.CurrentVersion
+	return normalized
 }
 
 func cloneConnectorDefinitionRecord(record *ports.ConnectorDefinitionRecord) *ports.ConnectorDefinitionRecord {
