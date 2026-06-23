@@ -157,6 +157,9 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 	}
 	response.RecordsAccepted = response.EventsAppended
 	runtime.LastSyncedAt = timestamppb.Now()
+	if runtime.Config == nil {
+		runtime.Config = map[string]string{}
+	}
 	updateRuntimeSyncStatus(runtime, runtimeSyncStatus{
 		Status:               "completed",
 		RecordsScanned:       response.RecordsAccepted + response.RecordsRejected,

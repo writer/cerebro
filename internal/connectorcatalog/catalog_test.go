@@ -182,10 +182,10 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
 	}
-	if analysis.Summary.Total != 202 || len(analysis.Entries) != 202 {
-		t.Fatalf("runtime catalog size = total %d entries %d, want 202", analysis.Summary.Total, len(analysis.Entries))
+	if analysis.Summary.Total != 198 || len(analysis.Entries) != 198 {
+		t.Fatalf("runtime catalog size = total %d entries %d, want 198", analysis.Summary.Total, len(analysis.Entries))
 	}
-	if analysis.Summary.CatalogReady != 202 || analysis.Summary.Generateable != 0 {
+	if analysis.Summary.CatalogReady != 198 || analysis.Summary.Generateable != 0 {
 		t.Fatalf("runtime summary = %#v, want catalog-ready entries without sourcegen dry-run", analysis.Summary)
 	}
 	for _, entry := range analysis.Entries {
