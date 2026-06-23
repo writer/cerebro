@@ -68,6 +68,52 @@ config:
         contract_check = next(check for check in receipt["checks"] if check["name"] == "runtime_contract")
         self.assertEqual(contract_check["status"], "pass")
 
+    def test_receipt_allows_source_health_metadata_without_stack_runtime_metadata(self) -> None:
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            contract, stack = self._write_inputs(root)
+            payload = json.loads(contract.read_text(encoding="utf-8"))
+            payload["sources"] = [
+                {
+                    "source_id": "aws",
+                    "supported_families": ["public_endpoint"],
+                    "runtimes": [],
+                    "source_health_receipt": {
+                        "receipt_kind": "source_health.receipt",
+                        "source_type": "cloud_api",
+                        "auth_model": "aws_sigv4",
+                        "adapter_health_path": "sts:GetCallerIdentity",
+                        "expected_cadence_seconds": 86400,
+                        "stale_after_seconds": 86400,
+                        "evidence_cas_reference_kind": "aws.evidence_cas_reference",
+                    },
+                }
+            ]
+            contract.write_text(json.dumps(payload), encoding="utf-8")
+            stack.write_text(
+                """
+config:
+  cerebro:imageTag: v2.1.60
+  cerebro:environment: sec-dev
+  cerebro:graphAgentLlmProvider: openrouter
+  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4.6
+  cerebro:openrouterApiKeySecret: OPENROUTER_RUNTIME_TOKEN
+  cerebro:sourceRuntimes:
+    - id: writer-aws-public-endpoint
+      sourceId: aws
+      tenantId: writer
+      config:
+        family: public_endpoint
+        region: us-east-1
+""",
+                encoding="utf-8",
+            )
+
+            receipt = build_deploy_preflight_receipt.build_receipt(contract, stack)
+
+        contract_check = next(check for check in receipt["checks"] if check["name"] == "runtime_contract")
+        self.assertEqual(contract_check["status"], "pass")
+
     def test_receipt_fails_without_leaking_openrouter_import_ref(self) -> None:
         with TemporaryDirectory() as raw:
             contract, stack = self._write_inputs(Path(raw), openrouter_import_ref="")

@@ -292,6 +292,52 @@ class RuntimeContractTest(unittest.TestCase):
 
         self.assertEqual(verify_runtime_contract.verify_contract(contract, stack), [])
 
+    def test_source_health_receipt_allows_cloud_api_operation_identifier(self) -> None:
+        contract = {
+            **CONTRACT,
+            "sources": [
+                *CONTRACT["sources"],
+                {
+                    "source_id": "aws",
+                    "supported_families": ["public_endpoint"],
+                    "runtimes": [],
+                    "source_health_receipt": {
+                        "receipt_kind": "source_health.receipt",
+                        "source_type": "cloud_api",
+                        "auth_model": "aws_sigv4",
+                        "adapter_health_path": "sts:GetCallerIdentity",
+                        "expected_cadence_seconds": 86400,
+                        "stale_after_seconds": 86400,
+                        "evidence_cas_reference_kind": "aws.evidence_cas_reference",
+                    },
+                },
+            ],
+        }
+        stack = {
+            **STACK,
+            "sourceRuntimes": [
+                {
+                    "id": "writer-aws-public-endpoint",
+                    "sourceId": "aws",
+                    "tenantId": "writer",
+                    "config": {"family": "public_endpoint", "region": "us-east-1"},
+                }
+            ],
+        }
+
+        self.assertEqual(verify_runtime_contract.verify_contract(contract, stack), [])
+
+    def test_source_health_receipt_rejects_relative_json_api_health_path(self) -> None:
+        contract = _contract_with_source_health_receipt()
+        source = contract["sources"][-1]
+        receipt = {**source["source_health_receipt"], "adapter_health_path": "readyz"}
+        source = {**source, "source_health_receipt": receipt}
+        contract = {**contract, "sources": [*contract["sources"][:-1], source]}
+
+        errors = verify_runtime_contract.verify_contract(contract, STACK)
+
+        self.assertTrue(any("adapter_health_path must start with /" in error for error in errors))
+
     def test_matching_runtime_deploy_metadata_rejects_freshness_drift_without_requiring_manifest(self) -> None:
         contract = _contract_with_generated_deploy_runtime()
         runtime = _generated_source_stack_runtime()
@@ -305,8 +351,8 @@ class RuntimeContractTest(unittest.TestCase):
         errors = verify_runtime_contract.verify_contract(contract, stack, require_manifest_runtimes=False)
         self.assertTrue(any("expected_cadence_seconds" in error and "runtime deploy contract value" in error for error in errors))
 
-    def test_source_health_receipt_rejects_freshness_mismatch(self) -> None:
-        contract = _contract_with_source_health_receipt()
+    def test_matching_runtime_deploy_metadata_rejects_stale_after_drift_without_requiring_manifest(self) -> None:
+        contract = _contract_with_generated_deploy_runtime()
         runtime = _generated_source_stack_runtime()
         runtime["config"] = {**runtime["config"], "stale_after_seconds": "3600"}
         stack = {
@@ -316,10 +362,10 @@ class RuntimeContractTest(unittest.TestCase):
         }
 
         errors = verify_runtime_contract.verify_contract(contract, stack)
-        self.assertTrue(any("stale_after_seconds" in error and "expected source health receipt value" in error for error in errors))
+        self.assertTrue(any("stale_after_seconds" in error and "runtime deploy contract value" in error for error in errors))
 
-    def test_source_health_receipt_rejects_health_path_mismatch(self) -> None:
-        contract = _contract_with_source_health_receipt()
+    def test_matching_runtime_deploy_metadata_rejects_health_path_drift_without_requiring_manifest(self) -> None:
+        contract = _contract_with_generated_deploy_runtime()
         runtime = _generated_source_stack_runtime()
         runtime["config"] = {**runtime["config"], "health_path": "/other"}
         stack = {
@@ -329,7 +375,7 @@ class RuntimeContractTest(unittest.TestCase):
         }
 
         errors = verify_runtime_contract.verify_contract(contract, stack)
-        self.assertTrue(any("health_path" in error and "source health receipt" in error for error in errors))
+        self.assertTrue(any("health_path" in error and "runtime deploy contract value" in error for error in errors))
 
     def test_source_health_receipt_rejects_unknown_source_and_invalid_values(self) -> None:
         contract = {
