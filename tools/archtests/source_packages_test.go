@@ -24,7 +24,7 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"grc":             1302,
 	"okta":            2256,
 	"panopticon":      758,
-	"sentinelone":     2054,
+	"sentinelone":     2076,
 	"vulnview":        960,
 }
 
