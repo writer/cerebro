@@ -92,6 +92,15 @@ func HardenClient(client *http.Client, options ClientOptions) *http.Client {
 	return &cloned
 }
 
+func HardenSourceClient(client *http.Client, sourceID string, timeout time.Duration, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
+	return HardenClient(client, ClientOptions{
+		SourceID:      sourceID,
+		Timeout:       timeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
+}
+
 func firstDuration(values ...time.Duration) time.Duration {
 	for _, value := range values {
 		if value > 0 {

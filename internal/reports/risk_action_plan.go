@@ -71,17 +71,22 @@ func (s *Service) runRiskActionPlan(ctx context.Context, parameters map[string]s
 	if err != nil {
 		return nil, err
 	}
+	riskConfig, err := s.effectiveRiskScoringConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 
 	graphEvidenceStatus := graphEvidenceStatusUnconfigured
 	graphNeighborhoods := map[string]*ports.EntityNeighborhood{}
 	if s.graphStore != nil {
 		graphEvidenceStatus = graphEvidenceStatusIncluded
 		targetURNs := riskplan.TargetURNs(findings, riskplan.Options{
-			TenantID:        tenantID,
-			RuntimeIDs:      runtimeIDs,
-			SeedLimit:       riskplan.MaxSimulationSeedLimit,
-			Now:             now,
-			IncludeUnscored: includeUnscored,
+			TenantID:          tenantID,
+			RuntimeIDs:        runtimeIDs,
+			SeedLimit:         riskplan.MaxSimulationSeedLimit,
+			Now:               now,
+			IncludeUnscored:   includeUnscored,
+			RiskScoringConfig: riskConfig,
 		})
 		graphNeighborhoods, err = s.riskActionPlanGraphNeighborhoods(ctx, targetURNs, resourceLimit, graphLimit)
 		if err != nil {
@@ -97,6 +102,7 @@ func (s *Service) runRiskActionPlan(ctx context.Context, parameters map[string]s
 		Now:                now,
 		PreviousCandidates: previousCandidates,
 		IncludeUnscored:    includeUnscored,
+		RiskScoringConfig:  riskConfig,
 	})
 	actionCandidates, err := jsonPayload(plan.ActionCandidates)
 	if err != nil {

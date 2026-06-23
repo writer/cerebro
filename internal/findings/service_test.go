@@ -104,16 +104,17 @@ type stubFindingStore struct {
 }
 
 type stubFindingCandidateState struct {
-	runs              map[string]*ports.FindingCandidateRun
-	candidates        map[string]*ports.FindingCandidateRecord
-	listRequest       ports.ListFindingCandidatesRequest
-	expirationRequest ports.FindingCandidateExpiration
-	upsertCount       int
-	expireCount       int
-	markPromotedCount int
-	markRejectedCount int
-	beforeMarkPromote func()
-	beforeMarkReject  func()
+	runs               map[string]*ports.FindingCandidateRun
+	candidates         map[string]*ports.FindingCandidateRecord
+	listRequest        ports.ListFindingCandidatesRequest
+	expirationRequest  ports.FindingCandidateExpiration
+	upsertCount        int
+	expireCount        int
+	markPromotedCount  int
+	markRejectedCount  int
+	beforeMarkPromote  func()
+	beforeMarkReject   func()
+	riskScoringConfigs map[string]*ports.RiskScoringConfig
 }
 
 type stubFindingBackfillState struct {
@@ -123,6 +124,33 @@ type stubFindingBackfillState struct {
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
+
+func (s *stubFindingStore) PutRiskScoringConfig(_ context.Context, config *ports.RiskScoringConfig) error {
+	if config == nil {
+		return errors.New("risk scoring config is required")
+	}
+	if s.candidateState.riskScoringConfigs == nil {
+		s.candidateState.riskScoringConfigs = map[string]*ports.RiskScoringConfig{}
+	}
+	s.candidateState.riskScoringConfigs[strings.TrimSpace(config.TenantID)] = cloneRiskScoringConfig(config)
+	return nil
+}
+
+func (s *stubFindingStore) GetRiskScoringConfig(_ context.Context, tenantID string) (*ports.RiskScoringConfig, error) {
+	if s.candidateState.riskScoringConfigs == nil {
+		return nil, ports.ErrRiskScoringConfigNotFound
+	}
+	config, ok := s.candidateState.riskScoringConfigs[strings.TrimSpace(tenantID)]
+	if !ok {
+		return nil, ports.ErrRiskScoringConfigNotFound
+	}
+	return cloneRiskScoringConfig(config), nil
+}
+
+func (s *stubFindingStore) DeleteRiskScoringConfig(_ context.Context, tenantID string) error {
+	delete(s.candidateState.riskScoringConfigs, strings.TrimSpace(tenantID))
+	return nil
+}
 
 func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
 	if finding == nil {
@@ -2984,6 +3012,74 @@ func TestEvaluateSourceRuntimeCandidateRulesExpiresStaleCandidates(t *testing.T)
 	}
 	if got := store.candidateState.expirationRequest.EvaluatedEventIDs; !slices.Equal(got, []string{"okta-audit-1", "okta-audit-2"}) {
 		t.Fatalf("expiration evaluated events = %v, want both replayed events", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeCandidateRulesUsesRiskScoringConfig(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "candidate-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	config := DefaultRiskScoringConfig("tenant-a")
+	config.Thresholds.Critical = 95
+	config.Thresholds.High = 80
+	config.Thresholds.Medium = 60
+	event := &cerebrov1.EventEnvelope{
+		Id:         "candidate-event",
+		TenantId:   "tenant-a",
+		SourceId:   "okta",
+		Kind:       "okta.audit",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "okta/audit/v1",
+		Attributes: map[string]string{
+			"event_type":                        "policy.rule.deactivate",
+			"outcome_result":                    "SUCCESS",
+			ports.EventAttributeSourceRuntimeID: "candidate-runtime",
+		},
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			riskScoringConfigs: map[string]*ports.RiskScoringConfig{"tenant-a": &config},
+		},
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "candidate-runtime",
+				TenantID:      "tenant-a",
+				SourceEventID: "candidate-event",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"candidate-runtime": {Id: "candidate-runtime", SourceId: "okta", TenantId: "tenant-a"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{event}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithFindingCandidateStore(store)
+
+	result, err := service.EvaluateSourceRuntimeCandidateRules(context.Background(), EvaluateCandidateRulesRequest{
+		RuntimeID:  "candidate-runtime",
+		EventLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeCandidateRules() error = %v", err)
+	}
+	candidate := result.Evaluations[0].Candidates[0].Finding
+	if !strings.HasPrefix(candidate.RiskModelVersion, riskScoringConfiguredModelPrefix) {
+		t.Fatalf("RiskModelVersion = %q, want tenant config model version", candidate.RiskModelVersion)
+	}
+	if got := candidate.Attributes["risk_model_version"]; got != candidate.RiskModelVersion {
+		t.Fatalf("risk_model_version attribute = %q, want %q", got, candidate.RiskModelVersion)
 	}
 }
 
@@ -5970,6 +6066,26 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
 	}
+}
+
+func cloneRiskScoringConfig(config *ports.RiskScoringConfig) *ports.RiskScoringConfig {
+	if config == nil {
+		return nil
+	}
+	cloned := *config
+	if config.RelationWeights != nil {
+		cloned.RelationWeights = make(map[string]int, len(config.RelationWeights))
+		for key, value := range config.RelationWeights {
+			cloned.RelationWeights[key] = value
+		}
+	}
+	if config.FactorWeights != nil {
+		cloned.FactorWeights = make(map[string]ports.RiskScoringFactorWeight, len(config.FactorWeights))
+		for key, value := range config.FactorWeights {
+			cloned.FactorWeights[key] = value
+		}
+	}
+	return &cloned
 }
 
 func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.FindingRecord) *ports.FindingRecord {

@@ -978,12 +978,7 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 }
 
 func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
-		SourceID:      "okta",
-		Timeout:       oktaHTTPTimeout,
-		AllowLoopback: allowLoopback,
-		LookupIPAddrs: lookupIPAddrs,
-	})
+	return sourcehttp.HardenSourceClient(client, "okta", oktaHTTPTimeout, allowLoopback, lookupIPAddrs)
 }
 
 func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {

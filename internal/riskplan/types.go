@@ -38,6 +38,7 @@ type Options struct {
 	PreviousCandidates []Candidate
 	IncludeUnscored    bool
 	Generators         []CandidateGenerator
+	RiskScoringConfig  *ports.RiskScoringConfig
 }
 
 // Plan is the typed risk-action-plan contract shared by reports and MCP tools.

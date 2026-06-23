@@ -484,12 +484,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 }
 
 func httpClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
-		SourceID:      "sentinelone",
-		Timeout:       httpTimeout,
-		AllowLoopback: allowLoopback,
-		LookupIPAddrs: lookupIPAddrs,
-	})
+	return sourcehttp.HardenSourceClient(client, "sentinelone", httpTimeout, allowLoopback, lookupIPAddrs)
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {

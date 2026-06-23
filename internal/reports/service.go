@@ -71,6 +71,28 @@ func New(findingStore ports.FindingStore, graphStore ports.GraphQueryStore, repo
 	}
 }
 
+func (s *Service) effectiveRiskScoringConfig(ctx context.Context, tenantID string) (*ports.RiskScoringConfig, error) {
+	if s == nil || s.findingStore == nil {
+		return nil, nil
+	}
+	store, ok := s.findingStore.(ports.RiskScoringConfigStore)
+	if !ok {
+		return nil, nil
+	}
+	config, err := store.GetRiskScoringConfig(ctx, strings.TrimSpace(tenantID))
+	if err != nil {
+		if errors.Is(err, ports.ErrRiskScoringConfigNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("load risk scoring config: %w", err)
+	}
+	normalized, err := findinganalysis.NormalizeCompleteRiskScoringConfig(*config)
+	if err != nil {
+		return nil, fmt.Errorf("normalize risk scoring config: %w", err)
+	}
+	return &normalized, nil
+}
+
 // List returns the built-in report definition catalog.
 func (s *Service) List() *cerebrov1.ListReportDefinitionsResponse {
 	return &cerebrov1.ListReportDefinitionsResponse{
@@ -308,10 +330,15 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 			return nil, err
 		}
 	}
+	riskConfig, err := s.effectiveRiskScoringConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 	exposureReport := findinganalysis.AnalyzeFindingExposure(findings, findinganalysis.FindingExposureAnalysisOptions{
 		Limit:              10,
 		SampleLimit:        3,
 		GraphNeighborhoods: graphNeighborhoods,
+		RiskScoringConfig:  riskConfig,
 	})
 	if graphEvidenceStatus == graphEvidenceStatusUnconfigured {
 		exposureReport.AttackPaths = nil
@@ -404,11 +431,16 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 			return nil, err
 		}
 	}
+	riskConfig, err := s.effectiveRiskScoringConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 	report := findinganalysis.SimulateRiskDelta(findings, findinganalysis.RiskDeltaSimulationOptions{
 		ScenarioType:       scenarioType,
 		TargetURN:          targetURN,
 		Limit:              10,
 		GraphNeighborhoods: graphNeighborhoods,
+		RiskScoringConfig:  riskConfig,
 	})
 	riskDelta, err := jsonPayload(report)
 	if err != nil {
