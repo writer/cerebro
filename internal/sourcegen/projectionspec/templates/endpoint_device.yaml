@@ -1,0 +1,12 @@
+id: endpoint_device
+class: asset
+graph_label: EndpointDevice
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Managed endpoint device (laptop, workstation, mobile device).
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - resource_urn
+  - resource_type
+  - resource_id

@@ -1,0 +1,10 @@
+id: identity_group
+class: identity_group
+graph_label: IdentityGroup
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Group identity from an identity provider.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - group_id

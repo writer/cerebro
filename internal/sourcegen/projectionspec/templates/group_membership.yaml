@@ -1,0 +1,11 @@
+id: group_membership
+class: group_membership
+graph_label: GroupMembership
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Group membership relationship between users and groups.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - group_id
+  - member_id
