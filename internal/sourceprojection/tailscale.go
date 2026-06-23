@@ -146,6 +146,7 @@ func tailscaleUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 		"role":         attrs["role"],
 		"status":       attrs["status"],
 		"type":         attrs["type"],
+		"last_seen_at": attrs["last_seen_at"],
 	})))
 	projectedEntities, _ := entitiesAndLinks(entities, map[string]*ports.ProjectedLink{})
 	return projectedEntities, nil, nil
@@ -178,6 +179,8 @@ func tailscaleDeviceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		"update_available":            attrs["update_available"],
 		"blocks_incoming_connections": attrs["blocks_incoming_connections"],
 		"tags":                        attrs["tags"],
+		"last_seen_at":                attrs["last_seen_at"],
+		"client_version":              attrs["client_version"],
 	})))
 	if ownerID := tailscaleUserKey(attrs); strings.TrimSpace(ownerID) != "" {
 		ownerURN := tailscaleUserURN(tenantID, ownerID)
