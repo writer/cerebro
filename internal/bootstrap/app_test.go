@@ -1321,6 +1321,50 @@ func (s *stubRuntimeStore) ListFindingCandidates(_ context.Context, request port
 	return candidates, nil
 }
 
+func (s *stubRuntimeStore) ExpireStaleFindingCandidates(_ context.Context, request ports.FindingCandidateExpiration) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	eventIDs := map[string]struct{}{}
+	for _, eventID := range request.EvaluatedEventIDs {
+		if eventID = strings.TrimSpace(eventID); eventID != "" {
+			eventIDs[eventID] = struct{}{}
+		}
+	}
+	if len(eventIDs) == 0 {
+		return 0, nil
+	}
+	expired := 0
+	for id, candidate := range s.findingCandidates {
+		if strings.TrimSpace(candidate.TenantID) != strings.TrimSpace(request.TenantID) ||
+			strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) ||
+			strings.TrimSpace(candidate.RuleID) != strings.TrimSpace(request.RuleID) ||
+			strings.TrimSpace(candidate.Status) != "candidate" ||
+			strings.TrimSpace(candidate.LastRunID) == strings.TrimSpace(request.RunID) ||
+			(!candidate.UpdatedAt.IsZero() && !candidate.UpdatedAt.Before(request.RunStartedAt)) {
+			continue
+		}
+		overlap := false
+		if candidate.Finding != nil {
+			for _, eventID := range candidate.Finding.EventIDs {
+				if _, ok := eventIDs[strings.TrimSpace(eventID)]; ok {
+					overlap = true
+					break
+				}
+			}
+		}
+		if !overlap {
+			continue
+		}
+		cloned := cloneFindingCandidate(candidate)
+		cloned.Status = "expired"
+		cloned.UpdatedAt = time.Now().UTC()
+		s.findingCandidates[id] = cloned
+		expired++
+	}
+	return expired, nil
+}
+
 func (s *stubRuntimeStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
 	if s.err != nil {
 		return nil, s.err

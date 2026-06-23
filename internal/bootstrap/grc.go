@@ -38,14 +38,15 @@ type grcScope struct {
 }
 
 type grcDashboardResponse struct {
-	Summary            grcSummary               `json:"summary"`
-	Findings           []grcFindingItem         `json:"findings"`
-	Controls           []grcControlItem         `json:"controls"`
-	Evidence           []grcEvidenceItem        `json:"evidence"`
-	Connectors         []grcConnector           `json:"connectors"`
-	CoverageBlindSpots []sourcecoverage.Record  `json:"coverage_blind_spots,omitempty"`
-	CoverageSummaries  []sourcecoverage.Summary `json:"coverage_summaries,omitempty"`
-	GeneratedAt        time.Time                `json:"generated_at"`
+	Summary            grcSummary                   `json:"summary"`
+	Findings           []grcFindingItem             `json:"findings"`
+	Controls           []grcControlItem             `json:"controls"`
+	Evidence           []grcEvidenceItem            `json:"evidence"`
+	Connectors         []grcConnector               `json:"connectors"`
+	SourceSummaries    []sourceRuntimeHealthSummary `json:"source_summaries,omitempty"`
+	CoverageBlindSpots []sourcecoverage.Record      `json:"coverage_blind_spots,omitempty"`
+	CoverageSummaries  []sourcecoverage.Summary     `json:"coverage_summaries,omitempty"`
+	GeneratedAt        time.Time                    `json:"generated_at"`
 }
 
 type grcSummary struct {
@@ -286,7 +287,15 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
-	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{TenantID: scope.TenantID, SourceID: scope.SourceID}, time.Now().UTC())
+	generatedAt := time.Now().UTC()
+	sourceSummaries, err := a.grcSourceRuntimeHealthSummaries(r.Context(), runtimes, generatedAt)
+	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
+		status, endAttrs = grcTelemetryError(endAttrs, err)
+		writeGRCError(w, err)
+		return
+	}
+	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{TenantID: scope.TenantID, SourceID: scope.SourceID}, generatedAt)
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "finding_count", Value: len(findingItems)})
@@ -298,10 +307,26 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		Controls:           grcLimitControls(controls, 25),
 		Evidence:           grcLimitEvidence(evidenceItems, 25),
 		Connectors:         grcConnectorItems(runtimes),
+		SourceSummaries:    sourceSummaries,
 		CoverageBlindSpots: coverageBlindSpots,
 		CoverageSummaries:  sourcecoverage.Summaries(coverage),
-		GeneratedAt:        time.Now().UTC(),
+		GeneratedAt:        generatedAt,
 	})
+}
+
+func (a *App) grcSourceRuntimeHealthSummaries(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, generatedAt time.Time) ([]sourceRuntimeHealthSummary, error) {
+	records := make([]sourceRuntimeHealthRecord, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		record, err := a.sourceRuntimeHealthRecord(ctx, runtime, generatedAt)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return sourceRuntimeHealthSummaries(records), nil
 }
 
 func grcDashboardPreviewLimitFor(limit uint32) uint32 {

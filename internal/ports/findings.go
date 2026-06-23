@@ -483,6 +483,17 @@ type FindingCandidateRejection struct {
 	RejectedAt  time.Time
 }
 
+// FindingCandidateExpiration marks stale candidate rows that were not reproduced
+// by a later successful evaluation covering the same source events.
+type FindingCandidateExpiration struct {
+	TenantID          string
+	RuntimeID         string
+	RuleID            string
+	RunID             string
+	EvaluatedEventIDs []string
+	RunStartedAt      time.Time
+}
+
 // FindingStore persists normalized findings in the state store.
 type FindingStore interface {
 	StateStore
@@ -522,6 +533,7 @@ type FindingCandidateStore interface {
 	UpsertFindingCandidate(context.Context, *FindingCandidateRecord) (*FindingCandidateRecord, error)
 	GetFindingCandidate(context.Context, string) (*FindingCandidateRecord, error)
 	ListFindingCandidates(context.Context, ListFindingCandidatesRequest) ([]*FindingCandidateRecord, error)
+	ExpireStaleFindingCandidates(context.Context, FindingCandidateExpiration) (int, error)
 	MarkFindingCandidatePromoted(context.Context, FindingCandidatePromotion) (*FindingCandidateRecord, error)
 	MarkFindingCandidateRejected(context.Context, FindingCandidateRejection) (*FindingCandidateRecord, error)
 }
