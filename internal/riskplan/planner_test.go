@@ -292,6 +292,102 @@ func TestAnalyzeCanIncludeUnscoredPlanningBlockers(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCredentialGovernanceActionsPreferRecentPrivilegedUse(t *testing.T) {
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	recentCredentialURN := "urn:cerebro:writer:openai_credential:admin-runtime"     // #nosec G101 -- test credential identifier, not credential material.
+	staleCredentialURN := "urn:cerebro:writer:anthropic_credential:analytics-stale" // #nosec G101 -- test credential identifier, not credential material.
+	plan := Analyze([]*ports.FindingRecord{
+		{
+			ID:           "openai-admin-runtime",
+			TenantID:     "writer",
+			RuntimeID:    "writer-openai",
+			RuleID:       "openai-orphaned-privileged-api-key",
+			Title:        "OpenAI Orphaned Privileged API Key",
+			Severity:     "HIGH",
+			Status:       "open",
+			ResourceURNs: []string{recentCredentialURN},
+			EventIDs:     []string{"evt-openai-admin-runtime"},
+			FindingRisk: ports.FindingRisk{
+				RiskScore:       88,
+				ConfidenceScore: 92,
+				RiskReasons:     []string{"privileged_actor", "active_threat"},
+			},
+			Attributes: map[string]string{
+				"credential_use":        "true",
+				"has_owner":             "false",
+				"last_used_at":          now.Add(-2 * time.Hour).Format(time.RFC3339),
+				"name":                  "admin-runtime",
+				"openai_credential_urn": recentCredentialURN,
+				"primary_resource_urn":  recentCredentialURN,
+				"privileged":            "true",
+				"status":                "active",
+			},
+			LastObservedAt: now.Add(-2 * time.Hour),
+		},
+		{
+			ID:           "anthropic-stale-runtime",
+			TenantID:     "writer",
+			RuntimeID:    "writer-anthropic",
+			RuleID:       "anthropic-unmanaged-active-api-key",
+			Title:        "Anthropic Unmanaged Active API Key",
+			Severity:     "MEDIUM",
+			Status:       "open",
+			ResourceURNs: []string{staleCredentialURN},
+			EventIDs:     []string{"evt-anthropic-stale-runtime"},
+			FindingRisk: ports.FindingRisk{
+				RiskScore:       62,
+				ConfidenceScore: 84,
+				RiskReasons:     []string{"active"},
+			},
+			Attributes: map[string]string{
+				"anthropic_credential_urn": staleCredentialURN,
+				"has_owner":                "false",
+				"last_used_at":             now.Add(-120 * 24 * time.Hour).Format(time.RFC3339),
+				"name":                     "analytics-stale",
+				"primary_resource_urn":     staleCredentialURN,
+				"status":                   "active",
+			},
+			LastObservedAt: now.Add(-48 * time.Hour),
+		},
+	}, Options{
+		TenantID:        "writer",
+		RuntimeIDs:      []string{"writer-openai", "writer-anthropic"},
+		IncludeUnscored: true,
+		Now:             now,
+	})
+
+	if len(plan.ActionCandidates) == 0 {
+		t.Fatalf("ActionCandidates = nil, want credential governance candidates")
+	}
+	top := plan.ActionCandidates[0]
+	if top.ActionType != ActionTypeRotateCredential || top.TargetURN != recentCredentialURN {
+		t.Fatalf("top candidate = %#v, want rotate recent privileged credential", top)
+	}
+	if top.SimulationStatus != SimulationStatusSimulated || top.ExpectedRiskScoreReduction <= 0 {
+		t.Fatalf("top simulation = %q reduction = %d, want simulated risk reduction", top.SimulationStatus, top.ExpectedRiskScoreReduction)
+	}
+	if top.Effort.PrimaryConstraint != "access_review" || !top.Effort.ApprovalRequired {
+		t.Fatalf("top effort = %#v, want approval-aware credential rotation", top.Effort)
+	}
+	byActionTarget := map[string]Candidate{}
+	for _, candidate := range plan.ActionCandidates {
+		byActionTarget[candidate.ActionType+"|"+candidate.TargetURN] = candidate
+		if candidate.ActionType == findinganalysis.RiskDeltaScenarioRemovePrivilege && candidate.TargetURN == recentCredentialURN {
+			t.Fatalf("generic privilege candidate duplicated credential rotation: %#v", candidate)
+		}
+	}
+	stale := byActionTarget[ActionTypeRevokeCredential+"|"+staleCredentialURN]
+	if stale.ID == "" {
+		t.Fatalf("action candidates = %#v, want stale credential revoke recommendation", plan.ActionCandidates)
+	}
+	if stale.SimulationStatus != SimulationStatusUnsupported || stale.Effort.PrimaryConstraint != "usage_validation" {
+		t.Fatalf("stale credential candidate = %#v, want usage-validation recommendation", stale)
+	}
+	if top.PriorityScore <= stale.PriorityScore {
+		t.Fatalf("priority scores top=%d stale=%d, want recent privileged use ranked higher", top.PriorityScore, stale.PriorityScore)
+	}
+}
+
 func TestCompareCandidatesRanksNonSimulatedStatusesByScore(t *testing.T) {
 	unsupportedHigh := diffTestCandidate("unsupported-high", "Unsupported high", 100, 0, 0, SimulationStatusUnsupported)
 	noReductionLow := diffTestCandidate("no-reduction-low", "No reduction low", 10, 0, 0, SimulationStatusNoExpectedRisk)
