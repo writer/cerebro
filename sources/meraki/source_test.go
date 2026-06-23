@@ -84,4 +84,7 @@ func TestAccessPolicyMapsPolicyName(t *testing.T) {
 	if got := pull.Events[0].Attributes["policy_name"]; got != "Guest WiFi" {
 		t.Fatalf("policy_name = %q, want Guest WiFi", got)
 	}
+	if got := pull.Events[0].Attributes["policy_type"]; got != "accesspolicy" {
+		t.Fatalf("policy_type = %q, want accesspolicy", got)
+	}
 }

@@ -51,3 +51,40 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("event id is empty: %#v", event)
 	}
 }
+
+func TestFrameworkMapsStaticPolicyType(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/targets/all/needs_attention_top/":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1"}}})
+		case "/frameworks/":
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]string{{"id": "framework-1", "name": "OWASP", "resource_urn": "urn:cerebro:tenant:policy:framework-1"}}})
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyFramework, "token": "test-token"})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["policy_type"]; got != "framework" {
+		t.Fatalf("policy_type = %q, want framework", got)
+	}
+}
