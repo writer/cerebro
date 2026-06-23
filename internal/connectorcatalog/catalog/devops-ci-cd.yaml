@@ -2048,215 +2048,7 @@ entries:
         requires_references: true
       categories:
         - saas
-      description: |-
-        # Overview
-
-        To facilitate management, Apache Airflow supports a range of REST API endpoints across its
-        objects.
-        This section provides an overview of the API design, methods, and supported use cases.
-
-        Most of the endpoints accept `JSON` as input and return `JSON` responses.
-        This means that you must usually add the following headers to your request:
-        ```
-        Content-type: application/json
-        Accept: application/json
-        ```
-
-        ## Resources
-
-        The term `resource` refers to a single type of object in the Airflow metadata. An API is broken up by its
-        endpoint's corresponding resource.
-        The name of a resource is typically plural and expressed in camelCase. Example: `dagRuns`.
-
-        Resource names are used as part of endpoint URLs, as well as in API parameters and responses.
-
-        ## CRUD Operations
-
-        The platform supports **C**reate, **R**ead, **U**pdate, and **D**elete operations on most resources.
-        You can review the standards for these operations and their standard parameters below.
-
-        Some endpoints have special behavior as exceptions.
-
-        ### Create
-
-        To create a resource, you typically submit an HTTP `POST` request with the resource's required metadata
-        in the request body.
-        The response returns a `201 Created` response code upon success with the resource's metadata, including
-        its internal `id`, in the response body.
-
-        ### Read
-
-        The HTTP `GET` request can be used to read a resource or to list a number of resources.
-
-        A resource's `id` can be submitted in the request parameters to read a specific resource.
-        The response usually returns a `200 OK` response code upon success, with the resource's metadata in
-        the response body.
-
-        If a `GET` request does not include a specific resource `id`, it is treated as a list request.
-        The response usually returns a `200 OK` response code upon success, with an object containing a list
-        of resources' metadata in the response body.
-
-        When reading resources, some common query parameters are usually available. e.g.:
-        ```
-        v1/connections?limit=25&offset=25
-        ```
-
-        |Query Parameter|Type|Description|
-        |---------------|----|-----------|
-        |limit|integer|Maximum number of objects to fetch. Usually 25 by default|
-        |offset|integer|Offset after which to start returning objects. For use with limit query parameter.|
-
-        ### Update
-
-        Updating a resource requires the resource `id`, and is typically done using an HTTP `PATCH` request,
-        with the fields to modify in the request body.
-        The response usually returns a `200 OK` response code upon success, with information about the modified
-        resource in the response body.
-
-        ### Delete
-
-        Deleting a resource requires the resource `id` and is typically executing via an HTTP `DELETE` request.
-        The response usually returns a `204 No Content` response code upon success.
-
-        ## Conventions
-
-        - Resource names are plural and expressed in camelCase.
-        - Names are consistent between URL parameter name and field name.
-
-        - Field names are in snake_case.
-        ```json
-        {
-            "name": "string",
-            "slots": 0,
-            "occupied_slots": 0,
-            "used_slots": 0,
-            "queued_slots": 0,
-            "open_slots": 0
-        }
-        ```
-
-        ### Update Mask
-
-        Update mask is available as a query parameter in patch endpoints. It is used to notify the
-        API which fields you want to update. Using `update_mask` makes it easier to update objects
-        by helping the server know which fields to update in an object instead of updating all fields.
-        The update request ignores any fields that aren't specified in the field mask, leaving them with
-        their current values.
-
-        Example:
-        ```
-          resource = request.get('/resource/my-id').json()
-          resource['my_field'] = 'new-value'
-          request.patch('/resource/my-id?update_mask=my_field', data=json.dumps(resource))
-        ```
-
-        ## Versioning and Endpoint Lifecycle
-
-        - API versioning is not synchronized to specific releases of the Apache Airflow.
-        - APIs are designed to be backward compatible.
-        - Any changes to the API will first go through a deprecation phase.
-
-        # Trying the API
-
-        You can use a third party client, such as [curl](https://curl.haxx.se/), [HTTPie](https://httpie.org/),
-        [Postman](https://www.postman.com/) or [the Insomnia rest client](https://insomnia.rest/) to test
-        the Apache Airflow API.
-
-        Note that you will need to pass credentials data.
-
-        For e.g., here is how to pause a DAG with [curl](https://curl.haxx.se/), when basic authorization is used:
-        ```bash
-        curl -X PATCH 'https://example.com/api/v1/dags/{dag_id}?update_mask=is_paused' \
-        -H 'Content-Type: application/json' \
-        --user "username:password" \
-        -d '{
-            "is_paused": true
-        }'
-        ```
-
-        Using a graphical tool such as [Postman](https://www.postman.com/) or [Insomnia](https://insomnia.rest/),
-        it is possible to import the API specifications directly:
-
-        1. Download the API specification by clicking the **Download** button at top of this document
-        2. Import the JSON specification in the graphical tool of your choice.
-          - In *Postman*, you can click the **import** button at the top
-          - With *Insomnia*, you can just drag-and-drop the file on the UI
-
-        Note that with *Postman*, you can also generate code snippets by selecting a request and clicking on
-        the **Code** button.
-
-        ## Enabling CORS
-
-        [Cross-origin resource sharing (CORS)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
-        is a browser security feature that restricts HTTP requests that are
-        initiated from scripts running in the browser.
-
-        For details on enabling/configuring CORS, see
-        [Enabling CORS](https://airflow.apache.org/docs/apache-airflow/stable/security/api.html).
-
-        # Authentication
-
-        To be able to meet the requirements of many organizations, Airflow supports many authentication methods,
-        and it is even possible to add your own method.
-
-        If you want to check which auth backend is currently set, you can use
-        `airflow config get-value api auth_backends` command as in the example below.
-        ```bash
-        $ airflow config get-value api auth_backends
-        airflow.api.auth.backend.basic_auth
-        ```
-        The default is to deny all requests.
-
-        For details on configuring the authentication, see
-        [API Authorization](https://airflow.apache.org/docs/apache-airflow/stable/security/api.html).
-
-        # Errors
-
-        We follow the error response format proposed in [RFC 7807](https://tools.ietf.org/html/rfc7807)
-        also known as Problem Details for HTTP APIs. As with our normal API responses,
-        your client must be prepared to gracefully handle additional members of the response.
-
-        ## Unauthenticated
-
-        This indicates that the request has not been applied because it lacks valid authentication
-        credentials for the target resource. Please check that you have valid credentials.
-
-        ## PermissionDenied
-
-        This response means that the server understood the request but refuses to authorize
-        it because it lacks sufficient rights to the resource. It happens when you do not have the
-        necessary permission to execute the action you performed. You need to get the appropriate
-        permissions in other to resolve this error.
-
-        ## BadRequest
-
-        This response means that the server cannot or will not process the request due to something
-        that is perceived to be a client error (e.g., malformed request syntax, invalid request message
-        framing, or deceptive request routing). To resolve this, please ensure that your syntax is correct.
-
-        ## NotFound
-
-        This client error response indicates that the server cannot find the requested resource.
-
-        ## MethodNotAllowed
-
-        Indicates that the request method is known by the server but is not supported by the target resource.
-
-        ## NotAcceptable
-
-        The target resource does not have a current representation that would be acceptable to the user
-        agent, according to the proactive negotiation header fields received in the request, and the
-        server is unwilling to supply a default representation.
-
-        ## AlreadyExists
-
-        The request could not be completed due to a conflict with the current state of the target
-        resource, e.g. the resource it tries to create already exists.
-
-        ## Unknown
-
-        This means that the server encountered an unexpected condition that prevented it from
-        fulfilling the request.
+      description: '# Overview'
       display_name: Apache Airflow
       id: builtin_catalog-apache
       resource_families:
@@ -2461,25 +2253,7 @@ entries:
           key: jobid
           label: Jobid
           required: true
-      description: |-
-        AppVeyor is a hosted continuous integration service which runs on Microsoft
-        Windows.  The AppVeyor REST API provides a RESTful way to interact with the
-        AppVeyor service.  This includes managing projects, builds, deployments,
-        and the teams that build them.
-
-        Additional help and discussion of the AppVeyor REST API is available at
-        http://help.appveyor.com/discussions
-
-        This Swagger definition is an **unofficial** description of the AppVeyor
-        REST API maintained at https://github.com/kevinoid/appveyor-swagger
-        Please report any issues or suggestions for this Swagger definition at
-        https://github.com/kevinoid/appveyor-swagger/issues/new
-
-        #### API Conventions
-
-        Fields which are missing from update operations (`PUT` requests) are
-        typically reset to their default values.  So although most fields are not
-        technically required, they should usually be specified in practice.
+      description: AppVeyor is a hosted continuous integration service which runs on Microsoft Windows. The AppVeyor REST API provides a RESTful way to interact with the AppVeyor service. This includes managing projects, builds, deployments, and the teams that build them.
       display_name: AppVeyor
       id: builtin_catalog-appveyor
       resource_families:
@@ -3085,7 +2859,7 @@ entries:
           key: accountid
           label: Accountid
           required: true
-      description: "# Introduction\n\nThis API allows resellers to manage their resources in a simple, programmatic way using HTTP requests.\n\n# Conventions\n\n## Requests\n\nThe API supports different methods depending on the required action.\n\n| Method\t| Description\n| ---\t\t| ---\n| GET\t\t| Retrieve resources in a collection or get a single resource.<br/>Getters will never have any effect on the queried resources.\n| POST\t\t| Create a new resource in a collection.\n| PUT\t\t| Update an existing resource with its new representation.\n| DELETE\t| Delete an existing resource.\n\n## HTTP status codes\n\nThe API will reply with different HTTP statuscodes:\n\n| StatusCode\t\t\t\t| Description\n| ---\t\t\t\t\t\t| ---\n| 200 OK\t\t\t\t\t| The requests was processed and you receive data as a result.\n| 201 CREATED\t\t\t\t| The resource has been created. Either the Location header contains a link to the created resource, or links are being returned in the response body. The applied method will be indicated in the documentation.\n| 202 ACCEPTED\t\t\t\t| The request has been validated and accepted. Because we need to do some background processing prior to returning the result, we cannot send back a useful representation.\n| 204 NOCONTENT\t\t\t\t| The request has been processed, but no details can be returned.\n| 400 BADREQUEST\t\t\t| Your request is malformed.\n| 401 UNAUTHORIZED\t\t\t| You are not authorized. Follow the instructions in the Authorization documentation.\n| 403 FORBIDDEN\t\t\t\t| Access to the resource or operation is not allowed.\n| 404 NOTFOUND\t\t\t\t| The resource cannot be found.\n| 410 GONE                  | The resource is permanently no longer available.\n| 429 TOOMANYREQUESTS\t\t| The ratelimit has been exceeded. Please refer to the documentation on rate limiting for more details.\n| 500 INTERNALSERVERERROR\t| An error occurred during the processing of the request. The error is unexpected and most likely due to a bug in the api.\n\nIn the event of a problem, the body of the response will usually contain an errorcode and errormessage.\nIn rare cases additional details about the error are reported.\n\nErrorcodes 400-499 are considered to be client errors and indicate that there was an issue with the request.\nWe will not take any action besides monitoring. \n\nErrorcodes 500-599 are considered to be server errors. The errors are monitored AND action will be taken to resolve the error.\n\n## Formatting\n\nSnake casing is applied on resources and query parameters.\nThe API is strictly returning JSON. No other formats are supported.\n\nDatetimes are returned in ISO-8601 format.\n\n## Pagination\n\nPagination is on by default on collections and is controlled by specifying *skip* and *take* parameters.  \n**Skip** indicates the number of results to skip and where to start the new take.  \n**Take** indicates the number of records to return. The returned number of items can be smaller than the requested take.\n\nPaged results will have headers with useful information regarding the paging.\n\n| Header\t\t\t\t| Description\n| ---\t\t\t\t\t| ---\n| X-Paging-Skipped\t\t| The number of results that have been skipped.\n| X-Paging-Take\t\t\t| The number of items in the current take. The number might differ from the requested take. It represents the actual number of items returned in the response.\n| X-Paging-TotalResults | The total number of results regardless of paging.\n\n## Rate limiting\n\nThe number of requests per interval is limited. Detailed information on the rate limiting can be found in specific headers which will be sent on each request.\n\n| Header\t\t\t\t| Description\n| ---\t\t\t\t\t| ---\n| X-RateLimit-Limit\t\t| The number of requests that can be made in a specific time interval.\n| X-RateLimit-Usage\t\t| The number of requests already made in the current time interval.\n| X-RateLimit-Remaining\t| The number of requests remaining until the reset.\n| X-RateLimit-Reset\t\t| The number of seconds until the reset.<br />After the reset you are allowed to make as many requests as specified by the X-RateLimit-Limit header.\n| Retry-After\t\t\t| The number of seconds you have to wait until you can make new requests.<br />This header is only present when the rate limit has been reached. It is identical to X-RateLimit-Reset.\n\nWhen the ratelimit has been reached, all requests will return with a HTTP statuscode 429 and ReasonPhrase '*Too many requests, retry later.*'.\n\n# Authentication\n\nThe Api uses HMAC authentication.  \nHash-based message authentication code (HMAC) is a mechanism for calculating a message authentication code involving a hash function in combination with a secret key.  \nBoth the integrity and the authenticity of the message are verified this way.\n\n## Steps to generate the HMAC\n\n1. Get your api key and secret from your controlpanel.  \nIt is absolutely vital that the secret is never exposed. Once the secret is out, anyone would be able to generate hmacs to impersonate you.  \nIn case your secret is compromised, you can generate a new api key and secret on your controlpanel.\n2. Construct the input value for generating the hmac.  \nConcatenate:apikey, request method, path and querystring information, unix timestamp, nonce and content.\n\n|\t\t\t\t\t\t\t\t\t\t| Description\n| ---\t\t\t\t\t\t\t\t\t| ---\n| apikey\t\t\t\t\t\t\t\t| The key that is linked to your user.\n| request method\t\t\t\t\t\t| lowercased (eg: get, post, delete,...)\n| path and querystring information\t\t| urlencoding of the lowercased relative path and querystring.<br />The path **MUST start with the api version (/v2)**.<br />The hexadecimal codes (percent encoding) MUST be uppercased.\n| unix timestamp\t\t\t\t\t\t| the unix timestamp in **seconds**.\n| nonce\t\t\t\t\t\t\t\t\t| a\tunique string for each request. It should be a random string, not related to the request. The nonce (in combination with the unix timestamp) protects you from replay attacks in case anyone was able to intercept a request.\n| content\t\t\t\t\t\t\t\t| When the request body is not empty, this should be the Base64 encoded Md5 hash of the request body.<br />An empty body should not be encoded.\n\n3. Hash the concatenated string using your api secret and the SHA-256 algorithm.\n4. Base64 encode the result of the hash function. This is the hmac signature you will need to send an authorized request.\n\n## Sending an authorized request\n\nAn authorized request can be made by sending the generated HMAC in the authorization header.  \nA correct authorizationheader uses the hmac authorization scheme and a correctly formatted authorization parameter.\n\nCreate the authorization parameter by concatenating:\n  * apikey\n  * colon ':'\n  * generated HMAC signature (see above)\n  * colon ':'\n  * nonce (the one used to generate the signature)\n  * colon ':'\n  * unix timestamp (the one used to generate the signature)\n\nA sample (illustrated):\n\n* The first line is the string you create to feed to the hashing algorithm.\n* The second line is the authorization header that should be sent in the request.\n\n![hmac authorization header illustrated](/v2/images/authentication_illustration.jpg \"authorization header illustrated\")\n\n## IP whitelisting\n\nAccess is by default restricted for all IP addresses. You need to explicitly whitelist an IP or an IP range in your controlpanel.\n\n# Versioning\n\nBecause of breaking contract changes compared to v1, we released v2 of the API.  \nV1 will still be available, but you are strongly encouraged to migrate to the latest version.  \nNew features will only be available on v2.\n\n# Policy\n\n### Fair use policy\n\nPlease respect the rate limits and do not use the api for any purposes of abuse.  \nAll requests are being monitored and logged.  \nIntentional abuse might result in api key revocation.\n\n# Errors\n\nThe API attempts to return appropriate HTTP status codes for every request.  \nWhen the status code indicates failure, the API will also provide an error message in most cases.\n\nAn error message contains a machine-parseable error code accompanied by a descriptive error text.  \nThe text for an error message might change over time, but codes will stay the same.\n\n[An overview of error codes can be found here](/v2/documentation/errorcodes).\n\n# Change log\n\n[An overview of new changes can be found here](/v2/documentation/changelog).\n\n# Provisioning information\n\n## Terminology\n\n| Term\t\t\t| Definition\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t|\n| ---\t\t\t| ---\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t|\n| Servicepack\t| Defines a set of assets that belong together. An example is a hosting package which offers Linux hosting, a domain name, a couple of mailboxes and databases.<br/>It also limits the size of individual assets within the same account. |\n| Account\t\t| Represents an instance of the servicepack. It contains one or more assets. The number and size of assets is defined by the servicepack. |\n| Asset\t\t\t| A manageable service. For example: a mysql database, a linux hosting, a mailbox,...<br/>Some assets are created at the moment when the account is created. Other assets can be created afterwards.\n\t\n## Common provisioning scenario\n\n**Provisioning of an account with Linux hosting with one MySql database**\n\n*Without a pre-existing account:*\n\n1. Create a new account.<br/>Perform a POST on the accounts route and provide the desired servicepack id and identifier (domain name).\n2. Read the Location header from the response and perform a GET of the provided resource (a provisioning job).\n3. When the response returns 200(OK), you should repeat the GET operation after a certain interval (Repeat this step).<br/>\nWhen the response returns 201(Created), you should read the response body. This will contain links to the created resources.<br/>\nThis will usually hold only one link, but to be futureproof, this has been designed to return a collection.\n4. The created resource will point to an account. You now know the account's Id and can continue with the provisioning of a MySql database on this account.\n5. Perform a POST on the mysqldatabases route and provide the account id along with other requested information.\n6. Read the Location header from the response and perform a GET of the provided resource (a provisioning job).\n7. When the response returns 200(OK), you should repeat the GET operation after a certain interval (Repeat this step).<br/>\nWhen the response returns 201(Created), you should read the response body. This will contain links to the created resources.<br/>\nThis will usually hold only one link, but to be futureproof, this has been designed to return a collection.\n8. The created resource will point to a MySql database resource.\n\n## SSL certificate requests\n\n**Requesting an SSL certificate causes the purchase of a paying product.**\n\n1. A certificate is created by adding an ssl certificate request.\n2. Upon statuscode 201 you should query for certificate completion on the resource provided in the location response header.\n3. The resource request can respond with different statuscodes:\n<ul>\n    <li>200: the certificate request is ongoing.<br/>\nCheck the validations collection for validation values that are not auto_validated. Those should be set by you system.<br/>\nCall verify domain validations once all validation values are in place. It might take some time for verification to take place. It is not necessary to call this method more than once.</li>\n    <li>303: the certificate request is complete; there is no more certificate request resource available. Check the location header value to retrieve the representation of the resulting ssl certificate.</li>\n    <li>410: the certificate request does not exist anymore, there is no certificate created as a result of the request.</li>\n</ul>"
+      description: '# Introduction'
       display_name: Combell
       id: builtin_catalog-combell
       resource_families:
@@ -3286,7 +3060,7 @@ entries:
           key: productid
           label: Productid
           required: true
-      description: "**Base API URL**: https://api.configcat.com\n\nIf you prefer the swagger documentation, you can find it here: [Swagger UI](https://api.configcat.com/swagger).\n\nThe purpose of this API is to access the ConfigCat platform programmatically. \nYou can **Create**, **Read**, **Update** and **Delete** any entities like **Feature Flags, Configs, Environments** or **Products** within ConfigCat. \n\nThe API is based on HTTP REST, uses resource-oriented URLs, status codes and supports JSON \nand JSON+HAL format. Do not use this API for accessing and evaluating feature flag values. Use the [SDKs instead](https://configcat.com/docs/sdk-reference/overview).\n\n\n# OpenAPI Specification\n\nThe complete specification is publicly available here: [swagger.json](v1/swagger.json). \nYou can use it to generate client libraries in various languages with [OpenAPI Generator](https://github.com/OpenAPITools/openapi-generator) or\n[Swagger Codegen](https://swagger.io/tools/swagger-codegen/) to interact with this API.\n\n# Authentication\nThis API uses the [Basic HTTP Authentication Scheme](https://en.wikipedia.org/wiki/Basic_access_authentication). \n\n<!-- ReDoc-Inject: <security-definitions> -->\n\n# Throttling and rate limits\nAll the rate limited API calls are returning information about the current rate limit period in the following HTTP headers:\n\n| Header | Description |\n| :- | :- |\n| X-Rate-Limit-Remaining | The maximum number of requests remaining in the current rate limit period. |\n| X-Rate-Limit-Reset     | The time\twhen the current rate limit period resets.\t\t\t\t\t\t  |\n\nWhen the rate limit is exceeded by a request, the API returns with a `HTTP 429 - Too many requests` status along with a `Retry-After` HTTP header."
+      description: '**Base API URL**: https://api.configcat.com'
       display_name: ConfigCat
       id: builtin_catalog-configcat
       resource_families:
@@ -4311,350 +4085,7 @@ entries:
         requires_references: true
       categories:
         - saas
-      description: |-
-        This is the official API documentation for the Public Hetzner Cloud.
-
-        ## Introduction
-
-        The Hetzner Cloud API operates over HTTPS and uses JSON as its data format. The API is a RESTful API and utilizes HTTP methods and HTTP status codes to specify requests and responses.
-
-        As an alternative to working directly with our API you may also consider to use:
-        * Our CLI program [hcloud](https://github.com/hetznercloud/cli)
-        * Our [library for Go](https://github.com/hetznercloud/hcloud-go)
-        * Our [library for Python](https://github.com/hetznercloud/hcloud-python)
-
-        Also you can find a [list of libraries, tools, and integrations on GitHub](https://github.com/hetznercloud/awesome-hcloud).
-
-        If you are developing integrations based on our API and your product is Open Source you may be eligible for a free one time €50 (excl. VAT) credit on your account. Please contact us via the the support page on your Cloud Console and let us know the following:
-        * The type of integration you would like to develop
-        * Link to the GitHub repo you will use for the Project
-        * Link to some other Open Source work you have already done (if you have done so)
-
-        ## Getting Started
-        To get started using the API you first need an API token. Sign in into the [Hetzner Cloud Console](https://console.hetzner.cloud/) choose a Project, go to `Security` → `API Tokens`, and generate a new token. Make sure to copy the token because it won’t be shown to you again. A token is bound to a Project, to interact with the API of another Project you have to create a new token inside the Project. Let’s say your new token is `jEheVytlAoFl7F8MqUQ7jAo2hOXASztX`.
-
-        You’re now ready to do your first request against the API. To get a list of all Servers in your Project, issue the example request on the right side using [curl](https://curl.haxx.se/).
-
-        Make sure to replace the token in the example command with the token you have just created. Since your Project probably does not contain any Servers yet, the example response will look like the response on the right side. We will almost always provide a resource root like `servers` inside the example response. A response can also contain a `meta` object with information like [Pagination](https://docs.hetzner.cloud/#overview-pagination).
-
-        **Example Request**
-        ```bash
-        curl -H "Authorization: Bearer jEheVytlAoFl7F8MqUQ7jAo2hOXASztX" \
-            https://api.hetzner.cloud/v1/servers
-        ```
-
-        **Example Response**
-        ```json
-        {
-            "servers": [],
-            "meta": {
-                "pagination": {
-                    "page": 1,
-                    "per_page": 25,
-                    "previous_page": null,
-                    "next_page": null,
-                    "last_page": 1,
-                    "total_entries": 0
-                }
-            }
-        }
-        ```
-
-        ## Authentication
-        All requests to the Hetzner Cloud API must be authenticated via a API token. Include your secret API token in every request you send to the API with the `Authorization` HTTP header.
-
-        To create a new API token for your Project, switch into the [Hetzner Cloud Console](https://console.hetzner.cloud/) choose a Project, go to `Security` → `API Tokens`, and generate a new token.
-
-        **Example Authorization header**
-        ```html
-        Authorization: Bearer LRK9DAWQ1ZAEFSrCNEEzLCUwhYX1U3g7wMg4dTlkkDC96fyDuyJ39nVbVjCKSDfj
-        ```
-
-        ## Errors
-        Errors are indicated by HTTP status codes. Further, the response of the request which generated the error contains an error code, an error message, and, optionally, error details. The schema of the error details object depends on the error code.
-
-        The error response contains the following keys:
-
-        | Keys      | Meaning                                                               |
-        |-----------|-----------------------------------------------------------------------|
-        | `code`    | Short string indicating the type of error (machine-parsable)          |
-        | `message` | Textual description on what has gone wrong                            |
-        | `details` | An object providing for details on the error (schema depends on code) |
-
-        **Example response**
-        ```json
-        {
-          "error": {
-            "code": "invalid_input",
-            "message": "invalid input in field 'broken_field': is too long",
-            "details": {
-              "fields": [
-                {
-                  "name": "broken_field",
-                  "messages": ["is too long"]
-                }
-              ]
-            }
-          }
-        }
-        ```
-
-        ### Error Codes
-
-        | Code                      | Description                                                                      |
-        |---------------------------|----------------------------------------------------------------------------------|
-        | `forbidden`               | Insufficient permissions for this request                                        |
-        | `invalid_input`           | Error while parsing or processing the input                                      |
-        | `json_error`              | Invalid JSON input in your request                                               |
-        | `locked`                  | The item you are trying to access is locked (there is already an Action running) |
-        | `not_found`               | Entity not found                                                                 |
-        | `rate_limit_exceeded`     | Error when sending too many requests                                             |
-        | `resource_limit_exceeded` | Error when exceeding the maximum quantity of a resource for an account           |
-        | `resource_unavailable`    | The requested resource is currently unavailable                                  |
-        | `service_error`           | Error within a service                                                           |
-        | `uniqueness_error`        | One or more of the objects fields must be unique                                 |
-        | `protected`               | The Action you are trying to start is protected for this resource                |
-        | `maintenance`             | Cannot perform operation due to maintenance                                      |
-        | `conflict`                | The resource has changed during the request, please retry                        |
-        | `unsupported_error`       | The corresponding resource does not support the Action                           |
-        | `token_readonly`          | The token is only allowed to perform GET requests                                |
-        | `unavailable`             | A service or product is currently not available                                  |
-
-        **invalid_input**
-        ```json
-        {
-          "error": {
-            "code": "invalid_input",
-            "message": "invalid input in field 'broken_field': is too long",
-            "details": {
-              "fields": [
-                {
-                  "name": "broken_field",
-                  "messages": ["is too long"]
-                }
-              ]
-            }
-          }
-        }
-        ```
-
-        **uniqueness_error**
-        ```json
-        {
-          "error": {
-            "code": "uniqueness_error",
-            "message": "SSH key with the same fingerprint already exists",
-            "details": {
-              "fields": [
-                {
-                  "name": "public_key"
-                }
-              ]
-            }
-          }
-        }
-        ```
-
-        **resource_limit_exceeded**
-        ```json
-        {
-          "error": {
-            "code": "resource_limit_exceeded",
-            "message": "project limit exceeded",
-            "details": {
-              "limits": [
-                {
-                  "name": "project_limit"
-                }
-              ]
-            }
-          }
-        }
-        ```
-
-        ## Labels
-        Labels are `key/value` pairs that can be attached to all resources.
-
-        Valid label keys have two segments: an optional prefix and name, separated by a slash (`/`). The name segment is required and must be a string of 63 characters or less, beginning and ending with an alphanumeric character (`[a-z0-9A-Z]`) with dashes (`-`), underscores (`_`), dots (`.`), and alphanumerics between. The prefix is optional. If specified, the prefix must be a DNS subdomain: a series of DNS labels separated by dots (`.`), not longer than 253 characters in total, followed by a slash (`/`).
-
-        Valid label values must be a string of 63 characters or less and must be empty or begin and end with an alphanumeric character (`[a-z0-9A-Z]`) with dashes (`-`), underscores (`_`), dots (`.`), and alphanumerics between.
-
-        The `hetzner.cloud/` prefix is reserved and cannot be used.
-
-        **Example Labels**
-        ```json
-        {
-          "labels": {
-            "environment":"development",
-            "service":"backend",
-            "example.com/my":"label",
-            "just-a-key":""
-          }
-        }
-        ```
-
-        ## Label Selector
-        For resources with labels, you can filter resources by their labels using the label selector query language.
-
-        | Expression           | Meaning                                                             |
-        |----------------------|---------------------------------------------------------------------|
-        | `k==v` / `k=v`       | Value of key `k` does equal value `v`                               |
-        | `k!=v`               | Value of key `k` does not equal value `v`                           |
-        | `k`                  | Key `k` is present                                                  |
-        | `!k`                 | Key `k` is not present                                              |
-        | `k in (v1,v2,v3)`    | Value of key `k` is `v1`, `v2`, or `v3`                             |
-        | `k notin (v1,v2,v3)` | Value of key `k` is neither `v1`, nor `v2`, nor `v3`                |
-        | `k1==v,!k2`          | Value of key `k1` is `v` and key `k2` is not present                |
-
-        ### Examples
-        * Returns all resources that have a `env=production` label and that don't have a `type=database` label:
-
-          `env=production,type!=database`
-        * Returns all resources that have a `env=testing` or `env=staging` label:
-
-            `env in (testing,staging)`
-        * Returns all resources that don't have a `type` label:
-
-            `!type`
-
-        ## Pagination
-        Responses which return multiple items support pagination. If they do support pagination, it can be controlled with following query string parameters:
-
-        * A `page` parameter specifies the page to fetch. The number of the first page is 1.
-        * A `per_page` parameter specifies the number of items returned per page. The default value is 25, the maximum value is 50 except otherwise specified in the documentation.
-
-        Responses contain a `Link` header with pagination information.
-
-        Additionally, if the response body is JSON and the root object is an object, that object has a `pagination` object inside the `meta` object with pagination information:
-
-        **Example Pagination**
-        ```json
-        {
-            "servers": [...],
-            "meta": {
-                "pagination": {
-                    "page": 2,
-                    "per_page": 25,
-                    "previous_page": 1,
-                    "next_page": 3,
-                    "last_page": 4,
-                    "total_entries": 100
-                }
-            }
-        }
-        ```
-
-        The keys `previous_page`, `next_page`, `last_page`, and `total_entries` may be `null` when on the first page, last page, or when the total number of entries is unknown.
-
-        **Example Pagination Link header**
-        ```bash
-        Link: <https://api.hetzner.cloud/v1/actions?page=2&per_page=5>; rel="prev",
-              <https://api.hetzner.cloud/v1/actions?page=4&per_page=5>; rel="next",
-              <https://api.hetzner.cloud/v1/actions?page=6&per_page=5>; rel="last"
-        ```
-
-        Line breaks have been added for display purposes only and responses may only contain some of the above `rel` values.
-
-        ## Rate Limiting
-        All requests, whether they are authenticated or not, are subject to rate limiting. If you have reached your limit, your requests will be handled with a `429 Too Many Requests` error. Burst requests are allowed. Responses contain serveral headers which provide information about your current rate limit status.
-
-        * The `RateLimit-Limit` header contains the total number of requests you can perform per hour.
-        * The `RateLimit-Remaining` header contains the number of requests remaining in the current rate limit time frame.
-        * The `RateLimit-Reset` header contains a UNIX timestamp of the point in time when your rate limit will have recovered and you will have the full number of requests available again.
-
-        The default limit is 3600 requests per hour and per Project. The number of remaining requests increases gradually. For example, when your limit is 3600 requests per hour, the number of remaining requests will increase by 1 every second.
-
-        ## Server Metadata
-        Your Server can discover metadata about itself by doing a HTTP request to specific URLs. The following data is available:
-
-        | Data              | Format | Contents                                                     |
-        |-------------------|--------|--------------------------------------------------------------|
-        | hostname          | text   | Name of the Server as set in the api                         |
-        | instance-id       | number | ID of the server                                             |
-        | public-ipv4       | text   | Primary public IPv4 address                                  |
-        | private-networks  | yaml   | Details about the private networks the Server is attached to |
-        | availability-zone | text   | Name of the availability zone that Server runs in            |
-        | region            | text   | Network zone, e.g. eu-central                                |
-
-        **Example: Summary**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata
-        ```
-
-        ```yaml
-        availability-zone: hel1-dc2
-        hostname: my-server
-        instance-id: 42
-        public-ipv4: 1.2.3.4
-        region: eu-central
-        ```
-
-        **Example: Hostname**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata/hostname
-        my-server
-        ```
-
-        **Example: Instance ID**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata/instance-id
-        42
-        ```
-
-        **Example: Public IPv4**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata/public-ipv4
-        1.2.3.4
-        ```
-
-        **Example: Private Networks**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata/private-networks
-        ```
-
-        ```json
-        - ip: 10.0.0.2
-          alias_ips: [10.0.0.3, 10.0.0.4]
-          interface_num: 1
-          mac_address: 86:00:00:2a:7d:e0
-          network_id: 1234
-          network_name: nw-test1
-          network: 10.0.0.0/8
-          subnet: 10.0.0.0/24
-          gateway: 10.0.0.1
-        - ip: 192.168.0.2
-          alias_ips: []
-          interface_num: 2
-          mac_address: 86:00:00:2a:7d:e1
-          network_id: 4321
-          network_name: nw-test2
-          network: 192.168.0.0/16
-          subnet: 192.168.0.0/24
-          gateway: 192.168.0.1
-        ```
-
-        **Example: Availability Zone**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata/availability-zone
-        hel1-dc2
-        ```
-
-        **Example: Region**
-        ```bash
-        $ curl http://169.254.169.254/hetzner/v1/metadata/region
-        eu-central
-        ```
-
-        ## Sorting
-        Some responses which return multiple items support sorting. If they do support sorting the documentation states which fields can be used for sorting. You specify sorting with the `sort` query string parameter. You can sort by multiple fields. You can set the sort direction by appending `:asc` or `:desc` to the field name. By default, ascending sorting is used.
-
-        **Example: Sorting**
-        ```bash
-        https://api.hetzner.cloud/v1/actions?sort=status
-        https://api.hetzner.cloud/v1/actions?sort=status:asc
-        https://api.hetzner.cloud/v1/actions?sort=status:desc
-        https://api.hetzner.cloud/v1/actions?sort=status:asc&sort=command:desc
-        ```
+      description: This is the official API documentation for the Public Hetzner Cloud.
       display_name: Hetzner Cloud
       id: builtin_catalog-hetzner
       resource_families:
@@ -4692,6 +4123,74 @@ entries:
           record_selector: $.placement_groups[*]
         - coverage:
             - families:
+                - certificate
+              high_value: true
+              id: certificate
+              support: partial
+              title: Certificate
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: hetzner.certificate
+            required_payload_fields:
+              - id
+            schema_ref: hetzner/certificate/v1
+            urn_kind: hetzner_certificate
+          event_kind: certificate
+          id: certificate
+          id_field: id
+          label: Certificate
+          list_key: certificates
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /certificates
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: certificate
+            template: asset
+          record_selector: $.certificates[*]
+        - coverage:
+            - families:
+                - firewall
+              high_value: true
+              id: firewall
+              support: partial
+              title: Firewall
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: hetzner.firewall
+            required_payload_fields:
+              - id
+            schema_ref: hetzner/firewall/v1
+            urn_kind: hetzner_firewall
+          event_kind: firewall
+          id: firewall
+          id_field: id
+          label: Firewall
+          list_key: firewalls
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /firewalls
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: firewall
+            template: asset
+          record_selector: $.firewalls[*]
+        - coverage:
+            - families:
                 - ssh_key
               high_value: true
               id: ssh_key
@@ -4724,70 +4223,6 @@ entries:
               resource_type: ssh_key
             template: asset
           record_selector: $.ssh_keys[*]
-        - coverage:
-            - families:
-                - action
-              id: action
-              support: partial
-              title: Action
-              type: entity_family
-          event:
-            kind: hetzner.action
-            required_payload_fields:
-              - id
-            schema_ref: hetzner/action/v1
-            urn_kind: hetzner_action
-          event_kind: action
-          id: action
-          id_field: id
-          label: Action
-          list_key: actions
-          method: GET
-          name_field: command
-          pagination:
-            type: none
-          path: /actions
-          projection:
-            fields:
-              id: id
-              name: command
-              resource_id: id
-              resource_name: command
-              resource_type: action
-            template: asset
-          record_selector: $.actions[*]
-        - coverage:
-            - families:
-                - certificate
-              id: certificate
-              support: partial
-              title: Certificate
-              type: entity_family
-          event:
-            kind: hetzner.certificate
-            required_payload_fields:
-              - id
-            schema_ref: hetzner/certificate/v1
-            urn_kind: hetzner_certificate
-          event_kind: certificate
-          id: certificate
-          id_field: id
-          label: Certificate
-          list_key: certificates
-          method: GET
-          name_field: name
-          pagination:
-            type: none
-          path: /certificates
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: certificate
-            template: asset
-          record_selector: $.certificates[*]
       schema_version: cerebro.integration/v1
       scope_options:
         - default_enabled: true
@@ -4797,17 +4232,19 @@ entries:
           label: Placement Group
         - default_enabled: true
           families:
-            - ssh_key
-          id: ssh_key
-          label: Ssh Key
-        - families:
-            - action
-          id: action
-          label: Action
-        - families:
             - certificate
           id: certificate
           label: Certificate
+        - default_enabled: true
+          families:
+            - firewall
+          id: firewall
+          label: Firewall
+        - default_enabled: true
+          families:
+            - ssh_key
+          id: ssh_key
+          label: Ssh Key
       source_id: hetzner
       tenant_id: builtin_catalog
       transport:
@@ -5251,20 +4688,7 @@ entries:
           key: networkid
           label: Networkid
           required: true
-      description: |-
-        The Cisco Meraki Dashboard API is a modern REST API based on the OpenAPI specification.
-
-        > Date: 05 March, 2023
-        >
-        > [Recent Updates](https://meraki.io/whats-new/)
-
-        ---
-
-        [API Documentation](https://meraki.io/api)
-
-        [Community Support](https://meraki.io/community)
-
-        [Meraki Homepage](https://www.meraki.com)
+      description: The Cisco Meraki Dashboard API is a modern REST API based on the OpenAPI specification.
       display_name: Cisco Meraki
       id: builtin_catalog-meraki
       resource_families:
@@ -5453,24 +4877,7 @@ entries:
           key: org_id
           label: Org Id
           required: true
-      description: |-
-        > Version: **0.36.1**
-        >
-        > Date: **March 3, 2022**
-
-        ---
-
-        #### Available Documentation
-        * [Postman](https://documenter.getpostman.com/view/224925/SzYgQufe)
-        * [Open API](https://doc.mist-lab.fr/)
-
-        ---
-        #### Useful links
-        * [Mist Homepage](https://www.mist.com)
-        * [Mist Documentation](https://www.mist.com/documentation)
-        * [Official API Documentation](https://api.mist.com/api/v1/docs/Home) (Mist account required)
-        * [Mist Blog](https://www.mist.com/news/?md_post_type=post)
-        * [Mist Updates](https://www.mist.com/documentation/category/product-updates/)
+      description: '> Version: **0.36.1** > > Date: **March 3, 2022**'
       display_name: Juniper Mist
       id: builtin_catalog-mist
       resource_families:
@@ -6095,51 +5502,7 @@ entries:
           key: endpoint_id
           label: Endpoint Id
           required: true
-      description: |-
-        Welcome to the Svix API documentation!
-
-        Useful links: [Homepage](https://www.svix.com) | [Support email](mailto:support+docs@svix.com) | [Blog](https://www.svix.com/blog/) | [Slack Community](https://www.svix.com/slack/)
-
-        # Introduction
-
-        This is the reference documentation and schemas for the [Svix webhook service](https://www.svix.com) API. For tutorials and other documentation please refer to [the documentation](https://docs.svix.com).
-
-        ## Main concepts
-
-        In Svix you have four important entities you will be interacting with:
-
-        - `messages`: these are the webhooks being sent. They can have contents and a few other properties.
-        - `application`: this is where `messages` are sent to. Usually you want to create one application for each user on your platform.
-        - `endpoint`: endpoints are the URLs messages will be sent to. Each application can have multiple `endpoints` and each message sent to that application will be sent to all of them (unless they are not subscribed to the sent event type).
-        - `event-type`: event types are identifiers denoting the type of the message being sent. Event types are primarily used to decide which events are sent to which endpoint.
-
-
-        ## Authentication
-
-        Get your authentication token (`AUTH_TOKEN`) from the [Svix dashboard](https://dashboard.svix.com) and use it as part of the `Authorization` header as such: `Authorization: Bearer ${AUTH_TOKEN}`.
-
-        <SecurityDefinitions />
-
-
-        ## Code samples
-
-        The code samples assume you already have the respective libraries installed and you know how to use them. For the latest information on how to do that, please refer to [the documentation](https://docs.svix.com/).
-
-
-        ## Idempotency
-
-        Svix supports [idempotency](https://en.wikipedia.org/wiki/Idempotence) for safely retrying requests without accidentally performing the same operation twice. This is useful when an API call is disrupted in transit and you do not receive a response.
-
-        To perform an idempotent request, pass the idempotency key in the `Idempotency-Key` header to the request. The idempotency key should be a unique value generated by the client. You can create the key in however way you like, though we suggest using UUID v4, or any other string with enough entropy to avoid collisions.
-
-        Svix's idempotency works by saving the resulting status code and body of the first request made for any given idempotency key for any successful request. Subsequent requests with the same key return the same result.
-
-        Please note that idempotency is only supported for `POST` requests.
-
-
-        ## Cross-Origin Resource Sharing
-
-        This API features Cross-Origin Resource Sharing (CORS) implemented in compliance with [W3C spec](https://www.w3.org/TR/cors/). And that allows cross-domain communication from the browser. All responses have a wildcard same-origin which makes them completely public and accessible to everyone, including any code on any site.
+      description: Welcome to the Svix API documentation!
       display_name: Svix
       id: builtin_catalog-svix
       resource_families:

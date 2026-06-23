@@ -1,6 +1,32 @@
 package openapigen
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestSummarizeDescriptionStripsExamples(t *testing.T) {
+	raw := "Acme widgets API for managing things.\n\n" +
+		"## Auth\nUse a key like this:\n\n```\ncurl -H \"Authorization: Bearer sk_live_0123456789abcdef0123\" https://api.acme.com\n```\n"
+	got := summarizeDescription(raw)
+	if got != "Acme widgets API for managing things." {
+		t.Fatalf("summarizeDescription = %q, want first paragraph only", got)
+	}
+	if strings.Contains(got, "curl") || strings.Contains(got, "Authorization") || strings.Contains(got, "sk_live") {
+		t.Fatalf("summarizeDescription leaked example auth content: %q", got)
+	}
+}
+
+func TestSummarizeDescriptionCapsLength(t *testing.T) {
+	raw := strings.Repeat("word ", 200)
+	got := summarizeDescription(raw)
+	if len(got) > 405 {
+		t.Fatalf("summarizeDescription length = %d, want capped near 400", len(got))
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Fatalf("expected truncation marker, got %q", got)
+	}
+}
 
 func TestIsHighValueSecurityVocabulary(t *testing.T) {
 	highValue := []struct{ family, path string }{

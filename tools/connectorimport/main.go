@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,15 +55,15 @@ func main() {
 		targets = targets[:limit]
 	}
 
-	client := &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second}
-	registry, err := loadAPIsGuru(client, apisGuruList)
+	f := newFetcher(time.Duration(timeoutSeconds) * time.Second)
+	registry, err := loadAPIsGuru(f, apisGuruList)
 	if err != nil {
 		fail(err)
 	}
 
 	outcomes := make([]connectorimport.Outcome, 0, len(targets))
 	for _, entry := range targets {
-		outcomes = append(outcomes, runTarget(client, registry, entry))
+		outcomes = append(outcomes, runTarget(f, registry, entry))
 	}
 
 	if err := os.MkdirAll(outDir, 0o750); err != nil {
@@ -90,8 +89,8 @@ func main() {
 	printSummary(summary, outcomes)
 }
 
-func runTarget(client *http.Client, registry apisGuruRegistry, entry manifestTarget) connectorimport.Outcome {
-	doc, err := resolveSpec(client, registry, entry)
+func runTarget(f *fetcher, registry apisGuruRegistry, entry manifestTarget) connectorimport.Outcome {
+	doc, err := resolveSpec(f, registry, entry)
 	if err != nil {
 		return connectorimport.Outcome{
 			SourceID: entry.SourceID,

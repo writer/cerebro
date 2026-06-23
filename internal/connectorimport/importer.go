@@ -15,7 +15,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/connectordefinitions/openapigen"
-	"github.com/writer/cerebro/sources/catalogruntime"
 )
 
 // Verdict outcomes used by the funnel. The first three mirror the classifier
@@ -27,9 +26,9 @@ const (
 	VerdictBespokeRequired   = connectordefinitions.SupportVerdictBespokeRequired
 	VerdictGenerationError   = "generation_error"
 	// VerdictRuntimeUnsupported marks definitions the classifier accepts but the
-	// zero-code catalog runtime cannot actually execute (for example a non-GET
-	// list method). The classifier verdict alone does not guarantee a connector
-	// goes live without bespoke code; this is the gate that does.
+	// zero-code catalog runtime cannot execute (for example a non-GET list
+	// method). Generation now forces GET-only listings, which prevents this class
+	// at the source; catalog-check remains the authoritative runtime gate.
 	VerdictRuntimeUnsupported = "runtime_unsupported"
 	// VerdictProofGate marks definitions that load at runtime but fail the
 	// catalog proof gate (family count or high-value coverage) that catalog-check
@@ -111,13 +110,11 @@ func GenerateTarget(doc *openapi3.T, target Target) Outcome {
 	outcome.MissingFeatures = support.MissingFeatures
 	outcome.Definition = definition
 	// A "supported" verdict is necessary but not sufficient for a zero-code live
-	// connector: confirm the catalog runtime can actually construct it, then that
-	// it clears the catalog proof gate that catalog-check enforces.
+	// connector: confirm it also clears the catalog proof gate that catalog-check
+	// enforces. Runtime-loadability is guaranteed by GET-only generation and
+	// verified end-to-end by catalog-check, which owns the sources runtime.
 	if outcome.Verdict == VerdictSupported {
-		if _, err := catalogruntime.NewDefinition(definition); err != nil {
-			outcome.Verdict = VerdictRuntimeUnsupported
-			outcome.Error = err.Error()
-		} else if reason := proofGateReason(definition); reason != "" {
+		if reason := proofGateReason(definition); reason != "" {
 			outcome.Verdict = VerdictProofGate
 			outcome.Error = reason
 		}

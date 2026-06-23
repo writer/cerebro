@@ -1785,7 +1785,7 @@ entries:
           key: id
           label: Id
           required: true
-      description: "## Overview\n\nThe JSON REST API allows you to submit and receive [BulkSMS](https://www.bulksms.com/) messages. You can also get access to past messages and see your account profile.\n\nThe base URL to use for this service is `https://api.bulksms.com/v1`.  The base URL cannot be used on its own; you must append a path that identifies an operation and you may have to specify some path parameters as well.\n\n[Click here](/developer/) to go to the main BulkSMS developer site.\n\nIn order to give you an idea on how the API can be used, some JSON snippets are provided below.  Have a look at the [messages section](#tag/Message) for more information.\n\nProbably the most simple example\n\n```\n{\n    \"to\": \"+27001234567\",\n    \"body\": \"Hello World!\"\n}\n```\n\n\nYou can send unicode automatically using the `auto-unicode` query parameter. \nAlternatively, you can specify `UNICODE` for the `encoding` property in the request body. \nPlease note: when `auto-unicode` is specified and the value of the `encoding` property is `UNICODE`, the message will always be sent as `UNICODE`.\n\nHere is an example that sets the `encoding` explicitly\n\n```\n{\n  \"to\": \"+27001234567\",\n  \"body\": \"Dobrá práce! Jak se máš?\",\n  \"encoding\": \"UNICODE\"\n}\n```\n\nYou can also specify a from number\n\n```\n{\n    \"from\": \"+27007654321\",\n    \"to\": \"+27001234567\",\n    \"body\": \"Hello World!\"\n}\n```\n\nSimilar to above, but repliable\n\n```\n{\n    \"from\": { \"type\": \"REPLIABLE\" },\n    \"to\": \"+27001234567\",\n    \"body\": \"Hello World!\"\n}\n```\n\nA message to a group called Everyone\n\n```\n{\n    \"to\": { \"type\": \"GROUP\", \"name\": \"Everyone\" },\n    \"body\": \"Hello World!\"\n}\n```\n\nA message to multiple recipients\n\n```\n{\n    \"to\": [\"+27001234567\", \"+27002345678\", \"+27003456789\"],\n    \"body\": \"Happy Holidays!\"\n}\n```\n\nSending more than one message in the same request\n\n```\n[\n    {\n        \"to\": \"+27001234567\",\n        \"body\": \"Hello World!\"\n    },\n    {\n        \"to\": \"+27002345678\",\n        \"body\": \"Hello Universe!\"\n    }\n]\n```\n\n**The insecure base URL `http://api.bulksms.com/v1` is deprecated** and may in future result in a `301` redirect response, or insecure requests may be rejected outright. Please use the secure (`https`) URI above.\n\n### HTTP Content Type\n\nAll API methods expect requests to supply a `Content-Type` header with the value `application/json`. All responses will have the `Content-Type` header set to `application/json`.\n\n### JSON Formatting\n\nYou are advised to format your JSON resources according to strict JSON format rules. While the API does attempt to parse strictly invalid JSON documents, doing so may lead to incorrect interpretation and unexpected results.\n\nGood JSON libraries will produce valid JSON suitable for submission, but if you are manually generating the JSON text, be careful to follow the JSON format. This include correct escaping of control characters and double quoting of property names.\n\nSee the [JSON specification](https://tools.ietf.org/html/rfc4627) for further information.\n\n### Date Formatting\n\nDates are formatted according to ISO-8601, such as `1970-01-01T10:00:00+01:00` for 1st January 1970, 10AM UTC+1.\n\nSee the [Wikipedia ISO 8601 reference](https://en.wikipedia.org/wiki/ISO_8601) for further information.\n\nSpecifically, calendar dates are formatted with the 'extended' format `YYYY-MM-DD`. Basic format, week dates and ordinal dates are not supported. Times are also formatted in the 'extended' format `hh:mm:ss`. Hours, minutes and seconds are mandatory. Offset from UTC must be provided; this is to ensure that there is no misunderstanding regarding times provided to the API.\n\nThe format we look for is `yyyy-MM-ddThh:mm:ss[Z|[+-]hh:mm]`\n\nExamples of valid date/times are`2011-12-31T12:00:00Z` `2011-12-31T12:00:00+02:00`\n\n### Entity Format Modifications\n\nIt is expected that over time some changes will be made to the request and response formats of various methods available in the API.\nWhere possible, these will be implemented in a backwards compatible way.\nTo make this possible you are required to ignore unknown properties.\nThis enables the addition of information in response documents while maintaining compatibility with older clients.\n\n### Optional Request Entity Properties\n\nThere are many instances where requests can be made without having to specify every single property allowable in the request format.\nAny such optional properties are noted as such in the documentation and their default value is noted."
+      description: '## Overview'
       display_name: BulkSMS
       id: builtin_catalog-bulksms
       resource_families:
@@ -2175,63 +2175,7 @@ entries:
         requires_references: true
       categories:
         - saas
-      description: |-
-        This page contains the documentation on how to use Discourse through API calls.
-
-        > Note: For any endpoints not listed you can follow the
-        [reverse engineer the Discourse API](https://meta.discourse.org/t/-/20576)
-        guide to figure out how to use an API endpoint.
-
-        ### Request Content-Type
-
-        The Content-Type for POST and PUT requests can be set to `application/x-www-form-urlencoded`,
-        `multipart/form-data`, or `application/json`.
-
-        ### Endpoint Names and Response Content-Type
-
-        Most API endpoints provide the same content as their HTML counterparts. For example
-        the URL `/categories` serves a list of categories, the `/categories.json` API provides the
-        same information in JSON format.
-
-        Instead of sending API requests to `/categories.json` you may also send them to `/categories`
-        and add an `Accept: application/json` header to the request to get the JSON response.
-        Sending requests with the `Accept` header is necessary if you want to use URLs
-        for related endpoints returned by the API, such as pagination URLs.
-        These URLs are returned without the `.json` prefix so you need to add the header in
-        order to get the correct response format.
-
-        ### Authentication
-
-        Some endpoints do not require any authentication, pretty much anything else will
-        require you to be authenticated.
-
-        To become authenticated you will need to create an API Key from the admin panel.
-
-        Once you have your API Key you can pass it in along with your API Username
-        as an HTTP header like this:
-
-        ```
-        curl -X GET "http://127.0.0.1:3000/admin/users/list/active.json" \
-        -H "Api-Key: 714552c6148e1617aeab526d0606184b94a80ec048fc09894ff1a72b740c5f19" \
-        -H "Api-Username: system"
-        ```
-
-        and this is how POST requests will look:
-
-        ```
-        curl -X POST "http://127.0.0.1:3000/categories" \
-        -H "Content-Type: multipart/form-data;" \
-        -H "Api-Key: 714552c6148e1617aeab526d0606184b94a80ec048fc09894ff1a72b740c5f19" \
-        -H "Api-Username: system" \
-        -F "name=89853c20-4409-e91a-a8ea-f6cdff96aaaa" \
-        -F "color=49d9e9" \
-        -F "text_color=f0fcfd"
-        ```
-
-        ### Boolean values
-
-        If an endpoint accepts a boolean be sure to specify it as a lowercase
-        `true` or `false` value unless noted otherwise.
+      description: This page contains the documentation on how to use Discourse through API calls.
       display_name: Discourse
       id: builtin_catalog-discourse
       resource_families:
@@ -2431,7 +2375,7 @@ entries:
           key: customer_id
           label: Customer Id
           required: true
-      description: REST Web Services for DRACOON<br><br>This page provides an overview of all available and documented DRACOON APIs, which are grouped by tags.<br>Each tag provides a collection of APIs that are intended for a specific area of the DRACOON.<br><br><a title='Developer Information' href='https://developer.dracoon.com'>Developer Information</a>&emsp;&emsp;<a title='Get SDKs on GitHub' href='https://github.com/dracoon'>Get SDKs on GitHub</a><br><br><a title='Terms of service' href='https://www.dracoon.com/terms/general-terms-and-conditions/'>Terms of service</a>
+      description: REST Web Services for DRACOON<br><br>This page provides an overview of all available and documented DRACOON APIs, which are grouped by tags.<br>Each tag provides a collection of APIs that are intended for a specific area of the DRACOON.<br><br><a title='Developer Information' href='https://developer.dracoon.com'>Developer Information</a>&emsp;&emsp;<a title='Get SDKs on GitHub'...
       display_name: DRACOON
       id: builtin_catalog-dracoon
       resource_families:
@@ -2848,7 +2792,7 @@ entries:
           key: accountid
           label: Accountid
           required: true
-      description: "# Introduction\n\nWelcome to the documentation for the Sakari Messaging REST API. \n\nSakari provides an advanced platform to drive large scale customized SMS communication\n\nREST is a web-service protocol that lends itself to rapid development by using everyday HTTP and JSON technology.\n\nTo find out more about our product offering, please visit [https://sakari.io](https://sakari.io).\n\n# Quickstart\n\nFor your convenience we have created a quickstart guide to get you up and running in 5 minutes. \n\n[https://sakari.io/blog/sakari-api-quickstart](https://sakari.io/blog/sakari-api-quickstart)\n\n# PostMan Collection\n\nWe've created a simple set of examples using [PostMan](https://www.getpostman.com/) Simply click below to import these. You will need to setup three environment variables in PostMan - AccountId, ClientId and ClientSecret. Check out our PostMan blog post for more information\n\n[![Run in Postman](https://run.pstmn.io/button.svg)](https://app.getpostman.com/run-collection/d616e273edc916a7a6eb)\n\n# Finding your client id, client secret and account id\n\nTo authenticate against the API's you will need three key pieces of data\n - client id\n - client secret\n - account id\n\nTo retrieve these, simply login into [https://hub.sakari.io](https://hub.sakari.io) and click on the \"cog\" in the top right corner. In the popup dialog at the bottom you should see your API credentials and account id. If these are not visible you will need to click on \"Request Credentials\"\n\n# Versioning\n\nWith any breaking changes we will introduce a new version of the API. The latest version is v1.\n\nThe API uses an open schema model, which means server may add extra properties to responses. Likewise, the server will ignore any extra query parameters and request body properties. When you write clients, you need to ignore additional properties in responses to ensure they do not break.\n\n# Testing\n\nThere are numerous tools available for testing the API's. We will include examples using curl and the client SDKs that we have created. If you would like to see an SDK in a language not currently available, please let us know.\n\n# Throttling / Limits\n\nOur API's have been specifically designed to support bulk messaging in a single API call. We therefore impose limits on the frequency of calling the APIs to prevent abuse or runaway processes. If you feel you need a higher limit, please contact us. If you hit the limit you will get a 429 error code returned from our servers\n\n# Errors\n\nThe API uses standard HTTP status codes to indicate the success or failure of the API call. The body of the response will be JSON in the following format:\n\n```\n{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"CONT-001\",\n    \"message\": \"Invalid mobile number\"\n  }\n}\n```\n\n# Pagination\n\nFor performance, most GET calls return a subset of data. This data is paginated for easy access. Most APIs which return collections of data will return a pagination object as such:\n\n```\n{\n  \"pagination\": {\n    \"offset\": 0,\n    \"limit\": 10\n    \"totalCount\": 21\n  }  \n}\n```\n\nWhen making calls to the API, you can adjust the slice of data returned using query parameters such as:\n\n`` https://api.sakari.io/v1/accounts/123/contacts?offset=20&limit=25 ``\n\nThis will return 25 contacts with an offset of 20."
+      description: '# Introduction'
       display_name: Sakari
       id: builtin_catalog-sakari
       resource_families:
@@ -3037,6 +2981,207 @@ entries:
             - 200
           method: GET
           path: /v1/accounts/${config.accountid}/webhooks
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: The Beta endpoints for the new Email Activity APIs - functionality is subject to change without notice. You may not have access to this Beta endpoint.
+      display_name: SendGrid
+      id: builtin_catalog-sendgrid
+      resource_families:
+        - coverage:
+            - families:
+                - activity
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Activity
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: sendgrid.activity
+            required_payload_fields:
+              - allowed
+            schema_ref: sendgrid/activity/v1
+            urn_kind: sendgrid_activity
+          event_kind: activity
+          id: activity
+          id_field: allowed
+          label: Activity
+          list_key: result
+          method: GET
+          name_field: allowed
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /access_settings/activity
+          permissions_needed:
+            - Authorization
+          projection:
+            fields:
+              id: allowed
+              name: allowed
+              provider_id: allowed
+            template: audit_event
+          record_selector: $.result[*]
+        - coverage:
+            - families:
+                - api_key
+              high_value: true
+              id: secrets
+              support: partial
+              title: Api Key
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: sendgrid.api_key
+            required_payload_fields:
+              - name
+            schema_ref: sendgrid/api_key/v1
+            urn_kind: sendgrid_api_key
+          event_kind: api_key
+          id: api_key
+          id_field: name
+          label: Api Key
+          list_key: result
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api_keys
+          permissions_needed:
+            - Authorization
+          projection:
+            fields:
+              id: name
+              name: name
+              secret_id: name
+              secret_name: name
+              secret_type: api_key
+            template: secret
+          record_selector: $.result[*]
+        - coverage:
+            - families:
+                - group
+              high_value: true
+              id: group
+              support: partial
+              title: Group
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: sendgrid.group
+            required_payload_fields:
+              - id
+            schema_ref: sendgrid/group/v1
+            urn_kind: sendgrid_group
+          event_kind: group
+          id: group
+          id_field: id
+          label: Group
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /asm/groups
+          permissions_needed:
+            - Authorization
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - invalid_email
+              high_value: true
+              id: invalid_email
+              support: partial
+              title: Invalid Email
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: sendgrid.invalid_email
+            required_payload_fields:
+              - email
+            schema_ref: sendgrid/invalid_email/v1
+            urn_kind: sendgrid_invalid_email
+          event_kind: invalid_email
+          id: invalid_email
+          id_field: email
+          label: Invalid Email
+          method: GET
+          name_field: email
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /suppression/invalid_emails
+          permissions_needed:
+            - Authorization
+          projection:
+            fields:
+              id: email
+              name: email
+              provider_id: email
+            template: identity_user
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - activity
+          id: activity
+          label: Activity
+        - default_enabled: true
+          families:
+            - api_key
+          id: api_key
+          label: Api Key
+        - default_enabled: true
+          families:
+            - group
+          id: group
+          label: Group
+        - default_enabled: true
+          families:
+            - invalid_email
+          id: invalid_email
+          label: Invalid Email
+      source_id: sendgrid
+      tenant_id: builtin_catalog
+      transport:
+        base_url: http://api.sendgrid.com/v3
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /access_settings/activity
   - classifier_output: supported
     definition:
       auth:
@@ -3626,27 +3771,29 @@ entries:
           record_selector: $.errors[*]
         - coverage:
             - families:
-                - profile
-              id: profile
+                - invite
+              high_value: true
+              id: invite
               support: partial
-              title: Profile
+              title: Invite
               type: entity_family
+          default_enabled: true
           event:
-            kind: whatsapp.profile
+            kind: whatsapp.invite
             required_payload_fields:
               - code
-            schema_ref: whatsapp/profile/v1
-            urn_kind: whatsapp_profile
-          event_kind: profile
-          id: profile
+            schema_ref: whatsapp/invite/v1
+            urn_kind: whatsapp_invite
+          event_kind: invite
+          id: invite
           id_field: code
-          label: Profile
+          label: Invite
           list_key: errors
           method: GET
           name_field: title
           pagination:
             type: none
-          path: /settings/business/profile
+          path: /groups/${config.groupid}/invite
           permissions_needed:
             - bearerAuth
           projection:
@@ -3655,7 +3802,7 @@ entries:
               name: title
               resource_id: code
               resource_name: title
-              resource_type: profile
+              resource_type: invite
             template: asset
           record_selector: $.errors[*]
         - coverage:
@@ -3704,10 +3851,11 @@ entries:
             - user
           id: user
           label: User
-        - families:
-            - profile
-          id: profile
-          label: Profile
+        - default_enabled: true
+          families:
+            - invite
+          id: invite
+          label: Invite
         - default_enabled: true
           families:
             - group_2
@@ -3929,209 +4077,3 @@ entries:
             - 200
           method: GET
           path: /subaccounts
-  - classifier_output: supported
-    definition:
-      auth:
-        credential_fields:
-          - key: api_key
-            label: API key
-            reference_only: true
-            required: true
-            secret: true
-        model: api_key
-        requires_references: true
-      categories:
-        - saas
-      description: |-
-        The Beta endpoints for the new Email Activity APIs - functionality is subject to change without notice. You may not have access to this Beta endpoint.
-
-        Email Activity offers filtering and search by event type for two days worth of data. There is an optional add-on to store 60 days worth of data. This add-on also gives you access to the ability to download a CSV of the 60 days worth of email event data. The Beta endpoints for the new Email Activity APIs - functionality is subject to change without notice. You may not have access to this Beta endpoint.
-
-        Email Activity offers filtering and search by event type for two days worth of data. There is an optional add-on to store 60 days worth of data. This add-on also gives you access to the ability to download a CSV of the 60 days worth of email event data.
-      display_name: SendGrid
-      id: builtin_catalog-sendgrid
-      resource_families:
-        - coverage:
-            - families:
-                - activity
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Activity
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: sendgrid.activity
-            required_payload_fields:
-              - allowed
-            schema_ref: sendgrid/activity/v1
-            urn_kind: sendgrid_activity
-          event_kind: activity
-          id: activity
-          id_field: allowed
-          label: Activity
-          list_key: result
-          method: GET
-          name_field: allowed
-          pagination:
-            page_size: 100
-            page_size_param: limit
-            type: page
-          path: /access_settings/activity
-          permissions_needed:
-            - Authorization
-          projection:
-            fields:
-              id: allowed
-              name: allowed
-              provider_id: allowed
-            template: audit_event
-          record_selector: $.result[*]
-        - coverage:
-            - families:
-                - api_key
-              high_value: true
-              id: secrets
-              support: partial
-              title: Api Key
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: sendgrid.api_key
-            required_payload_fields:
-              - name
-            schema_ref: sendgrid/api_key/v1
-            urn_kind: sendgrid_api_key
-          event_kind: api_key
-          id: api_key
-          id_field: name
-          label: Api Key
-          list_key: result
-          method: GET
-          name_field: name
-          pagination:
-            page_size: 100
-            page_size_param: limit
-            type: page
-          path: /api_keys
-          permissions_needed:
-            - Authorization
-          projection:
-            fields:
-              id: name
-              name: name
-              secret_id: name
-              secret_name: name
-              secret_type: api_key
-            template: secret
-          record_selector: $.result[*]
-        - coverage:
-            - families:
-                - group
-              high_value: true
-              id: group
-              support: partial
-              title: Group
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: sendgrid.group
-            required_payload_fields:
-              - id
-            schema_ref: sendgrid/group/v1
-            urn_kind: sendgrid_group
-          event_kind: group
-          id: group
-          id_field: id
-          label: Group
-          method: GET
-          name_field: name
-          pagination:
-            type: none
-          path: /asm/groups
-          permissions_needed:
-            - Authorization
-          projection:
-            fields:
-              id: id
-              name: name
-              provider_id: id
-            template: identity_group
-          record_selector: $[*]
-        - coverage:
-            - families:
-                - invalid_email
-              high_value: true
-              id: invalid_email
-              support: partial
-              title: Invalid Email
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: sendgrid.invalid_email
-            required_payload_fields:
-              - email
-            schema_ref: sendgrid/invalid_email/v1
-            urn_kind: sendgrid_invalid_email
-          event_kind: invalid_email
-          id: invalid_email
-          id_field: email
-          label: Invalid Email
-          method: GET
-          name_field: email
-          pagination:
-            limit_param: limit
-            offset_param: offset
-            page_size: 100
-            type: offset
-          path: /suppression/invalid_emails
-          permissions_needed:
-            - Authorization
-          projection:
-            fields:
-              id: email
-              name: email
-              provider_id: email
-            template: identity_user
-          record_selector: $[*]
-      schema_version: cerebro.integration/v1
-      scope_options:
-        - default_enabled: true
-          families:
-            - activity
-          id: activity
-          label: Activity
-        - default_enabled: true
-          families:
-            - api_key
-          id: api_key
-          label: Api Key
-        - default_enabled: true
-          families:
-            - group
-          id: group
-          label: Group
-        - default_enabled: true
-          families:
-            - invalid_email
-          id: invalid_email
-          label: Invalid Email
-      source_id: sendgrid
-      tenant_id: builtin_catalog
-      transport:
-        base_url: http://api.sendgrid.com/v3
-        retry:
-          backoff: exponential
-          max_attempts: 3
-          retry_after_header: Retry-After
-          statuses:
-            - 429
-            - 500
-            - 502
-            - 503
-            - 504
-        verification:
-          expect_status:
-            - 200
-          method: GET
-          path: /access_settings/activity

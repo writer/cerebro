@@ -5,8 +5,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"unicode"
@@ -18,7 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func resolveSpec(client *http.Client, registry apisGuruRegistry, entry manifestTarget) (*openapi3.T, error) {
+func resolveSpec(f *fetcher, registry apisGuruRegistry, entry manifestTarget) (*openapi3.T, error) {
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = false
 	switch {
@@ -29,20 +27,20 @@ func resolveSpec(client *http.Client, registry apisGuruRegistry, entry manifestT
 		}
 		return parseSpec(loader, payload)
 	case strings.TrimSpace(entry.SpecURL) != "":
-		return loadSpecFromURL(client, loader, entry.SpecURL)
+		return loadSpecFromURL(f, loader, entry.SpecURL)
 	case strings.TrimSpace(entry.APIsGuru) != "":
 		specURL, err := registry.specURL(entry.APIsGuru)
 		if err != nil {
 			return nil, err
 		}
-		return loadSpecFromURL(client, loader, specURL)
+		return loadSpecFromURL(f, loader, specURL)
 	default:
 		return nil, fmt.Errorf("target %q has no spec_file, spec_url, or apis_guru source", entry.SourceID)
 	}
 }
 
-func loadSpecFromURL(client *http.Client, loader *openapi3.Loader, specURL string) (*openapi3.T, error) {
-	payload, err := fetch(client, specURL)
+func loadSpecFromURL(f *fetcher, loader *openapi3.Loader, specURL string) (*openapi3.T, error) {
+	payload, err := f.get(specURL)
 	if err != nil {
 		return nil, err
 	}
@@ -123,23 +121,4 @@ func yamlToJSON(payload []byte) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(generic)
-}
-
-func fetch(client *http.Client, rawURL string) ([]byte, error) {
-	if !strings.HasPrefix(rawURL, "https://") {
-		return nil, fmt.Errorf("refusing non-https spec url %q", rawURL)
-	}
-	response, err := client.Get(rawURL) //nolint:noctx // build-time codegen tool; per-request timeout set on client.
-	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch %s: HTTP %d", rawURL, response.StatusCode)
-	}
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxSpecBytes))
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", rawURL, err)
-	}
-	return payload, nil
 }

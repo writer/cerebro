@@ -2342,7 +2342,7 @@ entries:
           key: logid
           label: Logid
           required: true
-      description: This is the public REST API for elmah.io. All of the integrations communicates with elmah.io through this API.<br/><br/>For additional help getting started with the API, visit the following help articles:<br/><ul><li>[Using the REST API](https://docs.elmah.io/using-the-rest-api/)</li><li>[Where is my API key?](https://docs.elmah.io/where-is-my-api-key/)</li><li>[Where is my log ID?](https://docs.elmah.io/where-is-my-log-id/)</li><li>[How to configure API key permissions](https://docs.elmah.io/how-to-configure-api-key-permissions/)</li></ul>
+      description: This is the public REST API for elmah.io. All of the integrations communicates with elmah.io through this API.<br/><br/>For additional help getting started with the API, visit the following help articles:<br/><ul><li>[Using the REST API](https://docs.elmah.io/using-the-rest-api/)</li><li>[Where is my API key?](https://docs.elmah.io/where-is-my-api-key/)</li><li>[Where is my log...
       display_name: elmah.io
       id: builtin_catalog-elmah
       resource_families:
@@ -2550,10 +2550,7 @@ entries:
           key: orgid
           label: Orgid
           required: true
-      description: |-
-        # Authentication
-
-        &lt;!-- ReDoc-Inject: &lt;security-definitions&gt; --&gt;
+      description: '# Authentication'
       display_name: InfluxDB
       id: builtin_catalog-influxdata
       resource_families:
@@ -2734,6 +2731,199 @@ entries:
   - classifier_output: supported
     definition:
       auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: The general-purpose API
+      display_name: Neutrino API
+      id: builtin_catalog-neutrinoapi
+      resource_families:
+        - coverage:
+            - families:
+                - ip_blocklist
+              id: ip_blocklist
+              support: partial
+              title: Ip Blocklist
+              type: entity_family
+          event:
+            kind: neutrinoapi.ip_blocklist
+            required_payload_fields:
+              - id
+            schema_ref: neutrinoapi/ip_blocklist/v1
+            urn_kind: neutrinoapi_ip_blocklist
+          event_kind: ip_blocklist
+          id: ip_blocklist
+          id_field: id
+          label: Ip Blocklist
+          list_key: blocklists
+          method: GET
+          pagination:
+            type: none
+          path: /ip-blocklist
+          permissions_needed:
+            - api-key
+            - user-id
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: ip_blocklist
+            template: asset
+          record_selector: $.blocklists[*]
+        - coverage:
+            - families:
+                - host_reputation
+              high_value: true
+              id: host_reputation
+              support: partial
+              title: Host Reputation
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: neutrinoapi.host_reputation
+            required_payload_fields:
+              - is-listed
+            schema_ref: neutrinoapi/host_reputation/v1
+            urn_kind: neutrinoapi_host_reputation
+          event_kind: host_reputation
+          id: host_reputation
+          id_field: is-listed
+          label: Host Reputation
+          list_key: lists
+          method: GET
+          name_field: is-listed
+          pagination:
+            type: none
+          path: /host-reputation
+          permissions_needed:
+            - api-key
+            - user-id
+          projection:
+            fields:
+              id: is-listed
+              name: is-listed
+              resource_id: is-listed
+              resource_name: is-listed
+              resource_type: host_reputation
+            template: asset
+          record_selector: $.lists[*]
+        - coverage:
+            - families:
+                - bin_lookup
+              id: bin_lookup
+              support: partial
+              title: Bin Lookup
+              type: entity_family
+          event:
+            kind: neutrinoapi.bin_lookup
+            required_payload_fields:
+              - id
+            schema_ref: neutrinoapi/bin_lookup/v1
+            urn_kind: neutrinoapi_bin_lookup
+          event_kind: bin_lookup
+          id: bin_lookup
+          id_field: id
+          label: Bin Lookup
+          list_key: ip-blocklists
+          method: GET
+          pagination:
+            type: none
+          path: /bin-lookup
+          permissions_needed:
+            - api-key
+            - user-id
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: bin_lookup
+            template: asset
+          record_selector: $.ip-blocklists[*]
+        - coverage:
+            - families:
+                - geocode_address
+              id: geocode_address
+              support: partial
+              title: Geocode Address
+              type: entity_family
+          event:
+            kind: neutrinoapi.geocode_address
+            required_payload_fields:
+              - address
+            schema_ref: neutrinoapi/geocode_address/v1
+            urn_kind: neutrinoapi_geocode_address
+          event_kind: geocode_address
+          id: geocode_address
+          id_field: address
+          label: Geocode Address
+          list_key: locations
+          method: GET
+          name_field: address
+          pagination:
+            type: none
+          path: /geocode-address
+          permissions_needed:
+            - api-key
+            - user-id
+          projection:
+            fields:
+              id: address
+              name: address
+              resource_id: address
+              resource_name: address
+              resource_type: geocode_address
+            template: asset
+          record_selector: $.locations[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - families:
+            - ip_blocklist
+          id: ip_blocklist
+          label: Ip Blocklist
+        - default_enabled: true
+          families:
+            - host_reputation
+          id: host_reputation
+          label: Host Reputation
+        - families:
+            - bin_lookup
+          id: bin_lookup
+          label: Bin Lookup
+        - families:
+            - geocode_address
+          id: geocode_address
+          label: Geocode Address
+      source_id: neutrinoapi
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://neutrinoapi.net
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /ip-blocklist
+  - classifier_output: supported
+    definition:
+      auth:
         authorization_url: https://connect.signl4.com/identity/connect/authorize
         credential_fields:
           - key: oauth_client_reference
@@ -2758,7 +2948,7 @@ entries:
           key: teamid
           label: Teamid
           required: true
-      description: '<p>Use our API for systems integration or to build your own use cases. Sample scenarios include but are not limited to:</p><ul><li>2-way integration: Triggering of Signls and updates in the third party systems when alert state changes occur</li><li>Retrieving alarms for logging purposes</li><li>Calendar integrations: Creation and management of on-call duties</li><li>Punch users in and out based on external calendars</li><li>etc.</li></ul><p>AUTHENTICATION<br>Using the API requires an API key, which you can generate in the SIGNL4 portal under ''Developers''.<br>This key must then be specified in a special header in every HTTP request.<br>This header is called <b style=''color:#F8B41F''>X-S4-Api-Key</b>.<br><br>The base URL of the API is <a rel=''noopener noreferrer'' target=''_blank'' href=''https://connect.signl4.com/api/''>https://connect.signl4.com/api/</a>.<br>Copyright © Derdack GmbH<br></p>'
+      description: '<p>Use our API for systems integration or to build your own use cases. Sample scenarios include but are not limited to:</p><ul><li>2-way integration: Triggering of Signls and updates in the third party systems when alert state changes occur</li><li>Retrieving alarms for logging purposes</li><li>Calendar integrations: Creation and management of on-call duties</li><li>Punch users in and out based...'
       display_name: SIGNL4
       id: builtin_catalog-signl4
       resource_families:
@@ -2964,50 +3154,7 @@ entries:
           key: ip_address
           label: Ip Address
           required: true
-      description: |-
-        The public API open to the users. [Read the docs and learn more.](https://threatjammer.com/docs).
-
-        ## General information
-
-        ### Description
-        Threat Jammer supports two end-user REST APIs: the User API and the Report API. The end-user uses the User API to interact with the different databases, heuristics, and machine learning processes. Devices use the Report API to interact with Threat Jammer. This document will explain how to use the User API and interact with the different services, create a token, interpret the quota information, and create the HTTP request to interact with the User API.
-
-        ### Authentication
-        The API is protected by a **Bearer authentication** schema. **Bearer authentication** (also called **token authentication**) is an HTTP authentication scheme that involves security tokens called bearer tokens. It is used to authenticate the user. All the different endpoints expect a `Bearer` token in the `Authorization` header.
-
-        Example:
-
-        ```
-        curl -X 'GET'
-          'https://dublin.api.threatjammer.com/test'
-          -H 'accept: application/json'
-          -H 'Authorization: Bearer YOUR_API_KEY'
-        ```
-
-        You can obtain a token after registering on the [ThreatJammer.com](https://threatjammer.com) website for free.
-
-
-        ### Region specific tokens
-        All the `Bearer` tokens contain information about the authorized region. The developers have to use a token created for the region they want to use. A token used in a different region will return a `401 Unauthorized` error.
-
-        ### Global errors
-
-        The API will return the following permanent errors:
-        - a `401 Unauthorized` error if the token is not valid, or does not belong to the region.
-        - a `401 Unauthorized` error if the token does not exist.
-        - a `401 Unauthorized` error if the token is malformed.
-        - a `403 Forbidden` error if the subscription level is not enough. Some endpoints are only available for paid subscription levels.
-
-        And these temporary errors:
-        - a `429 Too Many Requests` error if the quota is exceeded (see below).
-
-        ### Quota limits
-
-        **Every request to the User API will consume one (1) quota point.**
-
-        The API has two rate limiting processes:
-        - a quota limit of **5000** requests per month for the `FREE` account. The limit is reset every month.
-        - a quota limit of **10** requests per minute for the `FREE` account. The limit is reset every minute and implements a sliding window mechanism.
+      description: The public API open to the users. [Read the docs and learn more.](https://threatjammer.com/docs).
       display_name: ThreatJammer
       id: builtin_catalog-threatjammer
       resource_families:
@@ -3214,14 +3361,7 @@ entries:
           key: team
           label: Team
           required: true
-      description: |-
-        This API allows you to interact with the VictorOps platform in various ways. Your account may be limited
-        to a total number of API calls per month. Also, some of these API calls have rate limits.
-
-        NOTE: In this documentation when creating a sample curl request (clicking the TRY IT OUT! button), in some API
-        viewing interfaces, the '@' in an email address may be encoded. Please note that the REST endpoints will not
-        process the encoded version. Make sure that the encoded character '%40' is changed to its unencoded form before
-        submitting the curl request.
+      description: This API allows you to interact with the VictorOps platform in various ways. Your account may be limited to a total number of API calls per month. Also, some of these API calls have rate limits.
       display_name: VictorOps
       id: builtin_catalog-victorops
       resource_families:
@@ -3401,196 +3541,3 @@ entries:
             - 200
           method: GET
           path: /api-reporting/v1/team/${config.team}/oncall/log
-  - classifier_output: supported
-    definition:
-      auth:
-        credential_fields:
-          - key: api_key
-            label: API key
-            reference_only: true
-            required: true
-            secret: true
-        model: api_key
-        requires_references: true
-      categories:
-        - saas
-      description: The general-purpose API
-      display_name: Neutrino API
-      id: builtin_catalog-neutrinoapi
-      resource_families:
-        - coverage:
-            - families:
-                - ip_blocklist
-              id: ip_blocklist
-              support: partial
-              title: Ip Blocklist
-              type: entity_family
-          event:
-            kind: neutrinoapi.ip_blocklist
-            required_payload_fields:
-              - id
-            schema_ref: neutrinoapi/ip_blocklist/v1
-            urn_kind: neutrinoapi_ip_blocklist
-          event_kind: ip_blocklist
-          id: ip_blocklist
-          id_field: id
-          label: Ip Blocklist
-          list_key: blocklists
-          method: GET
-          pagination:
-            type: none
-          path: /ip-blocklist
-          permissions_needed:
-            - api-key
-            - user-id
-          projection:
-            fields:
-              id: id
-              resource_id: id
-              resource_name: id
-              resource_type: ip_blocklist
-            template: asset
-          record_selector: $.blocklists[*]
-        - coverage:
-            - families:
-                - host_reputation
-              high_value: true
-              id: host_reputation
-              support: partial
-              title: Host Reputation
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: neutrinoapi.host_reputation
-            required_payload_fields:
-              - is-listed
-            schema_ref: neutrinoapi/host_reputation/v1
-            urn_kind: neutrinoapi_host_reputation
-          event_kind: host_reputation
-          id: host_reputation
-          id_field: is-listed
-          label: Host Reputation
-          list_key: lists
-          method: GET
-          name_field: is-listed
-          pagination:
-            type: none
-          path: /host-reputation
-          permissions_needed:
-            - api-key
-            - user-id
-          projection:
-            fields:
-              id: is-listed
-              name: is-listed
-              resource_id: is-listed
-              resource_name: is-listed
-              resource_type: host_reputation
-            template: asset
-          record_selector: $.lists[*]
-        - coverage:
-            - families:
-                - bin_lookup
-              id: bin_lookup
-              support: partial
-              title: Bin Lookup
-              type: entity_family
-          event:
-            kind: neutrinoapi.bin_lookup
-            required_payload_fields:
-              - id
-            schema_ref: neutrinoapi/bin_lookup/v1
-            urn_kind: neutrinoapi_bin_lookup
-          event_kind: bin_lookup
-          id: bin_lookup
-          id_field: id
-          label: Bin Lookup
-          list_key: ip-blocklists
-          method: GET
-          pagination:
-            type: none
-          path: /bin-lookup
-          permissions_needed:
-            - api-key
-            - user-id
-          projection:
-            fields:
-              id: id
-              resource_id: id
-              resource_name: id
-              resource_type: bin_lookup
-            template: asset
-          record_selector: $.ip-blocklists[*]
-        - coverage:
-            - families:
-                - geocode_address
-              id: geocode_address
-              support: partial
-              title: Geocode Address
-              type: entity_family
-          event:
-            kind: neutrinoapi.geocode_address
-            required_payload_fields:
-              - address
-            schema_ref: neutrinoapi/geocode_address/v1
-            urn_kind: neutrinoapi_geocode_address
-          event_kind: geocode_address
-          id: geocode_address
-          id_field: address
-          label: Geocode Address
-          list_key: locations
-          method: GET
-          name_field: address
-          pagination:
-            type: none
-          path: /geocode-address
-          permissions_needed:
-            - api-key
-            - user-id
-          projection:
-            fields:
-              id: address
-              name: address
-              resource_id: address
-              resource_name: address
-              resource_type: geocode_address
-            template: asset
-          record_selector: $.locations[*]
-      schema_version: cerebro.integration/v1
-      scope_options:
-        - families:
-            - ip_blocklist
-          id: ip_blocklist
-          label: Ip Blocklist
-        - default_enabled: true
-          families:
-            - host_reputation
-          id: host_reputation
-          label: Host Reputation
-        - families:
-            - bin_lookup
-          id: bin_lookup
-          label: Bin Lookup
-        - families:
-            - geocode_address
-          id: geocode_address
-          label: Geocode Address
-      source_id: neutrinoapi
-      tenant_id: builtin_catalog
-      transport:
-        base_url: https://neutrinoapi.net
-        retry:
-          backoff: exponential
-          max_attempts: 3
-          retry_after_header: Retry-After
-          statuses:
-            - 429
-            - 500
-            - 502
-            - 503
-            - 504
-        verification:
-          expect_status:
-            - 200
-          method: GET
-          path: /ip-blocklist

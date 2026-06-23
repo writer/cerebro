@@ -4,7 +4,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 )
@@ -42,7 +41,7 @@ func (r apisGuruRegistry) specURL(key string) (string, error) {
 	return "", fmt.Errorf("apis_guru key %q has no resolvable spec url", key)
 }
 
-func loadAPIsGuru(client *http.Client, cachePath string) (apisGuruRegistry, error) {
+func loadAPIsGuru(f *fetcher, cachePath string) (apisGuruRegistry, error) {
 	var payload []byte
 	var err error
 	if strings.TrimSpace(cachePath) != "" {
@@ -51,7 +50,7 @@ func loadAPIsGuru(client *http.Client, cachePath string) (apisGuruRegistry, erro
 			return nil, fmt.Errorf("read apisguru cache: %w", err)
 		}
 	} else {
-		payload, err = fetch(client, apisGuruListURL)
+		payload, err = f.get(apisGuruListURL)
 		if err != nil {
 			// A missing registry is only fatal when a target needs it; defer.
 			return apisGuruRegistry{}, nil

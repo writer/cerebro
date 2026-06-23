@@ -76,7 +76,7 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 	}
 	sourceID := normalizeID(firstNonEmpty(request.SourceID, infoTitle(doc), "openapi_source"))
 	displayName := strings.TrimSpace(firstNonEmpty(request.DisplayName, infoTitle(doc), titleFromID(sourceID)))
-	description := strings.TrimSpace(firstNonEmpty(request.Description, infoDescription(doc), "Generated from an OpenAPI description."))
+	description := summarizeDescription(firstNonEmpty(request.Description, infoDescription(doc), "Generated from an OpenAPI description."))
 	tenantID := normalizeID(firstNonEmpty(request.TenantID, defaultTenantID))
 	baseURL, baseURLConfigField := inferBaseURL(doc, request.BaseURL)
 	auth := inferAuth(doc, request.AuthModel)
@@ -1052,6 +1052,39 @@ func infoDescription(doc *openapi3.T) string {
 		return ""
 	}
 	return doc.Info.Description
+}
+
+// summarizeDescription reduces an OpenAPI info.description (frequently a
+// multi-page onboarding document with curl/auth examples and OAuth walkthroughs)
+// to a concise, single-paragraph connector summary. Besides keeping catalog
+// entries readable, this stops example credentials and auth headers embedded in
+// spec descriptions from being copied into the catalog (which secret scanners
+// flag as leaks).
+func summarizeDescription(raw string) string {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return ""
+	}
+	// Drop everything from the first fenced code block onward (curl examples,
+	// token samples, request/response snippets).
+	if idx := strings.Index(text, "```"); idx >= 0 {
+		text = text[:idx]
+	}
+	// Keep only the first paragraph.
+	if idx := strings.Index(text, "\n\n"); idx >= 0 {
+		text = text[:idx]
+	}
+	// Collapse remaining whitespace and newlines into single spaces.
+	text = strings.Join(strings.Fields(text), " ")
+	const maxLen = 400
+	if len(text) > maxLen {
+		clipped := text[:maxLen]
+		if cut := strings.LastIndex(clipped, " "); cut > 0 {
+			clipped = clipped[:cut]
+		}
+		text = strings.TrimRight(clipped, " .,;:") + "..."
+	}
+	return strings.TrimSpace(text)
 }
 
 func normalizeID(value string) string {
