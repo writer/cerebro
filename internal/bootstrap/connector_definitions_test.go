@@ -165,6 +165,83 @@ func TestConnectorDefinitionCreateListAndPromote(t *testing.T) {
 	}
 }
 
+func TestTenantConnectorDefinitionAppearsAsRunnableConnector(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createBody, err := json.Marshal(connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "custom_inventory",
+		DisplayName: "Custom Inventory",
+		Description: "Read-only custom inventory connector.",
+		ConfigFields: []connectordefinitions.Field{{
+			Key:      "base_url",
+			Label:    "Base URL",
+			Required: true,
+		}},
+		Auth: connectordefinitions.AuthSpec{Model: "none"},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: "${config.base_url}",
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Label:     "Assets",
+			Path:      "/v1/assets",
+			ListKey:   "items",
+			IDField:   "id",
+			NameField: "name",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal create body: %v", err)
+	}
+	createResp, err := server.Client().Post(server.URL+"/connector-definitions", "application/json", bytes.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
+	}
+
+	listResp, err := server.Client().Get(server.URL + "/connectors?tenant_id=tenant-a")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer closeResponseBody(t, listResp)
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", listResp.StatusCode)
+	}
+	var library connectorLibraryResponse
+	if err := json.NewDecoder(listResp.Body).Decode(&library); err != nil {
+		t.Fatalf("decode connector library: %v", err)
+	}
+	entry, ok := connectorEntryBySourceID(library.Connectors, "custom_inventory")
+	if !ok {
+		t.Fatalf("custom_inventory connector missing from library: %#v", library.Connectors)
+	}
+	if entry.DefinitionOrigin != connectorDefinitionOriginTenant {
+		t.Fatalf("definition origin = %q, want %q", entry.DefinitionOrigin, connectorDefinitionOriginTenant)
+	}
+	if !entry.RuntimeExecutable || !entry.SetupAllowed || len(entry.ConnectionMethods) == 0 {
+		t.Fatalf("entry runtime/setup = executable:%t setup:%t methods:%d, want runnable setup", entry.RuntimeExecutable, entry.SetupAllowed, len(entry.ConnectionMethods))
+	}
+	if len(entry.ConnectionMethods[0].ConfigFields) == 0 || entry.ConnectionMethods[0].ConfigFields[0].Key != "base_url" {
+		t.Fatalf("connection config fields = %#v, want base_url", entry.ConnectionMethods[0].ConfigFields)
+	}
+
+	preflightResp, err := server.Client().Post(server.URL+"/connectors/custom_inventory/preflight", "application/json", stringsReader(t, `{"tenant_id":"tenant-a"}`))
+	if err != nil {
+		t.Fatalf("POST /connectors/custom_inventory/preflight error = %v", err)
+	}
+	defer closeResponseBody(t, preflightResp)
+	if preflightResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors/custom_inventory/preflight status = %d, want 200", preflightResp.StatusCode)
+	}
+}
+
 func TestConnectorDefinitionCreateUsesScopedPrincipalTenant(t *testing.T) {
 	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
 	app := New(config.Config{

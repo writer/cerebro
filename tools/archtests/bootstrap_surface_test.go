@@ -35,8 +35,10 @@ import (
 // aggregation stays behind existing stores. GRC framework lifecycle adds a thin
 // HTTP handler and route registration for cached framework listing; compliance
 // logic stays in the compliance package. Error-propagation cleanup (#1370) added
-// explicit error returns and guard clauses across bootstrap handlers.
-const bootstrapProductionGoLineBudget = 25326
+// explicit error returns and guard clauses across bootstrap handlers. Tenant
+// dynamic connector runtimes add connector-library response mapping and setup
+// method shaping while runnable source construction stays behind internal/sourceregistry.
+const bootstrapProductionGoLineBudget = 25538
 
 type bootstrapFileLineCount struct {
 	path  string

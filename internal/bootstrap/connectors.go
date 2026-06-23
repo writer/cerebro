@@ -30,6 +30,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
@@ -58,6 +59,7 @@ const (
 
 	connectorDefinitionOriginCompiled = "compiled_source"
 	connectorDefinitionOriginCatalog  = "builtin_catalog"
+	connectorDefinitionOriginTenant   = "tenant_definition"
 
 	connectorReadinessStageSetupEnabled        = "setup_enabled"
 	connectorReadinessStageAPIRestricted       = "api_restricted"
@@ -584,6 +586,61 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		entries = append(entries, entry)
 		seen[source.GetId()] = struct{}{}
 	}
+	for _, definition := range a.connectorTenantDefinitions(r.Context(), tenantID) {
+		sourceID := strings.TrimSpace(definition.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		if _, ok := seen[sourceID]; ok {
+			continue
+		}
+		entry := connectorCatalogEntry{
+			connectorCatalogIdentity: connectorCatalogIdentity{
+				SourceID:    sourceID,
+				Name:        definition.DisplayName,
+				DisplayName: connectorDisplayName(sourceID, definition.DisplayName),
+				Description: definition.Description,
+			},
+			connectorCatalogDefinitionState: connectorCatalogDefinitionState{
+				AuthModel:             definition.Auth.Model,
+				EmittedKinds:          connectorDefinitionEmittedKinds(definition),
+				CatalogSchemaVersion:  definition.SchemaVersion,
+				CatalogCurrentVersion: definition.CurrentVersion,
+				DefinitionOrigin:      connectorDefinitionOriginTenant,
+				ResourceFamilies:      connectorDefinitionResourceFamilies(definition),
+			},
+			connectorCatalogRuntimeState: connectorCatalogRuntimeState{
+				Status: "available",
+			},
+			connectorCatalogSetupState: connectorCatalogSetupState{
+				ScopeOptions: connectorScopeOptionsFromDefinition(definition),
+			},
+		}
+		if _, err := sourceregistry.DynamicDefinitionSource(definition); err == nil && definition.Validation.Status != connectordefinitions.ValidationBlocked {
+			entry.RuntimeExecutable = true
+			entry.ConnectionMethods = connectorConnectionMethodsFromDefinition(definition, stores)
+		} else {
+			entry.Status = "definition_blocked"
+		}
+		if !a.applyConnectorAccess(&entry, tenantID) {
+			continue
+		}
+		if count := counts[sourceID]; count.total > 0 {
+			entry.ConfiguredRuntimes = count.total
+			entry.HealthyRuntimes = count.healthy
+			entry.NeedsAttentionRuntimes = count.total - count.healthy
+			switch {
+			case count.healthy == count.total:
+				entry.Status = "connected"
+			case count.healthy > 0:
+				entry.Status = "degraded"
+			default:
+				entry.Status = "needs_attention"
+			}
+		}
+		entries = append(entries, entry)
+		seen[sourceID] = struct{}{}
+	}
 	for _, catalogEntry := range definitionCatalog {
 		sourceID := catalogEntry.Definition.SourceID
 		if _, ok := seen[sourceID]; ok {
@@ -647,7 +704,7 @@ func (a *App) handleGetConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	health := emptySourceRuntimeHealthResponse()
-	if a.connectorSourceExists(entry.SourceID) {
+	if a.connectorSourceExistsForTenant(r.Context(), entry.SourceID, tenantID) {
 		var err error
 		health, err = a.connectorHealthForSource(r, entry.SourceID, tenantID)
 		if err != nil {
@@ -692,7 +749,7 @@ func (a *App) handleListConnectorActivity(w http.ResponseWriter, r *http.Request
 		return
 	}
 	health := emptySourceRuntimeHealthResponse()
-	if a.connectorSourceExists(entry.SourceID) {
+	if a.connectorSourceExistsForTenant(r.Context(), entry.SourceID, tenantID) {
 		var err error
 		health, err = a.connectorHealthForSource(r, entry.SourceID, tenantID)
 		if err != nil {
@@ -1116,7 +1173,11 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 		return
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	tenantID := strings.TrimSpace(request.TenantID)
+	tenantID, err := effectiveTenantFilter(r.Context(), request.TenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	if runtimeID == "" {
 		writeConnectorError(w, fmt.Errorf("%w: runtime_id is required", connectorcredentials.ErrInvalidRequest))
 		return
@@ -1289,7 +1350,7 @@ func (a *App) handleCreateConnectorConnection(w http.ResponseWriter, r *http.Req
 func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string, request connectorConnectionRequest) (connectorPreflightResponse, error) {
 	sourceID = strings.TrimSpace(sourceID)
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	tenantID := strings.TrimSpace(request.TenantID)
+	tenantID, tenantErr := effectiveTenantFilter(ctx, request.TenantID)
 	response := connectorPreflightResponse{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		SourceID:    sourceID,
@@ -1299,7 +1360,11 @@ func (a *App) connectorConnectionPreflight(ctx context.Context, sourceID string,
 		Summary:     "Preflight has not completed.",
 		NextAction:  "fix_blocking_checks",
 	}
-	source, err := a.connectorSource(sourceID)
+	if tenantErr != nil {
+		return response, tenantErr
+	}
+	response.TenantID = tenantID
+	source, err := a.connectorSourceForTenant(ctx, sourceID, tenantID)
 	if err != nil {
 		return response, err
 	}
@@ -2887,7 +2952,7 @@ func (a *App) checkConnectorRuntime(ctx context.Context, runtime *cerebrov1.Sour
 	if runtime == nil {
 		return fmt.Errorf("%w: source runtime is required", connectorcredentials.ErrInvalidRequest)
 	}
-	source, err := a.connectorSource(runtime.GetSourceId())
+	source, err := a.connectorSourceForTenant(ctx, runtime.GetSourceId(), runtime.GetTenantId())
 	if err != nil {
 		return err
 	}
@@ -2922,6 +2987,37 @@ func (a *App) connectorSource(sourceID string) (sourcecdk.Source, error) {
 		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
 	}
 	return source, nil
+}
+
+func (a *App) connectorSourceForTenant(ctx context.Context, sourceID string, tenantID string) (sourcecdk.Source, error) {
+	if source, err := a.connectorSource(sourceID); err == nil {
+		return source, nil
+	}
+	id := strings.TrimSpace(sourceID)
+	if id == "" {
+		return nil, fmt.Errorf("%w: source id is required", connectorcredentials.ErrInvalidRequest)
+	}
+	definition, ok := a.connectorTenantDefinitionBySourceID(ctx, tenantID, id)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
+	}
+	source, err := sourceregistry.DynamicDefinitionSource(definition)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", connectorcredentials.ErrInvalidRequest, id, err)
+	}
+	return source, nil
+}
+
+func (a *App) connectorSourceExistsForTenant(ctx context.Context, sourceID string, tenantID string) bool {
+	if a.connectorSourceExists(sourceID) {
+		return true
+	}
+	definition, ok := a.connectorTenantDefinitionBySourceID(ctx, tenantID, sourceID)
+	if !ok || definition.Validation.Status == connectordefinitions.ValidationBlocked {
+		return false
+	}
+	_, err := sourceregistry.DynamicDefinitionSource(definition)
+	return err == nil
 }
 
 func connectorRuntimePayload(runtime *cerebrov1.SourceRuntime) (json.RawMessage, error) {
@@ -3388,6 +3484,86 @@ func connectorConnectionMethods(sourceID string, stores []connectorStoreView) []
 		methods[index] = connectorMethodWithGuidance(sourceID, methods[index])
 	}
 	return methods
+}
+
+func connectorConnectionMethodsFromDefinition(definition connectordefinitions.Definition, stores []connectorStoreView) []connectorConnectionMethodView {
+	sourceID := strings.TrimSpace(definition.SourceID)
+	configFields := connectorDefinitionFields(definition.ConfigFields)
+	credentialFields := connectorDefinitionFields(definition.Auth.CredentialFields)
+	hasCredentials := len(credentialFields) > 0 && strings.TrimSpace(definition.Auth.Model) != "none"
+	environmentAvailable := connectorStoreAvailable(stores, connectorStoreEnvironmentManaged)
+	externalStores := []string{connectorStoreInfisical, connectorStoreGoogleSecretMgr, connectorStoreAWSSecretsManager, connectorStoreAzureKeyVault, connectorStoreHashiCorpVault}
+	externalAvailable := connectorAnyStoreAvailable(stores, externalStores...)
+	methods := []connectorConnectionMethodView{
+		{
+			ID:                connectorAuthMethodEnvironmentManaged,
+			Label:             "Environment-managed reference",
+			ShortLabel:        "Env",
+			Category:          "Reference",
+			Description:       "Store deployment-side config and credential references for this custom connector.",
+			CredentialStores:  []string{connectorStoreEnvironmentManaged},
+			ConfigFields:      configFields,
+			CredentialFields:  credentialFields,
+			RequiresSecrets:   false,
+			Recommended:       !hasCredentials,
+			Saveable:          environmentAvailable,
+			UnavailableReason: connectorUnavailableReason(environmentAvailable, "Environment-managed references are unavailable."),
+		},
+	}
+	if hasCredentials {
+		vaultAvailable := connectorStoreAvailable(stores, defaultConnectorCredentialStoreID)
+		methods = append([]connectorConnectionMethodView{{
+			ID:                connectorAuthMethodEncryptedSubmission,
+			Label:             "Encrypted browser submission",
+			ShortLabel:        "Manual",
+			Category:          "Direct",
+			Description:       "Submit one encrypted credential payload to Cerebro Vault, then store only sealed references on the runtime.",
+			CredentialStores:  []string{defaultConnectorCredentialStoreID},
+			ConfigFields:      configFields,
+			CredentialFields:  credentialFields,
+			RequiresSecrets:   true,
+			Recommended:       true,
+			Saveable:          vaultAvailable,
+			UnavailableReason: connectorUnavailableReason(vaultAvailable, "Cerebro Vault or the credential transit key is unavailable."),
+		}}, methods...)
+		methods = append(methods, connectorConnectionMethodView{
+			ID:                connectorAuthMethodExternalReference,
+			Label:             "External secret-store reference",
+			ShortLabel:        "Store ref",
+			Category:          "Reference",
+			Description:       "Save only operator-managed secret-store references for this custom connector.",
+			CredentialStores:  externalStores,
+			ConfigFields:      configFields,
+			CredentialFields:  credentialFields,
+			RequiresSecrets:   false,
+			Saveable:          externalAvailable,
+			UnavailableReason: connectorUnavailableReason(externalAvailable, "External secret-store references are unavailable."),
+		})
+	}
+	for index := range methods {
+		methods[index] = connectorMethodWithGuidance(sourceID, methods[index])
+	}
+	return methods
+}
+
+func connectorDefinitionFields(fields []connectordefinitions.Field) []connectorFieldView {
+	views := make([]connectorFieldView, 0, len(fields))
+	for _, field := range fields {
+		key := strings.TrimSpace(field.Key)
+		if key == "" {
+			continue
+		}
+		views = append(views, connectorFieldView{
+			Key:           key,
+			Label:         firstNonEmpty(field.Label, connectorFieldLabel(key)),
+			Required:      field.Required,
+			Secret:        field.Secret,
+			ReferenceOnly: field.ReferenceOnly,
+			Placeholder:   field.Placeholder,
+			Help:          field.Help,
+		})
+	}
+	return views
 }
 
 func connectorMethodWithGuidance(sourceID string, method connectorConnectionMethodView) connectorConnectionMethodView {

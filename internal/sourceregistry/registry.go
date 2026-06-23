@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	akeylessource "github.com/writer/cerebro/sources/akeyless"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
@@ -259,6 +260,19 @@ var builtinSourceLoaders = []builtinSourceLoader{
 			return vulnviewsource.New()
 		},
 	},
+}
+
+// DynamicDefinitionSource adapts a stored dynamic connector definition into the
+// source layer without exposing concrete source packages to callers.
+func DynamicDefinitionSource(definition connectordefinitions.Definition) (sourcecdk.Source, error) {
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		return nil, err
+	}
+	if normalized.Validation.Status == connectordefinitions.ValidationBlocked {
+		return nil, fmt.Errorf("%w: connector definition %q is blocked: %s", connectordefinitions.ErrInvalidDefinition, normalized.SourceID, normalized.Validation.Summary)
+	}
+	return catalogruntimesource.NewDefinition(normalized)
 }
 
 // Builtin constructs the in-process source registry for the rewrite skeleton.
