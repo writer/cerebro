@@ -27,6 +27,10 @@ const (
 
 	IngestModePull    = "pull"
 	IngestModeDeposit = "deposit"
+
+	GateDefinitionValidation = "definition_validation"
+	GateSandboxProbe         = "sandbox_probe"
+	GateAdminReview          = "admin_review"
 )
 
 var (
@@ -319,18 +323,28 @@ type PromotionState struct {
 	NextAction     string   `json:"next_action,omitempty"`
 }
 
+// GateEvidence attests that a promotion gate was satisfied before a stage move.
+type GateEvidence struct {
+	Gate       string `json:"gate"`
+	Actor      string `json:"actor,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	ObservedAt string `json:"observed_at,omitempty"`
+}
+
 // PromotionRequest describes a lifecycle-stage promotion request.
 type PromotionRequest struct {
-	TargetStage string `json:"target_stage"`
-	Reason      string `json:"reason,omitempty"`
+	TargetStage  string         `json:"target_stage"`
+	Reason       string         `json:"reason,omitempty"`
+	GateEvidence []GateEvidence `json:"gate_evidence,omitempty"`
 }
 
 // PromotionResult describes a completed lifecycle-stage promotion.
 type PromotionResult struct {
-	Definition Definition `json:"definition"`
-	Promoted   bool       `json:"promoted"`
-	Target     string     `json:"target_stage"`
-	NextAction string     `json:"next_action"`
+	Definition    Definition     `json:"definition"`
+	Promoted      bool           `json:"promoted"`
+	Target        string         `json:"target_stage"`
+	NextAction    string         `json:"next_action"`
+	AcceptedGates []GateEvidence `json:"accepted_gates,omitempty"`
 }
 
 // Normalize fills defaults, trims strings, and recalculates validation and promotion metadata.
@@ -521,16 +535,72 @@ func Promote(definition Definition, request PromotionRequest) (PromotionResult, 
 			NextAction: normalized.Validation.Summary,
 		}, nil
 	}
+	accepted, missing := acceptGateEvidence(evidenceGatesForStage(target), request.GateEvidence)
+	if len(missing) > 0 {
+		return PromotionResult{
+			Definition:    normalized,
+			Promoted:      false,
+			Target:        target,
+			NextAction:    fmt.Sprintf("Provide %s gate evidence before promoting to %s.", strings.Join(missing, ", "), target),
+			AcceptedGates: accepted,
+		}, nil
+	}
 	normalized.Stage = target
 	normalized.Validation = Validate(normalized)
 	normalized.Promotion = promotionState(normalized)
 	normalized.Promotion.LastTarget = target
 	return PromotionResult{
-		Definition: normalized,
-		Promoted:   true,
-		Target:     target,
-		NextAction: normalized.Promotion.NextAction,
+		Definition:    normalized,
+		Promoted:      true,
+		Target:        target,
+		NextAction:    normalized.Promotion.NextAction,
+		AcceptedGates: accepted,
 	}, nil
+}
+
+// evidenceGatesForStage lists the human-attested gates required before a target stage.
+func evidenceGatesForStage(target string) []string {
+	switch target {
+	case StagePilot:
+		return []string{GateSandboxProbe}
+	case StageApproved, StageCertified:
+		return []string{GateAdminReview}
+	default:
+		return nil
+	}
+}
+
+// acceptGateEvidence matches provided evidence against required gates, returning the
+// normalized accepted evidence and any still-missing gate IDs.
+func acceptGateEvidence(required []string, provided []GateEvidence) ([]GateEvidence, []string) {
+	supplied := make(map[string]GateEvidence, len(provided))
+	for _, evidence := range provided {
+		gate := strings.TrimSpace(evidence.Gate)
+		actor := strings.TrimSpace(evidence.Actor)
+		if gate == "" || actor == "" {
+			continue
+		}
+		normalized := GateEvidence{
+			Gate:       gate,
+			Actor:      actor,
+			Detail:     strings.TrimSpace(evidence.Detail),
+			ObservedAt: strings.TrimSpace(evidence.ObservedAt),
+		}
+		if normalized.ObservedAt == "" {
+			normalized.ObservedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		supplied[gate] = normalized
+	}
+	accepted := make([]GateEvidence, 0, len(required))
+	var missing []string
+	for _, gate := range required {
+		if evidence, ok := supplied[gate]; ok {
+			accepted = append(accepted, evidence)
+			continue
+		}
+		missing = append(missing, gate)
+	}
+	return accepted, missing
 }
 
 func promotionState(definition Definition) PromotionState {
@@ -546,13 +616,8 @@ func promotionState(definition Definition) PromotionState {
 			NextAction: "Connector is certified. Code promotion can be requested through the hardened source path.",
 		}
 	}
-	required := []string{"definition_validation"}
-	if next == StagePilot {
-		required = append(required, "sandbox_probe")
-	}
-	if next == StageApproved || next == StageCertified {
-		required = append(required, "admin_review")
-	}
+	required := []string{GateDefinitionValidation}
+	required = append(required, evidenceGatesForStage(next)...)
 	return PromotionState{
 		EligibleStages: []string{next},
 		RequiredGates:  required,

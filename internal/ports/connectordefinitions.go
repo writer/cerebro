@@ -47,4 +47,5 @@ type ConnectorDefinitionStore interface {
 	PutConnectorDefinition(context.Context, *ConnectorDefinitionRecord) (*ConnectorDefinitionRecord, error)
 	GetConnectorDefinition(context.Context, string) (*ConnectorDefinitionRecord, error)
 	ListConnectorDefinitions(context.Context, ConnectorDefinitionFilter) ([]*ConnectorDefinitionRecord, error)
+	ListConnectorDefinitionVersions(context.Context, string) ([]*ConnectorDefinitionVersionRecord, error)
 }

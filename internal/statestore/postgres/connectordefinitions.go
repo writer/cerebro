@@ -210,6 +210,53 @@ LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
 	return definitions, nil
 }
 
+// ListConnectorDefinitionVersions loads the immutable version history for one definition, newest first.
+func (s *Store) ListConnectorDefinitionVersions(ctx context.Context, definitionID string) ([]*ports.ConnectorDefinitionVersionRecord, error) {
+	id := strings.TrimSpace(definitionID)
+	if id == "" {
+		return nil, errors.New("connector definition id is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureConnectorDefinitionTable(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT definition_id, version, tenant_id, source_id, stage, definition_json::text, created_at
+FROM connector_definition_versions
+WHERE definition_id = $1
+ORDER BY version DESC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("list connector definition versions %q: %w", id, err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	var versions []*ports.ConnectorDefinitionVersionRecord
+	for rows.Next() {
+		record := &ports.ConnectorDefinitionVersionRecord{}
+		var payload string
+		if err := rows.Scan(
+			&record.DefinitionID,
+			&record.Version,
+			&record.TenantID,
+			&record.SourceID,
+			&record.Stage,
+			&payload,
+			&record.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan connector definition version: %w", err)
+		}
+		record.DefinitionJSON = []byte(payload)
+		versions = append(versions, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector definition versions %q: %w", id, err)
+	}
+	return versions, nil
+}
+
 func (s *Store) ensureConnectorDefinitionTable(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.connectorDefinitionReady, "connector definition", ensureConnectorDefinitionStatements)
 }

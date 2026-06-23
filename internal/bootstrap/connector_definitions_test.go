@@ -41,6 +41,9 @@ func (s *connectorTestStore) PutConnectorDefinition(_ context.Context, record *p
 	if s.definitions == nil {
 		s.definitions = map[string]*ports.ConnectorDefinitionRecord{}
 	}
+	if s.definitionVersions == nil {
+		s.definitionVersions = map[string][]*ports.ConnectorDefinitionVersionRecord{}
+	}
 	cloned := cloneConnectorDefinitionRecord(record)
 	now := time.Now().UTC()
 	if existing := s.definitions[record.ID]; existing != nil {
@@ -54,7 +57,30 @@ func (s *connectorTestStore) PutConnectorDefinition(_ context.Context, record *p
 	}
 	cloned.UpdatedAt = now
 	s.definitions[record.ID] = cloned
+	s.definitionVersions[record.ID] = append(s.definitionVersions[record.ID], &ports.ConnectorDefinitionVersionRecord{
+		DefinitionID:   cloned.ID,
+		Version:        cloned.CurrentVersion,
+		TenantID:       cloned.TenantID,
+		SourceID:       cloned.SourceID,
+		Stage:          cloned.Stage,
+		DefinitionJSON: append([]byte{}, cloned.DefinitionJSON...),
+		CreatedAt:      now,
+	})
 	return cloneConnectorDefinitionRecord(cloned), nil
+}
+
+func (s *connectorTestStore) ListConnectorDefinitionVersions(_ context.Context, definitionID string) ([]*ports.ConnectorDefinitionVersionRecord, error) {
+	stored := s.definitionVersions[definitionID]
+	versions := make([]*ports.ConnectorDefinitionVersionRecord, 0, len(stored))
+	for _, version := range stored {
+		cloned := *version
+		cloned.DefinitionJSON = append([]byte{}, version.DefinitionJSON...)
+		versions = append(versions, &cloned)
+	}
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i].Version > versions[j].Version
+	})
+	return versions, nil
 }
 
 func (s *connectorTestStore) GetConnectorDefinition(_ context.Context, id string) (*ports.ConnectorDefinitionRecord, error) {
@@ -179,6 +205,70 @@ func TestConnectorDefinitionCreateListAndPromote(t *testing.T) {
 	}
 	if promoted.Result.Definition.CurrentVersion != 2 {
 		t.Fatalf("promoted version = %d, want 2", promoted.Result.Definition.CurrentVersion)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointListsImmutableHistory(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createResp, err := server.Client().Post(server.URL+"/connector-definitions", "application/json", stringsReader(t, `{
+		"tenant_id": "tenant-a",
+		"source_id": "example_api",
+		"display_name": "Example API",
+		"runtime": "json_api",
+		"auth": {"model": "bearer_token", "credential_fields": [{"key": "token", "secret": true, "reference_only": true}]},
+		"resource_families": [{"id": "assets", "path": "/v1/assets", "id_field": "id"}]
+	}`))
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
+	}
+	var created connectorDefinitionResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	promoteResp, err := server.Client().Post(server.URL+"/connector-definitions/"+created.Definition.ID+"/promote", "application/json", stringsReader(t, `{"target_stage":"sandbox"}`))
+	if err != nil {
+		t.Fatalf("POST promote error = %v", err)
+	}
+	defer closeResponseBody(t, promoteResp)
+	if promoteResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST promote status = %d, want 200", promoteResp.StatusCode)
+	}
+
+	versionsResp, err := server.Client().Get(server.URL + "/connector-definitions/" + created.Definition.ID + "/versions")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, versionsResp)
+	if versionsResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET versions status = %d, want 200", versionsResp.StatusCode)
+	}
+	var versions connectorDefinitionVersionsResponse
+	if err := json.NewDecoder(versionsResp.Body).Decode(&versions); err != nil {
+		t.Fatalf("decode versions response: %v", err)
+	}
+	if versions.DefinitionID != created.Definition.ID || versions.TenantID != "tenant-a" {
+		t.Fatalf("versions identity = %#v, want stored definition", versions)
+	}
+	if len(versions.Versions) != 2 {
+		t.Fatalf("versions = %#v, want two immutable snapshots", versions.Versions)
+	}
+	if versions.Versions[0].Version != 2 || versions.Versions[0].Stage != connectordefinitions.StageSandbox {
+		t.Fatalf("newest version = %#v, want version 2 at sandbox", versions.Versions[0])
+	}
+	if versions.Versions[1].Version != 1 || versions.Versions[1].Stage != connectordefinitions.StageDraft {
+		t.Fatalf("oldest version = %#v, want version 1 at draft", versions.Versions[1])
+	}
+	if versions.Versions[1].Definition.Stage != connectordefinitions.StageDraft || versions.Versions[1].Definition.CurrentVersion != 1 {
+		t.Fatalf("oldest snapshot definition = %#v, want immutable draft/1", versions.Versions[1].Definition)
 	}
 }
 

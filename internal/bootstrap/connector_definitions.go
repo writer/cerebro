@@ -51,6 +51,20 @@ type connectorDefinitionPromotionResponse struct {
 	Result      connectordefinitions.PromotionResult `json:"result"`
 }
 
+type connectorDefinitionVersionEntry struct {
+	Version    int                             `json:"version"`
+	Stage      string                          `json:"stage"`
+	CreatedAt  string                          `json:"created_at,omitempty"`
+	Definition connectordefinitions.Definition `json:"definition"`
+}
+
+type connectorDefinitionVersionsResponse struct {
+	GeneratedAt  string                            `json:"generated_at"`
+	DefinitionID string                            `json:"definition_id"`
+	TenantID     string                            `json:"tenant_id,omitempty"`
+	Versions     []connectorDefinitionVersionEntry `json:"versions"`
+}
+
 func (a *App) handleListConnectorDefinitions(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
 	if err != nil {
@@ -214,6 +228,61 @@ func (a *App) handleGetConnectorDefinition(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (a *App) handleListConnectorDefinitionVersions(w http.ResponseWriter, r *http.Request) {
+	definitionID := strings.TrimSpace(r.PathValue("definitionID"))
+	if definitionID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: definition_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	store := connectorDefinitionStore(a.deps.StateStore)
+	if store == nil {
+		writeConnectorError(w, sourceruntime.ErrRuntimeUnavailable)
+		return
+	}
+	record, err := store.GetConnectorDefinition(r.Context(), definitionID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	versions, err := store.ListConnectorDefinitionVersions(r.Context(), definitionID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	entries := make([]connectorDefinitionVersionEntry, 0, len(versions))
+	for _, version := range versions {
+		definition, err := connectorDefinitionFromVersion(version)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		if err := authorizeTenantID(r.Context(), definition.TenantID); err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		createdAt := ""
+		if !version.CreatedAt.IsZero() {
+			createdAt = version.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		entries = append(entries, connectorDefinitionVersionEntry{
+			Version:    version.Version,
+			Stage:      version.Stage,
+			CreatedAt:  createdAt,
+			Definition: definition,
+		})
+	}
+	writeJSON(w, http.StatusOK, connectorDefinitionVersionsResponse{
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		DefinitionID: definitionID,
+		TenantID:     record.TenantID,
+		Versions:     entries,
+	})
+}
+
 func (a *App) handlePutConnectorDefinition(w http.ResponseWriter, r *http.Request) {
 	definitionID := strings.TrimSpace(r.PathValue("definitionID"))
 	if definitionID == "" {
@@ -372,6 +441,31 @@ func connectorDefinitionFromRecord(record *ports.ConnectorDefinitionRecord) (con
 	normalized.CurrentVersion = record.CurrentVersion
 	normalized.CreatedAt = definition.CreatedAt
 	normalized.UpdatedAt = definition.UpdatedAt
+	return normalized, nil
+}
+
+func connectorDefinitionFromVersion(version *ports.ConnectorDefinitionVersionRecord) (connectordefinitions.Definition, error) {
+	if version == nil {
+		return connectordefinitions.Definition{}, fmt.Errorf("%w: definition version record is required", connectorcredentials.ErrInvalidRequest)
+	}
+	definition := connectordefinitions.Definition{}
+	if err := json.Unmarshal(version.DefinitionJSON, &definition); err != nil {
+		return connectordefinitions.Definition{}, fmt.Errorf("decode connector definition version %q/%d: %w", version.DefinitionID, version.Version, err)
+	}
+	definition.ID = version.DefinitionID
+	definition.TenantID = version.TenantID
+	definition.SourceID = version.SourceID
+	definition.Stage = version.Stage
+	definition.CurrentVersion = version.Version
+	if !version.CreatedAt.IsZero() {
+		definition.CreatedAt = version.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		return connectordefinitions.Definition{}, fmt.Errorf("normalize connector definition version %q/%d: %w", version.DefinitionID, version.Version, err)
+	}
+	normalized.CurrentVersion = version.Version
+	normalized.CreatedAt = definition.CreatedAt
 	return normalized, nil
 }
 
