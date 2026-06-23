@@ -1,0 +1,98 @@
+id: conjur
+name: "CyberArk Conjur"
+description: "This is an API definition for CyberArk Conjur Open Source. You can find out more at [Conjur.org](https://www.conjur.org/)."
+emitted_kinds:
+  - conjur.resource
+  - conjur.authenticator
+  - conjur.resource_2
+  - conjur.resource_3
+kind_lifecycle:
+  - kind: conjur.resource
+    status: active
+  - kind: conjur.authenticator
+    status: active
+  - kind: conjur.resource_2
+    status: active
+  - kind: conjur.resource_3
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: conjur
+  dimensions:
+    - id: resource
+      type: entity_family
+      title: "Resource"
+      families: [resource]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: authenticator
+      type: entity_family
+      title: "Authenticator"
+      families: [authenticator]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resource_2
+      type: entity_family
+      title: "Resource 2"
+      families: [resource_2]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resource_3
+      type: entity_family
+      title: "Resource 3"
+      families: [resource_3]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: conjur.resource
+    schema_ref: conjur/resource/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: conjur.authenticator
+    schema_ref: conjur/authenticator/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: conjur.resource_2
+    schema_ref: conjur/resource_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: conjur.resource_3
+    schema_ref: conjur/resource_3/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

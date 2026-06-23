@@ -1,0 +1,17 @@
+sourceId: conjur
+secretKeys:
+  - CONJUR_ACCOUNT
+  - CONJUR_KIND
+  - CONJUR_TOKEN
+runtimes:
+  - localId: resource
+    config:
+      account: env:CONJUR_ACCOUNT
+      kind: env:CONJUR_KIND
+      family: resource
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /resources
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CONJUR_TOKEN

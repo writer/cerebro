@@ -16,6 +16,7 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `backstage` | Backstage catalog source | components |
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
+| `conjur` | Conjur source | conjur.authenticator, conjur.resource, conjur.resource_2, conjur.resource_3 |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
 | `doppler` | Doppler secrets management source | secrets, projects, audit events |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |

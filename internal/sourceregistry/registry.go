@@ -43,6 +43,7 @@ import (
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	writersource "github.com/writer/cerebro/sources/writer"
+	conjursource "github.com/writer/cerebro/sources/conjur"
 )
 
 type builtinSourceLoader struct {
@@ -51,6 +52,12 @@ type builtinSourceLoader struct {
 }
 
 var builtinSourceLoaders = []builtinSourceLoader{
+	{
+		name: "conjur",
+		load: func() (sourcecdk.Source, error) {
+			return conjursource.New()
+		},
+	},
 	{
 		name: "evidence_cas",
 		load: func() (sourcecdk.Source, error) {

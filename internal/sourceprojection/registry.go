@@ -749,6 +749,12 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeyless.auth_methods": akeylessAuthMethodsProjections,
 	"akeyless.roles":        akeylessRolesProjections,
 	"akeyless.audit_events": akeylessAuditEventsProjections,
+	// conjur generated projectors (sourcegen promotion)
+	"conjur.authenticator": conjurAuthenticatorProjections,
+	"conjur.resource": conjurResourceProjections,
+	"conjur.resource_2": conjurResource2Projections,
+	"conjur.resource_3": conjurResource3Projections,
+
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 
