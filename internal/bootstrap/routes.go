@@ -10,6 +10,7 @@ import (
 	cerebrov1connect "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceplanapi"
@@ -206,7 +207,7 @@ func (app *App) connectorDefinitionForPlan(ctx context.Context, definitionID str
 	if err != nil {
 		return connectordefinitions.Definition{}, err
 	}
-	definition, err := connectorDefinitionFromRecord(record)
+	definition, err := connectordefinitionrecords.FromRecord(record)
 	if err != nil {
 		return connectordefinitions.Definition{}, err
 	}
