@@ -9,14 +9,18 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `akeyless` | Akeyless secrets management source | items, auth methods, roles, audit events |
 | `anthropic` | Anthropic organization governance source | organization, users, invites, workspaces and members, API keys, service accounts, federation, external keys, usage/cost reports, rate/spend limits, compliance activity |
 | `archetype` | Archetype repository vulnerability scan source | scans, vulnerabilities |
+| `asana` | Asana source | asana.audit_events, asana.projects, asana.users |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
 | `auth0` | Auth0 Management API source | users, roles, audit events |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
+| `box` | Box source | box.audit_events, box.content_assets, box.users |
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
+| `conjur` | Conjur source | conjur.authenticator, conjur.resource, conjur.resource_2, conjur.resource_3 |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
+| `discord` | Discord source | discord.audit_log, discord.member, discord.permission, discord.role |
 | `doppler` | Doppler secrets management source | secrets, projects, audit events |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
 | `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
@@ -29,6 +33,7 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
 | `kolide` | Kolide device posture source | configured catalog families |
 | `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
+| `linode` | Linode source | linode.credential, linode.event, linode.issue, linode.user |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
 | `openai` | OpenAI organization governance source | audit logs, users, invites, groups, roles, projects, project access, service accounts, API keys, usage/costs, retention, spend alerts, certificates, rate limits, model/tool permissions |
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
@@ -40,5 +45,6 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `tailscale` | Tailscale network source | tailnets, users, devices, groups, tags, services, grants |
 | `trivy` | Trivy report source | image scans, image packages, image vulnerabilities, fixes |
 | `trusted_endpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
+| `twilio` | Twilio source | twilio.accounts, twilio.audit_events, twilio.keys |
 | `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
 | `writer` | Writer AI Studio source | models, Knowledge Graphs, files, no-code agents, application graph associations, async application jobs |

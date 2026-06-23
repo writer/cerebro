@@ -1,0 +1,17 @@
+sourceId: discord
+secretKeys:
+  - DISCORD_APPLICATION_ID
+  - DISCORD_GUILD_ID
+  - DISCORD_API_TOKEN
+runtimes:
+  - localId: audit-log
+    config:
+      application_id: env:DISCORD_APPLICATION_ID
+      guild_id: env:DISCORD_GUILD_ID
+      family: audit_log
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /guilds/${config.guild_id}/audit-logs
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:DISCORD_API_TOKEN

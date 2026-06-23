@@ -757,6 +757,39 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeyless.auth_methods": akeylessAuthMethodsProjections,
 	"akeyless.roles":        akeylessRolesProjections,
 	"akeyless.audit_events": akeylessAuditEventsProjections,
+	// conjur generated projectors (sourcegen promotion)
+	"conjur.authenticator": conjurAuthenticatorProjections,
+	"conjur.resource":      conjurResourceProjections,
+	"conjur.resource_2":    conjurResource2Projections,
+	"conjur.resource_3":    conjurResource3Projections,
+
+	// box generated projectors (sourcegen promotion)
+	"box.audit_events":   boxAuditEventsProjections,
+	"box.content_assets": boxContentAssetsProjections,
+	"box.users":          boxUsersProjections,
+
+	// asana generated projectors (sourcegen promotion)
+	"asana.audit_events": asanaAuditEventsProjections,
+	"asana.projects":     asanaProjectsProjections,
+	"asana.users":        asanaUsersProjections,
+
+	// twilio generated projectors (sourcegen promotion)
+	"twilio.accounts":     twilioAccountsProjections,
+	"twilio.audit_events": twilioAuditEventsProjections,
+	"twilio.keys":         twilioKeysProjections,
+
+	// linode generated projectors (sourcegen promotion)
+	"linode.credential": linodeCredentialProjections,
+	"linode.event":      linodeEventProjections,
+	"linode.issue":      linodeIssueProjections,
+	"linode.user":       linodeUserProjections,
+
+	// discord generated projectors (sourcegen promotion)
+	"discord.audit_log":  discordAuditLogProjections,
+	"discord.member":     discordMemberProjections,
+	"discord.permission": discordPermissionProjections,
+	"discord.role":       discordRoleProjections,
+
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 
