@@ -149,6 +149,43 @@ func TestListOmitsAttributesWhenRequested(t *testing.T) {
 	}
 }
 
+func TestTraceOmitsAnchorAttributesWhenRequested(t *testing.T) {
+	store := &stubClaimStore{claims: []*ports.ClaimRecord{
+		{
+			ID:          "fact-1",
+			RuntimeID:   "runtime-1",
+			TenantID:    "writer",
+			SubjectURN:  "urn:cerebro:writer:asset:prod-db",
+			Predicate:   "has_status",
+			ObjectValue: "ok",
+			ClaimType:   "attribute",
+			Status:      "asserted",
+			Attributes:  map[string]string{"confidence": "high", "owner": "security"},
+		},
+		{
+			ID:          "fact-2",
+			RuntimeID:   "runtime-1",
+			TenantID:    "writer",
+			SubjectURN:  "urn:cerebro:writer:asset:prod-db",
+			Predicate:   "owned_by",
+			ObjectValue: "security",
+			ClaimType:   "attribute",
+			Status:      "asserted",
+			Attributes:  map[string]string{"confidence": "medium"},
+		},
+	}}
+	response, err := New(store).Trace(context.Background(), TraceRequest{TenantID: "writer", FactID: "fact-1", OmitAttributes: true})
+	if err != nil {
+		t.Fatalf("Trace() error = %v", err)
+	}
+	if response.Anchor.Fact.Attributes != nil {
+		t.Fatalf("Anchor attributes = %#v, want nil", response.Anchor.Fact.Attributes)
+	}
+	if len(response.RelatedFacts) != 1 || response.RelatedFacts[0].Attributes != nil {
+		t.Fatalf("RelatedFacts = %#v, want related fact without attributes", response.RelatedFacts)
+	}
+}
+
 func TestExplainReturnsEdgeEvidenceAndFreshness(t *testing.T) {
 	store := &stubClaimStore{claims: []*ports.ClaimRecord{{
 		ID:            "fact-1",

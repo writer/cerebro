@@ -1560,6 +1560,10 @@ func (app *App) mcpGraphFactsTrace(r *http.Request, args map[string]any) (any, e
 	if response.NextCursor != "" {
 		metadata["next_cursor"] = response.NextCursor
 	}
+	if response.HasMore {
+		metadata["truncated"] = true
+		metadata["truncation_reason"] = "page_boundary"
+	}
 	value = mcpAddResponseMetadata(value, metadata)
 	if err := mcpEnforceMaxBytes(value, args); err != nil {
 		return nil, err

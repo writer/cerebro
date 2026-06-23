@@ -29,8 +29,9 @@ import (
 // add only typed request/response mapping over the graphfacts domain service and
 // the existing ClaimStore-backed graph-fact substrate, including
 // cursor/resource/toolset MCP surface mapping while fact shaping and trace
-// behavior stay in graphfacts.
-const bootstrapProductionGoLineBudget = 25268
+// behavior stay in graphfacts. Trace metadata mirrors list pagination flags at
+// the MCP response boundary so clients see consistent cursor semantics.
+const bootstrapProductionGoLineBudget = 25272
 
 type bootstrapFileLineCount struct {
 	path  string

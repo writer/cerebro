@@ -1898,6 +1898,32 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 				UpdatedAt:     time.Date(2026, 6, 22, 14, 1, 0, 0, time.UTC),
 				Attributes:    map[string]string{"confidence": "high", "evidence_urn": "urn:cerebro:writer:evidence:evidence-1"},
 			},
+			"fact-2": {
+				ID:          "fact-2",
+				RuntimeID:   "runtime-1",
+				TenantID:    "writer",
+				SubjectURN:  "urn:cerebro:writer:github_code_repository:repo-1",
+				Predicate:   "has_status",
+				ObjectValue: "active",
+				ClaimType:   "attribute",
+				Status:      "asserted",
+				ObservedAt:  time.Date(2026, 6, 22, 13, 59, 0, 0, time.UTC),
+				UpdatedAt:   time.Date(2026, 6, 22, 14, 0, 0, 0, time.UTC),
+				Attributes:  map[string]string{"confidence": "medium"},
+			},
+			"fact-3": {
+				ID:          "fact-3",
+				RuntimeID:   "runtime-1",
+				TenantID:    "writer",
+				SubjectURN:  "urn:cerebro:writer:github_code_repository:repo-1",
+				Predicate:   "monitored_by",
+				ObjectValue: "security",
+				ClaimType:   "attribute",
+				Status:      "asserted",
+				ObservedAt:  time.Date(2026, 6, 22, 13, 58, 0, 0, time.UTC),
+				UpdatedAt:   time.Date(2026, 6, 22, 13, 59, 0, 0, time.UTC),
+				Attributes:  map[string]string{"confidence": "medium"},
+			},
 		},
 	}
 	server := newMCPTestServer(t, store)
@@ -1973,6 +1999,7 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 			"arguments": map[string]any{
 				"runtime_id":         "runtime-1",
 				"fact_id":            "fact-1",
+				"limit":              2,
 				"include_evidence":   true,
 				"evidence_limit":     2,
 				"include_attributes": false,
@@ -1985,6 +2012,14 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 	trace := traceResp["result"].(map[string]any)["structuredContent"].(map[string]any)
 	if len(trace["steps"].([]any)) < 2 {
 		t.Fatalf("trace steps = %#v, want provenance steps", trace["steps"])
+	}
+	traceMetadata := trace["metadata"].(map[string]any)
+	if traceMetadata["has_more"] != true || traceMetadata["truncated"] != true || traceMetadata["truncation_reason"] != "page_boundary" {
+		t.Fatalf("trace metadata = %#v, want page boundary truncation", traceMetadata)
+	}
+	anchorFact := trace["anchor"].(map[string]any)["fact"].(map[string]any)
+	if _, ok := anchorFact["attributes"]; ok {
+		t.Fatalf("anchor fact attributes present despite include_attributes=false: %#v", anchorFact)
 	}
 
 	limitedResp, _ := postMCP(t, server, "", map[string]any{

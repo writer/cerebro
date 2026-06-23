@@ -239,6 +239,9 @@ func (s *Service) Trace(ctx context.Context, request TraceRequest) (TraceRespons
 	if err != nil {
 		return TraceResponse{}, err
 	}
+	if request.OmitAttributes {
+		anchor.Fact.Attributes = nil
+	}
 	list, err := s.List(ctx, ListRequest{
 		TenantID:        request.TenantID,
 		RuntimeID:       firstNonEmpty(request.RuntimeID, anchor.Fact.RuntimeID),
