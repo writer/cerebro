@@ -280,6 +280,9 @@ func depositEventEnvelope(runtime *cerebrov1.SourceRuntime, definition connector
 	if decoded == nil {
 		return nil, fmt.Errorf("%w: record payload must be a JSON object, not null", sourcecdk.ErrInvalidEventEnvelope)
 	}
+	if _, ok := decoded.(map[string]any); !ok {
+		return nil, fmt.Errorf("%w: record payload must be a JSON object", sourcecdk.ErrInvalidEventEnvelope)
+	}
 	attributes := depositRecordAttributes(runtime, definition, family, decoded)
 	if options.FullState {
 		attributes["full_state_sync"] = "true"
