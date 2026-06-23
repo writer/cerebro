@@ -151,6 +151,12 @@ func sourceHealthReceipt(sourcesRoot string, sourceID string) (map[string]any, e
 	if rawSourceID, ok := receipt["source_id"].(string); ok && strings.TrimSpace(rawSourceID) != "" && strings.TrimSpace(rawSourceID) != sourceID {
 		return nil, fmt.Errorf("decode source health receipt %s: source_id %q does not match catalog %q", path, rawSourceID, sourceID)
 	}
+	sourceType := strings.TrimSpace(fmt.Sprint(receipt["source_type"]))
+	adapterHealthPath, _ := receipt["adapter_health_path"].(string)
+	adapterHealthPath = strings.TrimSpace(adapterHealthPath)
+	if sourceType == "json_api" && adapterHealthPath != "" && !strings.HasPrefix(adapterHealthPath, "/") {
+		return nil, fmt.Errorf("decode source health receipt %s: json_api adapter_health_path must start with /", path)
+	}
 	receipt["source_id"] = sourceID
 	return receipt, nil
 }

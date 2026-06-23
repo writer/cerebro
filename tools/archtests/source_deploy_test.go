@@ -110,6 +110,7 @@ func TestPrioritySourcesDeclareHealthReceipts(t *testing.T) {
 		requirePositiveHealthReceiptSeconds(t, id, receipt, "expected_cadence_seconds")
 		requirePositiveHealthReceiptSeconds(t, id, receipt, "stale_after_seconds")
 		requireNonEmptyHealthReceiptList(t, id, receipt, "failure_modes")
+		requireAdapterHealthPathMatchesSourceType(t, id, receipt)
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
@@ -236,6 +237,18 @@ func requireNonEmptyHealthReceiptList(t *testing.T, sourceID string, receipt map
 		if text, ok := value.(string); !ok || strings.TrimSpace(text) == "" {
 			t.Fatalf("%s health receipt %s contains %#v, want non-empty strings", sourceID, key, value)
 		}
+	}
+}
+
+func requireAdapterHealthPathMatchesSourceType(t *testing.T, sourceID string, receipt map[string]any) {
+	t.Helper()
+	sourceType := strings.TrimSpace(receipt["source_type"].(string))
+	adapterHealthPath := strings.TrimSpace(receipt["adapter_health_path"].(string))
+	if sourceType == "json_api" && !strings.HasPrefix(adapterHealthPath, "/") {
+		t.Fatalf("%s json_api health receipt adapter_health_path = %q, want leading /", sourceID, adapterHealthPath)
+	}
+	if sourceType == "cloud_api" && adapterHealthPath == "" {
+		t.Fatalf("%s cloud_api health receipt adapter_health_path is empty", sourceID)
 	}
 }
 
