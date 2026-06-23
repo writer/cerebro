@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -570,8 +569,8 @@ func TestParseSettingsRejectsMissingTenantID(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want tenant_id required")
 	}
-	if !strings.Contains(err.Error(), "tenant_id") {
-		t.Fatalf("error = %q, want mention of tenant_id", err)
+	if !errors.Is(err, errMissingTenantID) {
+		t.Fatalf("error = %v, want errMissingTenantID", err)
 	}
 }
 
@@ -585,8 +584,8 @@ func TestParseSettingsRejectsMissingClientID(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want client_id required")
 	}
-	if !strings.Contains(err.Error(), "client_id") {
-		t.Fatalf("error = %q, want mention of client_id", err)
+	if !errors.Is(err, errMissingClientID) {
+		t.Fatalf("error = %v, want errMissingClientID", err)
 	}
 }
 
@@ -600,8 +599,8 @@ func TestParseSettingsRejectsMissingClientSecret(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want client_secret required")
 	}
-	if !strings.Contains(err.Error(), "client_secret") {
-		t.Fatalf("error = %q, want mention of client_secret", err)
+	if !errors.Is(err, errMissingClientSecret) {
+		t.Fatalf("error = %v, want errMissingClientSecret", err)
 	}
 }
 
@@ -616,8 +615,8 @@ func TestParseSettingsRejectsBaseURLWithFragment(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want fragment rejection")
 	}
-	if !strings.Contains(err.Error(), "fragment") {
-		t.Fatalf("error = %q, want mention of fragment", err)
+	if !errors.Is(err, errInvalidBaseComponents) {
+		t.Fatalf("error = %v, want errInvalidBaseComponents", err)
 	}
 }
 
@@ -632,8 +631,8 @@ func TestParseSettingsRejectsUnsupportedFamily(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want unsupported family")
 	}
-	if !strings.Contains(err.Error(), "family") {
-		t.Fatalf("error = %q, want mention of family", err)
+	if !errors.Is(err, errUnsupportedFamily) {
+		t.Fatalf("error = %v, want errUnsupportedFamily", err)
 	}
 }
 
