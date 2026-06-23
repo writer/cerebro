@@ -126,6 +126,29 @@ func TestProjectDuoUserDisabledPosture(t *testing.T) {
 	}
 }
 
+func TestProjectDuoUserMissingPostureFieldsPreservesUnknown(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := duoEvent("duo.user", map[string]string{
+		"user_id":  "user-unknown",
+		"username": "unknown",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	user := state.entities["urn:cerebro:writer:duo_user:user-unknown"]
+	if user == nil {
+		t.Fatal("duo.user entity missing")
+	}
+	for _, key := range []string{"mfa_enrolled", "active"} {
+		if got, ok := user.Attributes[key]; ok {
+			t.Fatalf("user attribute %q = %q, want omitted for unknown source posture", key, got)
+		}
+	}
+}
+
 func TestProjectDuoUserEmptyIDSkipped(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

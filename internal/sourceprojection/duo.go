@@ -91,10 +91,12 @@ func duoUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntit
 // Duo user snapshot attributes so identity findings and graph queries can
 // reference a consistent vocabulary across sources.
 func enrichDuoUserPosture(projected map[string]string, source map[string]string) {
-	mfaEnrolled := projectionBool(source["is_enrolled"])
-	projected["mfa_enrolled"] = boolString(mfaEnrolled)
-	status := strings.ToLower(strings.TrimSpace(source["status"]))
-	projected["active"] = boolString(status == "active" || status == "bypass")
+	if enrolled := strings.TrimSpace(source["is_enrolled"]); enrolled != "" {
+		projected["mfa_enrolled"] = boolString(projectionBool(enrolled))
+	}
+	if status := strings.ToLower(strings.TrimSpace(source["status"])); status != "" {
+		projected["active"] = boolString(status == "active" || status == "bypass")
+	}
 }
 
 func duoGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
