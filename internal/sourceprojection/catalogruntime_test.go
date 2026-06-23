@@ -266,6 +266,85 @@ func TestRegistryUpdatesConnectorDefinitionProjectors(t *testing.T) {
 	}
 }
 
+func TestRegistryKeepsSharedKindProjectorsAcrossUpdates(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	sourceA, err := connectordefinitions.Normalize(sharedKindDefinition("source_a", "shared.source_a.asset"))
+	if err != nil {
+		t.Fatalf("Normalize(sourceA) error = %v", err)
+	}
+	sourceB, err := connectordefinitions.Normalize(sharedKindDefinition("source_b", "shared.source_b.asset"))
+	if err != nil {
+		t.Fatalf("Normalize(sourceB) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(sourceA, sourceB)
+
+	updatedA, err := connectordefinitions.Normalize(sharedKindDefinition("source_a", "shared.source_a.updated"))
+	if err != nil {
+		t.Fatalf("Normalize(updatedA) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(updatedA)
+
+	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-a",
+		TenantId: "tenant-a",
+		SourceId: "source_a",
+		Kind:     "shared.asset",
+		Attributes: map[string]string{
+			"id":   "asset-a",
+			"name": "Asset A",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(source_a) error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "shared.source_a.updated") {
+		t.Fatalf("source_a projected entities = %#v, want updated type", entities)
+	}
+
+	entities, _, err = registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-b",
+		TenantId: "tenant-a",
+		SourceId: "source_b",
+		Kind:     "shared.asset",
+		Attributes: map[string]string{
+			"id":   "asset-b",
+			"name": "Asset B",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(source_b) error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "shared.source_b.asset") {
+		t.Fatalf("source_b projected entities = %#v, want original type", entities)
+	}
+}
+
+func sharedKindDefinition(sourceID string, entityType string) connectordefinitions.Definition {
+	return connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: sourceID,
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "shared.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     entityType,
+					URNKind:        sourceID + "_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+			},
+		}},
+	}
+}
+
 func TestCatalogRuntimeAssetProjectionRequiresStableResourceIdentity(t *testing.T) {
 	entities, links, err := catalogRuntimeAssetProjections(&cerebrov1.EventEnvelope{
 		Id:       "event-ephemeral",

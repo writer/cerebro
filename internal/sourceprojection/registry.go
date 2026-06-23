@@ -30,6 +30,7 @@ type Registry struct {
 	connectorDefinitionFingerprints map[string]string
 	connectorDefinitionKinds        map[string]map[string]struct{}
 	connectorDefinitionBases        map[string]ProjectFunc
+	connectorDefinitionProjectors   map[string]map[string]ProjectFunc
 }
 
 // NewRegistry constructs an event projection registry.
@@ -39,6 +40,7 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 		connectorDefinitionFingerprints: map[string]string{},
 		connectorDefinitionKinds:        map[string]map[string]struct{}{},
 		connectorDefinitionBases:        map[string]ProjectFunc{},
+		connectorDefinitionProjectors:   map[string]map[string]ProjectFunc{},
 	}
 	for _, projector := range projectors {
 		kind := strings.TrimSpace(projector.Kind)
@@ -74,17 +76,20 @@ func (r *Registry) RegisterConnectorDefinitions(definitions ...connectordefiniti
 			continue
 		}
 		r.unregisterConnectorDefinitionProjectors(sourceID)
-		kinds := catalogRuntimeDefinitionProjectorKinds(definition)
-		if len(kinds) == 0 {
+		sourceProjectors := catalogRuntimeDefinitionProjectors(definition)
+		if len(sourceProjectors) == 0 {
 			continue
 		}
-		for _, kind := range kinds {
-			if _, ok := r.connectorDefinitionBases[kind]; ok {
-				continue
+		kinds := make([]string, 0, len(sourceProjectors))
+		for kind, projector := range sourceProjectors {
+			if _, ok := r.connectorDefinitionProjectors[kind]; !ok {
+				r.connectorDefinitionBases[kind] = r.projectors[kind]
+				r.connectorDefinitionProjectors[kind] = map[string]ProjectFunc{}
 			}
-			r.connectorDefinitionBases[kind] = r.projectors[kind]
+			r.connectorDefinitionProjectors[kind][sourceID] = projector
+			r.projectors[kind] = connectorDefinitionDispatchProjector(r.connectorDefinitionBases[kind], r.connectorDefinitionProjectors[kind])
+			kinds = append(kinds, kind)
 		}
-		registerCatalogRuntimeProjectorsForDefinitions(r.projectors, []connectordefinitions.Definition{definition})
 		r.connectorDefinitionFingerprints[sourceID] = fingerprint
 		r.connectorDefinitionKinds[sourceID] = kindSet(kinds)
 	}
@@ -100,11 +105,22 @@ func (r *Registry) ensureConnectorDefinitionState() {
 	if r.connectorDefinitionBases == nil {
 		r.connectorDefinitionBases = map[string]ProjectFunc{}
 	}
+	if r.connectorDefinitionProjectors == nil {
+		r.connectorDefinitionProjectors = map[string]map[string]ProjectFunc{}
+	}
 }
 
 func (r *Registry) unregisterConnectorDefinitionProjectors(sourceID string) {
 	kinds := r.connectorDefinitionKinds[sourceID]
 	for kind := range kinds {
+		sourceProjectors := r.connectorDefinitionProjectors[kind]
+		if sourceProjectors != nil {
+			delete(sourceProjectors, sourceID)
+			if len(sourceProjectors) > 0 {
+				r.projectors[kind] = connectorDefinitionDispatchProjector(r.connectorDefinitionBases[kind], sourceProjectors)
+				continue
+			}
+		}
 		base, ok := r.connectorDefinitionBases[kind]
 		if ok && base != nil {
 			r.projectors[kind] = base
@@ -112,9 +128,30 @@ func (r *Registry) unregisterConnectorDefinitionProjectors(sourceID string) {
 			delete(r.projectors, kind)
 		}
 		delete(r.connectorDefinitionBases, kind)
+		delete(r.connectorDefinitionProjectors, kind)
 	}
 	delete(r.connectorDefinitionKinds, sourceID)
 	delete(r.connectorDefinitionFingerprints, sourceID)
+}
+
+func connectorDefinitionDispatchProjector(base ProjectFunc, sourceProjectors map[string]ProjectFunc) ProjectFunc {
+	projectors := make(map[string]ProjectFunc, len(sourceProjectors))
+	for sourceID, projector := range sourceProjectors {
+		if projector != nil {
+			projectors[sourceID] = projector
+		}
+	}
+	return func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		if event != nil {
+			if projector := projectors[strings.TrimSpace(event.GetSourceId())]; projector != nil {
+				return projector(event)
+			}
+		}
+		if base != nil {
+			return base(event)
+		}
+		return nil, nil, nil
+	}
 }
 
 func connectorDefinitionProjectorFingerprint(definition connectordefinitions.Definition) string {

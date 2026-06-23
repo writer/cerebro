@@ -51,50 +51,23 @@ func registerCatalogRuntimeProjectorsForEntries(projectors map[string]ProjectFun
 	}
 }
 
-func registerCatalogRuntimeProjectorsForDefinitions(projectors map[string]ProjectFunc, definitions []connectordefinitions.Definition) {
-	if projectors == nil {
-		return
-	}
-	for _, definition := range definitions {
-		sourceID := strings.TrimSpace(definition.SourceID)
-		if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
-			continue
-		}
-		for _, resource := range definition.ResourceFamilies {
-			kind := catalogRuntimeEventKind(sourceID, resource)
-			if kind == "" {
-				continue
-			}
-			if existing, exists := projectors[kind]; exists {
-				if existing != nil {
-					projectors[kind] = augmentCatalogRuntimeProjector(sourceID, resource, existing)
-				}
-				continue
-			}
-			projectors[kind] = catalogRuntimeProjectorFor(sourceID, resource)
-		}
-	}
-}
-
-func catalogRuntimeDefinitionProjectorKinds(definition connectordefinitions.Definition) []string {
+func catalogRuntimeDefinitionProjectors(definition connectordefinitions.Definition) map[string]ProjectFunc {
 	sourceID := strings.TrimSpace(definition.SourceID)
 	if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
 		return nil
 	}
-	kinds := make([]string, 0, len(definition.ResourceFamilies))
-	seen := map[string]struct{}{}
+	projectors := make(map[string]ProjectFunc, len(definition.ResourceFamilies))
 	for _, resource := range definition.ResourceFamilies {
 		kind := catalogRuntimeEventKind(sourceID, resource)
 		if kind == "" {
 			continue
 		}
-		if _, ok := seen[kind]; ok {
+		if _, ok := projectors[kind]; ok {
 			continue
 		}
-		seen[kind] = struct{}{}
-		kinds = append(kinds, kind)
+		projectors[kind] = catalogRuntimeProjectorFor(sourceID, resource)
 	}
-	return kinds
+	return projectors
 }
 
 func catalogRuntimeEventKind(sourceID string, resource connectordefinitions.ResourceFamily) string {
