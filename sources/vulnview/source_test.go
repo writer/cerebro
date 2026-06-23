@@ -3,8 +3,10 @@ package vulnview
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -555,5 +557,241 @@ func TestDiscoverDNSAlertsAdvancesPastEmptyAssetBatch(t *testing.T) {
 	}
 	if assetRequests != 2 {
 		t.Fatalf("assetRequests = %d, want 2", assetRequests)
+	}
+}
+
+func TestParseSettingsRejectsMissingTenantID(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"base_url":      "http://127.0.0.1/api",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "vulnerability",
+	}), true)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want tenant_id required")
+	}
+	if !strings.Contains(err.Error(), "tenant_id") {
+		t.Fatalf("error = %q, want mention of tenant_id", err)
+	}
+}
+
+func TestParseSettingsRejectsMissingClientID(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"tenant_id":     "writer",
+		"base_url":      "http://127.0.0.1/api",
+		"client_secret": "secret",
+		"family":        "vulnerability",
+	}), true)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want client_id required")
+	}
+	if !strings.Contains(err.Error(), "client_id") {
+		t.Fatalf("error = %q, want mention of client_id", err)
+	}
+}
+
+func TestParseSettingsRejectsMissingClientSecret(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  "http://127.0.0.1/api",
+		"client_id": "client",
+		"family":    "vulnerability",
+	}), true)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want client_secret required")
+	}
+	if !strings.Contains(err.Error(), "client_secret") {
+		t.Fatalf("error = %q, want mention of client_secret", err)
+	}
+}
+
+func TestParseSettingsRejectsBaseURLWithFragment(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"tenant_id":     "writer",
+		"base_url":      "https://vulnview.writer-security.com/api#section",
+		"okta_issuer":   "https://writer.okta.com/oauth2/default",
+		"client_id":     "client",
+		"client_secret": "secret",
+	}), false)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want fragment rejection")
+	}
+	if !strings.Contains(err.Error(), "fragment") {
+		t.Fatalf("error = %q, want mention of fragment", err)
+	}
+}
+
+func TestParseSettingsRejectsUnsupportedFamily(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"tenant_id":     "writer",
+		"base_url":      "http://127.0.0.1/api",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "not_a_family",
+	}), true)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want unsupported family")
+	}
+	if !strings.Contains(err.Error(), "family") {
+		t.Fatalf("error = %q, want mention of family", err)
+	}
+}
+
+func TestParseSettingsRejectsInvalidPerPage(t *testing.T) {
+	for _, perPage := range []string{"abc", "0", "501"} {
+		_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+			"tenant_id":     "writer",
+			"base_url":      "http://127.0.0.1/api",
+			"client_id":     "client",
+			"client_secret": "secret",
+			"family":        "vulnerability",
+			"per_page":      perPage,
+		}), true)
+		if err == nil {
+			t.Fatalf("parseSettings(per_page=%q) error = nil, want error", perPage)
+		}
+	}
+}
+
+func TestReadReturnsErrorOnHTTP404(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "resource not found"})
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "vulnerability",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want HTTP 404 error")
+	}
+	var respErr *responseError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("error type = %T, want *responseError", err)
+	}
+	if respErr.StatusCode() != http.StatusNotFound {
+		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusNotFound)
+	}
+}
+
+func TestReadReturnsErrorOnHTTP500(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "internal server error"})
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "vulnerability",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want HTTP 500 error")
+	}
+	var respErr *responseError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("error type = %T, want *responseError", err)
+	}
+	if respErr.StatusCode() != http.StatusInternalServerError {
+		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusInternalServerError)
+	}
+}
+
+func TestReadReturnsErrorOnHTTP429RateLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		default:
+			w.WriteHeader(http.StatusTooManyRequests)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "rate limit exceeded"})
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "vulnerability",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want HTTP 429 error")
+	}
+	var respErr *responseError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("error type = %T, want *responseError", err)
+	}
+	if respErr.StatusCode() != http.StatusTooManyRequests {
+		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusTooManyRequests)
+	}
+}
+
+func TestTokenEndpointHTTP500ReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "token service unavailable"})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret2",
+		"family":        "vulnerability",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want token endpoint error")
+	}
+	var respErr *responseError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("error type = %T, want *responseError", err)
+	}
+	if respErr.StatusCode() != http.StatusInternalServerError {
+		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusInternalServerError)
 	}
 }
