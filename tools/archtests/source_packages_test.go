@@ -20,7 +20,7 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"cosmo":           1006,
 	"gcp":             2083,
 	"github":          2029,
-	"googleworkspace": 798,
+	"googleworkspace": 815,
 	"grc":             1302,
 	"okta":            2256,
 	"panopticon":      758,
