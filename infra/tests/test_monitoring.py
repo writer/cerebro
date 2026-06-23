@@ -217,6 +217,11 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("NatsCorruptStateRecoveries", body)
         self.assertIn("NatsRestoreCompletions", body)
         self.assertIn("JetStreamStreamBytes", body)
+        self.assertIn("GraphRuleTimeouts", body)
+        self.assertIn("GraphIngestDurationMs", body)
+        self.assertIn("GraphRuleDurationMs", body)
+        self.assertIn("Neo4jAuraInstanceUp", body)
+        self.assertIn("Neo4jAuraMemoryGB", body)
         self.assertIn("App JetStream Reliability", body)
         self.assertIn("JetStreamAppErrors", body)
         self.assertIn("JetStreamJSErrors", body)
@@ -289,6 +294,10 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("OTEL Source Records / Freshness", body)
         self.assertIn("OTEL Projection Runs", body)
         self.assertIn("OTEL Projection Records", body)
+        self.assertIn("OTEL Graph Rule Evaluations", body)
+        self.assertIn("OTEL Graph Rule Records", body)
+        self.assertIn("OTEL Orchestrator Phase SLO", body)
+        self.assertIn("OTEL Neo4j Operations", body)
         self.assertIn("ECS/ContainerInsights", body)
         self.assertIn("OtelCollectorErrors", body)
         self.assertIn("otelcol_exporter_queue_size", body)
@@ -297,6 +306,9 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("cerebro.source_runtime.records", body)
         self.assertIn("cerebro.source_runtime.watermark.lag", body)
         self.assertIn("cerebro.source_projection.records", body)
+        self.assertIn("cerebro.graph_rule.evaluations", body)
+        self.assertIn("cerebro.orchestrator.phase.duration", body)
+        self.assertIn("cerebro.neo4j.operations", body)
         self.assertIn("/ecs/cerebro-test/otel-collector", body)
 
     def test_dashboard_includes_tenant_runtime_diagnostic_logs_when_app_log_group_is_set(self) -> None:
@@ -382,11 +394,18 @@ class MonitoringRuntimeTest(unittest.TestCase):
             "OTEL Source Records / Freshness",
             "OTEL Projection Runs",
             "OTEL Projection Records",
+            "OTEL Graph Rule Evaluations",
+            "OTEL Graph Rule Records",
+            "OTEL Orchestrator Phase SLO",
+            "OTEL Neo4j Operations",
         ])
-        self.assertEqual({widget["y"] for widget in widgets}, {78, 84})
+        self.assertEqual({widget["y"] for widget in widgets}, {78, 84, 90, 96})
         body = json.dumps({"widgets": widgets})
         self.assertIn("source_id,status,error_kind,contract_configured", body)
         self.assertIn("source_id,event_kind,status,record.kind", body)
+        self.assertIn("source_id,rule_id,status,error_kind,truncated", body)
+        self.assertIn("phase_key,source_id,status,error_kind,timeout_exceeded", body)
+        self.assertIn("operation,status,error_kind,database_configured", body)
         self.assertNotIn("tenant_id", body)
         self.assertNotIn("runtime_id", body)
         self.assertNotIn("resource_urn", body)
@@ -509,6 +528,54 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertEqual(grc_call["metric_transformation"].name, "GRCDashboardLatencyMs")
         self.assertEqual(grc_call["metric_transformation"].value, "$.duration_ms")
         self.assertEqual(grc_call["metric_transformation"].dimensions, {"Dashboard": "$.dashboard"})
+
+    def test_telemetry_metric_filters_include_graph_rule_and_neo4j_diagnostics(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            monitoring._create_telemetry_metric_filters("cerebro-test", "logs")
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        by_metric = {call["metric_transformation"].name: call for call in calls}
+        for metric_name in {
+            "GraphRuleFindingsEmittedBySource",
+            "GraphRuleRowsReadBySource",
+            "GraphRuleTimeouts",
+            "GraphRuleTimeoutsBySource",
+            "GraphIngestDurationMs",
+            "GraphRuleDurationMs",
+            "Neo4jConnectivityErrors",
+            "Neo4jTransactionExecutionLimitErrors",
+        }:
+            self.assertIn(metric_name, by_metric)
+
+        self.assertEqual(
+            by_metric["GraphRuleFindingsEmittedBySource"]["metric_transformation"].dimensions,
+            {"SourceId": "$.source_id"},
+        )
+        self.assertEqual(
+            by_metric["GraphRuleTimeoutsBySource"]["metric_transformation"].dimensions,
+            {"SourceId": "$.source_id"},
+        )
+        self.assertIn('$.name = "orchestrator.graph_rules"', by_metric["GraphRuleTimeouts"]["pattern"])
+        self.assertIn("$.timeout_exceeded = true", by_metric["GraphRuleTimeouts"]["pattern"])
+        self.assertEqual(by_metric["GraphIngestDurationMs"]["metric_transformation"].value, "$.duration_ms")
+        self.assertEqual(by_metric["GraphRuleDurationMs"]["metric_transformation"].value, "$.duration_ms")
+        self.assertIn("errorutil_connectivity_error", by_metric["Neo4jConnectivityErrors"]["pattern"])
+        self.assertIn("errorutil_transaction_execution_limit", by_metric["Neo4jTransactionExecutionLimitErrors"]["pattern"])
 
     def test_telemetry_metric_filters_include_jetstream_canary_and_platform_jobs(self) -> None:
         calls: list[dict] = []
