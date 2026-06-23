@@ -435,6 +435,90 @@ func TestPromoteMovesOneStageWhenReady(t *testing.T) {
 	}
 }
 
+func TestPromoteRequiresGateEvidenceForLaterStages(t *testing.T) {
+	definition, err := Normalize(Definition{
+		ID:          "example",
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth: AuthSpec{
+			Model: "bearer_token",
+			CredentialFields: []Field{{
+				Key:           "token",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+
+	sandbox, err := Promote(definition, PromotionRequest{TargetStage: StageSandbox})
+	if err != nil {
+		t.Fatalf("Promote() to sandbox error = %v", err)
+	}
+	if !sandbox.Promoted {
+		t.Fatalf("sandbox promotion = %#v, want promoted without gate evidence", sandbox)
+	}
+
+	blocked, err := Promote(sandbox.Definition, PromotionRequest{TargetStage: StagePilot})
+	if err != nil {
+		t.Fatalf("Promote() to pilot error = %v", err)
+	}
+	if blocked.Promoted || blocked.Definition.Stage != StageSandbox {
+		t.Fatalf("pilot promotion without evidence = %#v, want held at sandbox", blocked)
+	}
+
+	// Evidence without an attesting actor is not sufficient.
+	unsigned, err := Promote(sandbox.Definition, PromotionRequest{
+		TargetStage:  StagePilot,
+		GateEvidence: []GateEvidence{{Gate: GateSandboxProbe}},
+	})
+	if err != nil {
+		t.Fatalf("Promote() to pilot error = %v", err)
+	}
+	if unsigned.Promoted {
+		t.Fatalf("pilot promotion with unsigned evidence = %#v, want held", unsigned)
+	}
+
+	pilot, err := Promote(sandbox.Definition, PromotionRequest{
+		TargetStage:  StagePilot,
+		GateEvidence: []GateEvidence{{Gate: GateSandboxProbe, Actor: "sandbox-runner", Detail: "probe passed"}},
+	})
+	if err != nil {
+		t.Fatalf("Promote() to pilot error = %v", err)
+	}
+	if !pilot.Promoted || pilot.Definition.Stage != StagePilot {
+		t.Fatalf("pilot promotion with evidence = %#v, want pilot", pilot)
+	}
+	if len(pilot.AcceptedGates) != 1 || pilot.AcceptedGates[0].Gate != GateSandboxProbe || pilot.AcceptedGates[0].ObservedAt == "" {
+		t.Fatalf("accepted gates = %#v, want normalized sandbox_probe evidence", pilot.AcceptedGates)
+	}
+
+	if held, err := Promote(pilot.Definition, PromotionRequest{TargetStage: StageApproved}); err != nil {
+		t.Fatalf("Promote() to approved error = %v", err)
+	} else if held.Promoted {
+		t.Fatalf("approved promotion without admin review = %#v, want held", held)
+	}
+
+	approved, err := Promote(pilot.Definition, PromotionRequest{
+		TargetStage:  StageApproved,
+		GateEvidence: []GateEvidence{{Gate: GateAdminReview, Actor: "security-admin"}},
+	})
+	if err != nil {
+		t.Fatalf("Promote() to approved error = %v", err)
+	}
+	if !approved.Promoted || approved.Definition.Stage != StageApproved {
+		t.Fatalf("approved promotion with admin review = %#v, want approved", approved)
+	}
+}
+
 func TestNormalizeIntegrationDefinition(t *testing.T) {
 	definition, err := Normalize(Definition{
 		SchemaVersion: SchemaVersionIntegrationV1,

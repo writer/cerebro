@@ -177,6 +177,7 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /connector-definitions/preview", routeSurfacePlatformHTTP, app.handlePreviewConnectorDefinition)
 	registerHTTPRoute(mux, "POST /connector-definitions/validate", routeSurfacePlatformHTTP, app.handleValidateConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handleGetConnectorDefinition)
+	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}/versions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitionVersions)
 	registerHTTPRoute(mux, "PUT /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handlePutConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}/promotion-plan", routeSurfacePlatformHTTP, sourceplanapi.HandleStoredPromotionPlan(app.sourcePlanAPIDeps()))
 	registerHTTPRoute(mux, "POST /connector-definitions/{definitionID}/promote", routeSurfacePlatformHTTP, app.handlePromoteConnectorDefinition)

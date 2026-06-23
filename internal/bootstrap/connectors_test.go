@@ -35,9 +35,10 @@ import (
 
 type connectorTestStore struct {
 	*stubRuntimeStore
-	credentials map[string]*ports.ConnectorCredentialRecord
-	audit       []*ports.ConnectorCredentialAuditRecord
-	definitions map[string]*ports.ConnectorDefinitionRecord
+	credentials        map[string]*ports.ConnectorCredentialRecord
+	audit              []*ports.ConnectorCredentialAuditRecord
+	definitions        map[string]*ports.ConnectorDefinitionRecord
+	definitionVersions map[string][]*ports.ConnectorDefinitionVersionRecord
 }
 
 func (s *connectorTestStore) PutConnectorCredential(_ context.Context, record *ports.ConnectorCredentialRecord) error {

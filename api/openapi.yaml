@@ -867,6 +867,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/{definitionID}/versions:
+    get:
+      summary: List the immutable version history of a connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      responses:
+        '200':
+          description: Connector definition version snapshots, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionVersionsResponse'
+        '404':
+          description: Connector definition was not found.
   /connector-definitions/{definitionID}/promotion-plan:
     get:
       summary: Get a Source CDK promotion plan for a stored connector definition
@@ -902,6 +918,10 @@ paths:
                   enum: [sandbox, pilot, approved, certified]
                 reason:
                   type: string
+                gate_evidence:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ConnectorDefinitionGateEvidence'
       responses:
         '200':
           description: Promotion result with the updated definition when gates pass.
@@ -5922,6 +5942,38 @@ components:
           format: date-time
         definition:
           $ref: '#/components/schemas/ConnectorDefinition'
+    ConnectorDefinitionVersionsResponse:
+      type: object
+      required:
+        - definition_id
+        - versions
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition_id:
+          type: string
+        tenant_id:
+          type: string
+        versions:
+          type: array
+          items:
+            type: object
+            required:
+              - version
+              - definition
+            properties:
+              version:
+                type: integer
+                minimum: 1
+              stage:
+                type: string
+                enum: [draft, sandbox, pilot, approved, certified]
+              created_at:
+                type: string
+                format: date-time
+              definition:
+                $ref: '#/components/schemas/ConnectorDefinition'
     ConnectorDefinitionValidationResponse:
       type: object
       required:
@@ -6173,6 +6225,24 @@ components:
               type: string
             next_action:
               type: string
+            accepted_gates:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConnectorDefinitionGateEvidence'
+    ConnectorDefinitionGateEvidence:
+      type: object
+      required:
+        - gate
+      properties:
+        gate:
+          type: string
+        actor:
+          type: string
+        detail:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
     ConnectorDefinition:
       type: object
       required:
