@@ -42,6 +42,7 @@ import (
 	trivysource "github.com/writer/cerebro/sources/trivy"
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
+	writersource "github.com/writer/cerebro/sources/writer"
 )
 
 type builtinSourceLoader struct {
@@ -258,6 +259,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "vulnview",
 		load: func() (sourcecdk.Source, error) {
 			return vulnviewsource.New()
+		},
+	},
+	{
+		name: "writer",
+		load: func() (sourcecdk.Source, error) {
+			return writersource.New()
 		},
 	},
 }

@@ -1,0 +1,74 @@
+id: writer
+name: Writer
+description: Writer AI Studio source covering models, Knowledge Graphs, files, no-code agents, application graph associations, and async application jobs exposed by the Writer API.
+emitted_kinds:
+  - writer.model
+  - writer.graph
+  - writer.file
+  - writer.application
+  - writer.application_graph
+  - writer.application_job
+coverage_contract:
+  owner_domain: ai
+  authority_domain: writer
+  dimensions:
+    - id: applications
+      type: entity_family
+      title: No-code agents
+      families: [application]
+      support: supported
+      high_value: true
+    - id: application_graphs
+      type: app_entitlement
+      title: Application Knowledge Graph associations
+      families: [application_graph]
+      support: supported
+      high_value: true
+    - id: application_jobs
+      type: lifecycle_state
+      title: Async application jobs
+      families: [application_job]
+      support: supported
+      high_value: true
+    - id: files
+      type: entity_family
+      title: Uploaded files
+      families: [file]
+      support: supported
+      high_value: true
+    - id: graphs
+      type: entity_family
+      title: Knowledge Graphs
+      families: [graph]
+      support: supported
+      high_value: true
+    - id: models
+      type: entity_family
+      title: Available models
+      families: [model]
+      support: supported
+      high_value: true
+event_contracts:
+  - kind: writer.model
+    schema_ref: writer/model/v1
+    required_attributes: [model_id]
+    required_payload_fields: [id]
+  - kind: writer.graph
+    schema_ref: writer/graph/v1
+    required_attributes: [graph_id]
+    required_payload_fields: [id]
+  - kind: writer.file
+    schema_ref: writer/file/v1
+    required_attributes: [file_id]
+    required_payload_fields: [id]
+  - kind: writer.application
+    schema_ref: writer/application/v1
+    required_attributes: [application_id]
+    required_payload_fields: [id]
+  - kind: writer.application_graph
+    schema_ref: writer/application_graph/v1
+    required_attributes: [application_id, external_id]
+  - kind: writer.application_job
+    schema_ref: writer/application_job/v1
+    required_attributes: [application_id, job_id]
+    required_payload_fields: [id]

@@ -41,3 +41,4 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `trivy` | Trivy report source | image scans, image packages, image vulnerabilities, fixes |
 | `trusted_endpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
 | `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
+| `writer` | Writer AI Studio source | models, Knowledge Graphs, files, no-code agents, application graph associations, async application jobs |
