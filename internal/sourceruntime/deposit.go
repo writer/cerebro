@@ -462,7 +462,11 @@ func sanitizeDepositEventIDSegment(value string) string {
 			builder.WriteRune('-')
 		}
 	}
-	return strings.Trim(builder.String(), "-")
+	result := strings.Trim(builder.String(), "-")
+	if result == "" {
+		return "record"
+	}
+	return result
 }
 
 func depositPayloadFirstString(payload any, paths ...string) string {
