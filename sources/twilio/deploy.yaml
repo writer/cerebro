@@ -1,0 +1,17 @@
+sourceId: twilio
+secretKeys:
+  - TWILIO_ACCOUNTSID
+  - TWILIO_CALLSID
+  - TWILIO_TOKEN
+runtimes:
+  - localId: events-json
+    config:
+      accountsid: env:TWILIO_ACCOUNTSID
+      callsid: env:TWILIO_CALLSID
+      family: events_json
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /2010-04-01/Accounts/${config.accountsid}/Calls/${config.callsid}/Events.json
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TWILIO_TOKEN

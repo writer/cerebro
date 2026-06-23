@@ -1,0 +1,93 @@
+id: twilio
+name: "Twilio"
+description: "Twilio programmable communications platform."
+emitted_kinds:
+  - twilio.events_json
+  - twilio.accounts_json
+  - twilio.credentiallists_json
+  - twilio.ipaccesscontrollists_json
+kind_lifecycle:
+  - kind: twilio.events_json
+    status: active
+  - kind: twilio.accounts_json
+    status: active
+  - kind: twilio.credentiallists_json
+    status: active
+  - kind: twilio.ipaccesscontrollists_json
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: twilio
+  dimensions:
+    - id: events_json
+      type: entity_family
+      title: "Events Json"
+      families: [events_json]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounts_json
+      type: entity_family
+      title: "Accounts Json"
+      families: [accounts_json]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: credentiallists_json
+      type: entity_family
+      title: "Credentiallists Json"
+      families: [credentiallists_json]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ipaccesscontrollists_json
+      type: entity_family
+      title: "Ipaccesscontrollists Json"
+      families: [ipaccesscontrollists_json]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: twilio.events_json
+    schema_ref: twilio/events_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - request
+  - kind: twilio.accounts_json
+    schema_ref: twilio/accounts_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - sid
+  - kind: twilio.credentiallists_json
+    schema_ref: twilio/credentiallists_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - sid
+  - kind: twilio.ipaccesscontrollists_json
+    schema_ref: twilio/ipaccesscontrollists_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - sid

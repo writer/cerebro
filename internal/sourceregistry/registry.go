@@ -44,6 +44,11 @@ import (
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	writersource "github.com/writer/cerebro/sources/writer"
 	conjursource "github.com/writer/cerebro/sources/conjur"
+	twiliosource "github.com/writer/cerebro/sources/twilio"
+	boxsource "github.com/writer/cerebro/sources/box"
+	asanasource "github.com/writer/cerebro/sources/asana"
+	linodesource "github.com/writer/cerebro/sources/linode"
+	discordsource "github.com/writer/cerebro/sources/discord"
 )
 
 type builtinSourceLoader struct {
@@ -53,9 +58,27 @@ type builtinSourceLoader struct {
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
+		name: "asana",
+		load: func() (sourcecdk.Source, error) {
+			return asanasource.New()
+		},
+	},
+	{
+		name: "box",
+		load: func() (sourcecdk.Source, error) {
+			return boxsource.New()
+		},
+	},
+	{
 		name: "conjur",
 		load: func() (sourcecdk.Source, error) {
 			return conjursource.New()
+		},
+	},
+	{
+		name: "discord",
+		load: func() (sourcecdk.Source, error) {
+			return discordsource.New()
 		},
 	},
 	{
@@ -197,6 +220,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "linode",
+		load: func() (sourcecdk.Source, error) {
+			return linodesource.New()
+		},
+	},
+	{
 		name: "okta",
 		load: func() (sourcecdk.Source, error) {
 			return oktasource.New()
@@ -260,6 +289,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "trivy",
 		load: func() (sourcecdk.Source, error) {
 			return trivysource.New()
+		},
+	},
+	{
+		name: "twilio",
+		load: func() (sourcecdk.Source, error) {
+			return twiliosource.New()
 		},
 	},
 	{

@@ -751,9 +751,39 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeyless.audit_events": akeylessAuditEventsProjections,
 	// conjur generated projectors (sourcegen promotion)
 	"conjur.authenticator": conjurAuthenticatorProjections,
-	"conjur.resource": conjurResourceProjections,
-	"conjur.resource_2": conjurResource2Projections,
-	"conjur.resource_3": conjurResource3Projections,
+	"conjur.resource":      conjurResourceProjections,
+	"conjur.resource_2":    conjurResource2Projections,
+	"conjur.resource_3":    conjurResource3Projections,
+
+	// twilio generated projectors (sourcegen promotion)
+	"twilio.accounts_json":             twilioAccountsJsonProjections,
+	"twilio.credentiallists_json":      twilioCredentiallistsJsonProjections,
+	"twilio.events_json":               twilioEventsJsonProjections,
+	"twilio.ipaccesscontrollists_json": twilioIpaccesscontrollistsJsonProjections,
+
+	// box generated projectors (sourcegen promotion)
+	"box.event":      boxEventProjections,
+	"box.group":      boxGroupProjections,
+	"box.membership": boxMembershipProjections,
+	"box.shield_information_barrier_segment_member": boxShieldInformationBarrierSegmentMemberProjections,
+
+	// asana generated projectors (sourcegen promotion)
+	"asana.event":      asanaEventProjections,
+	"asana.membership": asanaMembershipProjections,
+	"asana.role":       asanaRoleProjections,
+	"asana.user":       asanaUserProjections,
+
+	// linode generated projectors (sourcegen promotion)
+	"linode.credential": linodeCredentialProjections,
+	"linode.event":      linodeEventProjections,
+	"linode.issue":      linodeIssueProjections,
+	"linode.user":       linodeUserProjections,
+
+	// discord generated projectors (sourcegen promotion)
+	"discord.audit_log":  discordAuditLogProjections,
+	"discord.member":     discordMemberProjections,
+	"discord.permission": discordPermissionProjections,
+	"discord.role":       discordRoleProjections,
 
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}

@@ -32,12 +32,13 @@ const (
 )
 
 func main() {
-	var manifestPath, outDir, reportOut, appendCatalog, apisGuruList string
+	var manifestPath, outDir, reportOut, appendCatalog, defsOut, apisGuruList string
 	var limit, timeoutSeconds int
 	flag.StringVar(&manifestPath, "manifest", "", "provider manifest YAML path (required)")
 	flag.StringVar(&outDir, "out", defaultOutputDir, "staging output directory for candidate catalog files and report")
 	flag.StringVar(&reportOut, "report-out", "", "funnel report JSON path; defaults to <out>/report.json")
 	flag.StringVar(&appendCatalog, "append-catalog", "", "when set, append supported entries into <dir>/<domain>.yaml")
+	flag.StringVar(&defsOut, "defs-out", "", "when set, write each supported entry's connector definition as <dir>/<source_id>.json for direct Source CDK promotion")
 	flag.StringVar(&apisGuruList, "apisguru-list", "", "path to a cached APIs.guru list.json; fetched over network when empty")
 	flag.IntVar(&limit, "limit", 0, "process at most N manifest targets (0 = all)")
 	flag.IntVar(&timeoutSeconds, "timeout", 30, "per-request HTTP timeout in seconds")
@@ -85,6 +86,13 @@ func main() {
 			fail(err)
 		}
 		fmt.Printf("appended %d supported entries into %s\n", appended, appendCatalog)
+	}
+	if strings.TrimSpace(defsOut) != "" {
+		written, err := writeDefinitionJSON(defsOut, outcomes)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("wrote %d connector definitions into %s\n", written, defsOut)
 	}
 	printSummary(summary, outcomes)
 }
