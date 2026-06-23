@@ -26,6 +26,14 @@ linters:
       - path: _test\.go
         linters:
           - noctx
+      # Source connector packages enumerate resource families, attribute
+      # mappings, and OAuth method identifiers whose names include
+      # "secret"/"credential"/"token" as data, not credential material. Real
+      # credentials are always env: references, enforced by review and gitleaks.
+      - path: ^sources/
+        linters:
+          - gosec
+        text: G101
 
 formatters:
   enable:
