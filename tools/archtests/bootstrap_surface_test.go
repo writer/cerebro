@@ -39,10 +39,13 @@ import (
 // dynamic connector runtimes add connector-library response mapping and setup
 // method shaping while runnable source construction stays behind internal/sourceregistry.
 // Runtime connector previews add thin HTTP request/response mapping while live
-// check/read behavior stays behind internal/connectorpreview. Connector deposit
+// check/read behavior stays behind internal/connectorpreview. File-organization
+// refactor extracted finding, graph, source-runtime, and report handlers from
+// app.go into domain-scoped files; the budget increase covers only the per-file
+// package declarations and import blocks with no new behavior. Connector deposit
 // ingest adds HTTP request/response mapping while runtime validation, append-log
 // persistence, and graph projection stay behind internal/sourceruntime.
-const bootstrapProductionGoLineBudget = 25728
+const bootstrapProductionGoLineBudget = 25776
 
 type bootstrapFileLineCount struct {
 	path  string

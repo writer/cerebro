@@ -464,25 +464,17 @@ func aiCredentialProjections(event *cerebrov1.EventEnvelope, profile aiAccessPro
 	if credentialType == "" {
 		credentialType = "credential"
 	}
+	scopeKind := aiCredentialScopeKind(attrs, event.GetKind())
+	credentialAttrs := aiCredentialAttributes(attrs, credentialID, credentialType, true)
+	addProjectedAttribute(credentialAttrs, "scope_kind", scopeKind)
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        credentialURN,
 		TenantID:   tenantID,
 		SourceID:   event.GetSourceId(),
 		EntityType: profile.Provider + ".credential",
 		Label:      firstNonEmpty(attrs["name"], credentialID),
-		Attributes: aiPrincipalAttributes(attrs, map[string]string{
-			"credential_id":   credentialID,
-			"credential_type": credentialType,
-			"api_key_id":      strings.TrimSpace(attrs["api_key_id"]),
-			"external_key_id": strings.TrimSpace(attrs["external_key_id"]),
-			"name":            strings.TrimSpace(attrs["name"]),
-			"status":          strings.TrimSpace(attrs["status"]),
-			"provider":        strings.TrimSpace(attrs["provider"]),
-			"created_at":      strings.TrimSpace(attrs["created_at"]),
-			"last_used_at":    strings.TrimSpace(attrs["last_used_at"]),
-		}),
+		Attributes: credentialAttrs,
 	})
-	scopeKind := aiCredentialScopeKind(attrs, event.GetKind())
 	scopeURN := aiEnsureScope(entities, tenantID, event.GetSourceId(), profile, scopeKind, attrs)
 	if scopeURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, scopeURN, relationCanPerform, aiEventLinkAttributes(event, "credential_scope")))
@@ -1125,25 +1117,81 @@ func aiEnsureCredential(entities map[string]*ports.ProjectedEntity, tenantID str
 	if credentialURN == "" {
 		return ""
 	}
-	baseAttrs := map[string]string{
-		"credential_id":  strings.TrimSpace(credentialID),
-		"principal_type": "credential",
-		"api_key_id":     strings.TrimSpace(credentialID),
-	}
+	baseAttrs := aiCredentialAttributes(attrs, credentialID, firstNonEmpty(attrs["credential_type"], "credential"), false)
 	if credentialID == strings.TrimSpace(firstNonEmpty(attrs["actor_api_key_id"], attrs["actor_admin_api_key_id"])) {
 		baseAttrs["actor_user_id"] = strings.TrimSpace(attrs["actor_user_id"])
 		baseAttrs["actor_service_account_id"] = strings.TrimSpace(attrs["actor_service_account_id"])
 	}
-	credentialAttrs := aiPrincipalAttributes(attrs, baseAttrs)
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        credentialURN,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: profile.Provider + ".credential",
 		Label:      credentialID,
-		Attributes: credentialAttrs,
+		Attributes: baseAttrs,
 	})
 	return credentialURN
+}
+
+func aiCredentialAttributes(attrs map[string]string, credentialID string, credentialType string, allowUserIDOwner bool) map[string]string {
+	ownerUserID := firstNonEmpty(attrs["owner_user_id"], aiTypedOwnerID(attrs, "user"))
+	if allowUserIDOwner {
+		ownerUserID = firstNonEmpty(ownerUserID, attrs["user_id"])
+	}
+	ownerServiceAccountID := firstNonEmpty(attrs["owner_service_account_id"], aiTypedOwnerID(attrs, "service_account"))
+	lastUsedAt := firstNonEmpty(attrs["last_used_at"], attrs["last_used_time"], attrs["last_used"], attrs["end_time"], attrs["start_time"])
+	baseAttrs := map[string]string{
+		"credential_id":            strings.TrimSpace(credentialID),
+		"credential_type":          firstNonEmpty(credentialType, attrs["credential_type"], attrs["key_type"], "credential"),
+		"principal_type":           "credential",
+		"api_key_id":               strings.TrimSpace(credentialID),
+		"external_key_id":          strings.TrimSpace(attrs["external_key_id"]),
+		"name":                     strings.TrimSpace(attrs["name"]),
+		"status":                   strings.TrimSpace(attrs["status"]),
+		"provider":                 strings.TrimSpace(attrs["provider"]),
+		"created_at":               strings.TrimSpace(attrs["created_at"]),
+		"updated_at":               strings.TrimSpace(attrs["updated_at"]),
+		"expires_at":               strings.TrimSpace(attrs["expires_at"]),
+		"last_used_at":             strings.TrimSpace(lastUsedAt),
+		"key_class":                strings.TrimSpace(attrs["key_class"]),
+		"privileged":               strings.TrimSpace(attrs["privileged"]),
+		"owner_id":                 strings.TrimSpace(attrs["owner_id"]),
+		"owner_type":               strings.TrimSpace(attrs["owner_type"]),
+		"owner_object":             strings.TrimSpace(attrs["owner_object"]),
+		"owner_name":               strings.TrimSpace(attrs["owner_name"]),
+		"owner_role":               strings.TrimSpace(attrs["owner_role"]),
+		"owner_user_id":            strings.TrimSpace(ownerUserID),
+		"owner_service_account_id": strings.TrimSpace(ownerServiceAccountID),
+		"organization_id":          strings.TrimSpace(attrs["organization_id"]),
+		"org_id":                   strings.TrimSpace(attrs["org_id"]),
+		"project_id":               strings.TrimSpace(attrs["project_id"]),
+		"workspace_id":             strings.TrimSpace(attrs["workspace_id"]),
+	}
+	if firstNonEmpty(ownerUserID, ownerServiceAccountID, attrs["owner_id"]) != "" {
+		baseAttrs["has_owner"] = "true"
+	} else if allowUserIDOwner {
+		baseAttrs["has_owner"] = "false"
+	}
+	if aiCredentialUsageObserved(attrs) {
+		baseAttrs["credential_use"] = "true"
+	}
+	return aiPrincipalAttributes(attrs, baseAttrs)
+}
+
+func aiCredentialUsageObserved(attrs map[string]string) bool {
+	family := strings.ToLower(strings.TrimSpace(attrs["family"]))
+	if strings.HasPrefix(family, "usage") || strings.Contains(family, "usage_") || strings.Contains(family, "cost") {
+		return true
+	}
+	return firstNonEmpty(
+		attrs["input_tokens"],
+		attrs["output_tokens"],
+		attrs["num_model_requests"],
+		attrs["request_count"],
+		attrs["cost_usd"],
+		attrs["amount"],
+		attrs["line_item"],
+	) != "" && firstNonEmpty(attrs["start_time"], attrs["end_time"], attrs["model"]) != ""
 }
 
 func aiEnsureRole(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, profile aiAccessProfile, attrs map[string]string, scopeKind string) string {
@@ -1186,7 +1234,7 @@ func aiCredentialOwnerURN(entities map[string]*ports.ProjectedEntity, links map[
 		return ownerURN
 	}
 	if ownerUserID := firstNonEmpty(attrs["owner_user_id"], attrs["user_id"], aiTypedOwnerID(attrs, "user")); ownerUserID != "" || strings.TrimSpace(attrs["email"]) != "" {
-		return aiEnsureUser(entities, links, tenantID, event, profile, ownerUserID, attrs["email"], firstNonEmpty(attrs["owner_name"], attrs["name"]), "")
+		return aiEnsureUser(entities, links, tenantID, event, profile, ownerUserID, attrs["email"], attrs["owner_name"], "")
 	}
 	return ""
 }
@@ -1448,7 +1496,7 @@ func aiAuditResourceURN(entities map[string]*ports.ProjectedEntity, links map[st
 		orgAttrs["organization_id"] = resourceID
 		return aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, orgAttrs)
 	case strings.Contains(normalizedType, "user"):
-		return aiEnsureUser(entities, links, tenantID, event, profile, resourceID, attrs["email"], attrs["name"], attrs["role"])
+		return aiEnsureUser(entities, links, tenantID, event, profile, resourceID, attrs["email"], "", attrs["role"])
 	default:
 		resourceType = firstNonEmpty(resourceType, "resource")
 		resourceURN := projectionURN(tenantID, profile.Provider+"_resource", resourceType, resourceID)
@@ -1460,7 +1508,7 @@ func aiAuditResourceURN(entities map[string]*ports.ProjectedEntity, links map[st
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.Provider + ".resource",
-			Label:      firstNonEmpty(attrs["name"], resourceID),
+			Label:      resourceID,
 			Attributes: compactAttributes(map[string]string{
 				"activity_type":     attrs["activity_type"],
 				"claude_project_id": attrs["claude_project_id"],
