@@ -20,7 +20,7 @@ Generated Source Runtime SDK scaffold for `twilio`.
 
 - `accounts`, emits `twilio.accounts`, reads `/2010-04-01/Accounts.json`
 - `keys`, emits `twilio.keys`, reads `/2010-04-01/Accounts/${config.account_sid}/Keys.json`
-- `audit_events`, emits `twilio.audit_events`, reads `/2010-04-01/Accounts/${config.account_sid}/Messages.json`
+- `audit_events`, emits `twilio.audit_events`, reads `/v1/Events`
 
 ## Tests
 
