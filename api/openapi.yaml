@@ -1084,6 +1084,26 @@ paths:
       responses:
         '200':
           description: Stored runtime with sensitive config redacted, credential metadata, and the applied typed scope policy when provided.
+  /connectors/{sourceID}/deposits:
+    post:
+      summary: Deposit typed records for a runtime connector
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDepositRequest'
+      responses:
+        '200':
+          description: Deposit ingest result with append-log, projection, and per-record validation counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDepositResponse'
   /source-runtimes:
     get:
       summary: List source runtime configurations
@@ -5790,6 +5810,92 @@ components:
           type: object
           additionalProperties:
             type: string
+    ConnectorDepositRequest:
+      type: object
+      required:
+        - runtime_id
+      properties:
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        family_id:
+          type: string
+          description: Required when more than one deposit-enabled family is modeled.
+        batch_id:
+          type: string
+          description: Stable client batch id used to derive deterministic source event ids for retries.
+        idempotency_key:
+          type: string
+          description: Stable request id used to derive deterministic source event ids for retries.
+        occurred_at:
+          type: string
+          format: date-time
+        full_state:
+          type: boolean
+          description: Marks the deposited records as a full-state snapshot for the selected family.
+        record:
+          type: object
+          additionalProperties: true
+          description: Single record convenience form.
+        records:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: true
+    ConnectorDepositRecordError:
+      type: object
+      required:
+        - index
+        - detail
+      properties:
+        index:
+          type: integer
+        source_event_id:
+          type: string
+        detail:
+          type: string
+    ConnectorDepositResponse:
+      type: object
+      required:
+        - source_id
+        - runtime_id
+        - tenant_id
+        - family_id
+        - records_accepted
+        - records_rejected
+        - events_appended
+        - entities_projected
+        - links_projected
+      properties:
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        tenant_id:
+          type: string
+        family_id:
+          type: string
+        records_accepted:
+          type: integer
+          format: int32
+        records_rejected:
+          type: integer
+          format: int32
+        events_appended:
+          type: integer
+          format: int32
+        entities_projected:
+          type: integer
+          format: int32
+        links_projected:
+          type: integer
+          format: int32
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDepositRecordError'
     ConnectorDefinitionListResponse:
       type: object
       required:

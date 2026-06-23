@@ -116,6 +116,23 @@ func TestCatalogRuntimeProjectorsCoverGeneratedTemplates(t *testing.T) {
 	}
 }
 
+func TestCatalogRuntimeProjectorRegistrationAcceptsCatalogReadyEntries(t *testing.T) {
+	projectors := map[string]ProjectFunc{}
+	registerCatalogRuntimeProjectorsForEntries(projectors, []connectorcatalog.Entry{{
+		Status: connectorcatalog.StatusCatalogReady,
+		Definition: connectordefinitions.Definition{
+			SourceID: "example_catalog",
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:    "assets",
+				Event: connectordefinitions.EventMappingSpec{Kind: "example_catalog.asset"},
+			}},
+		},
+	}})
+	if projectors["example_catalog.asset"] == nil {
+		t.Fatal("catalog-ready entry did not register catalog runtime projector")
+	}
+}
+
 func TestCatalogRuntimeProjectorRegistrationDoesNotOverrideStaticProjector(t *testing.T) {
 	called := false
 	projectors := map[string]ProjectFunc{

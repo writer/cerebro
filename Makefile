@@ -225,7 +225,9 @@ mcp-sdk-compat: build ## Check MCP SDK compatibility against local server.
 	log="tmp/mcp-sdk-compat-server.log"; \
 	CEREBRO_HTTP_ADDR="127.0.0.1:$$port" CEREBRO_API_AUTH_ENABLED=true CEREBRO_API_KEYS="$(MCP_SDK_TEST_TOKEN):mcp-sdk:writer" ./bin/cerebro serve > "$$log" 2>&1 & pid=$$!; \
 	trap 'kill "$$pid" >/dev/null 2>&1 || true; wait "$$pid" >/dev/null 2>&1 || true' EXIT; \
-	for _ in $$(seq 1 50); do python3 -c 'import sys, urllib.request; url=sys.argv[1]; urllib.request.urlopen(url, timeout=0.5).read()' "http://127.0.0.1:$$port/health" >/dev/null 2>&1 && break; sleep 0.1; done; \
+	ready=0; \
+	for _ in $$(seq 1 150); do python3 -c 'import sys, urllib.request; url=sys.argv[1]; urllib.request.urlopen(url, timeout=0.5).read()' "http://127.0.0.1:$$port/health" >/dev/null 2>&1 && { ready=1; break; }; sleep 0.2; done; \
+	if [ "$$ready" != "1" ]; then cat "$$log" >&2 || true; exit 1; fi; \
 	CEREBRO_BASE_URL="http://127.0.0.1:$$port" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" python3 scripts/mcp_smoke.py --skip-unauthenticated-check; \
 	CEREBRO_MCP_URL="http://127.0.0.1:$$port/api/v1/mcp" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" CEREBRO_MCP_SDK_ROOT="$(CURDIR)/$(MCP_SDK_ROOT)" node scripts/mcp_sdk_compat.mjs
 

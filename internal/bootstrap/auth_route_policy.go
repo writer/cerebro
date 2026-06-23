@@ -67,6 +67,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/revoke", Scope: scopeConnectorCredentialsWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/preflight", Scope: scopeConnectorsWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/connections", Scope: scopeConnectorsWrite, Static: true},
+	{Method: http.MethodPost, Prefix: "/connectors/", Suffix: "/deposits", Scope: scopeConnectorsWrite, Static: true},
 	{Method: http.MethodGet, Exact: "/reports", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/finding-rules", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/endpoint-vulnerability-findings", Scope: scopeCosmoSecurityRead},

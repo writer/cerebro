@@ -189,6 +189,7 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/credentials/{credentialID}/revoke", routeSurfacePlatformHTTP, app.handleRevokeConnectorCredential)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/preflight", routeSurfacePlatformHTTP, app.handlePreflightConnectorConnection)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/connections", routeSurfacePlatformHTTP, app.handleCreateConnectorConnection)
+	registerHTTPRoute(mux, "POST /connectors/{sourceID}/deposits", routeSurfacePlatformHTTP, app.handleDepositConnectorRecords)
 }
 
 func (app *App) sourcePlanAPIDeps() sourceplanapi.Dependencies {

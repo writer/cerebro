@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
@@ -511,6 +512,119 @@ func TestConnectorDefinitionStoredPromotionPlan(t *testing.T) {
 	}
 	if planned.Plan == nil || planned.Plan.Definition.ID != created.Definition.ID || planned.Plan.NextStage != connectordefinitions.StageSandbox {
 		t.Fatalf("plan = %#v, want stored definition plan", planned.Plan)
+	}
+}
+
+func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "custom_deposit",
+		DisplayName: "Custom Deposit",
+		Runtime:     connectordefinitions.RuntimeJSONAPI,
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Ingest: connectordefinitions.IngestSpec{
+			Mode: connectordefinitions.IngestModeDeposit,
+			Deposit: &connectordefinitions.DepositIngestSpec{
+				ResourceFamilies: []string{"assets"},
+				FullStateSync:    true,
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Label:     "Assets",
+			IDField:   "id",
+			NameField: "name",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:                  "custom_deposit.assets",
+				SchemaRef:             "custom_deposit/assets/v1",
+				RequiredPayloadFields: []string{"id"},
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	definitionJSON, err := json.Marshal(definition)
+	if err != nil {
+		t.Fatalf("marshal definition: %v", err)
+	}
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-deposit": {
+				Id:       "runtime-deposit",
+				SourceId: "custom_deposit",
+				TenantId: "tenant-a",
+				Config:   map[string]string{},
+			},
+		}},
+		definitions: map[string]*ports.ConnectorDefinitionRecord{
+			definition.ID: {
+				ID:             definition.ID,
+				TenantID:       definition.TenantID,
+				SourceID:       definition.SourceID,
+				DisplayName:    definition.DisplayName,
+				Runtime:        definition.Runtime,
+				Stage:          definition.Stage,
+				DefinitionJSON: definitionJSON,
+			},
+		},
+	}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: store,
+		GraphStore: store,
+		AppendLog:  appendLog,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"tenant_id":"tenant-a","runtime_id":"runtime-deposit","family_id":"assets","batch_id":"batch-1","full_state":true,"records":[{"id":"asset-1","name":"Asset One"}]}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/custom_deposit/deposits", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/deposits error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors/{sourceID}/deposits status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		SourceID          string `json:"source_id"`
+		RuntimeID         string `json:"runtime_id"`
+		FamilyID          string `json:"family_id"`
+		RecordsAccepted   uint32 `json:"records_accepted"`
+		RecordsRejected   uint32 `json:"records_rejected"`
+		EventsAppended    uint32 `json:"events_appended"`
+		EntitiesProjected uint32 `json:"entities_projected"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.SourceID != "custom_deposit" || payload.RuntimeID != "runtime-deposit" || payload.FamilyID != "assets" {
+		t.Fatalf("response identity = %#v", payload)
+	}
+	if payload.RecordsAccepted != 1 || payload.EventsAppended != 1 || payload.RecordsRejected != 0 {
+		t.Fatalf("deposit counts = %#v, want one accepted/appended", payload)
+	}
+	if payload.EntitiesProjected == 0 {
+		t.Fatalf("entities_projected = 0, want dynamic projector output")
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("append log events = %d, want 1", len(appendLog.events))
+	}
+	event := appendLog.events[0]
+	if event.GetKind() != "custom_deposit.assets" || event.GetAttributes()["resource_id"] != "asset-1" || event.GetAttributes()["source_runtime_id"] != "runtime-deposit" {
+		t.Fatalf("event = %#v", event)
+	}
+	if len(store.entities) == 0 {
+		t.Fatal("projected entities empty, want deposited asset projection")
+	}
+	runtime, err := store.GetSourceRuntime(context.Background(), "runtime-deposit")
+	if err != nil {
+		t.Fatalf("GetSourceRuntime() error = %v", err)
+	}
+	if got := runtime.GetConfig()[runtimeRecordsAcceptedConfigKey]; got != "1" {
+		t.Fatalf("runtime records accepted = %q, want 1", got)
 	}
 }
 

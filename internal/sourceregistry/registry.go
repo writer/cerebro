@@ -30,10 +30,12 @@ import (
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
+	merakisource "github.com/writer/cerebro/sources/meraki"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	openaisource "github.com/writer/cerebro/sources/openai"
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	panopticonsource "github.com/writer/cerebro/sources/panopticon"
+	probelysource "github.com/writer/cerebro/sources/probely"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
@@ -184,6 +186,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "meraki",
+		load: func() (sourcecdk.Source, error) {
+			return merakisource.New()
+		},
+	},
+	{
 		name: "kolide",
 		load: func() (sourcecdk.Source, error) {
 			return kolidesource.New()
@@ -211,6 +219,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "pagerduty",
 		load: func() (sourcecdk.Source, error) {
 			return pagerdutysource.New()
+		},
+	},
+	{
+		name: "probely",
+		load: func() (sourcecdk.Source, error) {
+			return probelysource.New()
 		},
 	},
 	{
@@ -278,6 +292,9 @@ func DynamicDefinitionSource(definition connectordefinitions.Definition) (source
 	}
 	if normalized.Validation.Status == connectordefinitions.ValidationBlocked {
 		return nil, fmt.Errorf("%w: connector definition %q is blocked: %s", connectordefinitions.ErrInvalidDefinition, normalized.SourceID, normalized.Validation.Summary)
+	}
+	if normalized.Ingest.Mode == connectordefinitions.IngestModeDeposit {
+		return newDepositDefinitionSource(normalized), nil
 	}
 	return catalogruntimesource.NewDefinition(normalized)
 }
