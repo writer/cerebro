@@ -139,14 +139,14 @@ func tailscaleUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	addEntity(entities, tailscaleEntity(event, tailscaleUserURN(tenantID, userID), "tailscale.user", firstNonEmpty(attrs["login_name"], attrs["email"], userID), tailscaleAttributes(map[string]string{
-		"user_id":       userID,
-		"login_name":    attrs["login_name"],
-		"email":         attrs["email"],
-		"display_name":  attrs["display_name"],
-		"role":          attrs["role"],
-		"status":        attrs["status"],
-		"type":          attrs["type"],
-		"last_seen_at":  attrs["last_seen_at"],
+		"user_id":      userID,
+		"login_name":   attrs["login_name"],
+		"email":        attrs["email"],
+		"display_name": attrs["display_name"],
+		"role":         attrs["role"],
+		"status":       attrs["status"],
+		"type":         attrs["type"],
+		"last_seen_at": attrs["last_seen_at"],
 	})))
 	projectedEntities, _ := entitiesAndLinks(entities, map[string]*ports.ProjectedLink{})
 	return projectedEntities, nil, nil
