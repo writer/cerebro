@@ -201,8 +201,7 @@ func objectReader(key string, reader io.Reader) (io.Reader, error) {
 		}
 		data, err = io.ReadAll(io.LimitReader(gz, MaxObjectBytes+1))
 		if err != nil {
-			_ = gz.Close()
-			return nil, err
+			return nil, errors.Join(err, gz.Close())
 		}
 		if err := gz.Close(); err != nil {
 			return nil, err

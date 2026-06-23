@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -137,7 +138,11 @@ func (a *App) grcCacheKey(r *http.Request, policy grcCachePolicy) string {
 		"tenant":   tenantID,
 		"versions": versions,
 	}
-	raw, _ := json.Marshal(material)
+	raw, err := json.Marshal(material)
+	if err != nil {
+		log.Printf("grc: cache key marshal failed: %v", err)
+		return ""
+	}
 	digest := sha256.Sum256(raw)
 	return "http:grc:" + strings.TrimSpace(policy.Family) + ":" + hex.EncodeToString(digest[:])
 }
@@ -214,7 +219,11 @@ func grcCacheAuthMaterial(r *http.Request) string {
 		"device_id":       auth.principal.DeviceID,
 		"assurance":       auth.principal.AssuranceLevel,
 	}
-	raw, _ := json.Marshal(material)
+	raw, err := json.Marshal(material)
+	if err != nil {
+		log.Printf("grc: auth material marshal failed: %v", err)
+		return ""
+	}
 	digest := sha256.Sum256(raw)
 	return hex.EncodeToString(digest[:])
 }
@@ -346,7 +355,9 @@ func bumpGRCCacheVersions(ctx context.Context, cache querycache.Cache, tenantID 
 	if cache == nil {
 		return
 	}
-	_, _ = cache.BumpVersion(ctx, grcGlobalCacheVersionScope())
+	if _, err := cache.BumpVersion(ctx, grcGlobalCacheVersionScope()); err != nil {
+		log.Printf("grc: bump global cache version failed: %v", err)
+	}
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
 		return
@@ -356,7 +367,9 @@ func bumpGRCCacheVersions(ctx context.Context, cache querycache.Cache, tenantID 
 		if scope == "" {
 			continue
 		}
-		_, _ = cache.BumpVersion(ctx, grcTenantCacheVersionScope(tenantID, scope))
+		if _, err := cache.BumpVersion(ctx, grcTenantCacheVersionScope(tenantID, scope)); err != nil {
+			log.Printf("grc: bump tenant cache version failed: %v", err)
+		}
 	}
 }
 
