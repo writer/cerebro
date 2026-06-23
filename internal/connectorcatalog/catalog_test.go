@@ -149,13 +149,13 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if analysis.Summary.Total != 137 {
-		t.Fatalf("summary total = %d, want 137", analysis.Summary.Total)
+	if analysis.Summary.Total != 195 {
+		t.Fatalf("summary total = %d, want 195", analysis.Summary.Total)
 	}
-	if len(analysis.Entries) != 137 {
-		t.Fatalf("entries len = %d, want 137", len(analysis.Entries))
+	if len(analysis.Entries) != 195 {
+		t.Fatalf("entries len = %d, want 195", len(analysis.Entries))
 	}
-	if analysis.Summary.Generateable != 137 {
+	if analysis.Summary.Generateable != 195 {
 		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
 	}
 	if analysis.Summary.NeedsAuthExtension != 0 {

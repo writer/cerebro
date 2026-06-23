@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -161,7 +161,7 @@ finding-rule-scaffold-test: ## Run finding rule scaffold generator tests.
 	go test ./cmd/cerebro -run 'Test(ParseFindingRuleNewArgs|ScaffoldFindingRule|FindingRuleScaffold|RenderFindingRuleGo)' -count=1 -v
 
 sourcegen-test: ## Run source generator and generated runtime projection tests.
-	go test ./internal/sourcegen ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen -count=1
+	go test ./internal/sourcegen ./internal/connectordefinitions ./internal/connectordefinitions/openapigen ./internal/connectorcatalog ./internal/connectorimport ./sources/internal/catalogruntime ./internal/sourceregistry ./internal/sourceprojection ./tools/openapidefgen -count=1
 
 openapi-definition-gen-test: ## Run OpenAPI connector definition generator tests.
 	go test ./internal/connectordefinitions/openapigen ./tools/openapidefgen -count=1 -v
@@ -270,6 +270,13 @@ control-index-check: ## Verify compliance control coverage index is current.
 	go run ./tools/controlindex --check
 
 sourcegen-check: ## Verify connector definitions remain sourcegen-ready.
+	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
+
+connector-import: ## Generate candidate connector definitions from the provider manifest into staging (no catalog writes).
+	go run ./tools/connectorimport -manifest tools/connectorimport/targets.yaml -out tmp/connector-candidates
+
+connector-import-promote: ## Append supported candidate connector definitions into the built-in catalog, then verify.
+	go run ./tools/connectorimport -manifest tools/connectorimport/targets.yaml -out tmp/connector-candidates -append-catalog internal/connectorcatalog/catalog
 	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
 
 graph-action-generate: ## Regenerate graph action registry from the action catalog.

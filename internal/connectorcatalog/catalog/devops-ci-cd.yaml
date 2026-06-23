@@ -2031,3 +2031,4307 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Username
+            reference_only: true
+            required: true
+          - key: password
+            label: Password
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+      description: |-
+        # Overview
+
+        To facilitate management, Apache Airflow supports a range of REST API endpoints across its
+        objects.
+        This section provides an overview of the API design, methods, and supported use cases.
+
+        Most of the endpoints accept `JSON` as input and return `JSON` responses.
+        This means that you must usually add the following headers to your request:
+        ```
+        Content-type: application/json
+        Accept: application/json
+        ```
+
+        ## Resources
+
+        The term `resource` refers to a single type of object in the Airflow metadata. An API is broken up by its
+        endpoint's corresponding resource.
+        The name of a resource is typically plural and expressed in camelCase. Example: `dagRuns`.
+
+        Resource names are used as part of endpoint URLs, as well as in API parameters and responses.
+
+        ## CRUD Operations
+
+        The platform supports **C**reate, **R**ead, **U**pdate, and **D**elete operations on most resources.
+        You can review the standards for these operations and their standard parameters below.
+
+        Some endpoints have special behavior as exceptions.
+
+        ### Create
+
+        To create a resource, you typically submit an HTTP `POST` request with the resource's required metadata
+        in the request body.
+        The response returns a `201 Created` response code upon success with the resource's metadata, including
+        its internal `id`, in the response body.
+
+        ### Read
+
+        The HTTP `GET` request can be used to read a resource or to list a number of resources.
+
+        A resource's `id` can be submitted in the request parameters to read a specific resource.
+        The response usually returns a `200 OK` response code upon success, with the resource's metadata in
+        the response body.
+
+        If a `GET` request does not include a specific resource `id`, it is treated as a list request.
+        The response usually returns a `200 OK` response code upon success, with an object containing a list
+        of resources' metadata in the response body.
+
+        When reading resources, some common query parameters are usually available. e.g.:
+        ```
+        v1/connections?limit=25&offset=25
+        ```
+
+        |Query Parameter|Type|Description|
+        |---------------|----|-----------|
+        |limit|integer|Maximum number of objects to fetch. Usually 25 by default|
+        |offset|integer|Offset after which to start returning objects. For use with limit query parameter.|
+
+        ### Update
+
+        Updating a resource requires the resource `id`, and is typically done using an HTTP `PATCH` request,
+        with the fields to modify in the request body.
+        The response usually returns a `200 OK` response code upon success, with information about the modified
+        resource in the response body.
+
+        ### Delete
+
+        Deleting a resource requires the resource `id` and is typically executing via an HTTP `DELETE` request.
+        The response usually returns a `204 No Content` response code upon success.
+
+        ## Conventions
+
+        - Resource names are plural and expressed in camelCase.
+        - Names are consistent between URL parameter name and field name.
+
+        - Field names are in snake_case.
+        ```json
+        {
+            "name": "string",
+            "slots": 0,
+            "occupied_slots": 0,
+            "used_slots": 0,
+            "queued_slots": 0,
+            "open_slots": 0
+        }
+        ```
+
+        ### Update Mask
+
+        Update mask is available as a query parameter in patch endpoints. It is used to notify the
+        API which fields you want to update. Using `update_mask` makes it easier to update objects
+        by helping the server know which fields to update in an object instead of updating all fields.
+        The update request ignores any fields that aren't specified in the field mask, leaving them with
+        their current values.
+
+        Example:
+        ```
+          resource = request.get('/resource/my-id').json()
+          resource['my_field'] = 'new-value'
+          request.patch('/resource/my-id?update_mask=my_field', data=json.dumps(resource))
+        ```
+
+        ## Versioning and Endpoint Lifecycle
+
+        - API versioning is not synchronized to specific releases of the Apache Airflow.
+        - APIs are designed to be backward compatible.
+        - Any changes to the API will first go through a deprecation phase.
+
+        # Trying the API
+
+        You can use a third party client, such as [curl](https://curl.haxx.se/), [HTTPie](https://httpie.org/),
+        [Postman](https://www.postman.com/) or [the Insomnia rest client](https://insomnia.rest/) to test
+        the Apache Airflow API.
+
+        Note that you will need to pass credentials data.
+
+        For e.g., here is how to pause a DAG with [curl](https://curl.haxx.se/), when basic authorization is used:
+        ```bash
+        curl -X PATCH 'https://example.com/api/v1/dags/{dag_id}?update_mask=is_paused' \
+        -H 'Content-Type: application/json' \
+        --user "username:password" \
+        -d '{
+            "is_paused": true
+        }'
+        ```
+
+        Using a graphical tool such as [Postman](https://www.postman.com/) or [Insomnia](https://insomnia.rest/),
+        it is possible to import the API specifications directly:
+
+        1. Download the API specification by clicking the **Download** button at top of this document
+        2. Import the JSON specification in the graphical tool of your choice.
+          - In *Postman*, you can click the **import** button at the top
+          - With *Insomnia*, you can just drag-and-drop the file on the UI
+
+        Note that with *Postman*, you can also generate code snippets by selecting a request and clicking on
+        the **Code** button.
+
+        ## Enabling CORS
+
+        [Cross-origin resource sharing (CORS)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
+        is a browser security feature that restricts HTTP requests that are
+        initiated from scripts running in the browser.
+
+        For details on enabling/configuring CORS, see
+        [Enabling CORS](https://airflow.apache.org/docs/apache-airflow/stable/security/api.html).
+
+        # Authentication
+
+        To be able to meet the requirements of many organizations, Airflow supports many authentication methods,
+        and it is even possible to add your own method.
+
+        If you want to check which auth backend is currently set, you can use
+        `airflow config get-value api auth_backends` command as in the example below.
+        ```bash
+        $ airflow config get-value api auth_backends
+        airflow.api.auth.backend.basic_auth
+        ```
+        The default is to deny all requests.
+
+        For details on configuring the authentication, see
+        [API Authorization](https://airflow.apache.org/docs/apache-airflow/stable/security/api.html).
+
+        # Errors
+
+        We follow the error response format proposed in [RFC 7807](https://tools.ietf.org/html/rfc7807)
+        also known as Problem Details for HTTP APIs. As with our normal API responses,
+        your client must be prepared to gracefully handle additional members of the response.
+
+        ## Unauthenticated
+
+        This indicates that the request has not been applied because it lacks valid authentication
+        credentials for the target resource. Please check that you have valid credentials.
+
+        ## PermissionDenied
+
+        This response means that the server understood the request but refuses to authorize
+        it because it lacks sufficient rights to the resource. It happens when you do not have the
+        necessary permission to execute the action you performed. You need to get the appropriate
+        permissions in other to resolve this error.
+
+        ## BadRequest
+
+        This response means that the server cannot or will not process the request due to something
+        that is perceived to be a client error (e.g., malformed request syntax, invalid request message
+        framing, or deceptive request routing). To resolve this, please ensure that your syntax is correct.
+
+        ## NotFound
+
+        This client error response indicates that the server cannot find the requested resource.
+
+        ## MethodNotAllowed
+
+        Indicates that the request method is known by the server but is not supported by the target resource.
+
+        ## NotAcceptable
+
+        The target resource does not have a current representation that would be acceptable to the user
+        agent, according to the proactive negotiation header fields received in the request, and the
+        server is unwilling to supply a default representation.
+
+        ## AlreadyExists
+
+        The request could not be completed due to a conflict with the current state of the target
+        resource, e.g. the resource it tries to create already exists.
+
+        ## Unknown
+
+        This means that the server encountered an unexpected condition that prevented it from
+        fulfilling the request.
+      display_name: Apache Airflow
+      id: builtin_catalog-apache
+      resource_families:
+        - coverage:
+            - families:
+                - eventlog
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Eventlog
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: apache.eventlog
+            required_payload_fields:
+              - dag_id
+            schema_ref: apache/eventlog/v1
+            urn_kind: apache_eventlog
+          event_kind: eventlog
+          id: eventlog
+          id_field: dag_id
+          label: Eventlog
+          list_key: event_logs
+          method: GET
+          name_field: dag_id
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /eventLogs
+          projection:
+            fields:
+              id: dag_id
+              name: dag_id
+              provider_id: dag_id
+            template: audit_event
+          record_selector: $.event_logs[*]
+        - coverage:
+            - families:
+                - role
+              high_value: true
+              id: role
+              support: partial
+              title: Role
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: apache.role
+            required_payload_fields:
+              - name
+            schema_ref: apache/role/v1
+            urn_kind: apache_role
+          event_kind: role
+          id: role
+          id_field: name
+          label: Role
+          list_key: roles
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /roles
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_group
+          record_selector: $.roles[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: apache.user
+            required_payload_fields:
+              - email
+            schema_ref: apache/user/v1
+            urn_kind: apache_user
+          event_kind: user
+          id: user
+          id_field: email
+          label: User
+          list_key: users
+          method: GET
+          name_field: username
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /users
+          projection:
+            fields:
+              id: email
+              name: username
+              provider_id: email
+            template: identity_user
+          record_selector: $.users[*]
+        - coverage:
+            - families:
+                - permission
+              high_value: true
+              id: permission
+              support: partial
+              title: Permission
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: apache.permission
+            required_payload_fields:
+              - name
+            schema_ref: apache/permission/v1
+            urn_kind: apache_permission
+          event_kind: permission
+          id: permission
+          id_field: name
+          label: Permission
+          list_key: actions
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /permissions
+          projection:
+            fields:
+              id: name
+              name: name
+              resource_id: name
+              resource_name: name
+              resource_type: permission
+            template: asset
+          record_selector: $.actions[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - eventlog
+          id: eventlog
+          label: Eventlog
+        - default_enabled: true
+          families:
+            - role
+          id: role
+          label: Role
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - default_enabled: true
+          families:
+            - permission
+          id: permission
+          label: Permission
+      source_id: apache
+      tenant_id: builtin_catalog
+      transport:
+        base_url: /api/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /eventLogs
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: jobid
+          label: Jobid
+          required: true
+      description: |-
+        AppVeyor is a hosted continuous integration service which runs on Microsoft
+        Windows.  The AppVeyor REST API provides a RESTful way to interact with the
+        AppVeyor service.  This includes managing projects, builds, deployments,
+        and the teams that build them.
+
+        Additional help and discussion of the AppVeyor REST API is available at
+        http://help.appveyor.com/discussions
+
+        This Swagger definition is an **unofficial** description of the AppVeyor
+        REST API maintained at https://github.com/kevinoid/appveyor-swagger
+        Please report any issues or suggestions for this Swagger definition at
+        https://github.com/kevinoid/appveyor-swagger/issues/new
+
+        #### API Conventions
+
+        Fields which are missing from update operations (`PUT` requests) are
+        typically reset to their default values.  So although most fields are not
+        technically required, they should usually be specified in practice.
+      display_name: AppVeyor
+      id: builtin_catalog-appveyor
+      resource_families:
+        - coverage:
+            - families:
+                - role
+              high_value: true
+              id: role
+              support: partial
+              title: Role
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: appveyor.role
+            required_payload_fields:
+              - name
+            schema_ref: appveyor/role/v1
+            urn_kind: appveyor_role
+          event_kind: role
+          id: role
+          id_field: name
+          label: Role
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /roles
+          permissions_needed:
+            - apiToken
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: appveyor.user
+            required_payload_fields:
+              - email
+            schema_ref: appveyor/user/v1
+            urn_kind: appveyor_user
+          event_kind: user
+          id: user
+          id_field: email
+          label: User
+          method: GET
+          name_field: email
+          pagination:
+            type: none
+          path: /users
+          permissions_needed:
+            - apiToken
+          projection:
+            fields:
+              id: email
+              name: email
+              provider_id: email
+            template: identity_user
+          record_selector: $[*]
+          sensitive_payload_paths:
+            - password
+        - coverage:
+            - families:
+                - artifact
+              high_value: true
+              id: deployments
+              support: partial
+              title: Artifact
+              type: deployment_state
+          default_enabled: true
+          event:
+            kind: appveyor.artifact
+            required_payload_fields:
+              - name
+            schema_ref: appveyor/artifact/v1
+            urn_kind: appveyor_artifact
+          event_kind: artifact
+          id: artifact
+          id_field: name
+          label: Artifact
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /buildjobs/${config.jobid}/artifacts
+          projection:
+            fields:
+              deployment_environment: created
+              deployment_id: name
+              deployment_name: name
+              deployment_status: created
+              id: name
+              name: name
+            template: deployment
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - collaborator
+              id: collaborator
+              support: partial
+              title: Collaborator
+              type: entity_family
+          event:
+            kind: appveyor.collaborator
+            required_payload_fields:
+              - email
+            schema_ref: appveyor/collaborator/v1
+            urn_kind: appveyor_collaborator
+          event_kind: collaborator
+          id: collaborator
+          id_field: email
+          label: Collaborator
+          method: GET
+          name_field: email
+          pagination:
+            type: none
+          path: /collaborators
+          permissions_needed:
+            - apiToken
+          projection:
+            fields:
+              id: email
+              name: email
+              resource_id: email
+              resource_name: email
+              resource_type: collaborator
+            template: asset
+          record_selector: $[*]
+          sensitive_payload_paths:
+            - password
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - role
+          id: role
+          label: Role
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - default_enabled: true
+          families:
+            - artifact
+          id: artifact
+          label: Artifact
+        - families:
+            - collaborator
+          id: collaborator
+          label: Collaborator
+      source_id: appveyor
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://ci.appveyor.com/api
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /roles
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: teamid
+          label: Teamid
+          required: true
+      description: Appwrite backend as a service cuts up to 70% of the time and costs required for building a modern application. We abstract and simplify common development tasks behind a REST APIs, to help you develop your app in a fast and secure way. For full API documentation and tutorials go to [https://appwrite.io/docs](https://appwrite.io/docs)
+      display_name: Appwrite
+      id: builtin_catalog-appwrite
+      resource_families:
+        - coverage:
+            - families:
+                - team
+              high_value: true
+              id: team
+              support: partial
+              title: Team
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: appwrite.team
+            required_payload_fields:
+              - name
+            schema_ref: appwrite/team/v1
+            urn_kind: appwrite_team
+          event_kind: team
+          id: team
+          id_field: name
+          label: Team
+          list_key: teams
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /teams
+          permissions_needed:
+            - JWT
+            - Project
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_group
+          record_selector: $.teams[*]
+        - coverage:
+            - families:
+                - log
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Log
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: appwrite.log
+            required_payload_fields:
+              - clientCode
+            schema_ref: appwrite/log/v1
+            urn_kind: appwrite_log
+          event_kind: log
+          id: log
+          id_field: clientCode
+          label: Log
+          list_key: logs
+          method: GET
+          name_field: clientCode
+          pagination:
+            type: none
+          path: /account/logs
+          permissions_needed:
+            - JWT
+            - Project
+          projection:
+            fields:
+              id: clientCode
+              name: clientCode
+              provider_id: clientCode
+            template: audit_event
+          record_selector: $.logs[*]
+        - coverage:
+            - families:
+                - membership
+              high_value: true
+              id: membership
+              support: partial
+              title: Membership
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: appwrite.membership
+            required_payload_fields:
+              - name
+            schema_ref: appwrite/membership/v1
+            urn_kind: appwrite_membership
+          event_kind: membership
+          id: membership
+          id_field: name
+          label: Membership
+          list_key: memberships
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /teams/${config.teamid}/memberships
+          permissions_needed:
+            - JWT
+            - Project
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: group_membership
+          record_selector: $.memberships[*]
+        - coverage:
+            - families:
+                - continent
+              id: continent
+              support: partial
+              title: Continent
+              type: entity_family
+          event:
+            kind: appwrite.continent
+            required_payload_fields:
+              - name
+            schema_ref: appwrite/continent/v1
+            urn_kind: appwrite_continent
+          event_kind: continent
+          id: continent
+          id_field: name
+          label: Continent
+          list_key: continents
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /locale/continents
+          permissions_needed:
+            - JWT
+            - Project
+          projection:
+            fields:
+              id: name
+              name: name
+              resource_id: name
+              resource_name: name
+              resource_type: continent
+            template: asset
+          record_selector: $.continents[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - team
+          id: team
+          label: Team
+        - default_enabled: true
+          families:
+            - log
+          id: log
+          label: Log
+        - default_enabled: true
+          families:
+            - membership
+          id: membership
+          label: Membership
+        - families:
+            - continent
+          id: continent
+          label: Continent
+      source_id: appwrite
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://appwrite.io/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /teams
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: ownerid
+          label: Ownerid
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id
+          label: Id
+          required: true
+      description: Public API for managing Clever-Cloud data and products
+      display_name: Clever Cloud
+      id: builtin_catalog-clever_cloud
+      resource_families:
+        - coverage:
+            - families:
+                - email
+              high_value: true
+              id: email
+              support: partial
+              title: Email
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: clever_cloud.email
+            required_payload_fields:
+              - id
+            schema_ref: clever_cloud/email/v1
+            urn_kind: clever_email
+          event_kind: email
+          id: email
+          id_field: id
+          label: Email
+          method: GET
+          pagination:
+            type: none
+          path: /github/emails
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - token
+              high_value: true
+              id: secrets
+              support: partial
+              title: Token
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: clever_cloud.token
+            required_payload_fields:
+              - consumer
+            schema_ref: clever_cloud/token/v1
+            urn_kind: clever_token
+          event_kind: token
+          id: token
+          id_field: consumer
+          label: Token
+          method: GET
+          name_field: consumer
+          pagination:
+            type: none
+          path: /self/tokens
+          projection:
+            fields:
+              id: consumer
+              name: consumer
+              secret_id: consumer
+              secret_name: consumer
+              secret_type: token
+            template: secret
+          record_selector: $[*]
+          sensitive_payload_paths:
+            - token
+        - coverage:
+            - families:
+                - networkgroup
+              high_value: true
+              id: networkgroup
+              support: partial
+              title: Networkgroup
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: clever_cloud.networkgroup
+            required_payload_fields:
+              - id
+            schema_ref: clever_cloud/networkgroup/v1
+            urn_kind: clever_networkgroup
+          event_kind: networkgroup
+          id: networkgroup
+          id_field: id
+          label: Networkgroup
+          method: GET
+          pagination:
+            type: none
+          path: /v4/networkgroups/organisations/${config.ownerid}/networkgroups
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - deployment
+              high_value: true
+              id: deployments
+              support: partial
+              title: Deployment
+              type: deployment_state
+          default_enabled: true
+          event:
+            kind: clever_cloud.deployment
+            required_payload_fields:
+              - id
+            schema_ref: clever_cloud/deployment/v1
+            urn_kind: clever_deployment
+          event_kind: deployment
+          id: deployment
+          id_field: id
+          label: Deployment
+          list_key: '{app_id}'
+          method: GET
+          name_field: action
+          pagination:
+            type: none
+          path: /organisations/${config.id}/deployments
+          projection:
+            fields:
+              deployment_environment: action
+              deployment_id: id
+              deployment_name: action
+              deployment_status: state
+              id: id
+              name: action
+            template: deployment
+          record_selector: $.{app_id}[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - email
+          id: email
+          label: Email
+        - default_enabled: true
+          families:
+            - token
+          id: token
+          label: Token
+        - default_enabled: true
+          families:
+            - networkgroup
+          id: networkgroup
+          label: Networkgroup
+        - default_enabled: true
+          families:
+            - deployment
+          id: deployment
+          label: Deployment
+      source_id: clever_cloud
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.clever-cloud.com/v2
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /github/emails
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: databasename
+          label: Databasename
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: accountid
+          label: Accountid
+          required: true
+      description: "# Introduction\n\nThis API allows resellers to manage their resources in a simple, programmatic way using HTTP requests.\n\n# Conventions\n\n## Requests\n\nThe API supports different methods depending on the required action.\n\n| Method\t| Description\n| ---\t\t| ---\n| GET\t\t| Retrieve resources in a collection or get a single resource.<br/>Getters will never have any effect on the queried resources.\n| POST\t\t| Create a new resource in a collection.\n| PUT\t\t| Update an existing resource with its new representation.\n| DELETE\t| Delete an existing resource.\n\n## HTTP status codes\n\nThe API will reply with different HTTP statuscodes:\n\n| StatusCode\t\t\t\t| Description\n| ---\t\t\t\t\t\t| ---\n| 200 OK\t\t\t\t\t| The requests was processed and you receive data as a result.\n| 201 CREATED\t\t\t\t| The resource has been created. Either the Location header contains a link to the created resource, or links are being returned in the response body. The applied method will be indicated in the documentation.\n| 202 ACCEPTED\t\t\t\t| The request has been validated and accepted. Because we need to do some background processing prior to returning the result, we cannot send back a useful representation.\n| 204 NOCONTENT\t\t\t\t| The request has been processed, but no details can be returned.\n| 400 BADREQUEST\t\t\t| Your request is malformed.\n| 401 UNAUTHORIZED\t\t\t| You are not authorized. Follow the instructions in the Authorization documentation.\n| 403 FORBIDDEN\t\t\t\t| Access to the resource or operation is not allowed.\n| 404 NOTFOUND\t\t\t\t| The resource cannot be found.\n| 410 GONE                  | The resource is permanently no longer available.\n| 429 TOOMANYREQUESTS\t\t| The ratelimit has been exceeded. Please refer to the documentation on rate limiting for more details.\n| 500 INTERNALSERVERERROR\t| An error occurred during the processing of the request. The error is unexpected and most likely due to a bug in the api.\n\nIn the event of a problem, the body of the response will usually contain an errorcode and errormessage.\nIn rare cases additional details about the error are reported.\n\nErrorcodes 400-499 are considered to be client errors and indicate that there was an issue with the request.\nWe will not take any action besides monitoring. \n\nErrorcodes 500-599 are considered to be server errors. The errors are monitored AND action will be taken to resolve the error.\n\n## Formatting\n\nSnake casing is applied on resources and query parameters.\nThe API is strictly returning JSON. No other formats are supported.\n\nDatetimes are returned in ISO-8601 format.\n\n## Pagination\n\nPagination is on by default on collections and is controlled by specifying *skip* and *take* parameters.  \n**Skip** indicates the number of results to skip and where to start the new take.  \n**Take** indicates the number of records to return. The returned number of items can be smaller than the requested take.\n\nPaged results will have headers with useful information regarding the paging.\n\n| Header\t\t\t\t| Description\n| ---\t\t\t\t\t| ---\n| X-Paging-Skipped\t\t| The number of results that have been skipped.\n| X-Paging-Take\t\t\t| The number of items in the current take. The number might differ from the requested take. It represents the actual number of items returned in the response.\n| X-Paging-TotalResults | The total number of results regardless of paging.\n\n## Rate limiting\n\nThe number of requests per interval is limited. Detailed information on the rate limiting can be found in specific headers which will be sent on each request.\n\n| Header\t\t\t\t| Description\n| ---\t\t\t\t\t| ---\n| X-RateLimit-Limit\t\t| The number of requests that can be made in a specific time interval.\n| X-RateLimit-Usage\t\t| The number of requests already made in the current time interval.\n| X-RateLimit-Remaining\t| The number of requests remaining until the reset.\n| X-RateLimit-Reset\t\t| The number of seconds until the reset.<br />After the reset you are allowed to make as many requests as specified by the X-RateLimit-Limit header.\n| Retry-After\t\t\t| The number of seconds you have to wait until you can make new requests.<br />This header is only present when the rate limit has been reached. It is identical to X-RateLimit-Reset.\n\nWhen the ratelimit has been reached, all requests will return with a HTTP statuscode 429 and ReasonPhrase '*Too many requests, retry later.*'.\n\n# Authentication\n\nThe Api uses HMAC authentication.  \nHash-based message authentication code (HMAC) is a mechanism for calculating a message authentication code involving a hash function in combination with a secret key.  \nBoth the integrity and the authenticity of the message are verified this way.\n\n## Steps to generate the HMAC\n\n1. Get your api key and secret from your controlpanel.  \nIt is absolutely vital that the secret is never exposed. Once the secret is out, anyone would be able to generate hmacs to impersonate you.  \nIn case your secret is compromised, you can generate a new api key and secret on your controlpanel.\n2. Construct the input value for generating the hmac.  \nConcatenate:apikey, request method, path and querystring information, unix timestamp, nonce and content.\n\n|\t\t\t\t\t\t\t\t\t\t| Description\n| ---\t\t\t\t\t\t\t\t\t| ---\n| apikey\t\t\t\t\t\t\t\t| The key that is linked to your user.\n| request method\t\t\t\t\t\t| lowercased (eg: get, post, delete,...)\n| path and querystring information\t\t| urlencoding of the lowercased relative path and querystring.<br />The path **MUST start with the api version (/v2)**.<br />The hexadecimal codes (percent encoding) MUST be uppercased.\n| unix timestamp\t\t\t\t\t\t| the unix timestamp in **seconds**.\n| nonce\t\t\t\t\t\t\t\t\t| a\tunique string for each request. It should be a random string, not related to the request. The nonce (in combination with the unix timestamp) protects you from replay attacks in case anyone was able to intercept a request.\n| content\t\t\t\t\t\t\t\t| When the request body is not empty, this should be the Base64 encoded Md5 hash of the request body.<br />An empty body should not be encoded.\n\n3. Hash the concatenated string using your api secret and the SHA-256 algorithm.\n4. Base64 encode the result of the hash function. This is the hmac signature you will need to send an authorized request.\n\n## Sending an authorized request\n\nAn authorized request can be made by sending the generated HMAC in the authorization header.  \nA correct authorizationheader uses the hmac authorization scheme and a correctly formatted authorization parameter.\n\nCreate the authorization parameter by concatenating:\n  * apikey\n  * colon ':'\n  * generated HMAC signature (see above)\n  * colon ':'\n  * nonce (the one used to generate the signature)\n  * colon ':'\n  * unix timestamp (the one used to generate the signature)\n\nA sample (illustrated):\n\n* The first line is the string you create to feed to the hashing algorithm.\n* The second line is the authorization header that should be sent in the request.\n\n![hmac authorization header illustrated](/v2/images/authentication_illustration.jpg \"authorization header illustrated\")\n\n## IP whitelisting\n\nAccess is by default restricted for all IP addresses. You need to explicitly whitelist an IP or an IP range in your controlpanel.\n\n# Versioning\n\nBecause of breaking contract changes compared to v1, we released v2 of the API.  \nV1 will still be available, but you are strongly encouraged to migrate to the latest version.  \nNew features will only be available on v2.\n\n# Policy\n\n### Fair use policy\n\nPlease respect the rate limits and do not use the api for any purposes of abuse.  \nAll requests are being monitored and logged.  \nIntentional abuse might result in api key revocation.\n\n# Errors\n\nThe API attempts to return appropriate HTTP status codes for every request.  \nWhen the status code indicates failure, the API will also provide an error message in most cases.\n\nAn error message contains a machine-parseable error code accompanied by a descriptive error text.  \nThe text for an error message might change over time, but codes will stay the same.\n\n[An overview of error codes can be found here](/v2/documentation/errorcodes).\n\n# Change log\n\n[An overview of new changes can be found here](/v2/documentation/changelog).\n\n# Provisioning information\n\n## Terminology\n\n| Term\t\t\t| Definition\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t|\n| ---\t\t\t| ---\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t|\n| Servicepack\t| Defines a set of assets that belong together. An example is a hosting package which offers Linux hosting, a domain name, a couple of mailboxes and databases.<br/>It also limits the size of individual assets within the same account. |\n| Account\t\t| Represents an instance of the servicepack. It contains one or more assets. The number and size of assets is defined by the servicepack. |\n| Asset\t\t\t| A manageable service. For example: a mysql database, a linux hosting, a mailbox,...<br/>Some assets are created at the moment when the account is created. Other assets can be created afterwards.\n\t\n## Common provisioning scenario\n\n**Provisioning of an account with Linux hosting with one MySql database**\n\n*Without a pre-existing account:*\n\n1. Create a new account.<br/>Perform a POST on the accounts route and provide the desired servicepack id and identifier (domain name).\n2. Read the Location header from the response and perform a GET of the provided resource (a provisioning job).\n3. When the response returns 200(OK), you should repeat the GET operation after a certain interval (Repeat this step).<br/>\nWhen the response returns 201(Created), you should read the response body. This will contain links to the created resources.<br/>\nThis will usually hold only one link, but to be futureproof, this has been designed to return a collection.\n4. The created resource will point to an account. You now know the account's Id and can continue with the provisioning of a MySql database on this account.\n5. Perform a POST on the mysqldatabases route and provide the account id along with other requested information.\n6. Read the Location header from the response and perform a GET of the provided resource (a provisioning job).\n7. When the response returns 200(OK), you should repeat the GET operation after a certain interval (Repeat this step).<br/>\nWhen the response returns 201(Created), you should read the response body. This will contain links to the created resources.<br/>\nThis will usually hold only one link, but to be futureproof, this has been designed to return a collection.\n8. The created resource will point to a MySql database resource.\n\n## SSL certificate requests\n\n**Requesting an SSL certificate causes the purchase of a paying product.**\n\n1. A certificate is created by adding an ssl certificate request.\n2. Upon statuscode 201 you should query for certificate completion on the resource provided in the location response header.\n3. The resource request can respond with different statuscodes:\n<ul>\n    <li>200: the certificate request is ongoing.<br/>\nCheck the validations collection for validation values that are not auto_validated. Those should be set by you system.<br/>\nCall verify domain validations once all validation values are in place. It might take some time for verification to take place. It is not necessary to call this method more than once.</li>\n    <li>303: the certificate request is complete; there is no more certificate request resource available. Check the location header value to retrieve the representation of the resulting ssl certificate.</li>\n    <li>410: the certificate request does not exist anymore, there is no certificate created as a result of the request.</li>\n</ul>"
+      display_name: Combell
+      id: builtin_catalog-combell
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: combell.account
+            required_payload_fields:
+              - id
+            schema_ref: combell/account/v1
+            urn_kind: combell_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          method: GET
+          name_field: id
+          pagination:
+            limit_param: take
+            offset_param: skip
+            page_size: 100
+            type: offset
+          path: /accounts
+          projection:
+            fields:
+              id: id
+              name: id
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - ssh
+              id: ssh
+              support: partial
+              title: Ssh
+              type: entity_family
+          event:
+            kind: combell.ssh
+            required_payload_fields:
+              - fingerprint
+            schema_ref: combell/ssh/v1
+            urn_kind: combell_ssh
+          event_kind: ssh
+          id: ssh
+          id_field: fingerprint
+          label: Ssh
+          method: GET
+          name_field: fingerprint
+          pagination:
+            limit_param: take
+            offset_param: skip
+            page_size: 100
+            type: offset
+          path: /ssh
+          projection:
+            fields:
+              id: fingerprint
+              name: fingerprint
+              resource_id: fingerprint
+              resource_name: fingerprint
+              resource_type: ssh
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: combell.user
+            required_payload_fields:
+              - name
+            schema_ref: combell/user/v1
+            urn_kind: combell_user
+          event_kind: user
+          id: user
+          id_field: name
+          label: User
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /mysqldatabases/${config.databasename}/users
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - account_2
+              high_value: true
+              id: account_2
+              support: partial
+              title: Account 2
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: combell.account_2
+            required_payload_fields:
+              - id
+            schema_ref: combell/account_2/v1
+            urn_kind: combell_account_2
+          event_kind: account_2
+          id: account_2
+          id_field: id
+          label: Account 2
+          list_key: addons
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /accounts/${config.accountid}
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.addons[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - families:
+            - ssh
+          id: ssh
+          label: Ssh
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - default_enabled: true
+          families:
+            - account_2
+          id: account_2
+          label: Account 2
+      source_id: combell
+      tenant_id: builtin_catalog
+      transport:
+        base_url: /v2
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Username
+            reference_only: true
+            required: true
+          - key: password
+            label: Password
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: organizationid
+          label: Organizationid
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: productid
+          label: Productid
+          required: true
+      description: "**Base API URL**: https://api.configcat.com\n\nIf you prefer the swagger documentation, you can find it here: [Swagger UI](https://api.configcat.com/swagger).\n\nThe purpose of this API is to access the ConfigCat platform programmatically. \nYou can **Create**, **Read**, **Update** and **Delete** any entities like **Feature Flags, Configs, Environments** or **Products** within ConfigCat. \n\nThe API is based on HTTP REST, uses resource-oriented URLs, status codes and supports JSON \nand JSON+HAL format. Do not use this API for accessing and evaluating feature flag values. Use the [SDKs instead](https://configcat.com/docs/sdk-reference/overview).\n\n\n# OpenAPI Specification\n\nThe complete specification is publicly available here: [swagger.json](v1/swagger.json). \nYou can use it to generate client libraries in various languages with [OpenAPI Generator](https://github.com/OpenAPITools/openapi-generator) or\n[Swagger Codegen](https://swagger.io/tools/swagger-codegen/) to interact with this API.\n\n# Authentication\nThis API uses the [Basic HTTP Authentication Scheme](https://en.wikipedia.org/wiki/Basic_access_authentication). \n\n<!-- ReDoc-Inject: <security-definitions> -->\n\n# Throttling and rate limits\nAll the rate limited API calls are returning information about the current rate limit period in the following HTTP headers:\n\n| Header | Description |\n| :- | :- |\n| X-Rate-Limit-Remaining | The maximum number of requests remaining in the current rate limit period. |\n| X-Rate-Limit-Reset     | The time\twhen the current rate limit period resets.\t\t\t\t\t\t  |\n\nWhen the rate limit is exceeded by a request, the API returns with a `HTTP 429 - Too many requests` status along with a `Retry-After` HTTP header."
+      display_name: ConfigCat
+      id: builtin_catalog-configcat
+      resource_families:
+        - coverage:
+            - families:
+                - auditlog
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Auditlog
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: configcat.auditlog
+            required_payload_fields:
+              - actionTarget
+            schema_ref: configcat/auditlog/v1
+            urn_kind: configcat_auditlog
+          event_kind: auditlog
+          id: auditlog
+          id_field: actionTarget
+          label: Auditlog
+          method: GET
+          name_field: userName
+          pagination:
+            type: none
+          path: /v1/organizations/${config.organizationid}/auditlogs
+          permissions_needed:
+            - Basic
+          projection:
+            fields:
+              id: actionTarget
+              name: userName
+              provider_id: actionTarget
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - organization
+              high_value: true
+              id: organization
+              support: partial
+              title: Organization
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: configcat.organization
+            required_payload_fields:
+              - name
+            schema_ref: configcat/organization/v1
+            urn_kind: configcat_organization
+          event_kind: organization
+          id: organization
+          id_field: name
+          label: Organization
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v1/organizations
+          permissions_needed:
+            - Basic
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - member
+              high_value: true
+              id: member
+              support: partial
+              title: Member
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: configcat.member
+            required_payload_fields:
+              - email
+            schema_ref: configcat/member/v1
+            urn_kind: configcat_member
+          event_kind: member
+          id: member
+          id_field: email
+          label: Member
+          method: GET
+          name_field: email
+          pagination:
+            type: none
+          path: /v1/organizations/${config.organizationid}/members
+          permissions_needed:
+            - Basic
+          projection:
+            fields:
+              id: email
+              name: email
+              provider_id: email
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - permission
+              high_value: true
+              id: permission
+              support: partial
+              title: Permission
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: configcat.permission
+            required_payload_fields:
+              - name
+            schema_ref: configcat/permission/v1
+            urn_kind: configcat_permission
+          event_kind: permission
+          id: permission
+          id_field: name
+          label: Permission
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v1/products/${config.productid}/permissions
+          permissions_needed:
+            - Basic
+          projection:
+            fields:
+              id: name
+              name: name
+              resource_id: name
+              resource_name: name
+              resource_type: permission
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - auditlog
+          id: auditlog
+          label: Auditlog
+        - default_enabled: true
+          families:
+            - organization
+          id: organization
+          label: Organization
+        - default_enabled: true
+          families:
+            - member
+          id: member
+          label: Member
+        - default_enabled: true
+          families:
+            - permission
+          id: permission
+          label: Permission
+      source_id: configcat
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.configcat.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/organizations/${config.organizationid}/auditlogs
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: ExaVaults API allows you to incorporate ExaVaults suite of file transfer and user management tools into your own application.\nExaVault supports both POST (recommended when requesting large data sets) and GET operations, and requires an API key in order to use.
+      display_name: ExaVault
+      id: builtin_catalog-exavault
+      resource_families:
+        - coverage:
+            - families:
+                - email_list
+              high_value: true
+              id: email_list
+              support: partial
+              title: Email List
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: exavault.email_list
+            required_payload_fields:
+              - id
+            schema_ref: exavault/email_list/v1
+            urn_kind: exavault_email_list
+          event_kind: email_list
+          id: email_list
+          id_field: id
+          label: Email List
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            type: none
+          path: /email-lists
+          projection:
+            fields:
+              id: id
+              name: attributes
+              provider_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - notification
+              high_value: true
+              id: alerts
+              support: partial
+              title: Notification
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: exavault.notification
+            required_payload_fields:
+              - id
+            schema_ref: exavault/notification/v1
+            urn_kind: exavault_notification
+          event_kind: notification
+          id: notification
+          id_field: id
+          label: Notification
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /notifications
+          projection:
+            fields:
+              alert_id: id
+              alert_name: attributes
+              alert_severity: attributes
+              alert_status: attributes
+              id: id
+              name: attributes
+            template: alert
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - session
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Session
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: exavault.session
+            required_payload_fields:
+              - id
+            schema_ref: exavault/session/v1
+            urn_kind: exavault_session
+          event_kind: session
+          id: session
+          id_field: id
+          label: Session
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /activity/session
+          projection:
+            fields:
+              id: id
+              name: attributes
+              provider_id: id
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - ssh_key
+              high_value: true
+              id: ssh_key
+              support: partial
+              title: Ssh Key
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: exavault.ssh_key
+            required_payload_fields:
+              - id
+            schema_ref: exavault/ssh_key/v1
+            urn_kind: exavault_ssh_key
+          event_kind: ssh_key
+          id: ssh_key
+          id_field: id
+          label: Ssh Key
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /ssh-keys
+          projection:
+            fields:
+              id: id
+              name: attributes
+              resource_id: id
+              resource_name: attributes
+              resource_type: ssh_key
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - email_list
+          id: email_list
+          label: Email List
+        - default_enabled: true
+          families:
+            - notification
+          id: notification
+          label: Notification
+        - default_enabled: true
+          families:
+            - session
+          id: session
+          label: Session
+        - default_enabled: true
+          families:
+            - ssh_key
+          id: ssh_key
+          label: Ssh Key
+      source_id: exavault
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://accountname.exavault.com/api/v2
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /email-lists
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: owner
+          label: Owner
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: repo
+          label: Repo
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: index
+          label: Index
+          required: true
+      description: This documentation describes the Gitea API.
+      display_name: Gitea
+      id: builtin_catalog-gitea
+      resource_families:
+        - coverage:
+            - families:
+                - search
+              high_value: true
+              id: findings
+              support: partial
+              title: Search
+              type: remediation_state
+          default_enabled: true
+          event:
+            kind: gitea.search
+            required_payload_fields:
+              - id
+            schema_ref: gitea/search/v1
+            urn_kind: gitea_search
+          event_kind: search
+          id: search
+          id_field: id
+          label: Search
+          method: GET
+          name_field: title
+          pagination:
+            cursor_param: before
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /repos/issues/search
+          permissions_needed:
+            - AccessToken
+            - AuthorizationHeaderToken
+            - BasicAuth
+            - SudoHeader
+            - SudoParam
+            - TOTPHeader
+            - Token
+          projection:
+            fields:
+              finding_id: id
+              id: id
+              name: title
+              severity: assets
+              status: state
+              title: title
+            template: finding
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - email
+              high_value: true
+              id: email
+              support: partial
+              title: Email
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: gitea.email
+            required_payload_fields:
+              - email
+            schema_ref: gitea/email/v1
+            urn_kind: gitea_email
+          event_kind: email
+          id: email
+          id_field: email
+          label: Email
+          method: GET
+          name_field: email
+          pagination:
+            type: none
+          path: /user/emails
+          permissions_needed:
+            - AccessToken
+            - AuthorizationHeaderToken
+            - BasicAuth
+            - SudoHeader
+            - SudoParam
+            - TOTPHeader
+            - Token
+          projection:
+            fields:
+              id: email
+              name: email
+              provider_id: email
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - team
+              high_value: true
+              id: team
+              support: partial
+              title: Team
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: gitea.team
+            required_payload_fields:
+              - id
+            schema_ref: gitea/team/v1
+            urn_kind: gitea_team
+          event_kind: team
+          id: team
+          id_field: id
+          label: Team
+          method: GET
+          name_field: name
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: limit
+            start_page: 1
+            type: page
+          path: /user/teams
+          permissions_needed:
+            - AccessToken
+            - AuthorizationHeaderToken
+            - BasicAuth
+            - SudoHeader
+            - SudoParam
+            - TOTPHeader
+            - Token
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - timeline
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Timeline
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: gitea.timeline
+            required_payload_fields:
+              - id
+            schema_ref: gitea/timeline/v1
+            urn_kind: gitea_timeline
+          event_kind: timeline
+          id: timeline
+          id_field: id
+          label: Timeline
+          method: GET
+          name_field: label
+          pagination:
+            cursor_param: before
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /repos/${config.owner}/${config.repo}/issues/${config.index}/timeline
+          permissions_needed:
+            - AccessToken
+            - AuthorizationHeaderToken
+            - BasicAuth
+            - SudoHeader
+            - SudoParam
+            - TOTPHeader
+            - Token
+          projection:
+            fields:
+              id: id
+              name: label
+              provider_id: id
+            template: audit_event
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - search
+          id: search
+          label: Search
+        - default_enabled: true
+          families:
+            - email
+          id: email
+          label: Email
+        - default_enabled: true
+          families:
+            - team
+          id: team
+          label: Team
+        - default_enabled: true
+          families:
+            - timeline
+          id: timeline
+          label: Timeline
+      source_id: gitea
+      tenant_id: builtin_catalog
+      transport:
+        base_url: /api/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /repos/issues/search
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: GitHub's v3 REST API.
+      display_name: GitHub
+      id: builtin_catalog-github
+      resource_families:
+        - coverage:
+            - families:
+                - issue
+              high_value: true
+              id: findings
+              support: partial
+              title: Issue
+              type: remediation_state
+          default_enabled: true
+          event:
+            kind: github.issue
+            required_payload_fields:
+              - id
+            schema_ref: github/issue/v1
+            urn_kind: github_issue
+          event_kind: issue
+          id: issue
+          id_field: id
+          label: Issue
+          method: GET
+          name_field: title
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /issues
+          projection:
+            fields:
+              finding_id: id
+              id: id
+              name: title
+              severity: active_lock_reason
+              status: state
+              title: title
+            template: finding
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: github.event
+            required_payload_fields:
+              - id
+            schema_ref: github/event/v1
+            urn_kind: github_event
+          event_kind: event
+          id: event
+          id_field: id
+          label: Event
+          method: GET
+          name_field: actor
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /events
+          projection:
+            fields:
+              id: id
+              name: actor
+              provider_id: id
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - email
+              high_value: true
+              id: email
+              support: partial
+              title: Email
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: github.email
+            required_payload_fields:
+              - email
+            schema_ref: github/email/v1
+            urn_kind: github_email
+          event_kind: email
+          id: email
+          id_field: email
+          label: Email
+          method: GET
+          name_field: email
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /user/emails
+          projection:
+            fields:
+              id: email
+              name: email
+              provider_id: email
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - organization
+              high_value: true
+              id: organization
+              support: partial
+              title: Organization
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: github.organization
+            required_payload_fields:
+              - id
+            schema_ref: github/organization/v1
+            urn_kind: github_organization
+          event_kind: organization
+          id: organization
+          id_field: id
+          label: Organization
+          method: GET
+          name_field: login
+          pagination:
+            page_size: 100
+            page_size_param: per_page
+            type: page
+          path: /organizations
+          projection:
+            fields:
+              id: id
+              name: login
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - issue
+          id: issue
+          label: Issue
+        - default_enabled: true
+          families:
+            - event
+          id: event
+          label: Event
+        - default_enabled: true
+          families:
+            - email
+          id: email
+          label: Email
+        - default_enabled: true
+          families:
+            - organization
+          id: organization
+          label: Organization
+      source_id: github
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.github.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /issues
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: customerid
+          label: Customerid
+          required: true
+      description: Generated from an OpenAPI description.
+      display_name: GoDaddy
+      id: builtin_catalog-godaddy
+      resource_families:
+        - coverage:
+            - families:
+                - optin
+              high_value: true
+              id: alerts
+              support: partial
+              title: Optin
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: godaddy.optin
+            required_payload_fields:
+              - addedAt
+            schema_ref: godaddy/optin/v1
+            urn_kind: godaddy_optin
+          event_kind: optin
+          id: optin
+          id_field: addedAt
+          label: Optin
+          method: GET
+          name_field: addedAt
+          pagination:
+            type: none
+          path: /v2/customers/${config.customerid}/domains/notifications/optIn
+          projection:
+            fields:
+              alert_id: addedAt
+              alert_name: addedAt
+              alert_severity: addedAt
+              alert_status: status
+              id: addedAt
+              name: addedAt
+            template: alert
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - domain
+              id: domain
+              support: partial
+              title: Domain
+              type: entity_family
+          event:
+            kind: godaddy.domain
+            required_payload_fields:
+              - authCode
+            schema_ref: godaddy/domain/v1
+            urn_kind: godaddy_domain
+          event_kind: domain
+          id: domain
+          id_field: authCode
+          label: Domain
+          method: GET
+          name_field: authCode
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /v1/domains
+          projection:
+            fields:
+              id: authCode
+              name: authCode
+              resource_id: authCode
+              resource_name: authCode
+              resource_type: domain
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - maintenance
+              id: maintenance
+              support: partial
+              title: Maintenance
+              type: entity_family
+          event:
+            kind: godaddy.maintenance
+            required_payload_fields:
+              - id
+            schema_ref: godaddy/maintenance/v1
+            urn_kind: godaddy_maintenance
+          event_kind: maintenance
+          id: maintenance
+          id_field: id
+          label: Maintenance
+          list_key: tlds
+          method: GET
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /v2/domains/maintenances
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: maintenance
+            template: asset
+          record_selector: $.tlds[*]
+        - coverage:
+            - families:
+                - tld
+              id: tld
+              support: partial
+              title: Tld
+              type: entity_family
+          event:
+            kind: godaddy.tld
+            required_payload_fields:
+              - name
+            schema_ref: godaddy/tld/v1
+            urn_kind: godaddy_tld
+          event_kind: tld
+          id: tld
+          id_field: name
+          label: Tld
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v1/domains/tlds
+          projection:
+            fields:
+              id: name
+              name: name
+              resource_id: name
+              resource_name: name
+              resource_type: tld
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - optin
+          id: optin
+          label: Optin
+        - families:
+            - domain
+          id: domain
+          label: Domain
+        - families:
+            - maintenance
+          id: maintenance
+          label: Maintenance
+        - families:
+            - tld
+          id: tld
+          label: Tld
+      source_id: godaddy
+      tenant_id: builtin_catalog
+      transport:
+        base_url: //api.ote-godaddy.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v2/customers/${config.customerid}/domains/notifications/optIn
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: |-
+        This is the official API documentation for the Public Hetzner Cloud.
+
+        ## Introduction
+
+        The Hetzner Cloud API operates over HTTPS and uses JSON as its data format. The API is a RESTful API and utilizes HTTP methods and HTTP status codes to specify requests and responses.
+
+        As an alternative to working directly with our API you may also consider to use:
+        * Our CLI program [hcloud](https://github.com/hetznercloud/cli)
+        * Our [library for Go](https://github.com/hetznercloud/hcloud-go)
+        * Our [library for Python](https://github.com/hetznercloud/hcloud-python)
+
+        Also you can find a [list of libraries, tools, and integrations on GitHub](https://github.com/hetznercloud/awesome-hcloud).
+
+        If you are developing integrations based on our API and your product is Open Source you may be eligible for a free one time €50 (excl. VAT) credit on your account. Please contact us via the the support page on your Cloud Console and let us know the following:
+        * The type of integration you would like to develop
+        * Link to the GitHub repo you will use for the Project
+        * Link to some other Open Source work you have already done (if you have done so)
+
+        ## Getting Started
+        To get started using the API you first need an API token. Sign in into the [Hetzner Cloud Console](https://console.hetzner.cloud/) choose a Project, go to `Security` → `API Tokens`, and generate a new token. Make sure to copy the token because it won’t be shown to you again. A token is bound to a Project, to interact with the API of another Project you have to create a new token inside the Project. Let’s say your new token is `jEheVytlAoFl7F8MqUQ7jAo2hOXASztX`.
+
+        You’re now ready to do your first request against the API. To get a list of all Servers in your Project, issue the example request on the right side using [curl](https://curl.haxx.se/).
+
+        Make sure to replace the token in the example command with the token you have just created. Since your Project probably does not contain any Servers yet, the example response will look like the response on the right side. We will almost always provide a resource root like `servers` inside the example response. A response can also contain a `meta` object with information like [Pagination](https://docs.hetzner.cloud/#overview-pagination).
+
+        **Example Request**
+        ```bash
+        curl -H "Authorization: Bearer jEheVytlAoFl7F8MqUQ7jAo2hOXASztX" \
+            https://api.hetzner.cloud/v1/servers
+        ```
+
+        **Example Response**
+        ```json
+        {
+            "servers": [],
+            "meta": {
+                "pagination": {
+                    "page": 1,
+                    "per_page": 25,
+                    "previous_page": null,
+                    "next_page": null,
+                    "last_page": 1,
+                    "total_entries": 0
+                }
+            }
+        }
+        ```
+
+        ## Authentication
+        All requests to the Hetzner Cloud API must be authenticated via a API token. Include your secret API token in every request you send to the API with the `Authorization` HTTP header.
+
+        To create a new API token for your Project, switch into the [Hetzner Cloud Console](https://console.hetzner.cloud/) choose a Project, go to `Security` → `API Tokens`, and generate a new token.
+
+        **Example Authorization header**
+        ```html
+        Authorization: Bearer LRK9DAWQ1ZAEFSrCNEEzLCUwhYX1U3g7wMg4dTlkkDC96fyDuyJ39nVbVjCKSDfj
+        ```
+
+        ## Errors
+        Errors are indicated by HTTP status codes. Further, the response of the request which generated the error contains an error code, an error message, and, optionally, error details. The schema of the error details object depends on the error code.
+
+        The error response contains the following keys:
+
+        | Keys      | Meaning                                                               |
+        |-----------|-----------------------------------------------------------------------|
+        | `code`    | Short string indicating the type of error (machine-parsable)          |
+        | `message` | Textual description on what has gone wrong                            |
+        | `details` | An object providing for details on the error (schema depends on code) |
+
+        **Example response**
+        ```json
+        {
+          "error": {
+            "code": "invalid_input",
+            "message": "invalid input in field 'broken_field': is too long",
+            "details": {
+              "fields": [
+                {
+                  "name": "broken_field",
+                  "messages": ["is too long"]
+                }
+              ]
+            }
+          }
+        }
+        ```
+
+        ### Error Codes
+
+        | Code                      | Description                                                                      |
+        |---------------------------|----------------------------------------------------------------------------------|
+        | `forbidden`               | Insufficient permissions for this request                                        |
+        | `invalid_input`           | Error while parsing or processing the input                                      |
+        | `json_error`              | Invalid JSON input in your request                                               |
+        | `locked`                  | The item you are trying to access is locked (there is already an Action running) |
+        | `not_found`               | Entity not found                                                                 |
+        | `rate_limit_exceeded`     | Error when sending too many requests                                             |
+        | `resource_limit_exceeded` | Error when exceeding the maximum quantity of a resource for an account           |
+        | `resource_unavailable`    | The requested resource is currently unavailable                                  |
+        | `service_error`           | Error within a service                                                           |
+        | `uniqueness_error`        | One or more of the objects fields must be unique                                 |
+        | `protected`               | The Action you are trying to start is protected for this resource                |
+        | `maintenance`             | Cannot perform operation due to maintenance                                      |
+        | `conflict`                | The resource has changed during the request, please retry                        |
+        | `unsupported_error`       | The corresponding resource does not support the Action                           |
+        | `token_readonly`          | The token is only allowed to perform GET requests                                |
+        | `unavailable`             | A service or product is currently not available                                  |
+
+        **invalid_input**
+        ```json
+        {
+          "error": {
+            "code": "invalid_input",
+            "message": "invalid input in field 'broken_field': is too long",
+            "details": {
+              "fields": [
+                {
+                  "name": "broken_field",
+                  "messages": ["is too long"]
+                }
+              ]
+            }
+          }
+        }
+        ```
+
+        **uniqueness_error**
+        ```json
+        {
+          "error": {
+            "code": "uniqueness_error",
+            "message": "SSH key with the same fingerprint already exists",
+            "details": {
+              "fields": [
+                {
+                  "name": "public_key"
+                }
+              ]
+            }
+          }
+        }
+        ```
+
+        **resource_limit_exceeded**
+        ```json
+        {
+          "error": {
+            "code": "resource_limit_exceeded",
+            "message": "project limit exceeded",
+            "details": {
+              "limits": [
+                {
+                  "name": "project_limit"
+                }
+              ]
+            }
+          }
+        }
+        ```
+
+        ## Labels
+        Labels are `key/value` pairs that can be attached to all resources.
+
+        Valid label keys have two segments: an optional prefix and name, separated by a slash (`/`). The name segment is required and must be a string of 63 characters or less, beginning and ending with an alphanumeric character (`[a-z0-9A-Z]`) with dashes (`-`), underscores (`_`), dots (`.`), and alphanumerics between. The prefix is optional. If specified, the prefix must be a DNS subdomain: a series of DNS labels separated by dots (`.`), not longer than 253 characters in total, followed by a slash (`/`).
+
+        Valid label values must be a string of 63 characters or less and must be empty or begin and end with an alphanumeric character (`[a-z0-9A-Z]`) with dashes (`-`), underscores (`_`), dots (`.`), and alphanumerics between.
+
+        The `hetzner.cloud/` prefix is reserved and cannot be used.
+
+        **Example Labels**
+        ```json
+        {
+          "labels": {
+            "environment":"development",
+            "service":"backend",
+            "example.com/my":"label",
+            "just-a-key":""
+          }
+        }
+        ```
+
+        ## Label Selector
+        For resources with labels, you can filter resources by their labels using the label selector query language.
+
+        | Expression           | Meaning                                                             |
+        |----------------------|---------------------------------------------------------------------|
+        | `k==v` / `k=v`       | Value of key `k` does equal value `v`                               |
+        | `k!=v`               | Value of key `k` does not equal value `v`                           |
+        | `k`                  | Key `k` is present                                                  |
+        | `!k`                 | Key `k` is not present                                              |
+        | `k in (v1,v2,v3)`    | Value of key `k` is `v1`, `v2`, or `v3`                             |
+        | `k notin (v1,v2,v3)` | Value of key `k` is neither `v1`, nor `v2`, nor `v3`                |
+        | `k1==v,!k2`          | Value of key `k1` is `v` and key `k2` is not present                |
+
+        ### Examples
+        * Returns all resources that have a `env=production` label and that don't have a `type=database` label:
+
+          `env=production,type!=database`
+        * Returns all resources that have a `env=testing` or `env=staging` label:
+
+            `env in (testing,staging)`
+        * Returns all resources that don't have a `type` label:
+
+            `!type`
+
+        ## Pagination
+        Responses which return multiple items support pagination. If they do support pagination, it can be controlled with following query string parameters:
+
+        * A `page` parameter specifies the page to fetch. The number of the first page is 1.
+        * A `per_page` parameter specifies the number of items returned per page. The default value is 25, the maximum value is 50 except otherwise specified in the documentation.
+
+        Responses contain a `Link` header with pagination information.
+
+        Additionally, if the response body is JSON and the root object is an object, that object has a `pagination` object inside the `meta` object with pagination information:
+
+        **Example Pagination**
+        ```json
+        {
+            "servers": [...],
+            "meta": {
+                "pagination": {
+                    "page": 2,
+                    "per_page": 25,
+                    "previous_page": 1,
+                    "next_page": 3,
+                    "last_page": 4,
+                    "total_entries": 100
+                }
+            }
+        }
+        ```
+
+        The keys `previous_page`, `next_page`, `last_page`, and `total_entries` may be `null` when on the first page, last page, or when the total number of entries is unknown.
+
+        **Example Pagination Link header**
+        ```bash
+        Link: <https://api.hetzner.cloud/v1/actions?page=2&per_page=5>; rel="prev",
+              <https://api.hetzner.cloud/v1/actions?page=4&per_page=5>; rel="next",
+              <https://api.hetzner.cloud/v1/actions?page=6&per_page=5>; rel="last"
+        ```
+
+        Line breaks have been added for display purposes only and responses may only contain some of the above `rel` values.
+
+        ## Rate Limiting
+        All requests, whether they are authenticated or not, are subject to rate limiting. If you have reached your limit, your requests will be handled with a `429 Too Many Requests` error. Burst requests are allowed. Responses contain serveral headers which provide information about your current rate limit status.
+
+        * The `RateLimit-Limit` header contains the total number of requests you can perform per hour.
+        * The `RateLimit-Remaining` header contains the number of requests remaining in the current rate limit time frame.
+        * The `RateLimit-Reset` header contains a UNIX timestamp of the point in time when your rate limit will have recovered and you will have the full number of requests available again.
+
+        The default limit is 3600 requests per hour and per Project. The number of remaining requests increases gradually. For example, when your limit is 3600 requests per hour, the number of remaining requests will increase by 1 every second.
+
+        ## Server Metadata
+        Your Server can discover metadata about itself by doing a HTTP request to specific URLs. The following data is available:
+
+        | Data              | Format | Contents                                                     |
+        |-------------------|--------|--------------------------------------------------------------|
+        | hostname          | text   | Name of the Server as set in the api                         |
+        | instance-id       | number | ID of the server                                             |
+        | public-ipv4       | text   | Primary public IPv4 address                                  |
+        | private-networks  | yaml   | Details about the private networks the Server is attached to |
+        | availability-zone | text   | Name of the availability zone that Server runs in            |
+        | region            | text   | Network zone, e.g. eu-central                                |
+
+        **Example: Summary**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata
+        ```
+
+        ```yaml
+        availability-zone: hel1-dc2
+        hostname: my-server
+        instance-id: 42
+        public-ipv4: 1.2.3.4
+        region: eu-central
+        ```
+
+        **Example: Hostname**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata/hostname
+        my-server
+        ```
+
+        **Example: Instance ID**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata/instance-id
+        42
+        ```
+
+        **Example: Public IPv4**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata/public-ipv4
+        1.2.3.4
+        ```
+
+        **Example: Private Networks**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata/private-networks
+        ```
+
+        ```json
+        - ip: 10.0.0.2
+          alias_ips: [10.0.0.3, 10.0.0.4]
+          interface_num: 1
+          mac_address: 86:00:00:2a:7d:e0
+          network_id: 1234
+          network_name: nw-test1
+          network: 10.0.0.0/8
+          subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
+        - ip: 192.168.0.2
+          alias_ips: []
+          interface_num: 2
+          mac_address: 86:00:00:2a:7d:e1
+          network_id: 4321
+          network_name: nw-test2
+          network: 192.168.0.0/16
+          subnet: 192.168.0.0/24
+          gateway: 192.168.0.1
+        ```
+
+        **Example: Availability Zone**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata/availability-zone
+        hel1-dc2
+        ```
+
+        **Example: Region**
+        ```bash
+        $ curl http://169.254.169.254/hetzner/v1/metadata/region
+        eu-central
+        ```
+
+        ## Sorting
+        Some responses which return multiple items support sorting. If they do support sorting the documentation states which fields can be used for sorting. You specify sorting with the `sort` query string parameter. You can sort by multiple fields. You can set the sort direction by appending `:asc` or `:desc` to the field name. By default, ascending sorting is used.
+
+        **Example: Sorting**
+        ```bash
+        https://api.hetzner.cloud/v1/actions?sort=status
+        https://api.hetzner.cloud/v1/actions?sort=status:asc
+        https://api.hetzner.cloud/v1/actions?sort=status:desc
+        https://api.hetzner.cloud/v1/actions?sort=status:asc&sort=command:desc
+        ```
+      display_name: Hetzner Cloud
+      id: builtin_catalog-hetzner
+      resource_families:
+        - coverage:
+            - families:
+                - placement_group
+              high_value: true
+              id: placement_group
+              support: partial
+              title: Placement Group
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: hetzner.placement_group
+            required_payload_fields:
+              - id
+            schema_ref: hetzner/placement_group/v1
+            urn_kind: hetzner_placement_group
+          event_kind: placement_group
+          id: placement_group
+          id_field: id
+          label: Placement Group
+          list_key: placement_groups
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /placement_groups
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $.placement_groups[*]
+        - coverage:
+            - families:
+                - ssh_key
+              high_value: true
+              id: ssh_key
+              support: partial
+              title: Ssh Key
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: hetzner.ssh_key
+            required_payload_fields:
+              - id
+            schema_ref: hetzner/ssh_key/v1
+            urn_kind: hetzner_ssh_key
+          event_kind: ssh_key
+          id: ssh_key
+          id_field: id
+          label: Ssh Key
+          list_key: ssh_keys
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /ssh_keys
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: ssh_key
+            template: asset
+          record_selector: $.ssh_keys[*]
+        - coverage:
+            - families:
+                - action
+              id: action
+              support: partial
+              title: Action
+              type: entity_family
+          event:
+            kind: hetzner.action
+            required_payload_fields:
+              - id
+            schema_ref: hetzner/action/v1
+            urn_kind: hetzner_action
+          event_kind: action
+          id: action
+          id_field: id
+          label: Action
+          list_key: actions
+          method: GET
+          name_field: command
+          pagination:
+            type: none
+          path: /actions
+          projection:
+            fields:
+              id: id
+              name: command
+              resource_id: id
+              resource_name: command
+              resource_type: action
+            template: asset
+          record_selector: $.actions[*]
+        - coverage:
+            - families:
+                - certificate
+              id: certificate
+              support: partial
+              title: Certificate
+              type: entity_family
+          event:
+            kind: hetzner.certificate
+            required_payload_fields:
+              - id
+            schema_ref: hetzner/certificate/v1
+            urn_kind: hetzner_certificate
+          event_kind: certificate
+          id: certificate
+          id_field: id
+          label: Certificate
+          list_key: certificates
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /certificates
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: certificate
+            template: asset
+          record_selector: $.certificates[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - placement_group
+          id: placement_group
+          label: Placement Group
+        - default_enabled: true
+          families:
+            - ssh_key
+          id: ssh_key
+          label: Ssh Key
+        - families:
+            - action
+          id: action
+          label: Action
+        - families:
+            - certificate
+          id: certificate
+          label: Certificate
+      source_id: hetzner
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.hetzner.cloud/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /placement_groups
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: Generated from an OpenAPI description.
+      display_name: Kubernetes
+      id: builtin_catalog-kubernetes
+      resource_families:
+        - coverage:
+            - families:
+                - event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: kubernetes.event
+            required_payload_fields:
+              - action
+            schema_ref: kubernetes/event/v1
+            urn_kind: kubernetes_event
+          event_kind: event
+          id: event
+          id_field: action
+          label: Event
+          list_key: items
+          method: GET
+          name_field: action
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/events
+          permissions_needed:
+            - BearerToken
+          projection:
+            fields:
+              id: action
+              name: action
+              provider_id: action
+            template: audit_event
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - clusterrole
+              high_value: true
+              id: clusterrole
+              support: partial
+              title: Clusterrole
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: kubernetes.clusterrole
+            required_payload_fields:
+              - aggregationRule
+            schema_ref: kubernetes/clusterrole/v1
+            urn_kind: kubernetes_clusterrole
+          event_kind: clusterrole
+          id: clusterrole
+          id_field: aggregationRule
+          label: Clusterrole
+          list_key: items
+          method: GET
+          name_field: aggregationRule
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /apis/rbac.authorization.k8s.io/v1/clusterroles
+          permissions_needed:
+            - BearerToken
+          projection:
+            fields:
+              id: aggregationRule
+              name: aggregationRule
+              provider_id: aggregationRule
+            template: identity_group
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - secret
+              high_value: true
+              id: secrets
+              support: partial
+              title: Secret
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: kubernetes.secret
+            required_payload_fields:
+              - apiVersion
+            schema_ref: kubernetes/secret/v1
+            urn_kind: kubernetes_secret
+          event_kind: secret
+          id: secret
+          id_field: apiVersion
+          label: Secret
+          list_key: items
+          method: GET
+          name_field: apiVersion
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/secrets
+          permissions_needed:
+            - BearerToken
+          projection:
+            fields:
+              id: apiVersion
+              name: apiVersion
+              secret_id: apiVersion
+              secret_name: apiVersion
+              secret_type: secret
+            template: secret
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - serviceaccount
+              high_value: true
+              id: serviceaccount
+              support: partial
+              title: Serviceaccount
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: kubernetes.serviceaccount
+            required_payload_fields:
+              - apiVersion
+            schema_ref: kubernetes/serviceaccount/v1
+            urn_kind: kubernetes_serviceaccount
+          event_kind: serviceaccount
+          id: serviceaccount
+          id_field: apiVersion
+          label: Serviceaccount
+          list_key: items
+          method: GET
+          name_field: apiVersion
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/serviceaccounts
+          permissions_needed:
+            - BearerToken
+          projection:
+            fields:
+              id: apiVersion
+              name: apiVersion
+              provider_id: apiVersion
+            template: identity_user
+          record_selector: $.items[*]
+          sensitive_payload_paths:
+            - automountServiceAccountToken
+            - imagePullSecrets
+            - secrets
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - event
+          id: event
+          label: Event
+        - default_enabled: true
+          families:
+            - clusterrole
+          id: clusterrole
+          label: Clusterrole
+        - default_enabled: true
+          families:
+            - secret
+          id: secret
+          label: Secret
+        - default_enabled: true
+          families:
+            - serviceaccount
+          id: serviceaccount
+          label: Serviceaccount
+      source_id: kubernetes
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://kubernetes.local
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v1/events
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Username
+            reference_only: true
+            required: true
+          - key: password
+            label: Password
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: test_id
+          label: Test Id
+          required: true
+      description: Generated from an OpenAPI description.
+      display_name: LambdaTest
+      id: builtin_catalog-lambdatest
+      resource_families:
+        - coverage:
+            - families:
+                - profile
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Profile
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: lambdatest.profile
+            required_payload_fields:
+              - name
+            schema_ref: lambdatest/profile/v1
+            urn_kind: lambdatest_profile
+          event_kind: profile
+          id: profile
+          id_field: name
+          label: Profile
+          list_key: profiles
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /profiles
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: audit_event
+          record_selector: $.profiles[*]
+        - coverage:
+            - families:
+                - resolution
+              id: resolution
+              support: partial
+              title: Resolution
+              type: entity_family
+          event:
+            kind: lambdatest.resolution
+            required_payload_fields:
+              - id
+            schema_ref: lambdatest/resolution/v1
+            urn_kind: lambdatest_resolution
+          event_kind: resolution
+          id: resolution
+          id_field: id
+          label: Resolution
+          list_key: mac_res
+          method: GET
+          pagination:
+            type: none
+          path: /resolutions
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: resolution
+            template: asset
+          record_selector: $.mac_res[*]
+        - coverage:
+            - families:
+                - location
+              id: location
+              support: partial
+              title: Location
+              type: entity_family
+          event:
+            kind: lambdatest.location
+            required_payload_fields:
+              - name
+            schema_ref: lambdatest/location/v1
+            urn_kind: lambdatest_location
+          event_kind: location
+          id: location
+          id_field: name
+          label: Location
+          list_key: locations
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /locations
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: name
+              name: name
+              resource_id: name
+              resource_name: name
+              resource_type: location
+            template: asset
+          record_selector: $.locations[*]
+        - coverage:
+            - families:
+                - resource
+              id: resource
+              support: partial
+              title: Resource
+              type: entity_family
+          event:
+            kind: lambdatest.resource
+            required_payload_fields:
+              - activity_id
+            schema_ref: lambdatest/resource/v1
+            urn_kind: lambdatest_resource
+          event_kind: resource
+          id: resource
+          id_field: activity_id
+          label: Resource
+          list_key: screenshots
+          method: GET
+          name_field: activity_id
+          pagination:
+            type: none
+          path: /${config.test_id}
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: activity_id
+              name: activity_id
+              resource_id: activity_id
+              resource_name: activity_id
+              resource_type: resource
+            template: asset
+          record_selector: $.screenshots[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - profile
+          id: profile
+          label: Profile
+        - families:
+            - resolution
+          id: resolution
+          label: Resolution
+        - families:
+            - location
+          id: location
+          label: Location
+        - families:
+            - resource
+          id: resource
+          label: Resource
+      source_id: lambdatest
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.lambdatest.com/screenshots/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /profiles
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: networkid
+          label: Networkid
+          required: true
+      description: |-
+        The Cisco Meraki Dashboard API is a modern REST API based on the OpenAPI specification.
+
+        > Date: 05 March, 2023
+        >
+        > [Recent Updates](https://meraki.io/whats-new/)
+
+        ---
+
+        [API Documentation](https://meraki.io/api)
+
+        [Community Support](https://meraki.io/community)
+
+        [Meraki Homepage](https://www.meraki.com)
+      display_name: Cisco Meraki
+      id: builtin_catalog-meraki
+      resource_families:
+        - coverage:
+            - families:
+                - eventtype
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Eventtype
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: meraki.eventtype
+            required_payload_fields:
+              - id
+            schema_ref: meraki/eventtype/v1
+            urn_kind: meraki_eventtype
+          event_kind: eventtype
+          id: eventtype
+          id_field: id
+          label: Eventtype
+          method: GET
+          pagination:
+            type: none
+          path: /networks/${config.networkid}/events/eventTypes
+          permissions_needed:
+            - meraki_api_key
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - organization
+              high_value: true
+              id: organization
+              support: partial
+              title: Organization
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: meraki.organization
+            required_payload_fields:
+              - id
+            schema_ref: meraki/organization/v1
+            urn_kind: meraki_organization
+          event_kind: organization
+          id: organization
+          id_field: id
+          label: Organization
+          method: GET
+          pagination:
+            type: none
+          path: /organizations
+          permissions_needed:
+            - meraki_api_key
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - merakiauthuser
+              high_value: true
+              id: merakiauthuser
+              support: partial
+              title: Merakiauthuser
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: meraki.merakiauthuser
+            required_payload_fields:
+              - id
+            schema_ref: meraki/merakiauthuser/v1
+            urn_kind: meraki_merakiauthuser
+          event_kind: merakiauthuser
+          id: merakiauthuser
+          id_field: id
+          label: Merakiauthuser
+          method: GET
+          pagination:
+            type: none
+          path: /networks/${config.networkid}/merakiAuthUsers
+          permissions_needed:
+            - meraki_api_key
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - accesspolicy
+              high_value: true
+              id: policies
+              support: partial
+              title: Accesspolicy
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: meraki.accesspolicy
+            required_payload_fields:
+              - id
+            schema_ref: meraki/accesspolicy/v1
+            urn_kind: meraki_accesspolicy
+          event_kind: accesspolicy
+          id: accesspolicy
+          id_field: id
+          label: Accesspolicy
+          method: GET
+          pagination:
+            type: none
+          path: /networks/${config.networkid}/accessPolicies
+          permissions_needed:
+            - meraki_api_key
+          projection:
+            fields:
+              id: id
+              policy_id: id
+              policy_name: id
+              policy_type: accesspolicy
+            template: policy
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - eventtype
+          id: eventtype
+          label: Eventtype
+        - default_enabled: true
+          families:
+            - organization
+          id: organization
+          label: Organization
+        - default_enabled: true
+          families:
+            - merakiauthuser
+          id: merakiauthuser
+          label: Merakiauthuser
+        - default_enabled: true
+          families:
+            - accesspolicy
+          id: accesspolicy
+          label: Accesspolicy
+      source_id: meraki
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.meraki.com/api/v0
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /networks/${config.networkid}/events/eventTypes
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: org_id
+          label: Org Id
+          required: true
+      description: |-
+        > Version: **0.36.1**
+        >
+        > Date: **March 3, 2022**
+
+        ---
+
+        #### Available Documentation
+        * [Postman](https://documenter.getpostman.com/view/224925/SzYgQufe)
+        * [Open API](https://doc.mist-lab.fr/)
+
+        ---
+        #### Useful links
+        * [Mist Homepage](https://www.mist.com)
+        * [Mist Documentation](https://www.mist.com/documentation)
+        * [Official API Documentation](https://api.mist.com/api/v1/docs/Home) (Mist account required)
+        * [Mist Blog](https://www.mist.com/news/?md_post_type=post)
+        * [Mist Updates](https://www.mist.com/documentation/category/product-updates/)
+      display_name: Juniper Mist
+      id: builtin_catalog-mist
+      resource_families:
+        - coverage:
+            - families:
+                - call_event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Call Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: mist.call_event
+            required_payload_fields:
+              - key
+            schema_ref: mist/call_event/v1
+            urn_kind: mist_call_event
+          event_kind: call_event
+          id: call_event
+          id_field: key
+          label: Call Event
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /api/v1/const/call_events
+          permissions_needed:
+            - apiToken
+            - basicAuth
+          projection:
+            fields:
+              id: key
+              name: description
+              provider_id: key
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - sitegroup
+              high_value: true
+              id: sitegroup
+              support: partial
+              title: Sitegroup
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: mist.sitegroup
+            required_payload_fields:
+              - id
+            schema_ref: mist/sitegroup/v1
+            urn_kind: mist_sitegroup
+          event_kind: sitegroup
+          id: sitegroup
+          id_field: id
+          label: Sitegroup
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/v1/installer/orgs/${config.org_id}/sitegroups
+          permissions_needed:
+            - apiToken
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - alarmtemplate
+              high_value: true
+              id: alerts
+              support: partial
+              title: Alarmtemplate
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: mist.alarmtemplate
+            required_payload_fields:
+              - id
+            schema_ref: mist/alarmtemplate/v1
+            urn_kind: mist_alarmtemplate
+          event_kind: alarmtemplate
+          id: alarmtemplate
+          id_field: id
+          label: Alarmtemplate
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/v1/installer/orgs/${config.org_id}/alarmtemplates
+          permissions_needed:
+            - apiToken
+            - basicAuth
+          projection:
+            fields:
+              alert_id: id
+              alert_name: name
+              alert_severity: id
+              alert_status: id
+              id: id
+              name: name
+            template: alert
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - secpolicy
+              high_value: true
+              id: policies
+              support: partial
+              title: Secpolicy
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: mist.secpolicy
+            required_payload_fields:
+              - id
+            schema_ref: mist/secpolicy/v1
+            urn_kind: mist_secpolicy
+          event_kind: secpolicy
+          id: secpolicy
+          id_field: id
+          label: Secpolicy
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/v1/installer/orgs/${config.org_id}/secpolicies
+          permissions_needed:
+            - apiToken
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              name: name
+              policy_id: id
+              policy_name: name
+              policy_type: secpolicy
+            template: policy
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - call_event
+          id: call_event
+          label: Call Event
+        - default_enabled: true
+          families:
+            - sitegroup
+          id: sitegroup
+          label: Sitegroup
+        - default_enabled: true
+          families:
+            - alarmtemplate
+          id: alarmtemplate
+          label: Alarmtemplate
+        - default_enabled: true
+          families:
+            - secpolicy
+          id: secpolicy
+          label: Secpolicy
+      source_id: mist
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.mist.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v1/const/call_events
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: API to access NetBox
+      display_name: NetBox
+      id: builtin_catalog-netboxdemo
+      resource_families:
+        - coverage:
+            - families:
+                - cluster_group
+              high_value: true
+              id: cluster_group
+              support: partial
+              title: Cluster Group
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: netboxdemo.cluster_group
+            required_payload_fields:
+              - id
+            schema_ref: netboxdemo/cluster_group/v1
+            urn_kind: netboxdemo_cluster_group
+          event_kind: cluster_group
+          id: cluster_group
+          id_field: id
+          label: Cluster Group
+          list_key: results
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /virtualization/cluster-groups/
+          permissions_needed:
+            - Bearer
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $.results[*]
+        - coverage:
+            - families:
+                - secret
+              high_value: true
+              id: secrets
+              support: partial
+              title: Secret
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: netboxdemo.secret
+            required_payload_fields:
+              - id
+            schema_ref: netboxdemo/secret/v1
+            urn_kind: netboxdemo_secret
+          event_kind: secret
+          id: secret
+          id_field: id
+          label: Secret
+          list_key: results
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /secrets/secrets/
+          permissions_needed:
+            - Bearer
+          projection:
+            fields:
+              id: id
+              name: name
+              secret_id: id
+              secret_name: name
+              secret_type: secret
+            template: secret
+          record_selector: $.results[*]
+        - coverage:
+            - families:
+                - connected_device
+              high_value: true
+              id: connected_device
+              support: partial
+              title: Connected Device
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: netboxdemo.connected_device
+            required_payload_fields:
+              - id
+            schema_ref: netboxdemo/connected_device/v1
+            urn_kind: netboxdemo_connected_device
+          event_kind: connected_device
+          id: connected_device
+          id_field: id
+          label: Connected Device
+          list_key: tags
+          method: GET
+          pagination:
+            type: none
+          path: /dcim/connected-device/
+          permissions_needed:
+            - Bearer
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: connected_device
+            template: asset
+          record_selector: $.tags[*]
+        - coverage:
+            - families:
+                - device_role
+              high_value: true
+              id: device_role
+              support: partial
+              title: Device Role
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: netboxdemo.device_role
+            required_payload_fields:
+              - id
+            schema_ref: netboxdemo/device_role/v1
+            urn_kind: netboxdemo_device_role
+          event_kind: device_role
+          id: device_role
+          id_field: id
+          label: Device Role
+          list_key: results
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /dcim/device-roles/
+          permissions_needed:
+            - Bearer
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $.results[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - cluster_group
+          id: cluster_group
+          label: Cluster Group
+        - default_enabled: true
+          families:
+            - secret
+          id: secret
+          label: Secret
+        - default_enabled: true
+          families:
+            - connected_device
+          id: connected_device
+          label: Connected Device
+        - default_enabled: true
+          families:
+            - device_role
+          id: device_role
+          label: Device Role
+      source_id: netboxdemo
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://netboxdemo.com/api
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /virtualization/cluster-groups/
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: Generated from an OpenAPI description.
+      display_name: Stream
+      id: builtin_catalog-stream_io_api
+      resource_families:
+        - coverage:
+            - families:
+                - member
+              high_value: true
+              id: member
+              support: partial
+              title: Member
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: stream_io_api.member
+            required_payload_fields:
+              - ban_expires
+            schema_ref: stream_io_api/member/v1
+            urn_kind: stream_member
+          event_kind: member
+          id: member
+          id_field: ban_expires
+          label: Member
+          list_key: members
+          method: GET
+          name_field: ban_expires
+          pagination:
+            type: none
+          path: /members
+          permissions_needed:
+            - JWT
+            - api_key
+            - stream-auth-type
+          projection:
+            fields:
+              id: ban_expires
+              name: ban_expires
+              provider_id: ban_expires
+            template: identity_user
+          record_selector: $.members[*]
+        - coverage:
+            - families:
+                - role
+              high_value: true
+              id: role
+              support: partial
+              title: Role
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: stream_io_api.role
+            required_payload_fields:
+              - name
+            schema_ref: stream_io_api/role/v1
+            urn_kind: stream_role
+          event_kind: role
+          id: role
+          id_field: name
+          label: Role
+          list_key: roles
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /roles
+          permissions_needed:
+            - JWT
+            - api_key
+            - stream-auth-type
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_group
+          record_selector: $.roles[*]
+        - coverage:
+            - families:
+                - device
+              high_value: true
+              id: device
+              support: partial
+              title: Device
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: stream_io_api.device
+            required_payload_fields:
+              - id
+            schema_ref: stream_io_api/device/v1
+            urn_kind: stream_device
+          event_kind: device
+          id: device
+          id_field: id
+          label: Device
+          list_key: devices
+          method: GET
+          name_field: created_at
+          pagination:
+            type: none
+          path: /devices
+          permissions_needed:
+            - JWT
+            - api_key
+            - stream-auth-type
+          projection:
+            fields:
+              id: id
+              name: created_at
+              resource_id: id
+              resource_name: created_at
+              resource_type: device
+            template: asset
+          record_selector: $.devices[*]
+        - coverage:
+            - families:
+                - query_banned_user
+              high_value: true
+              id: query_banned_user
+              support: partial
+              title: Query Banned User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: stream_io_api.query_banned_user
+            required_payload_fields:
+              - banned_by
+            schema_ref: stream_io_api/query_banned_user/v1
+            urn_kind: stream_query_banned_user
+          event_kind: query_banned_user
+          id: query_banned_user
+          id_field: banned_by
+          label: Query Banned User
+          list_key: bans
+          method: GET
+          name_field: banned_by
+          pagination:
+            type: none
+          path: /query_banned_users
+          permissions_needed:
+            - JWT
+            - api_key
+            - stream-auth-type
+          projection:
+            fields:
+              id: banned_by
+              name: banned_by
+              provider_id: banned_by
+            template: identity_user
+          record_selector: $.bans[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - member
+          id: member
+          label: Member
+        - default_enabled: true
+          families:
+            - role
+          id: role
+          label: Role
+        - default_enabled: true
+          families:
+            - device
+          id: device
+          label: Device
+        - default_enabled: true
+          families:
+            - query_banned_user
+          id: query_banned_user
+          label: Query Banned User
+      source_id: stream_io_api
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://chat.stream-io-api.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /members
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - key: api_base_url
+          label: API base URL
+          placeholder: api.example.com
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: app_id
+          label: App Id
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: msg_id
+          label: Msg Id
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: endpoint_id
+          label: Endpoint Id
+          required: true
+      description: |-
+        Welcome to the Svix API documentation!
+
+        Useful links: [Homepage](https://www.svix.com) | [Support email](mailto:support+docs@svix.com) | [Blog](https://www.svix.com/blog/) | [Slack Community](https://www.svix.com/slack/)
+
+        # Introduction
+
+        This is the reference documentation and schemas for the [Svix webhook service](https://www.svix.com) API. For tutorials and other documentation please refer to [the documentation](https://docs.svix.com).
+
+        ## Main concepts
+
+        In Svix you have four important entities you will be interacting with:
+
+        - `messages`: these are the webhooks being sent. They can have contents and a few other properties.
+        - `application`: this is where `messages` are sent to. Usually you want to create one application for each user on your platform.
+        - `endpoint`: endpoints are the URLs messages will be sent to. Each application can have multiple `endpoints` and each message sent to that application will be sent to all of them (unless they are not subscribed to the sent event type).
+        - `event-type`: event types are identifiers denoting the type of the message being sent. Event types are primarily used to decide which events are sent to which endpoint.
+
+
+        ## Authentication
+
+        Get your authentication token (`AUTH_TOKEN`) from the [Svix dashboard](https://dashboard.svix.com) and use it as part of the `Authorization` header as such: `Authorization: Bearer ${AUTH_TOKEN}`.
+
+        <SecurityDefinitions />
+
+
+        ## Code samples
+
+        The code samples assume you already have the respective libraries installed and you know how to use them. For the latest information on how to do that, please refer to [the documentation](https://docs.svix.com/).
+
+
+        ## Idempotency
+
+        Svix supports [idempotency](https://en.wikipedia.org/wiki/Idempotence) for safely retrying requests without accidentally performing the same operation twice. This is useful when an API call is disrupted in transit and you do not receive a response.
+
+        To perform an idempotent request, pass the idempotency key in the `Idempotency-Key` header to the request. The idempotency key should be a unique value generated by the client. You can create the key in however way you like, though we suggest using UUID v4, or any other string with enough entropy to avoid collisions.
+
+        Svix's idempotency works by saving the resulting status code and body of the first request made for any given idempotency key for any successful request. Subsequent requests with the same key return the same result.
+
+        Please note that idempotency is only supported for `POST` requests.
+
+
+        ## Cross-Origin Resource Sharing
+
+        This API features Cross-Origin Resource Sharing (CORS) implemented in compliance with [W3C spec](https://www.w3.org/TR/cors/). And that allows cross-domain communication from the browser. All responses have a wildcard same-origin which makes them completely public and accessible to everyone, including any code on any site.
+      display_name: Svix
+      id: builtin_catalog-svix
+      resource_families:
+        - coverage:
+            - families:
+                - event_type
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Event Type
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: svix.event_type
+            required_payload_fields:
+              - name
+            schema_ref: svix/event_type/v1
+            urn_kind: svix_event_type
+          event_kind: event_type
+          id: event_type
+          id_field: name
+          label: Event Type
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/event-type/
+          permissions_needed:
+            - HTTPBearer
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - endpoint
+              high_value: true
+              id: endpoint
+              support: partial
+              title: Endpoint
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: svix.endpoint
+            required_payload_fields:
+              - id
+            schema_ref: svix/endpoint/v1
+            urn_kind: svix_endpoint
+          event_kind: endpoint
+          id: endpoint
+          id_field: id
+          label: Endpoint
+          list_key: data
+          method: GET
+          name_field: description
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/app/${config.app_id}/endpoint/
+          permissions_needed:
+            - HTTPBearer
+          projection:
+            fields:
+              id: id
+              name: description
+              resource_id: id
+              resource_name: description
+              resource_type: endpoint
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - msg_endpoint
+              high_value: true
+              id: msg_endpoint
+              support: partial
+              title: Msg Endpoint
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: svix.msg_endpoint
+            required_payload_fields:
+              - id
+            schema_ref: svix/msg_endpoint/v1
+            urn_kind: svix_msg_endpoint
+          event_kind: msg_endpoint
+          id: msg_endpoint
+          id_field: id
+          label: Msg Endpoint
+          list_key: data
+          method: GET
+          name_field: description
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/app/${config.app_id}/msg/${config.msg_id}/endpoint/
+          permissions_needed:
+            - HTTPBearer
+          projection:
+            fields:
+              id: id
+              name: description
+              resource_id: id
+              resource_name: description
+              resource_type: endpoint
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - msg
+              high_value: true
+              id: msg
+              support: partial
+              title: Msg
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: svix.msg
+            required_payload_fields:
+              - id
+            schema_ref: svix/msg/v1
+            urn_kind: svix_msg
+          event_kind: msg
+          id: msg
+          id_field: id
+          label: Msg
+          list_key: data
+          method: GET
+          name_field: channels
+          pagination:
+            cursor_param: after
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/v1/app/${config.app_id}/endpoint/${config.endpoint_id}/msg/
+          permissions_needed:
+            - HTTPBearer
+          projection:
+            fields:
+              id: id
+              name: channels
+              resource_id: id
+              resource_name: channels
+              resource_type: msg
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - event_type
+          id: event_type
+          label: Event Type
+        - default_enabled: true
+          families:
+            - endpoint
+          id: endpoint
+          label: Endpoint
+        - default_enabled: true
+          families:
+            - msg_endpoint
+          id: msg_endpoint
+          label: Msg Endpoint
+        - default_enabled: true
+          families:
+            - msg
+          id: msg
+          label: Msg
+      source_id: svix
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.api_base_url}
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v1/event-type/

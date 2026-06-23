@@ -1569,3 +1569,2363 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: parentid
+          label: Parentid
+          required: true
+      description: Generated from an OpenAPI description.
+      display_name: Datto Autotask PSA
+      id: builtin_catalog-autotask
+      resource_families:
+        - coverage:
+            - families:
+                - field
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Field
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: autotask.field
+            required_payload_fields:
+              - name
+            schema_ref: autotask/field/v1
+            urn_kind: autotask_field
+          event_kind: field
+          id: field
+          id_field: name
+          label: Field
+          list_key: fields
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /V1.0/DeletedTaskActivityLogs/entityInformation/fields
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: audit_event
+          record_selector: $.fields[*]
+        - coverage:
+            - families:
+                - userdefinedfield
+              high_value: true
+              id: userdefinedfield
+              support: partial
+              title: Userdefinedfield
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: autotask.userdefinedfield
+            required_payload_fields:
+              - name
+            schema_ref: autotask/userdefinedfield/v1
+            urn_kind: autotask_userdefinedfield
+          event_kind: userdefinedfield
+          id: userdefinedfield
+          id_field: name
+          label: Userdefinedfield
+          list_key: fields
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /V1.0/ActionTypes/entityInformation/userDefinedFields
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_user
+          record_selector: $.fields[*]
+        - coverage:
+            - families:
+                - excludedrole
+              high_value: true
+              id: excludedrole
+              support: partial
+              title: Excludedrole
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: autotask.excludedrole
+            required_payload_fields:
+              - id
+            schema_ref: autotask/excludedrole/v1
+            urn_kind: autotask_excludedrole
+          event_kind: excludedrole
+          id: excludedrole
+          id_field: id
+          label: Excludedrole
+          list_key: items
+          method: GET
+          name_field: contractExclusionSetID
+          pagination:
+            type: none
+          path: /V1.0/ContractExclusionSets/${config.parentid}/ExcludedRoles
+          projection:
+            fields:
+              id: id
+              name: contractExclusionSetID
+              provider_id: id
+            template: identity_group
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - entityinformation_field
+              high_value: true
+              id: alerts
+              support: partial
+              title: Entityinformation Field
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: autotask.entityinformation_field
+            required_payload_fields:
+              - name
+            schema_ref: autotask/entityinformation_field/v1
+            urn_kind: autotask_entityinformation_field
+          event_kind: entityinformation_field
+          id: entityinformation_field
+          id_field: name
+          label: Entityinformation Field
+          list_key: fields
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /V1.0/CompanyAlerts/entityInformation/fields
+          projection:
+            fields:
+              alert_id: name
+              alert_name: name
+              alert_severity: dataType
+              alert_status: dataType
+              id: name
+              name: name
+            template: alert
+          record_selector: $.fields[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - field
+          id: field
+          label: Field
+        - default_enabled: true
+          families:
+            - userdefinedfield
+          id: userdefinedfield
+          label: Userdefinedfield
+        - default_enabled: true
+          families:
+            - excludedrole
+          id: excludedrole
+          label: Excludedrole
+        - default_enabled: true
+          families:
+            - entityinformation_field
+          id: entityinformation_field
+          label: Entityinformation Field
+      source_id: autotask
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://webservices5.autotask.net/ATServicesRest
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /V1.0/DeletedTaskActivityLogs/entityInformation/fields
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Username
+            reference_only: true
+            required: true
+          - key: password
+            label: Password
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id
+          label: Id
+          required: true
+      description: "## Overview\n\nThe JSON REST API allows you to submit and receive [BulkSMS](https://www.bulksms.com/) messages. You can also get access to past messages and see your account profile.\n\nThe base URL to use for this service is `https://api.bulksms.com/v1`.  The base URL cannot be used on its own; you must append a path that identifies an operation and you may have to specify some path parameters as well.\n\n[Click here](/developer/) to go to the main BulkSMS developer site.\n\nIn order to give you an idea on how the API can be used, some JSON snippets are provided below.  Have a look at the [messages section](#tag/Message) for more information.\n\nProbably the most simple example\n\n```\n{\n    \"to\": \"+27001234567\",\n    \"body\": \"Hello World!\"\n}\n```\n\n\nYou can send unicode automatically using the `auto-unicode` query parameter. \nAlternatively, you can specify `UNICODE` for the `encoding` property in the request body. \nPlease note: when `auto-unicode` is specified and the value of the `encoding` property is `UNICODE`, the message will always be sent as `UNICODE`.\n\nHere is an example that sets the `encoding` explicitly\n\n```\n{\n  \"to\": \"+27001234567\",\n  \"body\": \"Dobrá práce! Jak se máš?\",\n  \"encoding\": \"UNICODE\"\n}\n```\n\nYou can also specify a from number\n\n```\n{\n    \"from\": \"+27007654321\",\n    \"to\": \"+27001234567\",\n    \"body\": \"Hello World!\"\n}\n```\n\nSimilar to above, but repliable\n\n```\n{\n    \"from\": { \"type\": \"REPLIABLE\" },\n    \"to\": \"+27001234567\",\n    \"body\": \"Hello World!\"\n}\n```\n\nA message to a group called Everyone\n\n```\n{\n    \"to\": { \"type\": \"GROUP\", \"name\": \"Everyone\" },\n    \"body\": \"Hello World!\"\n}\n```\n\nA message to multiple recipients\n\n```\n{\n    \"to\": [\"+27001234567\", \"+27002345678\", \"+27003456789\"],\n    \"body\": \"Happy Holidays!\"\n}\n```\n\nSending more than one message in the same request\n\n```\n[\n    {\n        \"to\": \"+27001234567\",\n        \"body\": \"Hello World!\"\n    },\n    {\n        \"to\": \"+27002345678\",\n        \"body\": \"Hello Universe!\"\n    }\n]\n```\n\n**The insecure base URL `http://api.bulksms.com/v1` is deprecated** and may in future result in a `301` redirect response, or insecure requests may be rejected outright. Please use the secure (`https`) URI above.\n\n### HTTP Content Type\n\nAll API methods expect requests to supply a `Content-Type` header with the value `application/json`. All responses will have the `Content-Type` header set to `application/json`.\n\n### JSON Formatting\n\nYou are advised to format your JSON resources according to strict JSON format rules. While the API does attempt to parse strictly invalid JSON documents, doing so may lead to incorrect interpretation and unexpected results.\n\nGood JSON libraries will produce valid JSON suitable for submission, but if you are manually generating the JSON text, be careful to follow the JSON format. This include correct escaping of control characters and double quoting of property names.\n\nSee the [JSON specification](https://tools.ietf.org/html/rfc4627) for further information.\n\n### Date Formatting\n\nDates are formatted according to ISO-8601, such as `1970-01-01T10:00:00+01:00` for 1st January 1970, 10AM UTC+1.\n\nSee the [Wikipedia ISO 8601 reference](https://en.wikipedia.org/wiki/ISO_8601) for further information.\n\nSpecifically, calendar dates are formatted with the 'extended' format `YYYY-MM-DD`. Basic format, week dates and ordinal dates are not supported. Times are also formatted in the 'extended' format `hh:mm:ss`. Hours, minutes and seconds are mandatory. Offset from UTC must be provided; this is to ensure that there is no misunderstanding regarding times provided to the API.\n\nThe format we look for is `yyyy-MM-ddThh:mm:ss[Z|[+-]hh:mm]`\n\nExamples of valid date/times are`2011-12-31T12:00:00Z` `2011-12-31T12:00:00+02:00`\n\n### Entity Format Modifications\n\nIt is expected that over time some changes will be made to the request and response formats of various methods available in the API.\nWhere possible, these will be implemented in a backwards compatible way.\nTo make this possible you are required to ignore unknown properties.\nThis enables the addition of information in response documents while maintaining compatibility with older clients.\n\n### Optional Request Entity Properties\n\nThere are many instances where requests can be made without having to specify every single property allowable in the request format.\nAny such optional properties are noted as such in the documentation and their default value is noted."
+      display_name: BulkSMS
+      id: builtin_catalog-bulksms
+      resource_families:
+        - coverage:
+            - families:
+                - webhook
+              high_value: true
+              id: webhook
+              support: partial
+              title: Webhook
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: bulksms.webhook
+            required_payload_fields:
+              - id
+            schema_ref: bulksms/webhook/v1
+            urn_kind: bulksms_webhook
+          event_kind: webhook
+          id: webhook
+          id_field: id
+          label: Webhook
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /webhooks
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: webhook
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - relatedreceivedmessage
+              id: relatedreceivedmessage
+              support: partial
+              title: Relatedreceivedmessage
+              type: entity_family
+          event:
+            kind: bulksms.relatedreceivedmessage
+            required_payload_fields:
+              - id
+            schema_ref: bulksms/relatedreceivedmessage/v1
+            urn_kind: bulksms_relatedreceivedmessage
+          event_kind: relatedreceivedmessage
+          id: relatedreceivedmessage
+          id_field: id
+          label: Relatedreceivedmessage
+          method: GET
+          name_field: body
+          pagination:
+            type: none
+          path: /messages/${config.id}/relatedReceivedMessages
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              name: body
+              resource_id: id
+              resource_name: body
+              resource_type: relatedreceivedmessage
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - message
+              id: message
+              support: partial
+              title: Message
+              type: entity_family
+          event:
+            kind: bulksms.message
+            required_payload_fields:
+              - id
+            schema_ref: bulksms/message/v1
+            urn_kind: bulksms_message
+          event_kind: message
+          id: message
+          id_field: id
+          label: Message
+          method: GET
+          name_field: body
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /messages
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              name: body
+              resource_id: id
+              resource_name: body
+              resource_type: message
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - send
+              id: send
+              support: partial
+              title: Send
+              type: entity_family
+          event:
+            kind: bulksms.send
+            required_payload_fields:
+              - id
+            schema_ref: bulksms/send/v1
+            urn_kind: bulksms_send
+          event_kind: send
+          id: send
+          id_field: id
+          label: Send
+          method: GET
+          name_field: body
+          pagination:
+            type: none
+          path: /messages/send
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              name: body
+              resource_id: id
+              resource_name: body
+              resource_type: send
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - webhook
+          id: webhook
+          label: Webhook
+        - families:
+            - relatedreceivedmessage
+          id: relatedreceivedmessage
+          label: Relatedreceivedmessage
+        - families:
+            - message
+          id: message
+          label: Message
+        - families:
+            - send
+          id: send
+          label: Send
+      source_id: bulksms
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.bulksms.com/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /webhooks
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Username
+            reference_only: true
+            required: true
+          - key: password
+            label: Password
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+      description: CallFire
+      display_name: CallFire
+      id: builtin_catalog-callfire
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: callfire.account
+            required_payload_fields:
+              - id
+            schema_ref: callfire/account/v1
+            urn_kind: callfire_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          list_key: messageFlows
+          method: GET
+          pagination:
+            type: none
+          path: /me/account
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: identity_user
+          record_selector: $.messageFlows[*]
+        - coverage:
+            - families:
+                - credential
+              high_value: true
+              id: secrets
+              support: partial
+              title: Credential
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: callfire.credential
+            required_payload_fields:
+              - id
+            schema_ref: callfire/credential/v1
+            urn_kind: callfire_credential
+          event_kind: credential
+          id: credential
+          id_field: id
+          label: Credential
+          list_key: items
+          method: GET
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /me/api/credentials
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              secret_id: id
+              secret_name: id
+              secret_type: credential
+            template: secret
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - broadcast
+              id: broadcast
+              support: partial
+              title: Broadcast
+              type: entity_family
+          event:
+            kind: callfire.broadcast
+            required_payload_fields:
+              - id
+            schema_ref: callfire/broadcast/v1
+            urn_kind: callfire_broadcast
+          event_kind: broadcast
+          id: broadcast
+          id_field: id
+          label: Broadcast
+          list_key: items
+          method: GET
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /calls/broadcasts
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: broadcast
+            template: asset
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - call
+              id: call
+              support: partial
+              title: Call
+              type: entity_family
+          event:
+            kind: callfire.call
+            required_payload_fields:
+              - id
+            schema_ref: callfire/call/v1
+            urn_kind: callfire_call
+          event_kind: call
+          id: call
+          id_field: id
+          label: Call
+          list_key: items
+          method: GET
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /calls
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: id
+              resource_id: id
+              resource_name: id
+              resource_type: call
+            template: asset
+          record_selector: $.items[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - default_enabled: true
+          families:
+            - credential
+          id: credential
+          label: Credential
+        - families:
+            - broadcast
+          id: broadcast
+          label: Broadcast
+        - families:
+            - call
+          id: call
+          label: Call
+      source_id: callfire
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.callfire.com/v2
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /me/account
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: |-
+        This page contains the documentation on how to use Discourse through API calls.
+
+        > Note: For any endpoints not listed you can follow the
+        [reverse engineer the Discourse API](https://meta.discourse.org/t/-/20576)
+        guide to figure out how to use an API endpoint.
+
+        ### Request Content-Type
+
+        The Content-Type for POST and PUT requests can be set to `application/x-www-form-urlencoded`,
+        `multipart/form-data`, or `application/json`.
+
+        ### Endpoint Names and Response Content-Type
+
+        Most API endpoints provide the same content as their HTML counterparts. For example
+        the URL `/categories` serves a list of categories, the `/categories.json` API provides the
+        same information in JSON format.
+
+        Instead of sending API requests to `/categories.json` you may also send them to `/categories`
+        and add an `Accept: application/json` header to the request to get the JSON response.
+        Sending requests with the `Accept` header is necessary if you want to use URLs
+        for related endpoints returned by the API, such as pagination URLs.
+        These URLs are returned without the `.json` prefix so you need to add the header in
+        order to get the correct response format.
+
+        ### Authentication
+
+        Some endpoints do not require any authentication, pretty much anything else will
+        require you to be authenticated.
+
+        To become authenticated you will need to create an API Key from the admin panel.
+
+        Once you have your API Key you can pass it in along with your API Username
+        as an HTTP header like this:
+
+        ```
+        curl -X GET "http://127.0.0.1:3000/admin/users/list/active.json" \
+        -H "Api-Key: 714552c6148e1617aeab526d0606184b94a80ec048fc09894ff1a72b740c5f19" \
+        -H "Api-Username: system"
+        ```
+
+        and this is how POST requests will look:
+
+        ```
+        curl -X POST "http://127.0.0.1:3000/categories" \
+        -H "Content-Type: multipart/form-data;" \
+        -H "Api-Key: 714552c6148e1617aeab526d0606184b94a80ec048fc09894ff1a72b740c5f19" \
+        -H "Api-Username: system" \
+        -F "name=89853c20-4409-e91a-a8ea-f6cdff96aaaa" \
+        -F "color=49d9e9" \
+        -F "text_color=f0fcfd"
+        ```
+
+        ### Boolean values
+
+        If an endpoint accepts a boolean be sure to specify it as a lowercase
+        `true` or `false` value unless noted otherwise.
+      display_name: Discourse
+      id: builtin_catalog-discourse
+      resource_families:
+        - coverage:
+            - families:
+                - groups_json
+              high_value: true
+              id: groups_json
+              support: partial
+              title: Groups Json
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: discourse.groups_json
+            required_payload_fields:
+              - id
+            schema_ref: discourse/groups_json/v1
+            urn_kind: discourse_groups_json
+          event_kind: groups_json
+          id: groups_json
+          id_field: id
+          label: Groups Json
+          list_key: groups
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /groups.json
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $.groups[*]
+        - coverage:
+            - families:
+                - user_actions_json
+              high_value: true
+              id: user_actions_json
+              support: partial
+              title: User Actions Json
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: discourse.user_actions_json
+            required_payload_fields:
+              - slug
+            schema_ref: discourse/user_actions_json/v1
+            urn_kind: discourse_user_actions_json
+          event_kind: user_actions_json
+          id: user_actions_json
+          id_field: slug
+          label: User Actions Json
+          list_key: user_actions
+          method: GET
+          name_field: name
+          pagination:
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /user_actions.json
+          projection:
+            fields:
+              id: slug
+              name: name
+              provider_id: slug
+            template: identity_user
+          record_selector: $.user_actions[*]
+        - coverage:
+            - families:
+                - notifications_json
+              high_value: true
+              id: alerts
+              support: partial
+              title: Notifications Json
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: discourse.notifications_json
+            required_payload_fields:
+              - id
+            schema_ref: discourse/notifications_json/v1
+            urn_kind: discourse_notifications_json
+          event_kind: notifications_json
+          id: notifications_json
+          id_field: id
+          label: Notifications Json
+          list_key: notifications
+          method: GET
+          name_field: slug
+          pagination:
+            type: none
+          path: /notifications.json
+          projection:
+            fields:
+              alert_id: id
+              alert_name: slug
+              alert_severity: created_at
+              alert_status: created_at
+              id: id
+              name: slug
+            template: alert
+          record_selector: $.notifications[*]
+        - coverage:
+            - families:
+                - backups_json
+              id: backups_json
+              support: partial
+              title: Backups Json
+              type: entity_family
+          event:
+            kind: discourse.backups_json
+            required_payload_fields:
+              - filename
+            schema_ref: discourse/backups_json/v1
+            urn_kind: discourse_backups_json
+          event_kind: backups_json
+          id: backups_json
+          id_field: filename
+          label: Backups Json
+          method: GET
+          name_field: filename
+          pagination:
+            type: none
+          path: /admin/backups.json
+          projection:
+            fields:
+              id: filename
+              name: filename
+              resource_id: filename
+              resource_name: filename
+              resource_type: backups_json
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - groups_json
+          id: groups_json
+          label: Groups Json
+        - default_enabled: true
+          families:
+            - user_actions_json
+          id: user_actions_json
+          label: User Actions Json
+        - default_enabled: true
+          families:
+            - notifications_json
+          id: notifications_json
+          label: Notifications Json
+        - families:
+            - backups_json
+          id: backups_json
+          label: Backups Json
+      source_id: discourse
+      tenant_id: builtin_catalog
+      transport:
+        base_url: http://discourse.local
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /groups.json
+  - classifier_output: supported
+    definition:
+      auth:
+        authorization_url: /oauth/authorize
+        credential_fields:
+          - key: oauth_client_reference
+            label: OAuth client reference
+            reference_only: true
+            required: true
+            secret: true
+        model: oauth_authorization_code
+        requires_references: true
+        scopes:
+          - all
+        token_expiration_buffer_seconds: 300
+        token_request_auth_method: client_secret_basic
+        token_url: /oauth/token
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: customer_id
+          label: Customer Id
+          required: true
+      description: REST Web Services for DRACOON<br><br>This page provides an overview of all available and documented DRACOON APIs, which are grouped by tags.<br>Each tag provides a collection of APIs that are intended for a specific area of the DRACOON.<br><br><a title='Developer Information' href='https://developer.dracoon.com'>Developer Information</a>&emsp;&emsp;<a title='Get SDKs on GitHub' href='https://github.com/dracoon'>Get SDKs on GitHub</a><br><br><a title='Terms of service' href='https://www.dracoon.com/terms/general-terms-and-conditions/'>Terms of service</a>
+      display_name: DRACOON
+      id: builtin_catalog-dracoon
+      resource_families:
+        - coverage:
+            - families:
+                - event_type
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Event Type
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: dracoon.event_type
+            required_payload_fields:
+              - id
+            schema_ref: dracoon/event_type/v1
+            urn_kind: dracoon_event_type
+          event_kind: event_type
+          id: event_type
+          id_field: id
+          label: Event Type
+          list_key: items
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v4/provisioning/webhooks/event_types
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: audit_event
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - group
+              high_value: true
+              id: group
+              support: partial
+              title: Group
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: dracoon.group
+            required_payload_fields:
+              - id
+            schema_ref: dracoon/group/v1
+            urn_kind: dracoon_group
+          event_kind: group
+          id: group
+          id_field: id
+          label: Group
+          list_key: items
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /v4/groups
+          permissions_needed:
+            - oauth2
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: dracoon.user
+            required_payload_fields:
+              - id
+            schema_ref: dracoon/user/v1
+            urn_kind: dracoon_user
+          event_kind: user
+          id: user
+          id_field: id
+          label: User
+          list_key: items
+          method: GET
+          name_field: title
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /v4/provisioning/customers/${config.customer_id}/users
+          projection:
+            fields:
+              id: id
+              name: title
+              provider_id: id
+            template: identity_user
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - channel
+              high_value: true
+              id: alerts
+              support: partial
+              title: Channel
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: dracoon.channel
+            required_payload_fields:
+              - id
+            schema_ref: dracoon/channel/v1
+            urn_kind: dracoon_channel
+          event_kind: channel
+          id: channel
+          id_field: id
+          label: Channel
+          list_key: items
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v4/config/info/notifications/channels
+          permissions_needed:
+            - oauth2
+          projection:
+            fields:
+              alert_id: id
+              alert_name: name
+              alert_severity: frequency
+              alert_status: frequency
+              id: id
+              name: name
+            template: alert
+          record_selector: $.items[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - event_type
+          id: event_type
+          label: Event Type
+        - default_enabled: true
+          families:
+            - group
+          id: group
+          label: Group
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - default_enabled: true
+          families:
+            - channel
+          id: channel
+          label: Channel
+      source_id: dracoon
+      tenant_id: builtin_catalog
+      transport:
+        base_url: /api
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v4/provisioning/webhooks/event_types
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id
+          label: Id
+          required: true
+      description: Generated from an OpenAPI description.
+      display_name: Mastodon
+      id: builtin_catalog-mastodon
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: mastodon.account
+            required_payload_fields:
+              - id
+            schema_ref: mastodon/account/v1
+            urn_kind: mastodon_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          method: GET
+          name_field: display_name
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/lists/${config.id}/accounts
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: id
+              name: display_name
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - activity
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Activity
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: mastodon.activity
+            required_payload_fields:
+              - logins
+            schema_ref: mastodon/activity/v1
+            urn_kind: mastodon_activity
+          event_kind: activity
+          id: activity
+          id_field: logins
+          label: Activity
+          method: GET
+          name_field: logins
+          pagination:
+            type: none
+          path: /api/v1/instance/activity
+          projection:
+            fields:
+              id: logins
+              name: logins
+              provider_id: logins
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - verify_credential
+              high_value: true
+              id: secrets
+              support: partial
+              title: Verify Credential
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: mastodon.verify_credential
+            required_payload_fields:
+              - category
+            schema_ref: mastodon/verify_credential/v1
+            urn_kind: mastodon_verify_credential
+          event_kind: verify_credential
+          id: verify_credential
+          id_field: category
+          label: Verify Credential
+          list_key: emojis
+          method: GET
+          name_field: url
+          pagination:
+            type: none
+          path: /api/v1/accounts/verify_credentials
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: category
+              name: url
+              secret_id: category
+              secret_name: url
+              secret_type: verify_credential
+            template: secret
+          record_selector: $.emojis[*]
+        - coverage:
+            - families:
+                - notification
+              high_value: true
+              id: alerts
+              support: partial
+              title: Notification
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: mastodon.notification
+            required_payload_fields:
+              - id
+            schema_ref: mastodon/notification/v1
+            urn_kind: mastodon_notification
+          event_kind: notification
+          id: notification
+          id_field: id
+          label: Notification
+          method: GET
+          name_field: account
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /api/v1/notifications
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              alert_id: id
+              alert_name: account
+              alert_severity: account
+              alert_status: status
+              id: id
+              name: account
+            template: alert
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - default_enabled: true
+          families:
+            - activity
+          id: activity
+          label: Activity
+        - default_enabled: true
+          families:
+            - verify_credential
+          id: verify_credential
+          label: Verify Credential
+        - default_enabled: true
+          families:
+            - notification
+          id: notification
+          label: Notification
+      source_id: mastodon
+      tenant_id: builtin_catalog
+      transport:
+        base_url: http://mastodon.local
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v1/lists/${config.id}/accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            label: Client ID
+            reference_only: true
+            required: true
+            secret: true
+          - key: client_secret
+            label: Client secret
+            reference_only: true
+            required: true
+            secret: true
+        model: oauth_client_credentials
+        requires_references: true
+        scopes:
+          - messages:send
+        token_expiration_buffer_seconds: 300
+        token_request_auth_method: client_secret_basic
+        token_url: /oauth2/token
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: accountid
+          label: Accountid
+          required: true
+      description: "# Introduction\n\nWelcome to the documentation for the Sakari Messaging REST API. \n\nSakari provides an advanced platform to drive large scale customized SMS communication\n\nREST is a web-service protocol that lends itself to rapid development by using everyday HTTP and JSON technology.\n\nTo find out more about our product offering, please visit [https://sakari.io](https://sakari.io).\n\n# Quickstart\n\nFor your convenience we have created a quickstart guide to get you up and running in 5 minutes. \n\n[https://sakari.io/blog/sakari-api-quickstart](https://sakari.io/blog/sakari-api-quickstart)\n\n# PostMan Collection\n\nWe've created a simple set of examples using [PostMan](https://www.getpostman.com/) Simply click below to import these. You will need to setup three environment variables in PostMan - AccountId, ClientId and ClientSecret. Check out our PostMan blog post for more information\n\n[![Run in Postman](https://run.pstmn.io/button.svg)](https://app.getpostman.com/run-collection/d616e273edc916a7a6eb)\n\n# Finding your client id, client secret and account id\n\nTo authenticate against the API's you will need three key pieces of data\n - client id\n - client secret\n - account id\n\nTo retrieve these, simply login into [https://hub.sakari.io](https://hub.sakari.io) and click on the \"cog\" in the top right corner. In the popup dialog at the bottom you should see your API credentials and account id. If these are not visible you will need to click on \"Request Credentials\"\n\n# Versioning\n\nWith any breaking changes we will introduce a new version of the API. The latest version is v1.\n\nThe API uses an open schema model, which means server may add extra properties to responses. Likewise, the server will ignore any extra query parameters and request body properties. When you write clients, you need to ignore additional properties in responses to ensure they do not break.\n\n# Testing\n\nThere are numerous tools available for testing the API's. We will include examples using curl and the client SDKs that we have created. If you would like to see an SDK in a language not currently available, please let us know.\n\n# Throttling / Limits\n\nOur API's have been specifically designed to support bulk messaging in a single API call. We therefore impose limits on the frequency of calling the APIs to prevent abuse or runaway processes. If you feel you need a higher limit, please contact us. If you hit the limit you will get a 429 error code returned from our servers\n\n# Errors\n\nThe API uses standard HTTP status codes to indicate the success or failure of the API call. The body of the response will be JSON in the following format:\n\n```\n{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"CONT-001\",\n    \"message\": \"Invalid mobile number\"\n  }\n}\n```\n\n# Pagination\n\nFor performance, most GET calls return a subset of data. This data is paginated for easy access. Most APIs which return collections of data will return a pagination object as such:\n\n```\n{\n  \"pagination\": {\n    \"offset\": 0,\n    \"limit\": 10\n    \"totalCount\": 21\n  }  \n}\n```\n\nWhen making calls to the API, you can adjust the slice of data returned using query parameters such as:\n\n`` https://api.sakari.io/v1/accounts/123/contacts?offset=20&limit=25 ``\n\nThis will return 25 contacts with an offset of 20."
+      display_name: Sakari
+      id: builtin_catalog-sakari
+      resource_families:
+        - coverage:
+            - families:
+                - webhook
+              high_value: true
+              id: webhook
+              support: partial
+              title: Webhook
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: sakari.webhook
+            required_payload_fields:
+              - eventTypes
+            schema_ref: sakari/webhook/v1
+            urn_kind: sakari_webhook
+          event_kind: webhook
+          id: webhook
+          id_field: eventTypes
+          label: Webhook
+          list_key: data
+          method: GET
+          name_field: url
+          pagination:
+            type: none
+          path: /v1/accounts/${config.accountid}/webhooks
+          permissions_needed:
+            - sakari_auth
+          projection:
+            fields:
+              id: eventTypes
+              name: url
+              resource_id: eventTypes
+              resource_name: url
+              resource_type: webhook
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - campaign
+              id: campaign
+              support: partial
+              title: Campaign
+              type: entity_family
+          event:
+            kind: sakari.campaign
+            required_payload_fields:
+              - id
+            schema_ref: sakari/campaign/v1
+            urn_kind: sakari_campaign
+          event_kind: campaign
+          id: campaign
+          id_field: id
+          label: Campaign
+          list_key: data
+          method: GET
+          name_field: id
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /v1/accounts/${config.accountid}/campaigns
+          permissions_needed:
+            - sakari_auth
+          projection:
+            fields:
+              id: id
+              name: id
+              resource_id: id
+              resource_name: id
+              resource_type: campaign
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - contact
+              id: contact
+              support: partial
+              title: Contact
+              type: entity_family
+          event:
+            kind: sakari.contact
+            required_payload_fields:
+              - id
+            schema_ref: sakari/contact/v1
+            urn_kind: sakari_contact
+          event_kind: contact
+          id: contact
+          id_field: id
+          label: Contact
+          list_key: data
+          method: GET
+          name_field: email
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /v1/accounts/${config.accountid}/contacts
+          permissions_needed:
+            - sakari_auth
+          projection:
+            fields:
+              id: id
+              name: email
+              resource_id: id
+              resource_name: email
+              resource_type: contact
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - conversation
+              id: conversation
+              support: partial
+              title: Conversation
+              type: entity_family
+          event:
+            kind: sakari.conversation
+            required_payload_fields:
+              - id
+            schema_ref: sakari/conversation/v1
+            urn_kind: sakari_conversation
+          event_kind: conversation
+          id: conversation
+          id_field: id
+          label: Conversation
+          list_key: data
+          method: GET
+          name_field: closed
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /v1/accounts/${config.accountid}/conversations
+          permissions_needed:
+            - sakari_auth
+          projection:
+            fields:
+              id: id
+              name: closed
+              resource_id: id
+              resource_name: closed
+              resource_type: conversation
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - webhook
+          id: webhook
+          label: Webhook
+        - families:
+            - campaign
+          id: campaign
+          label: Campaign
+        - families:
+            - contact
+          id: contact
+          label: Contact
+        - families:
+            - conversation
+          id: conversation
+          label: Conversation
+      source_id: sakari
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.sakari.io
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/accounts/${config.accountid}/webhooks
+  - classifier_output: supported
+    definition:
+      auth:
+        authorization_url: https://slack.com/oauth/authorize
+        credential_fields:
+          - key: oauth_client_reference
+            label: OAuth client reference
+            reference_only: true
+            required: true
+            secret: true
+        model: oauth_authorization_code
+        requires_references: true
+        scopes:
+          - admin
+          - admin.apps:read
+          - admin.apps:write
+          - admin.conversations:read
+          - admin.conversations:write
+          - admin.invites:read
+          - admin.invites:write
+          - admin.teams:read
+          - admin.teams:write
+          - admin.usergroups:read
+          - admin.usergroups:write
+          - admin.users:read
+          - admin.users:write
+          - authorizations:read
+          - bot
+          - calls:read
+          - calls:write
+          - channels:history
+          - channels:manage
+          - channels:read
+          - channels:write
+          - chat:write
+          - chat:write:bot
+          - chat:write:user
+          - conversations:history
+          - conversations:read
+          - conversations:write
+          - dnd:read
+          - dnd:write
+          - emoji:read
+          - files:read
+          - files:write:user
+          - groups:history
+          - groups:read
+          - groups:write
+          - identity.basic
+          - im:history
+          - im:read
+          - im:write
+          - links:write
+          - mpim:history
+          - mpim:read
+          - mpim:write
+          - none
+          - pins:read
+          - pins:write
+          - reactions:read
+          - reactions:write
+          - reminders:read
+          - reminders:write
+          - remote_files:read
+          - remote_files:share
+          - remote_files:write
+          - rtm:stream
+          - search:read
+          - stars:read
+          - stars:write
+          - team:read
+          - tokens.basic
+          - usergroups:read
+          - usergroups:write
+          - users.profile:read
+          - users.profile:write
+          - users:read
+          - users:read.email
+          - users:write
+          - workflow.steps:execute
+        token_expiration_buffer_seconds: 300
+        token_request_auth_method: client_secret_basic
+        token_url: https://slack.com/api/oauth.access
+      categories:
+        - saas
+      description: One way to interact with the Slack platform is its HTTP RPC-based Web API, a collection of methods requiring OAuth 2.0-based user, bot, or workspace tokens blessed with related OAuth scopes.
+      display_name: Slack
+      id: builtin_catalog-slack
+      resource_families:
+        - coverage:
+            - families:
+                - usergroups_list
+              high_value: true
+              id: usergroups_list
+              support: partial
+              title: Usergroups List
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: slack.usergroups_list
+            required_payload_fields:
+              - id
+            schema_ref: slack/usergroups_list/v1
+            urn_kind: slack_usergroups_list
+          event_kind: usergroups_list
+          id: usergroups_list
+          id_field: id
+          label: Usergroups List
+          list_key: usergroups
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /usergroups.list
+          permissions_needed:
+            - usergroups:read
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.usergroups[*]
+        - coverage:
+            - families:
+                - team_accesslog
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Team Accesslog
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: slack.team_accesslog
+            required_payload_fields:
+              - count
+            schema_ref: slack/team_accesslog/v1
+            urn_kind: slack_team_accesslog
+          event_kind: team_accesslog
+          id: team_accesslog
+          id_field: count
+          label: Team Accesslog
+          list_key: logins
+          method: GET
+          name_field: username
+          pagination:
+            cursor_param: before
+            page_size: 100
+            page_size_param: count
+            type: cursor
+          path: /team.accessLogs
+          permissions_needed:
+            - admin
+          projection:
+            fields:
+              id: count
+              name: username
+              provider_id: count
+            template: audit_event
+          record_selector: $.logins[*]
+        - coverage:
+            - families:
+                - admin_conversations_getteam
+              high_value: true
+              id: admin_conversations_getteam
+              support: partial
+              title: Admin Conversations Getteam
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: slack.admin_conversations_getteam
+            required_payload_fields:
+              - id
+            schema_ref: slack/admin_conversations_getteam/v1
+            urn_kind: slack_admin_conversations_getteam
+          event_kind: admin_conversations_getteam
+          id: admin_conversations_getteam
+          id_field: id
+          label: Admin Conversations Getteam
+          list_key: team_ids
+          method: GET
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /admin.conversations.getTeams
+          permissions_needed:
+            - admin.conversations:read
+          projection:
+            fields:
+              id: id
+              provider_id: id
+            template: identity_group
+          record_selector: $.team_ids[*]
+        - coverage:
+            - families:
+                - apps_permissions_resources_list
+              high_value: true
+              id: apps_permissions_resources_list
+              support: partial
+              title: Apps Permissions Resources List
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: slack.apps_permissions_resources_list
+            required_payload_fields:
+              - id
+            schema_ref: slack/apps_permissions_resources_list/v1
+            urn_kind: slack_apps_permissions_resources_list
+          event_kind: apps_permissions_resources_list
+          id: apps_permissions_resources_list
+          id_field: id
+          label: Apps Permissions Resources List
+          list_key: resources
+          method: GET
+          name_field: id
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /apps.permissions.resources.list
+          permissions_needed:
+            - none
+          projection:
+            fields:
+              id: id
+              name: id
+              resource_id: id
+              resource_name: id
+              resource_type: apps_permissions_resources_list
+            template: asset
+          record_selector: $.resources[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - usergroups_list
+          id: usergroups_list
+          label: Usergroups List
+        - default_enabled: true
+          families:
+            - team_accesslog
+          id: team_accesslog
+          label: Team Accesslog
+        - default_enabled: true
+          families:
+            - admin_conversations_getteam
+          id: admin_conversations_getteam
+          label: Admin Conversations Getteam
+        - default_enabled: true
+          families:
+            - apps_permissions_resources_list
+          id: apps_permissions_resources_list
+          label: Apps Permissions Resources List
+      source_id: slack
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://slack.com/api
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /usergroups.list
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id
+          label: Id
+          required: true
+      description: Twitter API v2 available endpoints
+      display_name: Twitter
+      id: builtin_catalog-twitter
+      resource_families:
+        - coverage:
+            - families:
+                - list_membership
+              high_value: true
+              id: list_membership
+              support: partial
+              title: List Membership
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: twitter.list_membership
+            required_payload_fields:
+              - id
+            schema_ref: twitter/list_membership/v1
+            urn_kind: twitter_list_membership
+          event_kind: list_membership
+          id: list_membership
+          id_field: id
+          label: List Membership
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: max_results
+            type: page
+          path: /2/users/${config.id}/list_memberships
+          permissions_needed:
+            - BearerToken
+            - UserToken
+            - list.read
+            - tweet.read
+            - users.read
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: group_membership
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - member
+              high_value: true
+              id: member
+              support: partial
+              title: Member
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: twitter.member
+            required_payload_fields:
+              - id
+            schema_ref: twitter/member/v1
+            urn_kind: twitter_member
+          event_kind: member
+          id: member
+          id_field: id
+          label: Member
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: max_results
+            type: page
+          path: /2/lists/${config.id}/members
+          permissions_needed:
+            - BearerToken
+            - UserToken
+            - list.read
+            - tweet.read
+            - users.read
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - job
+              high_value: true
+              id: policies
+              support: partial
+              title: Job
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: twitter.job
+            required_payload_fields:
+              - id
+            schema_ref: twitter/job/v1
+            urn_kind: twitter_job
+          event_kind: job
+          id: job
+          id_field: id
+          label: Job
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /2/compliance/jobs
+          permissions_needed:
+            - BearerToken
+          projection:
+            fields:
+              id: id
+              name: name
+              policy_id: id
+              policy_name: name
+              policy_type: job
+            template: policy
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - dm_event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Dm Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: twitter.dm_event
+            required_payload_fields:
+              - id
+            schema_ref: twitter/dm_event/v1
+            urn_kind: twitter_dm_event
+          event_kind: dm_event
+          id: dm_event
+          id_field: id
+          label: Dm Event
+          list_key: data
+          method: GET
+          name_field: attachments
+          pagination:
+            page_size: 100
+            page_size_param: max_results
+            type: page
+          path: /2/dm_events
+          permissions_needed:
+            - UserToken
+            - dm.read
+            - tweet.read
+            - users.read
+          projection:
+            fields:
+              id: id
+              name: attachments
+              provider_id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - list_membership
+          id: list_membership
+          label: List Membership
+        - default_enabled: true
+          families:
+            - member
+          id: member
+          label: Member
+        - default_enabled: true
+          families:
+            - job
+          id: job
+          label: Job
+        - default_enabled: true
+          families:
+            - dm_event
+          id: dm_event
+          label: Dm Event
+      source_id: twitter
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.twitter.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /2/users/${config.id}/list_memberships
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: userusername
+          label: Userusername
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: groupid
+          label: Groupid
+          required: true
+      description: See https://developers.facebook.com/docs/whatsapp
+      display_name: WhatsApp Business
+      id: builtin_catalog-whatsapp
+      resource_families:
+        - coverage:
+            - families:
+                - group
+              high_value: true
+              id: group
+              support: partial
+              title: Group
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: whatsapp.group
+            required_payload_fields:
+              - code
+            schema_ref: whatsapp/group/v1
+            urn_kind: whatsapp_group
+          event_kind: group
+          id: group
+          id_field: code
+          label: Group
+          list_key: errors
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /groups
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: code
+              name: title
+              provider_id: code
+            template: identity_group
+          record_selector: $.errors[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: whatsapp.user
+            required_payload_fields:
+              - code
+            schema_ref: whatsapp/user/v1
+            urn_kind: whatsapp_user
+          event_kind: user
+          id: user
+          id_field: code
+          label: User
+          list_key: errors
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /users/${config.userusername}
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: code
+              name: title
+              provider_id: code
+            template: identity_user
+          record_selector: $.errors[*]
+        - coverage:
+            - families:
+                - profile
+              id: profile
+              support: partial
+              title: Profile
+              type: entity_family
+          event:
+            kind: whatsapp.profile
+            required_payload_fields:
+              - code
+            schema_ref: whatsapp/profile/v1
+            urn_kind: whatsapp_profile
+          event_kind: profile
+          id: profile
+          id_field: code
+          label: Profile
+          list_key: errors
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /settings/business/profile
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: code
+              name: title
+              resource_id: code
+              resource_name: title
+              resource_type: profile
+            template: asset
+          record_selector: $.errors[*]
+        - coverage:
+            - families:
+                - group_2
+              high_value: true
+              id: group_2
+              support: partial
+              title: Group 2
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: whatsapp.group_2
+            required_payload_fields:
+              - code
+            schema_ref: whatsapp/group_2/v1
+            urn_kind: whatsapp_group_2
+          event_kind: group_2
+          id: group_2
+          id_field: code
+          label: Group 2
+          list_key: errors
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /groups/${config.groupid}
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: code
+              name: title
+              provider_id: code
+            template: identity_group
+          record_selector: $.errors[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - group
+          id: group
+          label: Group
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - families:
+            - profile
+          id: profile
+          label: Profile
+        - default_enabled: true
+          families:
+            - group_2
+          id: group_2
+          label: Group 2
+      source_id: whatsapp
+      tenant_id: builtin_catalog
+      transport:
+        base_url: http://whatsapp.local
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /groups
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: WinSMS RESTful API
+      display_name: WinSMS
+      id: builtin_catalog-winsms
+      resource_families:
+        - coverage:
+            - families:
+                - subaccount
+              high_value: true
+              id: subaccount
+              support: partial
+              title: Subaccount
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: winsms.subaccount
+            required_payload_fields:
+              - accountNumber
+            schema_ref: winsms/subaccount/v1
+            urn_kind: winsms_subaccount
+          event_kind: subaccount
+          id: subaccount
+          id_field: accountNumber
+          label: Subaccount
+          list_key: subAccounts
+          method: GET
+          name_field: accountNumber
+          pagination:
+            type: none
+          path: /subaccounts
+          permissions_needed:
+            - APIKeyHeader
+          projection:
+            fields:
+              id: accountNumber
+              name: accountNumber
+              provider_id: accountNumber
+            template: identity_user
+          record_selector: $.subAccounts[*]
+        - coverage:
+            - families:
+                - incoming
+              id: incoming
+              support: partial
+              title: Incoming
+              type: entity_family
+          event:
+            kind: winsms.incoming
+            required_payload_fields:
+              - incomingApiMessageId
+            schema_ref: winsms/incoming/v1
+            urn_kind: winsms_incoming
+          event_kind: incoming
+          id: incoming
+          id_field: incomingApiMessageId
+          label: Incoming
+          list_key: shortcodeMessages
+          method: GET
+          name_field: incomingApiMessageId
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /shortcode/incoming
+          permissions_needed:
+            - APIKeyHeader
+          projection:
+            fields:
+              id: incomingApiMessageId
+              name: incomingApiMessageId
+              resource_id: incomingApiMessageId
+              resource_name: incomingApiMessageId
+              resource_type: incoming
+            template: asset
+          record_selector: $.shortcodeMessages[*]
+        - coverage:
+            - families:
+                - sms_incoming
+              id: sms_incoming
+              support: partial
+              title: Sms Incoming
+              type: entity_family
+          event:
+            kind: winsms.sms_incoming
+            required_payload_fields:
+              - incomingApiMessageId
+            schema_ref: winsms/sms_incoming/v1
+            urn_kind: winsms_sms_incoming
+          event_kind: sms_incoming
+          id: sms_incoming
+          id_field: incomingApiMessageId
+          label: Sms Incoming
+          list_key: incomingMessages
+          method: GET
+          name_field: incomingApiMessageId
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /sms/incoming
+          permissions_needed:
+            - APIKeyHeader
+          projection:
+            fields:
+              id: incomingApiMessageId
+              name: incomingApiMessageId
+              resource_id: incomingApiMessageId
+              resource_name: incomingApiMessageId
+              resource_type: incoming
+            template: asset
+          record_selector: $.incomingMessages[*]
+        - coverage:
+            - families:
+                - optout
+              id: optout
+              support: partial
+              title: Optout
+              type: entity_family
+          event:
+            kind: winsms.optout
+            required_payload_fields:
+              - incomingApiMessageId
+            schema_ref: winsms/optout/v1
+            urn_kind: winsms_optout
+          event_kind: optout
+          id: optout
+          id_field: incomingApiMessageId
+          label: Optout
+          list_key: incomingOptoutMessages
+          method: GET
+          name_field: incomingApiMessageId
+          pagination:
+            type: none
+          path: /sms/incoming/optout
+          permissions_needed:
+            - APIKeyHeader
+          projection:
+            fields:
+              id: incomingApiMessageId
+              name: incomingApiMessageId
+              resource_id: incomingApiMessageId
+              resource_name: incomingApiMessageId
+              resource_type: optout
+            template: asset
+          record_selector: $.incomingOptoutMessages[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - subaccount
+          id: subaccount
+          label: Subaccount
+        - families:
+            - incoming
+          id: incoming
+          label: Incoming
+        - families:
+            - sms_incoming
+          id: sms_incoming
+          label: Sms Incoming
+        - families:
+            - optout
+          id: optout
+          label: Optout
+      source_id: winsms
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://www.winsms.co.za/api/rest/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /subaccounts
