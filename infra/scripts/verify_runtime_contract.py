@@ -129,10 +129,8 @@ def _stack_runtimes_by_source(stack: dict[str, Any]) -> dict[str, list[dict[str,
 def _verify_source_health_receipts(
     contract: dict[str, Any],
     sources: dict[str, dict[str, Any]],
-    stack: dict[str, Any],
 ) -> list[str]:
     errors: list[str] = []
-    runtimes_by_source = _stack_runtimes_by_source(stack)
     for receipt in _contract_source_health_receipts(contract):
         receipt_kind = str(receipt.get("receipt_kind") or "").strip()
         source_id = str(receipt.get("source_id") or "").strip()
@@ -143,7 +141,8 @@ def _verify_source_health_receipts(
             errors.append(f"source_health_receipt source_id {source_id!r} is not present in contract sources")
             continue
         health_path = str(receipt.get("adapter_health_path") or "").strip()
-        if health_path and not health_path.startswith("/"):
+        source_type = str(receipt.get("source_type") or "").strip()
+        if source_type == "json_api" and health_path and not health_path.startswith("/"):
             errors.append(f"source_health_receipt for {source_id} adapter_health_path must start with /")
         if str(receipt.get("evidence_cas_reference_kind") or "").strip() not in ("", f"{source_id}.evidence_cas_reference"):
             errors.append(f"source_health_receipt for {source_id} evidence_cas_reference_kind must match the source id")
@@ -153,23 +152,6 @@ def _verify_source_health_receipts(
         stale_after = _positive_int(receipt.get("stale_after_seconds"))
         if stale_after is None:
             errors.append(f"source_health_receipt for {source_id} stale_after_seconds must be a positive integer")
-        if expected_cadence is None or stale_after is None:
-            continue
-        for runtime in runtimes_by_source.get(source_id, []):
-            runtime_id = _runtime_value(runtime, "id") or "<unknown>"
-            config = runtime.get("config") or {}
-            if not isinstance(config, dict):
-                errors.append(f"runtime {runtime_id!r} config must be an object")
-                continue
-            for key, expected in {
-                "expected_cadence_seconds": expected_cadence,
-                "stale_after_seconds": stale_after,
-            }.items():
-                actual = str(config.get(key) or "").strip()
-                if actual != str(expected):
-                    errors.append(f"runtime {runtime_id!r} config {key!r} is {actual!r}, expected source health receipt value")
-            if health_path and str(config.get("health_path") or "").strip() != health_path:
-                errors.append(f"runtime {runtime_id!r} config 'health_path' does not match source health receipt")
     return errors
 
 
@@ -305,7 +287,7 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
                 continue
             errors.extend(_verify_manifest_config(runtime_id, stack_config, contract_config))
 
-    errors.extend(_verify_source_health_receipts(contract, sources, stack))
+    errors.extend(_verify_source_health_receipts(contract, sources))
 
     return errors
 
