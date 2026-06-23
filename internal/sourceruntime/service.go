@@ -25,8 +25,8 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/telemetry"
-	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 )
 
 const (
@@ -998,7 +998,7 @@ func (s *Service) lookupDynamicConnectorSource(ctx context.Context, sourceID str
 		definition.DisplayName = record.DisplayName
 		definition.Runtime = record.Runtime
 		definition.Stage = record.Stage
-		source, err := catalogruntimesource.NewDefinition(definition)
+		source, err := sourceregistry.DynamicDefinitionSource(definition)
 		if err != nil {
 			return nil, fmt.Errorf("%w: dynamic connector %s: %w", ErrInvalidRequest, sourceID, err)
 		}

@@ -30,8 +30,8 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
-	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 )
 
 const (
@@ -616,7 +616,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 				ScopeOptions: connectorScopeOptionsFromDefinition(definition),
 			},
 		}
-		if _, err := catalogruntimesource.NewDefinition(definition); err == nil && definition.Validation.Status != connectordefinitions.ValidationBlocked {
+		if _, err := sourceregistry.DynamicDefinitionSource(definition); err == nil && definition.Validation.Status != connectordefinitions.ValidationBlocked {
 			entry.RuntimeExecutable = true
 			entry.ConnectionMethods = connectorConnectionMethodsFromDefinition(definition, stores)
 		} else {
@@ -3001,7 +3001,7 @@ func (a *App) connectorSourceForTenant(ctx context.Context, sourceID string, ten
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
 	}
-	source, err := catalogruntimesource.NewDefinition(definition)
+	source, err := sourceregistry.DynamicDefinitionSource(definition)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", connectorcredentials.ErrInvalidRequest, id, err)
 	}
@@ -3016,7 +3016,7 @@ func (a *App) connectorSourceExistsForTenant(ctx context.Context, sourceID strin
 	if !ok || definition.Validation.Status == connectordefinitions.ValidationBlocked {
 		return false
 	}
-	_, err := catalogruntimesource.NewDefinition(definition)
+	_, err := sourceregistry.DynamicDefinitionSource(definition)
 	return err == nil
 }
 
