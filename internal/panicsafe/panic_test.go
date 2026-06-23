@@ -64,22 +64,15 @@ func TestRepanicPreservesIntegerValue(t *testing.T) {
 }
 
 func TestRepanicWithNilValuePanicsWithNil(t *testing.T) {
-	defer func() {
-		r := recover()
-		// Go's recover() returns nil both when there's no panic
-		// and when panic(nil) is called. We verify the function
-		// body was reached by using a channel signal.
-		if r != nil {
-			t.Fatalf("recovered value = %v, want nil", r)
-		}
-	}()
-	panicked := make(chan struct{})
+	panicked := make(chan bool, 1)
 	go func() {
 		defer func() {
-			_ = recover()
-			close(panicked)
+			r := recover()
+			panicked <- r != nil // Go 1.21+: panic(nil) wraps as *runtime.PanicNilError
 		}()
 		Repanic(Payload{Value: nil})
 	}()
-	<-panicked
+	if !<-panicked {
+		t.Fatal("Repanic(Payload{Value: nil}) did not panic")
+	}
 }
