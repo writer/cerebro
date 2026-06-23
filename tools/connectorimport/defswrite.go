@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/writer/cerebro/internal/connectorimport"
 )
+
+var safeSourceIDPattern = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
 
 // writeDefinitionJSON writes each catalog-ready outcome's connector definition
 // as <dir>/<source_id>.json. These files are consumable directly by
@@ -29,7 +32,8 @@ func writeDefinitionJSON(dir string, outcomes []connectorimport.Outcome) (int, e
 		if err != nil {
 			return written, fmt.Errorf("marshal definition %s: %w", outcome.SourceID, err)
 		}
-		path := filepath.Join(dir, outcome.SourceID+".json")
+		sanitizedID := safeSourceIDPattern.ReplaceAllString(outcome.SourceID, "_")
+		path := filepath.Join(dir, sanitizedID+".json")
 		if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
 			return written, fmt.Errorf("write definition %s: %w", path, err)
 		}

@@ -70,7 +70,7 @@ func New() (*Source, error) {
 			},
 			{
 				Name:             familyAuditEvents,
-				Path:             "/2010-04-01/Accounts/${config.account_sid}/Messages.json",
+				Path:             "/v1/Events",
 				URNKind:          "runtime_audit_events",
 				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
 				CursorParam:      "cursor",
