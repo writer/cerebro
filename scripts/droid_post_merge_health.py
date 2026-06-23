@@ -211,6 +211,21 @@ def has_active_droid_check(pr: dict[str, object]) -> bool:
     return False
 
 
+def has_successful_droid_review_check(pr: dict[str, object]) -> bool:
+    runs = pr.get("check_runs")
+    if not isinstance(runs, list):
+        return False
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        name = str(run.get("name") or "")
+        status = str(run.get("status") or "")
+        conclusion = str(run.get("conclusion") or "")
+        if name == "droid-review" and status == "completed" and conclusion == "success":
+            return True
+    return False
+
+
 def is_cross_repository_pr(pr: dict[str, object]) -> bool:
     head_repository = str(pr.get("head_repository") or "").lower()
     base_repository = str(pr.get("base_repository") or "").lower()
@@ -267,6 +282,9 @@ def classify_droid_review(pr: dict[str, object], comments: list[dict[str, object
     elif latest and is_finished_droid_review(latest.get("body")):
         status = "ok"
         reason = "Droid has a finished review comment."
+    elif has_successful_droid_review_check(pr):
+        status = "ok"
+        reason = "Droid review check completed successfully."
     elif author == "dependabot[bot]":
         status = "skipped"
         reason = "Dependabot PRs skip the secret-backed Droid execution job."

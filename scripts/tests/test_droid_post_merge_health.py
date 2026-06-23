@@ -284,7 +284,7 @@ class DroidPostMergeHealthTests(unittest.TestCase):
         self.assertEqual(review["status"], "in_progress")
         self.assertIn("check is still in progress", review["reason"])
 
-    def test_classify_droid_review_keeps_missing_after_completed_check_without_comment(self):
+    def test_classify_droid_review_accepts_successful_check_without_comment(self):
         review = pm.classify_droid_review(
             {
                 "number": 42,
@@ -294,6 +294,22 @@ class DroidPostMergeHealthTests(unittest.TestCase):
                 "base_repository": "writer/cerebro",
                 "changed_files": ["sources/archetype/source.go"],
                 "check_runs": [{"name": "droid-review", "status": "completed", "conclusion": "success"}],
+            },
+            [],
+        )
+        self.assertEqual(review["status"], "ok")
+        self.assertIn("check completed successfully", review["reason"])
+
+    def test_classify_droid_review_keeps_missing_after_failed_check_without_comment(self):
+        review = pm.classify_droid_review(
+            {
+                "number": 42,
+                "author": "alice",
+                "url": "https://pr",
+                "head_repository": "writer/cerebro",
+                "base_repository": "writer/cerebro",
+                "changed_files": ["sources/archetype/source.go"],
+                "check_runs": [{"name": "droid-review", "status": "completed", "conclusion": "failure"}],
             },
             [],
         )
