@@ -333,6 +333,40 @@ func connectorDefinitionFromRecord(record *ports.ConnectorDefinitionRecord) (con
 	return normalized, nil
 }
 
+func (a *App) connectorTenantDefinitions(ctx context.Context, tenantID string) []connectordefinitions.Definition {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return nil
+	}
+	store := connectorDefinitionStore(a.deps.StateStore)
+	if store == nil {
+		return nil
+	}
+	records, err := store.ListConnectorDefinitions(ctx, ports.ConnectorDefinitionFilter{TenantID: tenantID, Limit: connectorDefinitionMaxLimit})
+	if err != nil {
+		return nil
+	}
+	definitions := make([]connectordefinitions.Definition, 0, len(records))
+	for _, record := range records {
+		definition, err := connectorDefinitionFromRecord(record)
+		if err != nil || authorizeTenantID(ctx, definition.TenantID) != nil {
+			continue
+		}
+		definitions = append(definitions, definition)
+	}
+	return definitions
+}
+
+func (a *App) connectorTenantDefinitionBySourceID(ctx context.Context, tenantID string, sourceID string) (connectordefinitions.Definition, bool) {
+	sourceID = strings.TrimSpace(sourceID)
+	for _, definition := range a.connectorTenantDefinitions(ctx, tenantID) {
+		if strings.TrimSpace(definition.SourceID) == sourceID {
+			return definition, true
+		}
+	}
+	return connectordefinitions.Definition{}, false
+}
+
 func connectorDefinitionStore(store ports.StateStore) ports.ConnectorDefinitionStore {
 	definitionStore, ok := store.(ports.ConnectorDefinitionStore)
 	if !ok {

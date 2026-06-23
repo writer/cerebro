@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -24,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/telemetry"
+	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 )
 
 const (
@@ -64,11 +67,12 @@ var (
 
 // Service persists and executes source runtimes against the append log.
 type Service struct {
-	registry  *sourcecdk.Registry
-	store     ports.SourceRuntimeStore
-	appendLog ports.AppendLog
-	projector ports.SourceProjector
-	resolver  sourceconfig.Resolver
+	registry        *sourcecdk.Registry
+	store           ports.SourceRuntimeStore
+	definitionStore ports.ConnectorDefinitionStore
+	appendLog       ports.AppendLog
+	projector       ports.SourceProjector
+	resolver        sourceconfig.Resolver
 }
 
 // PutRuntimesRequest contains source runtime definitions to validate and store together.
@@ -83,7 +87,11 @@ type PutRuntimesResponse struct {
 
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
-	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
+	service := &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
+	if definitionStore, ok := store.(ports.ConnectorDefinitionStore); ok {
+		service.definitionStore = definitionStore
+	}
+	return service
 }
 
 // WithConfigResolver configures runtime source config secret resolution.
@@ -92,6 +100,15 @@ func (s *Service) WithConfigResolver(resolver sourceconfig.Resolver) *Service {
 		return nil
 	}
 	s.resolver = resolver
+	return s
+}
+
+// WithConnectorDefinitionStore configures tenant-local dynamic connector source lookup.
+func (s *Service) WithConnectorDefinitionStore(store ports.ConnectorDefinitionStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.definitionStore = store
 	return s
 }
 
@@ -165,10 +182,6 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	if runtime.GetId() == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	source, err := s.lookupSource(runtime.GetSourceId())
-	if err != nil {
-		return nil, err
-	}
 	existing, err := s.lookupRuntime(ctx, runtime.GetId())
 	switch {
 	case err == nil:
@@ -182,6 +195,10 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		existing = nil
 	default:
+		return nil, err
+	}
+	source, err := s.lookupSource(ctx, runtime.GetSourceId(), runtime.GetTenantId())
+	if err != nil {
 		return nil, err
 	}
 	resolvedConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetId(), runtime.GetConfig())
@@ -329,7 +346,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	spanAttributes = spanAttributes.With(observability.SourceRuntimeDiagnosticAttributes(runtimeContext))
 	telemetry.AnnotateMain(ctx, observability.SourceRuntimeDiagnosticAttributes(runtimeContext))
-	source, err := s.lookupSource(runtime.GetSourceId())
+	source, err := s.lookupSource(ctx, runtime.GetSourceId(), runtime.GetTenantId())
 	if err != nil {
 		return nil, err
 	}
@@ -942,19 +959,52 @@ func (s *Service) resolveConfig(ctx context.Context, sourceID string, tenantID s
 	return sourceRuntimeConfig(resolvedConfig(resolved), tenantID, runtimeID), nil
 }
 
-func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
+func (s *Service) lookupSource(ctx context.Context, sourceID string, tenantID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
 		return nil, fmt.Errorf("%w: source id is required", ErrInvalidRequest)
 	}
-	if s == nil || s.registry == nil {
-		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
+	if s != nil && s.registry != nil {
+		if source, ok := s.registry.Get(id); ok {
+			return source, nil
+		}
 	}
-	source, ok := s.registry.Get(id)
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
+	source, err := s.lookupDynamicConnectorSource(ctx, id, tenantID)
+	if err != nil {
+		return nil, err
 	}
 	return source, nil
+}
+
+func (s *Service) lookupDynamicConnectorSource(ctx context.Context, sourceID string, tenantID string) (sourcecdk.Source, error) {
+	if s == nil || s.definitionStore == nil || strings.TrimSpace(tenantID) == "" {
+		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID)
+	}
+	records, err := s.definitionStore.ListConnectorDefinitions(ctx, ports.ConnectorDefinitionFilter{TenantID: strings.TrimSpace(tenantID), Limit: 500})
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		if record == nil || strings.TrimSpace(record.SourceID) != sourceID {
+			continue
+		}
+		definition := connectordefinitions.Definition{}
+		if err := json.Unmarshal(record.DefinitionJSON, &definition); err != nil {
+			return nil, fmt.Errorf("%w: decode connector definition %q: %w", ErrInvalidRequest, record.ID, err)
+		}
+		definition.ID = record.ID
+		definition.TenantID = record.TenantID
+		definition.SourceID = record.SourceID
+		definition.DisplayName = record.DisplayName
+		definition.Runtime = record.Runtime
+		definition.Stage = record.Stage
+		source, err := catalogruntimesource.NewDefinition(definition)
+		if err != nil {
+			return nil, fmt.Errorf("%w: dynamic connector %s: %w", ErrInvalidRequest, sourceID, err)
+		}
+		return source, nil
+	}
+	return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, sourceID)
 }
 
 func (s *Service) lookupRuntime(ctx context.Context, runtimeID string) (*cerebrov1.SourceRuntime, error) {
