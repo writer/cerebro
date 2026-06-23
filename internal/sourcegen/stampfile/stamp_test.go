@@ -10,10 +10,10 @@ func TestHashFilesIsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	file1 := filepath.Join(dir, "a.txt")
 	file2 := filepath.Join(dir, "b.txt")
-	if err := os.WriteFile(file1, []byte("hello"), 0o644); err != nil {
+	if err := os.WriteFile(file1, []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file2, []byte("world"), 0o644); err != nil {
+	if err := os.WriteFile(file2, []byte("world"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -32,10 +32,10 @@ func TestHashFilesIsDeterministic(t *testing.T) {
 
 func TestHashDirWithExtensions(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("key: value"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("key: value"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("ignore me"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("ignore me"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,7 +55,7 @@ func TestHashDirWithExtensions(t *testing.T) {
 func TestHashChangesWhenContentChanges(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "data.yaml")
-	if err := os.WriteFile(file, []byte("version: 1"), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte("version: 1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	hash1, err := HashFiles([]string{file})
@@ -63,7 +63,7 @@ func TestHashChangesWhenContentChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(file, []byte("version: 2"), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte("version: 2"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	hash2, err := HashFiles([]string{file})

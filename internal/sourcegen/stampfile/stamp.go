@@ -31,7 +31,7 @@ func Write(generatorName string, inputHash string) error {
 	if err := os.MkdirAll(stampDir, 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(stampPath(generatorName), []byte(strings.TrimSpace(inputHash)+"\n"), 0o644)
+	return os.WriteFile(stampPath(generatorName), []byte(strings.TrimSpace(inputHash)+"\n"), 0o600)
 }
 
 // HashFiles computes a deterministic SHA-256 hash of a list of file paths.
@@ -47,7 +47,9 @@ func HashFiles(paths []string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("hash %s: %w", path, err)
 		}
-		fmt.Fprintf(h, "%s\n%d\n", path, len(payload))
+		if _, err := fmt.Fprintf(h, "%s\n%d\n", path, len(payload)); err != nil {
+			return "", fmt.Errorf("hash header %s: %w", path, err)
+		}
 		h.Write(payload)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

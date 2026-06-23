@@ -118,16 +118,16 @@ func (e *Engine) RenderString(name string, data TemplateData) (string, error) {
 
 func defaultFuncMap() template.FuncMap {
 	return template.FuncMap{
-		"quote":    func(s string) string { return fmt.Sprintf("%q", s) },
-		"join":     strings.Join,
-		"lower":    strings.ToLower,
-		"upper":    strings.ToUpper,
-		"title":    strings.Title, //nolint:staticcheck // acceptable for codegen templates
+		"quote":     func(s string) string { return fmt.Sprintf("%q", s) },
+		"join":      strings.Join,
+		"lower":     strings.ToLower,
+		"upper":     strings.ToUpper,
+		"title":     strings.Title, //nolint:staticcheck // acceptable for codegen templates
 		"trimSpace": strings.TrimSpace,
-		"contains": strings.Contains,
+		"contains":  strings.Contains,
 		"hasPrefix": strings.HasPrefix,
 		"hasSuffix": strings.HasSuffix,
-		"replace":  strings.ReplaceAll,
+		"replace":   strings.ReplaceAll,
 		"goSlice": func(items []string) string {
 			if len(items) == 0 {
 				return "nil"

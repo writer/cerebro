@@ -36,7 +36,7 @@ func Generate(definition connectordefinitions.Definition) (ScaffoldResult, error
 	result.MockHandler = renderMockHandler(definition)
 	result.TestFile = renderTestFile(definition)
 	for _, family := range definition.ResourceFamilies {
-		fixture := renderFixture(definition.SourceID, family)
+		fixture := renderFixture(family)
 		result.Fixtures[family.ID+".json"] = fixture
 	}
 	return result, nil
@@ -164,7 +164,7 @@ func renderTestFile(definition connectordefinitions.Definition) string {
 	return b.String()
 }
 
-func renderFixture(sourceID string, family connectordefinitions.ResourceFamily) string {
+func renderFixture(family connectordefinitions.ResourceFamily) string {
 	record := map[string]any{
 		"id":   fmt.Sprintf("fixture-%s-001", family.ID),
 		"name": fmt.Sprintf("Test %s", toPascal(family.ID)),
