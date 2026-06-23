@@ -291,13 +291,13 @@ func TestItemSecretAttributeMapping(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
 			"id":                      "item-42",
 			"name":                    "prod/db-password",
-			"secret_id":              "item-42",
-			"secret_name":            "prod/db-password",
-			"secret_status":          "active",
-			"secret_type":            "static",
+			"secret_id":               "item-42",
+			"secret_name":             "prod/db-password",
+			"secret_status":           "active",
+			"secret_type":             "static",
 			"secret_rotation_enabled": "true",
-			"created_at":             "2026-01-01T00:00:00Z",
-			"updated_at":             "2026-06-01T00:00:00Z",
+			"created_at":              "2026-01-01T00:00:00Z",
+			"updated_at":              "2026-06-01T00:00:00Z",
 		}}})
 	}))
 	defer server.Close()

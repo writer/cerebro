@@ -308,15 +308,15 @@ func TestUserAttributeMapping(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	for key, want := range map[string]string{
-		"user_id":      "user-42",
-		"email":        "sre@example.com",
-		"display_name": "SRE Team Lead",
-		"login":        "sre-lead",
-		"status":       "active",
-		"department":   "Platform",
-		"job_title":    "Team Lead",
-		"domain":       "example.com",
-		"resource_id":  "user-42",
+		"user_id":       "user-42",
+		"email":         "sre@example.com",
+		"display_name":  "SRE Team Lead",
+		"login":         "sre-lead",
+		"status":        "active",
+		"department":    "Platform",
+		"job_title":     "Team Lead",
+		"domain":        "example.com",
+		"resource_id":   "user-42",
 		"resource_name": "SRE Team Lead",
 	} {
 		if got := pull.Events[0].Attributes[key]; got != want {
@@ -334,8 +334,8 @@ func TestSecretAttributeMapping(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
-			"id":                       "secret-99",
-			"name":                     "db-root-password",
+			"id":                      "secret-99",
+			"name":                    "db-root-password",
 			"secret_id":               "secret-99",
 			"secret_name":             "db-root-password",
 			"secret_status":           "active",
