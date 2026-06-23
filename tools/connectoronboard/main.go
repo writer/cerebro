@@ -211,7 +211,7 @@ func writeCatalogEntry(path string, definition connectordefinitions.Definition, 
 		return err
 	}
 	payload = append(payload, '\n')
-	return os.WriteFile(path, payload, 0o644)
+	return os.WriteFile(path, payload, 0o600)
 }
 
 func splitList(value string) []string {

@@ -56,7 +56,7 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o750); err != nil {
 		fail(err)
 	}
-	if err := os.WriteFile(outPath, []byte(result.TypeScript), 0o644); err != nil {
+	if err := os.WriteFile(outPath, []byte(result.TypeScript), 0o600); err != nil {
 		fail(err)
 	}
 	fmt.Fprintf(os.Stderr, "openapitsgen: wrote %d types to %s\n", result.TypeCount, outPath)

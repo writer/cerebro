@@ -104,7 +104,7 @@ func (e *Engine) RenderToFile(name string, data TemplateData, outPath string, go
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(outPath, result.Content, 0o644)
+	return os.WriteFile(outPath, result.Content, 0o600)
 }
 
 // RenderString renders a template to a string.
