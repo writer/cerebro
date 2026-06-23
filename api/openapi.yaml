@@ -796,6 +796,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectorDefinitionValidationResponse'
+  /connector-definitions/preview:
+    post:
+      summary: Run a bounded live preview for a dynamic connector definition
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinitionPreviewRequest'
+      responses:
+        '200':
+          description: Bounded check/read preview for a runtime connector definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionPreviewResponse'
   /connector-definitions/plan:
     post:
       summary: Build a Source CDK promotion plan without persisting it
@@ -5814,6 +5832,47 @@ components:
           $ref: '#/components/schemas/ConnectorDefinitionValidation'
         promotion:
           $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+    ConnectorDefinitionPreviewRequest:
+      type: object
+      required:
+        - definition
+      properties:
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        page_limit:
+          type: integer
+          minimum: 0
+          maximum: 3
+        check_only:
+          type: boolean
+    ConnectorDefinitionPreviewResponse:
+      type: object
+      required:
+        - definition
+        - status
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        status:
+          type: string
+          enum: [checked, previewed]
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pages_read:
+          type: integer
+          minimum: 0
+        next_cursor:
+          type: string
     ConnectorDefinitionPlanRequest:
       type: object
       required:
@@ -6054,6 +6113,8 @@ components:
                 type: string
             requires_references:
               type: boolean
+        ingest:
+          $ref: '#/components/schemas/ConnectorDefinitionIngest'
         resource_families:
           type: array
           items:
@@ -6072,6 +6133,21 @@ components:
         updated_at:
           type: string
           format: date-time
+    ConnectorDefinitionIngest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [pull, deposit]
+        deposit:
+          type: object
+          properties:
+            resource_families:
+              type: array
+              items:
+                type: string
+            full_state_sync:
+              type: boolean
     ConnectorDefinitionField:
       type: object
       required:
@@ -6095,7 +6171,6 @@ components:
       type: object
       required:
         - id
-        - path
         - id_field
       properties:
         id:
@@ -6106,7 +6181,7 @@ components:
           type: string
         method:
           type: string
-          enum: [GET]
+          enum: [GET, POST]
         list_key:
           type: string
         id_field:

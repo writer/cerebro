@@ -12,6 +12,7 @@ import (
 
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectorpreview"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -36,6 +37,13 @@ type connectorDefinitionValidationResponse struct {
 	Validation  connectordefinitions.ValidationResult `json:"validation"`
 	Promotion   connectordefinitions.PromotionState   `json:"promotion"`
 	Support     connectordefinitions.SupportReport    `json:"support"`
+}
+
+type connectorDefinitionPreviewRequest struct {
+	Definition connectordefinitions.Definition `json:"definition"`
+	Config     map[string]string               `json:"config,omitempty"`
+	PageLimit  uint32                          `json:"page_limit,omitempty"`
+	CheckOnly  bool                            `json:"check_only,omitempty"`
 }
 
 type connectorDefinitionPromotionResponse struct {
@@ -122,6 +130,40 @@ func (a *App) handleValidateConnectorDefinition(w http.ResponseWriter, r *http.R
 		Promotion:   normalized.Promotion,
 		Support:     support,
 	})
+}
+
+func (a *App) handlePreviewConnectorDefinition(w http.ResponseWriter, r *http.Request) {
+	var request connectorDefinitionPreviewRequest
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), request.Definition.TenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	request.Definition.TenantID = tenantID
+	normalized, err := connectordefinitions.Normalize(request.Definition)
+	if err != nil {
+		writeConnectorError(w, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err))
+		return
+	}
+	if err := authorizeTenantID(r.Context(), normalized.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	config, err := connectorRuntimeConfig(request.Config)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	response, err := connectorpreview.Run(r.Context(), normalized, config, request.PageLimit, request.CheckOnly)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (a *App) handleCreateConnectorDefinition(w http.ResponseWriter, r *http.Request) {

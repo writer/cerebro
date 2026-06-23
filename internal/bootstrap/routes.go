@@ -174,6 +174,7 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /connector-definitions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitions)
 	registerHTTPRoute(mux, "POST /connector-definitions", routeSurfacePlatformHTTP, app.handleCreateConnectorDefinition)
 	registerHTTPRoute(mux, "POST /connector-definitions/plan", routeSurfacePlatformHTTP, sourceplanapi.HandleDefinitionPlan(app.sourcePlanAPIDeps()))
+	registerHTTPRoute(mux, "POST /connector-definitions/preview", routeSurfacePlatformHTTP, app.handlePreviewConnectorDefinition)
 	registerHTTPRoute(mux, "POST /connector-definitions/validate", routeSurfacePlatformHTTP, app.handleValidateConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handleGetConnectorDefinition)
 	registerHTTPRoute(mux, "PUT /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handlePutConnectorDefinition)
