@@ -177,15 +177,28 @@ func renderFixture(family connectordefinitions.ResourceFamily) string {
 
 	records := []map[string]any{record}
 
-	// Wrap in list key if present.
+	// Wrap in nested structure matching the record selector path.
 	var response any
 	selector := strings.TrimSpace(family.RecordSelector)
 	if selector != "" && strings.Contains(selector, ".") {
 		parts := strings.Split(selector, ".")
-		key := strings.TrimPrefix(parts[1], "$.")
-		key = strings.TrimSuffix(key, "[*]")
-		if key != "" {
-			response = map[string]any{key: records}
+		// Skip "$" prefix and collect path segments.
+		var keys []string
+		for _, p := range parts {
+			p = strings.TrimPrefix(p, "$")
+			p = strings.TrimSuffix(p, "[*]")
+			p = strings.TrimSpace(p)
+			if p != "" {
+				keys = append(keys, p)
+			}
+		}
+		if len(keys) > 0 {
+			// Build nested structure from innermost to outermost.
+			var inner any = records
+			for i := len(keys) - 1; i >= 0; i-- {
+				inner = map[string]any{keys[i]: inner}
+			}
+			response = inner
 		} else {
 			response = records
 		}

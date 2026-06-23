@@ -87,7 +87,7 @@ func emitEnum(b *strings.Builder, name string, schema *Schema) {
 	}
 	fmt.Fprintf(b, "export type %s =\n", name)
 	for i, value := range schema.Enum {
-		sep := " |"
+		sep := ""
 		if i == len(schema.Enum)-1 {
 			sep = ";"
 		}

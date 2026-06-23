@@ -200,9 +200,16 @@ func emitAssertion(b *strings.Builder, assertion PolicyRuleAssertion) {
 		fmt.Fprintf(b, "\tif strings.TrimSpace(requiredAttributeValue(event, %s)) == \"\" {\n\t\treturn false\n\t}\n",
 			strconv.Quote(field))
 	case "in":
-		// Value should be a comma-separated list.
-		fmt.Fprintf(b, "\tif !stringInSet(requiredAttributeValue(event, %s), %s) {\n\t\treturn false\n\t}\n",
-			strconv.Quote(field), strconv.Quote(valueStr))
+		// Emit inline membership check against a comma-separated allowlist.
+		fmt.Fprintf(b, "\t{\n")
+		fmt.Fprintf(b, "\t\tv := requiredAttributeValue(event, %s)\n", strconv.Quote(field))
+		fmt.Fprintf(b, "\t\tallowed := strings.Split(%s, \",\")\n", strconv.Quote(valueStr))
+		fmt.Fprintf(b, "\t\tfound := false\n")
+		fmt.Fprintf(b, "\t\tfor _, a := range allowed {\n")
+		fmt.Fprintf(b, "\t\t\tif strings.TrimSpace(a) == v { found = true; break }\n")
+		fmt.Fprintf(b, "\t\t}\n")
+		fmt.Fprintf(b, "\t\tif !found { return false }\n")
+		fmt.Fprintf(b, "\t}\n")
 	}
 }
 
