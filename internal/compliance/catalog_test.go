@@ -143,21 +143,54 @@ func TestBuiltinFrameworksIncludesUpcomingFrameworks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltinFrameworks() error = %v", err)
 	}
-	var found bool
+	var foundNIST, foundCSA bool
 	for _, framework := range response.Frameworks {
-		if framework.Name != "NIST AI RMF 1.0" {
-			continue
-		}
-		found = true
-		if framework.Lifecycle != FrameworkLifecycleUpcoming {
-			t.Fatalf("NIST AI RMF lifecycle = %q, want upcoming", framework.Lifecycle)
-		}
-		if framework.ControlCount != 0 || framework.FamilyCount != 0 {
-			t.Fatalf("NIST AI RMF counts = %d/%d, want 0/0", framework.FamilyCount, framework.ControlCount)
+		switch framework.Name {
+		case "NIST AI RMF 1.0":
+			foundNIST = true
+			if framework.Lifecycle != FrameworkLifecycleUpcoming {
+				t.Fatalf("NIST AI RMF lifecycle = %q, want upcoming", framework.Lifecycle)
+			}
+			if framework.ControlCount != 0 || framework.FamilyCount != 0 {
+				t.Fatalf("NIST AI RMF counts = %d/%d, want 0/0", framework.FamilyCount, framework.ControlCount)
+			}
+		case "CSA CCM v4.0":
+			foundCSA = true
+			if framework.Lifecycle != FrameworkLifecycleUpcoming {
+				t.Fatalf("CSA CCM lifecycle = %q, want upcoming", framework.Lifecycle)
+			}
+			if framework.ControlCount != 0 || framework.FamilyCount != 0 {
+				t.Fatalf("CSA CCM counts = %d/%d, want 0/0", framework.FamilyCount, framework.ControlCount)
+			}
 		}
 	}
-	if !found {
+	if !foundNIST {
 		t.Fatal("NIST AI RMF 1.0 not found")
+	}
+	if !foundCSA {
+		t.Fatal("CSA CCM v4.0 not found")
+	}
+}
+
+func TestBuiltinFrameworksActiveFrameworksHaveActiveLifecycle(t *testing.T) {
+	response, err := BuiltinFrameworks(time.Unix(0, 0).UTC())
+	if err != nil {
+		t.Fatalf("BuiltinFrameworks() error = %v", err)
+	}
+	var foundActive bool
+	for _, framework := range response.Frameworks {
+		if framework.Lifecycle == FrameworkLifecycleActive {
+			foundActive = true
+			if framework.FamilyCount == 0 {
+				t.Fatalf("active framework %q has 0 families", framework.Name)
+			}
+		}
+		if framework.Lifecycle != FrameworkLifecycleActive && framework.Lifecycle != FrameworkLifecycleUpcoming {
+			t.Fatalf("framework %q lifecycle = %q, want active or upcoming", framework.Name, framework.Lifecycle)
+		}
+	}
+	if !foundActive {
+		t.Fatal("no active frameworks found")
 	}
 }
 

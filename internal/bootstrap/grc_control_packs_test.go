@@ -63,14 +63,31 @@ func TestGRCFrameworksEndpointReturnsLifecycleMetadata(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode frameworks: %v", err)
 	}
-	var foundUpcoming bool
+	var foundNIST, foundCSA, foundActive bool
 	for _, framework := range payload.Frameworks {
-		if framework.Name == "NIST AI RMF 1.0" && framework.Lifecycle == compliance.FrameworkLifecycleUpcoming {
-			foundUpcoming = true
+		switch {
+		case framework.Name == "NIST AI RMF 1.0":
+			foundNIST = true
+			if framework.Lifecycle != compliance.FrameworkLifecycleUpcoming {
+				t.Fatalf("NIST AI RMF lifecycle = %q, want upcoming", framework.Lifecycle)
+			}
+		case framework.Name == "CSA CCM v4.0":
+			foundCSA = true
+			if framework.Lifecycle != compliance.FrameworkLifecycleUpcoming {
+				t.Fatalf("CSA CCM lifecycle = %q, want upcoming", framework.Lifecycle)
+			}
+		case framework.Lifecycle == compliance.FrameworkLifecycleActive:
+			foundActive = true
 		}
 	}
-	if !foundUpcoming {
-		t.Fatalf("frameworks = %#v, want upcoming NIST AI RMF", payload.Frameworks)
+	if !foundNIST {
+		t.Fatal("NIST AI RMF 1.0 not found in /grc/frameworks response")
+	}
+	if !foundCSA {
+		t.Fatal("CSA CCM v4.0 not found in /grc/frameworks response")
+	}
+	if !foundActive {
+		t.Fatal("no active frameworks found in /grc/frameworks response")
 	}
 }
 
