@@ -143,15 +143,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -206,14 +198,14 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, error) {
 	resolved := settings{
-		provider:     configValue(cfg, "provider"),
-		tenantID:     firstNonEmptyString(configValue(cfg, "tenant_id"), configValue(cfg, "__cerebro_runtime_tenant_id")),
-		family:       configValue(cfg, "family"),
-		baseURL:      configValue(cfg, "base_url"),
-		tokenURL:     configValue(cfg, "token_url"),
-		clientID:     configValue(cfg, "client_id"),
-		clientSecret: configValue(cfg, "client_secret"),
-		scope:        configValue(cfg, "scope"),
+		provider:     sourcecdk.ConfigValue(cfg, "provider"),
+		tenantID:     firstNonEmptyString(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, "__cerebro_runtime_tenant_id")),
+		family:       sourcecdk.ConfigValue(cfg, "family"),
+		baseURL:      sourcecdk.ConfigValue(cfg, "base_url"),
+		tokenURL:     sourcecdk.ConfigValue(cfg, "token_url"),
+		clientID:     sourcecdk.ConfigValue(cfg, "client_id"),
+		clientSecret: sourcecdk.ConfigValue(cfg, "client_secret"),
+		scope:        sourcecdk.ConfigValue(cfg, "scope"),
 		perPage:      defaultPageSize,
 	}
 	if resolved.provider == "" {
@@ -1341,7 +1333,7 @@ func normalizeAbsoluteURL(raw string, allowLoopback bool) (string, error) {
 		return "", fmt.Errorf("parse grc url: %w", err)
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && sourcecdk.IsLoopbackHost(host)
 	if parsed.Scheme != "https" && !allowInsecureLoopback {
 		return "", fmt.Errorf("grc url must use https")
 	}
@@ -1357,7 +1349,7 @@ func validateTrustedVantaOrigin(raw string, allowLoopback bool) error {
 		return fmt.Errorf("parse grc url: %w", err)
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	if allowLoopback && isLoopbackHost(host) {
+	if allowLoopback && sourcecdk.IsLoopbackHost(host) {
 		return nil
 	}
 	if host == "api.vanta.com" || host == "api.eu.vanta.com" {
@@ -1371,14 +1363,6 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func decodeResponseError(statusCode int, body []byte) error {
@@ -1396,9 +1380,4 @@ func decodeResponseError(statusCode int, body []byte) error {
 		message = http.StatusText(statusCode)
 	}
 	return &sourcecdk.HTTPStatusError{Code: statusCode, Message: message}
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }

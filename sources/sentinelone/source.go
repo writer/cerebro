@@ -131,15 +131,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -148,15 +140,15 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, error) {
 	resolved := settings{
-		family:   configValue(cfg, "family"),
-		baseURL:  configValue(cfg, "base_url"),
-		token:    configValue(cfg, "token"),
-		siteID:   configValue(cfg, "site_id"),
-		groupID:  configValue(cfg, "group_id"),
-		agentID:  configValue(cfg, "agent_id"),
-		since:    configValue(cfg, "since"),
-		until:    configValue(cfg, "until"),
-		activity: configValue(cfg, "activity_type"),
+		family:   sourcecdk.ConfigValue(cfg, "family"),
+		baseURL:  sourcecdk.ConfigValue(cfg, "base_url"),
+		token:    sourcecdk.ConfigValue(cfg, "token"),
+		siteID:   sourcecdk.ConfigValue(cfg, "site_id"),
+		groupID:  sourcecdk.ConfigValue(cfg, "group_id"),
+		agentID:  sourcecdk.ConfigValue(cfg, "agent_id"),
+		since:    sourcecdk.ConfigValue(cfg, "since"),
+		until:    sourcecdk.ConfigValue(cfg, "until"),
+		activity: sourcecdk.ConfigValue(cfg, "activity_type"),
 		perPage:  defaultPageSize,
 	}
 	if resolved.family == "" {
@@ -542,16 +534,16 @@ func listJSONRecords[T any, P interface {
 
 func (s *Source) listThreats(ctx context.Context, settings settings, cursor string, limit int) ([]threatRecord, string, error) {
 	query := buildPagedQuery(cursor, limit)
-	addQuery(query, "createdAt__gte", settings.since)
-	addQuery(query, "createdAt__lte", settings.until)
-	addQuery(query, "siteIds", settings.siteID)
+	sourcecdk.AddQueryParam(query, "createdAt__gte", settings.since)
+	sourcecdk.AddQueryParam(query, "createdAt__lte", settings.until)
+	sourcecdk.AddQueryParam(query, "siteIds", settings.siteID)
 	return listJSONRecords[threatRecord, *threatRecord](ctx, s, settings, "/web/api/v2.1/threats", query)
 }
 
 func (s *Source) listAgents(ctx context.Context, settings settings, cursor string, limit int) ([]agentRecord, string, error) {
 	query := buildPagedQuery(cursor, limit)
-	addQuery(query, "siteIds", settings.siteID)
-	addQuery(query, "groupIds", settings.groupID)
+	sourcecdk.AddQueryParam(query, "siteIds", settings.siteID)
+	sourcecdk.AddQueryParam(query, "groupIds", settings.groupID)
 	return listJSONRecords[agentRecord, *agentRecord](ctx, s, settings, "/web/api/v2.1/agents", query)
 }
 
@@ -562,23 +554,23 @@ func (s *Source) listSites(ctx context.Context, settings settings, cursor string
 
 func (s *Source) listGroups(ctx context.Context, settings settings, cursor string, limit int) ([]groupRecord, string, error) {
 	query := buildPagedQuery(cursor, limit)
-	addQuery(query, "siteIds", settings.siteID)
+	sourcecdk.AddQueryParam(query, "siteIds", settings.siteID)
 	return listJSONRecords[groupRecord, *groupRecord](ctx, s, settings, "/web/api/v2.1/groups", query)
 }
 
 func (s *Source) listExclusions(ctx context.Context, settings settings, cursor string, limit int) ([]exclusionRecord, string, error) {
 	query := buildPagedQuery(cursor, limit)
-	addQuery(query, "siteIds", settings.siteID)
+	sourcecdk.AddQueryParam(query, "siteIds", settings.siteID)
 	return listJSONRecords[exclusionRecord, *exclusionRecord](ctx, s, settings, "/web/api/v2.1/exclusions", query)
 }
 
 func (s *Source) listActivities(ctx context.Context, settings settings, cursor string, limit int) ([]activityRecord, string, error) {
 	query := buildPagedQuery(cursor, limit)
-	addQuery(query, "createdAt__gte", settings.since)
-	addQuery(query, "createdAt__lte", settings.until)
-	addQuery(query, "activityTypes", settings.activity)
-	addQuery(query, "siteIds", settings.siteID)
-	addQuery(query, "groupIds", settings.groupID)
+	sourcecdk.AddQueryParam(query, "createdAt__gte", settings.since)
+	sourcecdk.AddQueryParam(query, "createdAt__lte", settings.until)
+	sourcecdk.AddQueryParam(query, "activityTypes", settings.activity)
+	sourcecdk.AddQueryParam(query, "siteIds", settings.siteID)
+	sourcecdk.AddQueryParam(query, "groupIds", settings.groupID)
 	return listJSONRecords[activityRecord, *activityRecord](ctx, s, settings, "/web/api/v2.1/activities", query)
 }
 
@@ -610,7 +602,7 @@ func (s *Source) listApplications(ctx context.Context, settings settings, cursor
 
 func (s *Source) listApplicationsForAgent(ctx context.Context, settings settings, agentID string) ([]applicationRecord, string, error) {
 	query := url.Values{}
-	addQuery(query, "ids", agentID)
+	sourcecdk.AddQueryParam(query, "ids", agentID)
 	var resp struct {
 		Data []json.RawMessage `json:"data"`
 	}
@@ -639,18 +631,6 @@ func buildPagedQuery(cursor string, limit int) url.Values {
 		query.Set("cursor", strings.TrimSpace(cursor))
 	}
 	return query
-}
-
-func addQuery(query url.Values, key string, value string) {
-	if strings.TrimSpace(value) == "" {
-		return
-	}
-	query.Set(key, value)
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }
 
 func isNotFound(err error) bool {

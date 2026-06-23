@@ -7,24 +7,7 @@ import (
 	"testing"
 )
 
-var helperDuplicationGrandfatheredSources = map[string]struct{}{
-	"archetype":         {},
-	"aurelius":          {},
-	"aws":               {},
-	"azure":             {},
-	"cerebro":           {},
-	"cosmo":             {},
-	"emaildomainhealth": {},
-	"evidencecas":       {},
-	"gcp":               {},
-	"github":            {},
-	"googleworkspace":   {},
-	"grc":               {},
-	"okta":              {},
-	"panopticon":        {},
-	"sentinelone":       {},
-	"vulnview":          {},
-}
+var helperDuplicationGrandfatheredSources = map[string]struct{}{}
 
 func TestNewSourcesDoNotDuplicateSourceCDKHelpers(t *testing.T) {
 	root := repoRoot(t)
@@ -53,6 +36,7 @@ func TestNewSourcesDoNotDuplicateSourceCDKHelpers(t *testing.T) {
 			"func isUnsafeHost(",
 			"func isLoopbackHost(",
 			"func parseTimeSelector(",
+			"func addQuery(",
 		} {
 			if strings.Contains(text, duplicated) {
 				t.Fatalf("sources/%s duplicates Source CDK helper %s", entry.Name(), duplicated)

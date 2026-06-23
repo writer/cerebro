@@ -117,24 +117,24 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
-	tenantID := strings.TrimSpace(configValue(cfg, "tenant_id"))
-	if runtimeTenant := strings.TrimSpace(configValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenant != "" {
+	tenantID := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id"))
+	if runtimeTenant := strings.TrimSpace(sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenant != "" {
 		tenantID = runtimeTenant
 	}
-	perPage, err := s3ndjson.PositivePageSize(firstNonEmpty(configValue(cfg, "per_page"), configValue(cfg, "page_size")), defaultPerPage, maxPerPage)
+	perPage, err := s3ndjson.PositivePageSize(firstNonEmpty(sourcecdk.ConfigValue(cfg, "per_page"), sourcecdk.ConfigValue(cfg, "page_size")), defaultPerPage, maxPerPage)
 	if err != nil {
 		return settings{}, fmt.Errorf("%w: %w", ErrInvalidPageSize, err)
 	}
 	st := settings{
-		family:         firstNonEmpty(configValue(cfg, "family"), familyAccess),
-		bucket:         strings.TrimSpace(configValue(cfg, "bucket")),
-		prefix:         strings.TrimSpace(configValue(cfg, "prefix")),
-		region:         firstNonEmpty(configValue(cfg, "region"), defaultRegion),
+		family:         firstNonEmpty(sourcecdk.ConfigValue(cfg, "family"), familyAccess),
+		bucket:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "bucket")),
+		prefix:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "prefix")),
+		region:         firstNonEmpty(sourcecdk.ConfigValue(cfg, "region"), defaultRegion),
 		tenantID:       tenantID,
-		runtimeID:      firstNonEmpty(configValue(cfg, "runtime_id"), configValue(cfg, "source_runtime_id")),
-		roleARN:        strings.TrimSpace(configValue(cfg, "role_arn")),
-		externalID:     strings.TrimSpace(configValue(cfg, "external_id")),
-		assumeRoleARNs: strings.TrimSpace(configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey)),
+		runtimeID:      firstNonEmpty(sourcecdk.ConfigValue(cfg, "runtime_id"), sourcecdk.ConfigValue(cfg, "source_runtime_id")),
+		roleARN:        strings.TrimSpace(sourcecdk.ConfigValue(cfg, "role_arn")),
+		externalID:     strings.TrimSpace(sourcecdk.ConfigValue(cfg, "external_id")),
+		assumeRoleARNs: strings.TrimSpace(sourcecdk.ConfigValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey)),
 		perPage:        perPage,
 	}
 	if st.bucket == "" {
@@ -301,11 +301,6 @@ func scalarString(value any) string {
 	default:
 		return ""
 	}
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
 }
 
 func firstNonEmpty(values ...string) string {

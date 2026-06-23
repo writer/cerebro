@@ -104,10 +104,10 @@ func Family[S any](options FamilyOptions[S]) sourcecdk.Family[S] {
 func list[S any](ctx context.Context, sourceSettings S, assetSettings Settings, after string, limit int, options FamilyOptions[S]) ([]Record, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
+	sourcecdk.AddQueryParam(query, "after", after)
 	if options.QueryParams {
-		addQuery(query, "q", assetSettings.Q)
-		addQuery(query, "filter", assetSettings.Filter)
+		sourcecdk.AddQueryParam(query, "q", assetSettings.Q)
+		sourcecdk.AddQueryParam(query, "filter", assetSettings.Filter)
 	}
 	return options.List(ctx, sourceSettings, options.Path, query, strings.TrimSpace(options.Label))
 }
@@ -636,12 +636,6 @@ func firstRecordTime(values ...*time.Time) time.Time {
 		}
 	}
 	return time.Now().UTC()
-}
-
-func addQuery(query url.Values, key string, value string) {
-	if strings.TrimSpace(value) != "" {
-		query.Set(key, value)
-	}
 }
 
 func addAttribute(attributes map[string]string, key string, value string) {

@@ -114,9 +114,9 @@ func (s *Source) family(name string) sourcecdk.Family[settings] {
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	st := settings{
-		tenantID: firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
-		family:   strings.TrimSpace(configValue(cfg, "family")),
-		path:     strings.TrimSpace(firstNonEmpty(configValue(cfg, "path"), configValue(cfg, "report_path"))),
+		tenantID: firstNonEmpty(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)),
+		family:   strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")),
+		path:     strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "path"), sourcecdk.ConfigValue(cfg, "report_path"))),
 	}
 	if st.family == "" {
 		st.family = defaultFamily
@@ -376,20 +376,7 @@ func normalizedPackageID(purl string, ecosystem string, name string, version str
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.internal.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.internal.yaml")
 }
 
 func firstNonEmpty(values ...string) string {

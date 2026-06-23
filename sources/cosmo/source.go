@@ -157,15 +157,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -311,19 +303,19 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	settings := settings{
-		tenantID:      configValue(cfg, "tenant_id"),
-		family:        configValue(cfg, "family"),
-		baseURL:       configValue(cfg, "base_url"),
-		token:         configValue(cfg, "token"),
-		webhookSecret: configValue(cfg, "webhook_secret"),
-		query:         configValue(cfg, "q"),
-		user:          configValue(cfg, "user"),
-		status:        configValue(cfg, "status"),
-		category:      configValue(cfg, "category"),
-		ticketID:      configValue(cfg, "ticket_id"),
-		eventType:     configValue(cfg, "event_type"),
-		clientID:      configValue(cfg, "client_id"),
-		exportSecret:  configValue(cfg, "export_secret"),
+		tenantID:      sourcecdk.ConfigValue(cfg, "tenant_id"),
+		family:        sourcecdk.ConfigValue(cfg, "family"),
+		baseURL:       sourcecdk.ConfigValue(cfg, "base_url"),
+		token:         sourcecdk.ConfigValue(cfg, "token"),
+		webhookSecret: sourcecdk.ConfigValue(cfg, "webhook_secret"),
+		query:         sourcecdk.ConfigValue(cfg, "q"),
+		user:          sourcecdk.ConfigValue(cfg, "user"),
+		status:        sourcecdk.ConfigValue(cfg, "status"),
+		category:      sourcecdk.ConfigValue(cfg, "category"),
+		ticketID:      sourcecdk.ConfigValue(cfg, "ticket_id"),
+		eventType:     sourcecdk.ConfigValue(cfg, "event_type"),
+		clientID:      sourcecdk.ConfigValue(cfg, "client_id"),
+		exportSecret:  sourcecdk.ConfigValue(cfg, "export_secret"),
 		perPage:       defaultPageSize,
 	}
 	if settings.tenantID == "" {
@@ -395,17 +387,17 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		if settings.perPage > messageExportMaxPageSize {
 			return settings, fmt.Errorf("cosmo per_page must be between 1 and %d when family=%q", messageExportMaxPageSize, familyMessage)
 		}
-		eventTypes, err := parseMessageEventTypes(configValue(cfg, "event_types"), settings.eventType)
+		eventTypes, err := parseMessageEventTypes(sourcecdk.ConfigValue(cfg, "event_types"), settings.eventType)
 		if err != nil {
 			return settings, err
 		}
 		settings.eventTypes = eventTypes
-		maxWindow, err := parseMessageMaxWindow(configValue(cfg, "max_window_hours"))
+		maxWindow, err := parseMessageMaxWindow(sourcecdk.ConfigValue(cfg, "max_window_hours"))
 		if err != nil {
 			return settings, err
 		}
 		settings.maxWindow = maxWindow
-		initialSince, err := parseMessageInitialSince(configValue(cfg, "since"))
+		initialSince, err := parseMessageInitialSince(sourcecdk.ConfigValue(cfg, "since"))
 		if err != nil {
 			return settings, err
 		}
@@ -502,10 +494,10 @@ func (s *Source) listMemory(ctx context.Context, settings settings, path string,
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
 	query.Set("offset", strconv.Itoa(offset))
-	addQuery(query, "q", settings.query)
-	addQuery(query, "user", settings.user)
-	addQuery(query, "status", settings.status)
-	addQuery(query, "category", settings.category)
+	sourcecdk.AddQueryParam(query, "q", settings.query)
+	sourcecdk.AddQueryParam(query, "user", settings.user)
+	sourcecdk.AddQueryParam(query, "status", settings.status)
+	sourcecdk.AddQueryParam(query, "category", settings.category)
 
 	var response listResponse
 	if err := s.getJSON(ctx, settings, http.MethodGet, path, query, nil, &response); err != nil {
@@ -960,7 +952,7 @@ func decodeResponseError(statusCode int, body []byte) error {
 
 func occurredAtFor(values map[string]any) time.Time {
 	for _, key := range []string{"updated_at", "created_at", "feedbackAt", "surveyCreatedAt", "date"} {
-		if parsed, ok := parseTime(valueString(valueAt(values, key))); ok {
+		if parsed, ok := parseTime(valueString(sourcecdk.ValueAtPath(values, key))); ok {
 			return parsed.UTC()
 		}
 	}
@@ -981,21 +973,9 @@ func parseTime(value string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func valueAt(values map[string]any, path string) any {
-	current := any(values)
-	for _, part := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return nil
-		}
-		current = object[part]
-	}
-	return current
-}
-
 func firstValueString(values map[string]any, keys ...string) string {
 	for _, key := range keys {
-		if value := valueString(valueAt(values, key)); value != "" {
+		if value := valueString(sourcecdk.ValueAtPath(values, key)); value != "" {
 			return value
 		}
 	}
@@ -1004,17 +984,6 @@ func firstValueString(values map[string]any, keys ...string) string {
 
 func valueString(value any) string {
 	return sourcecdk.JSONScalar{Value: value}.Flattened()
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
-}
-
-func addQuery(query url.Values, key string, value string) {
-	if strings.TrimSpace(value) != "" {
-		query.Set(key, strings.TrimSpace(value))
-	}
 }
 
 func checkpointCursor(next string, fallback string) string {

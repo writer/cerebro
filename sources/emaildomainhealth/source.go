@@ -130,22 +130,22 @@ func (s *Source) read(ctx context.Context, st settings) (sourcecdk.Pull, error) 
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
-	tenantID := strings.TrimSpace(configValue(cfg, "tenant_id"))
-	if runtimeTenant := strings.TrimSpace(configValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenant != "" {
+	tenantID := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id"))
+	if runtimeTenant := strings.TrimSpace(sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenant != "" {
 		tenantID = runtimeTenant
 	}
 	if tenantID == "" {
 		return settings{}, ErrTenantRequired
 	}
-	domains, err := parseDomainsList(configValue(cfg, "domains"))
+	domains, err := parseDomainsList(sourcecdk.ConfigValue(cfg, "domains"))
 	if err != nil {
 		return settings{}, err
 	}
 	if len(domains) == 0 {
 		return settings{}, ErrDomainsRequired
 	}
-	dkimSelectors := parseSelectorList(configValue(cfg, "dkim_selectors"))
-	family := strings.TrimSpace(configValue(cfg, "family"))
+	dkimSelectors := parseSelectorList(sourcecdk.ConfigValue(cfg, "dkim_selectors"))
+	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
 	if family == "" {
 		family = familyHealth
 	}
@@ -155,7 +155,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	return settings{
 		family:        family,
 		tenantID:      tenantID,
-		runtimeID:     firstNonEmpty(configValue(cfg, "runtime_id"), configValue(cfg, "source_runtime_id")),
+		runtimeID:     firstNonEmpty(sourcecdk.ConfigValue(cfg, "runtime_id"), sourcecdk.ConfigValue(cfg, "source_runtime_id")),
 		domains:       domains,
 		dkimSelectors: dkimSelectors,
 	}, nil
@@ -275,11 +275,6 @@ func healthAttributes(st settings, health emaildns.Health, observedAt time.Time)
 		}
 	}
 	return attributes
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
 }
 
 func firstNonEmpty(values ...string) string {

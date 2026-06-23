@@ -149,15 +149,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -232,17 +224,17 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	resolved := settings{
-		tenantID:     firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, "__cerebro_runtime_tenant_id")),
-		family:       configValue(cfg, "family"),
-		baseURL:      configValue(cfg, "base_url"),
-		tokenURL:     configValue(cfg, "token_url"),
-		clientID:     configValue(cfg, "client_id"),
-		clientSecret: configValue(cfg, "client_secret"),
-		scope:        configValue(cfg, "scope"),
-		siteID:       configValue(cfg, "site_id"),
-		scanName:     configValue(cfg, "scan_name"),
-		severity:     strings.ToLower(configValue(cfg, "severity")),
-		search:       configValue(cfg, "search"),
+		tenantID:     firstNonEmpty(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, "__cerebro_runtime_tenant_id")),
+		family:       sourcecdk.ConfigValue(cfg, "family"),
+		baseURL:      sourcecdk.ConfigValue(cfg, "base_url"),
+		tokenURL:     sourcecdk.ConfigValue(cfg, "token_url"),
+		clientID:     sourcecdk.ConfigValue(cfg, "client_id"),
+		clientSecret: sourcecdk.ConfigValue(cfg, "client_secret"),
+		scope:        sourcecdk.ConfigValue(cfg, "scope"),
+		siteID:       sourcecdk.ConfigValue(cfg, "site_id"),
+		scanName:     sourcecdk.ConfigValue(cfg, "scan_name"),
+		severity:     strings.ToLower(sourcecdk.ConfigValue(cfg, "severity")),
+		search:       sourcecdk.ConfigValue(cfg, "search"),
 		perPage:      defaultPageSize,
 	}
 	if resolved.tenantID == "" {
@@ -274,7 +266,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	if resolved.clientSecret == "" {
 		return resolved, fmt.Errorf("vulnview client_secret is required")
 	}
-	issuer := strings.TrimRight(configValue(cfg, "okta_issuer"), "/")
+	issuer := strings.TrimRight(sourcecdk.ConfigValue(cfg, "okta_issuer"), "/")
 	if issuer == "" && !allowLoopback {
 		return resolved, fmt.Errorf("vulnview okta_issuer is required")
 	}
@@ -324,7 +316,7 @@ func validateBaseURL(baseURL string, allowLoopback bool) error {
 }
 
 func validateTokenURL(cfg sourcecdk.Config, tokenURL string, allowLoopback bool) error {
-	issuer := strings.TrimRight(configValue(cfg, "okta_issuer"), "/")
+	issuer := strings.TrimRight(sourcecdk.ConfigValue(cfg, "okta_issuer"), "/")
 	if issuer == "" {
 		if allowLoopback {
 			return nil
@@ -358,7 +350,7 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 	var response listResponse
 	query := settings.query()
 	query.Set("limit", strconv.Itoa(pageSize))
-	addQuery(query, "cursor", cursor)
+	sourcecdk.AddQueryParam(query, "cursor", cursor)
 	if err := s.getJSON(ctx, settings, path, query, &response); err != nil {
 		return nil, "", err
 	}
@@ -389,7 +381,7 @@ func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor st
 	var response listResponse
 	query := familySettings.query()
 	query.Set("limit", strconv.Itoa(familySettings.perPage))
-	addQuery(query, "cursor", assetCursor)
+	sourcecdk.AddQueryParam(query, "cursor", assetCursor)
 	if err := s.getJSON(ctx, familySettings, "/assets", query, &response); err != nil {
 		return nil, "", err
 	}
@@ -651,11 +643,11 @@ func (s *Source) httpClient() *http.Client {
 
 func (settings settings) query() url.Values {
 	query := url.Values{}
-	addQuery(query, "siteId", settings.siteID)
-	addQuery(query, "scanName", settings.scanName)
-	addQuery(query, "name", settings.scanName)
-	addQuery(query, "severity", settings.severity)
-	addQuery(query, "search", settings.search)
+	sourcecdk.AddQueryParam(query, "siteId", settings.siteID)
+	sourcecdk.AddQueryParam(query, "scanName", settings.scanName)
+	sourcecdk.AddQueryParam(query, "name", settings.scanName)
+	sourcecdk.AddQueryParam(query, "severity", settings.severity)
+	sourcecdk.AddQueryParam(query, "search", settings.search)
 	return query
 }
 
@@ -862,7 +854,7 @@ func addVulnViewFindingStateAttributes(attrs map[string]string, values map[strin
 
 func occurredAtFor(values map[string]any) time.Time {
 	for _, key := range []string{"timestamp", "completedAt", "startedAt", "createdAt", "matchedAt", "matched-at"} {
-		if parsed, ok := parseTime(valueString(valueAt(values, key))); ok {
+		if parsed, ok := parseTime(valueString(sourcecdk.ValueAtPath(values, key))); ok {
 			return parsed
 		}
 	}
@@ -911,18 +903,18 @@ func normalizeAbsoluteURL(raw string, allowLoopback bool) (string, error) {
 
 func normalizeParsedURL(parsed *url.URL, allowLoopback bool) (string, error) {
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && sourcecdk.IsLoopbackHost(host)
 	if parsed.Scheme != "https" && !allowInsecureLoopback {
 		return "", fmt.Errorf("vulnview url must use https")
 	}
 	if host == "" {
 		return "", fmt.Errorf("vulnview url must include a host")
 	}
-	allowCustomPort := allowLoopback && isLoopbackHost(host)
+	allowCustomPort := allowLoopback && sourcecdk.IsLoopbackHost(host)
 	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && !allowCustomPort {
 		return "", fmt.Errorf("vulnview url must not include a custom port")
 	}
-	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
+	if sourcecdk.IsUnsafeHost(host) && (!allowLoopback || !sourcecdk.IsLoopbackHost(host)) {
 		return "", fmt.Errorf("vulnview url must not target loopback, private, or link-local hosts")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
@@ -933,33 +925,6 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func isUnsafeHost(host string) bool {
-	value := strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
-	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(value)
-	return ip != nil && unsafeIP(ip, false)
-}
-
-func unsafeIP(ip net.IP, allowLoopback bool) bool {
-	if ip == nil {
-		return true
-	}
-	if allowLoopback && ip.IsLoopback() {
-		return false
-	}
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
-}
-
-func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
-	return ip != nil && ip.IsLoopback()
 }
 
 func decodeResponseError(service string, statusCode int, body []byte) error {
@@ -986,27 +951,15 @@ func isUnauthorizedResponse(err error) bool {
 
 func copyFields(attrs map[string]string, values map[string]any, fields map[string]string) {
 	for attr, field := range fields {
-		if value := valueString(valueAt(values, field)); value != "" {
+		if value := valueString(sourcecdk.ValueAtPath(values, field)); value != "" {
 			attrs[attr] = value
 		}
 	}
 }
 
-func valueAt(values map[string]any, path string) any {
-	current := any(values)
-	for _, part := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return nil
-		}
-		current = object[part]
-	}
-	return current
-}
-
 func firstValueString(values map[string]any, keys ...string) string {
 	for _, key := range keys {
-		if value := valueString(valueAt(values, key)); value != "" {
+		if value := valueString(sourcecdk.ValueAtPath(values, key)); value != "" {
 			return value
 		}
 	}
@@ -1015,12 +968,6 @@ func firstValueString(values map[string]any, keys ...string) string {
 
 func valueString(value any) string {
 	return sourcecdk.JSONScalar{Value: value}.Flattened()
-}
-
-func addQuery(query url.Values, key string, value string) {
-	if strings.TrimSpace(value) != "" {
-		query.Set(key, strings.TrimSpace(value))
-	}
 }
 
 func stableID(parts ...string) string {
@@ -1062,11 +1009,6 @@ func trimEmptyAttributes(attrs map[string]string) {
 		}
 		attrs[key] = strings.TrimSpace(value)
 	}
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }
 
 func cloneRaw(raw json.RawMessage) json.RawMessage {

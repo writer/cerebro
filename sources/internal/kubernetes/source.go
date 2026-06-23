@@ -134,15 +134,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	st := settings{
-		tenantID:       firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
-		family:         strings.TrimSpace(configValue(cfg, "family")),
-		kubeconfigPath: strings.TrimSpace(firstNonEmpty(configValue(cfg, "kubeconfig_path"), configValue(cfg, "kubeconfig"))),
-		contextName:    strings.TrimSpace(configValue(cfg, "context")),
-		clusterID:      strings.TrimSpace(configValue(cfg, "cluster_id")),
-		clusterName:    strings.TrimSpace(configValue(cfg, "cluster_name")),
-		externalID:     strings.TrimSpace(configValue(cfg, "external_id")),
-		cloudProvider:  normalizeIdentifier(firstNonEmpty(configValue(cfg, "cloud_provider"), configValue(cfg, "provider"))),
-		cloudAccountID: strings.TrimSpace(firstNonEmpty(configValue(cfg, "cloud_account_id"), configValue(cfg, "account_id"), configValue(cfg, "project_id"), configValue(cfg, "subscription_id"))),
+		tenantID:       firstNonEmpty(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)),
+		family:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")),
+		kubeconfigPath: strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "kubeconfig_path"), sourcecdk.ConfigValue(cfg, "kubeconfig"))),
+		contextName:    strings.TrimSpace(sourcecdk.ConfigValue(cfg, "context")),
+		clusterID:      strings.TrimSpace(sourcecdk.ConfigValue(cfg, "cluster_id")),
+		clusterName:    strings.TrimSpace(sourcecdk.ConfigValue(cfg, "cluster_name")),
+		externalID:     strings.TrimSpace(sourcecdk.ConfigValue(cfg, "external_id")),
+		cloudProvider:  normalizeIdentifier(firstNonEmpty(sourcecdk.ConfigValue(cfg, "cloud_provider"), sourcecdk.ConfigValue(cfg, "provider"))),
+		cloudAccountID: strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "cloud_account_id"), sourcecdk.ConfigValue(cfg, "account_id"), sourcecdk.ConfigValue(cfg, "project_id"), sourcecdk.ConfigValue(cfg, "subscription_id"))),
 		perPage:        defaultPageSize,
 	}
 	if st.family == "" {
@@ -156,11 +156,11 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if st.tenantID == "" {
 		return st, fmt.Errorf("kubernetes tenant_id is required")
 	}
-	st.inCluster = parseBool(configValue(cfg, "in_cluster"))
+	st.inCluster = parseBool(sourcecdk.ConfigValue(cfg, "in_cluster"))
 	if !st.inCluster && st.kubeconfigPath == "" {
 		return st, fmt.Errorf("kubernetes kubeconfig_path is required unless in_cluster=true")
 	}
-	if raw := strings.TrimSpace(configValue(cfg, "per_page")); raw != "" {
+	if raw := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "per_page")); raw != "" {
 		perPage, err := strconv.ParseInt(raw, 10, 32)
 		if err != nil {
 			return st, fmt.Errorf("parse kubernetes per_page: %w", err)
@@ -1596,20 +1596,7 @@ func objectTime(value metav1.Time, fallback time.Time) time.Time {
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.internal.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.internal.yaml")
 }
 
 func firstNonEmpty(values ...string) string {

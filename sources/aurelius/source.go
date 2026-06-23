@@ -168,15 +168,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func defaultClientFactory(ctx context.Context, st settings) (s3API, error) {
@@ -227,19 +219,19 @@ func (s *Source) familyFor(family, kind, schemaRef, urnPrefix string) sourcecdk.
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
-	tenantID := strings.TrimSpace(configValue(cfg, "tenant_id"))
-	if runtimeTenantID := strings.TrimSpace(configValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenantID != "" {
+	tenantID := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id"))
+	if runtimeTenantID := strings.TrimSpace(sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenantID != "" {
 		tenantID = runtimeTenantID
 	}
 	st := settings{
-		family:         strings.TrimSpace(configValue(cfg, "family")),
-		bucket:         strings.TrimSpace(configValue(cfg, "bucket")),
-		prefix:         strings.TrimSpace(configValue(cfg, "prefix")),
-		region:         strings.TrimSpace(configValue(cfg, "region")),
+		family:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")),
+		bucket:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "bucket")),
+		prefix:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "prefix")),
+		region:         strings.TrimSpace(sourcecdk.ConfigValue(cfg, "region")),
 		tenantID:       tenantID,
-		roleARN:        strings.TrimSpace(configValue(cfg, "role_arn")),
-		externalID:     strings.TrimSpace(configValue(cfg, "external_id")),
-		assumeRoleARNs: strings.TrimSpace(configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey)),
+		roleARN:        strings.TrimSpace(sourcecdk.ConfigValue(cfg, "role_arn")),
+		externalID:     strings.TrimSpace(sourcecdk.ConfigValue(cfg, "external_id")),
+		assumeRoleARNs: strings.TrimSpace(sourcecdk.ConfigValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey)),
 		perPage:        defaultPageSize,
 	}
 	if st.family == "" {
@@ -329,11 +321,6 @@ func isKnownFamily(name string) bool {
 		return true
 	}
 	return false
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
 }
 
 func decodeCursor(cursor *cerebrov1.SourceCursor) aureliusCursor {

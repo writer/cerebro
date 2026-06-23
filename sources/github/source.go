@@ -259,15 +259,7 @@ func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, 
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
@@ -316,28 +308,28 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		}
 	}()
 	settings := settings{
-		family: configValue(cfg, "family"),
-		owner:  configValue(cfg, "owner"),
-		repo:   configValue(cfg, "repo"),
-		token:  configValue(cfg, "token"),
-		appID:  configValue(cfg, "app_id"),
+		family: sourcecdk.ConfigValue(cfg, "family"),
+		owner:  sourcecdk.ConfigValue(cfg, "owner"),
+		repo:   sourcecdk.ConfigValue(cfg, "repo"),
+		token:  sourcecdk.ConfigValue(cfg, "token"),
+		appID:  sourcecdk.ConfigValue(cfg, "app_id"),
 		appInstallationID: firstNonEmptyString(
-			configValue(cfg, "app_installation_id"),
-			configValue(cfg, "installation_id"),
+			sourcecdk.ConfigValue(cfg, "app_installation_id"),
+			sourcecdk.ConfigValue(cfg, "installation_id"),
 		),
 		appPrivateKey: firstNonEmptyString(
-			configValue(cfg, "app_private_key"),
-			configValue(cfg, "private_key"),
+			sourcecdk.ConfigValue(cfg, "app_private_key"),
+			sourcecdk.ConfigValue(cfg, "private_key"),
 		),
 		appPrivateKeyBase64: firstNonEmptyString(
-			configValue(cfg, "app_private_key_base64"),
-			configValue(cfg, "private_key_base64"),
+			sourcecdk.ConfigValue(cfg, "app_private_key_base64"),
+			sourcecdk.ConfigValue(cfg, "private_key_base64"),
 		),
-		baseURL:      configValue(cfg, "base_url"),
-		state:        configValue(cfg, "state"),
-		auditInclude: configValue(cfg, "include"),
-		auditPhrase:  configValue(cfg, "phrase"),
-		auditOrder:   configValue(cfg, "order"),
+		baseURL:      sourcecdk.ConfigValue(cfg, "base_url"),
+		state:        sourcecdk.ConfigValue(cfg, "state"),
+		auditInclude: sourcecdk.ConfigValue(cfg, "include"),
+		auditPhrase:  sourcecdk.ConfigValue(cfg, "phrase"),
+		auditOrder:   sourcecdk.ConfigValue(cfg, "order"),
 		perPage:      defaultPageSize,
 	}
 	if settings.baseURL != "" {
@@ -371,7 +363,7 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		}
 		settings.perPage = perPage
 	}
-	if rawAuditLogCanary := configValue(cfg, "audit_log_canary"); rawAuditLogCanary != "" {
+	if rawAuditLogCanary := sourcecdk.ConfigValue(cfg, "audit_log_canary"); rawAuditLogCanary != "" {
 		if settings.auditLogCanary, err = strconv.ParseBool(rawAuditLogCanary); err != nil {
 			return settings, fmt.Errorf("parse github audit_log_canary: %w", err)
 		}
@@ -738,11 +730,6 @@ func normalizeRepositoryEventID(value string) string {
 		return "unknown"
 	}
 	return value
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }
 
 func (st settings) githubAppAuthConfig() sourcehttp.GitHubAppAuthConfig {
