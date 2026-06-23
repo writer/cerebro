@@ -14,6 +14,12 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+// ProjectionHandler processes events for a specific source type or event kind.
+type ProjectionHandler interface {
+	// Handles reports which event kind prefixes this handler processes.
+	Handles() []string
+}
+
 // ProjectFunc converts one source event into graph projection records.
 type ProjectFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
@@ -27,6 +33,7 @@ type EventProjector struct {
 type Registry struct {
 	mu                              sync.RWMutex
 	projectors                      map[string]ProjectFunc
+	handlers                        map[string]ProjectionHandler
 	connectorDefinitionFingerprints map[string]string
 	connectorDefinitionKinds        map[string]map[string]struct{}
 	connectorDefinitionBases        map[string]ProjectFunc
@@ -759,6 +766,40 @@ func init() {
 // BuiltinRegistry returns the default source event projector registry.
 func BuiltinRegistry() *Registry {
 	return builtinRegistry
+}
+
+// Register adds a handler for the kind prefixes it declares via Handles.
+func (r *Registry) Register(h ProjectionHandler) {
+	if r == nil || h == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.handlers == nil {
+		r.handlers = make(map[string]ProjectionHandler)
+	}
+	for _, prefix := range h.Handles() {
+		r.handlers[prefix] = h
+	}
+}
+
+// Lookup finds the handler for a given event kind by trying progressively
+// shorter prefixes until a match is found.
+func (r *Registry) Lookup(kind string) (ProjectionHandler, bool) {
+	if r == nil {
+		return nil, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.handlers == nil {
+		return nil, false
+	}
+	for i := len(kind); i > 0; i-- {
+		if h, ok := r.handlers[kind[:i]]; ok {
+			return h, true
+		}
+	}
+	return nil, false
 }
 
 // Kinds returns sorted registered event kinds.
