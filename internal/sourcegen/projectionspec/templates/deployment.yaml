@@ -1,0 +1,11 @@
+id: deployment
+class: deployment
+graph_label: Deployment
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Application or service deployment instance.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - deployment_id
+  - deployment_name

@@ -1,0 +1,12 @@
+id: cloud_resource
+class: asset
+graph_label: CloudResource
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Cloud provider resource (compute, storage, network, etc.).
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - resource_urn
+  - resource_type
+  - resource_id

@@ -1,0 +1,13 @@
+id: evidence_cas_reference
+class: evidence_cas_reference
+graph_label: EvidenceCASReference
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Content-addressable evidence reference for audit and compliance.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - evidence_id
+  - evidence_type
+  - evidence_cas_uri
+  - evidence_cas_digest

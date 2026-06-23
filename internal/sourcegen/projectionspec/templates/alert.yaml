@@ -1,0 +1,11 @@
+id: alert
+class: alert
+graph_label: Alert
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Security or operational alert from a monitoring system.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - alert_id
+  - alert_severity

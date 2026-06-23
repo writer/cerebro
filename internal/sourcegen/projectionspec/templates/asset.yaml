@@ -1,0 +1,12 @@
+id: asset
+class: asset
+graph_label: Asset
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Generic asset entity for devices, hardware, or infrastructure resources.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - resource_urn
+  - resource_type
+  - resource_id

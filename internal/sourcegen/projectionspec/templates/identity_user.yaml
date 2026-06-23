@@ -1,0 +1,10 @@
+id: identity_user
+class: identity_user
+graph_label: IdentityUser
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: User identity from an identity provider.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - user_id

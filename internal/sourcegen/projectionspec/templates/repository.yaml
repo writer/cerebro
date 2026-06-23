@@ -1,0 +1,12 @@
+id: repository
+class: asset
+graph_label: Repository
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Source code repository.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - resource_urn
+  - resource_type
+  - resource_id

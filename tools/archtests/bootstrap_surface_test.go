@@ -34,8 +34,9 @@ import (
 // source health summaries add dashboard response mapping while source-health
 // aggregation stays behind existing stores. GRC framework lifecycle adds a thin
 // HTTP handler and route registration for cached framework listing; compliance
-// logic stays in the compliance package.
-const bootstrapProductionGoLineBudget = 25305
+// logic stays in the compliance package. Error-propagation cleanup (#1370) added
+// explicit error returns and guard clauses across bootstrap handlers.
+const bootstrapProductionGoLineBudget = 25326
 
 type bootstrapFileLineCount struct {
 	path  string

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -308,6 +308,25 @@ detection-catalog-generate: ## Regenerate public detection catalog.
 detection-catalog-check: ## Verify public detection catalog is current.
 	go run ./tools/detectioncatalog --check
 
+openapi-ts-generate: ## Generate TypeScript types from the OpenAPI spec.
+	go run ./tools/openapitsgen/cmd -spec api/openapi.yaml -out sdk/typescript/src/generated/openapi-types.ts
+
+openapi-ts-check: ## Verify generated TypeScript types are current.
+	go run ./tools/openapitsgen/cmd -spec api/openapi.yaml -out sdk/typescript/src/generated/openapi-types.ts -check
+
+connector-onboard: ## Onboard a connector from an OpenAPI spec (SPEC=path/to/spec.yaml SOURCE_ID=name).
+	@test -n "$(SPEC)" || (echo "SPEC is required, e.g. make connector-onboard SPEC=spec.yaml SOURCE_ID=example" && exit 1)
+	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" $(if $(DRY_RUN),-dry-run,)
+
+codegen-status: ## Show unified codegen status across all generators.
+	go run ./tools/codegenstatus
+
+projection-template-check: ## Verify projection template specs are consistent.
+	go run ./tools/projectiontemplates -check
+
+definition-migrate: ## Run connector definition grammar migrations.
+	go run ./tools/definitionmigrate
+
 new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_TYPE=awsFooBar LIST_FUNC=listFooBars EVENT_FUNC=fooBarEvent URN_EXPR=record.ID).
 	@test -n "$(FAMILY)" || (echo "FAMILY is required, e.g. make new-aws-collector FAMILY=ec2_transit_gateway" && exit 1)
 	@test -n "$(RECORD_TYPE)" || (echo "RECORD_TYPE is required" && exit 1)
@@ -316,7 +335,7 @@ new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_T
 	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
 	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-type="$(URN_TYPE)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
-docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate control-index-generate detection-catalog-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate control-index-generate detection-catalog-generate openapi-ts-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	python3 scripts/docs_drift_check.py
