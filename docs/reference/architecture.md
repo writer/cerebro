@@ -134,9 +134,9 @@ invalid-request error shape.
 The graph-fact read model lives in `internal/graphfacts` and treats persisted
 claims as the fact substrate for typed graph tools. The bootstrap budget includes
 only MCP argument decoding, tenant/runtime authorization, limit normalization,
-and JSON response mapping for listing and explaining graph facts; fact shaping,
-edge explanation, freshness, and evidence pointers stay behind the graphfacts
-domain package.
+and JSON response mapping for listing, explaining, and tracing graph facts; fact
+shaping, edge explanation, freshness, evidence pointers, and provenance traces
+stay behind the graphfacts domain package.
 
 The security-agent control plane also lives in `internal/agentplatform`. The
 bootstrap budget includes only the HTTP route registration, auth policy, and

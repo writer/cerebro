@@ -2014,8 +2014,8 @@ func TestMCPGraphFactsListAndExplain(t *testing.T) {
 		t.Fatalf("trace steps = %#v, want provenance steps", trace["steps"])
 	}
 	traceMetadata := trace["metadata"].(map[string]any)
-	if traceMetadata["has_more"] != true || traceMetadata["truncated"] != true || traceMetadata["truncation_reason"] != "page_boundary" {
-		t.Fatalf("trace metadata = %#v, want page boundary truncation", traceMetadata)
+	if traceMetadata["related_more"] != true || traceMetadata["related_truncated"] != true || traceMetadata["related_truncation_reason"] != "related_fact_limit" {
+		t.Fatalf("trace metadata = %#v, want related fact limit truncation", traceMetadata)
 	}
 	anchorFact := trace["anchor"].(map[string]any)["fact"].(map[string]any)
 	if _, ok := anchorFact["attributes"]; ok {

@@ -1556,13 +1556,10 @@ func (app *App) mcpGraphFactsTrace(r *http.Request, args map[string]any) (any, e
 		return nil, err
 	}
 	metadata := mcpResponseMetadata(limit, len(response.RelatedFacts)+1, nil)
-	metadata["has_more"] = response.HasMore
-	if response.NextCursor != "" {
-		metadata["next_cursor"] = response.NextCursor
-	}
-	if response.HasMore {
-		metadata["truncated"] = true
-		metadata["truncation_reason"] = "page_boundary"
+	metadata["related_more"] = response.RelatedMore
+	if response.RelatedMore {
+		metadata["related_truncated"] = true
+		metadata["related_truncation_reason"] = "related_fact_limit"
 	}
 	value = mcpAddResponseMetadata(value, metadata)
 	if err := mcpEnforceMaxBytes(value, args); err != nil {
@@ -2276,8 +2273,7 @@ func mcpTools() []mcpTool {
 				"anchor":        map[string]any{"type": "object"},
 				"related_facts": map[string]any{"type": "array", "items": mcpGraphFactSchema()},
 				"steps":         map[string]any{"type": "array"},
-				"next_cursor":   map[string]any{"type": "string"},
-				"has_more":      map[string]any{"type": "boolean"},
+				"related_more":  map[string]any{"type": "boolean"},
 			}),
 			Annotations: mcpReadOnlyAnnotations("Trace Graph Fact"),
 		},

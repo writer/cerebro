@@ -89,8 +89,7 @@ type TraceResponse struct {
 	Anchor       ExplainResponse `json:"anchor"`
 	RelatedFacts []Fact          `json:"related_facts,omitempty"`
 	Steps        []TraceStep     `json:"steps"`
-	NextCursor   string          `json:"next_cursor,omitempty"`
-	HasMore      bool            `json:"has_more"`
+	RelatedMore  bool            `json:"related_more"`
 }
 
 type TraceStep struct {
@@ -289,8 +288,7 @@ func (s *Service) Trace(ctx context.Context, request TraceRequest) (TraceRespons
 		Anchor:       anchor,
 		RelatedFacts: related,
 		Steps:        steps,
-		NextCursor:   list.NextCursor,
-		HasMore:      list.HasMore,
+		RelatedMore:  list.HasMore,
 	}, nil
 }
 
