@@ -2309,6 +2309,14 @@ paths:
       responses:
         '200':
           description: Reusable auditor-facing control archetypes for custom framework generation.
+  /grc/frameworks:
+    get:
+      summary: GRC frameworks
+      tags:
+        - GRC
+      responses:
+        '200':
+          description: Built-in GRC frameworks with lifecycle metadata. Upcoming frameworks are discoverable but not measured until controls are available.
   /grc/control-profiles:
     get:
       summary: Control profile coverage
