@@ -862,6 +862,55 @@ def create_monitoring(
             alarm_actions=alarm_actions,
         )
         _custom_metric_alarm(
+            resource_name=f"{name}-graph-rule-timeouts-alarm",
+            alarm_name=f"{name}-graph-rule-timeouts",
+            namespace=telemetry_namespace,
+            metric_name="GraphRuleTimeouts",
+            threshold=0,
+            description="Graph rule phase timeouts detected; inspect source/rule telemetry and slow Neo4j queries.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-graph-ingest-duration-p95-alarm",
+            alarm_name=f"{name}-graph-ingest-duration-p95",
+            namespace=telemetry_namespace,
+            metric_name="GraphIngestDurationMs",
+            threshold=900000,
+            extended_statistic="p95",
+            description="Graph ingest phase p95 duration exceeded 15 minutes.",
+            alarm_actions=alarm_actions,
+            evaluation_periods=3,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-graph-rule-duration-p95-alarm",
+            alarm_name=f"{name}-graph-rule-duration-p95",
+            namespace=telemetry_namespace,
+            metric_name="GraphRuleDurationMs",
+            threshold=840000,
+            extended_statistic="p95",
+            description="Graph rule phase p95 duration exceeded the pre-timeout guardrail.",
+            alarm_actions=alarm_actions,
+            evaluation_periods=3,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-neo4j-connectivity-errors-alarm",
+            alarm_name=f"{name}-neo4j-connectivity-errors",
+            namespace=telemetry_namespace,
+            metric_name="Neo4jConnectivityErrors",
+            threshold=10,
+            description="Neo4j connectivity errors exceeded the operational threshold.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-neo4j-transaction-limit-errors-alarm",
+            alarm_name=f"{name}-neo4j-transaction-limit-errors",
+            namespace=telemetry_namespace,
+            metric_name="Neo4jTransactionExecutionLimitErrors",
+            threshold=0,
+            description="Neo4j transaction execution limit errors detected; inspect graph-rule and ingest query shape.",
+            alarm_actions=alarm_actions,
+        )
+        _custom_metric_alarm(
             resource_name=f"{name}-finding-evaluation-run-failures-alarm",
             alarm_name=f"{name}-finding-evaluation-run-failures",
             namespace=telemetry_namespace,
@@ -1259,26 +1308,30 @@ def _custom_metric_alarm(
     description: str,
     alarm_actions: list[pulumi.Input[str]],
     statistic: str = "Sum",
+    extended_statistic: str | None = None,
     dimensions: dict = None,
     period: int = 300,
     evaluation_periods: int = 1,
 ) -> aws.cloudwatch.MetricAlarm:
-    return aws.cloudwatch.MetricAlarm(
-        resource_name,
-        name=alarm_name,
-        comparison_operator="GreaterThanThreshold",
-        evaluation_periods=evaluation_periods,
-        metric_name=metric_name,
-        namespace=namespace,
-        period=period,
-        statistic=statistic,
-        threshold=threshold,
-        treat_missing_data="notBreaching",
-        alarm_description=description,
-        alarm_actions=alarm_actions,
-        dimensions=dimensions,
-        tags={"Name": alarm_name},
-    )
+    alarm_args = {
+        "name": alarm_name,
+        "comparison_operator": "GreaterThanThreshold",
+        "evaluation_periods": evaluation_periods,
+        "metric_name": metric_name,
+        "namespace": namespace,
+        "period": period,
+        "threshold": threshold,
+        "treat_missing_data": "notBreaching",
+        "alarm_description": description,
+        "alarm_actions": alarm_actions,
+        "dimensions": dimensions,
+        "tags": {"Name": alarm_name},
+    }
+    if extended_statistic:
+        alarm_args["extended_statistic"] = extended_statistic
+    else:
+        alarm_args["statistic"] = statistic
+    return aws.cloudwatch.MetricAlarm(resource_name, **alarm_args)
 
 
 def _aws_usage_quota_alarm(
@@ -1913,6 +1966,78 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 default_value=0,
             ),
         ),
+        "graph_rule_findings_by_source": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-findings-by-source-filter",
+            name=f"{name}-graph-rule-findings-by-source",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.graph_rule_findings = * && $.source_id = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleFindingsEmittedBySource",
+                namespace=namespace,
+                value="$.graph_rule_findings",
+                dimensions={"SourceId": "$.source_id"},
+            ),
+        ),
+        "graph_rule_rows_read_by_source": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-rows-read-by-source-filter",
+            name=f"{name}-graph-rule-rows-read-by-source",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.graph_rule_rows_read = * && $.source_id = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleRowsReadBySource",
+                namespace=namespace,
+                value="$.graph_rule_rows_read",
+                dimensions={"SourceId": "$.source_id"},
+            ),
+        ),
+        "graph_rule_timeouts": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-timeouts-filter",
+            name=f"{name}-graph-rule-timeouts",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.graph_rules" && $.status = "failed" && $.timeout_exceeded = true }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleTimeouts",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "graph_rule_timeouts_by_source": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-timeouts-by-source-filter",
+            name=f"{name}-graph-rule-timeouts-by-source",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.graph_rules" && $.status = "failed" && $.timeout_exceeded = true && $.source_id = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleTimeoutsBySource",
+                namespace=namespace,
+                value="1",
+                dimensions={"SourceId": "$.source_id"},
+            ),
+        ),
+        "neo4j_connectivity_errors": aws.cloudwatch.LogMetricFilter(
+            f"{name}-neo4j-connectivity-errors-filter",
+            name=f"{name}-neo4j-connectivity-errors",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "neo4j.error" && $.error_kind = "errorutil_connectivity_error" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="Neo4jConnectivityErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "neo4j_transaction_execution_limit_errors": aws.cloudwatch.LogMetricFilter(
+            f"{name}-neo4j-transaction-limit-errors-filter",
+            name=f"{name}-neo4j-transaction-limit-errors",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "neo4j.error" && $.error_kind = "errorutil_transaction_execution_limit" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="Neo4jTransactionExecutionLimitErrors",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
         "report_failures": aws.cloudwatch.LogMetricFilter(
             f"{name}-report-failures-filter",
             name=f"{name}-report-failures",
@@ -1934,6 +2059,30 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 name="GraphIngestFailures",
                 namespace=namespace,
                 value="1",
+                default_value=0,
+            ),
+        ),
+        "graph_ingest_duration": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-ingest-duration-filter",
+            name=f"{name}-graph-ingest-duration",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.graph_ingest" && $.duration_ms = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphIngestDurationMs",
+                namespace=namespace,
+                value="$.duration_ms",
+                default_value=0,
+            ),
+        ),
+        "graph_rule_duration": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-duration-filter",
+            name=f"{name}-graph-rule-duration",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.graph_rules" && $.duration_ms = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleDurationMs",
+                namespace=namespace,
+                value="$.duration_ms",
                 default_value=0,
             ),
         ),
@@ -2254,6 +2403,24 @@ def _dashboard_body(
                         [telemetry_namespace, "GraphEntitiesProjected", {"stat": "Sum"}],
                         [".", "GraphIngestFailures", {"stat": "Sum"}],
                         [".", "GraphIngestLagSeconds", {"stat": "Maximum", "yAxis": "right"}],
+                        [".", "GraphRuleTimeouts", {"stat": "Sum"}],
+                        [".", "GraphIngestDurationMs", {"stat": "p95", "label": "Graph ingest p95 ms", "yAxis": "right"}],
+                        [".", "GraphRuleDurationMs", {"stat": "p95", "label": "Graph rule p95 ms", "yAxis": "right"}],
+                        [
+                            {
+                                "expression": f"SEARCH('{{{telemetry_namespace},InstanceId}} MetricName=\"Neo4jAuraInstanceUp\"', 'Minimum', 300)",
+                                "label": "Aura instance up",
+                                "id": "e1",
+                            }
+                        ],
+                        [
+                            {
+                                "expression": f"SEARCH('{{{telemetry_namespace},InstanceId}} MetricName=\"Neo4jAuraMemoryGB\"', 'Maximum', 300)",
+                                "label": "Aura memory GB",
+                                "id": "e2",
+                                "yAxis": "right",
+                            }
+                        ],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,
@@ -2389,7 +2556,7 @@ def _dashboard_body(
         next_y += 18
     otel_product_widgets = _otel_product_metric_widgets(next_y) if otel_widgets else []
     if otel_product_widgets:
-        next_y += 12
+        next_y += 24
     widgets.extend(jetstream_diagnostic_widgets)
     widgets.extend(tenant_diagnostic_widgets)
     widgets.extend(job_diagnostic_widgets)
@@ -2814,6 +2981,114 @@ def _otel_product_metric_widgets(y: int) -> list[dict]:
                             "expression": "SEARCH('{Cerebro/OTEL,source_id,event_kind,status,record.kind} MetricName=\"cerebro.source_projection.records\"', 'Sum', 60)",
                             "label": "Projection records by kind",
                             "id": "e1",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 0,
+            "y": y + 12,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Graph Rule Evaluations",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,rule_id,status,error_kind,truncated} MetricName=\"cerebro.graph_rule.evaluations\"', 'Sum', 60)",
+                            "label": "Graph rule evaluations",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,rule_id,status,error_kind,truncated} MetricName=\"cerebro.graph_rule.duration\"', 'p95', 60)",
+                            "label": "Graph rule duration p95",
+                            "id": "e2",
+                            "yAxis": "right",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 12,
+            "y": y + 12,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Graph Rule Records",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,source_id,rule_id,status,error_kind,truncated,record.kind} MetricName=\"cerebro.graph_rule.records\"', 'Sum', 60)",
+                            "label": "Rows read / findings emitted",
+                            "id": "e1",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 0,
+            "y": y + 18,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Orchestrator Phase SLO",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,phase_key,source_id,status,error_kind,timeout_exceeded} MetricName=\"cerebro.orchestrator.phase.runs\"', 'Sum', 60)",
+                            "label": "Phase runs",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,phase_key,source_id,status,error_kind,timeout_exceeded} MetricName=\"cerebro.orchestrator.phase.duration\"', 'p95', 60)",
+                            "label": "Phase duration p95",
+                            "id": "e2",
+                            "yAxis": "right",
+                        }
+                    ],
+                ],
+                "period": 60,
+                "region": region,
+            },
+        },
+        {
+            "type": "metric",
+            "x": 12,
+            "y": y + 18,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "title": "OTEL Neo4j Operations",
+                "metrics": [
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,operation,status,error_kind,database_configured} MetricName=\"cerebro.neo4j.operations\"', 'Sum', 60)",
+                            "label": "Neo4j operations",
+                            "id": "e1",
+                        }
+                    ],
+                    [
+                        {
+                            "expression": "SEARCH('{Cerebro/OTEL,operation,status,error_kind,database_configured} MetricName=\"cerebro.neo4j.operation.duration\"', 'p95', 60)",
+                            "label": "Neo4j duration p95",
+                            "id": "e2",
+                            "yAxis": "right",
                         }
                     ],
                 ],

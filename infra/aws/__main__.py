@@ -22,6 +22,7 @@ import load_balancer
 import monitoring
 import nats
 import neo4j
+import neo4j_observability
 import networking
 import postgres
 import resilience
@@ -1143,6 +1144,17 @@ monitoring_stack = monitoring.create_monitoring(
     source_runtimes=source_runtimes,
     source_runtime_observability=source_runtime_observability,
 )
+
+neo4j_aura_probe_stack = None
+if neo4j_stack:
+    neo4j_aura_probe_stack = neo4j_observability.create_aura_probe(
+        name=f"cerebro-{environment}",
+        client_id=neo4j_aura_client_id,
+        client_secret=neo4j_aura_client_secret,
+        instance_id=neo4j_stack["instance"].instance_id,
+        namespace=f"Cerebro/cerebro-{environment}",
+        alarm_actions=alarm_action_arns,
+    )
 
 cost_controls_stack = resilience.create_cost_controls(
     name=f"cerebro-{environment}",
