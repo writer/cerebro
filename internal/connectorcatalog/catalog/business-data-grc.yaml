@@ -3022,3 +3022,4099 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: API2Cart
+      display_name: API2Cart
+      id: builtin_catalog-api2cart
+      resource_families:
+        - coverage:
+            - families:
+                - attribute_group_list_json
+              high_value: true
+              id: attribute_group_list_json
+              support: partial
+              title: Attribute Group List Json
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: api2cart.attribute_group_list_json
+            required_payload_fields:
+              - id
+            schema_ref: api2cart/attribute_group_list_json/v1
+            urn_kind: api2cart_attribute_group_list_json
+          event_kind: attribute_group_list_json
+          id: attribute_group_list_json
+          id_field: id
+          label: Attribute Group List Json
+          list_key: result
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: count
+            type: page
+          path: /attribute.group.list.json
+          permissions_needed:
+            - api_key
+            - store_key
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $.result[*]
+        - coverage:
+            - families:
+                - attribute_attributeset_list_json
+              id: attribute_attributeset_list_json
+              support: partial
+              title: Attribute Attributeset List Json
+              type: entity_family
+          event:
+            kind: api2cart.attribute_attributeset_list_json
+            required_payload_fields:
+              - id
+            schema_ref: api2cart/attribute_attributeset_list_json/v1
+            urn_kind: api2cart_attribute_attributeset_list_json
+          event_kind: attribute_attributeset_list_json
+          id: attribute_attributeset_list_json
+          id_field: id
+          label: Attribute Attributeset List Json
+          list_key: result
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: count
+            type: page
+          path: /attribute.attributeset.list.json
+          permissions_needed:
+            - api_key
+            - store_key
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: attribute_attributeset_list_json
+            template: asset
+          record_selector: $.result[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - attribute_group_list_json
+          id: attribute_group_list_json
+          label: Attribute Group List Json
+        - families:
+            - attribute_attributeset_list_json
+          id: attribute_attributeset_list_json
+          label: Attribute Attributeset List Json
+      source_id: api2cart
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.api2cart.com/v1.1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /attribute.group.list.json
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: Welcome to the Accounting API.
+      display_name: Apideck
+      id: builtin_catalog-apideck
+      resource_families:
+        - coverage:
+            - families:
+                - ledger_account
+              high_value: true
+              id: ledger_account
+              support: partial
+              title: Ledger Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: apideck.ledger_account
+            required_payload_fields:
+              - id
+            schema_ref: apideck/ledger_account/v1
+            urn_kind: apideck_ledger_account
+          event_kind: ledger_account
+          id: ledger_account
+          id_field: id
+          label: Ledger Account
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /accounting/ledger-accounts
+          permissions_needed:
+            - apiKey
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - bill
+              id: bill
+              support: partial
+              title: Bill
+              type: entity_family
+          event:
+            kind: apideck.bill
+            required_payload_fields:
+              - id
+            schema_ref: apideck/bill/v1
+            urn_kind: apideck_bill
+          event_kind: bill
+          id: bill
+          id_field: id
+          label: Bill
+          list_key: data
+          method: GET
+          name_field: balance
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /accounting/bills
+          permissions_needed:
+            - apiKey
+          projection:
+            fields:
+              id: id
+              name: balance
+              resource_id: id
+              resource_name: balance
+              resource_type: bill
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - credit_note
+              id: credit_note
+              support: partial
+              title: Credit Note
+              type: entity_family
+          event:
+            kind: apideck.credit_note
+            required_payload_fields:
+              - id
+            schema_ref: apideck/credit_note/v1
+            urn_kind: apideck_credit_note
+          event_kind: credit_note
+          id: credit_note
+          id_field: id
+          label: Credit Note
+          list_key: data
+          method: GET
+          name_field: account
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /accounting/credit-notes
+          permissions_needed:
+            - apiKey
+          projection:
+            fields:
+              id: id
+              name: account
+              resource_id: id
+              resource_name: account
+              resource_type: credit_note
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - customer
+              id: customer
+              support: partial
+              title: Customer
+              type: entity_family
+          event:
+            kind: apideck.customer
+            required_payload_fields:
+              - id
+            schema_ref: apideck/customer/v1
+            urn_kind: apideck_customer
+          event_kind: customer
+          id: customer
+          id_field: id
+          label: Customer
+          list_key: data
+          method: GET
+          name_field: display_name
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /accounting/customers
+          permissions_needed:
+            - apiKey
+          projection:
+            fields:
+              id: id
+              name: display_name
+              resource_id: id
+              resource_name: display_name
+              resource_type: customer
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - ledger_account
+          id: ledger_account
+          label: Ledger Account
+        - families:
+            - bill
+          id: bill
+          label: Bill
+        - families:
+            - credit_note
+          id: credit_note
+          label: Credit Note
+        - families:
+            - customer
+          id: customer
+          label: Customer
+      source_id: apideck
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://unify.apideck.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /accounting/ledger-accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id_connector
+          label: Id Connector
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id_user
+          label: Id User
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id_connection
+          label: Id Connection
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: id_webhook
+          label: Id Webhook
+          required: true
+      description: '# Budgea Development Guides'
+      display_name: Powens (Budgea)
+      id: builtin_catalog-biapi
+      resource_families:
+        - coverage:
+            - families:
+                - logo
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Logo
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: biapi.logo
+            required_payload_fields:
+              - id
+            schema_ref: biapi/logo/v1
+            urn_kind: biapi_logo
+          event_kind: logo
+          id: logo
+          id_field: id
+          label: Logo
+          list_key: connectorlogos
+          method: GET
+          name_field: id
+          pagination:
+            type: none
+          path: /banks/${config.id_connector}/logos
+          projection:
+            fields:
+              id: id
+              name: id
+              provider_id: id
+            template: audit_event
+          record_selector: $.connectorlogos[*]
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: biapi.account
+            required_payload_fields:
+              - id
+            schema_ref: biapi/account/v1
+            urn_kind: biapi_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          list_key: accounts
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /users/${config.id_user}/connections/${config.id_connection}/accounts
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.accounts[*]
+        - coverage:
+            - families:
+                - add_to_data
+              high_value: true
+              id: add_to_data
+              support: partial
+              title: Add To Data
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: biapi.add_to_data
+            required_payload_fields:
+              - id
+            schema_ref: biapi/add_to_data/v1
+            urn_kind: biapi_add_to_data
+          event_kind: add_to_data
+          id: add_to_data
+          id_field: id
+          label: Add To Data
+          list_key: webhooks
+          method: GET
+          name_field: url
+          pagination:
+            type: none
+          path: /webhooks/${config.id_webhook}/add_to_data
+          projection:
+            fields:
+              id: id
+              name: url
+              resource_id: id
+              resource_name: url
+              resource_type: add_to_data
+            template: asset
+          record_selector: $.webhooks[*]
+        - coverage:
+            - families:
+                - alert
+              high_value: true
+              id: alerts
+              support: partial
+              title: Alert
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: biapi.alert
+            required_payload_fields:
+              - id
+            schema_ref: biapi/alert/v1
+            urn_kind: biapi_alert
+          event_kind: alert
+          id: alert
+          id_field: id
+          label: Alert
+          list_key: alerts
+          method: GET
+          name_field: id
+          pagination:
+            type: none
+          path: /users/${config.id_user}/alerts
+          projection:
+            fields:
+              alert_id: id
+              alert_name: id
+              alert_severity: id
+              alert_status: id
+              id: id
+              name: id
+            template: alert
+          record_selector: $.alerts[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - logo
+          id: logo
+          label: Logo
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - default_enabled: true
+          families:
+            - add_to_data
+          id: add_to_data
+          label: Add To Data
+        - default_enabled: true
+          families:
+            - alert
+          id: alert
+          label: Alert
+      source_id: biapi
+      tenant_id: builtin_catalog
+      transport:
+        base_url: //budgea.biapi.pro/2.0
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /banks/${config.id_connector}/logos
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: '<div style=''line-height: 30px;''> <strong>Welcome to the Big Red Cloud API</strong><br/> This API enables programmatic access to Big Red Cloud data.<br/> We have used Swagger to auto generate the API documentation on this page, and it also enables direct interaction with the API in this page. <br/> To get started, you will require an API Key - check out our guide at <a target=''_blank''...'
+      display_name: Big Red Cloud
+      id: builtin_catalog-bigredcloud
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: bigredcloud.account
+            required_payload_fields:
+              - id
+            schema_ref: bigredcloud/account/v1
+            urn_kind: bigredcloud_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          list_key: Items
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /v1/accounts
+          projection:
+            fields:
+              id: id
+              name: description
+              provider_id: id
+            template: identity_user
+          record_selector: $.Items[*]
+        - coverage:
+            - families:
+                - ownertypegroup
+              high_value: true
+              id: ownertypegroup
+              support: partial
+              title: Ownertypegroup
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: bigredcloud.ownertypegroup
+            required_payload_fields:
+              - id
+            schema_ref: bigredcloud/ownertypegroup/v1
+            urn_kind: bigredcloud_ownertypegroup
+          event_kind: ownertypegroup
+          id: ownertypegroup
+          id_field: id
+          label: Ownertypegroup
+          list_key: Items
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /v1/ownerTypeGroups
+          projection:
+            fields:
+              id: id
+              name: description
+              provider_id: id
+            template: identity_group
+          record_selector: $.Items[*]
+        - coverage:
+            - families:
+                - analysiscategory
+              id: analysiscategory
+              support: partial
+              title: Analysiscategory
+              type: entity_family
+          event:
+            kind: bigredcloud.analysiscategory
+            required_payload_fields:
+              - id
+            schema_ref: bigredcloud/analysiscategory/v1
+            urn_kind: bigredcloud_analysiscategory
+          event_kind: analysiscategory
+          id: analysiscategory
+          id_field: id
+          label: Analysiscategory
+          list_key: Items
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /v1/analysisCategories
+          projection:
+            fields:
+              id: id
+              name: description
+              resource_id: id
+              resource_name: description
+              resource_type: analysiscategory
+            template: asset
+          record_selector: $.Items[*]
+        - coverage:
+            - families:
+                - bankaccount
+              high_value: true
+              id: bankaccount
+              support: partial
+              title: Bankaccount
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: bigredcloud.bankaccount
+            required_payload_fields:
+              - id
+            schema_ref: bigredcloud/bankaccount/v1
+            urn_kind: bigredcloud_bankaccount
+          event_kind: bankaccount
+          id: bankaccount
+          id_field: id
+          label: Bankaccount
+          list_key: Items
+          method: GET
+          name_field: acCode
+          pagination:
+            type: none
+          path: /v1/bankAccounts
+          projection:
+            fields:
+              id: id
+              name: acCode
+              provider_id: id
+            template: identity_user
+          record_selector: $.Items[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - default_enabled: true
+          families:
+            - ownertypegroup
+          id: ownertypegroup
+          label: Ownertypegroup
+        - families:
+            - analysiscategory
+          id: analysiscategory
+          label: Analysiscategory
+        - default_enabled: true
+          families:
+            - bankaccount
+          id: bankaccount
+          label: Bankaccount
+      source_id: bigredcloud
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://app.bigredcloud.com/api
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: This is a Billingo API v3 documentation. Our API based on REST software architectural style. API has resource-oriented URLs, accepts JSON-encoded request bodies and returns JSON-encoded responses. To use this API you have to generate a new API key on our [site](https://app.billingo.hu/api-key). After that, you can test your API key on this page.
+      display_name: Billingo
+      id: builtin_catalog-billingo
+      resource_families:
+        - coverage:
+            - families:
+                - bank_account
+              high_value: true
+              id: bank_account
+              support: partial
+              title: Bank Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: billingo.bank_account
+            required_payload_fields:
+              - id
+            schema_ref: billingo/bank_account/v1
+            urn_kind: billingo_bank_account
+          event_kind: bank_account
+          id: bank_account
+          id_field: id
+          label: Bank Account
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /bank-accounts
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - document
+              id: document
+              support: partial
+              title: Document
+              type: entity_family
+          event:
+            kind: billingo.document
+            required_payload_fields:
+              - id
+            schema_ref: billingo/document/v1
+            urn_kind: billingo_document
+          event_kind: document
+          id: document
+          id_field: id
+          label: Document
+          list_key: data
+          method: GET
+          name_field: summary
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /documents
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: id
+              name: summary
+              resource_id: id
+              resource_name: summary
+              resource_type: document
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - document_block
+              id: document_block
+              support: partial
+              title: Document Block
+              type: entity_family
+          event:
+            kind: billingo.document_block
+            required_payload_fields:
+              - id
+            schema_ref: billingo/document_block/v1
+            urn_kind: billingo_document_block
+          event_kind: document_block
+          id: document_block
+          id_field: id
+          label: Document Block
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /document-blocks
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: document_block
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - partner
+              id: partner
+              support: partial
+              title: Partner
+              type: entity_family
+          event:
+            kind: billingo.partner
+            required_payload_fields:
+              - id
+            schema_ref: billingo/partner/v1
+            urn_kind: billingo_partner
+          event_kind: partner
+          id: partner
+          id_field: id
+          label: Partner
+          list_key: data
+          method: GET
+          name_field: name
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /partners
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: partner
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - bank_account
+          id: bank_account
+          label: Bank Account
+        - families:
+            - document
+          id: document
+          label: Document
+        - families:
+            - document_block
+          id: document_block
+          label: Document Block
+        - families:
+            - partner
+          id: partner
+          label: Partner
+      source_id: billingo
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.billingo.hu/v3
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /bank-accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: userid
+          label: Userid
+          required: true
+      description: '***UPDATE:*** *We have released a [beta version of the new bunq API documentation.](https://beta.doc.bunq.com)*'
+      display_name: bunq
+      id: builtin_catalog-bunq
+      resource_families:
+        - coverage:
+            - families:
+                - event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: bunq.event
+            required_payload_fields:
+              - id
+            schema_ref: bunq/event/v1
+            urn_kind: bunq_event
+          event_kind: event
+          id: event
+          id_field: id
+          label: Event
+          method: GET
+          name_field: action
+          pagination:
+            type: none
+          path: /user/${config.userid}/event
+          projection:
+            fields:
+              id: id
+              name: action
+              provider_id: id
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: bunq.user
+            required_payload_fields:
+              - UserApiKey
+            schema_ref: bunq/user/v1
+            urn_kind: bunq_user
+          event_kind: user
+          id: user
+          id_field: UserApiKey
+          label: User
+          method: GET
+          name_field: UserApiKey
+          pagination:
+            type: none
+          path: /user
+          projection:
+            fields:
+              id: UserApiKey
+              name: UserApiKey
+              provider_id: UserApiKey
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - credential_password_ip
+              high_value: true
+              id: secrets
+              support: partial
+              title: Credential Password Ip
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: bunq.credential_password_ip
+            required_payload_fields:
+              - id
+            schema_ref: bunq/credential_password_ip/v1
+            urn_kind: bunq_credential_password_ip
+          event_kind: credential_password_ip
+          id: credential_password_ip
+          id_field: id
+          label: Credential Password Ip
+          method: GET
+          name_field: created
+          pagination:
+            type: none
+          path: /user/${config.userid}/credential-password-ip
+          projection:
+            fields:
+              id: id
+              name: created
+              secret_id: id
+              secret_name: created
+              secret_type: credential_password_ip
+            template: secret
+          record_selector: $[*]
+          sensitive_payload_paths:
+            - token_value
+        - coverage:
+            - families:
+                - notification_filter_push
+              high_value: true
+              id: alerts
+              support: partial
+              title: Notification Filter Push
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: bunq.notification_filter_push
+            required_payload_fields:
+              - notification_filters
+            schema_ref: bunq/notification_filter_push/v1
+            urn_kind: bunq_notification_filter_push
+          event_kind: notification_filter_push
+          id: notification_filter_push
+          id_field: notification_filters
+          label: Notification Filter Push
+          method: GET
+          name_field: notification_filters
+          pagination:
+            type: none
+          path: /user/${config.userid}/notification-filter-push
+          projection:
+            fields:
+              alert_id: notification_filters
+              alert_name: notification_filters
+              alert_severity: notification_filters
+              alert_status: notification_filters
+              id: notification_filters
+              name: notification_filters
+            template: alert
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - event
+          id: event
+          label: Event
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - default_enabled: true
+          families:
+            - credential_password_ip
+          id: credential_password_ip
+          label: Credential Password Ip
+        - default_enabled: true
+          families:
+            - notification_filter_push
+          id: notification_filter_push
+          label: Notification Filter Push
+      source_id: bunq
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://public-api.sandbox.bunq.com/%7BbasePath%7D
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /user/${config.userid}/event
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: accountid
+          label: Accountid
+          required: true
+      description: The DocuSign REST API provides you with a powerful, convenient, and simple Web services API for interacting with DocuSign.
+      display_name: DocuSign
+      id: builtin_catalog-docusign
+      resource_families:
+        - coverage:
+            - families:
+                - bcc_email_archive
+              high_value: true
+              id: bcc_email_archive
+              support: partial
+              title: Bcc Email Archive
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: docusign.bcc_email_archive
+            required_payload_fields:
+              - email
+            schema_ref: docusign/bcc_email_archive/v1
+            urn_kind: docusign_bcc_email_archive
+          event_kind: bcc_email_archive
+          id: bcc_email_archive
+          id_field: email
+          label: Bcc Email Archive
+          list_key: bccEmailArchives
+          method: GET
+          name_field: email
+          pagination:
+            page_size: 100
+            page_size_param: count
+            type: page
+          path: /v2.1/accounts/${config.accountid}/settings/bcc_email_archives
+          projection:
+            fields:
+              id: email
+              name: email
+              provider_id: email
+            template: identity_user
+          record_selector: $.bccEmailArchives[*]
+        - coverage:
+            - families:
+                - signing_group
+              high_value: true
+              id: signing_group
+              support: partial
+              title: Signing Group
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: docusign.signing_group
+            required_payload_fields:
+              - created
+            schema_ref: docusign/signing_group/v1
+            urn_kind: docusign_signing_group
+          event_kind: signing_group
+          id: signing_group
+          id_field: created
+          label: Signing Group
+          list_key: groups
+          method: GET
+          name_field: created
+          pagination:
+            type: none
+          path: /v2.1/accounts/${config.accountid}/signing_groups
+          projection:
+            fields:
+              id: created
+              name: created
+              provider_id: created
+            template: identity_group
+          record_selector: $.groups[*]
+        - coverage:
+            - families:
+                - request_log
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Request Log
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: docusign.request_log
+            required_payload_fields:
+              - createdDateTime
+            schema_ref: docusign/request_log/v1
+            urn_kind: docusign_request_log
+          event_kind: request_log
+          id: request_log
+          id_field: createdDateTime
+          label: Request Log
+          list_key: apiRequestLogs
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /v2.1/diagnostics/request_logs
+          projection:
+            fields:
+              id: createdDateTime
+              name: description
+              provider_id: createdDateTime
+            template: audit_event
+          record_selector: $.apiRequestLogs[*]
+        - coverage:
+            - families:
+                - permission_profile
+              high_value: true
+              id: permission_profile
+              support: partial
+              title: Permission Profile
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: docusign.permission_profile
+            required_payload_fields:
+              - modifiedByUsername
+            schema_ref: docusign/permission_profile/v1
+            urn_kind: docusign_permission_profile
+          event_kind: permission_profile
+          id: permission_profile
+          id_field: modifiedByUsername
+          label: Permission Profile
+          list_key: permissionProfiles
+          method: GET
+          name_field: modifiedByUsername
+          pagination:
+            type: none
+          path: /v2.1/accounts/${config.accountid}/permission_profiles
+          projection:
+            fields:
+              id: modifiedByUsername
+              name: modifiedByUsername
+              resource_id: modifiedByUsername
+              resource_name: modifiedByUsername
+              resource_type: permission_profile
+            template: asset
+          record_selector: $.permissionProfiles[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - bcc_email_archive
+          id: bcc_email_archive
+          label: Bcc Email Archive
+        - default_enabled: true
+          families:
+            - signing_group
+          id: signing_group
+          label: Signing Group
+        - default_enabled: true
+          families:
+            - request_log
+          id: request_log
+          label: Request Log
+        - default_enabled: true
+          families:
+            - permission_profile
+          id: permission_profile
+          label: Permission Profile
+      source_id: docusign
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://www.docusign.net/restapi
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v2.1/accounts/${config.accountid}/settings/bcc_email_archives
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: The fire.com API allows you to deeply integrate Business Account features into your application or back-office systems.
+      display_name: Fire
+      id: builtin_catalog-fire
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fire.account
+            required_payload_fields:
+              - name
+            schema_ref: fire/account/v1
+            urn_kind: fire_account
+          event_kind: account
+          id: account
+          id_field: name
+          label: Account
+          list_key: accounts
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v1/accounts
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: name
+              name: name
+              provider_id: name
+            template: identity_user
+          record_selector: $.accounts[*]
+        - coverage:
+            - families:
+                - aspsp
+              id: aspsp
+              support: partial
+              title: Aspsp
+              type: entity_family
+          event:
+            kind: fire.aspsp
+            required_payload_fields:
+              - alias
+            schema_ref: fire/aspsp/v1
+            urn_kind: fire_aspsp
+          event_kind: aspsp
+          id: aspsp
+          id_field: alias
+          label: Aspsp
+          list_key: aspsps
+          method: GET
+          name_field: alias
+          pagination:
+            type: none
+          path: /v1/aspsps
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: alias
+              name: alias
+              resource_id: alias
+              resource_name: alias
+              resource_type: aspsp
+            template: asset
+          record_selector: $.aspsps[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fire.user
+            required_payload_fields:
+              - id
+            schema_ref: fire/user/v1
+            urn_kind: fire_user
+          event_kind: user
+          id: user
+          id_field: id
+          label: User
+          method: GET
+          name_field: emailAddress
+          pagination:
+            type: none
+          path: /v1/users
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: id
+              name: emailAddress
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - batche
+              id: batche
+              support: partial
+              title: Batche
+              type: entity_family
+          event:
+            kind: fire.batche
+            required_payload_fields:
+              - ref
+            schema_ref: fire/batche/v1
+            urn_kind: fire_batche
+          event_kind: batche
+          id: batche
+          id_field: ref
+          label: Batche
+          list_key: items
+          method: GET
+          name_field: amount
+          pagination:
+            type: none
+          path: /v1/batches
+          permissions_needed:
+            - bearerAuth
+          projection:
+            fields:
+              id: ref
+              name: amount
+              resource_id: ref
+              resource_name: amount
+              resource_type: batche
+            template: asset
+          record_selector: $.items[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - families:
+            - aspsp
+          id: aspsp
+          label: Aspsp
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - families:
+            - batche
+          id: batche
+          label: Batche
+      source_id: fire
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.fire.com/business
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: employerid
+          label: Employerid
+          required: true
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: employmentid
+          label: Employmentid
+          required: true
+      description: <span style="color:green">**Is this your first time here? Please check out our [introduction to Loket (API)](./Introduction)**</span>
+      display_name: Loket
+      id: builtin_catalog-loket
+      resource_families:
+        - coverage:
+            - families:
+                - integration
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Integration
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: loket.integration
+            required_payload_fields:
+              - id
+            schema_ref: loket/integration/v1
+            urn_kind: loket_integration
+          event_kind: integration
+          id: integration
+          id_field: id
+          label: Integration
+          list_key: messages
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /users/integrations
+          projection:
+            fields:
+              id: id
+              name: description
+              provider_id: id
+            template: audit_event
+          record_selector: $.messages[*]
+        - coverage:
+            - families:
+                - actualorganizationalentity
+              high_value: true
+              id: actualorganizationalentity
+              support: partial
+              title: Actualorganizationalentity
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: loket.actualorganizationalentity
+            required_payload_fields:
+              - id
+            schema_ref: loket/actualorganizationalentity/v1
+            urn_kind: loket_actualorganizationalentity
+          event_kind: actualorganizationalentity
+          id: actualorganizationalentity
+          id_field: id
+          label: Actualorganizationalentity
+          list_key: messages
+          method: GET
+          name_field: description
+          pagination:
+            page_size: 100
+            page_size_param: pageSize
+            type: page
+          path: /providers/employers/${config.employerid}/actualorganizationalentities
+          projection:
+            fields:
+              id: id
+              name: description
+              provider_id: id
+            template: identity_group
+          record_selector: $.messages[*]
+        - coverage:
+            - families:
+                - emailidentity
+              high_value: true
+              id: emailidentity
+              support: partial
+              title: Emailidentity
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: loket.emailidentity
+            required_payload_fields:
+              - id
+            schema_ref: loket/emailidentity/v1
+            urn_kind: loket_emailidentity
+          event_kind: emailidentity
+          id: emailidentity
+          id_field: id
+          label: Emailidentity
+          list_key: messages
+          method: GET
+          name_field: description
+          pagination:
+            page_size: 100
+            page_size_param: pageSize
+            type: page
+          path: /providers/employers/${config.employerid}/emailidentities
+          projection:
+            fields:
+              id: id
+              name: description
+              provider_id: id
+            template: identity_user
+          record_selector: $.messages[*]
+        - coverage:
+            - families:
+                - customnotification
+              high_value: true
+              id: alerts
+              support: partial
+              title: Customnotification
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: loket.customnotification
+            required_payload_fields:
+              - id
+            schema_ref: loket/customnotification/v1
+            urn_kind: loket_customnotification
+          event_kind: customnotification
+          id: customnotification
+          id_field: id
+          label: Customnotification
+          list_key: messages
+          method: GET
+          name_field: description
+          pagination:
+            page_size: 100
+            page_size_param: pageSize
+            type: page
+          path: /providers/employers/employees/employments/${config.employmentid}/customnotifications
+          projection:
+            fields:
+              alert_id: id
+              alert_name: description
+              alert_severity: code
+              alert_status: code
+              id: id
+              name: description
+            template: alert
+          record_selector: $.messages[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - integration
+          id: integration
+          label: Integration
+        - default_enabled: true
+          families:
+            - actualorganizationalentity
+          id: actualorganizationalentity
+          label: Actualorganizationalentity
+        - default_enabled: true
+          families:
+            - emailidentity
+          id: emailidentity
+          label: Emailidentity
+        - default_enabled: true
+          families:
+            - customnotification
+          id: customnotification
+          label: Customnotification
+      source_id: loket
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.loket.nl/v2
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /users/integrations
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: Magento Commerce is the leading provider of open omnichannel innovation.
+      display_name: Magento
+      id: builtin_catalog-magento
+      resource_families:
+        - coverage:
+            - families:
+                - attribute
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Attribute
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: magento.attribute
+            required_payload_fields:
+              - apply_to
+            schema_ref: magento/attribute/v1
+            urn_kind: magento_attribute
+          event_kind: attribute
+          id: attribute
+          id_field: apply_to
+          label: Attribute
+          list_key: items
+          method: GET
+          name_field: apply_to
+          pagination:
+            type: none
+          path: /V1/categories/attributes
+          projection:
+            fields:
+              id: apply_to
+              name: apply_to
+              provider_id: apply_to
+            template: audit_event
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - role
+              high_value: true
+              id: role
+              support: partial
+              title: Role
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: magento.role
+            required_payload_fields:
+              - id
+            schema_ref: magento/role/v1
+            urn_kind: magento_role
+          event_kind: role
+          id: role
+          id_field: id
+          label: Role
+          list_key: items
+          method: GET
+          name_field: company_id
+          pagination:
+            type: none
+          path: /V1/company/role/
+          projection:
+            fields:
+              id: id
+              name: company_id
+              provider_id: id
+            template: identity_group
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - search
+              high_value: true
+              id: alerts
+              support: partial
+              title: Search
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: magento.search
+            required_payload_fields:
+              - id
+            schema_ref: magento/search/v1
+            urn_kind: magento_search
+          event_kind: search
+          id: search
+          id_field: id
+          label: Search
+          list_key: items
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /V1/cmsPage/search
+          projection:
+            fields:
+              alert_id: id
+              alert_name: title
+              alert_severity: active
+              alert_status: active
+              id: id
+              name: title
+            template: alert
+          record_selector: $.items[*]
+        - coverage:
+            - families:
+                - coupons_search
+              high_value: true
+              id: policies
+              support: partial
+              title: Coupons Search
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: magento.coupons_search
+            required_payload_fields:
+              - code
+            schema_ref: magento/coupons_search/v1
+            urn_kind: magento_coupons_search
+          event_kind: coupons_search
+          id: coupons_search
+          id_field: code
+          label: Coupons Search
+          list_key: items
+          method: GET
+          name_field: code
+          pagination:
+            type: none
+          path: /V1/coupons/search
+          projection:
+            fields:
+              id: code
+              name: code
+              policy_id: code
+              policy_name: code
+              policy_type: search
+            template: policy
+          record_selector: $.items[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - attribute
+          id: attribute
+          label: Attribute
+        - default_enabled: true
+          families:
+            - role
+          id: role
+          label: Role
+        - default_enabled: true
+          families:
+            - search
+          id: search
+          label: Search
+        - default_enabled: true
+          families:
+            - coupons_search
+          id: coupons_search
+          label: Coupons Search
+      source_id: magento
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://example.com/rest/default
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /V1/categories/attributes
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Username
+            reference_only: true
+            required: true
+          - key: password
+            label: Password
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+      description: The Labs64 <a href='https://netlicensing.io/wiki/restful-api' target='_blank'>NetLicensing RESTful API</a> gives you access to NetLicensing’s core features.<br/><br/><strong>Authentication</strong><br/>You authenticate to the NetLicensing API by providing your account credentials or simply use our demo account - <code>demo:demo</code><br/><br/>Find out more about Labs64 NetLicensing at <a...
+      display_name: Labs64 NetLicensing
+      id: builtin_catalog-netlicensing
+      resource_families:
+        - coverage:
+            - families:
+                - token
+              high_value: true
+              id: secrets
+              support: partial
+              title: Token
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: netlicensing.token
+            required_payload_fields:
+              - infos
+            schema_ref: netlicensing/token/v1
+            urn_kind: netlicensing_token
+          event_kind: token
+          id: token
+          id_field: infos
+          label: Token
+          method: GET
+          name_field: infos
+          pagination:
+            type: none
+          path: /token
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: infos
+              name: infos
+              secret_id: infos
+              secret_name: infos
+              secret_type: token
+            template: secret
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - license
+              id: license
+              support: partial
+              title: License
+              type: entity_family
+          event:
+            kind: netlicensing.license
+            required_payload_fields:
+              - infos
+            schema_ref: netlicensing/license/v1
+            urn_kind: netlicensing_license
+          event_kind: license
+          id: license
+          id_field: infos
+          label: License
+          method: GET
+          name_field: infos
+          pagination:
+            type: none
+          path: /license
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: infos
+              name: infos
+              resource_id: infos
+              resource_name: infos
+              resource_type: license
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - licensee
+              id: licensee
+              support: partial
+              title: Licensee
+              type: entity_family
+          event:
+            kind: netlicensing.licensee
+            required_payload_fields:
+              - infos
+            schema_ref: netlicensing/licensee/v1
+            urn_kind: netlicensing_licensee
+          event_kind: licensee
+          id: licensee
+          id_field: infos
+          label: Licensee
+          method: GET
+          name_field: infos
+          pagination:
+            type: none
+          path: /licensee
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: infos
+              name: infos
+              resource_id: infos
+              resource_name: infos
+              resource_type: licensee
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - licensetemplate
+              id: licensetemplate
+              support: partial
+              title: Licensetemplate
+              type: entity_family
+          event:
+            kind: netlicensing.licensetemplate
+            required_payload_fields:
+              - infos
+            schema_ref: netlicensing/licensetemplate/v1
+            urn_kind: netlicensing_licensetemplate
+          event_kind: licensetemplate
+          id: licensetemplate
+          id_field: infos
+          label: Licensetemplate
+          method: GET
+          name_field: infos
+          pagination:
+            type: none
+          path: /licensetemplate
+          permissions_needed:
+            - basicAuth
+          projection:
+            fields:
+              id: infos
+              name: infos
+              resource_id: infos
+              resource_name: infos
+              resource_type: licensetemplate
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - token
+          id: token
+          label: Token
+        - families:
+            - license
+          id: license
+          label: License
+        - families:
+            - licensee
+          id: licensee
+          label: Licensee
+        - families:
+            - licensetemplate
+          id: licensetemplate
+          label: Licensetemplate
+      source_id: netlicensing
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://go.netlicensing.io/core/v2/rest
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /token
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: Generated from an OpenAPI description.
+      display_name: Nordigen
+      id: builtin_catalog-nordigen
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: nordigen.account
+            required_payload_fields:
+              - id
+            schema_ref: nordigen/account/v1
+            urn_kind: nordigen_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/v2/payments/account/
+          permissions_needed:
+            - jwtAuth
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - creditor
+              id: creditor
+              support: partial
+              title: Creditor
+              type: entity_family
+          event:
+            kind: nordigen.creditor
+            required_payload_fields:
+              - id
+            schema_ref: nordigen/creditor/v1
+            urn_kind: nordigen_creditor
+          event_kind: creditor
+          id: creditor
+          id_field: id
+          label: Creditor
+          list_key: results
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /api/v2/payments/creditors/
+          permissions_needed:
+            - jwtAuth
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: creditor
+            template: asset
+          record_selector: $.results[*]
+        - coverage:
+            - families:
+                - enduser
+              high_value: true
+              id: enduser
+              support: partial
+              title: Enduser
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: nordigen.enduser
+            required_payload_fields:
+              - id
+            schema_ref: nordigen/enduser/v1
+            urn_kind: nordigen_enduser
+          event_kind: enduser
+          id: enduser
+          id_field: id
+          label: Enduser
+          list_key: results
+          method: GET
+          name_field: accepted
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /api/v2/agreements/enduser/
+          permissions_needed:
+            - jwtAuth
+          projection:
+            fields:
+              id: id
+              name: accepted
+              provider_id: id
+            template: identity_user
+          record_selector: $.results[*]
+        - coverage:
+            - families:
+                - institution
+              id: institution
+              support: partial
+              title: Institution
+              type: entity_family
+          event:
+            kind: nordigen.institution
+            required_payload_fields:
+              - id
+            schema_ref: nordigen/institution/v1
+            urn_kind: nordigen_institution
+          event_kind: institution
+          id: institution
+          id_field: id
+          label: Institution
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/v2/institutions/
+          permissions_needed:
+            - jwtAuth
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: institution
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - families:
+            - creditor
+          id: creditor
+          label: Creditor
+        - default_enabled: true
+          families:
+            - enduser
+          id: enduser
+          label: Enduser
+        - families:
+            - institution
+          id: institution
+          label: Institution
+      source_id: nordigen
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://ob.nordigen.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v2/payments/account/
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: fine_tune_id
+          label: Fine Tune Id
+          required: true
+      description: APIs for sampling from and fine-tuning language models
+      display_name: OpenAI
+      id: builtin_catalog-openai
+      resource_families:
+        - coverage:
+            - families:
+                - event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: openai.event
+            required_payload_fields:
+              - created_at
+            schema_ref: openai/event/v1
+            urn_kind: openai_event
+          event_kind: event
+          id: event
+          id_field: created_at
+          label: Event
+          list_key: data
+          method: GET
+          name_field: created_at
+          pagination:
+            type: none
+          path: /fine-tunes/${config.fine_tune_id}/events
+          projection:
+            fields:
+              id: created_at
+              name: created_at
+              provider_id: created_at
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - file
+              id: file
+              support: partial
+              title: File
+              type: entity_family
+          event:
+            kind: openai.file
+            required_payload_fields:
+              - id
+            schema_ref: openai/file/v1
+            urn_kind: openai_file
+          event_kind: file
+          id: file
+          id_field: id
+          label: File
+          list_key: data
+          method: GET
+          name_field: bytes
+          pagination:
+            type: none
+          path: /files
+          projection:
+            fields:
+              id: id
+              name: bytes
+              resource_id: id
+              resource_name: bytes
+              resource_type: file
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - fine_tune
+              id: fine_tune
+              support: partial
+              title: Fine Tune
+              type: entity_family
+          event:
+            kind: openai.fine_tune
+            required_payload_fields:
+              - id
+            schema_ref: openai/fine_tune/v1
+            urn_kind: openai_fine_tune
+          event_kind: fine_tune
+          id: fine_tune
+          id_field: id
+          label: Fine Tune
+          list_key: data
+          method: GET
+          name_field: created_at
+          pagination:
+            type: none
+          path: /fine-tunes
+          projection:
+            fields:
+              id: id
+              name: created_at
+              resource_id: id
+              resource_name: created_at
+              resource_type: fine_tune
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - model
+              id: model
+              support: partial
+              title: Model
+              type: entity_family
+          event:
+            kind: openai.model
+            required_payload_fields:
+              - id
+            schema_ref: openai/model/v1
+            urn_kind: openai_model
+          event_kind: model
+          id: model
+          id_field: id
+          label: Model
+          list_key: data
+          method: GET
+          name_field: created
+          pagination:
+            type: none
+          path: /models
+          projection:
+            fields:
+              id: id
+              name: created
+              resource_id: id
+              resource_name: created
+              resource_type: model
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - event
+          id: event
+          label: Event
+        - families:
+            - file
+          id: file
+          label: File
+        - families:
+            - fine_tune
+          id: fine_tune
+          label: Fine Tune
+        - families:
+            - model
+          id: model
+          label: Model
+      source_id: openai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.openai.com/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /fine-tunes/${config.fine_tune_id}/events
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: '# Introduction [OpenFinTech.io](https://openfintech.io) is an open database that comprises of standardized primary data for FinTech industry.<br> It contains such information as geolocation data (countries, cities, regions), organizations, currencies (national, digital, virtual, crypto), banks, digital exchangers, payment providers (PSP), payment methods, etc.<br> It is created for communication...'
+      display_name: OpenFinTech
+      id: builtin_catalog-openfintech
+      resource_families:
+        - coverage:
+            - families:
+                - organization
+              high_value: true
+              id: organization
+              support: partial
+              title: Organization
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: openfintech.organization
+            required_payload_fields:
+              - id
+            schema_ref: openfintech/organization/v1
+            urn_kind: openfintech_organization
+          event_kind: organization
+          id: organization
+          id_field: id
+          label: Organization
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            type: none
+          path: /organizations
+          projection:
+            fields:
+              id: id
+              name: attributes
+              provider_id: id
+            template: identity_group
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - bank
+              id: bank
+              support: partial
+              title: Bank
+              type: entity_family
+          event:
+            kind: openfintech.bank
+            required_payload_fields:
+              - id
+            schema_ref: openfintech/bank/v1
+            urn_kind: openfintech_bank
+          event_kind: bank
+          id: bank
+          id_field: id
+          label: Bank
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            type: none
+          path: /banks
+          projection:
+            fields:
+              id: id
+              name: attributes
+              resource_id: id
+              resource_name: attributes
+              resource_type: bank
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - country
+              id: country
+              support: partial
+              title: Country
+              type: entity_family
+          event:
+            kind: openfintech.country
+            required_payload_fields:
+              - id
+            schema_ref: openfintech/country/v1
+            urn_kind: openfintech_country
+          event_kind: country
+          id: country
+          id_field: id
+          label: Country
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            type: none
+          path: /countries
+          projection:
+            fields:
+              id: id
+              name: attributes
+              resource_id: id
+              resource_name: attributes
+              resource_type: country
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - families:
+                - currency
+              id: currency
+              support: partial
+              title: Currency
+              type: entity_family
+          event:
+            kind: openfintech.currency
+            required_payload_fields:
+              - id
+            schema_ref: openfintech/currency/v1
+            urn_kind: openfintech_currency
+          event_kind: currency
+          id: currency
+          id_field: id
+          label: Currency
+          list_key: data
+          method: GET
+          name_field: attributes
+          pagination:
+            type: none
+          path: /currencies
+          projection:
+            fields:
+              id: id
+              name: attributes
+              resource_id: id
+              resource_name: attributes
+              resource_type: currency
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - organization
+          id: organization
+          label: Organization
+        - families:
+            - bank
+          id: bank
+          label: Bank
+        - families:
+            - country
+          id: country
+          label: Country
+        - families:
+            - currency
+          id: currency
+          label: Currency
+      source_id: openfintech
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.openfintech.io/v1
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /organizations
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: '## Who is this for?'
+      display_name: Pendo
+      id: builtin_catalog-pendo
+      resource_families:
+        - coverage:
+            - families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: pendo.account
+            required_payload_fields:
+              - id
+            schema_ref: pendo/account/v1
+            urn_kind: pendo_account
+          event_kind: account
+          id: account
+          id_field: id
+          label: Account
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /accounts
+          permissions_needed:
+            - userApiKey (query parameter)
+            - userApiKey (request header)
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - feature
+              id: feature
+              support: partial
+              title: Feature
+              type: entity_family
+          event:
+            kind: pendo.feature
+            required_payload_fields:
+              - id
+            schema_ref: pendo/feature/v1
+            urn_kind: pendo_feature
+          event_kind: feature
+          id: feature
+          id_field: id
+          label: Feature
+          method: GET
+          name_field: title
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /features
+          permissions_needed:
+            - userApiKey (query parameter)
+            - userApiKey (request header)
+          projection:
+            fields:
+              id: id
+              name: title
+              resource_id: id
+              resource_name: title
+              resource_type: feature
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - user
+              high_value: true
+              id: user
+              support: partial
+              title: User
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: pendo.user
+            required_payload_fields:
+              - id
+            schema_ref: pendo/user/v1
+            urn_kind: pendo_user
+          event_kind: user
+          id: user
+          id_field: id
+          label: User
+          method: GET
+          name_field: name
+          pagination:
+            page_size: 100
+            page_size_param: limit
+            type: page
+          path: /users
+          permissions_needed:
+            - userApiKey (query parameter)
+            - userApiKey (request header)
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - search
+              id: search
+              support: partial
+              title: Search
+              type: entity_family
+          event:
+            kind: pendo.search
+            required_payload_fields:
+              - id
+            schema_ref: pendo/search/v1
+            urn_kind: pendo_search
+          event_kind: search
+          id: search
+          id_field: id
+          label: Search
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /search
+          permissions_needed:
+            - userApiKey (query parameter)
+            - userApiKey (request header)
+          projection:
+            fields:
+              id: id
+              name: title
+              resource_id: id
+              resource_name: title
+              resource_type: search
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - account
+          id: account
+          label: Account
+        - families:
+            - feature
+          id: feature
+          label: Feature
+        - default_enabled: true
+          families:
+            - user
+          id: user
+          label: User
+        - families:
+            - search
+          id: search
+          label: Search
+      source_id: pendo
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.feedback.eu.pendo.io
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /accounts
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+      description: '# Introduction The Rebilly API is built on HTTP. Our API is RESTful. It has predictable resource URLs. It returns HTTP response codes to indicate errors. It also accepts and returns JSON in the HTTP body. You can use your favorite HTTP/REST library for your programming language to use Rebilly''s API, or you can use one of our SDKs (currently available in...'
+      display_name: Rebilly
+      id: builtin_catalog-rebilly
+      resource_families:
+        - coverage:
+            - families:
+                - customer_timeline_custom_event
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Customer Timeline Custom Event
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: rebilly.customer_timeline_custom_event
+            required_payload_fields:
+              - id
+            schema_ref: rebilly/customer_timeline_custom_event/v1
+            urn_kind: rebilly_customer_timeline_custom_event
+          event_kind: customer_timeline_custom_event
+          id: customer_timeline_custom_event
+          id_field: id
+          label: Customer Timeline Custom Event
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /customer-timeline-custom-events
+          permissions_needed:
+            - JWT
+            - SecretApiKey
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - authentication_token
+              high_value: true
+              id: secrets
+              support: partial
+              title: Authentication Token
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: rebilly.authentication_token
+            required_payload_fields:
+              - credentialId
+            schema_ref: rebilly/authentication_token/v1
+            urn_kind: rebilly_authentication_token
+          event_kind: authentication_token
+          id: authentication_token
+          id_field: credentialId
+          label: Authentication Token
+          method: GET
+          name_field: credentialId
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /authentication-tokens
+          permissions_needed:
+            - JWT
+            - SecretApiKey
+          projection:
+            fields:
+              id: credentialId
+              name: credentialId
+              secret_id: credentialId
+              secret_name: credentialId
+              secret_type: authentication_token
+            template: secret
+          record_selector: $[*]
+          sensitive_payload_paths:
+            - credentialId
+            - token
+        - coverage:
+            - families:
+                - bank_account
+              high_value: true
+              id: bank_account
+              support: partial
+              title: Bank Account
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: rebilly.bank_account
+            required_payload_fields:
+              - id
+            schema_ref: rebilly/bank_account/v1
+            urn_kind: rebilly_bank_account
+          event_kind: bank_account
+          id: bank_account
+          id_field: id
+          label: Bank Account
+          method: GET
+          name_field: _embedded
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /bank-accounts
+          permissions_needed:
+            - JWT
+            - SecretApiKey
+          projection:
+            fields:
+              id: id
+              name: _embedded
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - aml
+              id: aml
+              support: partial
+              title: Aml
+              type: entity_family
+          event:
+            kind: rebilly.aml
+            required_payload_fields:
+              - _links
+            schema_ref: rebilly/aml/v1
+            urn_kind: rebilly_aml
+          event_kind: aml
+          id: aml
+          id_field: _links
+          label: Aml
+          method: GET
+          name_field: title
+          pagination:
+            type: none
+          path: /aml
+          permissions_needed:
+            - JWT
+            - SecretApiKey
+          projection:
+            fields:
+              id: _links
+              name: title
+              resource_id: _links
+              resource_name: title
+              resource_type: aml
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - customer_timeline_custom_event
+          id: customer_timeline_custom_event
+          label: Customer Timeline Custom Event
+        - default_enabled: true
+          families:
+            - authentication_token
+          id: authentication_token
+          label: Authentication Token
+        - default_enabled: true
+          families:
+            - bank_account
+          id: bank_account
+          label: Bank Account
+        - families:
+            - aml
+          id: aml
+          label: Aml
+      source_id: rebilly
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api-sandbox.rebilly.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /customer-timeline-custom-events
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            label: Client ID
+            reference_only: true
+            required: true
+            secret: true
+          - key: client_secret
+            label: Client secret
+            reference_only: true
+            required: true
+            secret: true
+        model: oauth_client_credentials
+        requires_references: true
+        token_expiration_buffer_seconds: 300
+        token_request_auth_method: client_secret_basic
+        token_url: https://accounts.salesloft.com/oauth/token
+      categories:
+        - saas
+      description: SalesLoft helps transform sales teams into modern sales organizations - converting more target accounts into customer accounts
+      display_name: Salesloft
+      id: builtin_catalog-salesloft
+      resource_families:
+        - coverage:
+            - families:
+                - crm_activity_fields_json
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Crm Activity Fields Json
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: salesloft.crm_activity_fields_json
+            required_payload_fields:
+              - id
+            schema_ref: salesloft/crm_activity_fields_json/v1
+            urn_kind: salesloft_crm_activity_fields_json
+          event_kind: crm_activity_fields_json
+          id: crm_activity_fields_json
+          id_field: id
+          label: Crm Activity Fields Json
+          method: GET
+          name_field: title
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /v2/crm_activity_fields.json
+          projection:
+            fields:
+              id: id
+              name: title
+              provider_id: id
+            template: audit_event
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - account_stages_json
+              high_value: true
+              id: account_stages_json
+              support: partial
+              title: Account Stages Json
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: salesloft.account_stages_json
+            required_payload_fields:
+              - id
+            schema_ref: salesloft/account_stages_json/v1
+            urn_kind: salesloft_account_stages_json
+          event_kind: account_stages_json
+          id: account_stages_json
+          id_field: id
+          label: Account Stages Json
+          method: GET
+          name_field: name
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /v2/account_stages.json
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - cadence_memberships_json
+              high_value: true
+              id: cadence_memberships_json
+              support: partial
+              title: Cadence Memberships Json
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: salesloft.cadence_memberships_json
+            required_payload_fields:
+              - id
+            schema_ref: salesloft/cadence_memberships_json/v1
+            urn_kind: salesloft_cadence_memberships_json
+          event_kind: cadence_memberships_json
+          id: cadence_memberships_json
+          id_field: id
+          label: Cadence Memberships Json
+          method: GET
+          name_field: added_at
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /v2/cadence_memberships.json
+          projection:
+            fields:
+              id: id
+              name: added_at
+              provider_id: id
+            template: group_membership
+          record_selector: $[*]
+        - coverage:
+            - families:
+                - groups_json
+              high_value: true
+              id: groups_json
+              support: partial
+              title: Groups Json
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: salesloft.groups_json
+            required_payload_fields:
+              - id
+            schema_ref: salesloft/groups_json/v1
+            urn_kind: salesloft_groups_json
+          event_kind: groups_json
+          id: groups_json
+          id_field: id
+          label: Groups Json
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v2/groups.json
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_group
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - crm_activity_fields_json
+          id: crm_activity_fields_json
+          label: Crm Activity Fields Json
+        - default_enabled: true
+          families:
+            - account_stages_json
+          id: account_stages_json
+          label: Account Stages Json
+        - default_enabled: true
+          families:
+            - cadence_memberships_json
+          id: cadence_memberships_json
+          label: Cadence Memberships Json
+        - default_enabled: true
+          families:
+            - groups_json
+          id: groups_json
+          label: Groups Json
+      source_id: salesloft
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.salesloft.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v2/crm_activity_fields.json
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: label_id
+          label: Label Id
+          required: true
+      description: ShipEngine's easy-to-use REST API lets you manage all of your shipping needs without worrying about the complexities of different carrier APIs and protocols. We handle all the heavy lifting so you can focus on providing a first-class shipping experience for your customers at the best possible prices.
+      display_name: ShipEngine
+      id: builtin_catalog-shipengine
+      resource_families:
+        - coverage:
+            - families:
+                - tracking
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Tracking
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: shipengine.tracking
+            required_payload_fields:
+              - carrier_detail_code
+            schema_ref: shipengine/tracking/v1
+            urn_kind: shipengine_tracking
+          event_kind: tracking
+          id: tracking
+          id_field: carrier_detail_code
+          label: Tracking
+          list_key: events
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /v1/tracking
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: carrier_detail_code
+              name: description
+              provider_id: carrier_detail_code
+            template: audit_event
+          record_selector: $.events[*]
+        - coverage:
+            - families:
+                - package
+              high_value: true
+              id: package
+              support: partial
+              title: Package
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: shipengine.package
+            required_payload_fields:
+              - name
+            schema_ref: shipengine/package/v1
+            urn_kind: shipengine_package
+          event_kind: package
+          id: package
+          id_field: name
+          label: Package
+          list_key: packages
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v1/packages
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: name
+              name: name
+              resource_id: name
+              resource_name: name
+              resource_type: package
+            template: asset
+          record_selector: $.packages[*]
+        - coverage:
+            - families:
+                - track
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Track
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: shipengine.track
+            required_payload_fields:
+              - carrier_detail_code
+            schema_ref: shipengine/track/v1
+            urn_kind: shipengine_track
+          event_kind: track
+          id: track
+          id_field: carrier_detail_code
+          label: Track
+          list_key: events
+          method: GET
+          name_field: description
+          pagination:
+            type: none
+          path: /v1/labels/${config.label_id}/track
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: carrier_detail_code
+              name: description
+              provider_id: carrier_detail_code
+            template: audit_event
+          record_selector: $.events[*]
+        - coverage:
+            - families:
+                - webhook
+              high_value: true
+              id: webhook
+              support: partial
+              title: Webhook
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: shipengine.webhook
+            required_payload_fields:
+              - event
+            schema_ref: shipengine/webhook/v1
+            urn_kind: shipengine_webhook
+          event_kind: webhook
+          id: webhook
+          id_field: event
+          label: Webhook
+          method: GET
+          name_field: url
+          pagination:
+            type: none
+          path: /v1/environment/webhooks
+          permissions_needed:
+            - api_key
+          projection:
+            fields:
+              id: event
+              name: url
+              resource_id: event
+              resource_name: url
+              resource_type: webhook
+            template: asset
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - tracking
+          id: tracking
+          label: Tracking
+        - default_enabled: true
+          families:
+            - package
+          id: package
+          label: Package
+        - default_enabled: true
+          families:
+            - track
+          id: track
+          label: Track
+        - default_enabled: true
+          families:
+            - webhook
+          id: webhook
+          label: Webhook
+      source_id: shipengine
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.shipengine.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/tracking
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      config_fields:
+        - help: Path parameter inferred from the OpenAPI operation.
+          key: key
+          label: Key
+          required: true
+      description: Taxamo’s elegant suite of APIs and comprehensive reporting dashboard enables digital merchants to easily comply with EU regulatory requirements on tax calculation, evidence collection, tax return creation and data storage.
+      display_name: Taxamo
+      id: builtin_catalog-taxamo
+      resource_families:
+        - coverage:
+            - families:
+                - payment
+              high_value: true
+              id: payment
+              support: partial
+              title: Payment
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: taxamo.payment
+            required_payload_fields:
+              - amount
+            schema_ref: taxamo/payment/v1
+            urn_kind: taxamo_payment
+          event_kind: payment
+          id: payment
+          id_field: amount
+          label: Payment
+          list_key: payments
+          method: GET
+          name_field: amount
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /api/v1/transactions/${config.key}/payments
+          projection:
+            fields:
+              id: amount
+              name: amount
+              resource_id: amount
+              resource_name: amount
+              resource_type: payment
+            template: asset
+          record_selector: $.payments[*]
+        - coverage:
+            - families:
+                - refund
+              high_value: true
+              id: refund
+              support: partial
+              title: Refund
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: taxamo.refund
+            required_payload_fields:
+              - amount
+            schema_ref: taxamo/refund/v1
+            urn_kind: taxamo_refund
+          event_kind: refund
+          id: refund
+          id_field: amount
+          label: Refund
+          list_key: refunds
+          method: GET
+          name_field: amount
+          pagination:
+            type: none
+          path: /api/v1/transactions/${config.key}/refunds
+          projection:
+            fields:
+              id: amount
+              name: amount
+              resource_id: amount
+              resource_name: amount
+              resource_type: refund
+            template: asset
+          record_selector: $.refunds[*]
+        - coverage:
+            - families:
+                - transaction
+              id: transaction
+              support: partial
+              title: Transaction
+              type: entity_family
+          event:
+            kind: taxamo.transaction
+            required_payload_fields:
+              - key
+            schema_ref: taxamo/transaction/v1
+            urn_kind: taxamo_transaction
+          event_kind: transaction
+          id: transaction
+          id_field: key
+          label: Transaction
+          list_key: transactions
+          method: GET
+          name_field: description
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /api/v1/transactions
+          projection:
+            fields:
+              id: key
+              name: description
+              resource_id: key
+              resource_name: description
+              resource_type: transaction
+            template: asset
+          record_selector: $.transactions[*]
+          sensitive_payload_paths:
+            - verification_token
+        - coverage:
+            - families:
+                - vy
+              high_value: true
+              id: vy
+              support: partial
+              title: Vy
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: taxamo.vy
+            required_payload_fields:
+              - amount
+            schema_ref: taxamo/vy/v1
+            urn_kind: taxamo_vy
+          event_kind: vy
+          id: vy
+          id_field: amount
+          label: Vy
+          list_key: report
+          method: GET
+          name_field: amount
+          pagination:
+            type: none
+          path: /api/v1/reports/eu/vies
+          projection:
+            fields:
+              id: amount
+              name: amount
+              resource_id: amount
+              resource_name: amount
+              resource_type: vy
+            template: asset
+          record_selector: $.report[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - payment
+          id: payment
+          label: Payment
+        - default_enabled: true
+          families:
+            - refund
+          id: refund
+          label: Refund
+        - families:
+            - transaction
+          id: transaction
+          label: Transaction
+        - default_enabled: true
+          families:
+            - vy
+          id: vy
+          label: Vy
+      source_id: taxamo
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.taxamo.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v1/transactions/${config.key}/payments
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        requires_references: true
+      categories:
+        - saas
+      description: '**NOTE:** This is a preview of the API and it is not considered stable since refinements are still being made.'
+      display_name: Truora
+      id: builtin_catalog-truora
+      resource_families:
+        - coverage:
+            - families:
+                - hook
+              high_value: true
+              id: hook
+              support: partial
+              title: Hook
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: truora.hook
+            required_payload_fields:
+              - actions
+            schema_ref: truora/hook/v1
+            urn_kind: truora_hook
+          event_kind: hook
+          id: hook
+          id_field: actions
+          label: Hook
+          list_key: hooks
+          method: GET
+          name_field: actions
+          pagination:
+            type: none
+          path: /v1/hooks
+          permissions_needed:
+            - api-key
+          projection:
+            fields:
+              id: actions
+              name: actions
+              resource_id: actions
+              resource_name: actions
+              resource_type: hook
+            template: asset
+          record_selector: $.hooks[*]
+        - coverage:
+            - families:
+                - report
+              high_value: true
+              id: report
+              support: partial
+              title: Report
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: truora.report
+            required_payload_fields:
+              - id
+            schema_ref: truora/report/v1
+            urn_kind: truora_report
+          event_kind: report
+          id: report
+          id_field: id
+          label: Report
+          list_key: reports
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /v1/reports
+          permissions_needed:
+            - api-key
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: report
+            template: asset
+          record_selector: $.reports[*]
+        - coverage:
+            - families:
+                - check
+              id: check
+              support: partial
+              title: Check
+              type: entity_family
+          event:
+            kind: truora.check
+            required_payload_fields:
+              - birth_certificate
+            schema_ref: truora/check/v1
+            urn_kind: truora_check
+          event_kind: check
+          id: check
+          id_field: birth_certificate
+          label: Check
+          list_key: checks
+          method: GET
+          name_field: summary
+          pagination:
+            type: none
+          path: /v1/checks
+          permissions_needed:
+            - api-key
+          projection:
+            fields:
+              id: birth_certificate
+              name: summary
+              resource_id: birth_certificate
+              resource_name: summary
+              resource_type: check
+            template: asset
+          record_selector: $.checks[*]
+        - coverage:
+            - families:
+                - config
+              id: config
+              support: partial
+              title: Config
+              type: entity_family
+          event:
+            kind: truora.config
+            required_payload_fields:
+              - ScoreConfigByCountry
+            schema_ref: truora/config/v1
+            urn_kind: truora_config
+          event_kind: config
+          id: config
+          id_field: ScoreConfigByCountry
+          label: Config
+          list_key: score_configs
+          method: GET
+          name_field: ScoreConfigByCountry
+          pagination:
+            type: none
+          path: /v1/config
+          permissions_needed:
+            - api-key
+          projection:
+            fields:
+              id: ScoreConfigByCountry
+              name: ScoreConfigByCountry
+              resource_id: ScoreConfigByCountry
+              resource_name: ScoreConfigByCountry
+              resource_type: config
+            template: asset
+          record_selector: $.score_configs[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - hook
+          id: hook
+          label: Hook
+        - default_enabled: true
+          families:
+            - report
+          id: report
+          label: Report
+        - families:
+            - check
+          id: check
+          label: Check
+        - families:
+            - config
+          id: config
+          label: Config
+      source_id: truora
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.truora.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/hooks
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            label: Client ID
+            reference_only: true
+            required: true
+            secret: true
+          - key: client_secret
+            label: Client secret
+            reference_only: true
+            required: true
+            secret: true
+        model: oauth_client_credentials
+        requires_references: true
+        token_expiration_buffer_seconds: 300
+        token_request_auth_method: client_secret_basic
+        token_url: https://api.sandbox.velopayments.com/v1/login
+      categories:
+        - saas
+      description: '## Terms and Definitions'
+      display_name: Velo Payments
+      id: builtin_catalog-velopayments
+      resource_families:
+        - coverage:
+            - families:
+                - delta
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Delta
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: velopayments.delta
+            required_payload_fields:
+              - paymentAmount
+            schema_ref: velopayments/delta/v1
+            urn_kind: velopayments_delta
+          event_kind: delta
+          id: delta
+          id_field: paymentAmount
+          label: Delta
+          list_key: content
+          method: GET
+          name_field: paymentAmount
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: pageSize
+            start_page: 1
+            type: page
+          path: /v4/payments/deltas
+          permissions_needed:
+            - OAuth2
+          projection:
+            fields:
+              id: paymentAmount
+              name: paymentAmount
+              provider_id: paymentAmount
+            template: audit_event
+          record_selector: $.content[*]
+        - coverage:
+            - families:
+                - sourceaccount
+              high_value: true
+              id: sourceaccount
+              support: partial
+              title: Sourceaccount
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: velopayments.sourceaccount
+            required_payload_fields:
+              - id
+            schema_ref: velopayments/sourceaccount/v1
+            urn_kind: velopayments_sourceaccount
+          event_kind: sourceaccount
+          id: sourceaccount
+          id_field: id
+          label: Sourceaccount
+          list_key: content
+          method: GET
+          name_field: name
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: pageSize
+            start_page: 1
+            type: page
+          path: /v3/sourceAccounts
+          permissions_needed:
+            - OAuth2
+          projection:
+            fields:
+              id: id
+              name: name
+              provider_id: id
+            template: identity_user
+          record_selector: $.content[*]
+        - coverage:
+            - families:
+                - paymentchannelrule
+              high_value: true
+              id: policies
+              support: partial
+              title: Paymentchannelrule
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: velopayments.paymentchannelrule
+            required_payload_fields:
+              - isoCountryCode
+            schema_ref: velopayments/paymentchannelrule/v1
+            urn_kind: velopayments_paymentchannelrule
+          event_kind: paymentchannelrule
+          id: paymentchannelrule
+          id_field: isoCountryCode
+          label: Paymentchannelrule
+          list_key: bank
+          method: GET
+          name_field: isoCountryCode
+          pagination:
+            type: none
+          path: /v1/paymentChannelRules
+          permissions_needed:
+            - OAuth2
+          projection:
+            fields:
+              id: isoCountryCode
+              name: isoCountryCode
+              policy_id: isoCountryCode
+              policy_name: isoCountryCode
+              policy_type: paymentchannelrule
+            template: policy
+          record_selector: $.bank[*]
+        - coverage:
+            - families:
+                - webhook
+              high_value: true
+              id: webhook
+              support: partial
+              title: Webhook
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: velopayments.webhook
+            required_payload_fields:
+              - id
+            schema_ref: velopayments/webhook/v1
+            urn_kind: velopayments_webhook
+          event_kind: webhook
+          id: webhook
+          id_field: id
+          label: Webhook
+          list_key: content
+          method: GET
+          name_field: authorizationHeader
+          pagination:
+            inject_first_page: true
+            page_param: page
+            page_size: 100
+            page_size_param: pageSize
+            start_page: 1
+            type: page
+          path: /v1/webhooks
+          permissions_needed:
+            - OAuth2
+          projection:
+            fields:
+              id: id
+              name: authorizationHeader
+              resource_id: id
+              resource_name: authorizationHeader
+              resource_type: webhook
+            template: asset
+          record_selector: $.content[*]
+      schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - delta
+          id: delta
+          label: Delta
+        - default_enabled: true
+          families:
+            - sourceaccount
+          id: sourceaccount
+          label: Sourceaccount
+        - default_enabled: true
+          families:
+            - paymentchannelrule
+          id: paymentchannelrule
+          label: Paymentchannelrule
+        - default_enabled: true
+          families:
+            - webhook
+          id: webhook
+          label: Webhook
+      source_id: velopayments
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.sandbox.velopayments.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v4/payments/deltas

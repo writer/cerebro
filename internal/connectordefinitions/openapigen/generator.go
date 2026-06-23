@@ -29,6 +29,11 @@ type Request struct {
 	AuthModel   string
 	MaxFamilies int
 	AllFamilies bool
+	// ListGETOnly restricts resource families to GET list endpoints, dropping
+	// POST "search" listings. The zero-code catalog runtime only executes GET
+	// lists, so importers set this to keep a stray POST endpoint from forcing an
+	// otherwise GET-rich connector to need bespoke code.
+	ListGETOnly bool
 }
 
 // Endpoint reports one OpenAPI endpoint considered by the generator.
@@ -71,11 +76,11 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 	}
 	sourceID := normalizeID(firstNonEmpty(request.SourceID, infoTitle(doc), "openapi_source"))
 	displayName := strings.TrimSpace(firstNonEmpty(request.DisplayName, infoTitle(doc), titleFromID(sourceID)))
-	description := strings.TrimSpace(firstNonEmpty(request.Description, infoDescription(doc), "Generated from an OpenAPI description."))
+	description := summarizeDescription(firstNonEmpty(request.Description, infoDescription(doc), "Generated from an OpenAPI description."))
 	tenantID := normalizeID(firstNonEmpty(request.TenantID, defaultTenantID))
 	baseURL, baseURLConfigField := inferBaseURL(doc, request.BaseURL)
 	auth := inferAuth(doc, request.AuthModel)
-	candidates := collectCandidates(doc, sourceID)
+	candidates := collectCandidates(doc, sourceID, request.ListGETOnly)
 	if len(candidates) == 0 {
 		return connectordefinitions.Definition{}, Report{}, fmt.Errorf("no sourcegen-ready GET list endpoints found in OpenAPI document")
 	}
@@ -134,7 +139,7 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 	return normalized, report, nil
 }
 
-func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
+func collectCandidates(doc *openapi3.T, sourceID string, getOnly bool) []candidate {
 	paths := sortedPathItems(doc)
 	candidates := []candidate{}
 	for _, pair := range paths {
@@ -149,8 +154,10 @@ func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
 				continue
 			}
 			schema := responseSchema(operation)
-			if method != "GET" && (method != "POST" || !isPostListing(operation, schema)) {
-				continue
+			if method != "GET" {
+				if getOnly || method != "POST" || !isPostListing(operation, schema) {
+					continue
+				}
 			}
 			selector, listKey, itemSchema, ok := recordShape(pair.path, schema)
 			if !ok {
@@ -847,7 +854,7 @@ type securitySchemePair struct {
 }
 
 func sortedSecuritySchemes(doc *openapi3.T) []securitySchemePair {
-	if doc == nil {
+	if doc == nil || doc.Components == nil {
 		return nil
 	}
 	values := []securitySchemePair{}
@@ -1017,7 +1024,11 @@ func highValueBonus(template, familyID, path string) int {
 		return 20
 	}
 	text := strings.ToLower(strings.Join([]string{familyID, path}, " "))
-	if containsAny(text, "asset", "device", "endpoint", "repository", "repo", "permission", "role", "secret", "token", "key", "package", "dependency", "workflow", "runner", "hook", "installation", "organization") {
+	if containsAny(text, "asset", "device", "endpoint", "repository", "repo", "permission", "role", "secret", "token", "key", "package", "dependency", "workflow", "runner", "hook", "installation", "organization",
+		// Security / identity / GRC vocabulary: these denote durable
+		// risk-relevant resources (the catalog's "high-value coverage"), as
+		// opposed to generic business objects like invoices or payments.
+		"credential", "identity", "privilege", "entitlement", "mfa", "sso", "saml", "oauth", "certificate", "vault", "vulnerability", "compliance", "audit", "incident", "scan", "firewall", "access", "session", "host", "authenticator", "group") {
 		return 10
 	}
 	return 0
@@ -1041,6 +1052,39 @@ func infoDescription(doc *openapi3.T) string {
 		return ""
 	}
 	return doc.Info.Description
+}
+
+// summarizeDescription reduces an OpenAPI info.description (frequently a
+// multi-page onboarding document with curl/auth examples and OAuth walkthroughs)
+// to a concise, single-paragraph connector summary. Besides keeping catalog
+// entries readable, this stops example credentials and auth headers embedded in
+// spec descriptions from being copied into the catalog (which secret scanners
+// flag as leaks).
+func summarizeDescription(raw string) string {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return ""
+	}
+	// Drop everything from the first fenced code block onward (curl examples,
+	// token samples, request/response snippets).
+	if idx := strings.Index(text, "```"); idx >= 0 {
+		text = text[:idx]
+	}
+	// Keep only the first paragraph.
+	if idx := strings.Index(text, "\n\n"); idx >= 0 {
+		text = text[:idx]
+	}
+	// Collapse remaining whitespace and newlines into single spaces.
+	text = strings.Join(strings.Fields(text), " ")
+	const maxLen = 400
+	if len(text) > maxLen {
+		clipped := text[:maxLen]
+		if cut := strings.LastIndex(clipped, " "); cut > 0 {
+			clipped = clipped[:cut]
+		}
+		text = strings.TrimRight(clipped, " .,;:") + "..."
+	}
+	return strings.TrimSpace(text)
 }
 
 func normalizeID(value string) string {
