@@ -351,10 +351,14 @@ func depositRecordAttributes(runtime *cerebrov1.SourceRuntime, definition connec
 }
 
 func depositEventContract(definition connectordefinitions.Definition, family connectordefinitions.ResourceFamily) []sourcecdk.EventContract {
+	requiredAttributes := append([]string(nil), family.Event.RequiredAttributes...)
+	if len(requiredAttributes) == 0 && len(family.Event.RequiredPayloadFields) == 0 {
+		requiredAttributes = []string{"tenant_id", "source_event_id", "record_class", ports.EventAttributeSourceRuntimeID}
+	}
 	return []sourcecdk.EventContract{{
 		Kind:                  depositEventKind(definition.SourceID, family),
 		SchemaRef:             depositSchemaRef(definition.SourceID, family),
-		RequiredAttributes:    family.Event.RequiredAttributes,
+		RequiredAttributes:    requiredAttributes,
 		RequiredPayloadFields: family.Event.RequiredPayloadFields,
 	}}
 }

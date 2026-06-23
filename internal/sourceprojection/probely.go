@@ -39,6 +39,7 @@ func probelyFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	}
 	if evidenceID := strings.TrimSpace(attributes["evidence_id"]); evidenceID != "" {
 		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
+		addEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime_evidence", Label: evidenceID, Attributes: map[string]string{"evidence_id": evidenceID, "evidence_cas_uri": strings.TrimSpace(attributes["evidence_cas_uri"]), "evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"])}})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, findingURN, relationSupports, map[string]string{"event_id": event.GetId()}))
 	}
 	return identityProjectionResult(entities, links)

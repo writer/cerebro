@@ -48,3 +48,40 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("event id is empty: %#v", event)
 	}
 }
+
+func TestAccessPolicyMapsPolicyName(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Token test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/networks/network-1/events/eventTypes":
+			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "event-type-1"}})
+		case "/networks/network-1/accessPolicies":
+			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "policy-1", "name": "Guest WiFi", "resource_urn": "urn:cerebro:tenant:policy:policy-1"}})
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyAccesspolicy, "networkid": "network-1", "api_key": "test-token"})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["policy_name"]; got != "Guest WiFi" {
+		t.Fatalf("policy_name = %q, want Guest WiFi", got)
+	}
+}

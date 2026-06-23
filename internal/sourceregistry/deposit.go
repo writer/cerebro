@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -18,10 +19,14 @@ type depositDefinitionSource struct {
 func newDepositDefinitionSource(definition connectordefinitions.Definition) *depositDefinitionSource {
 	contracts := make([]sourcecdk.EventContract, 0, len(definition.ResourceFamilies))
 	for _, family := range definition.ResourceFamilies {
+		requiredAttributes := append([]string(nil), family.Event.RequiredAttributes...)
+		if len(requiredAttributes) == 0 && len(family.Event.RequiredPayloadFields) == 0 {
+			requiredAttributes = []string{"tenant_id", "source_event_id", "record_class", ports.EventAttributeSourceRuntimeID}
+		}
 		contracts = append(contracts, sourcecdk.EventContract{
 			Kind:                  depositDefinitionEventKind(definition.SourceID, family),
 			SchemaRef:             depositDefinitionSchemaRef(definition.SourceID, family),
-			RequiredAttributes:    append([]string(nil), family.Event.RequiredAttributes...),
+			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: append([]string(nil), family.Event.RequiredPayloadFields...),
 		})
 	}

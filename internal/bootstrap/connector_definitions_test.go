@@ -535,9 +535,8 @@ func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
 			IDField:   "id",
 			NameField: "name",
 			Event: connectordefinitions.EventMappingSpec{
-				Kind:                  "custom_deposit.assets",
-				SchemaRef:             "custom_deposit/assets/v1",
-				RequiredPayloadFields: []string{"id"},
+				Kind:      "custom_deposit.assets",
+				SchemaRef: "custom_deposit/assets/v1",
 			},
 			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
 		}},

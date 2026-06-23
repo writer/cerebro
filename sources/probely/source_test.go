@@ -44,6 +44,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if event.Kind != "probely.needs_attention_top" {
 		t.Fatalf("kind = %q", event.Kind)
 	}
+	if event.Attributes["severity"] != "high" || event.Attributes["status"] != "open" {
+		t.Fatalf("severity/status = %q/%q, want high/open", event.Attributes["severity"], event.Attributes["status"])
+	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
 	}
