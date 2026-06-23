@@ -78,6 +78,22 @@ func TestMiddlewareReturnsTraceIDHeader(t *testing.T) {
 	}
 }
 
+func TestMiddlewareSetsSecurityHeaders(t *testing.T) {
+	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	if got := recorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := recorder.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("X-Frame-Options = %q, want DENY", got)
+	}
+}
+
 func TestMiddlewareEmitsHTTPWideEventFields(t *testing.T) {
 	stderr := captureObservabilityOutput(t, func() {
 		handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

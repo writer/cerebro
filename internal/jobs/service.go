@@ -87,7 +87,7 @@ func (s *Service) Create(ctx context.Context, request ports.CreateJobRequest) (*
 		return nil, false, err
 	}
 	if created {
-		_, _ = s.store.AppendJobEvent(ctx, ports.JobEvent{JobID: job.ID, Type: "created", Status: job.Status, Message: "job created"})
+		appendJobEventLogged(ctx, s.store, ports.JobEvent{JobID: job.ID, Type: "created", Status: job.Status, Message: "job created"})
 	}
 	eventName := "platform.job.reused"
 	if created {
@@ -224,7 +224,7 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 		finished := s.now()
 		if updated, err := s.store.UpdateJob(ctx, job.ID, ports.JobUpdate{Status: ports.JobStatusFailed, Message: "job runner unavailable", Error: "job runner unavailable", FinishedAt: &finished, AllowedStatuses: []string{ports.JobStatusQueued}}); err == nil {
 			job = updated
-			_, _ = s.store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{JobID: job.ID, Type: "failed", Status: ports.JobStatusFailed, Message: "job runner unavailable"})
+			appendJobEventLogged(context.WithoutCancel(ctx), s.store, ports.JobEvent{JobID: job.ID, Type: "failed", Status: ports.JobStatusFailed, Message: "job runner unavailable"})
 		}
 		status = ports.JobStatusFailed
 		runErr := fmt.Errorf("%w: runner missing for %s", ErrRuntimeUnavailable, job.Kind)
@@ -252,7 +252,7 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 		spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 		return err
 	}
-	_, _ = s.store.AppendJobEvent(ctx, ports.JobEvent{JobID: job.ID, Type: "started", Status: ports.JobStatusRunning, Message: "job started"})
+	appendJobEventLogged(ctx, s.store, ports.JobEvent{JobID: job.ID, Type: "started", Status: ports.JobStatusRunning, Message: "job started"})
 	telemetry.Event(ctx, "platform.job.started", jobTelemetryAttrs(job).With(telemetry.Attrs(
 		telemetry.Field{Key: "job.queue_latency_ms", Value: jobQueueLatencyMs(job)},
 		telemetry.Field{Key: "job.runner.available", Value: true},
@@ -273,7 +273,7 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
 			return err
 		}
-		_, _ = s.store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{JobID: job.ID, Type: "failed", Status: ports.JobStatusFailed, Message: runErr.Error()})
+		appendJobEventLogged(context.WithoutCancel(ctx), s.store, ports.JobEvent{JobID: job.ID, Type: "failed", Status: ports.JobStatusFailed, Message: runErr.Error()})
 		status = ports.JobStatusFailed
 		spanAttrs = spanAttrs.With(jobResultTelemetryAttrs(result, refs)).With(telemetry.Attrs(
 			telemetry.Field{Key: "job.queue_latency_ms", Value: jobQueueLatencyMs(job)},
@@ -295,7 +295,7 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 		return nil
 	}
 	if err == nil {
-		_, _ = s.store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{JobID: job.ID, Type: "completed", Status: ports.JobStatusCompleted, Message: "job completed"})
+		appendJobEventLogged(context.WithoutCancel(ctx), s.store, ports.JobEvent{JobID: job.ID, Type: "completed", Status: ports.JobStatusCompleted, Message: "job completed"})
 		status = ports.JobStatusCompleted
 		spanAttrs = spanAttrs.With(jobResultTelemetryAttrs(result, refs)).With(telemetry.Attrs(
 			telemetry.Field{Key: "job.queue_latency_ms", Value: jobQueueLatencyMs(job)},
@@ -329,7 +329,7 @@ func (s *Service) failPanickedJob(ctx context.Context, jobID string, recovered a
 		}
 		return fmt.Errorf("%w; mark job failed: %w", panicErr, err)
 	}
-	_, _ = s.store.AppendJobEvent(ctx, ports.JobEvent{JobID: jobID, Type: "failed", Status: ports.JobStatusFailed, Message: panicErr.Error()})
+	appendJobEventLogged(ctx, s.store, ports.JobEvent{JobID: jobID, Type: "failed", Status: ports.JobStatusFailed, Message: panicErr.Error()})
 	return panicErr
 }
 
@@ -383,7 +383,7 @@ func (s *Service) Cancel(ctx context.Context, jobID string) (*ports.Job, error) 
 		}
 		return nil, err
 	}
-	_, _ = s.store.AppendJobEvent(ctx, event)
+	appendJobEventLogged(ctx, s.store, event)
 	telemetry.Event(ctx, "platform.job.cancel_requested", jobTelemetryAttrs(job).With(telemetry.Attrs(
 		telemetry.Field{Key: "job.cancel_requested", Value: true},
 		telemetry.Field{Key: "job.cancel.transitioned_terminal", Value: event.Type == "cancelled"},
@@ -533,4 +533,13 @@ func hashText(value string) string {
 	}
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:8])
+}
+
+func appendJobEventLogged(ctx context.Context, store ports.JobStore, event ports.JobEvent) {
+	if _, err := store.AppendJobEvent(ctx, event); err != nil {
+		telemetry.CaptureError(ctx, "platform.job.event_append_failed", err, telemetry.Attrs(
+			telemetry.Field{Key: "job_id", Value: event.JobID},
+			telemetry.Field{Key: "event_type", Value: event.Type},
+		))
+	}
 }

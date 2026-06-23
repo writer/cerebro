@@ -3,7 +3,6 @@ package kandji
 import (
 	"context"
 	"embed"
-	"fmt"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -181,15 +180,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) allowLoopbackForTest() {

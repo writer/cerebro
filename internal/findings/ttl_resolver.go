@@ -167,7 +167,7 @@ func (s *Service) resolveTTLOpenFindings(ctx context.Context, tenantID string, r
 			if resolvedAt.IsZero() {
 				resolvedAt = now
 			}
-			writeTTLResolveLog(sink, id, strings.TrimSpace(updated.ID), ttlLabel, resolvedAt)
+			_ = writeTTLResolveLog(sink, id, strings.TrimSpace(updated.ID), ttlLabel, resolvedAt)
 		}
 		if len(candidates) < int(ttlResolverListLimit) {
 			return nil
@@ -175,7 +175,7 @@ func (s *Service) resolveTTLOpenFindings(ctx context.Context, tenantID string, r
 	}
 }
 
-func writeTTLResolveLog(sink io.Writer, ruleID, findingID, ttlLabel string, resolvedAt time.Time) {
+func writeTTLResolveLog(sink io.Writer, ruleID, findingID, ttlLabel string, resolvedAt time.Time) error {
 	encoded, err := json.Marshal(map[string]any{
 		"event":       ttlResolveLogEvent,
 		"rule_id":     ruleID,
@@ -184,9 +184,10 @@ func writeTTLResolveLog(sink io.Writer, ruleID, findingID, ttlLabel string, reso
 		"resolved_at": resolvedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
-		return
+		return err
 	}
-	_, _ = fmt.Fprintln(sink, string(encoded))
+	_, err = fmt.Fprintln(sink, string(encoded))
+	return err
 }
 
 // formatTTLDuration renders a positive time.Duration as the compact label

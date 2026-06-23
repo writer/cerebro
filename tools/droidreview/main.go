@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -424,7 +425,9 @@ func lineForIndex(body []byte, index int) int {
 
 func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr error) {
 	if path := os.Getenv("GITHUB_OUTPUT"); path != "" {
-		_ = appendFile(path, []byte(fmt.Sprintf("run_droid_review=%t\nreview_model=%s\nreview_reason=%s\n", result.RunDroidReview, result.ReviewModel, sanitizeOutput(result.ReviewReason))))
+		if err := appendFile(path, []byte(fmt.Sprintf("run_droid_review=%t\nreview_model=%s\nreview_reason=%s\n", result.RunDroidReview, result.ReviewModel, sanitizeOutput(result.ReviewReason)))); err != nil {
+			log.Printf("droidreview: write GITHUB_OUTPUT: %v", err)
+		}
 	}
 	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
 		var summary strings.Builder
@@ -457,7 +460,9 @@ func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr 
 				fmt.Fprintf(&summary, "- `%s` %s:%d %s\n", finding.Rule, finding.File, finding.Line, finding.Message)
 			}
 		}
-		_ = appendFile(path, []byte(summary.String()))
+		if err := appendFile(path, []byte(summary.String())); err != nil {
+			log.Printf("droidreview: write GITHUB_STEP_SUMMARY: %v", err)
+		}
 	}
 }
 

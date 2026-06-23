@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -34,6 +35,7 @@ import (
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
@@ -92,6 +94,7 @@ type appServices struct {
 	findings       *findings.Service
 	knowledgeOps   *knowledge.Service
 	graphQueries   *graphquery.Service
+	graphFacts     *graphfacts.Service
 	graphActions   *graphactions.Service
 	graphIngestOps *graphingest.Service
 	workflowReplay *workflowprojection.Replayer
@@ -125,7 +128,10 @@ var (
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
-	app, _ := NewWithError(cfg, deps, sources)
+	app, err := NewWithError(cfg, deps, sources)
+	if err != nil {
+		log.Printf("bootstrap: app initialization error: %v", err)
+	}
 	return app
 }
 
@@ -224,6 +230,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
 	app.services.graphQueries = app.newGraphQueryService()
+	app.services.graphFacts = graphfacts.New(claimStore(app.deps.StateStore))
 	graphActionProviders := map[string]graphactions.ActionProvider{}
 	if app.deviceService != nil {
 		graphActionProviders[graphactions.ProviderCerebroDeviceAuth] = graphactions.CerebroDeviceProvider{Service: app.deviceService}
@@ -250,6 +257,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 	return app, nil
 }
@@ -2818,6 +2826,16 @@ func (a *App) claimService() *claims.Service {
 		return a.services.claims
 	}
 	return a.newClaimService()
+}
+
+func (a *App) graphFactsService() *graphfacts.Service {
+	if a != nil && a.services.graphFacts != nil {
+		return a.services.graphFacts
+	}
+	if a == nil {
+		return graphfacts.New(nil)
+	}
+	return graphfacts.New(claimStore(a.deps.StateStore))
 }
 
 func (a *App) newClaimService() *claims.Service {

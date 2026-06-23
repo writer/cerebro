@@ -2316,7 +2316,7 @@ paths:
         - GRC
       responses:
         '200':
-          description: Built-in GRC frameworks with lifecycle metadata. Upcoming frameworks are discoverable but not measured until controls are available.
+          description: Built-in GRC frameworks with lifecycle, maturity, coverage, readiness, and gap-action metadata. Upcoming frameworks are discoverable but not measured until controls are available.
   /grc/control-profiles:
     get:
       summary: Control profile coverage

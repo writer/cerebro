@@ -24,22 +24,26 @@ type ClaimRecord struct {
 	ObservedAt    time.Time
 	ValidFrom     time.Time
 	ValidTo       time.Time
+	UpdatedAt     time.Time
 	Attributes    map[string]string
 }
 
 // ListClaimsRequest scopes one claim query.
 type ListClaimsRequest struct {
-	RuntimeID     string
-	TenantID      string
-	ClaimID       string
-	SubjectURN    string
-	Predicate     string
-	ObjectURN     string
-	ObjectValue   string
-	ClaimType     string
-	Status        string
-	SourceEventID string
-	Limit         uint32
+	RuntimeID       string
+	TenantID        string
+	ClaimID         string
+	SubjectURN      string
+	Predicate       string
+	ObjectURN       string
+	ObjectValue     string
+	ClaimType       string
+	Status          string
+	SourceEventID   string
+	Limit           uint32
+	AfterObservedAt time.Time
+	AfterUpdatedAt  time.Time
+	AfterID         string
 }
 
 // ClaimStore persists normalized claims in the state store.

@@ -480,15 +480,7 @@ func New() (*Source, error) {
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
@@ -891,18 +883,18 @@ func azureFamily[T any](source *Source, options azureFamilyOptions[T]) sourcecdk
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:             configValue(cfg, "family"),
-		tenantID:           configValue(cfg, "tenant_id"),
-		subscriptionID:     configValue(cfg, "subscription_id"),
-		groupID:            configValue(cfg, "group_id"),
-		servicePrincipalID: configValue(cfg, "service_principal_id"),
-		token:              configValue(cfg, "token"),
-		graphToken:         configValue(cfg, "graph_token"),
-		armToken:           configValue(cfg, "arm_token"),
-		baseURL:            strings.TrimRight(configValue(cfg, "base_url"), "/"),
-		graphBaseURL:       strings.TrimRight(configValue(cfg, "graph_base_url"), "/"),
-		armBaseURL:         strings.TrimRight(configValue(cfg, "arm_base_url"), "/"),
-		filter:             configValue(cfg, "filter"),
+		family:             sourcecdk.ConfigValue(cfg, "family"),
+		tenantID:           sourcecdk.ConfigValue(cfg, "tenant_id"),
+		subscriptionID:     sourcecdk.ConfigValue(cfg, "subscription_id"),
+		groupID:            sourcecdk.ConfigValue(cfg, "group_id"),
+		servicePrincipalID: sourcecdk.ConfigValue(cfg, "service_principal_id"),
+		token:              sourcecdk.ConfigValue(cfg, "token"),
+		graphToken:         sourcecdk.ConfigValue(cfg, "graph_token"),
+		armToken:           sourcecdk.ConfigValue(cfg, "arm_token"),
+		baseURL:            strings.TrimRight(sourcecdk.ConfigValue(cfg, "base_url"), "/"),
+		graphBaseURL:       strings.TrimRight(sourcecdk.ConfigValue(cfg, "graph_base_url"), "/"),
+		armBaseURL:         strings.TrimRight(sourcecdk.ConfigValue(cfg, "arm_base_url"), "/"),
+		filter:             sourcecdk.ConfigValue(cfg, "filter"),
 		perPage:            defaultPageSize,
 	}
 	if settings.family == "" {
@@ -2794,7 +2786,7 @@ func resolveAzurePrincipal(ctx context.Context, source *Source, settings setting
 
 func graphListQuery(settings settings, limit int) url.Values {
 	query := url.Values{"$top": {strconv.Itoa(limit)}}
-	addQuery(query, "$filter", settings.filter)
+	sourcecdk.AddQueryParam(query, "$filter", settings.filter)
 	return query
 }
 
@@ -2933,17 +2925,6 @@ func credentialStatus(endTime string) string {
 func boolString(value bool) string { return strconv.FormatBool(value) }
 
 func boolPtrValue(value *bool) bool { return value != nil && *value }
-
-func addQuery(query url.Values, key string, value string) {
-	if strings.TrimSpace(value) != "" {
-		query.Set(key, strings.TrimSpace(value))
-	}
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
-}
 
 func emailLike(value string) string {
 	trimmed := strings.TrimSpace(value)

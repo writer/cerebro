@@ -21,6 +21,7 @@ import (
 
 const (
 	findingCandidateStatusCandidate = "candidate"
+	findingCandidateStatusExpired   = "expired"
 	findingCandidateStatusPromoted  = "promoted"
 	findingCandidateStatusRejected  = "rejected"
 	findingCandidateDecisionType    = "finding_candidate_promotion"
@@ -104,11 +105,12 @@ type RejectCandidateResult struct {
 }
 
 type candidateRuleEvaluationState struct {
-	rule          Rule
-	run           *ports.FindingCandidateRun
-	result        *FindingCandidateEvaluationResult
-	eventsMatched uint32
-	failed        bool
+	rule              Rule
+	run               *ports.FindingCandidateRun
+	result            *FindingCandidateEvaluationResult
+	eventsMatched     uint32
+	evaluatedEventIDs []string
+	failed            bool
 }
 
 // EvaluateSourceRuntimeCandidateRules evaluates real runtime events into isolated
@@ -174,6 +176,9 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 				continue
 			}
 			state.run.EventsEvaluated++
+			if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+				state.evaluatedEventIDs = append(state.evaluatedEventIDs, eventID)
+			}
 			matchedEvent := false
 			for _, record := range emitted {
 				if record == nil {
@@ -219,6 +224,16 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 		state.run.Candidates = boundedUint32(len(state.result.Candidates))
 		state.run.Status = "completed"
 		state.run.FinishedAt = time.Now().UTC()
+		if _, err := s.candidateStore.ExpireStaleFindingCandidates(ctx, ports.FindingCandidateExpiration{
+			TenantID:          strings.TrimSpace(runtime.GetTenantId()),
+			RuntimeID:         runtimeID,
+			RuleID:            state.run.RuleID,
+			RunID:             state.run.ID,
+			EvaluatedEventIDs: state.evaluatedEventIDs,
+			RunStartedAt:      state.run.StartedAt,
+		}); err != nil {
+			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("expire stale finding candidates for run %q: %w", state.run.ID, err))
+		}
 		if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {
 			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("persist finding candidate run %q: %w", state.run.ID, err))
 		}
@@ -315,6 +330,9 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
 		return nil, fmt.Errorf("%w: rejected finding candidate cannot be promoted", ErrInvalidRequest)
 	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusExpired) {
+		return nil, fmt.Errorf("%w: expired finding candidate cannot be promoted", ErrInvalidRequest)
+	}
 	if candidate.Finding == nil {
 		return nil, fmt.Errorf("%w: finding candidate has no finding snapshot", ErrInvalidRequest)
 	}
@@ -407,6 +425,9 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
 		return nil, fmt.Errorf("%w: promoted finding candidate cannot be rejected", ErrInvalidRequest)
 	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusExpired) {
+		return nil, fmt.Errorf("%w: expired finding candidate cannot be rejected", ErrInvalidRequest)
+	}
 	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
 		emitFindingCandidateRejectionTelemetry(ctx, "already_rejected", candidate, strings.TrimSpace(candidate.DecisionID), startedAt)
 		return &RejectCandidateResult{Candidate: candidate, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
@@ -446,6 +467,8 @@ func (s *Service) findingCandidateLifecycleConflict(ctx context.Context, candida
 	switch strings.TrimSpace(current.Status) {
 	case findingCandidateStatusPromoted:
 		return fmt.Errorf("%w: promoted finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
+	case findingCandidateStatusExpired:
+		return fmt.Errorf("%w: expired finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
 	case findingCandidateStatusRejected:
 		return fmt.Errorf("%w: rejected finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
 	default:
@@ -747,34 +770,17 @@ func emitFindingCandidateRunTelemetry(ctx context.Context, run *ports.FindingCan
 }
 
 func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, candidates []*ports.FindingCandidateRecord, request ListCandidatesRequest) {
-	candidateCount, promotedCount, rejectedCount, staleCount := 0, 0, 0, 0
-	now := time.Now().UTC()
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
-		candidateCount++
-		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
-			promotedCount++
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
-			rejectedCount++
-			continue
-		}
-		if !candidate.LastObservedAt.IsZero() && now.Sub(candidate.LastObservedAt.UTC()) > 7*24*time.Hour {
-			staleCount++
-		}
-	}
+	counts := findingCandidateListTelemetryCounts(candidates, time.Now().UTC())
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(runtimeID)},
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(request.RuleID)},
 		telemetry.Field{Key: "status_filter", Value: strings.TrimSpace(request.Status)},
-		telemetry.Field{Key: "candidate_count", Value: candidateCount},
-		telemetry.Field{Key: "promoted_count", Value: promotedCount},
-		telemetry.Field{Key: "rejected_count", Value: rejectedCount},
-		telemetry.Field{Key: "open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
-		telemetry.Field{Key: "stale_candidate_count", Value: staleCount},
+		telemetry.Field{Key: "candidate_count", Value: counts.candidateCount},
+		telemetry.Field{Key: "promoted_count", Value: counts.promotedCount},
+		telemetry.Field{Key: "rejected_count", Value: counts.rejectedCount},
+		telemetry.Field{Key: "expired_count", Value: counts.expiredCount},
+		telemetry.Field{Key: "open_candidate_count", Value: counts.openCount()},
+		telemetry.Field{Key: "stale_candidate_count", Value: counts.staleCount},
 	)
 	telemetry.Event(ctx, "finding_candidate.list", attrs)
 	telemetry.IncrementMain(ctx, "finding_candidate.list.count", 1)
@@ -782,12 +788,50 @@ func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, ca
 		telemetry.Field{Key: "finding_candidate.runtime_id", Value: strings.TrimSpace(runtimeID)},
 		telemetry.Field{Key: "finding_candidate.rule_id", Value: strings.TrimSpace(request.RuleID)},
 		telemetry.Field{Key: "finding_candidate.status_filter", Value: strings.TrimSpace(request.Status)},
-		telemetry.Field{Key: "finding_candidate.candidate_count", Value: candidateCount},
-		telemetry.Field{Key: "finding_candidate.promoted_count", Value: promotedCount},
-		telemetry.Field{Key: "finding_candidate.rejected_count", Value: rejectedCount},
-		telemetry.Field{Key: "finding_candidate.open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
-		telemetry.Field{Key: "finding_candidate.stale_candidate_count", Value: staleCount},
+		telemetry.Field{Key: "finding_candidate.candidate_count", Value: counts.candidateCount},
+		telemetry.Field{Key: "finding_candidate.promoted_count", Value: counts.promotedCount},
+		telemetry.Field{Key: "finding_candidate.rejected_count", Value: counts.rejectedCount},
+		telemetry.Field{Key: "finding_candidate.expired_count", Value: counts.expiredCount},
+		telemetry.Field{Key: "finding_candidate.open_candidate_count", Value: counts.openCount()},
+		telemetry.Field{Key: "finding_candidate.stale_candidate_count", Value: counts.staleCount},
 	))
+}
+
+type findingCandidateTelemetryCounts struct {
+	candidateCount int
+	promotedCount  int
+	rejectedCount  int
+	expiredCount   int
+	staleCount     int
+}
+
+func (counts findingCandidateTelemetryCounts) openCount() int {
+	return counts.candidateCount - counts.promotedCount - counts.rejectedCount - counts.expiredCount
+}
+
+func findingCandidateListTelemetryCounts(candidates []*ports.FindingCandidateRecord, now time.Time) findingCandidateTelemetryCounts {
+	counts := findingCandidateTelemetryCounts{}
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		counts.candidateCount++
+		switch {
+		case strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted):
+			counts.promotedCount++
+			continue
+		case strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected):
+			counts.rejectedCount++
+			continue
+		case strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusExpired):
+			counts.expiredCount++
+			continue
+		}
+		if !candidate.LastObservedAt.IsZero() && now.Sub(candidate.LastObservedAt.UTC()) > 7*24*time.Hour {
+			counts.staleCount++
+		}
+	}
+	return counts
 }
 
 func emitFindingCandidatePromotionTelemetry(ctx context.Context, outcome string, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, decisionID string, startedAt time.Time) {

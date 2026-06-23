@@ -25,8 +25,17 @@ import (
 // RiskScoringConfigStore port. The zero-preserving signal request shape keeps
 // OpenAPI-permitted values distinguishable at the HTTP boundary. MCP risk action
 // plan mapping now loads that same tenant config and passes it into the domain
-// planner without moving scoring behavior into bootstrap.
-const bootstrapProductionGoLineBudget = 24823
+// planner without moving scoring behavior into bootstrap. Graph-fact MCP tools
+// add only typed request/response mapping over the graphfacts domain service and
+// the existing ClaimStore-backed graph-fact substrate, including
+// cursor/resource/toolset MCP surface mapping while fact shaping and trace
+// behavior stay in graphfacts. Trace metadata mirrors list pagination flags at
+// the MCP response boundary so clients see consistent cursor semantics. GRC
+// source health summaries add dashboard response mapping while source-health
+// aggregation stays behind existing stores. GRC framework lifecycle adds a thin
+// HTTP handler and route registration for cached framework listing; compliance
+// logic stays in the compliance package.
+const bootstrapProductionGoLineBudget = 25305
 
 type bootstrapFileLineCount struct {
 	path  string

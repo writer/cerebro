@@ -304,8 +304,8 @@ func policyRuleCursorHasMore(state policyRuleCursor) bool {
 func (s *Source) listPolicies(ctx context.Context, settings settings, policyType string, after string, limit int) ([]policyRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
-	addQuery(query, "type", policyType)
+	sourcecdk.AddQueryParam(query, "after", after)
+	sourcecdk.AddQueryParam(query, "type", policyType)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/policies", query, "okta policy", func(record *policyRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -318,7 +318,7 @@ func (s *Source) listPolicies(ctx context.Context, settings settings, policyType
 func (s *Source) listPolicyRules(ctx context.Context, settings settings, policyID string, after string, limit int) ([]policyRuleRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
+	sourcecdk.AddQueryParam(query, "after", after)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/policies/"+url.PathEscape(policyID)+"/rules", query, "okta policy rule", func(record *policyRuleRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)

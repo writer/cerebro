@@ -9,6 +9,7 @@ import (
 
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 type ResolvedContext struct {
@@ -231,20 +232,29 @@ func (h Handler) failEvidencePacketTask(ctx context.Context, job *ports.Job, cau
 		return
 	}
 	finishedAt := time.Now().UTC()
-	_, _ = h.Store.UpdateJob(context.WithoutCancel(ctx), job.ID, ports.JobUpdate{
+	bgCtx := context.WithoutCancel(ctx)
+	if _, err := h.Store.UpdateJob(bgCtx, job.ID, ports.JobUpdate{
 		Status:          ports.JobStatusFailed,
 		Message:         "A2A agent evidence packet failed.",
 		Error:           cause.Error(),
 		FinishedAt:      &finishedAt,
 		AllowedStatuses: []string{ports.JobStatusQueued, ports.JobStatusRunning},
-	})
-	_, _ = h.Store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{
+	}); err != nil {
+		telemetry.CaptureError(bgCtx, "a2a.evidence_packet.update_job_failed", err, telemetry.Attrs(
+			telemetry.Field{Key: "job_id", Value: job.ID},
+		))
+	}
+	if _, err := h.Store.AppendJobEvent(bgCtx, ports.JobEvent{
 		JobID:   job.ID,
 		Type:    "a2a.task.failed",
 		Status:  ports.JobStatusFailed,
 		Message: "A2A agent-evidence-packet task failed.",
 		Payload: map[string]any{"state": agentplatform.A2ATaskStateFailed},
-	})
+	}); err != nil {
+		telemetry.CaptureError(bgCtx, "a2a.evidence_packet.event_append_failed", err, telemetry.Attrs(
+			telemetry.Field{Key: "job_id", Value: job.ID},
+		))
+	}
 }
 
 func (h Handler) getTask(ctx context.Context, request agentplatform.A2AJSONRPCRequest) agentplatform.A2AJSONRPCResponse {

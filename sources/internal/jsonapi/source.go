@@ -238,31 +238,31 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings{}, fmt.Errorf("jsonapi source is required")
 	}
 	var err error
-	configuredTokenURL := configValue(cfg, "token_url")
+	configuredTokenURL := sourcecdk.ConfigValue(cfg, "token_url")
 	resolved := settings{
-		tenantID:                firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
-		family:                  strings.TrimSpace(configValue(cfg, "family")),
-		baseURL:                 strings.TrimSpace(configValue(cfg, "base_url")),
+		tenantID:                firstNonEmpty(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)),
+		family:                  strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")),
+		baseURL:                 strings.TrimSpace(sourcecdk.ConfigValue(cfg, "base_url")),
 		authModel:               normalizedAuthModel(s.options.AuthModel),
-		token:                   firstNonEmpty(configValue(cfg, "token"), configValue(cfg, "api_token"), configValue(cfg, "api_key"), configValue(cfg, "access_token"), configValue(cfg, "jwt"), configValue(cfg, "signature")),
-		username:                configValue(cfg, "username"),
-		password:                configValue(cfg, "password"),
-		clientID:                firstNonEmpty(configValue(cfg, "client_id"), configValue(cfg, "access_key")),
-		clientSecret:            firstNonEmpty(configValue(cfg, "client_secret"), configValue(cfg, "secret_key")),
-		refreshToken:            configValue(cfg, "refresh_token"),
+		token:                   firstNonEmpty(sourcecdk.ConfigValue(cfg, "token"), sourcecdk.ConfigValue(cfg, "api_token"), sourcecdk.ConfigValue(cfg, "api_key"), sourcecdk.ConfigValue(cfg, "access_token"), sourcecdk.ConfigValue(cfg, "jwt"), sourcecdk.ConfigValue(cfg, "signature")),
+		username:                sourcecdk.ConfigValue(cfg, "username"),
+		password:                sourcecdk.ConfigValue(cfg, "password"),
+		clientID:                firstNonEmpty(sourcecdk.ConfigValue(cfg, "client_id"), sourcecdk.ConfigValue(cfg, "access_key")),
+		clientSecret:            firstNonEmpty(sourcecdk.ConfigValue(cfg, "client_secret"), sourcecdk.ConfigValue(cfg, "secret_key")),
+		refreshToken:            sourcecdk.ConfigValue(cfg, "refresh_token"),
 		tokenURL:                firstNonEmpty(configuredTokenURL, s.options.OAuthTokenURL),
 		oauthScopes:             cloneStrings(s.options.OAuthScopes),
 		oauthTokenParams:        cloneStringMap(s.options.OAuthTokenParams),
-		oauthTokenRequestMethod: firstNonEmpty(configValue(cfg, "token_request_auth_method"), s.options.OAuthTokenRequestAuthMethod),
+		oauthTokenRequestMethod: firstNonEmpty(sourcecdk.ConfigValue(cfg, "token_request_auth_method"), s.options.OAuthTokenRequestAuthMethod),
 		perPage:                 defaultPageSize,
-		region:                  configValue(cfg, "region"),
-		service:                 configValue(cfg, "service"),
-		apiKey:                  configValue(cfg, "api_key"),
+		region:                  sourcecdk.ConfigValue(cfg, "region"),
+		service:                 sourcecdk.ConfigValue(cfg, "service"),
+		apiKey:                  sourcecdk.ConfigValue(cfg, "api_key"),
 	}
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
 	}
-	if rawAuthModel := strings.TrimSpace(configValue(cfg, "auth_model")); rawAuthModel != "" {
+	if rawAuthModel := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "auth_model")); rawAuthModel != "" {
 		authModel := normalizedAuthModel(rawAuthModel)
 		if !authModelAllowed(authModel, s.options.ConfigurableAuthModels) {
 			return resolved, fmt.Errorf("%s auth_model %q is not supported", s.options.SourceID, rawAuthModel)
@@ -309,7 +309,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 	}
 	if key := strings.TrimSpace(s.options.PrivateEndpointAllowlistConfigKey); key != "" {
-		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, configValue(cfg, key))
+		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, sourcecdk.ConfigValue(cfg, key))
 		if err != nil {
 			return resolved, err
 		}
@@ -327,7 +327,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.tenantID == "" {
 		resolved.tenantID = host
 	}
-	if rawPerPage := strings.TrimSpace(configValue(cfg, "per_page")); rawPerPage != "" {
+	if rawPerPage := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "per_page")); rawPerPage != "" {
 		perPage, err := strconv.Atoi(rawPerPage)
 		if err != nil {
 			return resolved, fmt.Errorf("parse %s per_page: %w", s.options.SourceID, err)
@@ -337,7 +337,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		}
 		resolved.perPage = perPage
 	}
-	path := firstNonEmpty(configValue(cfg, resolved.family+"_path"), configValue(cfg, "path"), family.Path)
+	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, resolved.family+"_path"), sourcecdk.ConfigValue(cfg, "path"), family.Path)
 	path, err = resolveConfigTemplate(s.options.SourceID, path, cfg)
 	if err != nil {
 		return resolved, err
@@ -478,7 +478,7 @@ func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Va
 		if queryKey == "" || configKey == "" {
 			continue
 		}
-		if value := strings.TrimSpace(configValue(cfg, configKey)); value != "" {
+		if value := strings.TrimSpace(sourcecdk.ConfigValue(cfg, configKey)); value != "" {
 			for _, item := range queryValues(value, strings.HasSuffix(queryKey, "[]")) {
 				query.Add(queryKey, item)
 			}
@@ -1399,7 +1399,7 @@ func resolvePathParams(sourceID string, path string, cfg sourcecdk.Config, param
 			continue
 		}
 		token := "{" + param + "}"
-		value := configValue(cfg, param)
+		value := sourcecdk.ConfigValue(cfg, param)
 		if value != "" {
 			values[param] = value
 		}
@@ -1435,7 +1435,7 @@ func resolveConfigTemplate(sourceID string, value string, cfg sourcecdk.Config) 
 		if key == "" {
 			return "", fmt.Errorf("%s config template contains an empty key in %q", sourceID, value)
 		}
-		replacement := configValue(cfg, key)
+		replacement := sourcecdk.ConfigValue(cfg, key)
 		if replacement == "" {
 			return "", fmt.Errorf("%s config key %q is required", sourceID, key)
 		}
@@ -1539,14 +1539,6 @@ func resolveRecordPath(sourceID string, path string, pathParams map[string]strin
 		resolved = resolved[:start] + url.PathEscape(value) + resolved[start+end+1:]
 	}
 	return sourcehttp.NormalizeRequestPath(sourceID, resolved)
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, ok := cfg.Lookup(key)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(value)
 }
 
 func rawString(raw json.RawMessage) string {

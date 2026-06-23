@@ -258,26 +258,18 @@ func (s *Source) readFamily(ctx context.Context, settings settings, cursor *cere
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:      configValue(cfg, "family"),
-		domain:      configValue(cfg, "domain"),
-		customerID:  configValue(cfg, "customer_id"),
-		token:       configValue(cfg, "token"),
-		baseURL:     configValue(cfg, "base_url"),
-		groupKey:    configValue(cfg, "group_key"),
-		application: configValue(cfg, "application"),
+		family:      sourcecdk.ConfigValue(cfg, "family"),
+		domain:      sourcecdk.ConfigValue(cfg, "domain"),
+		customerID:  sourcecdk.ConfigValue(cfg, "customer_id"),
+		token:       sourcecdk.ConfigValue(cfg, "token"),
+		baseURL:     sourcecdk.ConfigValue(cfg, "base_url"),
+		groupKey:    sourcecdk.ConfigValue(cfg, "group_key"),
+		application: sourcecdk.ConfigValue(cfg, "application"),
 		perPage:     defaultPageSize,
 	}
 	if settings.family == "" {
@@ -322,7 +314,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 func (s *Source) readRawPage(ctx context.Context, settings settings, pageToken string, limit int) ([]json.RawMessage, string, error) {
 	query := url.Values{}
 	query.Set("maxResults", strconv.Itoa(limit))
-	addQuery(query, "pageToken", pageToken)
+	sourcecdk.AddQueryParam(query, "pageToken", pageToken)
 	var path string
 	var field string
 	switch settings.family {
@@ -740,17 +732,6 @@ func firstParsedTime(values ...string) time.Time {
 		}
 	}
 	return time.Now().UTC()
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
-}
-
-func addQuery(values url.Values, key string, value string) {
-	if strings.TrimSpace(value) != "" {
-		values.Set(key, strings.TrimSpace(value))
-	}
 }
 
 func checkpointCursor(next string, fallback string) string {

@@ -683,7 +683,11 @@ func (a *App) buildGRCAuditPacket(r *http.Request) (grcAuditPacketResponse, erro
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
 		if graphStore := graphQueryStore(a.deps.GraphStore); graphStore != nil {
-			graph, _ = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(limit))
+			var graphErr error
+			graph, graphErr = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(limit))
+			if graphErr != nil {
+				graph = nil
+			}
 		}
 	}
 	items := grcFindingItems([]*ports.FindingRecord{finding}, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence))

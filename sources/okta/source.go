@@ -515,15 +515,7 @@ func oktaURNsFor[T any](settings settings, records []T, render func(settings, T)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -532,21 +524,21 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, error) {
 	settings := settings{
-		family:    configValue(cfg, "family"),
-		domain:    configValue(cfg, "domain"),
-		baseURL:   configValue(cfg, "base_url"),
-		token:     configValue(cfg, "token"),
-		filter:    configValue(cfg, "filter"),
-		q:         configValue(cfg, "q"),
-		search:    configValue(cfg, "search"),
-		sortBy:    configValue(cfg, "sort_by"),
-		sortOrder: configValue(cfg, "sort_order"),
-		since:     configValue(cfg, "since"),
-		until:     configValue(cfg, "until"),
-		groupID:   configValue(cfg, "group_id"),
-		appID:     configValue(cfg, "app_id"),
-		userID:    configValue(cfg, "user_id"),
-		userEmail: configValue(cfg, "user_email"),
+		family:    sourcecdk.ConfigValue(cfg, "family"),
+		domain:    sourcecdk.ConfigValue(cfg, "domain"),
+		baseURL:   sourcecdk.ConfigValue(cfg, "base_url"),
+		token:     sourcecdk.ConfigValue(cfg, "token"),
+		filter:    sourcecdk.ConfigValue(cfg, "filter"),
+		q:         sourcecdk.ConfigValue(cfg, "q"),
+		search:    sourcecdk.ConfigValue(cfg, "search"),
+		sortBy:    sourcecdk.ConfigValue(cfg, "sort_by"),
+		sortOrder: sourcecdk.ConfigValue(cfg, "sort_order"),
+		since:     sourcecdk.ConfigValue(cfg, "since"),
+		until:     sourcecdk.ConfigValue(cfg, "until"),
+		groupID:   sourcecdk.ConfigValue(cfg, "group_id"),
+		appID:     sourcecdk.ConfigValue(cfg, "app_id"),
+		userID:    sourcecdk.ConfigValue(cfg, "user_id"),
+		userEmail: sourcecdk.ConfigValue(cfg, "user_email"),
 		perPage:   defaultPageSize,
 	}
 	if settings.family == "" {
@@ -717,12 +709,12 @@ func normalizeUserSortOrder(raw string) (string, error) {
 func (s *Source) listAudit(ctx context.Context, settings settings, after string, limit int) ([]auditRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
-	addQuery(query, "filter", settings.filter)
-	addQuery(query, "q", settings.q)
-	addQuery(query, "since", settings.since)
-	addQuery(query, "until", settings.until)
-	addQuery(query, "sortOrder", settings.sortOrder)
+	sourcecdk.AddQueryParam(query, "after", after)
+	sourcecdk.AddQueryParam(query, "filter", settings.filter)
+	sourcecdk.AddQueryParam(query, "q", settings.q)
+	sourcecdk.AddQueryParam(query, "since", settings.since)
+	sourcecdk.AddQueryParam(query, "until", settings.until)
+	sourcecdk.AddQueryParam(query, "sortOrder", settings.sortOrder)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/logs", query, "okta audit event", func(record *auditRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -732,12 +724,12 @@ func (s *Source) listAudit(ctx context.Context, settings settings, after string,
 func (s *Source) listUsers(ctx context.Context, settings settings, after string, limit int) ([]userRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
-	addQuery(query, "filter", settings.filter)
-	addQuery(query, "q", settings.q)
-	addQuery(query, "search", settings.search)
-	addQuery(query, "sortBy", settings.sortBy)
-	addQuery(query, "sortOrder", settings.sortOrder)
+	sourcecdk.AddQueryParam(query, "after", after)
+	sourcecdk.AddQueryParam(query, "filter", settings.filter)
+	sourcecdk.AddQueryParam(query, "q", settings.q)
+	sourcecdk.AddQueryParam(query, "search", settings.search)
+	sourcecdk.AddQueryParam(query, "sortBy", settings.sortBy)
+	sourcecdk.AddQueryParam(query, "sortOrder", settings.sortOrder)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/users", query, "okta user", func(record *userRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -786,11 +778,11 @@ func (s *Source) userMFASummary(ctx context.Context, settings settings, userID s
 func (s *Source) listGroups(ctx context.Context, settings settings, after string, limit int) ([]groupRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
-	addQuery(query, "q", settings.q)
-	addQuery(query, "search", settings.search)
-	addQuery(query, "sortBy", settings.sortBy)
-	addQuery(query, "sortOrder", settings.sortOrder)
+	sourcecdk.AddQueryParam(query, "after", after)
+	sourcecdk.AddQueryParam(query, "q", settings.q)
+	sourcecdk.AddQueryParam(query, "search", settings.search)
+	sourcecdk.AddQueryParam(query, "sortBy", settings.sortBy)
+	sourcecdk.AddQueryParam(query, "sortOrder", settings.sortOrder)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/groups", query, "okta group", func(record *groupRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -800,7 +792,7 @@ func (s *Source) listGroups(ctx context.Context, settings settings, after string
 func (s *Source) listGroupMembers(ctx context.Context, settings settings, after string, limit int) ([]userRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
+	sourcecdk.AddQueryParam(query, "after", after)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/groups/"+url.PathEscape(settings.groupID)+"/users", query, "okta group member", func(record *userRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -810,9 +802,9 @@ func (s *Source) listGroupMembers(ctx context.Context, settings settings, after 
 func (s *Source) listApplications(ctx context.Context, settings settings, after string, limit int) ([]appRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
-	addQuery(query, "q", settings.q)
-	addQuery(query, "filter", settings.filter)
+	sourcecdk.AddQueryParam(query, "after", after)
+	sourcecdk.AddQueryParam(query, "q", settings.q)
+	sourcecdk.AddQueryParam(query, "filter", settings.filter)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/apps", query, "okta application", func(record *appRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -853,7 +845,7 @@ func (s *Source) listAppAssignments(ctx context.Context, settings settings, afte
 func (s *Source) listAppUserAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
+	sourcecdk.AddQueryParam(query, "after", after)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/apps/"+url.PathEscape(settings.appID)+"/users", query, "okta app user assignment", func(record *appAssignmentRecord, raw json.RawMessage) {
 		record.AppID = settings.appID
@@ -865,7 +857,7 @@ func (s *Source) listAppUserAssignments(ctx context.Context, settings settings, 
 func (s *Source) listAppGroupAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
+	sourcecdk.AddQueryParam(query, "after", after)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/apps/"+url.PathEscape(settings.appID)+"/groups", query, "okta app group assignment", func(record *appAssignmentRecord, raw json.RawMessage) {
 		record.AppID = settings.appID
@@ -877,7 +869,7 @@ func (s *Source) listAppGroupAssignments(ctx context.Context, settings settings,
 func (s *Source) listAdminRoles(ctx context.Context, settings settings, after string, limit int) ([]adminRoleRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	addQuery(query, "after", after)
+	sourcecdk.AddQueryParam(query, "after", after)
 
 	return listJSONRecords(ctx, s, settings, "/api/v1/users/"+url.PathEscape(settings.userID)+"/roles", query, "okta admin role", func(record *adminRoleRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
@@ -1727,13 +1719,6 @@ func utcTime(value *time.Time) *time.Time {
 	return &result
 }
 
-func addQuery(query url.Values, key string, value string) {
-	if strings.TrimSpace(value) == "" {
-		return
-	}
-	query.Set(key, value)
-}
-
 func addAttribute(attributes map[string]string, key string, value string) {
 	if strings.TrimSpace(value) == "" {
 		return
@@ -1794,11 +1779,6 @@ func firstNonEmpty(values ...string) string {
 
 func boolString(value bool) string {
 	return strconv.FormatBool(value)
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }
 
 func oktaMFAFactorEnrolled(factor userFactorRecord) bool {

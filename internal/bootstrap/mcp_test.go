@@ -144,6 +144,9 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.neighborhood",
 		"cerebro.graph.impact",
 		"cerebro.graph.paths",
+		"cerebro.graph.facts.list",
+		"cerebro.graph.facts.explain",
+		"cerebro.graph.facts.trace",
 		"cerebro.agent.preflight",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
@@ -205,6 +208,9 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.graph.neighborhood":              {Markers: []string{"GET /platform/graph/neighborhood"}},
 	"cerebro.graph.impact":                    {Markers: []string{"GET /platform/graph/impact"}},
 	"cerebro.graph.paths":                     {Markers: []string{"GET /platform/graph/attack-paths"}},
+	"cerebro.graph.facts.list":                {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
+	"cerebro.graph.facts.explain":             {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
+	"cerebro.graph.facts.trace":               {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
@@ -677,8 +683,8 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 		t.Fatalf("prompts/list error = %#v", promptsResp["error"])
 	}
 	prompts := promptsResp["result"].(map[string]any)["prompts"].([]any)
-	if len(prompts) != 3 {
-		t.Fatalf("len(prompts) = %d, want 3", len(prompts))
+	if len(prompts) != 4 {
+		t.Fatalf("len(prompts) = %d, want 4", len(prompts))
 	}
 
 	promptResp, _ := postMCP(t, server, "", map[string]any{
@@ -1092,6 +1098,9 @@ func TestMCPRuntimeIDToolsDoNotRevealCrossTenantExistence(t *testing.T) {
 		{name: "evidence.list", tool: "cerebro.evidence.list", arguments: map[string]any{"runtime_id": "other-runtime"}},
 		{name: "assets.search", tool: "cerebro.assets.search", arguments: map[string]any{"runtime_id": "other-runtime"}},
 		{name: "risk.summary", tool: "cerebro.risk.summary", arguments: map[string]any{"runtime_id": "other-runtime"}},
+		{name: "graph.facts.list", tool: "cerebro.graph.facts.list", arguments: map[string]any{"runtime_id": "other-runtime"}},
+		{name: "graph.facts.explain", tool: "cerebro.graph.facts.explain", arguments: map[string]any{"runtime_id": "other-runtime", "fact_id": "fact-1"}},
+		{name: "graph.facts.trace", tool: "cerebro.graph.facts.trace", arguments: map[string]any{"runtime_id": "other-runtime", "fact_id": "fact-1"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			response, _ := postMCP(t, server, "", map[string]any{
@@ -1106,6 +1115,38 @@ func TestMCPRuntimeIDToolsDoNotRevealCrossTenantExistence(t *testing.T) {
 			result := response["result"].(map[string]any)
 			text := result["content"].([]any)[0].(map[string]any)["text"].(string)
 			if result["isError"] != true || !strings.Contains(text, "source runtime not found") || strings.Contains(text, "tenant forbidden") {
+				t.Fatalf("%s response = %#v", tt.name, response)
+			}
+		})
+	}
+}
+
+func TestMCPGraphFactsURNSelectorsDoNotRevealCrossTenantExistence(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	for _, tt := range []struct {
+		name      string
+		tool      string
+		arguments map[string]any
+	}{
+		{name: "list subject", tool: "cerebro.graph.facts.list", arguments: map[string]any{"subject_urn": "urn:cerebro:other:asset:prod-db"}},
+		{name: "explain subject", tool: "cerebro.graph.facts.explain", arguments: map[string]any{"subject_urn": "urn:cerebro:other:asset:prod-db", "predicate": "has_status", "object_value": "ok"}},
+		{name: "trace object", tool: "cerebro.graph.facts.trace", arguments: map[string]any{"subject_urn": "urn:cerebro:writer:asset:prod-db", "predicate": "owned_by", "object_urn": "urn:cerebro:other:identity:alice"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			response, _ := postMCP(t, server, "", map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"method":  "tools/call",
+				"params": map[string]any{
+					"name":      tt.tool,
+					"arguments": tt.arguments,
+				},
+			})
+			result := response["result"].(map[string]any)
+			text := result["content"].([]any)[0].(map[string]any)["text"].(string)
+			if result["isError"] != true || !strings.Contains(text, "graph entity not found") || strings.Contains(text, "tenant forbidden") {
 				t.Fatalf("%s response = %#v", tt.name, response)
 			}
 		})
@@ -1834,6 +1875,192 @@ func TestMCPGraphNeighborhood(t *testing.T) {
 	}
 	if graph.neighborhoodRootURN != "urn:cerebro:writer:asset:prod-db" || graph.neighborhoodLimit != 5 {
 		t.Fatalf("graph query = (%q, %d)", graph.neighborhoodRootURN, graph.neighborhoodLimit)
+	}
+}
+
+func TestMCPGraphFactsListAndExplain(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-1": {Id: "runtime-1", TenantId: "writer", SourceId: "github"},
+		},
+		claims: map[string]*ports.ClaimRecord{
+			"fact-1": {
+				ID:            "fact-1",
+				RuntimeID:     "runtime-1",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:github_code_repository:repo-1",
+				Predicate:     "owned_by",
+				ObjectURN:     "urn:cerebro:writer:identity:email:alice@example.com",
+				ClaimType:     "relation",
+				Status:        "asserted",
+				SourceEventID: "event-1",
+				ObservedAt:    time.Date(2026, 6, 22, 14, 0, 0, 0, time.UTC),
+				UpdatedAt:     time.Date(2026, 6, 22, 14, 1, 0, 0, time.UTC),
+				Attributes:    map[string]string{"confidence": "high", "evidence_urn": "urn:cerebro:writer:evidence:evidence-1"},
+			},
+			"fact-2": {
+				ID:          "fact-2",
+				RuntimeID:   "runtime-1",
+				TenantID:    "writer",
+				SubjectURN:  "urn:cerebro:writer:github_code_repository:repo-1",
+				Predicate:   "has_status",
+				ObjectValue: "active",
+				ClaimType:   "attribute",
+				Status:      "asserted",
+				ObservedAt:  time.Date(2026, 6, 22, 13, 59, 0, 0, time.UTC),
+				UpdatedAt:   time.Date(2026, 6, 22, 14, 0, 0, 0, time.UTC),
+				Attributes:  map[string]string{"confidence": "medium"},
+			},
+			"fact-3": {
+				ID:          "fact-3",
+				RuntimeID:   "runtime-1",
+				TenantID:    "writer",
+				SubjectURN:  "urn:cerebro:writer:github_code_repository:repo-1",
+				Predicate:   "monitored_by",
+				ObjectValue: "security",
+				ClaimType:   "attribute",
+				Status:      "asserted",
+				ObservedAt:  time.Date(2026, 6, 22, 13, 58, 0, 0, time.UTC),
+				UpdatedAt:   time.Date(2026, 6, 22, 13, 59, 0, 0, time.UTC),
+				Attributes:  map[string]string{"confidence": "medium"},
+			},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	listResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.facts.list",
+			"arguments": map[string]any{
+				"runtime_id": "runtime-1",
+				"predicate":  "owned_by",
+				"limit":      5,
+			},
+		},
+	})
+	if listResp["error"] != nil {
+		t.Fatalf("graph facts list error = %#v", listResp["error"])
+	}
+	listContent := listResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	listMetadata := listContent["metadata"].(map[string]any)
+	if listMetadata["limit_applied"] != float64(5) || listMetadata["returned"] != float64(1) {
+		t.Fatalf("list metadata = %#v", listMetadata)
+	}
+	facts := listContent["facts"].([]any)
+	if len(facts) != 1 {
+		t.Fatalf("len(facts) = %d, want 1", len(facts))
+	}
+	if got := facts[0].(map[string]any)["id"]; got != "fact-1" {
+		t.Fatalf("fact id = %#v, want fact-1", got)
+	}
+	if store.claimListRequest.Predicate != "owned_by" || store.claimListRequest.Limit != 6 {
+		t.Fatalf("claim list request = %#v", store.claimListRequest)
+	}
+
+	explainResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.graph.facts.explain",
+			"arguments": map[string]any{"runtime_id": "runtime-1", "fact_id": "fact-1"},
+		},
+	})
+	if explainResp["error"] != nil {
+		t.Fatalf("graph facts explain error = %#v", explainResp["error"])
+	}
+	explain := explainResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if explain["explanation"] == "" {
+		t.Fatalf("explanation missing from response: %#v", explain)
+	}
+	explainMetadata := explain["metadata"].(map[string]any)
+	if explainMetadata["returned"] != float64(1) || explainMetadata["stateless"] != true {
+		t.Fatalf("explain metadata = %#v", explainMetadata)
+	}
+	edge := explain["edge"].(map[string]any)
+	if edge["relation"] != "owned_by" || edge["status"] != "asserted" {
+		t.Fatalf("edge = %#v, want owned_by asserted edge", edge)
+	}
+	evidence := explain["evidence"].([]any)
+	if len(evidence) != 2 {
+		t.Fatalf("len(evidence) = %d, want source event plus evidence URN", len(evidence))
+	}
+
+	traceResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.facts.trace",
+			"arguments": map[string]any{
+				"runtime_id":         "runtime-1",
+				"fact_id":            "fact-1",
+				"limit":              2,
+				"include_evidence":   true,
+				"evidence_limit":     2,
+				"include_attributes": false,
+			},
+		},
+	})
+	if traceResp["error"] != nil {
+		t.Fatalf("graph facts trace error = %#v", traceResp["error"])
+	}
+	trace := traceResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if len(trace["steps"].([]any)) < 2 {
+		t.Fatalf("trace steps = %#v, want provenance steps", trace["steps"])
+	}
+	traceMetadata := trace["metadata"].(map[string]any)
+	if traceMetadata["related_more"] != true || traceMetadata["related_truncated"] != true || traceMetadata["related_truncation_reason"] != "related_fact_limit" {
+		t.Fatalf("trace metadata = %#v, want related fact limit truncation", traceMetadata)
+	}
+	anchorFact := trace["anchor"].(map[string]any)["fact"].(map[string]any)
+	if _, ok := anchorFact["attributes"]; ok {
+		t.Fatalf("anchor fact attributes present despite include_attributes=false: %#v", anchorFact)
+	}
+
+	limitedResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.facts.list",
+			"arguments": map[string]any{
+				"runtime_id": "runtime-1",
+				"limit":      5,
+				"max_bytes":  1,
+			},
+		},
+	})
+	limitedResult := limitedResp["result"].(map[string]any)
+	limitedText := limitedResult["content"].([]any)[0].(map[string]any)["text"].(string)
+	if limitedResult["isError"] != true || !strings.Contains(limitedText, "response exceeds max_bytes") {
+		t.Fatalf("graph facts max_bytes response = %#v", limitedResp)
+	}
+}
+
+func TestMCPGraphFactsExplainOutputSchemaDeclaresResponseFields(t *testing.T) {
+	var outputSchema map[string]any
+	for _, tool := range mcpTools() {
+		if tool.Name == "cerebro.graph.facts.explain" {
+			outputSchema = tool.OutputSchema
+			break
+		}
+	}
+	if outputSchema == nil {
+		t.Fatal("cerebro.graph.facts.explain tool not found")
+	}
+	properties := outputSchema["properties"].(map[string]any)
+	for _, key := range []string{"fact", "edge", "evidence", "freshness", "explanation", "metadata"} {
+		if _, ok := properties[key]; !ok {
+			t.Fatalf("output schema missing %q: %#v", key, properties)
+		}
+	}
+	if outputSchema["additionalProperties"] != false {
+		t.Fatalf("output schema should reject undeclared fields: %#v", outputSchema)
 	}
 }
 
