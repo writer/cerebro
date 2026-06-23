@@ -117,6 +117,28 @@ func TestAskQueryHTTPRoutesRequireWriteScope(t *testing.T) {
 	}
 }
 
+func TestRiskScoringConfigHTTPRoutesRequireWriteScope(t *testing.T) {
+	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/risk-scoring-config")
+	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+		t.Fatalf("GET /grc/risk-scoring-config policy = %#v, want read scope", readPolicy)
+	}
+
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		policy := httpRoutePolicyFor(method, "/grc/risk-scoring-config")
+		if policy.Scope != scopeRiskScoringWrite || policy.AdminOnly {
+			t.Fatalf("%s /grc/risk-scoring-config policy = %#v, want risk scoring write scope", method, policy)
+		}
+		readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+		if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
+			t.Fatalf("read-only principal authorized for %s /grc/risk-scoring-config: %v", method, err)
+		}
+		writer := authPrincipal{Scopes: []string{scopeRiskScoringWrite}}
+		if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
+			t.Fatalf("risk scoring writer rejected for %s /grc/risk-scoring-config: %v", method, err)
+		}
+	}
+}
+
 func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
 	policy := httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")
 	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {

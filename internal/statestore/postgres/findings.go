@@ -142,6 +142,22 @@ END $$`,
         ON finding_tombstone_events (run_id, tombstoned_at)`,
 	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_finding_idx
         ON finding_tombstone_events (finding_id, tombstoned_at)`,
+	`CREATE TABLE IF NOT EXISTS finding_status_history (
+        id TEXT PRIMARY KEY,
+        finding_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        runtime_id TEXT NOT NULL,
+        from_status TEXT NOT NULL DEFAULT '',
+        to_status TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        changed_at TIMESTAMPTZ NOT NULL,
+        event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+	`CREATE INDEX IF NOT EXISTS finding_status_history_finding_idx
+        ON finding_status_history (finding_id, changed_at)`,
+	`CREATE INDEX IF NOT EXISTS finding_status_history_tenant_runtime_idx
+        ON finding_status_history (tenant_id, runtime_id, changed_at)`,
 	`CREATE TABLE IF NOT EXISTS closeout_run (
         run_id TEXT PRIMARY KEY,
         actor TEXT NOT NULL,
@@ -398,52 +414,88 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	const maxAttempts = 4
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		targetID, generation, err := s.resolveUpsertTarget(ctx, tenantID, fingerprint, id)
-		if err != nil {
-			return nil, fmt.Errorf("upsert finding %q: %w", id, err)
-		}
-		var stored findingRow
-		err = scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
-			targetID,
-			fingerprint,
-			tenantID,
-			runtimeID,
-			ruleID,
-			title,
-			severity,
-			status,
-			summary,
-			finding.RiskScore,
-			finding.LikelihoodScore,
-			finding.ImpactScore,
-			finding.ConfidenceScore,
-			strings.TrimSpace(finding.LikelihoodLevel),
-			strings.TrimSpace(finding.ImpactLevel),
-			riskReasonsJSON,
-			strings.TrimSpace(finding.RiskModelVersion),
-			resourceURNsJSON,
-			eventIDsJSON,
-			observedPolicyIDsJSON,
-			controlRefsJSON,
-			notesJSON,
-			ticketsJSON,
-			externalRefsJSON,
-			attributesJSON,
-			policyID,
-			policyName,
-			checkID,
-			checkName,
-			assignee,
-			dueAt,
-			statusReason,
-			statusUpdatedAt,
-			firstObservedAt,
-			lastObservedAt,
-			generation,
-			reopenResolvedOnOpenEmit,
-		), &stored)
+		record, err := func() (_ *ports.FindingRecord, err error) {
+			tx, err := s.db.BeginTx(ctx, nil)
+			if err != nil {
+				return nil, fmt.Errorf("begin upsert finding %q: %w", id, err)
+			}
+			committed := false
+			defer func() {
+				if !committed {
+					_ = tx.Rollback()
+				}
+			}()
+
+			targetID, generation, err := resolveUpsertTargetWithQuerier(ctx, tx, tenantID, fingerprint, id)
+			if err != nil {
+				return nil, err
+			}
+			priorStatus, err := findingStatusForHistoryWithQuerier(ctx, tx, targetID)
+			if err != nil {
+				return nil, fmt.Errorf("load finding %q prior status: %w", targetID, err)
+			}
+			var stored findingRow
+			err = scanFindingRow(tx.QueryRowContext(ctx, upsertFindingStatement,
+				targetID,
+				fingerprint,
+				tenantID,
+				runtimeID,
+				ruleID,
+				title,
+				severity,
+				status,
+				summary,
+				finding.RiskScore,
+				finding.LikelihoodScore,
+				finding.ImpactScore,
+				finding.ConfidenceScore,
+				strings.TrimSpace(finding.LikelihoodLevel),
+				strings.TrimSpace(finding.ImpactLevel),
+				riskReasonsJSON,
+				strings.TrimSpace(finding.RiskModelVersion),
+				resourceURNsJSON,
+				eventIDsJSON,
+				observedPolicyIDsJSON,
+				controlRefsJSON,
+				notesJSON,
+				ticketsJSON,
+				externalRefsJSON,
+				attributesJSON,
+				policyID,
+				policyName,
+				checkID,
+				checkName,
+				assignee,
+				dueAt,
+				statusReason,
+				statusUpdatedAt,
+				firstObservedAt,
+				lastObservedAt,
+				generation,
+				reopenResolvedOnOpenEmit,
+			), &stored)
+			if err != nil {
+				return nil, err
+			}
+			record, err := stored.record()
+			if err != nil {
+				return nil, err
+			}
+			changedAt := record.StatusUpdatedAt
+			if changedAt.IsZero() {
+				changedAt = record.FirstObservedAt
+			}
+			if err := insertFindingStatusHistory(ctx, tx, record.ID, record.TenantID, record.RuntimeID, priorStatus, record.Status, record.StatusReason, changedAt, finding.EventIDs); err != nil {
+				return nil, fmt.Errorf("record finding %q status history: %w", record.ID, err)
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, fmt.Errorf("commit upsert finding %q: %w", id, err)
+			}
+			committed = true
+			return record, nil
+		}()
 		if err == nil {
-			return stored.record()
+			return record, nil
 		}
 		lastErr = err
 		if errors.Is(err, sql.ErrNoRows) && attempt < maxAttempts-1 {
@@ -457,15 +509,19 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	return nil, fmt.Errorf("upsert finding %q: %w", id, lastErr)
 }
 
-// resolveUpsertTarget resolves the row identity for an emit on the given tenant/fingerprint:
+type findingQueryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// resolveUpsertTargetWithQuerier resolves the row identity for an emit on the given tenant/fingerprint:
 // if a non-tombstoned row already exists for that tenant it reuses that row's id (the ON CONFLICT (id)
 // path then updates it). Otherwise it mints a fresh id derived from baseID with a
 // "#g<N+1>" generation suffix where N is the max tombstone_generation observed for the
 // tenant/fingerprint, and returns N+1 as the new row's tombstone_generation.
-func (s *Store) resolveUpsertTarget(ctx context.Context, tenantID, fingerprint, baseID string) (string, int, error) {
+func resolveUpsertTargetWithQuerier(ctx context.Context, querier findingQueryRower, tenantID, fingerprint, baseID string) (string, int, error) {
 	var activeID sql.NullString
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id FROM findings WHERE tenant_id = $1 AND fingerprint = $2 AND tombstoned = FALSE LIMIT 1`,
+	err := querier.QueryRowContext(ctx,
+		`SELECT id FROM findings WHERE tenant_id = $1 AND fingerprint = $2 AND tombstoned = FALSE LIMIT 1 FOR UPDATE`,
 		tenantID,
 		fingerprint,
 	).Scan(&activeID)
@@ -478,7 +534,7 @@ func (s *Store) resolveUpsertTarget(ctx context.Context, tenantID, fingerprint, 
 		return activeID.String, 0, nil
 	}
 	var maxGen sql.NullInt64
-	if err := s.db.QueryRowContext(ctx,
+	if err := querier.QueryRowContext(ctx,
 		`SELECT MAX(tombstone_generation) FROM findings WHERE tenant_id = $1 AND fingerprint = $2`,
 		tenantID,
 		fingerprint,
@@ -490,6 +546,22 @@ func (s *Store) resolveUpsertTarget(ctx context.Context, tenantID, fingerprint, 
 	}
 	next := int(maxGen.Int64) + 1
 	return fmt.Sprintf("%s#g%d", findingBaseID(baseID), next), next, nil
+}
+
+func findingStatusForHistoryWithQuerier(ctx context.Context, querier findingQueryRower, findingID string) (string, error) {
+	findingID = strings.TrimSpace(findingID)
+	if findingID == "" || querier == nil {
+		return "", nil
+	}
+	var status sql.NullString
+	err := querier.QueryRowContext(ctx, `SELECT status FROM findings WHERE id = $1 AND tombstoned = FALSE FOR UPDATE`, findingID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(status.String), nil
 }
 
 var findingGenerationSuffix = regexp.MustCompile(`#g\d+$`)
@@ -840,6 +912,20 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding status event ids: %w", err)
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin update finding %q status: %w", findingID, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	priorStatus, err := findingStatusForHistoryWithQuerier(ctx, tx, findingID)
+	if err != nil {
+		return nil, fmt.Errorf("load finding %q prior status: %w", findingID, err)
+	}
 	expectedStatus := strings.TrimSpace(request.ExpectedStatus)
 	lastObservedBefore := request.LastObservedBefore.UTC()
 	if request.Tombstone != nil {
@@ -862,7 +948,7 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 		}
 		whereClause, args, preconditioned := findingStatusWhereClause(args, expectedStatus, lastObservedBefore)
 		var row findingRow
-		if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+		if err := scanFindingRow(tx.QueryRowContext(ctx, `
 UPDATE findings
 SET status = $2,
     status_reason = $3,
@@ -892,7 +978,18 @@ RETURNING `+findingSelectColumns, args...), &row); err != nil {
 			}
 			return nil, fmt.Errorf("update finding %q tombstone status: %w", findingID, err)
 		}
-		return row.record()
+		record, err := row.record()
+		if err != nil {
+			return nil, err
+		}
+		if err := insertFindingStatusHistory(ctx, tx, record.ID, record.TenantID, record.RuntimeID, priorStatus, record.Status, record.StatusReason, updatedAt, request.EventIDs); err != nil {
+			return nil, fmt.Errorf("record finding %q tombstone status history: %w", record.ID, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit finding %q tombstone status: %w", findingID, err)
+		}
+		committed = true
+		return record, nil
 	}
 	args := []any{
 		findingID,
@@ -903,7 +1000,7 @@ RETURNING `+findingSelectColumns, args...), &row); err != nil {
 	}
 	whereClause, args, preconditioned := findingStatusWhereClause(args, expectedStatus, lastObservedBefore)
 	var row findingRow
-	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+	if err := scanFindingRow(tx.QueryRowContext(ctx, `
 UPDATE findings
 SET status = $2,
     status_reason = $3,
@@ -927,7 +1024,18 @@ RETURNING `+findingSelectColumns, args...), &row); err != nil {
 		}
 		return nil, fmt.Errorf("update finding %q status: %w", findingID, err)
 	}
-	return row.record()
+	record, err := row.record()
+	if err != nil {
+		return nil, err
+	}
+	if err := insertFindingStatusHistory(ctx, tx, record.ID, record.TenantID, record.RuntimeID, priorStatus, record.Status, record.StatusReason, updatedAt, request.EventIDs); err != nil {
+		return nil, fmt.Errorf("record finding %q status history: %w", record.ID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit finding %q status: %w", findingID, err)
+	}
+	committed = true
+	return record, nil
 }
 
 func findingStatusWhereClause(args []any, expectedStatus string, lastObservedBefore time.Time) (string, []any, bool) {
@@ -951,6 +1059,58 @@ func findingStatusNoRowsError(preconditioned bool) error {
 		return ports.ErrFindingStatusPreconditionFailed
 	}
 	return ports.ErrFindingNotFound
+}
+
+type findingStatusHistoryExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertFindingStatusHistory(ctx context.Context, execer findingStatusHistoryExecer, findingID, tenantID, runtimeID, fromStatus, toStatus, reason string, changedAt time.Time, eventIDs []string) error {
+	findingID = strings.TrimSpace(findingID)
+	tenantID = strings.TrimSpace(tenantID)
+	runtimeID = strings.TrimSpace(runtimeID)
+	fromStatus = strings.TrimSpace(fromStatus)
+	toStatus = strings.TrimSpace(toStatus)
+	if findingID == "" || tenantID == "" || runtimeID == "" || toStatus == "" || strings.EqualFold(fromStatus, toStatus) {
+		return nil
+	}
+	if changedAt.IsZero() {
+		changedAt = time.Now().UTC()
+	}
+	eventIDsJSON, err := findingStringsJSON(eventIDs)
+	if err != nil {
+		return fmt.Errorf("marshal finding status history event ids: %w", err)
+	}
+	id := findingStatusHistoryID(findingID, fromStatus, toStatus, changedAt, eventIDsJSON)
+	_, err = execer.ExecContext(ctx, `
+INSERT INTO finding_status_history (id, finding_id, tenant_id, runtime_id, from_status, to_status, reason, changed_at, event_ids_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+ON CONFLICT (id) DO NOTHING`,
+		id,
+		findingID,
+		tenantID,
+		runtimeID,
+		fromStatus,
+		toStatus,
+		strings.TrimSpace(reason),
+		changedAt.UTC(),
+		eventIDsJSON,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func findingStatusHistoryID(findingID, fromStatus, toStatus string, changedAt time.Time, eventIDsJSON string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		strings.TrimSpace(findingID),
+		strings.TrimSpace(fromStatus),
+		strings.TrimSpace(toStatus),
+		changedAt.UTC().Format(time.RFC3339Nano),
+		strings.TrimSpace(eventIDsJSON),
+	}, "\x00")))
+	return "finding-status-history-" + hex.EncodeToString(sum[:16])
 }
 
 // UpdateFindingAssignee updates or clears one persisted finding assignee.
@@ -1229,7 +1389,7 @@ func findingGRCListQuery(request ports.ListFindingsRequest) (string, []any, erro
 	query := `
 SELECT id, tenant_id, runtime_id, rule_id, title, ` + findingEffectiveSeveritySQL() + ` AS severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
-  resource_urns_json::text, control_refs_json::text, policy_id, policy_name, assignee, due_at, first_observed_at, last_observed_at
+  resource_urns_json::text, control_refs_json::text, policy_id, policy_name, assignee, due_at, status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingOrderClause(request)
@@ -1259,10 +1419,17 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	addFindingSeverityFilter(&clauses, &args, request.Severity)
 	addFindingFilter(&clauses, &args, "status", request.Status)
 	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
+	addFindingFrameworkFilter(&clauses, &args, request.Framework)
+	addFindingTimeLowerBoundFilter(&clauses, &args, "first_observed_at", request.FirstObservedFrom)
+	addFindingTimeUpperBoundFilter(&clauses, &args, "first_observed_at", request.FirstObservedBefore)
+	addFindingTimeLowerBoundFilter(&clauses, &args, "status_updated_at", request.StatusUpdatedFrom)
+	addFindingTimeUpperBoundFilter(&clauses, &args, "status_updated_at", request.StatusUpdatedBefore)
 	if !request.LastObservedBefore.IsZero() {
 		args = append(args, request.LastObservedBefore.UTC())
 		clauses = append(clauses, fmt.Sprintf("last_observed_at < $%d", len(args)))
 	}
+	addFindingAgeFilter(&clauses, &args, request.MinAgeDays, request.MaxAgeDays)
+	addFindingSLAStatusFilter(&clauses, &args, request.SLAStatus)
 	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
 		return nil, nil, err
 	}
@@ -2265,6 +2432,66 @@ func addFindingSeverityFilter(clauses *[]string, args *[]any, value string) {
 	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", findingEffectiveSeveritySQL(), len(*args)))
 }
 
+func addFindingFrameworkFilter(clauses *[]string, args *[]any, value string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+	*args = append(*args, strings.ToLower(trimmed))
+	*clauses = append(*clauses, fmt.Sprintf(`EXISTS (
+  SELECT 1
+  FROM jsonb_array_elements(COALESCE(control_refs_json, '[]'::jsonb)) AS ref
+  WHERE LOWER(TRIM(COALESCE(ref->>'framework_name', ref->>'framework_id', ''))) = $%d
+)`, len(*args)))
+}
+
+func addFindingTimeLowerBoundFilter(clauses *[]string, args *[]any, column string, value time.Time) {
+	if value.IsZero() {
+		return
+	}
+	*args = append(*args, value.UTC())
+	*clauses = append(*clauses, fmt.Sprintf("%s >= $%d", column, len(*args)))
+}
+
+func addFindingTimeUpperBoundFilter(clauses *[]string, args *[]any, column string, value time.Time) {
+	if value.IsZero() {
+		return
+	}
+	*args = append(*args, value.UTC())
+	*clauses = append(*clauses, fmt.Sprintf("%s < $%d", column, len(*args)))
+}
+
+func addFindingAgeFilter(clauses *[]string, args *[]any, minDays uint32, maxDays uint32) {
+	if minDays > 0 {
+		*args = append(*args, int64(minDays))
+		*clauses = append(*clauses, fmt.Sprintf("first_observed_at <= NOW() - ($%d::int * INTERVAL '1 day')", len(*args)))
+	}
+	if maxDays > 0 {
+		*args = append(*args, int64(maxDays))
+		*clauses = append(*clauses, fmt.Sprintf("first_observed_at > NOW() - (($%d::int + 1) * INTERVAL '1 day')", len(*args)))
+	}
+}
+
+func addFindingSLAStatusFilter(clauses *[]string, args *[]any, value string) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return
+	case "overdue":
+		*clauses = append(*clauses, "LOWER(status) = 'open' AND due_at IS NOT NULL AND due_at < NOW()")
+	case "due_soon":
+		*clauses = append(*clauses, "LOWER(status) = 'open' AND due_at IS NOT NULL AND due_at >= NOW() AND due_at <= NOW() + INTERVAL '72 hours'")
+	case "no_due_date":
+		*clauses = append(*clauses, "LOWER(status) = 'open' AND due_at IS NULL")
+	case "on_track":
+		*clauses = append(*clauses, "LOWER(status) = 'open' AND due_at IS NOT NULL AND due_at > NOW() + INTERVAL '72 hours'")
+	case "closed":
+		*clauses = append(*clauses, "LOWER(status) <> 'open'")
+	default:
+		*args = append(*args, strings.ToLower(strings.TrimSpace(value)))
+		*clauses = append(*clauses, fmt.Sprintf("LOWER(status) = $%d", len(*args)))
+	}
+}
+
 func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string, value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -2356,6 +2583,7 @@ type grcFindingRow struct {
 	PolicyName       string
 	Assignee         string
 	DueAt            sql.NullTime
+	StatusUpdatedAt  sql.NullTime
 	FirstObservedAt  time.Time
 	LastObservedAt   time.Time
 }
@@ -2432,6 +2660,7 @@ func scanGRCFindingRow(scanner findingRowScanner) (*ports.FindingRecord, error) 
 		&row.PolicyName,
 		&row.Assignee,
 		&row.DueAt,
+		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
 		&row.LastObservedAt,
 	); err != nil {
@@ -2475,8 +2704,9 @@ func scanGRCFindingRow(scanner findingRowScanner) (*ports.FindingRecord, error) 
 		PolicyName:   row.PolicyName,
 		ControlRefs:  controlRefs,
 		FindingWorkflow: ports.FindingWorkflow{
-			Assignee: row.Assignee,
-			DueAt:    findingTimestamp(row.DueAt),
+			Assignee:        row.Assignee,
+			DueAt:           findingTimestamp(row.DueAt),
+			StatusUpdatedAt: findingTimestamp(row.StatusUpdatedAt),
 		},
 		FirstObservedAt: row.FirstObservedAt.UTC(),
 		LastObservedAt:  row.LastObservedAt.UTC(),

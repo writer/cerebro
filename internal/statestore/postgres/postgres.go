@@ -16,13 +16,14 @@ import (
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
-// findingIntelReady tracks lazy schema creation for the finding-intelligence
-// auxiliary tables (candidate staging and finding memory). Grouping these flags
-// keeps the Store field count within the structural budget while still giving
-// each table a persistent, process-lifetime readiness flag.
+// findingIntelReady tracks lazy schema creation for finding-domain auxiliary
+// tables (candidate staging, finding memory, and risk scoring config). Grouping
+// these flags keeps the Store field count within the structural budget while
+// still giving each table a persistent, process-lifetime readiness flag.
 type findingIntelReady struct {
-	candidate bool
-	memory    bool
+	candidate         bool
+	memory            bool
+	riskScoringConfig bool
 }
 
 // askTablesReady tracks lazy schema creation for the ask-domain auxiliary

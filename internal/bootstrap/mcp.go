@@ -1285,14 +1285,23 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 	graphNeighborhoods := map[string]*ports.EntityNeighborhood{}
 	partialErrors := []string{}
 	now := time.Now().UTC()
+	var riskConfig *ports.RiskScoringConfig
+	if tenantID != "" {
+		config, _, err := app.effectiveRiskScoringConfig(r.Context(), tenantID)
+		if err != nil {
+			return mcpRiskActionPlanResult{}, err
+		}
+		riskConfig = &config
+	}
 	if graphStore := graphQueryStore(app.deps.GraphStore); graphStore != nil {
 		graphEvidenceStatus = mcpGraphEvidenceIncluded
 		targetURNs := riskplan.TargetURNs(findings, riskplan.Options{
-			TenantID:        tenantID,
-			RuntimeIDs:      runtimeIDs,
-			SeedLimit:       riskplan.MaxSimulationSeedLimit,
-			Now:             now,
-			IncludeUnscored: mcpBoolArg(args, "include_unscored"),
+			TenantID:          tenantID,
+			RuntimeIDs:        runtimeIDs,
+			SeedLimit:         riskplan.MaxSimulationSeedLimit,
+			Now:               now,
+			IncludeUnscored:   mcpBoolArg(args, "include_unscored"),
+			RiskScoringConfig: riskConfig,
 		})
 		seen := map[string]struct{}{}
 		roots := []string{}
@@ -1333,6 +1342,7 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 		GraphNeighborhoods: graphNeighborhoods,
 		Now:                now,
 		IncludeUnscored:    mcpBoolArg(args, "include_unscored"),
+		RiskScoringConfig:  riskConfig,
 	})
 	return mcpRiskActionPlanResult{
 		Plan:                   plan,

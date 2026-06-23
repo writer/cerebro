@@ -22,6 +22,12 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
+type recordingRoundTripper struct{}
+
+func (*recordingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
+}
+
 func TestNormalizeBaseURLRejectsUnsafeHosts(t *testing.T) {
 	for _, raw := range []string{
 		"http://169.254.169.254",
@@ -138,6 +144,43 @@ func TestNewJSONRequestSetsJSONHeadersAndBody(t *testing.T) {
 	}
 	if string(body) != `{"id":"123"}` {
 		t.Fatalf("body = %q, want JSON payload", string(body))
+	}
+}
+
+func TestHardenSourceClientAppliesSourceDefaults(t *testing.T) {
+	base := &recordingRoundTripper{}
+	lookup := func(context.Context, string) ([]net.IPAddr, error) {
+		return nil, nil
+	}
+	original := &http.Client{Timeout: 2 * time.Second, Transport: base}
+
+	client := HardenSourceClient(original, "github", 5*time.Second, true, lookup)
+	if client == original {
+		t.Fatal("HardenSourceClient returned original client pointer")
+	}
+	if client.Timeout != 2*time.Second {
+		t.Fatalf("Timeout = %s, want original timeout", client.Timeout)
+	}
+	if client.CheckRedirect == nil {
+		t.Fatal("CheckRedirect = nil, want no-redirect policy")
+	}
+	if err := client.CheckRedirect(httptest.NewRequest(http.MethodGet, "/", nil), nil); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Fatalf("CheckRedirect error = %v, want http.ErrUseLastResponse", err)
+	}
+	transport, ok := client.Transport.(SafeRoundTripper)
+	if !ok {
+		t.Fatalf("Transport = %T, want SafeRoundTripper", client.Transport)
+	}
+	if transport.Base != base {
+		t.Fatalf("Base transport = %#v, want provided transport", transport.Base)
+	}
+	if transport.SourceID != "github" || !transport.AllowLoopback || transport.LookupIPAddrs == nil {
+		t.Fatalf("SafeRoundTripper options = %#v, want source id, loopback, and resolver", transport)
+	}
+
+	defaulted := HardenSourceClient(nil, "okta", 7*time.Second, false, nil)
+	if defaulted.Timeout != 7*time.Second {
+		t.Fatalf("defaulted Timeout = %s, want requested timeout", defaulted.Timeout)
 	}
 }
 

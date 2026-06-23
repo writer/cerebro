@@ -1992,6 +1992,14 @@ paths:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: framework
+          in: query
+          schema:
+            type: string
         - name: interval
           in: query
           schema:
@@ -2008,9 +2016,29 @@ paths:
             minimum: 1
             maximum: 366
             default: 90
+        - name: compare
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: mttr_target_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: backlog_target
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: sla_target_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
       responses:
         '200':
-          description: Time-bucketed finding flow series with opened, closed, severity splits, and a reconstructed open backlog per bucket.
+          description: Time-bucketed finding flow series with opened, closed, severity splits, aging buckets, MTTR, target overlays, comparison deltas, and a reconstructed open backlog per bucket.
   /grc/ask:
     post:
       summary: Ask natural-language questions over the GRC graph
@@ -2033,6 +2061,56 @@ paths:
           description: Invalid ask request.
         '503':
           description: Graph or LLM runtime unavailable.
+  /grc/risk-scoring-config:
+    get:
+      summary: Get effective risk scoring configuration
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Effective tenant risk scoring configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskScoringConfigResponse'
+    put:
+      summary: Upsert risk scoring configuration
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiskScoringConfigRequest'
+      responses:
+        '200':
+          description: Persisted tenant risk scoring configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskScoringConfigResponse'
+        '400':
+          description: Invalid scoring configuration.
+        '503':
+          description: Risk scoring config store unavailable.
+    delete:
+      summary: Reset risk scoring configuration to defaults
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Default tenant risk scoring configuration after reset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskScoringConfigResponse'
+        '503':
+          description: Risk scoring config store unavailable.
   /grc/findings:
     get:
       summary: GRC risk inbox findings
@@ -2060,6 +2138,44 @@ paths:
           schema:
             type: string
         - name: policy_id
+          in: query
+          schema:
+            type: string
+        - name: framework
+          in: query
+          schema:
+            type: string
+        - name: opened_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: opened_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: closed_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: closed_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: age_min_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: age_max_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: sla_status
           in: query
           schema:
             type: string
@@ -6456,6 +6572,112 @@ components:
                 enum: [user, assistant]
               content:
                 type: string
+    RiskScoringLevelThresholds:
+      type: object
+      properties:
+        critical:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 85
+        high:
+          type: integer
+          minimum: 1
+          maximum: 99
+          default: 70
+        medium:
+          type: integer
+          minimum: 1
+          maximum: 98
+          default: 40
+    RiskScoringSignalThresholds:
+      type: object
+      properties:
+        epss_high:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.7
+        epss_elevated:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.2
+        cvss_critical:
+          type: number
+          minimum: 0
+          maximum: 10
+          default: 9
+        cvss_high:
+          type: number
+          minimum: 0
+          maximum: 10
+          default: 7
+        private_network_likelihood_cap:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 35
+    RiskScoringFactorWeight:
+      type: object
+      properties:
+        likelihood:
+          type: integer
+          minimum: -100
+          maximum: 100
+        impact:
+          type: integer
+          minimum: -100
+          maximum: 100
+        confidence:
+          type: integer
+          minimum: -100
+          maximum: 100
+        likelihood_cap:
+          type: integer
+          minimum: 0
+          maximum: 100
+    RiskScoringConfigRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        thresholds:
+          $ref: '#/components/schemas/RiskScoringLevelThresholds'
+        signals:
+          $ref: '#/components/schemas/RiskScoringSignalThresholds'
+        relation_weights:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+            maximum: 100
+        factor_weights:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/RiskScoringFactorWeight'
+    RiskScoringConfig:
+      allOf:
+        - $ref: '#/components/schemas/RiskScoringConfigRequest'
+        - type: object
+          required: [tenant_id, thresholds, signals, relation_weights, factor_weights, model_version]
+          properties:
+            model_version:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    RiskScoringConfigResponse:
+      type: object
+      required: [config, persisted]
+      properties:
+        config:
+          $ref: '#/components/schemas/RiskScoringConfig'
+        persisted:
+          type: boolean
     PutSourceRuntimeRequest:
       type: object
       required: [runtime]

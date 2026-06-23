@@ -184,6 +184,14 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 					matchedEvent = true
 				}
 				candidateFinding := normalizeCandidateFinding(record, runtime, startedAt)
+				config, err := s.riskScoringConfigForFinding(ctx, candidateFinding)
+				if err != nil {
+					if failErr := s.markCandidateEvaluationFailed(ctx, state, fmt.Errorf("load risk scoring config for candidate finding %q: %w", candidateFinding.ID, err)); failErr != nil {
+						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
+					}
+					break
+				}
+				candidateFinding = recomputeFindingRiskWithConfig(candidateFinding, startedAt, config)
 				evidence, err := s.buildFindingEvidence(ctx, candidateFinding, candidateEvidenceRun(state.run))
 				if err != nil {
 					if failErr := s.markCandidateEvaluationFailed(ctx, state, fmt.Errorf("build candidate evidence for finding %q: %w", candidateFinding.ID, err)); failErr != nil {

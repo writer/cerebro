@@ -494,7 +494,18 @@ RETURNING `+findingSelectColumns,
 		}
 		return nil, err
 	}
-	return row.record()
+	record, err := row.record()
+	if err != nil {
+		return nil, err
+	}
+	priorStatus := strings.TrimSpace(t.PriorStatus)
+	if priorStatus == "" {
+		priorStatus = strings.TrimSpace(record.PriorStatus)
+	}
+	if err := insertFindingStatusHistory(ctx, tx, record.ID, record.TenantID, record.RuntimeID, priorStatus, record.Status, record.StatusReason, updatedAt, request.EventIDs); err != nil {
+		return nil, fmt.Errorf("record finding %q tombstone status history: %w", record.ID, err)
+	}
+	return record, nil
 }
 
 func updateFindingRiskInTx(ctx context.Context, tx *sql.Tx, findingID string, risk ports.FindingRisk, attributes map[string]string) (*ports.FindingRecord, error) {

@@ -19,11 +19,18 @@ import (
 // durable storage lives in internal/statestore/postgres and the AskQueryStore
 // port, so the additions stay within bootstrap's routing, auth, and composition
 // responsibility. The ask-query write scope constant keeps saved-query mutation
-// routes from reusing a read-only scope. Graph-fact MCP tools add only typed
-// request/response mapping over the graphfacts domain service and the existing
-// ClaimStore-backed graph-fact substrate, including cursor/resource/toolset
-// MCP surface mapping while fact shaping and trace behavior stay in graphfacts.
-const bootstrapProductionGoLineBudget = 25093
+// routes from reusing a read-only scope. risk_scoring_config.go adds the thin
+// HTTP request/response mapping for tenant-scoped scoring overrides; validation
+// and defaulting live in internal/findings, and storage lives behind the
+// RiskScoringConfigStore port. The zero-preserving signal request shape keeps
+// OpenAPI-permitted values distinguishable at the HTTP boundary. MCP risk action
+// plan mapping now loads that same tenant config and passes it into the domain
+// planner without moving scoring behavior into bootstrap. Graph-fact MCP tools
+// add only typed request/response mapping over the graphfacts domain service and
+// the existing ClaimStore-backed graph-fact substrate, including
+// cursor/resource/toolset MCP surface mapping while fact shaping and trace
+// behavior stay in graphfacts.
+const bootstrapProductionGoLineBudget = 25268
 
 type bootstrapFileLineCount struct {
 	path  string

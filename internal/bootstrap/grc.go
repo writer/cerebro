@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/grccontrol"
+	"github.com/writer/cerebro/internal/grctrends"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -319,26 +320,9 @@ func joinGRCErrors(errs <-chan error) error {
 }
 
 const (
-	grcTrendsDefaultDays = uint32(90)
-	grcTrendsMaxDays     = uint32(366)
+	grcTrendsDefaultDays = 90
+	grcTrendsMaxDays     = 366
 )
-
-type grcTrendPoint struct {
-	Date           string `json:"date"`
-	Opened         int    `json:"opened"`
-	OpenedCritical int    `json:"opened_critical"`
-	OpenedHigh     int    `json:"opened_high"`
-	Closed         int    `json:"closed"`
-	OpenTotal      int    `json:"open_total"`
-}
-
-type grcTrendsResponse struct {
-	Interval    string          `json:"interval"`
-	Start       time.Time       `json:"start"`
-	End         time.Time       `json:"end"`
-	Points      []grcTrendPoint `json:"points"`
-	GeneratedAt time.Time       `json:"generated_at"`
-}
 
 func (a *App) handleGRCTrends(w http.ResponseWriter, r *http.Request) {
 	scope, err := grcScopeFromRequest(r)
@@ -346,130 +330,64 @@ func (a *App) handleGRCTrends(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	interval, days, err := grcTrendsParamsFromRequest(r)
+	params, err := grctrends.ParseParams(r.URL.Query(), grcTrendsDefaultDays, grcTrendsMaxDays)
 	if err != nil {
-		writeGRCError(w, err)
+		writeGRCError(w, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err))
 		return
 	}
 	end := time.Now().UTC()
-	start := end.AddDate(0, 0, -int(days))
+	start := end.AddDate(0, 0, -params.Days)
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	trends, err := a.grcFindingTrends(r, runtimes, start, end, interval)
+	filter := grcFindingFilter{
+		Severity:  params.Severity,
+		Framework: params.Framework,
+	}
+	trends, err := a.grcFindingTrends(r, runtimes, start, end, params.Interval, filter)
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, grcTrendsResponse{
-		Interval:    interval,
-		Start:       start,
-		End:         end,
-		Points:      grcBuildTrendPoints(trends),
+	var comparison *grctrends.Comparison
+	if params.Compare {
+		previousEnd := start
+		previousStart := previousEnd.Add(end.Sub(start) * -1)
+		previous, err := a.grcFindingTrends(r, runtimes, previousStart, previousEnd, params.Interval, filter)
+		if err != nil {
+			writeGRCError(w, err)
+			return
+		}
+		comparison = grctrends.BuildComparison(previous, trends, previousStart, previousEnd)
+	}
+	writeJSON(w, http.StatusOK, grctrends.Response{
+		Interval:     params.Interval,
+		Start:        start,
+		End:          end,
+		Points:       grctrends.BuildPoints(trends),
+		AgingBuckets: grctrends.BuildAgingBuckets(trends),
+		Targets:      grctrends.BuildTargets(params.TargetParams),
+		Comparison:   comparison,
+		Accuracy: grctrends.Accuracy{
+			StatusHistory: "current_state_with_status_history_forward_capture",
+			Caveat:        "Trend points use first_observed_at and the latest status_updated_at for existing rows; durable status history is captured for new lifecycle transitions, so reopen accuracy improves as history accrues.",
+		},
 		GeneratedAt: time.Now().UTC(),
 	})
 }
 
-func grcTrendsParamsFromRequest(r *http.Request) (string, uint32, error) {
-	interval := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("interval")))
-	if interval == "" {
-		interval = "day"
-	}
-	switch interval {
-	case "day", "week", "month":
-	default:
-		return "", 0, fmt.Errorf("%w: interval must be day, week, or month", errInvalidHTTPRequest)
-	}
-	days, err := uint32QueryParam(r, "days")
-	if err != nil {
-		return "", 0, err
-	}
-	if days == 0 {
-		days = grcTrendsDefaultDays
-	}
-	if days > grcTrendsMaxDays {
-		days = grcTrendsMaxDays
-	}
-	return interval, days, nil
-}
-
-func (a *App) grcFindingTrends(r *http.Request, runtimes []*cerebrov1.SourceRuntime, start, end time.Time, interval string) (*ports.GRCFindingTrends, error) {
+func (a *App) grcFindingTrends(r *http.Request, runtimes []*cerebrov1.SourceRuntime, start, end time.Time, interval string, filter grcFindingFilter) (*ports.GRCFindingTrends, error) {
 	store := findingStore(a.deps.StateStore)
 	provider, ok := store.(grcFindingTrendsProvider)
 	if !ok {
 		return nil, findings.ErrRuntimeUnavailable
 	}
-	runtimeIDsByTenant := map[string][]string{}
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
-		tenantID := strings.TrimSpace(runtime.GetTenantId())
-		runtimeID := strings.TrimSpace(runtime.GetId())
-		if tenantID == "" || runtimeID == "" {
-			continue
-		}
-		runtimeIDsByTenant[tenantID] = append(runtimeIDsByTenant[tenantID], runtimeID)
-	}
-	merged := map[time.Time]*ports.GRCFindingTrendPoint{}
-	openAtStart := 0
-	for tenantID, runtimeIDs := range runtimeIDsByTenant {
-		trends, err := provider.SummarizeGRCFindingTrends(r.Context(), ports.GRCFindingTrendsRequest{
-			FindingRequest: ports.ListFindingsRequest{TenantID: tenantID, RuntimeIDs: runtimeIDs},
-			Start:          start,
-			End:            end,
-			Interval:       interval,
-		})
-		if err != nil {
-			return nil, err
-		}
-		openAtStart += trends.OpenAtStart
-		for _, point := range trends.Points {
-			key := point.BucketStart.UTC()
-			agg := merged[key]
-			if agg == nil {
-				agg = &ports.GRCFindingTrendPoint{BucketStart: key}
-				merged[key] = agg
-			}
-			agg.Opened += point.Opened
-			agg.OpenedCritical += point.OpenedCritical
-			agg.OpenedHigh += point.OpenedHigh
-			agg.Closed += point.Closed
-		}
-	}
-	points := make([]ports.GRCFindingTrendPoint, 0, len(merged))
-	for _, point := range merged {
-		points = append(points, *point)
-	}
-	sort.Slice(points, func(i, j int) bool {
-		return points[i].BucketStart.Before(points[j].BucketStart)
+	return grctrends.Merge(r.Context(), provider, runtimes, start, end, interval, grctrends.Filter{
+		Severity:  filter.Severity,
+		Framework: filter.Framework,
 	})
-	return &ports.GRCFindingTrends{Points: points, OpenAtStart: openAtStart}, nil
-}
-
-func grcBuildTrendPoints(trends *ports.GRCFindingTrends) []grcTrendPoint {
-	if trends == nil {
-		return []grcTrendPoint{}
-	}
-	running := trends.OpenAtStart
-	points := make([]grcTrendPoint, 0, len(trends.Points))
-	for _, point := range trends.Points {
-		running += point.Opened - point.Closed
-		if running < 0 {
-			running = 0
-		}
-		points = append(points, grcTrendPoint{
-			Date:           point.BucketStart.UTC().Format("2006-01-02"),
-			Opened:         point.Opened,
-			OpenedCritical: point.OpenedCritical,
-			OpenedHigh:     point.OpenedHigh,
-			Closed:         point.Closed,
-			OpenTotal:      running,
-		})
-	}
-	return points
 }
 
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
@@ -506,15 +424,27 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 	} else if strings.EqualFold(status, "all") {
 		status = ""
 	}
+	drilldown, err := grctrends.ParseDrilldownFilters(r.URL.Query())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
+	}
 	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{
-		FindingID:   strings.TrimSpace(r.URL.Query().Get("finding_id")),
-		RuleID:      strings.TrimSpace(r.URL.Query().Get("rule_id")),
-		Severity:    strings.TrimSpace(r.URL.Query().Get("severity")),
-		Status:      status,
-		ResourceURN: strings.TrimSpace(r.URL.Query().Get("resource_urn")),
-		EventID:     strings.TrimSpace(r.URL.Query().Get("event_id")),
-		PolicyID:    strings.TrimSpace(r.URL.Query().Get("policy_id")),
-		Limit:       limit,
+		FindingID:           strings.TrimSpace(r.URL.Query().Get("finding_id")),
+		RuleID:              strings.TrimSpace(r.URL.Query().Get("rule_id")),
+		Severity:            strings.TrimSpace(r.URL.Query().Get("severity")),
+		Status:              status,
+		ResourceURN:         strings.TrimSpace(r.URL.Query().Get("resource_urn")),
+		EventID:             strings.TrimSpace(r.URL.Query().Get("event_id")),
+		PolicyID:            strings.TrimSpace(r.URL.Query().Get("policy_id")),
+		Framework:           strings.TrimSpace(r.URL.Query().Get("framework")),
+		FirstObservedFrom:   drilldown.FirstObservedFrom,
+		FirstObservedBefore: drilldown.FirstObservedBefore,
+		StatusUpdatedFrom:   drilldown.StatusUpdatedFrom,
+		StatusUpdatedBefore: drilldown.StatusUpdatedBefore,
+		MinAgeDays:          drilldown.MinAgeDays,
+		MaxAgeDays:          drilldown.MaxAgeDays,
+		SLAStatus:           drilldown.SLAStatus,
+		Limit:               limit,
 	})
 	if err != nil {
 		return nil, err
@@ -795,16 +725,7 @@ func grcFindingAuditMarkdownInput(packet grcAuditPacketResponse) grccontrol.Find
 	}
 }
 
-type grcFindingFilter struct {
-	FindingID   string
-	RuleID      string
-	Severity    string
-	Status      string
-	ResourceURN string
-	EventID     string
-	PolicyID    string
-	Limit       uint32
-}
+type grcFindingFilter = ports.ListFindingsRequest
 
 type grcEvidenceFilter struct {
 	FindingID    string
@@ -1014,18 +935,26 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 	var records []*ports.FindingRecord
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
 		request := ports.ListFindingsRequest{
-			TenantID:      tenantID,
-			RuntimeIDs:    runtimeIDs,
-			FindingID:     filter.FindingID,
-			RuleID:        filter.RuleID,
-			Severity:      filter.Severity,
-			Status:        filter.Status,
-			ResourceURN:   filter.ResourceURN,
-			EventID:       filter.EventID,
-			PolicyID:      filter.PolicyID,
-			Limit:         limit,
-			PriorityOrder: true,
-			Order:         ports.FindingOrderRiskScore,
+			TenantID:            tenantID,
+			RuntimeIDs:          runtimeIDs,
+			FindingID:           filter.FindingID,
+			RuleID:              filter.RuleID,
+			Severity:            filter.Severity,
+			Status:              filter.Status,
+			ResourceURN:         filter.ResourceURN,
+			EventID:             filter.EventID,
+			PolicyID:            filter.PolicyID,
+			Framework:           filter.Framework,
+			FirstObservedFrom:   filter.FirstObservedFrom,
+			FirstObservedBefore: filter.FirstObservedBefore,
+			StatusUpdatedFrom:   filter.StatusUpdatedFrom,
+			StatusUpdatedBefore: filter.StatusUpdatedBefore,
+			MinAgeDays:          filter.MinAgeDays,
+			MaxAgeDays:          filter.MaxAgeDays,
+			SLAStatus:           filter.SLAStatus,
+			Limit:               limit,
+			PriorityOrder:       true,
+			Order:               ports.FindingOrderRiskScore,
 		}
 		var (
 			items []*ports.FindingRecord
@@ -1083,15 +1012,23 @@ func (a *App) grcFindingSummary(r *http.Request, runtimes []*cerebrov1.SourceRun
 	}
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
 		item, err := provider.SummarizeFindings(r.Context(), ports.ListFindingsRequest{
-			TenantID:    tenantID,
-			RuntimeIDs:  runtimeIDs,
-			FindingID:   filter.FindingID,
-			RuleID:      filter.RuleID,
-			Severity:    filter.Severity,
-			Status:      filter.Status,
-			ResourceURN: filter.ResourceURN,
-			EventID:     filter.EventID,
-			PolicyID:    filter.PolicyID,
+			TenantID:            tenantID,
+			RuntimeIDs:          runtimeIDs,
+			FindingID:           filter.FindingID,
+			RuleID:              filter.RuleID,
+			Severity:            filter.Severity,
+			Status:              filter.Status,
+			ResourceURN:         filter.ResourceURN,
+			EventID:             filter.EventID,
+			PolicyID:            filter.PolicyID,
+			Framework:           filter.Framework,
+			FirstObservedFrom:   filter.FirstObservedFrom,
+			FirstObservedBefore: filter.FirstObservedBefore,
+			StatusUpdatedFrom:   filter.StatusUpdatedFrom,
+			StatusUpdatedBefore: filter.StatusUpdatedBefore,
+			MinAgeDays:          filter.MinAgeDays,
+			MaxAgeDays:          filter.MaxAgeDays,
+			SLAStatus:           filter.SLAStatus,
 		})
 		if err != nil {
 			return nil, err
@@ -1277,15 +1214,23 @@ func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.Sourc
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
 		item, err := provider.SummarizeGRCDashboard(r.Context(), ports.GRCDashboardAggregateRequest{
 			FindingRequest: ports.ListFindingsRequest{
-				TenantID:    tenantID,
-				RuntimeIDs:  runtimeIDs,
-				FindingID:   findingFilter.FindingID,
-				RuleID:      findingFilter.RuleID,
-				Severity:    findingFilter.Severity,
-				Status:      findingFilter.Status,
-				ResourceURN: findingFilter.ResourceURN,
-				EventID:     findingFilter.EventID,
-				PolicyID:    findingFilter.PolicyID,
+				TenantID:            tenantID,
+				RuntimeIDs:          runtimeIDs,
+				FindingID:           findingFilter.FindingID,
+				RuleID:              findingFilter.RuleID,
+				Severity:            findingFilter.Severity,
+				Status:              findingFilter.Status,
+				ResourceURN:         findingFilter.ResourceURN,
+				EventID:             findingFilter.EventID,
+				PolicyID:            findingFilter.PolicyID,
+				Framework:           findingFilter.Framework,
+				FirstObservedFrom:   findingFilter.FirstObservedFrom,
+				FirstObservedBefore: findingFilter.FirstObservedBefore,
+				StatusUpdatedFrom:   findingFilter.StatusUpdatedFrom,
+				StatusUpdatedBefore: findingFilter.StatusUpdatedBefore,
+				MinAgeDays:          findingFilter.MinAgeDays,
+				MaxAgeDays:          findingFilter.MaxAgeDays,
+				SLAStatus:           findingFilter.SLAStatus,
 			},
 			EvidenceRequest: ports.ListFindingEvidenceRequest{
 				RuntimeIDs:   runtimeIDs,
