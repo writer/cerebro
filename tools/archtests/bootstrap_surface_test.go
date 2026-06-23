@@ -32,8 +32,10 @@ import (
 // behavior stay in graphfacts. Trace metadata mirrors list pagination flags at
 // the MCP response boundary so clients see consistent cursor semantics. GRC
 // source health summaries add dashboard response mapping while source-health
-// aggregation stays behind existing stores.
-const bootstrapProductionGoLineBudget = 25297
+// aggregation stays behind existing stores. GRC framework lifecycle adds a thin
+// HTTP handler and route registration for cached framework listing; compliance
+// logic stays in the compliance package.
+const bootstrapProductionGoLineBudget = 25305
 
 type bootstrapFileLineCount struct {
 	path  string
