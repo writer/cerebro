@@ -225,15 +225,7 @@ func New() (*Source, error) {
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 // Spec returns static source metadata.
@@ -685,22 +677,22 @@ func gcpFamily[T any](source *Source, options gcpFamilyOptions[T]) sourcecdk.Fam
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:              configValue(cfg, "family"),
-		projectID:           configValue(cfg, "project_id"),
-		customerID:          configValue(cfg, "customer_id"),
-		groupKey:            configValue(cfg, "group_key"),
-		serviceAccountEmail: configValue(cfg, "service_account_email"),
-		location:            configValue(cfg, "location"),
-		keyRing:             configValue(cfg, "key_ring"),
-		artifactRepository:  configValue(cfg, "artifact_repository"),
-		token:               configValue(cfg, "token"),
-		wifAudience:         configValue(cfg, "wif_audience"),
-		wifServiceAccount:   configValue(cfg, "wif_service_account_email"),
-		wifAWSRegion:        configValue(cfg, "wif_aws_region"),
-		tenantID:            configValue(cfg, sourceconfig.RuntimeTenantIDKey),
-		wifBindings:         configValue(cfg, sourceconfig.GCPWIFAllowlistKey),
-		baseURL:             strings.TrimRight(configValue(cfg, "base_url"), "/"),
-		filter:              configValue(cfg, "filter"),
+		family:              sourcecdk.ConfigValue(cfg, "family"),
+		projectID:           sourcecdk.ConfigValue(cfg, "project_id"),
+		customerID:          sourcecdk.ConfigValue(cfg, "customer_id"),
+		groupKey:            sourcecdk.ConfigValue(cfg, "group_key"),
+		serviceAccountEmail: sourcecdk.ConfigValue(cfg, "service_account_email"),
+		location:            sourcecdk.ConfigValue(cfg, "location"),
+		keyRing:             sourcecdk.ConfigValue(cfg, "key_ring"),
+		artifactRepository:  sourcecdk.ConfigValue(cfg, "artifact_repository"),
+		token:               sourcecdk.ConfigValue(cfg, "token"),
+		wifAudience:         sourcecdk.ConfigValue(cfg, "wif_audience"),
+		wifServiceAccount:   sourcecdk.ConfigValue(cfg, "wif_service_account_email"),
+		wifAWSRegion:        sourcecdk.ConfigValue(cfg, "wif_aws_region"),
+		tenantID:            sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey),
+		wifBindings:         sourcecdk.ConfigValue(cfg, sourceconfig.GCPWIFAllowlistKey),
+		baseURL:             strings.TrimRight(sourcecdk.ConfigValue(cfg, "base_url"), "/"),
+		filter:              sourcecdk.ConfigValue(cfg, "filter"),
 		perPage:             defaultPageSize,
 	}
 	if settings.family == "" {
@@ -2171,8 +2163,3 @@ func sqlBaseURL() string                 { return "https://sqladmin.googleapis.c
 func spannerBaseURL() string             { return "https://spanner.googleapis.com" }
 func storageBaseURL() string             { return "https://storage.googleapis.com" }
 func vpcAccessBaseURL() string           { return "https://vpcaccess.googleapis.com" }
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
-}

@@ -210,8 +210,8 @@ func (s *Source) checkContract(ctx context.Context, cfg sourcecdk.Config) error 
 }
 
 func (s *Source) getControlJSON(ctx context.Context, cfg sourcecdk.Config, path string, target any) error {
-	baseURL := strings.TrimSpace(configValue(cfg, "base_url"))
-	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, configValue(cfg, "private_endpoint_allowlist"))
+	baseURL := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "base_url"))
+	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, sourcecdk.ConfigValue(cfg, "private_endpoint_allowlist"))
 	if err != nil {
 		return err
 	}
@@ -246,21 +246,8 @@ func (s *Source) getControlJSON(ctx context.Context, cfg sourcecdk.Config, path 
 	return nil
 }
 
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
-}
-
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) allowLoopbackForTest() {

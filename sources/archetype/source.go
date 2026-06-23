@@ -130,11 +130,11 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 }
 func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	st := settings{
-		tenantID:  first(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
-		family:    first(configValue(cfg, "family"), "vulnerability"),
-		baseURL:   strings.TrimRight(configValue(cfg, "base_url"), "/"),
-		token:     first(configValue(cfg, "token"), configValue(cfg, "api_token")),
-		apiPrefix: first(configValue(cfg, "api_prefix"), "/api/v1"),
+		tenantID:  first(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)),
+		family:    first(sourcecdk.ConfigValue(cfg, "family"), "vulnerability"),
+		baseURL:   strings.TrimRight(sourcecdk.ConfigValue(cfg, "base_url"), "/"),
+		token:     first(sourcecdk.ConfigValue(cfg, "token"), sourcecdk.ConfigValue(cfg, "api_token")),
+		apiPrefix: first(sourcecdk.ConfigValue(cfg, "api_prefix"), "/api/v1"),
 	}
 	if st.tenantID == "" || st.baseURL == "" {
 		return st, fmt.Errorf("%w: archetype tenant_id and base_url are required", sourcecdk.ErrInvalidConfig)
@@ -142,7 +142,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	if st.family != "scan" && st.family != "vulnerability" {
 		return st, fmt.Errorf("%w: archetype family must be scan or vulnerability", sourcecdk.ErrInvalidConfig)
 	}
-	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, configValue(cfg, "private_endpoint_allowlist"))
+	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, sourcecdk.ConfigValue(cfg, "private_endpoint_allowlist"))
 	if err != nil {
 		return st, err
 	}
@@ -233,10 +233,6 @@ func parseTime(value string, fallback time.Time) time.Time {
 		return at.UTC()
 	}
 	return fallback.UTC()
-}
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }
 func first(values ...string) string {
 	for _, value := range values {

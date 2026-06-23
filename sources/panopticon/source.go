@@ -121,15 +121,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
@@ -170,18 +162,18 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 }
 
 func parseSettingsWithLoopback(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
-	mode := strings.ToLower(strings.TrimSpace(configValue(cfg, "mode")))
+	mode := strings.ToLower(strings.TrimSpace(sourcecdk.ConfigValue(cfg, "mode")))
 	if mode != "" && mode != modeAPI {
 		return settings{}, fmt.Errorf("%w: %q", ErrUnsupportedMode, mode)
 	}
-	tenantID := strings.TrimSpace(configValue(cfg, "tenant_id"))
-	if runtimeTenantID := strings.TrimSpace(configValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenantID != "" {
+	tenantID := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id"))
+	if runtimeTenantID := strings.TrimSpace(sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenantID != "" {
 		tenantID = runtimeTenantID
 	}
 	st := settings{
-		family:    strings.TrimSpace(configValue(cfg, "family")),
-		baseURL:   strings.TrimSpace(configValue(cfg, "base_url")),
-		apiPath:   strings.TrimSpace(configValue(cfg, "path")),
+		family:    strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")),
+		baseURL:   strings.TrimSpace(sourcecdk.ConfigValue(cfg, "base_url")),
+		apiPath:   strings.TrimSpace(sourcecdk.ConfigValue(cfg, "path")),
 		token:     strings.TrimSpace(firstConfigValue(cfg, "token", "api_key")),
 		tenantID:  tenantID,
 		runtimeID: strings.TrimSpace(firstConfigValue(cfg, "runtime_id", "source_runtime_id")),
@@ -215,7 +207,7 @@ func parseSettingsWithLoopback(cfg sourcecdk.Config, allowLoopback bool) (settin
 	if st.token == "" {
 		return settings{}, ErrTokenRequired
 	}
-	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, configValue(cfg, "private_endpoint_allowlist"))
+	privateEndpointAllowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(sourceID, sourcecdk.ConfigValue(cfg, "private_endpoint_allowlist"))
 	if err != nil {
 		return settings{}, err
 	}
@@ -247,14 +239,9 @@ func isKnownFamily(name string) bool {
 	return false
 }
 
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return value
-}
-
 func firstConfigValue(cfg sourcecdk.Config, keys ...string) string {
 	for _, key := range keys {
-		if value := strings.TrimSpace(configValue(cfg, key)); value != "" {
+		if value := strings.TrimSpace(sourcecdk.ConfigValue(cfg, key)); value != "" {
 			return value
 		}
 	}

@@ -1029,15 +1029,7 @@ func New() (*Source, error) {
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 // Spec returns static source metadata.
@@ -2820,37 +2812,37 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:          configValue(cfg, "family"),
-		accountID:       configValue(cfg, "account_id"),
-		region:          configValue(cfg, "region"),
-		profile:         configValue(cfg, "profile"),
-		accessKeyID:     configValue(cfg, "access_key_id"),
-		secretAccessKey: configValue(cfg, "secret_access_key"),
-		sessionToken:    configValue(cfg, "session_token"),
-		roleARN:         configValue(cfg, "role_arn"),
-		externalID:      configValue(cfg, "external_id"),
-		assumeRoleARNs:  configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
-		tenantID:        configValue(cfg, sourceconfig.RuntimeTenantIDKey),
+		family:          sourcecdk.ConfigValue(cfg, "family"),
+		accountID:       sourcecdk.ConfigValue(cfg, "account_id"),
+		region:          sourcecdk.ConfigValue(cfg, "region"),
+		profile:         sourcecdk.ConfigValue(cfg, "profile"),
+		accessKeyID:     sourcecdk.ConfigValue(cfg, "access_key_id"),
+		secretAccessKey: sourcecdk.ConfigValue(cfg, "secret_access_key"),
+		sessionToken:    sourcecdk.ConfigValue(cfg, "session_token"),
+		roleARN:         sourcecdk.ConfigValue(cfg, "role_arn"),
+		externalID:      sourcecdk.ConfigValue(cfg, "external_id"),
+		assumeRoleARNs:  sourcecdk.ConfigValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
+		tenantID:        sourcecdk.ConfigValue(cfg, sourceconfig.RuntimeTenantIDKey),
 		includeGlobal:   configBool(cfg, "include_global", true),
-		groupName:       configValue(cfg, "group_name"),
-		principalType:   configValue(cfg, "principal_type"),
-		principalName:   configValue(cfg, "principal_name"),
-		userName:        configValue(cfg, "user_name"),
+		groupName:       sourcecdk.ConfigValue(cfg, "group_name"),
+		principalType:   sourcecdk.ConfigValue(cfg, "principal_type"),
+		principalName:   sourcecdk.ConfigValue(cfg, "principal_name"),
+		userName:        sourcecdk.ConfigValue(cfg, "user_name"),
 		identityCenter: identityCenterSettings{
-			storeID:          configValue(cfg, "identity_store_id"),
-			groupID:          configValue(cfg, "group_id"),
-			instanceARN:      configValue(cfg, "identity_center_instance_arn"),
-			permissionSetARN: configValue(cfg, "permission_set_arn"),
-			targetAccountID:  configValue(cfg, "target_account_id"),
+			storeID:          sourcecdk.ConfigValue(cfg, "identity_store_id"),
+			groupID:          sourcecdk.ConfigValue(cfg, "group_id"),
+			instanceARN:      sourcecdk.ConfigValue(cfg, "identity_center_instance_arn"),
+			permissionSetARN: sourcecdk.ConfigValue(cfg, "permission_set_arn"),
+			targetAccountID:  sourcecdk.ConfigValue(cfg, "target_account_id"),
 		},
 		cloudTrail: cloudTrailSettings{
-			lookupKey:   configValue(cfg, "lookup_key"),
-			lookupValue: configValue(cfg, "lookup_value"),
-			startTime:   configValue(cfg, "start_time"),
-			endTime:     configValue(cfg, "end_time"),
-			since:       configValue(cfg, "since"),
+			lookupKey:   sourcecdk.ConfigValue(cfg, "lookup_key"),
+			lookupValue: sourcecdk.ConfigValue(cfg, "lookup_value"),
+			startTime:   sourcecdk.ConfigValue(cfg, "start_time"),
+			endTime:     sourcecdk.ConfigValue(cfg, "end_time"),
+			since:       sourcecdk.ConfigValue(cfg, "since"),
 		},
-		wafv2Scope: configValue(cfg, "wafv2_scope"),
+		wafv2Scope: sourcecdk.ConfigValue(cfg, "wafv2_scope"),
 		perPage:    defaultPageSize,
 	}
 	if settings.family == "" {
@@ -4541,11 +4533,6 @@ func stringPtr(value string) *string {
 		return &trimmed
 	}
 	return nil
-}
-
-func configValue(cfg sourcecdk.Config, key string) string {
-	value, _ := cfg.Lookup(key)
-	return strings.TrimSpace(value)
 }
 
 func configBool(cfg sourcecdk.Config, key string, fallback bool) bool {

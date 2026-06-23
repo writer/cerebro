@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// ConfigValue returns a source config value or an empty string.
+// ConfigValue returns a trimmed source config value or an empty string.
 func ConfigValue(cfg Config, key string) string {
 	value, _ := cfg.Lookup(key)
-	return value
+	return strings.TrimSpace(value)
 }
 
 // RequiredConfigValue returns a trimmed required config value.
