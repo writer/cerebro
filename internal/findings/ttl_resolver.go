@@ -167,9 +167,7 @@ func (s *Service) resolveTTLOpenFindings(ctx context.Context, tenantID string, r
 			if resolvedAt.IsZero() {
 				resolvedAt = now
 			}
-			if logErr := writeTTLResolveLog(sink, id, strings.TrimSpace(updated.ID), ttlLabel, resolvedAt); logErr != nil {
-				return fmt.Errorf("write ttl resolve log for %q: %w", strings.TrimSpace(finding.ID), logErr)
-			}
+			_ = writeTTLResolveLog(sink, id, strings.TrimSpace(updated.ID), ttlLabel, resolvedAt)
 		}
 		if len(candidates) < int(ttlResolverListLimit) {
 			return nil
