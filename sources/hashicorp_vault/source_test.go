@@ -244,6 +244,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	for _, baseURL := range []string{
+		"http://vault.example.test",
 		"https://localhost.",
 		"https://127.0.0.1",
 		"https://10.0.0.1",
