@@ -1234,7 +1234,7 @@ func aiCredentialOwnerURN(entities map[string]*ports.ProjectedEntity, links map[
 		return ownerURN
 	}
 	if ownerUserID := firstNonEmpty(attrs["owner_user_id"], attrs["user_id"], aiTypedOwnerID(attrs, "user")); ownerUserID != "" || strings.TrimSpace(attrs["email"]) != "" {
-		return aiEnsureUser(entities, links, tenantID, event, profile, ownerUserID, attrs["email"], firstNonEmpty(attrs["owner_name"], attrs["name"]), "")
+		return aiEnsureUser(entities, links, tenantID, event, profile, ownerUserID, attrs["email"], attrs["owner_name"], "")
 	}
 	return ""
 }
@@ -1496,7 +1496,7 @@ func aiAuditResourceURN(entities map[string]*ports.ProjectedEntity, links map[st
 		orgAttrs["organization_id"] = resourceID
 		return aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, orgAttrs)
 	case strings.Contains(normalizedType, "user"):
-		return aiEnsureUser(entities, links, tenantID, event, profile, resourceID, attrs["email"], attrs["name"], attrs["role"])
+		return aiEnsureUser(entities, links, tenantID, event, profile, resourceID, attrs["email"], "", attrs["role"])
 	default:
 		resourceType = firstNonEmpty(resourceType, "resource")
 		resourceURN := projectionURN(tenantID, profile.Provider+"_resource", resourceType, resourceID)
@@ -1508,7 +1508,7 @@ func aiAuditResourceURN(entities map[string]*ports.ProjectedEntity, links map[st
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.Provider + ".resource",
-			Label:      firstNonEmpty(attrs["name"], resourceID),
+			Label:      resourceID,
 			Attributes: compactAttributes(map[string]string{
 				"activity_type":     attrs["activity_type"],
 				"claude_project_id": attrs["claude_project_id"],
