@@ -365,6 +365,76 @@ func (s *Store) ListFindingCandidates(ctx context.Context, request ports.ListFin
 	return candidates, nil
 }
 
+// ExpireStaleFindingCandidates marks live candidates as expired when a later
+// successful run covered their source event evidence without reproducing them.
+func (s *Store) ExpireStaleFindingCandidates(ctx context.Context, request ports.FindingCandidateExpiration) (int, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return 0, errors.New("finding candidate expiration tenant id is required")
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return 0, errors.New("finding candidate expiration runtime id is required")
+	}
+	ruleID := strings.TrimSpace(request.RuleID)
+	if ruleID == "" {
+		return 0, errors.New("finding candidate expiration rule id is required")
+	}
+	runID := strings.TrimSpace(request.RunID)
+	if runID == "" {
+		return 0, errors.New("finding candidate expiration run id is required")
+	}
+	runStartedAt := request.RunStartedAt.UTC()
+	if runStartedAt.IsZero() {
+		return 0, errors.New("finding candidate expiration run started_at is required")
+	}
+	eventIDs := normalizedNonEmptyStrings(request.EvaluatedEventIDs)
+	if len(eventIDs) == 0 {
+		return 0, nil
+	}
+	eventIDsJSON, err := json.Marshal(eventIDs)
+	if err != nil {
+		return 0, fmt.Errorf("marshal finding candidate expiration event ids: %w", err)
+	}
+	if s == nil || s.db == nil {
+		return 0, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingCandidateTables(ctx); err != nil {
+		return 0, err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE finding_candidates
+SET status = 'expired',
+  updated_at = NOW()
+WHERE tenant_id = $1
+  AND runtime_id = $2
+  AND rule_id = $3
+  AND status = 'candidate'
+  AND last_run_id <> $4
+  AND updated_at < $5
+  AND EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements_text(COALESCE(finding_json->'EventIDs', '[]'::jsonb)) AS candidate_event_id(value)
+    JOIN jsonb_array_elements_text($6::jsonb) AS evaluated_event_id(value)
+      ON candidate_event_id.value = evaluated_event_id.value
+  )`,
+		tenantID,
+		runtimeID,
+		ruleID,
+		runID,
+		runStartedAt,
+		string(eventIDsJSON),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("expire stale finding candidates for runtime %q rule %q: %w", runtimeID, ruleID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count expired finding candidates: %w", err)
+	}
+	return int(affected), nil
+}
+
 // MarkFindingCandidatePromoted records promotion metadata on one candidate row.
 func (s *Store) MarkFindingCandidatePromoted(ctx context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
 	id := strings.TrimSpace(promotion.CandidateID)

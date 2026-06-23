@@ -419,6 +419,33 @@ func TestValidateFindingCandidateRequiresSnapshotAndLastRun(t *testing.T) {
 	}
 }
 
+func TestExpireStaleFindingCandidatesValidatesScopeAndSkipsEmptyEvents(t *testing.T) {
+	store := &Store{}
+	_, err := store.ExpireStaleFindingCandidates(context.Background(), ports.FindingCandidateExpiration{
+		RuntimeID:         "writer-okta-audit",
+		RuleID:            "rule-a",
+		RunID:             "candidate-run-2",
+		EvaluatedEventIDs: []string{"okta-audit-1"},
+		RunStartedAt:      time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+	})
+	if err == nil {
+		t.Fatal("ExpireStaleFindingCandidates() error = nil, want missing tenant error")
+	}
+	expired, err := store.ExpireStaleFindingCandidates(context.Background(), ports.FindingCandidateExpiration{
+		TenantID:     "writer",
+		RuntimeID:    "writer-okta-audit",
+		RuleID:       "rule-a",
+		RunID:        "candidate-run-2",
+		RunStartedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("ExpireStaleFindingCandidates(empty events) error = %v", err)
+	}
+	if expired != 0 {
+		t.Fatalf("ExpireStaleFindingCandidates(empty events) = %d, want 0", expired)
+	}
+}
+
 func TestMarkFindingCandidateRejectedValidatesReviewMetadata(t *testing.T) {
 	store := &Store{}
 	_, err := store.MarkFindingCandidateRejected(context.Background(), ports.FindingCandidateRejection{
