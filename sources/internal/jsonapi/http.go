@@ -275,7 +275,7 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 }
 
 func responseListKeys(family Family) []string {
-	keys := make([]string, 0, len(family.ListKeys)+8)
+	keys := make([]string, 0, max(len(family.ListKeys), 0)+8)
 	for _, key := range family.ListKeys {
 		if key = strings.TrimSpace(key); key != "" {
 			keys = append(keys, key)
@@ -425,7 +425,7 @@ func intValueFromRaw(raw json.RawMessage) (int, bool) {
 }
 
 func responseCursorKeys(family Family) []string {
-	keys := make([]string, 0, len(family.NextCursorKeys)+8)
+	keys := make([]string, 0, max(len(family.NextCursorKeys), 0)+8)
 	for _, key := range family.NextCursorKeys {
 		if key = strings.TrimSpace(key); key != "" {
 			keys = append(keys, key)

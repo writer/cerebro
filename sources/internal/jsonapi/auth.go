@@ -164,7 +164,7 @@ func (s *Source) setAWSSigV4Auth(_ context.Context, req *http.Request, settings 
 		req.Method,
 		canonicalURI,
 		canonicalQuery,
-		canonicalHeaders + "\n",
+		canonicalHeaders,
 		signedHeaders,
 		payloadHash,
 	}, "\n")
