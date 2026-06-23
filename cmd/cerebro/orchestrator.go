@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/jobs"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehealth"
@@ -772,6 +773,14 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 		}
 		captureOrchestratorError(phaseCtx, name+".error", iteration, runtime, name, err)
 	}
+	observability.RecordOrchestratorPhase(phaseCtx, observability.OrchestratorPhaseMetrics{
+		PhaseKey:        phaseKey,
+		SourceID:        runtime.GetSourceId(),
+		Status:          status,
+		ErrorKind:       errorKindForMetric(err),
+		Duration:        time.Since(started),
+		TimeoutExceeded: errors.Is(err, context.DeadlineExceeded) || errors.Is(phaseCtx.Err(), context.DeadlineExceeded),
+	})
 	emitOrchestratorJobPhaseEnded(phaseCtx, name, status, iteration, runtime, time.Since(started), timeout, endAttrs)
 	telemetry.AnnotateMainPhase(phaseCtx, name, status, endAttrs.
 		WithField(telemetryField("phase.iteration", iteration)).
@@ -780,6 +789,13 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 		WithField(telemetryField("phase.tenant_id", runtime.GetTenantId())))
 	telemetry.End(span, status, endAttrs)
 	return result, err
+}
+
+func errorKindForMetric(err error) string {
+	if err == nil {
+		return ""
+	}
+	return telemetry.ErrorKind(err)
 }
 
 func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRuntimeResult, status string, attrs telemetry.Attributes) {

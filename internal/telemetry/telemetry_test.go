@@ -44,6 +44,28 @@ func TestEventEmitsParseableJSONLineOnStderr(t *testing.T) {
 	}
 }
 
+func TestQuietSpanStillExportsOpenTelemetryWithoutWideEvents(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	oldProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(oldProvider)
+		_ = provider.Shutdown(context.Background())
+	})
+
+	_, stderr := captureOutput(t, func() {
+		_, span := StartQuiet(context.Background(), "test.quiet", Attrs(Field{Key: "operation", Value: "write"}))
+		EndQuiet(span, "completed", Attrs(Field{Key: "status_detail", Value: "sampled_out"}))
+	})
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("quiet span emitted stderr = %q, want empty", stderr)
+	}
+	if ended := recorder.Ended(); len(ended) != 1 || ended[0].Name() != "test.quiet" {
+		t.Fatalf("quiet span did not reach OTEL recorder: %#v", ended)
+	}
+}
+
 func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {

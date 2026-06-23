@@ -300,6 +300,10 @@ func Start(ctx context.Context, name string, attributes Attributes) (context.Con
 	return StartWithOptions(ctx, name, attributes)
 }
 
+func StartQuiet(ctx context.Context, name string, attributes Attributes) (context.Context, *Span) {
+	return start(ctx, name, attributes, false)
+}
+
 func StartMain(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
 	attributes = RuntimeAttributes().With(wideEventBaseAttributes(name)).With(attributes).
 		WithField(Field{Key: "main", Value: true}).
@@ -312,6 +316,10 @@ func StartMain(ctx context.Context, name string, attributes Attributes, options 
 }
 
 func StartWithOptions(ctx context.Context, name string, attributes Attributes, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
+	return start(ctx, name, attributes, true, options...)
+}
+
+func start(ctx context.Context, name string, attributes Attributes, emitStart bool, options ...oteltrace.SpanStartOption) (context.Context, *Span) {
 	attributes = spanBaseAttributes(name).With(attributes)
 	parent, _ := ctx.Value(spanContextKey{}).(spanContext)
 	traceID := parent.TraceID
@@ -335,7 +343,9 @@ func StartWithOptions(ctx context.Context, name string, attributes Attributes, o
 		span.spanID = spanContext.SpanID().String()
 	}
 	next := context.WithValue(otelCtx, spanContextKey{}, spanContext{TraceID: span.traceID, SpanID: span.spanID})
-	emit("span_start", span, attributes)
+	if emitStart {
+		emit("span_start", span, attributes)
+	}
 	return next, span
 }
 
@@ -553,6 +563,14 @@ func fingerprintAttribute(attributes Attributes, key string) string {
 }
 
 func End(span *Span, status string, attributes Attributes) {
+	end(span, status, attributes, true)
+}
+
+func EndQuiet(span *Span, status string, attributes Attributes) {
+	end(span, status, attributes, false)
+}
+
+func end(span *Span, status string, attributes Attributes, emitEnd bool) {
 	if span == nil {
 		return
 	}
@@ -583,7 +601,9 @@ func End(span *Span, status string, attributes Attributes) {
 		}
 		span.otelSpan.End()
 	}
-	emit("span_end", span, attributes)
+	if emitEnd {
+		emit("span_end", span, attributes)
+	}
 }
 
 func (s *Span) annotate(attributes Attributes) {
