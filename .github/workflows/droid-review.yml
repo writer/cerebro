@@ -264,7 +264,7 @@ jobs:
     # preflight context but skip the secret-dependent Droid execution job.
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && needs.droid-review-preflight.outputs.run_droid_review == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: write
       pull-requests: write

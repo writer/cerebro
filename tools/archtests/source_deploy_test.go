@@ -36,7 +36,9 @@ var requireSourceHealthReceipt = map[string]struct{}{
 	"aws":         {},
 	"github":      {},
 	"grc":         {},
+	"meraki":      {},
 	"okta":        {},
+	"probely":     {},
 	"sentinelone": {},
 }
 

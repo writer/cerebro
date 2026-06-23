@@ -177,6 +177,24 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	)
 }
 
+func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
+	analysis, err := BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
+	}
+	if analysis.Summary.Total != 198 || len(analysis.Entries) != 198 {
+		t.Fatalf("runtime catalog size = total %d entries %d, want 198", analysis.Summary.Total, len(analysis.Entries))
+	}
+	if analysis.Summary.CatalogReady != 198 || analysis.Summary.Generateable != 0 {
+		t.Fatalf("runtime summary = %#v, want catalog-ready entries without sourcegen dry-run", analysis.Summary)
+	}
+	for _, entry := range analysis.Entries {
+		if entry.SourcegenDryRun || entry.Generateable || entry.Status != StatusCatalogReady {
+			t.Fatalf("entry %s status=%q sourcegen=%v generateable=%v, want runtime catalog-ready only", entry.Definition.SourceID, entry.Status, entry.SourcegenDryRun, entry.Generateable)
+		}
+	}
+}
+
 func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
 	entry, ok, err := BuiltinEntry("JumpCloud")
 	if err != nil {

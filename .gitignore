@@ -20,6 +20,9 @@ vendor/
 *.test
 go.work
 tmp/
+sdk/python/build/
+sdk/python/*.egg-info/
+sdk/typescript/src/generated/proto/
 
 # Node
 node_modules/

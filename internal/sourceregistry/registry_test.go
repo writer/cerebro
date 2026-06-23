@@ -1,11 +1,13 @@
 package sourceregistry
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestBuiltin(t *testing.T) {
@@ -206,5 +208,49 @@ func TestDynamicDefinitionSourceRejectsBlockedDefinition(t *testing.T) {
 	}
 	if !errors.Is(err, connectordefinitions.ErrInvalidDefinition) {
 		t.Fatalf("DynamicDefinitionSource() error = %v, want blocked definition error", err)
+	}
+}
+
+func TestDynamicDefinitionSourceAcceptsDepositDefinitionWithoutPaths(t *testing.T) {
+	source, err := DynamicDefinitionSource(connectordefinitions.Definition{
+		ID:          "example",
+		TenantID:    "tenant-a",
+		SourceID:    "example_deposit",
+		DisplayName: "Example Deposit",
+		Runtime:     connectordefinitions.RuntimeJSONAPI,
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Ingest: connectordefinitions.IngestSpec{
+			Mode:    connectordefinitions.IngestModeDeposit,
+			Deposit: &connectordefinitions.DepositIngestSpec{ResourceFamilies: []string{"assets"}},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:         "assets",
+			IDField:    "id",
+			Event:      connectordefinitions.EventMappingSpec{Kind: "example_deposit.assets", SchemaRef: "example_deposit/assets/v1"},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("DynamicDefinitionSource() error = %v", err)
+	}
+	if source.Spec().Id != "example_deposit" {
+		t.Fatalf("Spec().Id = %q, want example_deposit", source.Spec().Id)
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant-a"})); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(nil), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("Read() events = %d, want 0 for deposit source", len(pull.Events))
+	}
+	provider, ok := source.(sourcecdk.EventContractProvider)
+	if !ok {
+		t.Fatalf("deposit source does not provide event contracts")
+	}
+	if contracts := provider.EventContracts(); len(contracts) != 1 || contracts[0].Kind != "example_deposit.assets" {
+		t.Fatalf("EventContracts() = %#v, want example_deposit.assets", contracts)
 	}
 }

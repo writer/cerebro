@@ -1,0 +1,92 @@
+id: meraki
+name: "Cisco Meraki"
+description: "The Cisco Meraki Dashboard API is a modern REST API based on the OpenAPI specification."
+emitted_kinds:
+  - meraki.eventtype
+  - meraki.organization
+  - meraki.merakiauthuser
+  - meraki.accesspolicy
+kind_lifecycle:
+  - kind: meraki.eventtype
+    status: active
+  - kind: meraki.organization
+    status: active
+  - kind: meraki.merakiauthuser
+    status: active
+  - kind: meraki.accesspolicy
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: meraki
+  dimensions:
+    - id: eventtype
+      type: entity_family
+      title: "Eventtype"
+      families: [eventtype]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: organization
+      type: entity_family
+      title: "Organization"
+      families: [organization]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: merakiauthuser
+      type: entity_family
+      title: "Merakiauthuser"
+      families: [merakiauthuser]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accesspolicy
+      type: entity_family
+      title: "Accesspolicy"
+      families: [accesspolicy]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: meraki.eventtype
+    schema_ref: meraki/eventtype/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: meraki.organization
+    schema_ref: meraki/organization/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: meraki.merakiauthuser
+    schema_ref: meraki/merakiauthuser/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: meraki.accesspolicy
+    schema_ref: meraki/accesspolicy/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id

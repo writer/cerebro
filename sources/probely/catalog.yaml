@@ -1,0 +1,95 @@
+id: probely
+name: "Probely"
+description: "Probely is a Web Vulnerability Scanning suite for Agile Teams. It provides continuous scanning of your Web Applications and lets you efficiently manage the lifecycle of the vulnerabilities found, in a sleek and intuitive ~~web interface~~ API."
+emitted_kinds:
+  - probely.needs_attention_top
+  - probely.event
+  - probely.user
+  - probely.framework
+kind_lifecycle:
+  - kind: probely.needs_attention_top
+    status: active
+  - kind: probely.event
+    status: active
+  - kind: probely.user
+    status: active
+  - kind: probely.framework
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: probely
+  dimensions:
+    - id: needs_attention_top
+      type: entity_family
+      title: "Needs Attention Top"
+      families: [needs_attention_top]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: event
+      type: entity_family
+      title: "Event"
+      families: [event]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: framework
+      type: entity_family
+      title: "Framework"
+      families: [framework]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: probely.needs_attention_top
+    schema_ref: probely/needs_attention_top/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: probely.event
+    schema_ref: probely/event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: probely.user
+    schema_ref: probely/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: probely.framework
+    schema_ref: probely/framework/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
