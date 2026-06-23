@@ -854,7 +854,7 @@ func addVulnViewFindingStateAttributes(attrs map[string]string, values map[strin
 
 func occurredAtFor(values map[string]any) time.Time {
 	for _, key := range []string{"timestamp", "completedAt", "startedAt", "createdAt", "matchedAt", "matched-at"} {
-		if parsed, ok := parseTime(valueString(sourcecdk.ValueAtPath(values, key))); ok {
+		if parsed, ok := parseTime(valueString(valueAt(values, key))); ok {
 			return parsed
 		}
 	}
@@ -951,7 +951,7 @@ func isUnauthorizedResponse(err error) bool {
 
 func copyFields(attrs map[string]string, values map[string]any, fields map[string]string) {
 	for attr, field := range fields {
-		if value := valueString(sourcecdk.ValueAtPath(values, field)); value != "" {
+		if value := valueString(valueAt(values, field)); value != "" {
 			attrs[attr] = value
 		}
 	}
@@ -959,11 +959,23 @@ func copyFields(attrs map[string]string, values map[string]any, fields map[strin
 
 func firstValueString(values map[string]any, keys ...string) string {
 	for _, key := range keys {
-		if value := valueString(sourcecdk.ValueAtPath(values, key)); value != "" {
+		if value := valueString(valueAt(values, key)); value != "" {
 			return value
 		}
 	}
 	return ""
+}
+
+func valueAt(values map[string]any, path string) any {
+	current := any(values)
+	for _, part := range strings.Split(path, ".") {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		current = object[part]
+	}
+	return current
 }
 
 func valueString(value any) string {

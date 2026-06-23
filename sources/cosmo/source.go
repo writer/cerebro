@@ -952,7 +952,7 @@ func decodeResponseError(statusCode int, body []byte) error {
 
 func occurredAtFor(values map[string]any) time.Time {
 	for _, key := range []string{"updated_at", "created_at", "feedbackAt", "surveyCreatedAt", "date"} {
-		if parsed, ok := parseTime(valueString(sourcecdk.ValueAtPath(values, key))); ok {
+		if parsed, ok := parseTime(valueString(valueAt(values, key))); ok {
 			return parsed.UTC()
 		}
 	}
@@ -975,11 +975,23 @@ func parseTime(value string) (time.Time, bool) {
 
 func firstValueString(values map[string]any, keys ...string) string {
 	for _, key := range keys {
-		if value := valueString(sourcecdk.ValueAtPath(values, key)); value != "" {
+		if value := valueString(valueAt(values, key)); value != "" {
 			return value
 		}
 	}
 	return ""
+}
+
+func valueAt(values map[string]any, path string) any {
+	current := any(values)
+	for _, part := range strings.Split(path, ".") {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		current = object[part]
+	}
+	return current
 }
 
 func valueString(value any) string {
