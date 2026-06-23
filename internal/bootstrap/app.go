@@ -250,6 +250,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 	return app, nil
 }

@@ -31,6 +31,7 @@ func openVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool, 
 	}
 	initialScheme := strings.ToLower(request.URL.Scheme)
 	client := &http.Client{
+		Timeout:   2 * time.Minute,
 		Transport: vulndbFeedTransport(options),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if initialScheme == "https" && strings.EqualFold(req.URL.Scheme, "http") {

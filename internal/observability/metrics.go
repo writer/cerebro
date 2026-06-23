@@ -91,6 +91,8 @@ func (r *Registry) Render() string {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
 		route := normalizeRouteLabel(r.URL.Path)
 		method := normalizeMethodLabel(r.Method)
 		ctx, span := telemetry.StartMain(r.Context(), "http.server", httpRequestWideAttributes(r, method, route),
