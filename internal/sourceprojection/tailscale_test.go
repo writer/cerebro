@@ -196,6 +196,308 @@ func TestProjectTailscaleUserURNPrefersStableUserID(t *testing.T) {
 	}
 }
 
+func TestProjectTailscaleDevicePostureAttributes(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-posture", "tailscale.device", map[string]string{
+		"device_id":                   "device-posture-1",
+		"node_id":                     "node-posture-1",
+		"name":                        "eng-laptop",
+		"hostname":                    "eng-laptop.tail1234.ts.net",
+		"os":                          "macOS 14.5",
+		"user_id":                     "user-1",
+		"owner_email":                 "alice@writer.com",
+		"authorized":                  "true",
+		"is_external":                 "false",
+		"key_expiry_disabled":         "true",
+		"update_available":            "true",
+		"blocks_incoming_connections": "false",
+		"tags":                        "tag:prod,tag:eng",
+		"last_seen_at":                "2026-06-14T00:00:00Z",
+		"client_version":              "1.68.1",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-posture-1"
+	entity := state.entities[deviceURN]
+	if entity == nil {
+		t.Fatalf("device entity missing")
+	}
+
+	for _, tc := range []struct{ key, want string }{
+		{"device_id", "device-posture-1"},
+		{"hostname", "eng-laptop.tail1234.ts.net"},
+		{"os", "macOS 14.5"},
+		{"authorized", "true"},
+		{"is_external", "false"},
+		{"key_expiry_disabled", "true"},
+		{"update_available", "true"},
+		{"blocks_incoming_connections", "false"},
+		{"last_seen_at", "2026-06-14T00:00:00Z"},
+		{"client_version", "1.68.1"},
+	} {
+		if got := entity.Attributes[tc.key]; got != tc.want {
+			t.Fatalf("device attr %q = %q, want %q", tc.key, got, tc.want)
+		}
+	}
+
+	if entity.Label != "eng-laptop" {
+		t.Fatalf("device label = %q, want eng-laptop", entity.Label)
+	}
+}
+
+func TestProjectTailscaleDeviceMultipleTags(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-tags", "tailscale.device", map[string]string{
+		"device_id": "device-tags-1", "authorized": "true", "user_id": "user-1", "tags": "tag:prod,tag:staging,tag:eng",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-tags-1"
+	for _, tag := range []string{"tag:prod", "tag:staging", "tag:eng"} {
+		tagURN := "urn:cerebro:writer:tailscale_tag:" + tag
+		assertProjectedLink(t, state, deviceURN, relationTaggedAs, tagURN)
+		if entity := state.entities[tagURN]; entity == nil || entity.EntityType != "tailscale.tag" {
+			t.Fatalf("tag entity %q missing or wrong type", tagURN)
+		}
+	}
+}
+
+func TestProjectTailscaleDeviceNoOwnerNoLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-no-owner", "tailscale.device", map[string]string{
+		"device_id": "device-orphan", "authorized": "true",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-orphan"
+	if state.entities[deviceURN] == nil {
+		t.Fatalf("device entity missing")
+	}
+	for _, link := range state.links {
+		if link.Relation == relationOwnedBy || link.Relation == relationCanReach {
+			t.Fatalf("unexpected owner/access link for device with no owner: %#v", link)
+		}
+	}
+}
+
+func TestProjectTailscaleDeviceExternalNotReachable(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-external", "tailscale.device", map[string]string{
+		"device_id": "device-ext", "user_id": "user-1", "authorized": "true",
+		"is_external": "true", "blocks_incoming_connections": "true",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-ext"
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	assertProjectedLink(t, state, deviceURN, relationOwnedBy, userURN)
+	assertProjectedLinkMissing(t, state, userURN, relationCanReach, deviceURN)
+
+	entity := state.entities[deviceURN]
+	if entity == nil || entity.Attributes["is_external"] != "true" {
+		t.Fatalf("device is_external attr wrong: %#v", entity)
+	}
+}
+
+func TestProjectTailscaleDeviceAuthorizedReachable(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-reachable", "tailscale.device", map[string]string{
+		"device_id": "device-reach", "user_id": "user-1", "authorized": "true",
+		"blocks_incoming_connections": "false",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-reach"
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	assertProjectedLink(t, state, deviceURN, relationOwnedBy, userURN)
+	assertProjectedLink(t, state, userURN, relationCanReach, deviceURN)
+}
+
+func TestProjectTailscaleDeviceDeauthorizedNoReach(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-device-deauth-noreach", "tailscale.device", map[string]string{
+		"device_id": "device-deauth", "user_id": "user-1", "authorized": "false",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:tailscale_device:device-deauth"
+	userURN := "urn:cerebro:writer:tailscale_user:user-1"
+	assertProjectedLink(t, state, deviceURN, relationOwnedBy, userURN)
+	assertProjectedLinkMissing(t, state, userURN, relationCanReach, deviceURN)
+}
+
+func TestProjectTailscaleUserLastSeenAt(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-user-lastseen", "tailscale.user", map[string]string{
+		"user_id": "user-lastseen", "login_name": "bob@writer.com", "email": "bob@writer.com",
+		"role": "member", "status": "active", "type": "user", "last_seen_at": "2026-06-13T12:30:00Z",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	userURN := "urn:cerebro:writer:tailscale_user:user-lastseen"
+	entity := state.entities[userURN]
+	if entity == nil {
+		t.Fatalf("user entity missing")
+	}
+	if got := entity.Attributes["last_seen_at"]; got != "2026-06-13T12:30:00Z" {
+		t.Fatalf("user last_seen_at = %q, want 2026-06-13T12:30:00Z", got)
+	}
+}
+
+func TestProjectTailscaleTailnetPostureSettings(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-tailnet-posture", "tailscale.tailnet", map[string]string{
+		"tailnet":                 "acme.com",
+		"devices_approval_on":     "true",
+		"users_approval_on":       "true",
+		"network_flow_logging_on": "false",
+		"regional_routing_on":     "true",
+		"max_key_duration_days":   "90",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	tailnetURN := "urn:cerebro:writer:tailscale_tailnet:acme.com"
+	entity := state.entities[tailnetURN]
+	if entity == nil {
+		t.Fatalf("tailnet entity missing")
+	}
+	for _, tc := range []struct{ key, want string }{
+		{"tailnet", "acme.com"},
+		{"devices_approval_on", "true"},
+		{"users_approval_on", "true"},
+		{"network_flow_logging_on", "false"},
+		{"regional_routing_on", "true"},
+		{"max_key_duration_days", "90"},
+	} {
+		if got := entity.Attributes[tc.key]; got != tc.want {
+			t.Fatalf("tailnet attr %q = %q, want %q", tc.key, got, tc.want)
+		}
+	}
+}
+
+func TestProjectTailscaleGrantACLEnrichment(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-grant-acl", "tailscale.grant", map[string]string{
+		"grant_id":     "grant-acl-1",
+		"sources":      "group:eng,tag:admin",
+		"destinations": "tag:prod:443,tag:prod:8080",
+		"via":          "tailscale-funnel",
+		"ip":           "100.64.0.1",
+		"app":          "https",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	grantURN := "urn:cerebro:writer:tailscale_grant:grant-acl-1"
+	entity := state.entities[grantURN]
+	if entity == nil {
+		t.Fatalf("grant entity missing")
+	}
+	for _, tc := range []struct{ key, want string }{
+		{"via", "tailscale-funnel"},
+		{"ip", "100.64.0.1"},
+		{"app", "https"},
+	} {
+		if got := entity.Attributes[tc.key]; got != tc.want {
+			t.Fatalf("grant attr %q = %q, want %q", tc.key, got, tc.want)
+		}
+	}
+
+	groupURN := "urn:cerebro:writer:tailscale_group:group:eng"
+	tagAdminURN := "urn:cerebro:writer:tailscale_tag:tag:admin"
+	dest1URN := "urn:cerebro:writer:tailscale_destination:tag:prod:443"
+	dest2URN := "urn:cerebro:writer:tailscale_destination:tag:prod:8080"
+
+	assertProjectedLink(t, state, grantURN, relationGrantsEntitlement, groupURN)
+	assertProjectedLink(t, state, grantURN, relationGrantsEntitlement, tagAdminURN)
+	assertProjectedLink(t, state, grantURN, relationCanReach, dest1URN)
+	assertProjectedLink(t, state, grantURN, relationCanReach, dest2URN)
+}
+
+func TestProjectTailscaleGrantDisabledNoAccessLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := tailscaleTestEvent("ts-grant-disabled-noaccess", "tailscale.grant", map[string]string{
+		"grant_id": "grant-dis-1", "sources": "group:eng", "destinations": "tag:prod:443", "disabled": "true",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	grantURN := "urn:cerebro:writer:tailscale_grant:grant-dis-1"
+	if state.entities[grantURN] == nil {
+		t.Fatalf("disabled grant entity missing")
+	}
+	for _, link := range state.links {
+		if link.Relation == relationGrantsEntitlement || link.Relation == relationCanReach {
+			t.Fatalf("disabled grant should not produce access links: %#v", link)
+		}
+	}
+}
+
+func TestProjectTailscaleEmptyIDReturnsNil(t *testing.T) {
+	cases := []struct {
+		kind  string
+		attrs map[string]string
+	}{
+		{"tailscale.tailnet", map[string]string{"tailnet": ""}},
+		{"tailscale.tailnet", map[string]string{"tailnet": "  "}},
+		{"tailscale.user", map[string]string{"user_id": ""}},
+		{"tailscale.device", map[string]string{"device_id": ""}},
+		{"tailscale.group", map[string]string{"group_id": ""}},
+		{"tailscale.tag", map[string]string{"tag_id": ""}},
+		{"tailscale.service", map[string]string{"service_id": ""}},
+		{"tailscale.grant", map[string]string{"grant_id": ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind, func(t *testing.T) {
+			entities, links, err := BuiltinRegistry().Project(tailscaleTestEvent("ts-empty", tc.kind, tc.attrs))
+			if err != nil {
+				t.Fatalf("Project(%s) error = %v", tc.kind, err)
+			}
+			if len(entities) != 0 || len(links) != 0 {
+				t.Fatalf("kind %q with empty ID produced entities=%d links=%d, want 0", tc.kind, len(entities), len(links))
+			}
+		})
+	}
+}
+
 func TestProjectTailscaleDeviceDeauthorizationRetraction(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
