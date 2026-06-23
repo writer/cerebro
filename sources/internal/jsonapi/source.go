@@ -396,6 +396,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	}
 	records := make([]record, 0, len(items))
 	for _, item := range items {
+		item, err = rawWithPathParams(item, settings.pathParams)
+		if err != nil {
+			return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
+		}
 		record, err := recordFromRaw(family, item)
 		if err != nil {
 			return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
@@ -1068,6 +1072,9 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 }
 
 func responseCursor(family Family, object map[string]json.RawMessage) string {
+	if value := offsetResponseCursor(family, object); value != "" {
+		return value
+	}
 	if !responseHasMore(family, object) {
 		return ""
 	}
@@ -1093,6 +1100,39 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 	return ""
 }
 
+func offsetResponseCursor(family Family, object map[string]json.RawMessage) string {
+	if cursorParam(family) != "offset" {
+		return ""
+	}
+	total, ok := intValueFromRaw(firstRaw(object, "totalCount", "total_count", "total"))
+	if !ok || total <= 0 {
+		return ""
+	}
+	offset, offsetOK := intValueFromRaw(firstRaw(object, "offset"))
+	limit, limitOK := intValueFromRaw(firstRaw(object, "limit"))
+	if pagination := object["pagination"]; len(pagination) != 0 {
+		var nested map[string]any
+		if err := json.Unmarshal(pagination, &nested); err == nil {
+			if parsed, ok := intValue(nested["offset"]); ok {
+				offset = parsed
+				offsetOK = true
+			}
+			if parsed, ok := intValue(nested["limit"]); ok {
+				limit = parsed
+				limitOK = true
+			}
+		}
+	}
+	if !offsetOK || !limitOK || limit <= 0 {
+		return ""
+	}
+	next := offset + limit
+	if next >= total {
+		return ""
+	}
+	return strconv.Itoa(next)
+}
+
 func responseHasMore(family Family, object map[string]json.RawMessage) bool {
 	key := strings.TrimSpace(family.HasMoreKey)
 	if key == "" {
@@ -1104,6 +1144,28 @@ func responseHasMore(family Family, object map[string]json.RawMessage) bool {
 	}
 	raw := strings.ToLower(rawString(value))
 	return raw == "true" || raw == "1" || raw == "yes"
+}
+
+func firstRaw(object map[string]json.RawMessage, keys ...string) json.RawMessage {
+	for _, key := range keys {
+		if value := object[key]; len(value) != 0 {
+			return value
+		}
+	}
+	return nil
+}
+
+func intValueFromRaw(raw json.RawMessage) (int, bool) {
+	if len(raw) == 0 {
+		return 0, false
+	}
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return 0, false
+	}
+	return intValue(value)
 }
 
 func responseCursorKeys(family Family) []string {
@@ -1177,6 +1239,34 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		id = stableID(string(raw))
 	}
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
+}
+
+func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
+	if len(pathParams) == 0 {
+		return raw, nil
+	}
+	object := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	changed := false
+	for key, value := range pathParams {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" || len(object[key]) != 0 {
+			continue
+		}
+		object[key] = json.RawMessage(strconv.Quote(value))
+		changed = true
+	}
+	if !changed {
+		return raw, nil
+	}
+	merged, err := json.Marshal(object)
+	if err != nil {
+		return nil, err
+	}
+	return merged, nil
 }
 
 func detailRecordRaw(raw json.RawMessage, allowBareObject bool) (json.RawMessage, error) {
