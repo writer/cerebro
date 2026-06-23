@@ -55,6 +55,10 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 				TenantId:     "writer",
 				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
 				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-48 * time.Hour))},
+				NextCursor:   &cerebrov1.SourceCursor{Opaque: "next-page"},
+				Config: map[string]string{
+					"stale_after_seconds": "60",
+				},
 			},
 		},
 		findings: map[string]*ports.FindingRecord{
@@ -157,6 +161,17 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	}
 	if len(payload.Connectors) != 2 {
 		t.Fatalf("connectors len = %d, want 2", len(payload.Connectors))
+	}
+	if len(payload.SourceSummaries) != 2 {
+		t.Fatalf("source summaries len = %d, want 2", len(payload.SourceSummaries))
+	}
+	summaries := map[string]sourceRuntimeHealthSummary{}
+	for _, summary := range payload.SourceSummaries {
+		summaries[summary.SourceID] = summary
+	}
+	githubSummary := summaries["github"]
+	if githubSummary.Total != 1 || githubSummary.Stale != 1 || githubSummary.CursorPending != 1 || githubSummary.ContractProbeNotConfigured != 1 || githubSummary.GraphNotObserved != 1 {
+		t.Fatalf("github source summary = %+v, want stale cursor-pending contract-not-configured graph-not-observed rollup", githubSummary)
 	}
 	connectors := map[string]grcConnector{}
 	for _, connector := range payload.Connectors {
