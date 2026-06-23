@@ -1,6 +1,7 @@
 package findingapi
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -238,24 +239,7 @@ func TestNormalizeStatusHandlesInvalidRequestError(t *testing.T) {
 	if err == nil {
 		t.Fatal("NormalizeStatus(bogus) should error")
 	}
-	if !isInvalidRequest(err) {
+	if !errors.Is(err, findings.ErrInvalidRequest) {
 		t.Fatalf("error = %v, want ErrInvalidRequest wrapped", err)
 	}
-}
-
-func isInvalidRequest(err error) bool {
-	return err != nil && err.Error() != "" && containsString(err.Error(), findings.ErrInvalidRequest.Error())
-}
-
-func containsString(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && findSubstring(s, sub))
-}
-
-func findSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
