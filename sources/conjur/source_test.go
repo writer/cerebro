@@ -81,10 +81,14 @@ func TestSourceCheckAndRead(t *testing.T) {
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Basic test-token" {
-			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
+			http.Error(w, "unexpected authorization", http.StatusUnauthorized)
+			return
 		}
 		if r.URL.Path != "/resources" {
-			t.Fatalf("path = %q", r.URL.Path)
+			t.Errorf("path = %q", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusNotFound)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
@@ -136,7 +140,9 @@ func TestDiscoverReturnsURNsForEachFamily(t *testing.T) {
 					return
 				}
 				if r.URL.Path != tt.path {
-					t.Fatalf("path = %q, want %q", r.URL.Path, tt.path)
+					t.Errorf("path = %q, want %q", r.URL.Path, tt.path)
+					http.Error(w, "unexpected path", http.StatusNotFound)
+					return
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(tt.payload)
@@ -211,7 +217,9 @@ func TestReadAllFamilies(t *testing.T) {
 					return
 				}
 				if r.URL.Path != tt.path {
-					t.Fatalf("path = %q, want %q", r.URL.Path, tt.path)
+					t.Errorf("path = %q, want %q", r.URL.Path, tt.path)
+					http.Error(w, "unexpected path", http.StatusNotFound)
+					return
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(tt.payload)
