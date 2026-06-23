@@ -10,6 +10,10 @@ import (
 )
 
 func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, now time.Time) *ports.FindingRecord {
+	return enrichFindingRiskWithConfig(record, now, nil)
+}
+
+func enrichFindingRiskWithConfig(record *ports.FindingRecord, now time.Time, config *ports.RiskScoringConfig) *ports.FindingRecord {
 	if record == nil {
 		return nil
 	}
@@ -18,7 +22,7 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 	}
 	sourceSeverity := strings.ToUpper(strings.TrimSpace(firstNonEmpty(record.Attributes[FindingSourceSeverityAttribute], record.Attributes["rule_severity"], record.Severity)))
 	setRiskStringAttribute(record.Attributes, FindingSourceSeverityAttribute, sourceSeverity)
-	evaluation := AnalyzeFindingRiskContext(record, now)
+	evaluation := AnalyzeFindingRiskContextWithConfig(record, now, config)
 	if record.LikelihoodScore <= 0 {
 		record.LikelihoodScore = evaluation.LikelihoodScore
 	}
@@ -29,18 +33,18 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 		record.ConfidenceScore = evaluation.ConfidenceScore
 	}
 	if strings.TrimSpace(record.LikelihoodLevel) == "" {
-		record.LikelihoodLevel = riskLevelFromScore(record.LikelihoodScore)
+		record.LikelihoodLevel = RiskLevelFromScoreWithConfig(record.LikelihoodScore, config)
 	}
 	if strings.TrimSpace(record.ImpactLevel) == "" {
-		record.ImpactLevel = riskLevelFromScore(record.ImpactScore)
+		record.ImpactLevel = RiskLevelFromScoreWithConfig(record.ImpactScore, config)
 	}
 	if record.RiskScore <= 0 {
 		record.RiskScore = productRiskScore(record.LikelihoodScore, record.ImpactScore)
 	}
 	if strings.TrimSpace(record.RiskModelVersion) == "" {
-		record.RiskModelVersion = defaultFindingRiskModelVersion
+		record.RiskModelVersion = evaluation.RiskModelVersion
 	}
-	effectiveSeverity := EffectiveSeverityFromRiskScore(record.RiskScore)
+	effectiveSeverity := EffectiveSeverityFromRiskScoreWithConfig(record.RiskScore, config)
 	record.RiskReasons = uniqueSortedStrings(append(record.RiskReasons, evaluation.Reasons...))
 	record.RiskFactors = uniqueRiskFactors(append(record.RiskFactors, evaluation.Factors...))
 	setRiskStringAttribute(record.Attributes, FindingEffectiveSeverityAttribute, effectiveSeverity)
@@ -61,6 +65,10 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 }
 
 func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.FindingRecord {
+	return recomputeFindingRiskWithConfig(record, now, nil)
+}
+
+func recomputeFindingRiskWithConfig(record *ports.FindingRecord, now time.Time, config *ports.RiskScoringConfig) *ports.FindingRecord {
 	if record == nil {
 		return nil
 	}
@@ -85,16 +93,16 @@ func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.Fin
 		delete(record.Attributes, "risk_model_version")
 		delete(record.Attributes, FindingEffectiveSeverityAttribute)
 	}
-	return enrichFindingRisk(record, nil, now)
+	return enrichFindingRiskWithConfig(record, now, config)
 }
 
-func findingRiskAttributes(record *ports.FindingRecord) map[string]string {
+func findingRiskAttributesWithConfig(record *ports.FindingRecord, config *ports.RiskScoringConfig) map[string]string {
 	if record == nil {
 		return map[string]string{}
 	}
 	attributes := map[string]string{}
 	attributes["risk_score"] = strconv.Itoa(clampScore(record.RiskScore))
-	attributes[FindingEffectiveSeverityAttribute] = EffectiveSeverityFromRiskScore(record.RiskScore)
+	attributes[FindingEffectiveSeverityAttribute] = EffectiveSeverityFromRiskScoreWithConfig(record.RiskScore, config)
 	attributes[FindingSourceSeverityAttribute] = strings.ToUpper(strings.TrimSpace(firstNonEmpty(record.Attributes[FindingSourceSeverityAttribute], record.Attributes["rule_severity"], record.Severity)))
 	attributes["likelihood_score"] = strconv.Itoa(clampScore(record.LikelihoodScore))
 	attributes["impact_score"] = strconv.Itoa(clampScore(record.ImpactScore))

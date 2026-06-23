@@ -22,6 +22,7 @@ type RiskDeltaSimulationOptions struct {
 	Limit              int
 	GraphNeighborhoods map[string]*ports.EntityNeighborhood
 	Now                time.Time
+	RiskScoringConfig  *ports.RiskScoringConfig
 }
 
 type RiskDeltaSimulationReport struct {
@@ -69,14 +70,14 @@ func SimulateRiskDelta(records []*ports.FindingRecord, options RiskDeltaSimulati
 	}
 	beforeRecords := cloneRiskDeltaFindings(records)
 	beforeNeighborhoods := cloneRiskDeltaNeighborhoods(options.GraphNeighborhoods)
-	beforeAllPaths := AnalyzeFindingAttackPaths(beforeRecords, beforeNeighborhoods, FindingExposureAnalysisOptions{GraphNeighborhoods: beforeNeighborhoods})
-	before := riskDeltaSnapshot(beforeRecords, beforeAllPaths, options.Now)
+	beforeAllPaths := AnalyzeFindingAttackPaths(beforeRecords, beforeNeighborhoods, FindingExposureAnalysisOptions{GraphNeighborhoods: beforeNeighborhoods, RiskScoringConfig: options.RiskScoringConfig})
+	before := riskDeltaSnapshot(beforeRecords, beforeAllPaths, options.Now, options.RiskScoringConfig)
 
 	afterRecords, findingReasons := applyRiskDeltaFindingScenario(beforeRecords, scenarioType, targetURN, beforeNeighborhoods)
 	afterNeighborhoods, graphReasons := applyRiskDeltaGraphScenario(beforeNeighborhoods, scenarioType, targetURN)
-	afterAllPaths := AnalyzeFindingAttackPaths(afterRecords, afterNeighborhoods, FindingExposureAnalysisOptions{GraphNeighborhoods: afterNeighborhoods})
+	afterAllPaths := AnalyzeFindingAttackPaths(afterRecords, afterNeighborhoods, FindingExposureAnalysisOptions{GraphNeighborhoods: afterNeighborhoods, RiskScoringConfig: options.RiskScoringConfig})
 	afterPaths := limitRiskDeltaAttackPaths(afterAllPaths, limit)
-	after := riskDeltaSnapshot(afterRecords, afterAllPaths, options.Now)
+	after := riskDeltaSnapshot(afterRecords, afterAllPaths, options.Now, options.RiskScoringConfig)
 
 	riskScoreReduction := before.TotalRiskScore - after.TotalRiskScore
 	attackPathScoreReduction := before.TotalAttackPathScore - after.TotalAttackPathScore
@@ -92,7 +93,7 @@ func SimulateRiskDelta(records []*ports.FindingRecord, options RiskDeltaSimulati
 		RiskScoreReduction:       riskScoreReduction,
 		AttackPathScoreReduction: attackPathScoreReduction,
 		AttackPathCountReduction: attackPathCountReduction,
-		AffectedFindings:         riskDeltaFindingImpacts(beforeRecords, afterRecords, options.Now),
+		AffectedFindings:         riskDeltaFindingImpacts(beforeRecords, afterRecords, options.Now, options.RiskScoringConfig),
 		AddedAttackPaths:         addedRiskDeltaAttackPaths(beforeAllPaths, afterAllPaths),
 		RemovedAttackPaths:       removedRiskDeltaAttackPaths(beforeAllPaths, afterAllPaths),
 		RemainingAttackPaths:     afterPaths,
@@ -107,10 +108,10 @@ func limitRiskDeltaAttackPaths(paths []FindingAttackPath, limit int) []FindingAt
 	return paths[:limit]
 }
 
-func riskDeltaSnapshot(records []*ports.FindingRecord, paths []FindingAttackPath, now time.Time) RiskDeltaSnapshot {
+func riskDeltaSnapshot(records []*ports.FindingRecord, paths []FindingAttackPath, now time.Time, config *ports.RiskScoringConfig) RiskDeltaSnapshot {
 	totalRisk := 0
 	for _, record := range records {
-		totalRisk += AnalyzeFindingRiskContext(record, now).Score
+		totalRisk += AnalyzeFindingRiskContextWithConfig(record, now, config).Score
 	}
 	totalPathScore := 0
 	for _, path := range paths {
@@ -307,7 +308,7 @@ func riskDeltaRelationTouchesTarget(relation *ports.NeighborhoodRelation, target
 	return relation.FromURN == targetURN || relation.ToURN == targetURN
 }
 
-func riskDeltaFindingImpacts(before []*ports.FindingRecord, after []*ports.FindingRecord, now time.Time) []RiskDeltaFindingImpact {
+func riskDeltaFindingImpacts(before []*ports.FindingRecord, after []*ports.FindingRecord, now time.Time, config *ports.RiskScoringConfig) []RiskDeltaFindingImpact {
 	afterByID := map[string]*ports.FindingRecord{}
 	for _, record := range after {
 		if record != nil {
@@ -323,8 +324,8 @@ func riskDeltaFindingImpacts(before []*ports.FindingRecord, after []*ports.Findi
 		if afterRecord == nil {
 			continue
 		}
-		beforeContext := AnalyzeFindingRiskContext(beforeRecord, now)
-		afterContext := AnalyzeFindingRiskContext(afterRecord, now)
+		beforeContext := AnalyzeFindingRiskContextWithConfig(beforeRecord, now, config)
+		afterContext := AnalyzeFindingRiskContextWithConfig(afterRecord, now, config)
 		if beforeContext.Score == afterContext.Score {
 			continue
 		}

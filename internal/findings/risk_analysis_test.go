@@ -339,6 +339,107 @@ func TestEffectiveSeverityFromRiskScore(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextWithConfigUsesCustomThresholds(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.Thresholds.Critical = 95
+	config.Thresholds.High = 80
+	config.Thresholds.Medium = 60
+	finding := compoundRiskFinding("finding-custom-thresholds", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes["internet_exposed"] = "true"
+
+	defaultContext := AnalyzeFindingRiskContext(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC))
+	customContext := AnalyzeFindingRiskContextWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if defaultContext.Score != customContext.Score {
+		t.Fatalf("custom thresholds changed score %d -> %d", defaultContext.Score, customContext.Score)
+	}
+	if defaultContext.EffectiveSeverity == customContext.EffectiveSeverity {
+		t.Fatalf("EffectiveSeverity = %q for both default and custom thresholds, want threshold-driven change", customContext.EffectiveSeverity)
+	}
+	if customContext.RiskModelVersion == FindingRiskModelVersion {
+		t.Fatalf("RiskModelVersion = %q, want config-scoped model version", customContext.RiskModelVersion)
+	}
+}
+
+func TestEnrichFindingRiskWithConfigUsesCustomThresholdLevels(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.Thresholds.Critical = 95
+	config.Thresholds.High = 80
+	config.Thresholds.Medium = 60
+	finding := &ports.FindingRecord{
+		ID:       "finding-custom-levels",
+		TenantID: "writer",
+		Severity: "LOW",
+		Status:   findingStatusOpen,
+		FindingRisk: ports.FindingRisk{
+			RiskScore:       75,
+			LikelihoodScore: 75,
+			ImpactScore:     75,
+		},
+		Attributes: map[string]string{},
+	}
+
+	enriched := enrichFindingRiskWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if enriched.LikelihoodLevel != "medium" || enriched.ImpactLevel != "medium" {
+		t.Fatalf("levels = %q/%q, want medium/medium under custom thresholds", enriched.LikelihoodLevel, enriched.ImpactLevel)
+	}
+	if got := enriched.Attributes[FindingEffectiveSeverityAttribute]; got != "MEDIUM" {
+		t.Fatalf("effective severity = %q, want MEDIUM", got)
+	}
+}
+
+func TestAnalyzeFindingRiskContextWithConfigUsesFactorWeights(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.FactorWeights["external_exposure"] = ports.RiskScoringFactorWeight{Likelihood: 5}
+	finding := compoundRiskFinding("finding-custom-factor", "rule-1", "MEDIUM", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes["internet_exposed"] = "true"
+
+	defaultContext := AnalyzeFindingRiskContext(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC))
+	customContext := AnalyzeFindingRiskContextWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if customContext.LikelihoodScore >= defaultContext.LikelihoodScore {
+		t.Fatalf("LikelihoodScore = %d, want below default %d", customContext.LikelihoodScore, defaultContext.LikelihoodScore)
+	}
+	if !stringSliceContains(customContext.Reasons, "external_exposure") {
+		t.Fatalf("Risk reasons = %#v, want external_exposure reason preserved", customContext.Reasons)
+	}
+}
+
+func TestAnalyzeFindingRiskContextWithConfigUsesPrivateNetworkSignalCap(t *testing.T) {
+	config := DefaultRiskScoringConfig("writer")
+	config.Signals.PrivateNetworkLikelihoodCap = 5
+	finding := compoundRiskFinding("finding-private-network-cap", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes["private_network"] = "true"
+
+	context := AnalyzeFindingRiskContextWithConfig(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC), &config)
+
+	if context.LikelihoodScore != 5 {
+		t.Fatalf("LikelihoodScore = %d, want signal cap 5", context.LikelihoodScore)
+	}
+	if !stringSliceContains(context.Reasons, "private_network_context") {
+		t.Fatalf("Risk reasons = %#v, want private_network_context", context.Reasons)
+	}
+}
+
+func TestWeightedAttackPathScoreWithConfigUsesRelationWeights(t *testing.T) {
+	steps := []FindingAttackPathStep{
+		{FromURN: "a", Relation: "can_admin", ToURN: "b"},
+		{FromURN: "b", Relation: "member_of", ToURN: "c"},
+	}
+	defaultScore, _ := weightedAttackPathScore(steps)
+	config := DefaultRiskScoringConfig("writer")
+	config.RelationWeights["can_admin"] = 1
+	config.RelationWeights["member_of"] = 1
+	customScore, reasons := weightedAttackPathScoreWithConfig(steps, &config)
+	if customScore >= defaultScore {
+		t.Fatalf("customScore = %d, want below default %d", customScore, defaultScore)
+	}
+	if !stringSliceContains(reasons, "edge_weight:can_admin:1") {
+		t.Fatalf("reasons = %#v, want custom relation weight reason", reasons)
+	}
+}
+
 func TestAnalyzeFindingRiskContextUsesSourceSeverityForScoring(t *testing.T) {
 	finding := compoundRiskFinding("finding-calibrated", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
 	finding.Attributes[FindingSourceSeverityAttribute] = "LOW"
@@ -435,7 +536,7 @@ func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testi
 func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 	finding := compoundRiskFinding("cloud-1", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_secret_store:prod-secrets", "public_network_ingress")
 	finding.Attributes["internet_exposed"] = "true"
-	paths := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, map[string]*ports.EntityNeighborhood{
+	neighborhoods := map[string]*ports.EntityNeighborhood{
 		"cloud": {
 			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
 			Neighbors: []*ports.NeighborhoodNode{
@@ -449,7 +550,8 @@ func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 				{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-1"},
 			},
 		},
-	}, FindingExposureAnalysisOptions{Limit: 10})
+	}
+	paths := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, neighborhoods, FindingExposureAnalysisOptions{Limit: 10})
 	if len(paths) < 2 {
 		t.Fatalf("len(paths) = %d, want at least 2", len(paths))
 	}
@@ -458,6 +560,23 @@ func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 	}
 	if !stringSliceContains(paths[0].Reasons, "edge_weight:can_reach:7") {
 		t.Fatalf("top path reasons = %#v, want can_reach weight", paths[0].Reasons)
+	}
+
+	config := DefaultRiskScoringConfig("writer")
+	config.RelationWeights["can_reach"] = 1
+	config.RelationWeights["member_of"] = 20
+	weighted := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, neighborhoods, FindingExposureAnalysisOptions{
+		Limit:             10,
+		RiskScoringConfig: &config,
+	})
+	if len(weighted) < 2 {
+		t.Fatalf("len(weighted) = %d, want at least 2", len(weighted))
+	}
+	if got := weighted[0].Steps[0].Relation; got != "member_of" {
+		t.Fatalf("custom top path relation = %q, want member_of from configured relation weights; paths=%#v", got, weighted)
+	}
+	if !stringSliceContains(weighted[0].Reasons, "edge_weight:member_of:20") {
+		t.Fatalf("custom top path reasons = %#v, want configured member_of weight", weighted[0].Reasons)
 	}
 }
 
