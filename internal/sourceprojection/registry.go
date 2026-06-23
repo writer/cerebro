@@ -22,13 +22,17 @@ type EventProjector struct {
 
 // Registry indexes projectors by event kind.
 type Registry struct {
-	mu         sync.RWMutex
-	projectors map[string]ProjectFunc
+	mu                         sync.RWMutex
+	projectors                 map[string]ProjectFunc
+	connectorDefinitionSources map[string]struct{}
 }
 
 // NewRegistry constructs an event projection registry.
 func NewRegistry(projectors ...EventProjector) (*Registry, error) {
-	registry := &Registry{projectors: make(map[string]ProjectFunc, len(projectors))}
+	registry := &Registry{
+		projectors:                 make(map[string]ProjectFunc, len(projectors)),
+		connectorDefinitionSources: map[string]struct{}{},
+	}
 	for _, projector := range projectors {
 		kind := strings.TrimSpace(projector.Kind)
 		if kind == "" {
@@ -52,7 +56,22 @@ func (r *Registry) RegisterConnectorDefinitions(definitions ...connectordefiniti
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	registerCatalogRuntimeProjectorsForDefinitions(r.projectors, definitions)
+	if r.connectorDefinitionSources == nil {
+		r.connectorDefinitionSources = map[string]struct{}{}
+	}
+	pending := make([]connectordefinitions.Definition, 0, len(definitions))
+	for _, definition := range definitions {
+		sourceID := strings.TrimSpace(definition.SourceID)
+		if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
+			continue
+		}
+		if _, ok := r.connectorDefinitionSources[sourceID]; ok {
+			continue
+		}
+		r.connectorDefinitionSources[sourceID] = struct{}{}
+		pending = append(pending, definition)
+	}
+	registerCatalogRuntimeProjectorsForDefinitions(r.projectors, pending)
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{

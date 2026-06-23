@@ -175,6 +175,10 @@ func TestRegistryRegistersConnectorDefinitionProjectors(t *testing.T) {
 		t.Fatalf("definition blocked unexpectedly: %#v", definition.Validation.Checks)
 	}
 	registry.RegisterConnectorDefinitions(definition)
+	registry.RegisterConnectorDefinitions(definition)
+	if got := len(registry.connectorDefinitionSources); got != 1 {
+		t.Fatalf("registered connector sources = %d, want 1", got)
+	}
 	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
 		Id:       "event-1",
 		TenantId: "tenant-a",
