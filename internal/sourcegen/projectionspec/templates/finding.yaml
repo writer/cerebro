@@ -1,0 +1,13 @@
+id: finding
+class: finding
+graph_label: Finding
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Security finding or vulnerability detection.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - finding_id
+  - resource_urn
+  - severity
+  - status
