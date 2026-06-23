@@ -33,7 +33,7 @@ Legacy sources above the 300 LOC budget are grandfathered with exact no-growth c
 | `okta` | 2256 | Extract client, pagination, and identity/group/application readers into smaller units. |
 | `panopticon` | 765 | Separate request plumbing from emitted record construction. |
 | `sentinelone` | 2076 | Extract API paging, agent/application readers, and shared response normalization. |
-| `vulnview` | 994 | Split feed/client access from vulnerability record normalization. |
+| `vulnview` | 993 | Split feed/client access from vulnerability record normalization. |
 
 ## Cross-Source Duplication Guardrail
 
