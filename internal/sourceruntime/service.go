@@ -75,6 +75,10 @@ type Service struct {
 	resolver        sourceconfig.Resolver
 }
 
+type connectorDefinitionProjectorRegistrar interface {
+	RegisterConnectorDefinition(connectordefinitions.Definition)
+}
+
 // PutRuntimesRequest contains source runtime definitions to validate and store together.
 type PutRuntimesRequest struct {
 	Runtimes []*cerebrov1.SourceRuntime
@@ -342,6 +346,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	spanAttributes = spanAttributes.With(observability.SourceRuntimeDiagnosticAttributes(runtimeContext))
 	telemetry.AnnotateMain(ctx, observability.SourceRuntimeDiagnosticAttributes(runtimeContext))
+	if sourcehealth.RuntimeEnabledState(runtime) == "disabled" {
+		status = "skipped"
+		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_runtime.sync.skip_reason", Value: "disabled"})
+		return &cerebrov1.SyncSourceRuntimeResponse{Runtime: redactRuntime(runtime)}, nil
+	}
 	source, err := s.lookupSource(ctx, runtime.GetSourceId(), runtime.GetTenantId())
 	if err != nil {
 		return nil, err
@@ -994,6 +1003,9 @@ func (s *Service) lookupDynamicConnectorSource(ctx context.Context, sourceID str
 		definition.DisplayName = record.DisplayName
 		definition.Runtime = record.Runtime
 		definition.Stage = record.Stage
+		if registrar, ok := s.projector.(connectorDefinitionProjectorRegistrar); ok {
+			registrar.RegisterConnectorDefinition(definition)
+		}
 		source, err := sourceregistry.DynamicDefinitionSource(definition)
 		if err != nil {
 			return nil, fmt.Errorf("%w: dynamic connector %s: %w", ErrInvalidRequest, sourceID, err)

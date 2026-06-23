@@ -52,6 +52,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Exact: "/connector-definitions", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/connector-definitions", Scope: scopeConnectorDefinitionsWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/connector-definitions/plan", Scope: scopeConnectorDefinitionsWrite, Static: true},
+	{Method: http.MethodPost, Exact: "/connector-definitions/preview", Scope: scopeConnectorDefinitionsWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/connector-definitions/validate", Scope: scopeConnectorDefinitionsWrite, Static: true},
 	{Method: http.MethodGet, Prefix: "/connector-definitions/", Suffix: "/promotion-plan", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/connector-definitions/", Scope: scopeCosmoSecurityRead, Static: true},

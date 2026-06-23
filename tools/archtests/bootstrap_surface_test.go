@@ -38,7 +38,9 @@ import (
 // explicit error returns and guard clauses across bootstrap handlers. Tenant
 // dynamic connector runtimes add connector-library response mapping and setup
 // method shaping while runnable source construction stays behind internal/sourceregistry.
-const bootstrapProductionGoLineBudget = 25538
+// Runtime connector previews add thin HTTP request/response mapping while live
+// check/read behavior stays behind internal/connectorpreview.
+const bootstrapProductionGoLineBudget = 25584
 
 type bootstrapFileLineCount struct {
 	path  string

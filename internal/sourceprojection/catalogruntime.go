@@ -51,6 +51,31 @@ func registerCatalogRuntimeProjectorsForEntries(projectors map[string]ProjectFun
 	}
 }
 
+func registerCatalogRuntimeProjectorsForDefinitions(projectors map[string]ProjectFunc, definitions []connectordefinitions.Definition) {
+	if projectors == nil {
+		return
+	}
+	for _, definition := range definitions {
+		sourceID := strings.TrimSpace(definition.SourceID)
+		if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
+			continue
+		}
+		for _, resource := range definition.ResourceFamilies {
+			kind := catalogRuntimeEventKind(sourceID, resource)
+			if kind == "" {
+				continue
+			}
+			if existing, exists := projectors[kind]; exists {
+				if existing != nil {
+					projectors[kind] = augmentCatalogRuntimeProjector(sourceID, resource, existing)
+				}
+				continue
+			}
+			projectors[kind] = catalogRuntimeProjectorFor(sourceID, resource)
+		}
+	}
+}
+
 func catalogRuntimeEventKind(sourceID string, resource connectordefinitions.ResourceFamily) string {
 	if kind := strings.TrimSpace(resource.Event.Kind); kind != "" {
 		return kind

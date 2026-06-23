@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -20,6 +22,7 @@ type EventProjector struct {
 
 // Registry indexes projectors by event kind.
 type Registry struct {
+	mu         sync.RWMutex
 	projectors map[string]ProjectFunc
 }
 
@@ -40,6 +43,16 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 		registry.projectors[kind] = projector.Project
 	}
 	return registry, nil
+}
+
+// RegisterConnectorDefinitions adds declarative runtime connector projectors to the registry.
+func (r *Registry) RegisterConnectorDefinitions(definitions ...connectordefinitions.Definition) {
+	if r == nil || len(definitions) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	registerCatalogRuntimeProjectorsForDefinitions(r.projectors, definitions)
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
@@ -628,6 +641,8 @@ func (r *Registry) Kinds() []string {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	kinds := make([]string, 0, len(r.projectors))
 	for kind := range r.projectors {
 		kinds = append(kinds, kind)
@@ -644,6 +659,8 @@ func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	if r == nil {
 		return nil, nil, nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	project, ok := r.projectors[strings.TrimSpace(event.GetKind())]
 	if !ok {
 		return nil, nil, nil

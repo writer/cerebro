@@ -143,6 +143,56 @@ func TestCatalogRuntimeProjectorRegistrationDoesNotOverrideStaticProjector(t *te
 	}
 }
 
+func TestRegistryRegistersConnectorDefinitionProjectors(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: "example_dynamic",
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "example.dynamic.asset",
+					URNKind:        "example_dynamic_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Validation.Status == connectordefinitions.ValidationBlocked {
+		t.Fatalf("definition blocked unexpectedly: %#v", definition.Validation.Checks)
+	}
+	registry.RegisterConnectorDefinitions(definition)
+	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant-a",
+		SourceId: "example_dynamic",
+		Kind:     "example_dynamic.asset",
+		Attributes: map[string]string{
+			"id":   "asset-1",
+			"name": "Asset One",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "example.dynamic.asset") {
+		t.Fatalf("projected entities missing dynamic asset type: %#v", entities)
+	}
+}
+
 func TestCatalogRuntimeAssetProjectionRequiresStableResourceIdentity(t *testing.T) {
 	entities, links, err := catalogRuntimeAssetProjections(&cerebrov1.EventEnvelope{
 		Id:       "event-ephemeral",

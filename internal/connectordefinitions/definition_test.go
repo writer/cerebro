@@ -148,6 +148,61 @@ func TestValidateBlocksUnsupportedResourceMethods(t *testing.T) {
 	}
 }
 
+func TestValidateDepositFamilyAllowsOmittedPullPath(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		Ingest: IngestSpec{
+			Mode: IngestModeDeposit,
+			Deposit: &DepositIngestSpec{
+				ResourceFamilies: []string{"assets"},
+			},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "assets",
+			IDField: "id",
+			Event:   EventMappingSpec{Kind: "example.assets"},
+			Projection: &ProjectionSpec{
+				Entity: &ProjectionEntitySpec{
+					EntityType:   "example.asset",
+					URNKind:      "example_asset",
+					IDAttributes: []string{"id"},
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Validation.Status != ValidationReady {
+		t.Fatalf("validation status = %q, want ready: %#v", definition.Validation.Status, definition.Validation.Checks)
+	}
+}
+
+func TestValidateDepositBlocksUnknownFamily(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		Ingest: IngestSpec{
+			Mode:    IngestModeDeposit,
+			Deposit: &DepositIngestSpec{ResourceFamilies: []string{"missing"}},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !hasBlockingCheck(definition.Validation.Checks, "ingest_deposit_family_missing") {
+		t.Fatalf("validation checks = %#v, want ingest_deposit_family_missing blocker", definition.Validation.Checks)
+	}
+}
+
 func TestValidateAcceptsProjectionRelationships(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID: "tenant-a",

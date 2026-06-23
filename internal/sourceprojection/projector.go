@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcehealth"
@@ -75,6 +76,14 @@ func NewWithRegistry(state ports.ProjectionStateStore, graph ports.ProjectionGra
 		registry = BuiltinRegistry()
 	}
 	return &Service{state: state, graph: graph, registry: registry}
+}
+
+// RegisterConnectorDefinition makes a tenant-authored connector definition projectable.
+func (s *Service) RegisterConnectorDefinition(definition connectordefinitions.Definition) {
+	if s == nil || s.registry == nil {
+		return
+	}
+	s.registry.RegisterConnectorDefinitions(definition)
 }
 
 // Project applies one source event to the configured state and graph stores.
