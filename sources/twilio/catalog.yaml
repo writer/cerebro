@@ -1,52 +1,41 @@
 id: twilio
 name: "Twilio"
-description: "Twilio programmable communications platform."
+description: "Twilio connector definition catalog entry for high-value security and operations resources."
 emitted_kinds:
-  - twilio.events_json
-  - twilio.accounts_json
-  - twilio.credentiallists_json
-  - twilio.ipaccesscontrollists_json
+  - twilio.accounts
+  - twilio.keys
+  - twilio.audit_events
 kind_lifecycle:
-  - kind: twilio.events_json
+  - kind: twilio.accounts
     status: active
-  - kind: twilio.accounts_json
+  - kind: twilio.keys
     status: active
-  - kind: twilio.credentiallists_json
-    status: active
-  - kind: twilio.ipaccesscontrollists_json
+  - kind: twilio.audit_events
     status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: twilio
   dimensions:
-    - id: events_json
+    - id: accounts
       type: entity_family
-      title: "Events Json"
-      families: [events_json]
+      title: "Accounts"
+      families: [accounts]
       support: partial
       high_value: true
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts_json
+    - id: keys
       type: entity_family
-      title: "Accounts Json"
-      families: [accounts_json]
+      title: "Keys"
+      families: [keys]
       support: partial
       high_value: true
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: credentiallists_json
+    - id: audit_events
       type: entity_family
-      title: "Credentiallists Json"
-      families: [credentiallists_json]
-      support: partial
-      high_value: true
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: ipaccesscontrollists_json
-      type: entity_family
-      title: "Ipaccesscontrollists Json"
-      families: [ipaccesscontrollists_json]
+      title: "Audit Events"
+      families: [audit_events]
       support: partial
       high_value: true
       notes:
@@ -56,38 +45,29 @@ coverage_contract:
       title: Incremental cursor sync
       support: planned
 event_contracts:
-  - kind: twilio.events_json
-    schema_ref: twilio/events_json/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - request
-  - kind: twilio.accounts_json
-    schema_ref: twilio/accounts_json/v1
+  - kind: twilio.accounts
+    schema_ref: twilio/accounts/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - user_id
     required_payload_fields:
-      - sid
-  - kind: twilio.credentiallists_json
-    schema_ref: twilio/credentiallists_json/v1
+      - id
+  - kind: twilio.keys
+    schema_ref: twilio/keys/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - secret_id
       - secret_name
     required_payload_fields:
-      - sid
-  - kind: twilio.ipaccesscontrollists_json
-    schema_ref: twilio/ipaccesscontrollists_json/v1
+      - id
+  - kind: twilio.audit_events
+    schema_ref: twilio/audit_events/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - policy_id
-      - policy_name
+      - event_type
+      - actor_id
     required_payload_fields:
-      - sid
+      - id

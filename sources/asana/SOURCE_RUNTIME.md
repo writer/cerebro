@@ -5,7 +5,7 @@ Generated Source Runtime SDK scaffold for `asana`.
 ## Runtime input
 
 - Source type: `json_api`
-- Auth model: `oauth_authorization_code`
+- Auth model: `bearer_token`
 - Freshness expectation: `24h0m0s`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
@@ -18,10 +18,9 @@ Generated Source Runtime SDK scaffold for `asana`.
 
 ## Families
 
-- `event`, emits `asana.event`, reads `/events`
-- `membership`, emits `asana.membership`, reads `/memberships`
-- `role`, emits `asana.role`, reads `/roles`
-- `user`, emits `asana.user`, reads `/users`
+- `users`, emits `asana.users`, reads `/v1/users`
+- `projects`, emits `asana.projects`, reads `/v1/projects`
+- `audit_events`, emits `asana.audit_events`, reads `/v1/audit/events`
 
 ## Tests
 

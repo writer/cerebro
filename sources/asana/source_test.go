@@ -21,7 +21,11 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.Path != "/events" {
+		if r.URL.RequestURI() == "/users/me" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.URL.Path != "/v1/users" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -41,7 +45,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	event := pull.Events[0]
-	if event.Kind != "asana.event" {
+	if event.Kind != "asana.users" {
 		t.Fatalf("kind = %q", event.Kind)
 	}
 	if strings.TrimSpace(event.Id) == "" {

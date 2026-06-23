@@ -755,23 +755,20 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"conjur.resource_2":    conjurResource2Projections,
 	"conjur.resource_3":    conjurResource3Projections,
 
-	// twilio generated projectors (sourcegen promotion)
-	"twilio.accounts_json":             twilioAccountsJsonProjections,
-	"twilio.credentiallists_json":      twilioCredentiallistsJsonProjections,
-	"twilio.events_json":               twilioEventsJsonProjections,
-	"twilio.ipaccesscontrollists_json": twilioIpaccesscontrollistsJsonProjections,
-
 	// box generated projectors (sourcegen promotion)
-	"box.event":      boxEventProjections,
-	"box.group":      boxGroupProjections,
-	"box.membership": boxMembershipProjections,
-	"box.shield_information_barrier_segment_member": boxShieldInformationBarrierSegmentMemberProjections,
+	"box.audit_events":   boxAuditEventsProjections,
+	"box.content_assets": boxContentAssetsProjections,
+	"box.users":          boxUsersProjections,
 
 	// asana generated projectors (sourcegen promotion)
-	"asana.event":      asanaEventProjections,
-	"asana.membership": asanaMembershipProjections,
-	"asana.role":       asanaRoleProjections,
-	"asana.user":       asanaUserProjections,
+	"asana.audit_events": asanaAuditEventsProjections,
+	"asana.projects":     asanaProjectsProjections,
+	"asana.users":        asanaUsersProjections,
+
+	// twilio generated projectors (sourcegen promotion)
+	"twilio.accounts":     twilioAccountsProjections,
+	"twilio.audit_events": twilioAuditEventsProjections,
+	"twilio.keys":         twilioKeysProjections,
 
 	// linode generated projectors (sourcegen promotion)
 	"linode.credential": linodeCredentialProjections,

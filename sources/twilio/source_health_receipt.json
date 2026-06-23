@@ -1,5 +1,5 @@
 {
-  "adapter_health_path": "/2010-04-01/Accounts/${config.accountsid}/Calls/${config.callsid}/Events.json",
+  "adapter_health_path": "/2010-04-01/Accounts.json",
   "auth_model": "basic",
   "evidence_cas_reference_kind": "twilio.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

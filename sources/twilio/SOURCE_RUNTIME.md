@@ -18,10 +18,9 @@ Generated Source Runtime SDK scaffold for `twilio`.
 
 ## Families
 
-- `events_json`, emits `twilio.events_json`, reads `/2010-04-01/Accounts/${config.accountsid}/Calls/${config.callsid}/Events.json`
-- `accounts_json`, emits `twilio.accounts_json`, reads `/2010-04-01/Accounts.json`
-- `credentiallists_json`, emits `twilio.credentiallists_json`, reads `/2010-04-01/Accounts/${config.accountsid}/SIP/CredentialLists.json`
-- `ipaccesscontrollists_json`, emits `twilio.ipaccesscontrollists_json`, reads `/2010-04-01/Accounts/${config.accountsid}/SIP/IpAccessControlLists.json`
+- `accounts`, emits `twilio.accounts`, reads `/2010-04-01/Accounts.json`
+- `keys`, emits `twilio.keys`, reads `/2010-04-01/Accounts/${config.account_sid}/Keys.json`
+- `audit_events`, emits `twilio.audit_events`, reads `/2010-04-01/Accounts/${config.account_sid}/Messages.json`
 
 ## Tests
 

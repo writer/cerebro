@@ -1,6 +1,6 @@
 {
-  "adapter_health_path": "/events",
-  "auth_model": "oauth_authorization_code",
+  "adapter_health_path": "/users/me",
+  "auth_model": "bearer_token",
   "evidence_cas_reference_kind": "asana.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

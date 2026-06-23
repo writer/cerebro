@@ -9,13 +9,13 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `akeyless` | Akeyless secrets management source | items, auth methods, roles, audit events |
 | `anthropic` | Anthropic organization governance source | organization, users, invites, workspaces and members, API keys, service accounts, federation, external keys, usage/cost reports, rate/spend limits, compliance activity |
 | `archetype` | Archetype repository vulnerability scan source | scans, vulnerabilities |
-| `asana` | Asana source | asana.event, asana.membership, asana.role, asana.user |
+| `asana` | Asana source | asana.audit_events, asana.projects, asana.users |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
 | `auth0` | Auth0 Management API source | users, roles, audit events |
 | `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `backstage` | Backstage catalog source | components |
-| `box` | Box source | box.event, box.group, box.membership, box.shield_information_barrier_segment_member |
+| `box` | Box source | box.audit_events, box.content_assets, box.users |
 | `cerebro` | Cerebro product access telemetry source backed by structured NDJSON archives | API access audit events |
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
 | `conjur` | Conjur source | conjur.authenticator, conjur.resource, conjur.resource_2, conjur.resource_3 |
@@ -45,6 +45,6 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `tailscale` | Tailscale network source | tailnets, users, devices, groups, tags, services, grants |
 | `trivy` | Trivy report source | image scans, image packages, image vulnerabilities, fixes |
 | `trusted_endpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
-| `twilio` | Twilio source | twilio.accounts_json, twilio.credentiallists_json, twilio.events_json, twilio.ipaccesscontrollists_json |
+| `twilio` | Twilio source | twilio.accounts, twilio.audit_events, twilio.keys |
 | `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
 | `writer` | Writer AI Studio source | models, Knowledge Graphs, files, no-code agents, application graph associations, async application jobs |

@@ -21,14 +21,14 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.Header.Get("Authorization") != "Basic test-token" {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.Path != "/2010-04-01/Accounts/test-accountsid/Calls/test-callsid/Events.json" {
+		if r.URL.Path != "/2010-04-01/Accounts.json" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token", "accountsid": "test-accountsid", "callsid": "test-callsid"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token", "account_sid": "test-account_sid"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -41,7 +41,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	event := pull.Events[0]
-	if event.Kind != "twilio.events_json" {
+	if event.Kind != "twilio.accounts" {
 		t.Fatalf("kind = %q", event.Kind)
 	}
 	if strings.TrimSpace(event.Id) == "" {

@@ -2,11 +2,11 @@ sourceId: asana
 secretKeys:
   - ASANA_TOKEN
 runtimes:
-  - localId: event
+  - localId: users
     config:
-      family: event
+      family: users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /events
+      health_path: /users/me
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

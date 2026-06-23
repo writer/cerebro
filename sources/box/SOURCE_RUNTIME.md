@@ -18,10 +18,9 @@ Generated Source Runtime SDK scaffold for `box`.
 
 ## Families
 
-- `event`, emits `box.event`, reads `/events`
-- `group`, emits `box.group`, reads `/groups`
-- `shield_information_barrier_segment_member`, emits `box.shield_information_barrier_segment_member`, reads `/shield_information_barrier_segment_members`
-- `membership`, emits `box.membership`, reads `/groups/${config.group_id}/memberships`
+- `users`, emits `box.users`, reads `/v1/users`
+- `content_assets`, emits `box.content_assets`, reads `/v1/resources`
+- `audit_events`, emits `box.audit_events`, reads `/v1/audit/events`
 
 ## Tests
 
