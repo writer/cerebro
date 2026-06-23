@@ -394,8 +394,10 @@ func limitEvidence(values []Evidence, limit uint32) []Evidence {
 	if len(values) == 0 {
 		return nil
 	}
-	if limit == 0 || limit > 25 {
+	if limit == 0 {
 		limit = 5
+	} else if limit > 25 {
+		limit = 25
 	}
 	if len(values) > int(limit) {
 		values = values[:limit]

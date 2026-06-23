@@ -186,6 +186,19 @@ func TestTraceOmitsAnchorAttributesWhenRequested(t *testing.T) {
 	}
 }
 
+func TestLimitEvidenceCapsLargeLimits(t *testing.T) {
+	values := make([]Evidence, 30)
+	for i := range values {
+		values[i] = Evidence{URN: "urn:cerebro:writer:evidence:test"}
+	}
+	if got := len(limitEvidence(values, 0)); got != 5 {
+		t.Fatalf("default limit len = %d, want 5", got)
+	}
+	if got := len(limitEvidence(values, 100)); got != 25 {
+		t.Fatalf("large limit len = %d, want cap at 25", got)
+	}
+}
+
 func TestExplainReturnsEdgeEvidenceAndFreshness(t *testing.T) {
 	store := &stubClaimStore{claims: []*ports.ClaimRecord{{
 		ID:            "fact-1",
