@@ -43,6 +43,7 @@ type riskFactorAggregate struct {
 func DefaultGenerators() []CandidateGenerator {
 	return []CandidateGenerator{
 		publicExposureGenerator{},
+		credentialGovernanceGenerator{},
 		privilegeGenerator{},
 		vulnerabilityGenerator{},
 		ownerAssignmentGenerator{},
@@ -452,6 +453,28 @@ func effortForAction(actionType string) Effort {
 			Reversible:        true,
 			PrimaryConstraint: "release_cycle",
 		}
+	case ActionTypeRotateCredential:
+		return Effort{
+			Level:             "medium",
+			Estimate:          "hours",
+			CostPoints:        14,
+			ApprovalRequired:  true,
+			ApprovalReason:    "credential rotation can affect integrations that still use the old secret",
+			Reversible:        true,
+			PrimaryConstraint: "access_review",
+		}
+	case ActionTypeRevokeCredential:
+		return Effort{
+			Level:             "medium",
+			Estimate:          "hours",
+			CostPoints:        12,
+			ApprovalRequired:  true,
+			ApprovalReason:    "credential revocation can break workloads if usage evidence is incomplete",
+			Reversible:        false,
+			PrimaryConstraint: "usage_validation",
+		}
+	case ActionTypeReviewCredentialOwner:
+		return Effort{Level: "small", Estimate: "minutes", CostPoints: 4, ApprovalRequired: false, Reversible: true, PrimaryConstraint: "routing"}
 	case ActionTypeAssignOwner:
 		return Effort{Level: "small", Estimate: "minutes", CostPoints: 5, ApprovalRequired: false, Reversible: true, PrimaryConstraint: "routing"}
 	case ActionTypeRefreshEvidence:
