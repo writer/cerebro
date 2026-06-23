@@ -1,0 +1,13 @@
+sourceId: linode
+secretKeys:
+  - LINODE_TOKEN
+runtimes:
+  - localId: issue
+    config:
+      family: issue
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /managed/issues
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:LINODE_TOKEN

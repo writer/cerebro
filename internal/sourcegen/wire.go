@@ -61,12 +61,9 @@ func Wire(request WireRequest) (*WireResult, error) {
 	loaderEntry := fmt.Sprintf("\t{\n\t\tname: %q,\n\t\tload: func() (sourcecdk.Source, error) {\n\t\t\treturn %s.New()\n\t\t},\n\t},\n", sourceID, importAlias)
 
 	// Generate the projection mappings.
-	prefix := sourceIDToPascal(sourceID)
 	var projectionMappings []string
 	for _, kind := range kinds {
-		familyPart := strings.TrimPrefix(kind, sourceID+".")
-		funcName := fmt.Sprintf("%s%sProjections", prefix, pascalIdentifier(familyPart))
-		mapping := fmt.Sprintf("\t%q: %s,", kind, funcName)
+		mapping := fmt.Sprintf("\t%q: %s,", kind, projectionFuncName(sourceID, kind))
 		projectionMappings = append(projectionMappings, mapping)
 	}
 
@@ -251,8 +248,15 @@ func sourceIDToImportAlias(sourceID string) string {
 	return strings.Join(strings.Split(sourceID, "_"), "") + "source"
 }
 
-func sourceIDToPascal(sourceID string) string {
-	return pascalIdentifier(sourceID)
+// projectionFuncName returns the unexported projector function name that the
+// generator emits in internal/sourceprojection/<id>.go for a given emitted
+// kind. It must stay in sync with familyData.ProjectorName in generator.go,
+// which is lowerCamelIdentifier(sourceID + "_" + family + "_projections"). A
+// PascalCase name here would reference an undefined function and break the
+// projection registry compile.
+func projectionFuncName(sourceID, kind string) string {
+	family := strings.TrimPrefix(kind, sourceID+".")
+	return lowerCamelIdentifier(sourceID + "_" + family + "_projections")
 }
 
 func sourceIDToTitle(sourceID string) string {

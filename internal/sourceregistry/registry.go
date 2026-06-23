@@ -9,15 +9,19 @@ import (
 	akeylessource "github.com/writer/cerebro/sources/akeyless"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
+	asanasource "github.com/writer/cerebro/sources/asana"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
+	boxsource "github.com/writer/cerebro/sources/box"
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
+	conjursource "github.com/writer/cerebro/sources/conjur"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
+	discordsource "github.com/writer/cerebro/sources/discord"
 	dopplersource "github.com/writer/cerebro/sources/doppler"
 	duosource "github.com/writer/cerebro/sources/duo"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
@@ -30,6 +34,7 @@ import (
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
+	linodesource "github.com/writer/cerebro/sources/linode"
 	merakisource "github.com/writer/cerebro/sources/meraki"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	openaisource "github.com/writer/cerebro/sources/openai"
@@ -43,6 +48,7 @@ import (
 	tailscalesource "github.com/writer/cerebro/sources/tailscale"
 	trivysource "github.com/writer/cerebro/sources/trivy"
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
+	twiliosource "github.com/writer/cerebro/sources/twilio"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	writersource "github.com/writer/cerebro/sources/writer"
 )
@@ -53,6 +59,30 @@ type builtinSourceLoader struct {
 }
 
 var builtinSourceLoaders = []builtinSourceLoader{
+	{
+		name: "asana",
+		load: func() (sourcecdk.Source, error) {
+			return asanasource.New()
+		},
+	},
+	{
+		name: "box",
+		load: func() (sourcecdk.Source, error) {
+			return boxsource.New()
+		},
+	},
+	{
+		name: "conjur",
+		load: func() (sourcecdk.Source, error) {
+			return conjursource.New()
+		},
+	},
+	{
+		name: "discord",
+		load: func() (sourcecdk.Source, error) {
+			return discordsource.New()
+		},
+	},
 	{
 		name: "evidence_cas",
 		load: func() (sourcecdk.Source, error) {
@@ -198,6 +228,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
+		name: "linode",
+		load: func() (sourcecdk.Source, error) {
+			return linodesource.New()
+		},
+	},
+	{
 		name: "okta",
 		load: func() (sourcecdk.Source, error) {
 			return oktasource.New()
@@ -267,6 +303,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "trivy",
 		load: func() (sourcecdk.Source, error) {
 			return trivysource.New()
+		},
+	},
+	{
+		name: "twilio",
+		load: func() (sourcecdk.Source, error) {
+			return twiliosource.New()
 		},
 	},
 	{

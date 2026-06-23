@@ -1039,13 +1039,16 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn err\n\t}\n\tif err := s.checkHealth(ctx, runtimeCfg); err != nil {\n\t\treturn err\n\t}\n\treturn s.inner.Check(ctx, runtimeCfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn s.inner.Discover(ctx, runtimeCfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn sourcecdk.Pull{}, err\n\t}\n\treturn s.inner.Read(ctx, runtimeCfg, cursor)\n}\n\n")
-	fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tvalues := cfg.Values()\n\tif strings.TrimSpace(values[\"base_url\"]) == \"\" && strings.TrimSpace(defaultBaseURLTemplate) != \"\" {\n\t\tbaseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)\n\t\tif err != nil {\n\t\t\treturn sourcecdk.Config{}, err\n\t\t}\n\t\tvalues[\"base_url\"] = baseURL\n\t}\n")
 	if request.OAuth != nil {
+		fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tvalues := cfg.Values()\n\tif strings.TrimSpace(values[\"base_url\"]) == \"\" && strings.TrimSpace(defaultBaseURLTemplate) != \"\" {\n\t\tbaseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)\n\t\tif err != nil {\n\t\t\treturn sourcecdk.Config{}, err\n\t\t}\n\t\tvalues[\"base_url\"] = baseURL\n\t}\n")
 		fmt.Fprintf(&b, "\tif s == nil {\n\t\treturn sourcecdk.Config{}, fmt.Errorf(\"%%s source is required\", sourceID)\n\t}\n\ttoken, err := s.tokenCache.Token(ctx, cfg, sourcehttp.ClientCredentialsOptions{\n\t\tSourceID: sourceID,\n\t\tTokenURLTemplate: oauthTokenURLTemplate,\n\t\tTemplateKeys: templateKeys,\n\t\tScopes: oauthScopes,\n\t\tScopeSeparator: oauthScopeSeparator,\n\t\tTokenParams: oauthTokenParams,\n\t\tExpirationBuffer: oauthTokenExpirationBuffer,\n\t\tAllowLoopback: s.allowLoopback,\n\t})\n\tif err != nil {\n\t\treturn sourcecdk.Config{}, err\n\t}\n\tvalues[\"token\"] = token\n")
+		fmt.Fprintf(&b, "\treturn sourcecdk.NewConfig(values), nil\n}\n\n")
 	} else {
-		fmt.Fprintf(&b, "\t_ = ctx\n")
+		// Non-OAuth sources delegate base-URL resolution to the shared CDK
+		// helper so the body stays below the cross-source duplication threshold
+		// (see tools/archtests/source_helper_duplication_test.go).
+		fmt.Fprintf(&b, "func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\treturn sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)\n}\n\n")
 	}
-	fmt.Fprintf(&b, "\treturn sourcecdk.NewConfig(values), nil\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {\n\tpath := firstNonEmpty(sourcecdk.ConfigValue(cfg, \"health_path\"), defaultHealthPath)\n\treturn s.inner.CheckPath(ctx, cfg, path, nil)\n}\n\n")
 	fmt.Fprintf(&b, "func loadSpec() (*cerebrov1.SourceSpec, error) {\n\tspecBytes, err := catalogFS.ReadFile(\"catalog.yaml\")\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"read catalog: %%w\", err)\n\t}\n\tspec, err := sourcecdk.LoadCatalog(specBytes)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"load catalog: %%w\", err)\n\t}\n\treturn spec, nil\n}\n\n")
 	fmt.Fprintf(&b, "func firstNonEmpty(values ...string) string {\n\tfor _, value := range values {\n\t\tif strings.TrimSpace(value) != \"\" {\n\t\t\treturn strings.TrimSpace(value)\n\t\t}\n\t}\n\treturn \"\"\n}\n\n")
@@ -1222,31 +1225,45 @@ func renderSourceTestGo(request normalizedRequest) string {
 	}
 	fmt.Fprintf(&b, "\t\tif r.Header.Get(\"Authorization\") != %s {\n\t\t\tt.Fatalf(\"Authorization = %%q\", r.Header.Get(\"Authorization\"))\n\t\t}\n", strconv.Quote(request.TokenScheme+" test-token"))
 	if request.HealthPath != request.DefaultPath {
-		fmt.Fprintf(&b, "\t\tif r.URL.RequestURI() == defaultHealthPath {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n")
+		fmt.Fprintf(&b, "\t\tif r.URL.RequestURI() == %s {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n", strconv.Quote(renderTestPath(request.HealthPath)))
 	}
-	fmt.Fprintf(&b, "\t\tif r.URL.Path != %s {\n\t\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n\t\t}\n", strconv.Quote(request.DefaultPath))
+	fmt.Fprintf(&b, "\t\tif r.URL.Path != %s {\n\t\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n\t\t}\n", strconv.Quote(renderTestPath(request.DefaultPath)))
 	fmt.Fprintf(&b, "\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n")
 	fmt.Fprintf(&b, "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"items\": []map[string]string{{\"id\": \"record-1\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:record-1\", \"resource_type\": \"asset\", \"resource_id\": \"record-1\", \"name\": \"Record One\", \"updated_at\": \"2026-06-01T00:00:00Z\"}}})\n")
 	fmt.Fprintf(&b, "\t}))\n\tdefer server.Close()\n")
+	// cfgValues must satisfy every config/credential key referenced by the
+	// source's templates (base URL, health path, and family paths) so Check and
+	// Read resolve cleanly. Keys are deduped to keep the map literal valid.
 	fmt.Fprintf(&b, "\tcfgValues := map[string]string{\"tenant_id\": \"tenant\", \"base_url\": server.URL, \"family\": defaultFamily")
-	// Also set template variables so runtimeConfig template resolution is exercised
-	// even if base_url is removed from the config.
-	for _, key := range extractTemplateKeys(request.BaseURLTemplate) {
-		if key == "base_url" || key == "family" || key == request.TokenConfigKey {
-			continue
+	emittedCfg := map[string]bool{"tenant_id": true, "base_url": true, "family": true}
+	emitCfgValue := func(key, valueExpr string) {
+		key = strings.TrimSpace(key)
+		if key == "" || emittedCfg[key] {
+			return
 		}
-		fmt.Fprintf(&b, ", %s: %s", strconv.Quote(key), strconv.Quote(testConfigValue(key)))
+		emittedCfg[key] = true
+		fmt.Fprintf(&b, ", %s: %s", strconv.Quote(key), valueExpr)
 	}
 	if request.OAuth != nil {
-		fmt.Fprintf(&b, ", \"token_url\": server.URL + \"/oauth/token\", \"client_id\": \"client-id\", \"client_secret\": \"client-secret\"")
-		for _, key := range request.ConfigKeys {
-			if key == "base_url" || key == "family" || key == "token_url" {
-				continue
-			}
-			fmt.Fprintf(&b, ", %s: %s", strconv.Quote(key), strconv.Quote(testConfigValue(key)))
-		}
+		emitCfgValue("token_url", "server.URL + \"/oauth/token\"")
+		emitCfgValue("client_id", strconv.Quote("client-id"))
+		emitCfgValue("client_secret", strconv.Quote("client-secret"))
 	} else {
-		fmt.Fprintf(&b, ", %s: \"test-token\"", strconv.Quote(request.TokenConfigKey))
+		emitCfgValue(request.TokenConfigKey, strconv.Quote("test-token"))
+	}
+	for _, key := range request.ConfigKeys {
+		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
+	}
+	for _, key := range extractTemplateKeys(request.BaseURLTemplate) {
+		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
+	}
+	for _, key := range extractTemplateKeys(request.HealthPath) {
+		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
+	}
+	for _, family := range request.Families {
+		for _, key := range extractTemplateKeys(family.Path) {
+			emitCfgValue(key, strconv.Quote(testConfigValue(key)))
+		}
 	}
 	fmt.Fprintf(&b, "}\n\tcfg := sourcecdk.NewConfig(cfgValues)\n")
 	fmt.Fprintf(&b, "\tif err := source.Check(context.Background(), cfg); err != nil {\n\t\tt.Fatalf(\"Check() error = %%v\", err)\n\t}\n")
@@ -1265,6 +1282,20 @@ func testConfigValue(key string) string {
 	default:
 		return "test-" + strings.TrimSpace(key)
 	}
+}
+
+// renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}
+// placeholders with their testConfigValue so generated test assertions match the
+// concrete request paths the runtime produces for sources with path parameters.
+func renderTestPath(template string) string {
+	rendered := template
+	for _, key := range extractTemplateKeys(template) {
+		value := testConfigValue(key)
+		for _, prefix := range []string{"config", "credential", "connection"} {
+			rendered = strings.ReplaceAll(rendered, "${"+prefix+"."+key+"}", value)
+		}
+	}
+	return rendered
 }
 
 func renderReadFixture() string {

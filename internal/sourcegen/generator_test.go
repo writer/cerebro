@@ -90,7 +90,7 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	}
 	sourceTest := readGeneratedFile(t, outputDir, "sources/demo_source/source_test.go")
 	authCheck := strings.Index(sourceTest, `r.Header.Get("Authorization")`)
-	healthCheck := strings.Index(sourceTest, `r.URL.RequestURI() == defaultHealthPath`)
+	healthCheck := strings.Index(sourceTest, `r.URL.RequestURI() == `)
 	if authCheck < 0 || healthCheck < 0 || authCheck > healthCheck {
 		t.Fatalf("generated source test must assert health auth before health short-circuit:\n%s", sourceTest)
 	}
@@ -467,7 +467,7 @@ func TestGenerateDefinitionHealthPathWithQueryUsesRequestURI(t *testing.T) {
 		t.Fatalf("generated source missing query health path:\n%s", source)
 	}
 	sourceTest := readGeneratedFile(t, outputDir, "sources/query_health/source_test.go")
-	if !strings.Contains(sourceTest, `r.URL.RequestURI() == defaultHealthPath`) {
+	if !strings.Contains(sourceTest, `r.URL.RequestURI() == "/about?fields=user"`) {
 		t.Fatalf("generated source test does not compare RequestURI:\n%s", sourceTest)
 	}
 }
