@@ -1024,7 +1024,11 @@ func highValueBonus(template, familyID, path string) int {
 		return 20
 	}
 	text := strings.ToLower(strings.Join([]string{familyID, path}, " "))
-	if containsAny(text, "asset", "device", "endpoint", "repository", "repo", "permission", "role", "secret", "token", "key", "package", "dependency", "workflow", "runner", "hook", "installation", "organization") {
+	if containsAny(text, "asset", "device", "endpoint", "repository", "repo", "permission", "role", "secret", "token", "key", "package", "dependency", "workflow", "runner", "hook", "installation", "organization",
+		// Security / identity / GRC vocabulary: these denote durable
+		// risk-relevant resources (the catalog's "high-value coverage"), as
+		// opposed to generic business objects like invoices or payments.
+		"credential", "identity", "privilege", "entitlement", "mfa", "sso", "saml", "oauth", "certificate", "vault", "vulnerability", "compliance", "audit", "incident", "scan", "firewall", "access", "session", "host", "authenticator", "group") {
 		return 10
 	}
 	return 0
