@@ -1,6 +1,7 @@
 package vulnview
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -25,6 +26,15 @@ const (
 	defaultFamily   = familyVulnerability
 	defaultPageSize = 100
 	maxPageSize     = 500
+)
+
+var (
+	errMissingTenantID       = errors.New("missing vulnview tenant_id")
+	errUnsupportedFamily     = errors.New("unsupported vulnview family")
+	errMissingClientID       = errors.New("missing vulnview client_id")
+	errMissingClientSecret   = errors.New("missing vulnview client_secret")
+	errInvalidURLComponents  = errors.New("invalid vulnview url components")
+	errInvalidBaseComponents = errors.New("invalid vulnview base_url components")
 )
 
 type settings struct {
@@ -75,13 +85,13 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		perPage:      defaultPageSize,
 	}
 	if resolved.tenantID == "" {
-		return resolved, fmt.Errorf("vulnview tenant_id is required")
+		return resolved, fmt.Errorf("%w: vulnview tenant_id is required", errMissingTenantID)
 	}
 	if resolved.family == "" {
 		resolved.family = defaultFamily
 	}
 	if !isSupportedFamily(resolved.family) {
-		return resolved, fmt.Errorf("vulnview family must be one of %s", strings.Join(supportedFamilies(), ", "))
+		return resolved, fmt.Errorf("%w: vulnview family must be one of %s", errUnsupportedFamily, strings.Join(supportedFamilies(), ", "))
 	}
 	if resolved.baseURL == "" {
 		resolved.baseURL = defaultBaseURL
@@ -98,10 +108,10 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		resolved.scope = defaultScope
 	}
 	if resolved.clientID == "" {
-		return resolved, fmt.Errorf("vulnview client_id is required")
+		return resolved, fmt.Errorf("%w: vulnview client_id is required", errMissingClientID)
 	}
 	if resolved.clientSecret == "" {
-		return resolved, fmt.Errorf("vulnview client_secret is required")
+		return resolved, fmt.Errorf("%w: vulnview client_secret is required", errMissingClientSecret)
 	}
 	issuer := strings.TrimRight(sourcecdk.ConfigValue(cfg, "okta_issuer"), "/")
 	if issuer == "" && !allowLoopback {
@@ -176,7 +186,7 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 		return "", fmt.Errorf("parse vulnview base_url: %w", err)
 	}
 	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.User != nil {
-		return "", fmt.Errorf("vulnview base_url must not include user info, query, or fragment")
+		return "", fmt.Errorf("%w: vulnview base_url must not include user info, query, or fragment", errInvalidBaseComponents)
 	}
 	normalized, err := normalizeParsedURL(parsed, allowLoopback)
 	if err != nil {
@@ -191,7 +201,7 @@ func normalizeAbsoluteURL(raw string, allowLoopback bool) (string, error) {
 		return "", fmt.Errorf("parse vulnview url: %w", err)
 	}
 	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.User != nil {
-		return "", fmt.Errorf("vulnview url must not include user info, query, or fragment")
+		return "", fmt.Errorf("%w: vulnview url must not include user info, query, or fragment", errInvalidURLComponents)
 	}
 	return normalizeParsedURL(parsed, allowLoopback)
 }
