@@ -784,7 +784,6 @@ func compactOktaResourceType(resourceType string) string {
 	}, strings.TrimSpace(resourceType))
 }
 
-
 func oktaUserURN(tenantID string, userID string) string {
 	value := strings.TrimSpace(userID)
 	if value == "" {
@@ -835,4 +834,3 @@ func oktaResourceURN(tenantID string, resourceType string, resourceID string) st
 func oktaAuditTargetUser(resourceType string, targetType string) bool {
 	return strings.EqualFold(resourceType, "user") || strings.EqualFold(targetType, "user")
 }
-

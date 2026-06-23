@@ -746,7 +746,6 @@ func stampProjectionRuntime(event *cerebrov1.EventEnvelope, entities []*ports.Pr
 	}
 }
 
-
 func entitiesAndLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink) {
 	projectedEntities := make([]*ports.ProjectedEntity, 0, len(entities))
 	for _, entity := range entities {
@@ -934,9 +933,6 @@ func projectedLink(tenantID string, sourceID string, fromURN string, toURN strin
 		Attributes: attributes,
 	}
 }
-
-
-
 
 func projectionURN(tenantID string, kind string, parts ...string) string {
 	tenant := strings.TrimSpace(tenantID)
