@@ -30,8 +30,10 @@ import (
 // the existing ClaimStore-backed graph-fact substrate, including
 // cursor/resource/toolset MCP surface mapping while fact shaping and trace
 // behavior stay in graphfacts. Trace metadata mirrors list pagination flags at
-// the MCP response boundary so clients see consistent cursor semantics.
-const bootstrapProductionGoLineBudget = 25272
+// the MCP response boundary so clients see consistent cursor semantics. GRC
+// source health summaries add dashboard response mapping while source-health
+// aggregation stays behind existing stores.
+const bootstrapProductionGoLineBudget = 25297
 
 type bootstrapFileLineCount struct {
 	path  string
