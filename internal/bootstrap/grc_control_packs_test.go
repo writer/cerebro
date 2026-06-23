@@ -46,6 +46,51 @@ func TestGRCControlArchetypesEndpointReturnsReusableControls(t *testing.T) {
 	}
 }
 
+func TestGRCFrameworksEndpointReturnsLifecycleMetadata(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/frameworks")
+	if err != nil {
+		t.Fatalf("GET /grc/frameworks error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/frameworks status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload compliance.FrameworksResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode frameworks: %v", err)
+	}
+	var foundNIST, foundCSA, foundActive bool
+	for _, framework := range payload.Frameworks {
+		switch {
+		case framework.Name == "NIST AI RMF 1.0":
+			foundNIST = true
+			if framework.Lifecycle != compliance.FrameworkLifecycleUpcoming {
+				t.Fatalf("NIST AI RMF lifecycle = %q, want upcoming", framework.Lifecycle)
+			}
+		case framework.Name == "CSA CCM v4.0":
+			foundCSA = true
+			if framework.Lifecycle != compliance.FrameworkLifecycleUpcoming {
+				t.Fatalf("CSA CCM lifecycle = %q, want upcoming", framework.Lifecycle)
+			}
+		case framework.Lifecycle == compliance.FrameworkLifecycleActive:
+			foundActive = true
+		}
+	}
+	if !foundNIST {
+		t.Fatal("NIST AI RMF 1.0 not found in /grc/frameworks response")
+	}
+	if !foundCSA {
+		t.Fatal("CSA CCM v4.0 not found in /grc/frameworks response")
+	}
+	if !foundActive {
+		t.Fatal("no active frameworks found in /grc/frameworks response")
+	}
+}
+
 func TestGRCControlPackPreviewEndpointReturnsYAMLFilesAndCoverage(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())

@@ -3814,3 +3814,15 @@ frameworks:
         name: TLS-MAIL Controls
         controls:
           - id: TLS-MAIL
+  - id: nist-ai-rmf-1.0
+    name: NIST AI RMF 1.0
+    framework_version: "1.0"
+    lifecycle: upcoming
+    description: Planned AI risk-management framework coverage.
+    tags: [ai, risk-management]
+  - id: csa-ccm-v4.0
+    name: CSA CCM v4.0
+    framework_version: "4.0"
+    lifecycle: upcoming
+    description: Planned Cloud Controls Matrix coverage.
+    tags: [cloud, security, third-party]

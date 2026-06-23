@@ -56,6 +56,7 @@ type ControlCoverageControl struct {
 	FrameworkID            string                       `json:"framework_id,omitempty" yaml:"framework_id,omitempty"`
 	FrameworkName          string                       `json:"framework_name" yaml:"framework_name"`
 	FrameworkVersion       string                       `json:"framework_version,omitempty" yaml:"framework_version,omitempty"`
+	FrameworkLifecycle     string                       `json:"framework_lifecycle,omitempty" yaml:"framework_lifecycle,omitempty"`
 	FamilyID               string                       `json:"family_id" yaml:"family_id"`
 	FamilyName             string                       `json:"family_name" yaml:"family_name"`
 	ControlID              string                       `json:"control_id" yaml:"control_id"`
@@ -277,6 +278,7 @@ func BuildControlCoverageProfile(selection ControlSelection, resolution Selectio
 			FrameworkID:            strings.TrimSpace(control.FrameworkID),
 			FrameworkName:          strings.TrimSpace(control.FrameworkName),
 			FrameworkVersion:       strings.TrimSpace(control.FrameworkVersion),
+			FrameworkLifecycle:     frameworkLifecycleForJSON(control.FrameworkLifecycle),
 			FamilyID:               strings.TrimSpace(control.FamilyID),
 			FamilyName:             strings.TrimSpace(control.FamilyName),
 			ControlID:              strings.TrimSpace(control.Control.ID),

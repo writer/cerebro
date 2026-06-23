@@ -12,6 +12,11 @@ import (
 
 const DefaultControlCatalogPath = "internal/compliance/control_families.yaml"
 
+const (
+	FrameworkLifecycleActive   = "active"
+	FrameworkLifecycleUpcoming = "upcoming"
+)
+
 type ValidationIssue struct {
 	Path    string `json:"path,omitempty" yaml:"path,omitempty"`
 	Message string `json:"message" yaml:"message"`
@@ -33,6 +38,7 @@ type Framework struct {
 	ID          string   `json:"id,omitempty" yaml:"id,omitempty"`
 	Name        string   `json:"name" yaml:"name"`
 	Version     string   `json:"framework_version,omitempty" yaml:"framework_version,omitempty"`
+	Lifecycle   string   `json:"lifecycle,omitempty" yaml:"lifecycle,omitempty"`
 	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
 	Tags        []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Families    []Family `json:"families" yaml:"families"`
@@ -86,14 +92,15 @@ type ControlRef struct {
 }
 
 type ResolvedControl struct {
-	FrameworkID      string                `json:"framework_id,omitempty"`
-	FrameworkName    string                `json:"framework_name"`
-	FrameworkVersion string                `json:"framework_version,omitempty"`
-	FamilyID         string                `json:"family_id"`
-	FamilyName       string                `json:"family_name"`
-	Control          Control               `json:"control"`
-	EffectiveTags    []string              `json:"effective_tags,omitempty"`
-	Evidence         []EvidenceExpectation `json:"evidence_expectations,omitempty"`
+	FrameworkID        string                `json:"framework_id,omitempty"`
+	FrameworkName      string                `json:"framework_name"`
+	FrameworkVersion   string                `json:"framework_version,omitempty"`
+	FrameworkLifecycle string                `json:"framework_lifecycle,omitempty"`
+	FamilyID           string                `json:"family_id"`
+	FamilyName         string                `json:"family_name"`
+	Control            Control               `json:"control"`
+	EffectiveTags      []string              `json:"effective_tags,omitempty"`
+	Evidence           []EvidenceExpectation `json:"evidence_expectations,omitempty"`
 }
 
 type CatalogIndex struct {
@@ -169,6 +176,7 @@ func BuildCatalogIndex(catalog ControlCatalog) (*CatalogIndex, []ValidationIssue
 			continue
 		}
 		frameworkID := strings.TrimSpace(framework.ID)
+		frameworkLifecycle := normalizeFrameworkLifecycle(framework.Lifecycle)
 		index.frameworksByName[frameworkName] = framework
 		if frameworkID != "" {
 			index.frameworksByID[frameworkID] = framework
@@ -192,14 +200,15 @@ func BuildCatalogIndex(catalog ControlCatalog) (*CatalogIndex, []ValidationIssue
 				control = cloneControl(control)
 				refKey := controlKey(frameworkName, control.ID)
 				resolved := &ResolvedControl{
-					FrameworkID:      frameworkID,
-					FrameworkName:    frameworkName,
-					FrameworkVersion: strings.TrimSpace(framework.Version),
-					FamilyID:         familyID,
-					FamilyName:       strings.TrimSpace(family.Name),
-					Control:          control,
-					EffectiveTags:    mergedTags(framework.Tags, family.Tags, control.Tags),
-					Evidence:         append([]EvidenceExpectation(nil), control.EvidenceExpectations...),
+					FrameworkID:        frameworkID,
+					FrameworkName:      frameworkName,
+					FrameworkVersion:   strings.TrimSpace(framework.Version),
+					FrameworkLifecycle: frameworkLifecycleForJSON(frameworkLifecycle),
+					FamilyID:           familyID,
+					FamilyName:         strings.TrimSpace(family.Name),
+					Control:            control,
+					EffectiveTags:      mergedTags(framework.Tags, family.Tags, control.Tags),
+					Evidence:           append([]EvidenceExpectation(nil), control.EvidenceExpectations...),
 				}
 				index.controls[frameworkKey][control.ID] = resolved
 				index.controlKeys = append(index.controlKeys, refKey)
@@ -240,7 +249,12 @@ func ValidateControlCatalog(catalog ControlCatalog) []ValidationIssue {
 			frameworkIDs[frameworkID] = struct{}{}
 		}
 		if len(framework.Families) == 0 {
-			issues = append(issues, ValidationIssue{Message: fmt.Sprintf("framework %q requires at least one family", frameworkName)})
+			if normalizeFrameworkLifecycle(framework.Lifecycle) != FrameworkLifecycleUpcoming {
+				issues = append(issues, ValidationIssue{Message: fmt.Sprintf("framework %q requires at least one family", frameworkName)})
+			}
+		}
+		if lifecycleIssues := validateFrameworkLifecycle(frameworkPath+".lifecycle", framework.Lifecycle); len(lifecycleIssues) != 0 {
+			issues = append(issues, lifecycleIssues...)
 		}
 		issues = append(issues, validateTags(frameworkPath+".tags", framework.Tags)...)
 		familyIDs := map[string]struct{}{}
@@ -435,6 +449,34 @@ func validateControl(path string, control Control) []ValidationIssue {
 		}
 	}
 	return issues
+}
+
+func normalizeFrameworkLifecycle(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", FrameworkLifecycleActive:
+		return FrameworkLifecycleActive
+	case FrameworkLifecycleUpcoming:
+		return FrameworkLifecycleUpcoming
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func frameworkLifecycleForJSON(value string) string {
+	value = normalizeFrameworkLifecycle(value)
+	if value == FrameworkLifecycleActive {
+		return ""
+	}
+	return value
+}
+
+func validateFrameworkLifecycle(path, value string) []ValidationIssue {
+	switch normalizeFrameworkLifecycle(value) {
+	case FrameworkLifecycleActive, FrameworkLifecycleUpcoming:
+		return nil
+	default:
+		return []ValidationIssue{{Message: fmt.Sprintf("%s must be one of active, upcoming", path)}}
+	}
 }
 
 func validateControlMappings(catalog ControlCatalog, index *CatalogIndex) []ValidationIssue {

@@ -75,14 +75,15 @@ type ControlPosture struct {
 }
 
 type ControlPostureControl struct {
-	FrameworkID      string `json:"framework_id,omitempty"`
-	FrameworkName    string `json:"framework_name"`
-	FrameworkVersion string `json:"framework_version,omitempty"`
-	FamilyID         string `json:"family_id"`
-	FamilyName       string `json:"family_name"`
-	ControlID        string `json:"control_id"`
-	Title            string `json:"title,omitempty"`
-	OwnerDomain      string `json:"owner_domain,omitempty"`
+	FrameworkID        string `json:"framework_id,omitempty"`
+	FrameworkName      string `json:"framework_name"`
+	FrameworkVersion   string `json:"framework_version,omitempty"`
+	FrameworkLifecycle string `json:"framework_lifecycle,omitempty"`
+	FamilyID           string `json:"family_id"`
+	FamilyName         string `json:"family_name"`
+	ControlID          string `json:"control_id"`
+	Title              string `json:"title,omitempty"`
+	OwnerDomain        string `json:"owner_domain,omitempty"`
 }
 
 type ControlPostureFindingSummary struct {
@@ -273,14 +274,15 @@ func evaluateControlPosture(selectionID string, bucket *controlPostureBucket, no
 	posture := ControlPosture{
 		SelectionID: strings.TrimSpace(selectionID),
 		Control: ControlPostureControl{
-			FrameworkID:      control.FrameworkID,
-			FrameworkName:    control.FrameworkName,
-			FrameworkVersion: control.FrameworkVersion,
-			FamilyID:         control.FamilyID,
-			FamilyName:       control.FamilyName,
-			ControlID:        control.Control.ID,
-			Title:            control.Control.Title,
-			OwnerDomain:      control.Control.OwnerDomain,
+			FrameworkID:        control.FrameworkID,
+			FrameworkName:      control.FrameworkName,
+			FrameworkVersion:   control.FrameworkVersion,
+			FrameworkLifecycle: frameworkLifecycleForJSON(control.FrameworkLifecycle),
+			FamilyID:           control.FamilyID,
+			FamilyName:         control.FamilyName,
+			ControlID:          control.Control.ID,
+			Title:              control.Control.Title,
+			OwnerDomain:        control.Control.OwnerDomain,
 		},
 		Status:      ControlPosturePassing,
 		Tags:        append([]string(nil), control.EffectiveTags...),
