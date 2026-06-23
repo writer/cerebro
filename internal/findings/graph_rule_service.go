@@ -7,7 +7,9 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 // EvaluateGraphRulesRequest scopes one graph-rule evaluation pass over one runtime.
@@ -77,8 +79,30 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	return result, firstErr
 }
 
-func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (*GraphRuleEvaluationResult, error) {
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (evaluation *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
+	metricsStartedAt := time.Now()
+	defer func() {
+		status := "completed"
+		errorKind := ""
+		if err != nil {
+			status = "failed"
+			errorKind = telemetry.ErrorKind(err)
+		}
+		metrics := observability.GraphRuleEvaluationMetrics{
+			SourceID:  strings.TrimSpace(runtime.GetSourceId()),
+			RuleID:    strings.TrimSpace(spec.GetId()),
+			Status:    status,
+			ErrorKind: errorKind,
+			Duration:  time.Since(metricsStartedAt),
+		}
+		if evaluation != nil {
+			metrics.RowsRead = evaluation.RowsRead
+			metrics.Findings = len(evaluation.Findings)
+			metrics.Truncated = evaluation.Truncated
+		}
+		observability.RecordGraphRuleEvaluation(ctx, metrics)
+	}()
 	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)

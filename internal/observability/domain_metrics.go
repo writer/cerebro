@@ -77,6 +77,65 @@ func otelGraphActionRecorded() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelGraphRuleEvaluations() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.graph_rule.evaluations",
+		otelmetric.WithDescription("Total graph rule evaluations by bounded source, rule, status, and error class."),
+	)
+	return instrument
+}
+
+func otelGraphRuleDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.graph_rule.duration",
+		otelmetric.WithDescription("Graph rule evaluation duration by bounded source, rule, status, and error class."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
+func otelGraphRuleRecords() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.graph_rule.records",
+		otelmetric.WithDescription("Graph rule rows read and findings emitted by bounded source, rule, status, and error class."),
+	)
+	return instrument
+}
+
+func otelNeo4jOperations() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.neo4j.operations",
+		otelmetric.WithDescription("Total Neo4j operations by operation, status, and error class."),
+	)
+	return instrument
+}
+
+func otelNeo4jOperationDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.neo4j.operation.duration",
+		otelmetric.WithDescription("Neo4j operation duration by operation, status, and error class."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
+func otelOrchestratorPhaseRuns() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.orchestrator.phase.runs",
+		otelmetric.WithDescription("Total orchestrator phase attempts by bounded phase, source, status, and error class."),
+	)
+	return instrument
+}
+
+func otelOrchestratorPhaseDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.orchestrator.phase.duration",
+		otelmetric.WithDescription("Orchestrator phase duration by bounded phase, source, status, and error class."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
 func otelJetStreamPublishRequests() otelmetric.Int64Counter {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
 		"cerebro.jetstream.publish.requests",
@@ -178,6 +237,42 @@ type GraphActionMetrics struct {
 	DryRun         bool
 }
 
+// GraphRuleEvaluationMetrics is intentionally scoped to bounded catalog data.
+// Tenant IDs, runtime IDs, finding IDs, graph URNs, trace IDs, and evidence IDs
+// belong in spans/wide events rather than metric labels.
+type GraphRuleEvaluationMetrics struct {
+	SourceID  string
+	RuleID    string
+	Status    string
+	ErrorKind string
+	Duration  time.Duration
+	RowsRead  uint32
+	Findings  int
+	Truncated bool
+}
+
+// Neo4jOperationMetrics keeps database telemetry low-cardinality. Database
+// names, query text, parameters, and resource identifiers belong in traces or
+// local diagnostics, not metric labels.
+type Neo4jOperationMetrics struct {
+	Operation          string
+	Status             string
+	ErrorKind          string
+	Duration           time.Duration
+	DatabaseConfigured bool
+}
+
+// OrchestratorPhaseMetrics records the SLO boundary around each orchestrator
+// phase without promoting tenant/runtime IDs into metrics.
+type OrchestratorPhaseMetrics struct {
+	PhaseKey        string
+	SourceID        string
+	Status          string
+	ErrorKind       string
+	Duration        time.Duration
+	TimeoutExceeded bool
+}
+
 // JetStreamPublishMetrics is intentionally scoped to bounded operational
 // dimensions. Message IDs, tenant IDs, runtime IDs, and resource identifiers
 // belong in spans/wide events rather than metric labels.
@@ -259,6 +354,49 @@ func RecordGraphAction(ctx context.Context, metrics GraphActionMetrics) {
 	otelGraphActionRecorded().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 }
 
+func RecordGraphRuleEvaluation(ctx context.Context, metrics GraphRuleEvaluationMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("source_id", boundedMetricValue(metrics.SourceID, "unknown")),
+		attribute.String("rule_id", boundedMetricValue(metrics.RuleID, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.String("error_kind", boundedMetricValue(metrics.ErrorKind, "none")),
+		attribute.Bool("truncated", metrics.Truncated),
+	}
+	otelGraphRuleEvaluations().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelGraphRuleDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+	recordGraphRuleRecordCount(ctx, attrs, "row_read", int64(metrics.RowsRead))
+	recordGraphRuleRecordCount(ctx, attrs, "finding_emitted", int64(metrics.Findings))
+}
+
+func RecordNeo4jOperation(ctx context.Context, metrics Neo4jOperationMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("operation", boundedMetricValue(metrics.Operation, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.String("error_kind", boundedMetricValue(metrics.ErrorKind, "none")),
+		attribute.Bool("database_configured", metrics.DatabaseConfigured),
+	}
+	otelNeo4jOperations().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelNeo4jOperationDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+}
+
+func RecordOrchestratorPhase(ctx context.Context, metrics OrchestratorPhaseMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("phase_key", boundedMetricValue(metrics.PhaseKey, "unknown")),
+		attribute.String("source_id", boundedMetricValue(metrics.SourceID, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.String("error_kind", boundedMetricValue(metrics.ErrorKind, "none")),
+		attribute.Bool("timeout_exceeded", metrics.TimeoutExceeded),
+	}
+	otelOrchestratorPhaseRuns().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelOrchestratorPhaseDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+}
+
 func RecordJetStreamPublish(ctx context.Context, metrics JetStreamPublishMetrics) {
 	attrs := []attribute.KeyValue{
 		attribute.String("subject", boundedJetStreamMetricSubject(metrics.Subject)),
@@ -312,6 +450,14 @@ func recordSourceProjectionRecordCount(ctx context.Context, base []attribute.Key
 	}
 	attrs := append(cloneMetricAttributes(base), attribute.String("record.kind", kind))
 	otelSourceProjectionRecords().Add(ctx, count, otelmetric.WithAttributes(attrs...))
+}
+
+func recordGraphRuleRecordCount(ctx context.Context, base []attribute.KeyValue, kind string, count int64) {
+	if count <= 0 {
+		return
+	}
+	attrs := append(cloneMetricAttributes(base), attribute.String("record.kind", kind))
+	otelGraphRuleRecords().Add(ctx, count, otelmetric.WithAttributes(attrs...))
 }
 
 func recordJetStreamReplayRecordCount(ctx context.Context, base []attribute.KeyValue, kind string, count uint64) {

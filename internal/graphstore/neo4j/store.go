@@ -16,6 +16,7 @@ import (
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/projectionmeta"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -1294,6 +1295,7 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 		ctx, cancel = context.WithTimeout(ctx, s.queryTimeout)
 		defer cancel()
 	}
+	started := time.Now()
 	ctx, span := telemetry.Start(ctx, "neo4j.read", attrs)
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
@@ -1301,26 +1303,41 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 		return work(ctx, tx)
 	})
 	if err != nil {
+		recordNeo4jOperation(ctx, s.database, "read", "failed", telemetry.ErrorKind(err), time.Since(started))
 		neo4jTelemetryError(ctx, span, s.database, "read", err)
 		return nil, err
 	}
+	recordNeo4jOperation(ctx, s.database, "read", "completed", "", time.Since(started))
 	neo4jAnnotateMain(ctx, s.database, "read", "completed")
 	telemetry.End(span, "completed", telemetry.Attrs())
 	return result, nil
 }
 
 func (s *Store) write(ctx context.Context, work neo4jdriver.ManagedTransactionWork) (any, error) {
-	ctx, span := telemetry.Start(ctx, "neo4j.write", neo4jTelemetryAttrs("write", s.database, 0))
+	started := time.Now()
+	ctx, span := telemetry.StartQuiet(ctx, "neo4j.write", neo4jTelemetryAttrs("write", s.database, 0))
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
 	result, err := session.ExecuteWrite(ctx, work)
 	if err != nil {
+		recordNeo4jOperation(ctx, s.database, "write", "failed", telemetry.ErrorKind(err), time.Since(started))
 		neo4jTelemetryError(ctx, span, s.database, "write", err)
 		return nil, err
 	}
+	recordNeo4jOperation(ctx, s.database, "write", "completed", "", time.Since(started))
 	neo4jAnnotateMain(ctx, s.database, "write", "completed")
-	telemetry.End(span, "completed", telemetry.Attrs())
+	telemetry.EndQuiet(span, "completed", telemetry.Attrs())
 	return result, nil
+}
+
+func recordNeo4jOperation(ctx context.Context, database string, operation string, status string, errorKind string, duration time.Duration) {
+	observability.RecordNeo4jOperation(ctx, observability.Neo4jOperationMetrics{
+		Operation:          operation,
+		Status:             status,
+		ErrorKind:          errorKind,
+		Duration:           duration,
+		DatabaseConfigured: strings.TrimSpace(database) != "",
+	})
 }
 
 func neo4jTelemetryAttrs(operation string, database string, timeout time.Duration) telemetry.Attributes {
