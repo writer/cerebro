@@ -76,6 +76,27 @@ func registerCatalogRuntimeProjectorsForDefinitions(projectors map[string]Projec
 	}
 }
 
+func catalogRuntimeDefinitionProjectorKinds(definition connectordefinitions.Definition) []string {
+	sourceID := strings.TrimSpace(definition.SourceID)
+	if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
+		return nil
+	}
+	kinds := make([]string, 0, len(definition.ResourceFamilies))
+	seen := map[string]struct{}{}
+	for _, resource := range definition.ResourceFamilies {
+		kind := catalogRuntimeEventKind(sourceID, resource)
+		if kind == "" {
+			continue
+		}
+		if _, ok := seen[kind]; ok {
+			continue
+		}
+		seen[kind] = struct{}{}
+		kinds = append(kinds, kind)
+	}
+	return kinds
+}
+
 func catalogRuntimeEventKind(sourceID string, resource connectordefinitions.ResourceFamily) string {
 	if kind := strings.TrimSpace(resource.Event.Kind); kind != "" {
 		return kind

@@ -1004,10 +1004,27 @@ func normalizeIngestSpec(ingest IngestSpec) IngestSpec {
 	}
 	if ingest.Deposit != nil {
 		deposit := *ingest.Deposit
-		deposit.ResourceFamilies = normalizeOrderedStringList(deposit.ResourceFamilies)
+		deposit.ResourceFamilies = normalizeIngestResourceFamilies(deposit.ResourceFamilies)
 		ingest.Deposit = &deposit
 	}
 	return ingest
+}
+
+func normalizeIngestResourceFamilies(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		family := normalizeIdentifier(value)
+		if family == "" {
+			continue
+		}
+		if _, ok := seen[family]; ok {
+			continue
+		}
+		seen[family] = struct{}{}
+		normalized = append(normalized, family)
+	}
+	return normalized
 }
 
 func normalizePaginationSpec(pagination *PaginationSpec) *PaginationSpec {

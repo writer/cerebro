@@ -176,8 +176,8 @@ func TestRegistryRegistersConnectorDefinitionProjectors(t *testing.T) {
 	}
 	registry.RegisterConnectorDefinitions(definition)
 	registry.RegisterConnectorDefinitions(definition)
-	if got := len(registry.connectorDefinitionSources); got != 1 {
-		t.Fatalf("registered connector sources = %d, want 1", got)
+	if got := len(registry.connectorDefinitionFingerprints); got != 1 {
+		t.Fatalf("registered connector fingerprints = %d, want 1", got)
 	}
 	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
 		Id:       "event-1",
@@ -194,6 +194,75 @@ func TestRegistryRegistersConnectorDefinitionProjectors(t *testing.T) {
 	}
 	if !hasProjectedEntityType(entities, "example.dynamic.asset") {
 		t.Fatalf("projected entities missing dynamic asset type: %#v", entities)
+	}
+}
+
+func TestRegistryUpdatesConnectorDefinitionProjectors(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	base := connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: "example_dynamic",
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "example.dynamic.asset",
+					URNKind:        "example_dynamic_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+			},
+		}},
+	}
+	initial, err := connectordefinitions.Normalize(base)
+	if err != nil {
+		t.Fatalf("Normalize(initial) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(initial)
+	updated := base
+	updated.ResourceFamilies = append(updated.ResourceFamilies, connectordefinitions.ResourceFamily{
+		ID:        "findings",
+		Path:      "/v1/findings",
+		IDField:   "id",
+		NameField: "name",
+		Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.finding"},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Entity: &connectordefinitions.ProjectionEntitySpec{
+				EntityType:     "example.dynamic.finding",
+				URNKind:        "example_dynamic_finding",
+				IDAttributes:   []string{"id"},
+				LabelAttribute: "name",
+			},
+		},
+	})
+	normalized, err := connectordefinitions.Normalize(updated)
+	if err != nil {
+		t.Fatalf("Normalize(updated) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(normalized)
+	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-2",
+		TenantId: "tenant-a",
+		SourceId: "example_dynamic",
+		Kind:     "example_dynamic.finding",
+		Attributes: map[string]string{
+			"id":   "finding-1",
+			"name": "Finding One",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "example.dynamic.finding") {
+		t.Fatalf("projected entities missing updated finding type: %#v", entities)
 	}
 }
 

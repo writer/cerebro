@@ -180,6 +180,41 @@ func TestValidateDepositFamilyAllowsOmittedPullPath(t *testing.T) {
 	}
 }
 
+func TestValidateDepositFamilyReferencesNormalizeWithFamilyIDs(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		Ingest: IngestSpec{
+			Mode: IngestModeDeposit,
+			Deposit: &DepositIngestSpec{
+				ResourceFamilies: []string{"Assets"},
+			},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "Assets",
+			IDField: "id",
+			Event:   EventMappingSpec{Kind: "example.assets"},
+			Projection: &ProjectionSpec{
+				Entity: &ProjectionEntitySpec{
+					EntityType:   "example.asset",
+					URNKind:      "example_asset",
+					IDAttributes: []string{"id"},
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if got := definition.Ingest.Deposit.ResourceFamilies; len(got) != 1 || got[0] != "assets" {
+		t.Fatalf("deposit resource families = %#v, want [assets]", got)
+	}
+	if definition.Validation.Status != ValidationReady {
+		t.Fatalf("validation status = %q, want ready: %#v", definition.Validation.Status, definition.Validation.Checks)
+	}
+}
+
 func TestValidateDepositBlocksUnknownFamily(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID: "tenant-a",

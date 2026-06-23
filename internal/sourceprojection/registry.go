@@ -1,6 +1,9 @@
 package sourceprojection
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -22,16 +25,20 @@ type EventProjector struct {
 
 // Registry indexes projectors by event kind.
 type Registry struct {
-	mu                         sync.RWMutex
-	projectors                 map[string]ProjectFunc
-	connectorDefinitionSources map[string]struct{}
+	mu                              sync.RWMutex
+	projectors                      map[string]ProjectFunc
+	connectorDefinitionFingerprints map[string]string
+	connectorDefinitionKinds        map[string]map[string]struct{}
+	connectorDefinitionBases        map[string]ProjectFunc
 }
 
 // NewRegistry constructs an event projection registry.
 func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 	registry := &Registry{
-		projectors:                 make(map[string]ProjectFunc, len(projectors)),
-		connectorDefinitionSources: map[string]struct{}{},
+		projectors:                      make(map[string]ProjectFunc, len(projectors)),
+		connectorDefinitionFingerprints: map[string]string{},
+		connectorDefinitionKinds:        map[string]map[string]struct{}{},
+		connectorDefinitionBases:        map[string]ProjectFunc{},
 	}
 	for _, projector := range projectors {
 		kind := strings.TrimSpace(projector.Kind)
@@ -56,22 +63,78 @@ func (r *Registry) RegisterConnectorDefinitions(definitions ...connectordefiniti
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.connectorDefinitionSources == nil {
-		r.connectorDefinitionSources = map[string]struct{}{}
-	}
-	pending := make([]connectordefinitions.Definition, 0, len(definitions))
+	r.ensureConnectorDefinitionState()
 	for _, definition := range definitions {
 		sourceID := strings.TrimSpace(definition.SourceID)
 		if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
 			continue
 		}
-		if _, ok := r.connectorDefinitionSources[sourceID]; ok {
+		fingerprint := connectorDefinitionProjectorFingerprint(definition)
+		if r.connectorDefinitionFingerprints[sourceID] == fingerprint {
 			continue
 		}
-		r.connectorDefinitionSources[sourceID] = struct{}{}
-		pending = append(pending, definition)
+		r.unregisterConnectorDefinitionProjectors(sourceID)
+		kinds := catalogRuntimeDefinitionProjectorKinds(definition)
+		if len(kinds) == 0 {
+			continue
+		}
+		for _, kind := range kinds {
+			if _, ok := r.connectorDefinitionBases[kind]; ok {
+				continue
+			}
+			r.connectorDefinitionBases[kind] = r.projectors[kind]
+		}
+		registerCatalogRuntimeProjectorsForDefinitions(r.projectors, []connectordefinitions.Definition{definition})
+		r.connectorDefinitionFingerprints[sourceID] = fingerprint
+		r.connectorDefinitionKinds[sourceID] = kindSet(kinds)
 	}
-	registerCatalogRuntimeProjectorsForDefinitions(r.projectors, pending)
+}
+
+func (r *Registry) ensureConnectorDefinitionState() {
+	if r.connectorDefinitionFingerprints == nil {
+		r.connectorDefinitionFingerprints = map[string]string{}
+	}
+	if r.connectorDefinitionKinds == nil {
+		r.connectorDefinitionKinds = map[string]map[string]struct{}{}
+	}
+	if r.connectorDefinitionBases == nil {
+		r.connectorDefinitionBases = map[string]ProjectFunc{}
+	}
+}
+
+func (r *Registry) unregisterConnectorDefinitionProjectors(sourceID string) {
+	kinds := r.connectorDefinitionKinds[sourceID]
+	for kind := range kinds {
+		base, ok := r.connectorDefinitionBases[kind]
+		if ok && base != nil {
+			r.projectors[kind] = base
+		} else {
+			delete(r.projectors, kind)
+		}
+		delete(r.connectorDefinitionBases, kind)
+	}
+	delete(r.connectorDefinitionKinds, sourceID)
+	delete(r.connectorDefinitionFingerprints, sourceID)
+}
+
+func connectorDefinitionProjectorFingerprint(definition connectordefinitions.Definition) string {
+	body, err := json.Marshal(struct {
+		SourceID         string                                `json:"source_id"`
+		ResourceFamilies []connectordefinitions.ResourceFamily `json:"resource_families"`
+	}{SourceID: strings.TrimSpace(definition.SourceID), ResourceFamilies: definition.ResourceFamilies})
+	if err != nil {
+		return strings.TrimSpace(definition.SourceID)
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+func kindSet(kinds []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(kinds))
+	for _, kind := range kinds {
+		out[kind] = struct{}{}
+	}
+	return out
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
