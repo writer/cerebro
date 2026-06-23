@@ -204,6 +204,7 @@ jobs:
             --stack-file aws/Pulumi.go-prod.yaml \
             --region "${AWS_REGION}" \
             --allow-registry-unavailable
+          uv run python scripts/verify_latest_runtime_contracts.py
           uv run python scripts/validate_gcp_config.py
           uv run python -m unittest discover -s tests
 
