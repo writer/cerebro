@@ -259,16 +259,16 @@ func TestProjectDuoPhoneFactorOwnerLink(t *testing.T) {
 	service := New(state, nil)
 
 	event := duoEvent("duo.phone", map[string]string{
-		"phone_id":    "phone-1",
-		"name":        "iPhone",
-		"number":      "+15551234567",
-		"platform":    "Apple iOS",
-		"model":       "iPhone 15",
-		"activated":   "true",
-		"encrypted":   "Encrypted",
-		"screenlock":  "Locked",
-		"tampered":    "Not tampered",
-		"user_id":     "user-1",
+		"phone_id":     "phone-1",
+		"name":         "iPhone",
+		"number":       "+15551234567",
+		"platform":     "Apple iOS",
+		"model":        "iPhone 15",
+		"activated":    "true",
+		"encrypted":    "Encrypted",
+		"screenlock":   "Locked",
+		"tampered":     "Not tampered",
+		"user_id":      "user-1",
 		"last_seen_at": "2024-01-15T10:00:00Z",
 	})
 	if _, err := service.Project(context.Background(), event); err != nil {
@@ -327,17 +327,17 @@ func TestProjectDuoTokenFactorOwnerLink(t *testing.T) {
 	service := New(state, nil)
 
 	event := duoEvent("duo.token", map[string]string{
-		"token_id": "token-1",
-		"serial":   "SN-123",
-		"type":     "h6",
+		"token_id":  "token-1",
+		"serial":    "SN-123",
+		"type":      "h6",
 		"totp_step": "30",
-		"user_id":  "user-1",
+		"user_id":   "user-1",
 	})
 	if _, err := service.Project(context.Background(), event); err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	tokenURN := "urn:cerebro:writer:duo_token:token-1"
+	tokenURN := "urn:cerebro:writer:duo_token:token-1" // #nosec G101 -- hardware token fixture, not a credential.
 	userURN := "urn:cerebro:writer:duo_user:user-1"
 
 	token := state.entities[tokenURN]
