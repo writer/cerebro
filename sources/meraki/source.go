@@ -20,6 +20,7 @@ const (
 	defaultHealthPath      = "/networks/${config.networkid}/events/eventTypes"
 	defaultBaseURLTemplate = "https://api.meraki.com/api/v0"
 	tokenScheme            = "Token"
+	tokenHeader            = "X-Cisco-Meraki-" + "API" + "-Key"
 	familyEventtype        = "eventtype"
 	familyOrganization     = "organization"
 	familyMerakiauthuser   = "merakiauthuser"
@@ -43,6 +44,7 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		AuthModel:       "api_key",
+		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
 		Families: []jsonapi.Family{
 			{

@@ -18,8 +18,8 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		if r.Header.Get(tokenHeader) != "test-token" {
+			t.Fatalf("%s = %q", tokenHeader, r.Header.Get(tokenHeader))
 		}
 		if r.URL.Path != "/networks/network-1/events/eventTypes" {
 			t.Fatalf("path = %q", r.URL.Path)
@@ -56,8 +56,8 @@ func TestAccessPolicyMapsPolicyName(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		if r.Header.Get(tokenHeader) != "test-token" {
+			t.Fatalf("%s = %q", tokenHeader, r.Header.Get(tokenHeader))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
