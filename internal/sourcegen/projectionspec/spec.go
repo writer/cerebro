@@ -97,9 +97,9 @@ func (r *Registry) ClassFor(id string) (string, bool) {
 // RequiredAttributesFor returns the required attributes for a projection class.
 // This replaces requiredAttributesForClass in sourcegen/generator.go.
 func (r *Registry) RequiredAttributesFor(class string) []string {
-	for _, template := range r.templates {
-		if template.Class == class {
-			return append([]string(nil), template.RequiredAttributes...)
+	for _, id := range r.ids {
+		if r.templates[id].Class == class {
+			return append([]string(nil), r.templates[id].RequiredAttributes...)
 		}
 	}
 	return nil
