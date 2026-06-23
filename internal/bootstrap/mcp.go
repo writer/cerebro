@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -403,7 +404,7 @@ func (app *App) handleMCPRequest(r *http.Request, request mcpJSONRPCRequest) mcp
 	case "ping":
 		response.Result = map[string]any{}
 	case "tools/list":
-		result, err := mcpPaginatedResult(mcpTools(), request.Params, "tools")
+		result, err := mcpPaginatedResult(mcpToolsForRequest(r, request.Params), request.Params, "tools")
 		if err != nil {
 			response.Error = &mcpError{Code: -32602, Message: err.Error()}
 			return response
@@ -518,6 +519,9 @@ func (app *App) mcpCallTool(r *http.Request, rawParams json.RawMessage) (mcpTool
 		}
 	}
 	name := strings.TrimSpace(params.Name)
+	if !mcpToolAllowedForRequest(r, name) {
+		return mcpErrorToolResult("invalid request: tool is not enabled for the requested toolsets"), nil
+	}
 	if err := authorizeMCPToolScope(r.Context(), name); err != nil {
 		return mcpErrorToolResult(safeMCPToolError(err)), nil
 	}
@@ -574,6 +578,12 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphImpact(r, args)
 	case "cerebro.graph.paths":
 		return app.mcpGraphPaths(r, args)
+	case "cerebro.graph.facts.list":
+		return app.mcpGraphFactsList(r, args)
+	case "cerebro.graph.facts.explain":
+		return app.mcpGraphFactsExplain(r, args)
+	case "cerebro.graph.facts.trace":
+		return app.mcpGraphFactsTrace(r, args)
 	case "cerebro.agent.preflight":
 		return app.mcpAgentPreflight(r, args)
 	case "cerebro.graph.reason":
@@ -1451,6 +1461,158 @@ func (app *App) mcpGraphPaths(r *http.Request, args map[string]any) (any, error)
 	return mcpAddResponseMetadata(value, mcpResponseMetadata(limitApplied, mcpMapArrayCount(value, "paths"), nil)), nil
 }
 
+func (app *App) mcpGraphFactsList(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", defaultMCPListLimit, maxMCPListLimit)
+	if err != nil {
+		return nil, err
+	}
+	request, err := app.mcpGraphFactsListRequest(r, args, limit)
+	if err != nil {
+		return nil, err
+	}
+	response, err := app.graphFactsService().List(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	metadata := mcpResponseMetadata(limit, len(response.Facts), nil)
+	metadata["has_more"] = response.HasMore
+	if response.NextCursor != "" {
+		metadata["next_cursor"] = response.NextCursor
+	}
+	if response.HasMore {
+		metadata["truncated"] = true
+		metadata["truncation_reason"] = "page_boundary"
+	}
+	value = mcpAddResponseMetadata(value, metadata)
+	if err := mcpEnforceMaxBytes(value, args); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func (app *App) mcpGraphFactsExplain(r *http.Request, args map[string]any) (any, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpStringArg(args, "tenant_id"))
+	if err != nil {
+		return nil, err
+	}
+	request := graphfacts.ExplainRequest{
+		TenantID:    tenantID,
+		RuntimeID:   mcpStringArg(args, "runtime_id"),
+		FactID:      mcpStringArg(args, "fact_id"),
+		SubjectURN:  mcpStringArg(args, "subject_urn"),
+		Predicate:   mcpStringArg(args, "predicate"),
+		ObjectURN:   mcpStringArg(args, "object_urn"),
+		ObjectValue: mcpStringArg(args, "object_value"),
+	}
+	if err := app.authorizeMCPGraphFactSelectors(r, request.RuntimeID, request.SubjectURN, request.ObjectURN); err != nil {
+		return nil, err
+	}
+	response, err := app.graphFactsService().Explain(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpResponseMetadata(0, 1, nil)), nil
+}
+
+func (app *App) mcpGraphFactsTrace(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", 10, maxMCPListLimit)
+	if err != nil {
+		return nil, err
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpStringArg(args, "tenant_id"))
+	if err != nil {
+		return nil, err
+	}
+	request := graphfacts.TraceRequest{
+		TenantID:        tenantID,
+		RuntimeID:       mcpStringArg(args, "runtime_id"),
+		FactID:          mcpStringArg(args, "fact_id"),
+		SubjectURN:      mcpStringArg(args, "subject_urn"),
+		Predicate:       mcpStringArg(args, "predicate"),
+		ObjectURN:       mcpStringArg(args, "object_urn"),
+		ObjectValue:     mcpStringArg(args, "object_value"),
+		Limit:           boundedUint32(limit),
+		IncludeEvidence: mcpBoolArg(args, "include_evidence"),
+		EvidenceLimit:   boundedUint32(mcpOptionalLimit(args, "evidence_limit", 5, 25)),
+		OmitAttributes:  mcpBoolArg(args, "compact") || mcpExplicitFalseArg(args, "include_attributes"),
+	}
+	if err := app.authorizeMCPGraphFactSelectors(r, request.RuntimeID, request.SubjectURN, request.ObjectURN); err != nil {
+		return nil, err
+	}
+	response, err := app.graphFactsService().Trace(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(response)
+	if err != nil {
+		return nil, err
+	}
+	metadata := mcpResponseMetadata(limit, len(response.RelatedFacts)+1, nil)
+	metadata["related_more"] = response.RelatedMore
+	if response.RelatedMore {
+		metadata["related_truncated"] = true
+		metadata["related_truncation_reason"] = "related_fact_limit"
+	}
+	value = mcpAddResponseMetadata(value, metadata)
+	if err := mcpEnforceMaxBytes(value, args); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func (app *App) mcpGraphFactsListRequest(r *http.Request, args map[string]any, limit int) (graphfacts.ListRequest, error) {
+	tenantID, err := effectiveTenantFilter(r.Context(), mcpStringArg(args, "tenant_id"))
+	if err != nil {
+		return graphfacts.ListRequest{}, err
+	}
+	request := graphfacts.ListRequest{
+		TenantID:        tenantID,
+		RuntimeID:       mcpStringArg(args, "runtime_id"),
+		FactID:          mcpStringArg(args, "fact_id"),
+		SubjectURN:      mcpStringArg(args, "subject_urn"),
+		Predicate:       mcpStringArg(args, "predicate"),
+		ObjectURN:       mcpStringArg(args, "object_urn"),
+		ObjectValue:     mcpStringArg(args, "object_value"),
+		ClaimType:       mcpStringArg(args, "fact_type"),
+		Status:          mcpStringArg(args, "status"),
+		SourceEventID:   mcpStringArg(args, "source_event_id"),
+		Limit:           boundedUint32(limit),
+		Cursor:          mcpStringArg(args, "cursor"),
+		IncludeEvidence: mcpBoolArg(args, "include_evidence"),
+		EvidenceLimit:   boundedUint32(mcpOptionalLimit(args, "evidence_limit", 5, 25)),
+		Compact:         mcpBoolArg(args, "compact"),
+		OmitAttributes:  mcpBoolArg(args, "compact") || mcpExplicitFalseArg(args, "include_attributes"),
+	}
+	if err := app.authorizeMCPGraphFactSelectors(r, request.RuntimeID, request.SubjectURN, request.ObjectURN); err != nil {
+		return graphfacts.ListRequest{}, err
+	}
+	return request, nil
+}
+
+func (app *App) authorizeMCPGraphFactSelectors(r *http.Request, runtimeID string, urns ...string) error {
+	if strings.TrimSpace(runtimeID) != "" {
+		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(app.deps.StateStore), runtimeID); err != nil {
+			return mcpNormalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound)
+		}
+	}
+	for _, urn := range urns {
+		if strings.HasPrefix(strings.TrimSpace(urn), "urn:cerebro:") {
+			if err := authorizeCerebroURNTenant(r.Context(), urn); err != nil {
+				return mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
+			}
+		}
+	}
+	return nil
+}
+
 func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
 	request := graphagent.AskRequest{
 		TenantID: mcpStringArg(args, "tenant_id"),
@@ -2038,6 +2200,84 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Graph Attack Paths"),
 		},
 		{
+			Name:        "cerebro.graph.facts.list",
+			Title:       "List Graph Facts",
+			Description: "List graph facts backed by runtime claims, including subject, predicate, object, status, freshness, confidence, and evidence pointers.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":          map[string]any{"type": "string"},
+				"runtime_id":         map[string]any{"type": "string"},
+				"fact_id":            map[string]any{"type": "string"},
+				"subject_urn":        map[string]any{"type": "string"},
+				"predicate":          map[string]any{"type": "string"},
+				"object_urn":         map[string]any{"type": "string"},
+				"object_value":       map[string]any{"type": "string"},
+				"fact_type":          map[string]any{"type": "string", "enum": []string{"existence", "attribute", "relation", "classification"}},
+				"status":             map[string]any{"type": "string", "enum": []string{"asserted", "retracted", "refuted", "superseded"}},
+				"source_event_id":    map[string]any{"type": "string"},
+				"cursor":             map[string]any{"type": "string", "description": "Opaque cursor returned by a previous graph facts list response."},
+				"limit":              mcpLimitSchema(maxMCPListLimit, "graph facts"),
+				"include_attributes": map[string]any{"type": "boolean", "description": "Set false to omit public fact attributes."},
+				"include_evidence":   map[string]any{"type": "boolean", "description": "Include bounded evidence pointers on each fact."},
+				"evidence_limit":     mcpLimitSchema(25, "evidence pointers per fact"),
+				"compact":            map[string]any{"type": "boolean", "description": "Return a smaller fact shape for context-window constrained clients."},
+				"max_bytes":          mcpLimitSchema(10*1024*1024, "response bytes"),
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"facts":       map[string]any{"type": "array", "items": mcpGraphFactSchema()},
+				"next_cursor": map[string]any{"type": "string"},
+				"has_more":    map[string]any{"type": "boolean"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("List Graph Facts"),
+		},
+		{
+			Name:        "cerebro.graph.facts.explain",
+			Title:       "Explain Graph Fact",
+			Description: "Explain why a graph fact or edge exists, returning the supporting fact, projected edge shape, evidence pointers, and freshness state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":    map[string]any{"type": "string"},
+				"runtime_id":   map[string]any{"type": "string"},
+				"fact_id":      map[string]any{"type": "string"},
+				"subject_urn":  map[string]any{"type": "string"},
+				"predicate":    map[string]any{"type": "string"},
+				"object_urn":   map[string]any{"type": "string"},
+				"object_value": map[string]any{"type": "string"},
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"fact":        mcpGraphFactSchema(),
+				"edge":        mcpGraphFactEdgeSchema(),
+				"evidence":    map[string]any{"type": "array", "items": mcpGraphFactEvidenceSchema()},
+				"freshness":   mcpGraphFactFreshnessSchema(),
+				"explanation": map[string]any{"type": "string"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Explain Graph Fact"),
+		},
+		{
+			Name:        "cerebro.graph.facts.trace",
+			Title:       "Trace Graph Fact",
+			Description: "Trace a graph fact into evidence, projected edge context, and nearby facts sharing the same subject.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"tenant_id":          map[string]any{"type": "string"},
+				"runtime_id":         map[string]any{"type": "string"},
+				"fact_id":            map[string]any{"type": "string"},
+				"subject_urn":        map[string]any{"type": "string"},
+				"predicate":          map[string]any{"type": "string"},
+				"object_urn":         map[string]any{"type": "string"},
+				"object_value":       map[string]any{"type": "string"},
+				"limit":              mcpLimitSchema(maxMCPListLimit, "related graph facts"),
+				"include_attributes": map[string]any{"type": "boolean"},
+				"include_evidence":   map[string]any{"type": "boolean"},
+				"evidence_limit":     mcpLimitSchema(25, "evidence pointers per fact"),
+				"max_bytes":          mcpLimitSchema(10*1024*1024, "response bytes"),
+			}, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"anchor":        map[string]any{"type": "object"},
+				"related_facts": map[string]any{"type": "array", "items": mcpGraphFactSchema()},
+				"steps":         map[string]any{"type": "array"},
+				"related_more":  map[string]any{"type": "boolean"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Trace Graph Fact"),
+		},
+		{
 			Name:        "cerebro.agent.preflight",
 			Title:       "Agent Run Preflight",
 			Description: "Resolve tenant-scoped capability, graph, connector, policy, and write-back preconditions before an agent plans work.",
@@ -2163,6 +2403,73 @@ func mcpOutputSchema(properties map[string]any) map[string]any {
 		"type":                 "object",
 		"properties":           properties,
 		"additionalProperties": len(properties) == 0,
+	}
+}
+
+func mcpGraphFactSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":              map[string]any{"type": "string"},
+			"runtime_id":      map[string]any{"type": "string"},
+			"tenant_id":       map[string]any{"type": "string"},
+			"subject_urn":     map[string]any{"type": "string"},
+			"predicate":       map[string]any{"type": "string"},
+			"object_urn":      map[string]any{"type": "string"},
+			"object_value":    map[string]any{"type": "string"},
+			"claim_type":      map[string]any{"type": "string"},
+			"status":          map[string]any{"type": "string"},
+			"source_event_id": map[string]any{"type": "string"},
+			"observed_at":     map[string]any{"type": "string"},
+			"valid_from":      map[string]any{"type": "string"},
+			"valid_to":        map[string]any{"type": "string"},
+			"confidence":      map[string]any{"type": "string"},
+			"attributes":      map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+			"evidence":        map[string]any{"type": "array", "items": mcpGraphFactEvidenceSchema()},
+		},
+		"required":             []string{"id", "subject_urn", "predicate", "claim_type", "status"},
+		"additionalProperties": false,
+	}
+}
+
+func mcpGraphFactEdgeSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"from_urn": map[string]any{"type": "string"},
+			"relation": map[string]any{"type": "string"},
+			"to_urn":   map[string]any{"type": "string"},
+			"status":   map[string]any{"type": "string"},
+			"metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+		},
+		"additionalProperties": false,
+	}
+}
+
+func mcpGraphFactEvidenceSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"urn":    map[string]any{"type": "string"},
+			"kind":   map[string]any{"type": "string"},
+			"source": map[string]any{"type": "string"},
+		},
+		"required":             []string{"urn", "kind"},
+		"additionalProperties": false,
+	}
+}
+
+func mcpGraphFactFreshnessSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"observed_at": map[string]any{"type": "string"},
+			"valid_from":  map[string]any{"type": "string"},
+			"valid_to":    map[string]any{"type": "string"},
+			"status":      map[string]any{"type": "string"},
+		},
+		"required":             []string{"status"},
+		"additionalProperties": false,
 	}
 }
 
@@ -2536,6 +2843,80 @@ func mcpKnownTool(name string) bool {
 	return false
 }
 
+func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
+	tools := mcpTools()
+	enabled := mcpRequestedToolsets(r, rawParams)
+	if len(enabled) == 0 {
+		return tools
+	}
+	filtered := make([]mcpTool, 0, len(tools))
+	for _, tool := range tools {
+		if enabled[mcpToolsetForName(tool.Name)] {
+			filtered = append(filtered, tool)
+		}
+	}
+	return filtered
+}
+
+func mcpToolAllowedForRequest(r *http.Request, name string) bool {
+	enabled := mcpRequestedToolsets(r, nil)
+	if len(enabled) == 0 {
+		return true
+	}
+	return enabled[mcpToolsetForName(name)]
+}
+
+func mcpRequestedToolsets(r *http.Request, rawParams json.RawMessage) map[string]bool {
+	values := []string{}
+	if r != nil {
+		values = append(values, strings.Split(r.Header.Get("X-Cerebro-MCP-Toolsets"), ",")...)
+	}
+	if len(rawParams) != 0 {
+		params := map[string]any{}
+		if err := decodeMCPJSON(rawParams, &params); err == nil {
+			switch raw := params["toolsets"].(type) {
+			case []any:
+				for _, item := range raw {
+					values = append(values, mcpAnyString(item))
+				}
+			case string:
+				values = append(values, strings.Split(raw, ",")...)
+			}
+		}
+	}
+	enabled := map[string]bool{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" || value == "all" {
+			continue
+		}
+		enabled[value] = true
+	}
+	return enabled
+}
+
+func mcpToolsetForName(name string) string {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "cerebro.")
+	switch {
+	case strings.HasPrefix(name, "graph."):
+		return "graph"
+	case strings.HasPrefix(name, "risk."):
+		return "risk"
+	case strings.HasPrefix(name, "findings.") || strings.HasPrefix(name, "evidence.") || strings.HasPrefix(name, "investigation."):
+		return "findings"
+	case strings.HasPrefix(name, "assets."):
+		return "assets"
+	case strings.HasPrefix(name, "source_runtimes.") || strings.HasPrefix(name, "runtimes.") || strings.HasPrefix(name, "connector_definitions."):
+		return "operations"
+	case strings.HasPrefix(name, "agent."):
+		return "agent"
+	case name == "health" || name == "version":
+		return "core"
+	default:
+		return "core"
+	}
+}
+
 func mcpToolFamily(name string) string {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "cerebro.")
 	if name == "" {
@@ -2573,6 +2954,8 @@ func mcpResourceTemplates() []mcpResourceTemplate {
 		{URITemplate: "cerebro://finding/{finding_id}", Name: "finding", Title: "Finding", Description: "Read one finding by ID.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://finding-evidence/{evidence_id}", Name: "finding_evidence", Title: "Finding Evidence", Description: "Read one finding evidence record by ID.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://asset/{asset_urn}", Name: "asset", Title: "Asset", Description: "Read one graph asset by URL-encoded Cerebro URN.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URITemplate: "cerebro://graph/fact/{fact_id}", Name: "graph_fact", Title: "Graph Fact", Description: "Read and explain one graph fact by ID.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URITemplate: "cerebro://graph/entity/{entity_urn}", Name: "graph_entity", Title: "Graph Entity", Description: "Read a bounded graph neighborhood for one URL-encoded Cerebro URN.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://runtime/{runtime_id}", Name: "runtime", Title: "Runtime", Description: "Read one source runtime status bundle.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URITemplate: "cerebro://investigation/finding/{finding_id}", Name: "finding_investigation", Title: "Finding Investigation", Description: "Read a bounded investigation context bundle for one finding.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 	}
@@ -2610,6 +2993,17 @@ func mcpPrompts() []mcpPrompt {
 				Name:        "tenant_id",
 				Title:       "Tenant ID",
 				Description: "Optional tenant ID; tenant-scoped API keys can omit it.",
+			}},
+		},
+		{
+			Name:        "trace_graph_fact",
+			Title:       "Trace Graph Fact",
+			Description: "Guide an agent through graph fact provenance, evidence, and related graph context.",
+			Arguments: []mcpPromptArgument{{
+				Name:        "fact_id",
+				Title:       "Fact ID",
+				Description: "The graph fact ID to trace.",
+				Required:    true,
 			}},
 		},
 	}
@@ -2662,6 +3056,22 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 		value, err = app.mcpGetEvidence(r, map[string]any{"evidence_id": pathValue})
 	case "asset":
 		value, err = app.mcpGetAsset(r, map[string]any{"urn": pathValue})
+	case "graph":
+		parts := strings.SplitN(pathValue, "/", 2)
+		if len(parts) != 2 {
+			err = ports.ErrGraphEntityNotFound
+			break
+		}
+		switch parts[0] {
+		case "fact":
+			args["fact_id"] = parts[1]
+			value, err = app.mcpGraphFactsExplain(r, args)
+		case "entity":
+			args["root_urn"] = parts[1]
+			value, err = app.mcpGraphNeighborhood(r, args)
+		default:
+			err = ports.ErrGraphEntityNotFound
+		}
 	case "runtime":
 		value, err = app.mcpRuntimeStatus(r, map[string]any{"runtime_id": pathValue})
 	case "investigation":
@@ -2722,6 +3132,12 @@ func (app *App) mcpGetPrompt(_ *http.Request, rawParams json.RawMessage) (map[st
 		} else {
 			text = "Summarize Cerebro tenant " + tenantID + " risk using cerebro.risk.summary, cerebro.findings.search, cerebro.graph.reason, cerebro.graph.paths, and dry-run-only proposal tools for next actions. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 		}
+	case "trace_graph_fact":
+		factID := mcpStringArg(args, "fact_id")
+		if factID == "" {
+			return nil, fmt.Errorf("%w: fact_id is required", errInvalidHTTPRequest)
+		}
+		text = "Trace Cerebro graph fact " + factID + ". First read cerebro://graph/fact/" + url.PathEscape(factID) + ", then call cerebro.graph.facts.trace with include_evidence=true and compact=false. Use related facts, evidence pointers, freshness, and graph neighborhood context to explain exactly why the fact exists. Never infer data from inaccessible IDs, never reveal redacted values, and treat tenant-forbidden or not-found tool results as a hard boundary."
 	default:
 		return nil, fmt.Errorf("%w: unknown prompt %q", errInvalidHTTPRequest, name)
 	}
@@ -2827,6 +3243,32 @@ func mcpBoundedLimit(args map[string]any, key string, defaultLimit int, maxLimit
 		return maxLimit, nil
 	}
 	return value, nil
+}
+
+func mcpOptionalLimit(args map[string]any, key string, defaultLimit int, maxLimit int) int {
+	limit, err := mcpBoundedLimit(args, key, defaultLimit, maxLimit)
+	if err != nil {
+		return defaultLimit
+	}
+	return limit
+}
+
+func mcpEnforceMaxBytes(value any, args map[string]any) error {
+	maxBytes, err := mcpUint32Arg(args, "max_bytes")
+	if err != nil {
+		return err
+	}
+	if maxBytes == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if uint64(len(payload)) <= uint64(maxBytes) {
+		return nil
+	}
+	return fmt.Errorf("%w: response exceeds max_bytes; narrow filters, lower limit, or enable compact", errInvalidHTTPRequest)
 }
 
 func mcpAssetSearchResultFromRow(row ports.CypherRow) (mcpAssetSearchResult, error) {
@@ -3348,13 +3790,46 @@ func mcpSuccessToolResult(structured any) (mcpToolResult, error) {
 }
 
 func mcpErrorToolResult(message string) mcpToolResult {
+	err := mcpStructuredToolError(message)
 	return mcpToolResult{
 		Content: []mcpContent{{
 			Type: "text",
-			Text: message,
+			Text: err.Message,
 		}},
-		IsError: true,
+		StructuredContent: map[string]any{"error": err},
+		IsError:           true,
 	}
+}
+
+type mcpStructuredError struct {
+	Kind      string `json:"kind"`
+	Message   string `json:"message"`
+	Hint      string `json:"hint,omitempty"`
+	Retryable bool   `json:"retryable"`
+}
+
+func mcpStructuredToolError(message string) mcpStructuredError {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = "tool execution failed"
+	}
+	kind := mcpToolErrorKindFromMessage(message)
+	err := mcpStructuredError{Kind: kind, Message: message}
+	switch kind {
+	case "invalid_request":
+		err.Hint = "Check the tool input schema and required scope fields."
+	case "not_found":
+		err.Hint = "Verify the identifier and tenant/runtime scope."
+	case "scope_forbidden", "tenant_forbidden", "authorization_failed":
+		err.Hint = "Use only tenant-scoped IDs and URNs visible to the authenticated principal."
+	case "runtime_unavailable":
+		err.Hint = "Retry after the runtime store is available."
+		err.Retryable = true
+	default:
+		err.Hint = "Retry with narrower filters or inspect service logs."
+		err.Retryable = true
+	}
+	return err
 }
 
 func protoJSONValue(message proto.Message) (any, error) {
@@ -3519,6 +3994,14 @@ func mcpBoolArg(args map[string]any, key string) bool {
 	}
 }
 
+func mcpExplicitFalseArg(args map[string]any, key string) bool {
+	value, ok := args[key]
+	if !ok || value == nil {
+		return false
+	}
+	return !mcpBoolArg(args, key)
+}
+
 func mcpUint32Arg(args map[string]any, key string) (uint32, error) {
 	value, ok := args[key]
 	if !ok || value == nil || value == "" {
@@ -3660,7 +4143,8 @@ func safeMCPToolError(err error) string {
 		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, sourceruntime.ErrInvalidRequest),
-		errors.Is(err, findingdomain.ErrInvalidRequest):
+		errors.Is(err, findingdomain.ErrInvalidRequest),
+		errors.Is(err, graphfacts.ErrInvalidRequest):
 		return err.Error()
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		return "source runtime not found"
@@ -3670,9 +4154,12 @@ func safeMCPToolError(err error) string {
 		return "finding evidence not found"
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		return "graph entity not found"
+	case errors.Is(err, graphfacts.ErrFactNotFound):
+		return "graph fact not found"
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable),
 		errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
-		errors.Is(err, findingdomain.ErrRuntimeUnavailable):
+		errors.Is(err, findingdomain.ErrRuntimeUnavailable),
+		errors.Is(err, graphfacts.ErrRuntimeUnavailable):
 		return "runtime unavailable"
 	default:
 		return "tool execution failed"
