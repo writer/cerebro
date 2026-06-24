@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	compoundRiskKindActor      = "actor"
-	compoundRiskKindResource   = "resource"
-	compoundRiskKindRepository = "repository"
-	compoundRiskKindSource     = "source"
-	compoundRiskKindType       = "resource_type"
+	compoundRiskKindActor          = "actor"
+	compoundRiskKindResource       = "resource"
+	compoundRiskKindRepository     = "repository"
+	compoundRiskKindContainerImage = "container_image"
+	compoundRiskKindSource         = "source"
+	compoundRiskKindType           = "resource_type"
 )
 
 // CompoundRiskOptions scopes how many correlated risk groups and samples are returned.
@@ -23,11 +24,12 @@ type CompoundRiskOptions struct {
 
 // CompoundRiskReport summarizes correlated findings across common graph dimensions.
 type CompoundRiskReport struct {
-	Actors        []CompoundRiskGroup `json:"actors"`
-	Resources     []CompoundRiskGroup `json:"resources"`
-	Repositories  []CompoundRiskGroup `json:"repositories"`
-	Sources       []CompoundRiskGroup `json:"sources"`
-	ResourceTypes []CompoundRiskGroup `json:"resource_types"`
+	Actors          []CompoundRiskGroup `json:"actors"`
+	Resources       []CompoundRiskGroup `json:"resources"`
+	Repositories    []CompoundRiskGroup `json:"repositories"`
+	ContainerImages []CompoundRiskGroup `json:"container_images"`
+	Sources         []CompoundRiskGroup `json:"sources"`
+	ResourceTypes   []CompoundRiskGroup `json:"resource_types"`
 }
 
 // CompoundRiskGroup captures one correlated set of findings sharing the same dimension.
@@ -63,11 +65,12 @@ type compoundRiskBucket struct {
 func AnalyzeCompoundRisks(records []*ports.FindingRecord, options CompoundRiskOptions) CompoundRiskReport {
 	records = dedupeCompoundRiskFindings(records)
 	return CompoundRiskReport{
-		Actors:        buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindActor), options),
-		Resources:     buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindResource), options),
-		Repositories:  buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindRepository), options),
-		Sources:       buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindSource), options),
-		ResourceTypes: buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindType), options),
+		Actors:          buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindActor), options),
+		Resources:       buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindResource), options),
+		Repositories:    buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindRepository), options),
+		ContainerImages: buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindContainerImage), options),
+		Sources:         buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindSource), options),
+		ResourceTypes:   buildCompoundRiskGroups(groupCompoundRiskFindings(records, compoundRiskKindType), options),
 	}
 }
 
@@ -144,6 +147,12 @@ func compoundRiskDimensionFor(record *ports.FindingRecord, kind string) compound
 	case compoundRiskKindRepository:
 		key := repositoryFromFinding(record)
 		return compoundRiskDimension{key: key, label: key}
+	case compoundRiskKindContainerImage:
+		key := containerImageFromFinding(record)
+		return compoundRiskDimension{
+			key:   key,
+			label: firstNonEmpty(attributes["image_uri"], attributes["image_digest"], key),
+		}
 	case compoundRiskKindResource:
 		key := firstNonEmpty(attributes["primary_resource_urn"], firstFindingResourceURN(record))
 		return compoundRiskDimension{
@@ -354,6 +363,34 @@ func repositoryFromURN(value string) string {
 	}
 	if strings.Contains(repository, "/") {
 		return repository
+	}
+	return ""
+}
+
+func containerImageFromFinding(record *ports.FindingRecord) string {
+	if record == nil {
+		return ""
+	}
+	attributes := record.Attributes
+	if imageURN := firstNonEmpty(
+		attributes["container_image_urn"],
+		attributes["image_urn"],
+	); imageURN != "" {
+		return imageURN
+	}
+	if imageDigest := strings.TrimSpace(attributes["image_digest"]); imageDigest != "" {
+		if imageURN := normalizedContainerImageURN(record.TenantID, imageDigest); imageURN != "" {
+			return imageURN
+		}
+		return imageDigest
+	}
+	if imageURN := firstNonEmpty(attributes["aurelius_image_urn"], attributes["trivy_image_urn"]); imageURN != "" {
+		return imageURN
+	}
+	for _, resourceURN := range record.ResourceURNs {
+		if resourceType := resourceTypeFromURN(resourceURN); resourceType == "container_image_digest" || resourceType == "container_image" {
+			return strings.TrimSpace(resourceURN)
+		}
 	}
 	return ""
 }

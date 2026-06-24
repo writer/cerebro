@@ -146,6 +146,72 @@ func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *
 	}
 }
 
+func TestAnalyzeFindingPatternCorrelationsDetectsDependabotControlPattern(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	controlDisabled := compoundRiskFinding("gh-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_code_repository:example/cerebro", "repository_code_scanning.disable")
+	controlDisabled.FirstObservedAt = base
+	controlDisabled.LastObservedAt = base
+	controlDisabled.EventIDs = []string{"event-control"}
+	controlDisabled.Attributes["repository"] = "example/cerebro"
+	controlDisabled.Attributes["repo_owner"] = "appsec"
+	delete(controlDisabled.Attributes, "repo")
+
+	dependabot := compoundRiskFinding("gh-dependabot", githubDependabotOpenAlertRuleID, "HIGH", "", "example/cerebro", "urn:cerebro:example:github_dependabot_alert:example/cerebro:7", "dependabot_alert.open")
+	dependabot.FirstObservedAt = base.Add(30 * time.Minute)
+	dependabot.LastObservedAt = base.Add(30 * time.Minute)
+	dependabot.EventIDs = []string{"event-dependabot"}
+	dependabot.Attributes["repository"] = "example/cerebro"
+	delete(dependabot.Attributes, "repo")
+
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{controlDisabled, dependabot}, FindingExposureAnalysisOptions{
+		CorrelationWindow: time.Hour,
+	})
+	correlation := findingCorrelationByPattern(correlations, "github-code-security-control-disabled-with-dependabot-alert")
+	if correlation == nil {
+		t.Fatalf("Correlations = %#v, want GitHub Dependabot control pattern", correlations)
+	}
+	if correlation.Dimension != compoundRiskKindRepository {
+		t.Fatalf("Correlation.Dimension = %q, want repository", correlation.Dimension)
+	}
+	if !stringSliceContains(correlation.Reasons, "vulnerable_dependency") {
+		t.Fatalf("Correlation.Reasons = %#v, want vulnerable_dependency", correlation.Reasons)
+	}
+}
+
+func TestAnalyzeFindingPatternCorrelationsDetectsContainerImagePatternUsingNormalizedImageURN(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	trivy := compoundRiskFinding("trivy-1", trivyImageVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:trivy_vulnerability:sha256:abc:CVE-2026-1:openssl", "scan.detected")
+	trivy.FirstObservedAt = base
+	trivy.LastObservedAt = base
+	trivy.EventIDs = []string{"event-trivy"}
+	trivy.Attributes["trivy_image_urn"] = "urn:cerebro:writer:trivy_image:sha256:abc"
+	trivy.Attributes["image_digest"] = "sha256:abc"
+	trivy.Attributes["image_uri"] = "registry.example/app@sha256:abc"
+
+	aurelius := compoundRiskFinding("aurelius-1", aureliusPromotedVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:aurelius_vulnerability:vuln-1", "promoted")
+	aurelius.FirstObservedAt = base.Add(20 * time.Minute)
+	aurelius.LastObservedAt = base.Add(20 * time.Minute)
+	aurelius.EventIDs = []string{"event-aurelius"}
+	aurelius.Attributes["container_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+	aurelius.Attributes["aurelius_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+	aurelius.Attributes["image_digest"] = "sha256:abc"
+	aurelius.Attributes["image_uri"] = "registry.example/app@sha256:abc"
+
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{trivy, aurelius}, FindingExposureAnalysisOptions{
+		CorrelationWindow: time.Hour,
+	})
+	correlation := findingCorrelationByPattern(correlations, "container-image-promoted-vulnerability-with-trivy-scan")
+	if correlation == nil {
+		t.Fatalf("Correlations = %#v, want container image pattern", correlations)
+	}
+	if correlation.Dimension != compoundRiskKindContainerImage {
+		t.Fatalf("Correlation.Dimension = %q, want container_image", correlation.Dimension)
+	}
+	if got := correlation.Key; got != "urn:cerebro:writer:container_image_digest:sha256:abc" {
+		t.Fatalf("Correlation.Key = %q, want normalized container image urn", got)
+	}
+}
+
 func TestAnalyzeFindingPatternCorrelationsDetectsIdentityTamperCredentialHint(t *testing.T) {
 	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	controlTamper := compoundRiskFinding("identity-control", identityAuthControlLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policy:pol-1", "policy.rule.deactivate")
@@ -183,6 +249,81 @@ func TestAnalyzeFindingPatternCorrelationsDetectsIdentityTamperCredentialHint(t 
 	for _, reason := range []string{"control_tamper", "credential_change"} {
 		if !stringSliceContains(correlation.Reasons, reason) {
 			t.Fatalf("Correlation.Reasons = %#v, want %q", correlation.Reasons, reason)
+		}
+	}
+}
+
+func TestAnalyzeFindingPatternCorrelationsDetectsRuntimeThreatExposurePattern(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	publicExposure := compoundRiskFinding("cloud-public", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:kubernetes_workload:prod/api", "public_network_ingress")
+	publicExposure.FirstObservedAt = base
+	publicExposure.LastObservedAt = base
+	publicExposure.EventIDs = []string{"event-cloud"}
+	publicExposure.Attributes["internet_exposed"] = "true"
+
+	runtimeThreat := compoundRiskFinding("runtime-threat", runtimeActiveThreatEvidenceRuleID, "HIGH", "", "", "urn:cerebro:writer:kubernetes_workload:prod/api", "credential_use")
+	runtimeThreat.FirstObservedAt = base.Add(15 * time.Minute)
+	runtimeThreat.LastObservedAt = base.Add(15 * time.Minute)
+	runtimeThreat.EventIDs = []string{"event-runtime"}
+	runtimeThreat.Attributes["evidence_type"] = "credential_use"
+	runtimeThreat.Attributes["verdict"] = "active"
+
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{publicExposure, runtimeThreat}, FindingExposureAnalysisOptions{
+		CorrelationWindow: time.Hour,
+	})
+	correlation := findingCorrelationByPattern(correlations, "runtime-active-threat-with-public-exposure")
+	if correlation == nil {
+		t.Fatalf("Correlations = %#v, want runtime threat exposure hint", correlations)
+	}
+	if correlation.Dimension != compoundRiskKindResource {
+		t.Fatalf("Correlation.Dimension = %q, want resource", correlation.Dimension)
+	}
+	for _, reason := range []string{"active_threat", "external_exposure"} {
+		if !stringSliceContains(correlation.Reasons, reason) {
+			t.Fatalf("Correlation.Reasons = %#v, want %q", correlation.Reasons, reason)
+		}
+	}
+}
+
+func TestAnalyzeFindingExposureReturnsActionCandidatesForCorrelatedFindings(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	trivy := compoundRiskFinding("trivy-1", trivyImageVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:trivy_vulnerability:sha256:abc:CVE-2026-1:openssl", "scan.detected")
+	trivy.FirstObservedAt = base
+	trivy.LastObservedAt = base
+	trivy.EventIDs = []string{"event-trivy"}
+	trivy.Attributes["image_digest"] = "sha256:abc"
+	trivy.Attributes["service_owner"] = "containers"
+
+	aurelius := compoundRiskFinding("aurelius-1", aureliusPromotedVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:aurelius_vulnerability:vuln-1", "promoted")
+	aurelius.FirstObservedAt = base.Add(20 * time.Minute)
+	aurelius.LastObservedAt = base.Add(20 * time.Minute)
+	aurelius.EventIDs = []string{"event-aurelius"}
+	aurelius.Attributes["container_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+	aurelius.Attributes["image_digest"] = "sha256:abc"
+
+	report := AnalyzeFindingExposure([]*ports.FindingRecord{trivy, aurelius}, FindingExposureAnalysisOptions{
+		Limit:             10,
+		CorrelationWindow: time.Hour,
+	})
+	if len(report.ActionCandidates) == 0 {
+		t.Fatalf("ActionCandidates = 0, want correlated remediation candidate; report=%#v", report)
+	}
+	candidate := report.ActionCandidates[0]
+	if candidate.ActionType != "remediate_promoted_container_vulnerability" {
+		t.Fatalf("ActionType = %q, want remediate_promoted_container_vulnerability", candidate.ActionType)
+	}
+	if candidate.TargetURN != "urn:cerebro:writer:container_image_digest:sha256:abc" {
+		t.Fatalf("TargetURN = %q, want normalized container image urn", candidate.TargetURN)
+	}
+	if candidate.Owner != "containers" {
+		t.Fatalf("Owner = %q, want containers", candidate.Owner)
+	}
+	if got := candidate.Evidence.FindingCount; got != 2 {
+		t.Fatalf("Evidence.FindingCount = %d, want 2", got)
+	}
+	for _, ruleID := range []string{trivyImageVulnerabilityActiveRuleID, aureliusPromotedVulnerabilityActiveRuleID} {
+		if !stringSliceContains(candidate.RuleIDs, ruleID) {
+			t.Fatalf("RuleIDs = %#v, want %q", candidate.RuleIDs, ruleID)
 		}
 	}
 }

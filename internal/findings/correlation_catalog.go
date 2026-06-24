@@ -261,7 +261,7 @@ func cloneFindingCorrelationPatternTests(tests []FindingCorrelationPatternTest) 
 
 func validCorrelationDimension(value string) bool {
 	switch value {
-	case compoundRiskKindActor, compoundRiskKindResource, compoundRiskKindRepository, compoundRiskKindSource, compoundRiskKindType:
+	case compoundRiskKindActor, compoundRiskKindResource, compoundRiskKindRepository, compoundRiskKindContainerImage, compoundRiskKindSource, compoundRiskKindType:
 		return true
 	default:
 		return false
