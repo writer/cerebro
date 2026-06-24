@@ -75,6 +75,11 @@ func (r *Registry) RegisterConnectorDefinitions(definitions ...connectordefiniti
 	defer r.mu.Unlock()
 	r.ensureConnectorDefinitionState()
 	for _, definition := range definitions {
+		normalized, err := connectordefinitions.Normalize(definition)
+		if err != nil {
+			continue
+		}
+		definition = normalized
 		sourceID := strings.TrimSpace(definition.SourceID)
 		if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
 			continue

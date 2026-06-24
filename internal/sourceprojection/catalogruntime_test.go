@@ -214,6 +214,68 @@ func TestRegistryRegistersConnectorDefinitionProjectors(t *testing.T) {
 	}
 }
 
+func TestRegistrySkipsUnnormalizedConnectorDefinitionWithUnsupportedRelationship(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: "example_dynamic",
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Fields: map[string]string{
+					"owner_id":   "owner.id",
+					"owner_name": "owner.name",
+				},
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "example.dynamic.asset",
+					URNKind:        "example_dynamic_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+				Relationships: []connectordefinitions.ProjectionRelationshipSpec{{
+					Relation: "custom relation",
+					To: connectordefinitions.ProjectionEntitySpec{
+						EntityType:     "example.dynamic.owner",
+						URNKind:        "example_dynamic_owner",
+						IDAttributes:   []string{"owner_id"},
+						LabelAttribute: "owner_name",
+					},
+					MatchType: "owner",
+				}},
+			},
+		}},
+	})
+	if len(registry.connectorDefinitionFingerprints) != 0 {
+		t.Fatalf("registered blocked connector definition fingerprints = %#v", registry.connectorDefinitionFingerprints)
+	}
+	entities, links, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant-a",
+		SourceId: "example_dynamic",
+		Kind:     "example_dynamic.asset",
+		Attributes: map[string]string{
+			"id":         "asset-1",
+			"name":       "Asset One",
+			"owner_id":   "owner-1",
+			"owner_name": "Owner One",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if len(entities) != 0 || len(links) != 0 {
+		t.Fatalf("blocked connector definition projected entities=%#v links=%#v", entities, links)
+	}
+}
+
 func TestRegistryUpdatesConnectorDefinitionProjectors(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {
