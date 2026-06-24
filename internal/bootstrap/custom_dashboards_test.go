@@ -225,6 +225,35 @@ func TestHandleCustomDashboardVisibilityHidesPrivateFromNonOwner(t *testing.T) {
 	}
 }
 
+func TestHandleCloneCustomDashboardValidatesName(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	store.dashboards["src"] = &ports.CustomDashboard{ID: "src", TenantID: "local", OwnerUserID: "person@example.test", Name: strings.Repeat("a", 200), Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	app := askQueryTestApp(store)
+
+	rejectRecorder := httptest.NewRecorder()
+	rejectRequest := customDashboardTestRequest(http.MethodPost, "/grc/dashboards/src/clone", `{"name":"`+strings.Repeat("b", 201)+`"}`)
+	rejectRequest.SetPathValue("dashboardID", "src")
+	customDashboardTestHandler(app).Clone(rejectRecorder, rejectRequest)
+	if rejectRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("clone with over-length name status = %d, want 400 (body %s)", rejectRecorder.Code, rejectRecorder.Body.String())
+	}
+
+	cloneRecorder := httptest.NewRecorder()
+	cloneRequest := customDashboardTestRequest(http.MethodPost, "/grc/dashboards/src/clone", "")
+	cloneRequest.SetPathValue("dashboardID", "src")
+	customDashboardTestHandler(app).Clone(cloneRecorder, cloneRequest)
+	if cloneRecorder.Code != http.StatusCreated {
+		t.Fatalf("clone status = %d, want 201 (body %s)", cloneRecorder.Code, cloneRecorder.Body.String())
+	}
+	var response customdashboards.Response
+	if err := json.Unmarshal(cloneRecorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode clone response: %v", err)
+	}
+	if name := response.Dashboard.Name; name == "" || len(name) > 200 {
+		t.Fatalf("clone name length = %d, want 1..200 (%q)", len(name), name)
+	}
+}
+
 func TestHandleUpdateAndDeleteCustomDashboardScopeTenant(t *testing.T) {
 	store := newStubCustomDashboardStore()
 	store.dashboards["a"] = &ports.CustomDashboard{ID: "a", TenantID: "local", OwnerUserID: "person@example.test", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}

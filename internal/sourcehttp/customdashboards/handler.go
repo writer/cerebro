@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -332,14 +333,10 @@ func (h *Handler) Clone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := h.actorID(r.Context())
-	name := strings.TrimSpace(request.Name)
-	if name == "" {
-		name = strings.TrimSpace(existing.Name)
-		if name == "" {
-			name = defaultCustomDashboardName
-		} else {
-			name = "Copy of " + name
-		}
+	name, err := cloneName(request.Name, existing.Name)
+	if err != nil {
+		writeError(w, err)
+		return
 	}
 	clone := *existing
 	clone.ID, clone.Name, clone.OwnerUserID = NewID(), name, actor
@@ -507,6 +504,37 @@ func normalizeJSON(raw json.RawMessage, field string, kind string, fallback json
 		}
 	}
 	return append(json.RawMessage(nil), raw...), nil
+}
+
+// cloneName resolves the name for a cloned dashboard. An explicit request name
+// is validated against the same length limit as Create/Update; an auto-derived
+// "Copy of ..." fallback is clamped so it can never exceed that limit.
+func cloneName(requested string, existingName string) (string, error) {
+	name := strings.TrimSpace(requested)
+	if name != "" {
+		if len(name) > maxNameBytes {
+			return "", fmt.Errorf("%w: name must be at most %d bytes", ErrInvalidRequest, maxNameBytes)
+		}
+		return name, nil
+	}
+	base := strings.TrimSpace(existingName)
+	if base == "" {
+		return defaultCustomDashboardName, nil
+	}
+	return clampToBytes("Copy of "+base, maxNameBytes), nil
+}
+
+// clampToBytes truncates value to at most limit bytes without splitting a
+// multi-byte UTF-8 rune.
+func clampToBytes(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	truncated := value[:limit]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return strings.TrimSpace(truncated)
 }
 
 // validateSchemaVersion rejects schema versions the server does not yet
