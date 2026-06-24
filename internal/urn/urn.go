@@ -61,8 +61,7 @@ func Mint(tenantID string, kind string, parts ...string) (string, error) {
 	if entityKind == "" {
 		return "", fmt.Errorf("urn kind is required")
 	}
-	values := make([]string, 0, len(parts)+4)
-	values = append(values, "urn", "cerebro", tenant, entityKind)
+	values := []string{"urn", "cerebro", tenant, entityKind}
 	for _, part := range parts {
 		value := strings.TrimSpace(part)
 		if value == "" {
