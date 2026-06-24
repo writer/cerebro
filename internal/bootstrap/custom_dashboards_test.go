@@ -184,6 +184,58 @@ func TestHandleCreateCustomDashboardAcceptsBroadenedWidgets(t *testing.T) {
 	}
 }
 
+func TestHandleCreateCustomDashboardValidatesWidgetCatalogQuery(t *testing.T) {
+	t.Run("accepts a bound catalog query", func(t *testing.T) {
+		store := newStubCustomDashboardStore()
+		app := askQueryTestApp(store)
+		body := `{"name":"Bound","widgets":[{"id":"w1","type":"findings_table","query":{"source_id":"findings","params":{"status":"open","severity":"high"},"limit":50}}]}`
+		recorder := httptest.NewRecorder()
+		customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", body))
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
+		}
+	})
+	t.Run("accepts a report widget bound to a catalog source", func(t *testing.T) {
+		store := newStubCustomDashboardStore()
+		app := askQueryTestApp(store)
+		body := `{"name":"Report","widgets":[{"id":"w1","type":"report","title":"Open findings","query":{"source_id":"findings","params":{"status":"open"},"limit":25}}]}`
+		recorder := httptest.NewRecorder()
+		customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", body))
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
+		}
+	})
+	t.Run("tolerates a legacy query with no catalog binding", func(t *testing.T) {
+		store := newStubCustomDashboardStore()
+		app := askQueryTestApp(store)
+		body := `{"name":"Legacy","widgets":[{"id":"w1","type":"trend_chart","query":{"endpoint":"/grc/trends","params":{"days":"30"}}}]}`
+		recorder := httptest.NewRecorder()
+		customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", body))
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
+		}
+	})
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "unknown source", body: `{"name":"bad","widgets":[{"id":"w1","type":"findings_table","query":{"source_id":"made-up"}}]}`},
+		{name: "unknown parameter", body: `{"name":"bad","widgets":[{"id":"w1","type":"findings_table","query":{"source_id":"findings","params":{"not_a_param":"x"}}}]}`},
+		{name: "bad enum", body: `{"name":"bad","widgets":[{"id":"w1","type":"trend_chart","query":{"source_id":"trends","params":{"interval":"decade"}}}]}`},
+		{name: "over limit", body: `{"name":"bad","widgets":[{"id":"w1","type":"findings_table","query":{"source_id":"findings","limit":100000}}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newStubCustomDashboardStore()
+			app := askQueryTestApp(store)
+			recorder := httptest.NewRecorder()
+			customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", tc.body))
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestHandleListCustomDashboardRequiresTenant(t *testing.T) {
 	store := newStubCustomDashboardStore()
 	store.dashboards["local"] = &ports.CustomDashboard{ID: "local", TenantID: "local", OwnerUserID: "person@example.test", Name: "local", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}

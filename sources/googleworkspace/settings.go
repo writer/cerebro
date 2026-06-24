@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/googleworkspaceauth"
 )
 
 type settings struct {
@@ -17,6 +18,7 @@ type settings struct {
 	groupKey    string
 	application string
 	perPage     int
+	auth        googleworkspaceauth.Settings
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -29,6 +31,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		groupKey:    sourcecdk.ConfigValue(cfg, "group_key"),
 		application: sourcecdk.ConfigValue(cfg, "application"),
 		perPage:     defaultPageSize,
+		auth:        googleworkspaceauth.FromConfig(cfg),
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -44,8 +47,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.customerID == "" {
 		settings.customerID = defaultCustomerID
 	}
-	if settings.token == "" {
-		return settings, fmt.Errorf("google_workspace token is required")
+	if err := googleworkspaceauth.Validate(settings.auth); err != nil {
+		return settings, err
 	}
 	if settings.baseURL == "" {
 		settings.baseURL = defaultBaseURL

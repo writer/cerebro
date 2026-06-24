@@ -372,10 +372,11 @@ func (r *coordinationGraphRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime
 	if r == nil || runtime == nil {
 		return false
 	}
-	if len(r.families) == 0 {
-		return true
-	}
 	sourceID := strings.ToLower(strings.TrimSpace(runtime.GetSourceId()))
+	if len(r.families) == 0 {
+		ruleSourceID := strings.ToLower(strings.TrimSpace(r.sourceID))
+		return ruleSourceID == "" || sourceID == ruleSourceID
+	}
 	allowedFamilies, ok := r.families[sourceID]
 	if !ok {
 		return false

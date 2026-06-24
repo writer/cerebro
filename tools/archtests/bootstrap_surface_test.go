@@ -50,8 +50,15 @@ import (
 // port and storage stays in internal/statestore/postgres. Custom GRC dashboards
 // add route wiring plus actor stamping while HTTP behavior lives behind
 // internal/sourcehttp/customdashboards and storage stays behind the
-// CustomDashboardStore port.
-const bootstrapProductionGoLineBudget = 25901
+// CustomDashboardStore port. The GRC report catalog and query API add a thin
+// catalog handler plus a bounded query resolver that dispatches to existing GRC
+// read handlers; the allowlisted source catalog and query validation live in
+// internal/grccatalog, so bootstrap keeps only routing, request/response
+// mapping, and the source-to-handler dispatch. GRC program readiness adds a
+// thin HTTP handler that composes existing GRC packet builders, connector
+// health mapping, and source coverage into the internal/grcprogram readiness
+// domain response.
+const bootstrapProductionGoLineBudget = 26050
 
 type bootstrapFileLineCount struct {
 	path  string

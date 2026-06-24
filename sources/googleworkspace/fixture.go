@@ -13,7 +13,6 @@ import (
 //go:embed testdata/*.json
 var fixtureFS embed.FS
 
-// NewFixture constructs the deterministic Google Workspace source used by tests.
 func NewFixture() (sourcecdk.Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
@@ -29,7 +28,6 @@ func NewFixture() (sourcecdk.Source, error) {
 			family:      family,
 			domain:      "writer.com",
 			customerID:  "C01",
-			token:       "test-token",
 			baseURL:     defaultBaseURL,
 			groupKey:    "security@writer.com",
 			application: "admin",
