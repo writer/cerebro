@@ -147,13 +147,14 @@ func Build(input BuildInput) Readiness {
 		generatedAt = time.Now().UTC()
 	}
 	controls := buildControls(input.Result.Controls, input.Result.Profile.ID, input.TenantID)
+	summary := buildSummary(input.Result, input.Connectors, input.CoverageBlindSpots)
 	return Readiness{
 		Profile:     input.Result.Profile,
-		Summary:     buildSummary(input.Result, input.Connectors, input.CoverageBlindSpots),
+		Summary:     summary,
 		Frameworks:  buildFrameworks(controls),
 		Controls:    controls,
 		WorkItems:   buildWorkItems(controls),
-		ProofBundle: buildProofBundle(input.Result, input.Query, generatedAt),
+		ProofBundle: buildProofBundle(input.Result, summary, input.Query, generatedAt),
 		Connectors:  input.Connectors,
 		Metadata:    input.Result.Metadata,
 		GeneratedAt: generatedAt,
@@ -327,7 +328,7 @@ func buildWorkItems(controls []Control) []WorkItem {
 	return items
 }
 
-func buildProofBundle(result grccontrol.PacketResult, query url.Values, generatedAt time.Time) ProofBundle {
+func buildProofBundle(result grccontrol.PacketResult, summary Summary, query url.Values, generatedAt time.Time) ProofBundle {
 	profileID := strings.TrimSpace(result.Profile.ID)
 	if profileID == "" {
 		profileID = grccontrol.DefaultEvidenceProfileID
@@ -345,8 +346,8 @@ func buildProofBundle(result grccontrol.PacketResult, query url.Values, generate
 		ID:                "proofbundle:" + profileID,
 		Title:             strings.TrimSpace(firstNonEmpty(result.Profile.Name, "Audit proof bundle")),
 		Description:       "Control packet, readiness metadata, source scope, and export paths for auditor review.",
-		Status:            result.Metadata.Readiness.Status,
-		Score:             result.Metadata.Readiness.Score,
+		Status:            firstNonEmpty(result.Metadata.Readiness.Status, summary.Status),
+		Score:             summary.Score,
 		ControlPacketPath: pathWithQuery("/grc/control-packets", query),
 		ExportPath:        pathWithQuery("/grc/control-packets/export", query),
 		ReportsPath:       pathWithQuery("/reports", reportQuery),
@@ -434,7 +435,7 @@ func readinessStatus(score int, summary Summary) string {
 	switch {
 	case summary.FailingControls > 0 || summary.StaleConnectors > 0:
 		return "blocked"
-	case summary.MissingEvidenceControls > 0 || summary.ManualReviewControls > 0 || summary.CoverageBlindSpots > 0:
+	case summary.MissingEvidenceControls > 0 || summary.StaleEvidenceControls > 0 || summary.ManualReviewControls > 0 || summary.CoverageBlindSpots > 0:
 		return "needs_review"
 	case score >= 90:
 		return "ready"
@@ -477,7 +478,7 @@ func controlHref(profileID, tenantID, frameworkName, controlID string) string {
 	if strings.TrimSpace(controlID) != "" {
 		values.Set("control", strings.TrimSpace(controlID))
 	}
-	return pathWithQuery("/controls", values)
+	return pathWithQuery("/grc/controls", values)
 }
 
 func pathWithQuery(path string, query url.Values) string {
