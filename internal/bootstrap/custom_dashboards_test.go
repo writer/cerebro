@@ -184,6 +184,23 @@ func TestHandleCreateCustomDashboardAcceptsBroadenedWidgets(t *testing.T) {
 	}
 }
 
+func TestHandleListCustomDashboardRequiresTenant(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	store.dashboards["local"] = &ports.CustomDashboard{ID: "local", TenantID: "local", OwnerUserID: "person@example.test", Name: "local", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["other"] = &ports.CustomDashboard{ID: "other", TenantID: "other", OwnerUserID: "intruder@example.test", Name: "other", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	app := askQueryTestApp(store)
+
+	request := httptest.NewRequest(http.MethodGet, "/grc/dashboards", nil)
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{Name: "person@example.test"},
+	}))
+	recorder := httptest.NewRecorder()
+	customDashboardTestHandler(app).List(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("list without a resolvable tenant status = %d, want 400 (must not fan out across tenants) (body %s)", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHandleCustomDashboardVisibilityHidesPrivateFromNonOwner(t *testing.T) {
 	store := newStubCustomDashboardStore()
 	store.dashboards["mine"] = &ports.CustomDashboard{ID: "mine", TenantID: "local", OwnerUserID: "person@example.test", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
@@ -251,6 +268,60 @@ func TestHandleCloneCustomDashboardValidatesName(t *testing.T) {
 	}
 	if name := response.Dashboard.Name; name == "" || len(name) > 200 {
 		t.Fatalf("clone name length = %d, want 1..200 (%q)", len(name), name)
+	}
+}
+
+func TestHandleCloneCustomDashboardResetsVisibilityToPrivate(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	store.dashboards["shared"] = &ports.CustomDashboard{ID: "shared", TenantID: "local", OwnerUserID: "other@example.test", Name: "Shared dashboard", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	app := askQueryTestApp(store)
+
+	recorder := httptest.NewRecorder()
+	request := customDashboardTestRequest(http.MethodPost, "/grc/dashboards/shared/clone", "")
+	request.SetPathValue("dashboardID", "shared")
+	customDashboardTestHandler(app).Clone(recorder, request)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("clone status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
+	}
+	var response customdashboards.Response
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode clone response: %v", err)
+	}
+	if response.Dashboard.Visibility != "private" {
+		t.Fatalf("clone visibility = %q, want private", response.Dashboard.Visibility)
+	}
+	if response.Dashboard.OwnerUserID != "person@example.test" {
+		t.Fatalf("clone owner = %q, want person@example.test", response.Dashboard.OwnerUserID)
+	}
+}
+
+func TestHandleCustomDashboardMutationsRestrictedToOwner(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	store.dashboards["shared"] = &ports.CustomDashboard{ID: "shared", TenantID: "local", OwnerUserID: "other@example.test", Name: "Shared dashboard", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	app := askQueryTestApp(store)
+
+	getRecorder := httptest.NewRecorder()
+	getRequest := customDashboardTestRequest(http.MethodGet, "/grc/dashboards/shared", "")
+	getRequest.SetPathValue("dashboardID", "shared")
+	customDashboardTestHandler(app).Get(getRecorder, getRequest)
+	if getRecorder.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200 (non-owner can view shared) (body %s)", getRecorder.Code, getRecorder.Body.String())
+	}
+
+	updateRecorder := httptest.NewRecorder()
+	updateRequest := customDashboardTestRequest(http.MethodPatch, "/grc/dashboards/shared", `{"name":"renamed"}`)
+	updateRequest.SetPathValue("dashboardID", "shared")
+	customDashboardTestHandler(app).Update(updateRecorder, updateRequest)
+	if updateRecorder.Code != http.StatusForbidden {
+		t.Fatalf("update status = %d, want 403 (non-owner) (body %s)", updateRecorder.Code, updateRecorder.Body.String())
+	}
+
+	deleteRecorder := httptest.NewRecorder()
+	deleteRequest := customDashboardTestRequest(http.MethodDelete, "/grc/dashboards/shared", "")
+	deleteRequest.SetPathValue("dashboardID", "shared")
+	customDashboardTestHandler(app).Delete(deleteRecorder, deleteRequest)
+	if deleteRecorder.Code != http.StatusForbidden {
+		t.Fatalf("delete status = %d, want 403 (non-owner) (body %s)", deleteRecorder.Code, deleteRecorder.Body.String())
 	}
 }
 
