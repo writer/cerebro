@@ -118,6 +118,37 @@ func TestProjectEventRejectsSensitiveURNWithBenignDeclaredType(t *testing.T) {
 	}
 }
 
+func TestProjectEventRejectsUnknownEntityTypeRawURN(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		delta GraphDelta
+	}{
+		{
+			name: "entity",
+			delta: GraphDelta{Entities: []Entity{{
+				URN:        "urn:cerebro:tenant-a:custom.person:alice@example.com",
+				EntityType: "custom.person",
+				Label:      "alice@example.com",
+			}}},
+		},
+		{
+			name: "link endpoint",
+			delta: GraphDelta{Links: []Link{{
+				FromURN:  "urn:cerebro:tenant-a:data.classification:restricted",
+				ToURN:    "urn:cerebro:tenant-a:custom.account:acct-123",
+				Relation: "associated_with",
+			}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.delta.Attestation = Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)}
+			if _, _, err := ProjectEvent(eventWithPayload(t, tc.delta)); err == nil {
+				t.Fatalf("ProjectEvent() error = nil, want unknown entity type raw URN rejection")
+			}
+		})
+	}
+}
+
 func TestProjectEventRejectsRawSensitiveAttribute(t *testing.T) {
 	payload := GraphDelta{
 		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},

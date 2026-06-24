@@ -249,7 +249,7 @@ func sensitiveEntityType(entityType string) bool {
 	case strings.Contains(entityType, "principal"):
 		return true
 	default:
-		return false
+		return true
 	}
 }
 
