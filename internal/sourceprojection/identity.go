@@ -174,8 +174,12 @@ func oktaSaaSApplicationClassificationFor(attributes map[string]string) (oktaSaa
 		classification.Reasons = append(classification.Reasons, "oauth2_enabled")
 		classification.Confidence = "0.95"
 	}
+	nameTokens := map[string]struct{}{}
+	for _, token := range normalizedTokens(name) {
+		nameTokens[token] = struct{}{}
+	}
 	for _, marker := range []string{"org2org", "vendor", "partner", "supplier", "contractor", "external"} {
-		if strings.Contains(name, marker) {
+		if _, ok := nameTokens[marker]; ok {
 			classification.Reasons = append(classification.Reasons, "name_hint_"+marker)
 		}
 	}

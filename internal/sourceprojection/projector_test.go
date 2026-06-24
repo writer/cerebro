@@ -983,6 +983,26 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 			wantActive: "true",
 		},
 		{
+			name: "partnerships substring is not a name hint",
+			attrs: map[string]string{
+				"app_id":   "0oa-partnerships",
+				"app_name": "Partnerships Directory",
+				"status":   "ACTIVE",
+			},
+			wantAppID:  "0oa-partnerships",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-partnerships",
+		},
+		{
+			name: "externallyhosted substring is not a name hint",
+			attrs: map[string]string{
+				"app_id":   "0oa-externallyhosted",
+				"app_name": "Externallyhosted Portal",
+				"status":   "ACTIVE",
+			},
+			wantAppID:  "0oa-externallyhosted",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-externallyhosted",
+		},
+		{
 			name: "inactive saml app",
 			attrs: map[string]string{
 				"app_id":       "0oa-inactive",
