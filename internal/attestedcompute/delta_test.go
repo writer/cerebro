@@ -99,6 +99,20 @@ func TestProjectEventRejectsCaseInsensitiveSensitiveEntityBypass(t *testing.T) {
 	}
 }
 
+func TestProjectEventRejectsSensitiveURNWithBenignDeclaredType(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:okta.user:alice@example.com",
+			EntityType: "data.classification",
+			Label:      "restricted",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want sensitive URN rejection")
+	}
+}
+
 func TestProjectEventRejectsRawSensitiveAttribute(t *testing.T) {
 	payload := GraphDelta{
 		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},

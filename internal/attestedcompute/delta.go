@@ -89,6 +89,9 @@ func projectEntity(tenantID string, sourceID string, entity Entity) (*ports.Proj
 	if sensitiveEntityType(entityType) && !attestedURN(tenantID, urn) {
 		return nil, fmt.Errorf("attested compute sensitive entity %q must use an attested token urn", entityType)
 	}
+	if unblindedSensitiveURN(tenantID, urn) {
+		return nil, fmt.Errorf("attested compute entity urn %q contains a sensitive type and must use an attested token urn", urn)
+	}
 	label := strings.TrimSpace(entity.Label)
 	if sensitiveEntityType(entityType) && label != "" && !TokenLike(label) {
 		return nil, fmt.Errorf("attested compute sensitive entity %q label must be tokenized", entityType)
