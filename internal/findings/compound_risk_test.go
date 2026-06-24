@@ -136,6 +136,31 @@ func TestAnalyzeCompoundRisksNormalizesCrossSourceDimensions(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCompoundRisksGroupsContainerImagesByNormalizedDigest(t *testing.T) {
+	trivy := compoundRiskFinding("trivy-1", trivyImageVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:trivy_vulnerability:sha256:abc:CVE-2026-1:openssl", "scan.detected")
+	trivy.Attributes["trivy_image_urn"] = "urn:cerebro:writer:trivy_image:sha256:abc"
+	trivy.Attributes["image_digest"] = "sha256:abc"
+	trivy.Attributes["image_uri"] = "registry.example/app@sha256:abc"
+
+	aurelius := compoundRiskFinding("aurelius-1", aureliusPromotedVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:aurelius_vulnerability:vuln-1", "promoted")
+	aurelius.Attributes["aurelius_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+	aurelius.Attributes["container_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+	aurelius.Attributes["image_digest"] = "sha256:abc"
+	aurelius.Attributes["image_uri"] = "registry.example/app@sha256:abc"
+
+	report := AnalyzeCompoundRisks([]*ports.FindingRecord{trivy, aurelius}, CompoundRiskOptions{Limit: 10})
+	if got := len(report.ContainerImages); got != 1 {
+		t.Fatalf("len(ContainerImages) = %d, want 1; report=%#v", got, report.ContainerImages)
+	}
+	group := report.ContainerImages[0]
+	if got := group.Key; got != "urn:cerebro:writer:container_image_digest:sha256:abc" {
+		t.Fatalf("ContainerImages[0].Key = %q, want normalized container image urn", got)
+	}
+	if got := group.FindingCount; got != 2 {
+		t.Fatalf("ContainerImages[0].FindingCount = %d, want 2", got)
+	}
+}
+
 func compoundRiskFinding(id string, ruleID string, severity string, actor string, repo string, resourceURN string, action string) *ports.FindingRecord {
 	return &ports.FindingRecord{
 		ID:           id,

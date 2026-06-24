@@ -54,6 +54,54 @@
           "expect_match": false
         }
       ]
+    },
+    {
+      "id": "github-code-security-control-disabled-with-dependabot-alert",
+      "name": "GitHub code security control disabled with Dependabot alert",
+      "rule_ids": [
+        "github-code-security-controls-disabled",
+        "github-dependabot-open-alert"
+      ],
+      "dimensions": [
+        "repository"
+      ],
+      "window": "24h",
+      "score_bonus": 12,
+      "reasons": [
+        "control_disabled",
+        "vulnerable_dependency"
+      ],
+      "tests": [
+        {
+          "name": "shared-repository-positive",
+          "description": "Matches when code security controls are disabled and an open Dependabot alert exists on the same repository inside the window.",
+          "expect_match": true
+        }
+      ]
+    },
+    {
+      "id": "container-image-promoted-vulnerability-with-trivy-scan",
+      "name": "Container image promoted vulnerability with Trivy scan",
+      "rule_ids": [
+        "aurelius-promoted-vulnerability-active",
+        "trivy-image-vulnerability-active"
+      ],
+      "dimensions": [
+        "container_image"
+      ],
+      "window": "24h",
+      "score_bonus": 14,
+      "reasons": [
+        "promoted_image",
+        "container_vulnerability"
+      ],
+      "tests": [
+        {
+          "name": "shared-container-image-positive",
+          "description": "Matches when Aurelius promotion risk and Trivy vulnerability evidence share the same normalized container image digest.",
+          "expect_match": true
+        }
+      ]
     }
   ]
 }

@@ -72,6 +72,26 @@ func TestBuiltinFindingCorrelationPatternsIncludeRuntimeHints(t *testing.T) {
 	}
 }
 
+func TestBuiltinFindingCorrelationPatternsIncludeSupplyChainAndContainerGaps(t *testing.T) {
+	patterns := BuiltinFindingCorrelationPatterns()
+	byID := map[string]FindingCorrelationPattern{}
+	for _, pattern := range patterns {
+		byID[pattern.ID] = pattern
+	}
+	for _, patternID := range []string{
+		"github-code-security-control-disabled-with-dependabot-alert",
+		"container-image-promoted-vulnerability-with-trivy-scan",
+		"runtime-active-threat-with-public-exposure",
+	} {
+		if _, ok := byID[patternID]; !ok {
+			t.Fatalf("BuiltinFindingCorrelationPatterns() missing %q", patternID)
+		}
+	}
+	if pattern := byID["container-image-promoted-vulnerability-with-trivy-scan"]; !cloudStringSlicesEqual(pattern.Dimensions, []string{compoundRiskKindContainerImage}) {
+		t.Fatalf("container pattern Dimensions = %#v, want container_image", pattern.Dimensions)
+	}
+}
+
 func TestLoadFindingCorrelationPatternsRejectsIncompletePattern(t *testing.T) {
 	_, err := LoadFindingCorrelationPatterns([]byte(`{"version":"test","patterns":[{"id":"bad","name":"Bad","rule_ids":["one"],"dimensions":["resource"],"window":"1h","score_bonus":1,"reasons":["x"],"tests":[{"name":"t","description":"d","expect_match":true}]}]}`))
 	if err == nil {

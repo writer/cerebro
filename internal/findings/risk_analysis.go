@@ -35,9 +35,10 @@ type FindingExposureAnalysisOptions struct {
 
 // FindingExposureAnalysisReport combines generic compound risk, temporal correlation, and graph path summaries.
 type FindingExposureAnalysisReport struct {
-	CompoundRisks CompoundRiskReport   `json:"compound_risks"`
-	Correlations  []FindingCorrelation `json:"correlations"`
-	AttackPaths   []FindingAttackPath  `json:"attack_paths"`
+	CompoundRisks    CompoundRiskReport       `json:"compound_risks"`
+	Correlations     []FindingCorrelation     `json:"correlations"`
+	AttackPaths      []FindingAttackPath      `json:"attack_paths"`
+	ActionCandidates []FindingActionCandidate `json:"action_candidates"`
 }
 
 // FindingRiskContext captures contextual scoring signals for one finding or correlated group.
@@ -65,6 +66,20 @@ type FindingEvidenceBundle struct {
 	FindingCount    int      `json:"finding_count"`
 	EventCount      int      `json:"event_count"`
 	ResourceCount   int      `json:"resource_count"`
+}
+
+// FindingActionCandidate is a read-only recommendation derived from correlated evidence.
+type FindingActionCandidate struct {
+	ActionType  string                `json:"action_type"`
+	Source      string                `json:"source"`
+	TargetURN   string                `json:"target_urn"`
+	TargetLabel string                `json:"target_label,omitempty"`
+	Owner       string                `json:"owner,omitempty"`
+	Score       int                   `json:"score"`
+	FindingIDs  []string              `json:"finding_ids"`
+	RuleIDs     []string              `json:"rule_ids"`
+	Reason      string                `json:"reason,omitempty"`
+	Evidence    FindingEvidenceBundle `json:"evidence"`
 }
 
 // FindingCorrelation captures a generic stateful/temporal correlation over normalized finding dimensions.
@@ -123,10 +138,14 @@ type FindingAttackPathStep struct {
 // AnalyzeFindingExposure summarizes source-agnostic compound risk, temporal correlations, and graph paths.
 func AnalyzeFindingExposure(records []*ports.FindingRecord, options FindingExposureAnalysisOptions) FindingExposureAnalysisReport {
 	compoundOptions := CompoundRiskOptions{Limit: options.Limit, SampleLimit: options.SampleLimit}
+	compoundRisks := AnalyzeCompoundRisks(records, compoundOptions)
+	correlations := AnalyzeFindingCorrelations(records, options)
+	attackPaths := AnalyzeFindingAttackPaths(records, options.GraphNeighborhoods, options)
 	return FindingExposureAnalysisReport{
-		CompoundRisks: AnalyzeCompoundRisks(records, compoundOptions),
-		Correlations:  AnalyzeFindingCorrelations(records, options),
-		AttackPaths:   AnalyzeFindingAttackPaths(records, options.GraphNeighborhoods, options),
+		CompoundRisks:    compoundRisks,
+		Correlations:     correlations,
+		AttackPaths:      attackPaths,
+		ActionCandidates: buildFindingActionCandidates(records, correlations, attackPaths, options),
 	}
 }
 
@@ -142,6 +161,7 @@ func AnalyzeFindingCorrelations(records []*ports.FindingRecord, options FindingE
 		compoundRiskKindActor,
 		compoundRiskKindResource,
 		compoundRiskKindRepository,
+		compoundRiskKindContainerImage,
 		compoundRiskKindSource,
 		compoundRiskKindType,
 	} {
@@ -378,6 +398,172 @@ func newFindingCorrelation(bucket compoundRiskBucket, window time.Duration, conf
 		Evidence:        evidence,
 		Reasons:         uniqueSortedStrings(reasons),
 	}
+}
+
+func buildFindingActionCandidates(records []*ports.FindingRecord, correlations []FindingCorrelation, attackPaths []FindingAttackPath, options FindingExposureAnalysisOptions) []FindingActionCandidate {
+	recordsByID := map[string]*ports.FindingRecord{}
+	for _, record := range nonNilFindings(records) {
+		if id := strings.TrimSpace(record.ID); id != "" {
+			recordsByID[id] = record
+		}
+	}
+	candidates := []FindingActionCandidate{}
+	seen := map[string]struct{}{}
+	for _, correlation := range correlations {
+		targetURN := actionCandidateTargetURN(correlation.Key, correlation.Evidence.ResourceURNs)
+		if targetURN == "" {
+			continue
+		}
+		candidate := FindingActionCandidate{
+			ActionType:  recommendedActionType(correlation.RuleIDs, correlation.Reasons),
+			Source:      "correlation:" + correlation.Kind,
+			TargetURN:   targetURN,
+			TargetLabel: correlation.Label,
+			Owner:       actionCandidateOwner(correlation.FindingIDs, recordsByID),
+			Score:       correlation.Score,
+			FindingIDs:  uniqueSortedStrings(correlation.FindingIDs),
+			RuleIDs:     uniqueSortedStrings(correlation.RuleIDs),
+			Reason:      firstNonEmpty(correlation.PatternName, strings.Join(correlation.Reasons, ",")),
+			Evidence:    correlation.Evidence,
+		}
+		candidates = appendUniqueFindingActionCandidate(candidates, seen, candidate)
+	}
+	for _, path := range attackPaths {
+		targetURN := actionCandidateTargetURN(actionPathTargetURN(path), path.Evidence.ResourceURNs)
+		if targetURN == "" {
+			continue
+		}
+		candidate := FindingActionCandidate{
+			ActionType: recommendedActionType(path.Evidence.RuleIDs, path.Reasons),
+			Source:     "attack_path",
+			TargetURN:  targetURN,
+			Owner:      actionCandidateOwner(path.Evidence.FindingIDs, recordsByID),
+			Score:      path.Score,
+			FindingIDs: uniqueSortedStrings(path.Evidence.FindingIDs),
+			RuleIDs:    uniqueSortedStrings(path.Evidence.RuleIDs),
+			Reason:     firstNonEmpty(path.Pattern, strings.Join(path.Reasons, ",")),
+			Evidence:   path.Evidence,
+		}
+		candidates = appendUniqueFindingActionCandidate(candidates, seen, candidate)
+	}
+	sort.Slice(candidates, func(i int, j int) bool {
+		left := candidates[i]
+		right := candidates[j]
+		switch {
+		case left.Score != right.Score:
+			return left.Score > right.Score
+		case len(left.FindingIDs) != len(right.FindingIDs):
+			return len(left.FindingIDs) > len(right.FindingIDs)
+		case left.ActionType != right.ActionType:
+			return left.ActionType < right.ActionType
+		default:
+			return left.TargetURN < right.TargetURN
+		}
+	})
+	if options.Limit > 0 && len(candidates) > options.Limit {
+		candidates = candidates[:options.Limit]
+	}
+	return candidates
+}
+
+func appendUniqueFindingActionCandidate(candidates []FindingActionCandidate, seen map[string]struct{}, candidate FindingActionCandidate) []FindingActionCandidate {
+	if candidate.TargetURN == "" || len(candidate.FindingIDs) == 0 {
+		return candidates
+	}
+	key := strings.Join([]string{
+		candidate.ActionType,
+		candidate.Source,
+		candidate.TargetURN,
+		strings.Join(candidate.FindingIDs, "|"),
+		strings.Join(candidate.RuleIDs, "|"),
+	}, "\n")
+	if _, ok := seen[key]; ok {
+		return candidates
+	}
+	seen[key] = struct{}{}
+	return append(candidates, candidate)
+}
+
+func actionCandidateTargetURN(primary string, resourceURNs []string) string {
+	if value := strings.TrimSpace(primary); strings.HasPrefix(value, "urn:") {
+		return value
+	}
+	for _, resourceURN := range resourceURNs {
+		if value := strings.TrimSpace(resourceURN); strings.HasPrefix(value, "urn:") {
+			return value
+		}
+	}
+	return ""
+}
+
+func actionPathTargetURN(path FindingAttackPath) string {
+	for idx := len(path.Steps) - 1; idx >= 0; idx-- {
+		step := path.Steps[idx]
+		if step.Relation == "has_finding" {
+			if target := strings.TrimSpace(step.FromURN); strings.HasPrefix(target, "urn:") {
+				return target
+			}
+			continue
+		}
+		if target := strings.TrimSpace(step.ToURN); strings.HasPrefix(target, "urn:") {
+			return target
+		}
+		if target := strings.TrimSpace(step.FromURN); strings.HasPrefix(target, "urn:") {
+			return target
+		}
+	}
+	return path.FindingURN
+}
+
+func actionCandidateOwner(findingIDs []string, recordsByID map[string]*ports.FindingRecord) string {
+	for _, findingID := range uniqueSortedStrings(findingIDs) {
+		record := recordsByID[findingID]
+		if record == nil {
+			continue
+		}
+		if owner := firstNonEmpty(
+			record.Attributes["owner"],
+			record.Attributes["service_owner"],
+			record.Attributes["repo_owner"],
+			record.Attributes["repository_owner"],
+			record.Attributes["owning_team"],
+			record.Attributes["team"],
+			record.Assignee,
+		); owner != "" {
+			return owner
+		}
+	}
+	return ""
+}
+
+func recommendedActionType(ruleIDs []string, reasons []string) string {
+	ruleSet := map[string]struct{}{}
+	for _, ruleID := range ruleIDs {
+		ruleSet[strings.TrimSpace(ruleID)] = struct{}{}
+	}
+	if _, ok := ruleSet[runtimeActiveThreatEvidenceRuleID]; ok {
+		return "investigate_runtime_threat"
+	}
+	if _, ok := ruleSet[githubSecretScanningAlertCreatedRuleID]; ok {
+		return "rotate_secret_and_restore_control"
+	}
+	if _, hasAurelius := ruleSet[aureliusPromotedVulnerabilityActiveRuleID]; hasAurelius {
+		if _, hasTrivy := ruleSet[trivyImageVulnerabilityActiveRuleID]; hasTrivy {
+			return "remediate_promoted_container_vulnerability"
+		}
+	}
+	if _, ok := ruleSet[githubDependabotOpenAlertRuleID]; ok {
+		return "remediate_vulnerable_dependency"
+	}
+	if _, ok := ruleSet[cloudPublicResourceExposureRuleID]; ok {
+		return "review_public_exposure_path"
+	}
+	for _, reason := range reasons {
+		if strings.Contains(reason, "external_exposure") {
+			return "review_public_exposure_path"
+		}
+	}
+	return "review_correlated_findings"
 }
 
 // AnalyzeFindingAttackPaths extracts bounded, source-agnostic paths from supplied graph neighborhoods.
