@@ -8,5 +8,6 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src/**/*.ts", "examples/**/*.ts"]
+  "include": ["src/**/*.ts", "examples/**/*.ts"],
+  "exclude": ["src/generated/proto"]
 }

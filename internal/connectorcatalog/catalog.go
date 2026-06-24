@@ -30,9 +30,12 @@ const builtinCatalogDir = "catalog"
 var builtinCatalogFS embed.FS
 
 var (
-	builtinOnce     sync.Once
-	builtinAnalysis Analysis
-	builtinErr      error
+	builtinOnce            sync.Once
+	builtinAnalysis        Analysis
+	builtinErr             error
+	builtinRuntimeOnce     sync.Once
+	builtinRuntimeAnalysis Analysis
+	builtinRuntimeErr      error
 )
 
 // Options controls optional proof-gate checks.
@@ -101,6 +104,18 @@ func Builtin() (Analysis, error) {
 		}
 	})
 	return builtinAnalysis, builtinErr
+}
+
+// BuiltinRuntime returns embedded catalog analysis for runtime registration
+// paths that need definitions but must not execute sourcegen dry-runs at init.
+func BuiltinRuntime() (Analysis, error) {
+	builtinRuntimeOnce.Do(func() {
+		builtinRuntimeAnalysis, builtinRuntimeErr = AnalyzeFS(builtinCatalogFS, builtinCatalogDir, Options{})
+		if builtinRuntimeErr == nil && len(builtinRuntimeAnalysis.Issues) != 0 {
+			builtinRuntimeErr = fmt.Errorf("connector definition catalog has %d issue(s)", len(builtinRuntimeAnalysis.Issues))
+		}
+	})
+	return builtinRuntimeAnalysis, builtinRuntimeErr
 }
 
 // BuiltinEntry returns one embedded connector-definition catalog entry by source ID.

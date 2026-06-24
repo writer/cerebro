@@ -1,0 +1,73 @@
+id: twilio
+name: "Twilio"
+description: "Twilio connector definition catalog entry for high-value security and operations resources."
+emitted_kinds:
+  - twilio.accounts
+  - twilio.keys
+  - twilio.audit_events
+kind_lifecycle:
+  - kind: twilio.accounts
+    status: active
+  - kind: twilio.keys
+    status: active
+  - kind: twilio.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: twilio
+  dimensions:
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: keys
+      type: entity_family
+      title: "Keys"
+      families: [keys]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: entity_family
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: twilio.accounts
+    schema_ref: twilio/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: twilio.keys
+    schema_ref: twilio/keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: twilio.audit_events
+    schema_ref: twilio/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,93 @@
+id: discord
+name: "Discord"
+description: "Discord messaging and community platform."
+emitted_kinds:
+  - discord.audit_log
+  - discord.member
+  - discord.role
+  - discord.permission
+kind_lifecycle:
+  - kind: discord.audit_log
+    status: active
+  - kind: discord.member
+    status: active
+  - kind: discord.role
+    status: active
+  - kind: discord.permission
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: discord
+  dimensions:
+    - id: audit_log
+      type: entity_family
+      title: "Audit Log"
+      families: [audit_log]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: member
+      type: entity_family
+      title: "Member"
+      families: [member]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: role
+      type: entity_family
+      title: "Role"
+      families: [role]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: permission
+      type: entity_family
+      title: "Permission"
+      families: [permission]
+      support: partial
+      high_value: true
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+event_contracts:
+  - kind: discord.audit_log
+    schema_ref: discord/audit_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: discord.member
+    schema_ref: discord/member/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - avatar
+  - kind: discord.role
+    schema_ref: discord/role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: discord.permission
+    schema_ref: discord/permission/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

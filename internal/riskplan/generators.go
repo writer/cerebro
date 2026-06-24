@@ -42,6 +42,9 @@ func (privilegeGenerator) Generate(input CandidateGeneratorInput) []CandidateSee
 	if !findingSupportsAction(input.Finding, input.RiskContext, findinganalysis.RiskDeltaScenarioRemovePrivilege) {
 		return nil
 	}
+	if credentialGovernanceHandlesPrivilege(input) {
+		return nil
+	}
 	targetURN := actionTargetURN(input.TenantID, input.Finding, findinganalysis.RiskDeltaScenarioRemovePrivilege)
 	if targetURN == "" {
 		return nil
@@ -80,6 +83,67 @@ func (vulnerabilityGenerator) Generate(input CandidateGeneratorInput) []Candidat
 	}}
 }
 
+type credentialGovernanceGenerator struct{}
+
+func (credentialGovernanceGenerator) ID() string {
+	return "credential_governance"
+}
+
+func (credentialGovernanceGenerator) Generate(input CandidateGeneratorInput) []CandidateSeed {
+	if input.Finding == nil {
+		return nil
+	}
+	targetURN := credentialTargetURN(input.TenantID, input.Finding)
+	if targetURN == "" || credentialRevoked(input.Finding.Attributes) {
+		return nil
+	}
+	label := targetLabel(input.Finding, targetURN)
+	privileged := credentialPrivileged(input)
+	recentUse := credentialRecentlyUsed(input.Finding.Attributes, input.Now)
+	staleUse := credentialStaleUse(input.Finding.Attributes, input.Now)
+	missingOwner := credentialMissingOwner(input.Finding)
+	seeds := []CandidateSeed{}
+	if privileged || (recentUse && missingOwner) {
+		reasons := []string{"candidate_generator:credential_governance", "credential_rotation"}
+		if privileged {
+			reasons = append(reasons, "privileged_credential")
+		}
+		if recentUse {
+			reasons = append(reasons, "recent_credential_use")
+		}
+		if missingOwner {
+			reasons = append(reasons, "missing_credential_owner")
+		}
+		seeds = append(seeds, CandidateSeed{
+			Title:               "Rotate credential for " + label,
+			ActionType:          ActionTypeRotateCredential,
+			ScenarioType:        findinganalysis.RiskDeltaScenarioRemovePrivilege,
+			TargetURN:           targetURN,
+			SimulationSupported: findingSupportsAction(input.Finding, input.RiskContext, findinganalysis.RiskDeltaScenarioRemovePrivilege),
+			Reasons:             reasons,
+		})
+	}
+	if staleUse {
+		seeds = append(seeds, CandidateSeed{
+			Title:               "Revoke unused credential for " + label,
+			ActionType:          ActionTypeRevokeCredential,
+			TargetURN:           targetURN,
+			SimulationSupported: false,
+			Reasons:             []string{"candidate_generator:credential_governance", "stale_credential_use"},
+		})
+	}
+	if missingOwner {
+		seeds = append(seeds, CandidateSeed{
+			Title:               "Review credential owner for " + label,
+			ActionType:          ActionTypeReviewCredentialOwner,
+			TargetURN:           targetURN,
+			SimulationSupported: false,
+			Reasons:             []string{"candidate_generator:credential_governance", "missing_credential_owner"},
+		})
+	}
+	return seeds
+}
+
 type ownerAssignmentGenerator struct{}
 
 func (ownerAssignmentGenerator) ID() string {
@@ -88,6 +152,9 @@ func (ownerAssignmentGenerator) ID() string {
 
 func (ownerAssignmentGenerator) Generate(input CandidateGeneratorInput) []CandidateSeed {
 	if input.Finding == nil {
+		return nil
+	}
+	if credentialTargetURN(input.TenantID, input.Finding) != "" {
 		return nil
 	}
 	if owner, _ := findingOwner(input.Finding); owner != "" {
@@ -187,6 +254,8 @@ func actionTargetURN(tenantID string, finding *ports.FindingRecord, actionType s
 		return firstTenantScopedURN(tenantID, attributes["principal_urn"], attributes["identity_urn"], attributes["actor_urn"], attributes["permission_urn"], attributes["target_urn"], attributes["asset_urn"], attributes["resource_urn"], attributes["primary_resource_urn"], primaryResourceURN(finding))
 	case findinganalysis.RiskDeltaScenarioPatchVulnerability:
 		return firstTenantScopedURN(tenantID, attributes["vulnerability_urn"], attributes["package_urn"], attributes["image_urn"], attributes["target_urn"], attributes["asset_urn"], attributes["resource_urn"], attributes["primary_resource_urn"], primaryResourceURN(finding))
+	case ActionTypeRotateCredential, ActionTypeRevokeCredential, ActionTypeReviewCredentialOwner:
+		return credentialTargetURN(tenantID, finding)
 	case ActionTypeAssignOwner, ActionTypeRefreshEvidence:
 		return firstTenantScopedURN(tenantID, attributes["target_urn"], attributes["asset_urn"], attributes["resource_urn"], attributes["primary_resource_urn"], primaryResourceURN(finding))
 	default:
@@ -215,6 +284,7 @@ func targetLabel(finding *ports.FindingRecord, targetURN string) string {
 			finding.Attributes["asset_name"],
 			finding.Attributes["repository"],
 			finding.Attributes["package"],
+			finding.Attributes["name"],
 			finding.Title,
 		} {
 			if trimmed := strings.TrimSpace(value); trimmed != "" {
@@ -251,4 +321,143 @@ func findingNeedsEvidenceRefresh(finding *ports.FindingRecord, context findingan
 		evidenceRefs += len(factor.EvidenceRefs)
 	}
 	return evidenceRefs == 0 && len(finding.EventIDs) == 0 && len(finding.GraphEvidenceRows) == 0
+}
+
+func credentialGovernanceHandlesPrivilege(input CandidateGeneratorInput) bool {
+	if input.Finding == nil {
+		return false
+	}
+	if credentialTargetURN(input.TenantID, input.Finding) == "" || credentialRevoked(input.Finding.Attributes) {
+		return false
+	}
+	return credentialPrivileged(input)
+}
+
+func credentialTargetURN(tenantID string, finding *ports.FindingRecord) string {
+	if finding == nil {
+		return ""
+	}
+	attributes := finding.Attributes
+	if targetURN := firstTenantScopedURN(
+		tenantID,
+		attributes["credential_urn"],
+		attributes["api_key_urn"],
+		attributes["openai_credential_urn"],
+		attributes["anthropic_credential_urn"],
+		attributes["github_credential_urn"],
+	); targetURN != "" {
+		return targetURN
+	}
+	if secretURN := firstTenantScopedURN(tenantID, attributes["secret_urn"]); secretURN != "" {
+		return secretURN
+	}
+	targetURN := firstTenantScopedURN(
+		tenantID,
+		attributes["secret_urn"],
+		attributes["target_urn"],
+		attributes["primary_resource_urn"],
+		primaryResourceURN(finding),
+	)
+	if !credentialLikeURN(targetURN) {
+		return ""
+	}
+	return targetURN
+}
+
+func credentialLikeURN(urn string) bool {
+	value := strings.ToLower(strings.TrimSpace(urn))
+	if value == "" {
+		return false
+	}
+	return strings.Contains(value, "credential") ||
+		strings.Contains(value, "api_key")
+}
+
+func credentialPrivileged(input CandidateGeneratorInput) bool {
+	if input.Finding == nil {
+		return false
+	}
+	if findingSupportsAction(input.Finding, input.RiskContext, findinganalysis.RiskDeltaScenarioRemovePrivilege) {
+		return true
+	}
+	attributes := input.Finding.Attributes
+	return strings.EqualFold(strings.TrimSpace(attributes["key_class"]), "admin") ||
+		containsAny(input.Finding.RuleID, "privileged", "admin") ||
+		containsAny(input.Finding.Title, "privileged", "admin")
+}
+
+func credentialMissingOwner(finding *ports.FindingRecord) bool {
+	if finding == nil {
+		return false
+	}
+	if owner, _ := findingOwner(finding); owner != "" {
+		return false
+	}
+	attributes := finding.Attributes
+	if attributeBool(attributes, "has_owner") {
+		return false
+	}
+	return strings.TrimSpace(attributes["owner_id"]) == "" &&
+		strings.TrimSpace(attributes["owner_user_id"]) == "" &&
+		strings.TrimSpace(attributes["owner_service_account_id"]) == ""
+}
+
+func credentialRevoked(attributes map[string]string) bool {
+	status := strings.ToLower(strings.TrimSpace(attributes["status"]))
+	if status == "" {
+		status = strings.ToLower(strings.TrimSpace(attributes["credential_status"]))
+	}
+	switch status {
+	case "deleted", "revoked", "disabled", "inactive", "expired", "suspended", "archived":
+		return true
+	default:
+		return false
+	}
+}
+
+func credentialRecentlyUsed(attributes map[string]string, now time.Time) bool {
+	lastUsedAt, ok := credentialLastUsedAt(attributes)
+	if ok && !now.IsZero() {
+		return !lastUsedAt.After(now) && now.Sub(lastUsedAt) <= 30*24*time.Hour
+	}
+	return attributeBool(attributes, "credential_use", "runtime_credential_use", "recent_credential_use")
+}
+
+func credentialStaleUse(attributes map[string]string, now time.Time) bool {
+	if now.IsZero() {
+		return false
+	}
+	lastUsedAt, ok := credentialLastUsedAt(attributes)
+	if !ok {
+		createdAt, created := parseCredentialTime(firstCredentialAttribute(attributes["created_at"], attributes["created"]))
+		return created && !createdAt.After(now) && now.Sub(createdAt) >= 90*24*time.Hour
+	}
+	return !lastUsedAt.After(now) && now.Sub(lastUsedAt) >= 90*24*time.Hour
+}
+
+func credentialLastUsedAt(attributes map[string]string) (time.Time, bool) {
+	return parseCredentialTime(firstCredentialAttribute(attributes["last_used_at"], attributes["last_used_time"], attributes["last_used"], attributes["last_seen_at"]))
+}
+
+func firstCredentialAttribute(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func parseCredentialTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }

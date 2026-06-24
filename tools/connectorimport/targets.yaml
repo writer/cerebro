@@ -241,7 +241,7 @@ targets:
   domain: business-data-grc
   categories:
   - saas
-  apis_guru: personio.de:authentication
+  apis_guru: personio.de:personnel
   max_families: 6
 - source_id: qualpay
   display_name: Qualpay
@@ -935,3 +935,21 @@ targets:
   - saas
   apis_guru: stellastra.com
   max_families: 6
+# Curated vendor specs (bucket B): marquee security/observability providers that
+# are absent from the APIs.guru directory and sourced directly from the vendor.
+- source_id: cloudflare
+  display_name: Cloudflare
+  description: Cloudflare CDN, DNS, WAF, and zero-trust security platform.
+  domain: security-posture-vulnerability
+  categories:
+  - security
+  - networking
+  spec_url: https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json
+- source_id: tailscale
+  display_name: Tailscale
+  description: Tailscale zero-trust mesh networking and device access control.
+  domain: identity-access-secrets
+  categories:
+  - identity
+  - networking
+  spec_url: https://api.tailscale.com/api/v2?outputOpenapiSchema=true

@@ -20,11 +20,14 @@ const (
 	// MaxSimulationSeedLimit caps simulation work before final ranking.
 	MaxSimulationSeedLimit = 50
 
-	ActionTypeAssignOwner          = "assign_owner"
-	ActionTypeRefreshEvidence      = "refresh_evidence"
-	SimulationStatusSimulated      = "simulated"
-	SimulationStatusUnsupported    = "unsupported"
-	SimulationStatusNoExpectedRisk = "no_expected_reduction"
+	ActionTypeAssignOwner           = "assign_owner"
+	ActionTypeRefreshEvidence       = "refresh_evidence"
+	ActionTypeRotateCredential      = "rotate_credential"        // #nosec G101 -- action type identifier, not credential material.
+	ActionTypeRevokeCredential      = "revoke_unused_credential" // #nosec G101 -- action type identifier, not credential material.
+	ActionTypeReviewCredentialOwner = "review_credential_owner"
+	SimulationStatusSimulated       = "simulated"
+	SimulationStatusUnsupported     = "unsupported"
+	SimulationStatusNoExpectedRisk  = "no_expected_reduction"
 )
 
 // Options controls deterministic risk action planning over already-scoped findings.

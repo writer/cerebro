@@ -17,6 +17,8 @@ func (f *fakeScanner) Scan(dest ...any) error {
 			*target = f.values[i].(string)
 		case *int64:
 			*target = f.values[i].(int64)
+		case *int:
+			*target = f.values[i].(int)
 		case *bool:
 			*target = f.values[i].(bool)
 		case *time.Time:

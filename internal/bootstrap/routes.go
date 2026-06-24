@@ -10,8 +10,10 @@ import (
 	cerebrov1connect "github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -103,6 +105,13 @@ func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 }
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
+	dashboards := customdashboards.NewHandler(app.deps.StateStore, effectiveTenantFilter, authorizeTenantID, customDashboardActorID)
+	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
+	registerHTTPRoute(mux, "POST /grc/dashboards", routeSurfacePlatformHTTP, dashboards.Create)
+	registerHTTPRoute(mux, "GET /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Get)
+	registerHTTPRoute(mux, "PATCH /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Update)
+	registerHTTPRoute(mux, "DELETE /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Delete)
+	registerHTTPRoute(mux, "POST /grc/dashboards/{dashboardID}/clone", routeSurfacePlatformHTTP, dashboards.Clone)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))
 	registerHTTPRoute(mux, "GET /grc/trends", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("trends", time.Minute, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCTrends))
 	registerHTTPRoute(mux, "POST /grc/ask", routeSurfacePlatformHTTP, app.handleGRCAsk)
@@ -174,8 +183,10 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /connector-definitions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitions)
 	registerHTTPRoute(mux, "POST /connector-definitions", routeSurfacePlatformHTTP, app.handleCreateConnectorDefinition)
 	registerHTTPRoute(mux, "POST /connector-definitions/plan", routeSurfacePlatformHTTP, sourceplanapi.HandleDefinitionPlan(app.sourcePlanAPIDeps()))
+	registerHTTPRoute(mux, "POST /connector-definitions/preview", routeSurfacePlatformHTTP, app.handlePreviewConnectorDefinition)
 	registerHTTPRoute(mux, "POST /connector-definitions/validate", routeSurfacePlatformHTTP, app.handleValidateConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handleGetConnectorDefinition)
+	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}/versions", routeSurfacePlatformHTTP, app.handleListConnectorDefinitionVersions)
 	registerHTTPRoute(mux, "PUT /connector-definitions/{definitionID}", routeSurfacePlatformHTTP, app.handlePutConnectorDefinition)
 	registerHTTPRoute(mux, "GET /connector-definitions/{definitionID}/promotion-plan", routeSurfacePlatformHTTP, sourceplanapi.HandleStoredPromotionPlan(app.sourcePlanAPIDeps()))
 	registerHTTPRoute(mux, "POST /connector-definitions/{definitionID}/promote", routeSurfacePlatformHTTP, app.handlePromoteConnectorDefinition)
@@ -188,6 +199,7 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/credentials/{credentialID}/revoke", routeSurfacePlatformHTTP, app.handleRevokeConnectorCredential)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/preflight", routeSurfacePlatformHTTP, app.handlePreflightConnectorConnection)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/connections", routeSurfacePlatformHTTP, app.handleCreateConnectorConnection)
+	registerHTTPRoute(mux, "POST /connectors/{sourceID}/deposits", routeSurfacePlatformHTTP, app.handleDepositConnectorRecords)
 }
 
 func (app *App) sourcePlanAPIDeps() sourceplanapi.Dependencies {
@@ -203,7 +215,7 @@ func (app *App) connectorDefinitionForPlan(ctx context.Context, definitionID str
 	if err != nil {
 		return connectordefinitions.Definition{}, err
 	}
-	definition, err := connectorDefinitionFromRecord(record)
+	definition, err := connectordefinitionrecords.FromRecord(record)
 	if err != nil {
 		return connectordefinitions.Definition{}, err
 	}

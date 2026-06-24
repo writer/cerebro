@@ -67,7 +67,7 @@ func duoUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntit
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	userURN := duoUserURN(tenantID, userID)
-	addEntity(entities, duoEntity(event, userURN, "duo.user", firstNonEmpty(attrs["username"], attrs["email"], userID), duoAttributes(map[string]string{
+	userAttrs := duoAttributes(map[string]string{
 		"user_id":             userID,
 		"username":            attrs["username"],
 		"email":               attrs["email"],
@@ -77,12 +77,26 @@ func duoUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntit
 		"last_login_at":       attrs["last_login_at"],
 		"lockout_reason":      attrs["lockout_reason"],
 		"last_directory_sync": attrs["last_directory_sync"],
-	})))
+	})
+	enrichDuoUserPosture(userAttrs, attrs)
+	addEntity(entities, duoEntity(event, userURN, "duo.user", firstNonEmpty(attrs["username"], attrs["email"], userID), userAttrs))
 	if email := strings.TrimSpace(attrs["email"]); email != "" {
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+// enrichDuoUserPosture derives normalized MFA and activity posture flags from
+// Duo user snapshot attributes so identity findings and graph queries can
+// reference a consistent vocabulary across sources.
+func enrichDuoUserPosture(projected map[string]string, source map[string]string) {
+	if enrolled := strings.TrimSpace(source["is_enrolled"]); enrolled != "" {
+		projected["mfa_enrolled"] = boolString(projectionBool(enrolled))
+	}
+	if status := strings.ToLower(strings.TrimSpace(source["status"])); status != "" {
+		projected["active"] = boolString(status == "active" || status == "bypass")
+	}
 }
 
 func duoGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -142,6 +156,7 @@ func duoPhoneProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		"tampered":     "tampered",
 		"capabilities": "capabilities",
 		"last_seen_at": "last_seen_at",
+		"factor_type":  "",
 	})
 }
 
@@ -151,6 +166,7 @@ func duoTokenProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		"type":         "type",
 		"totp_step":    "totp_step",
 		"last_seen_at": "last_seen_at",
+		"factor_type":  "",
 	})
 }
 
@@ -198,12 +214,27 @@ func duoFactorProjections(event *cerebrov1.EventEnvelope, idKey string, urnFunc 
 	factorURN := urnFunc(tenantID, factorID)
 	factorAttrs := duoAttributes(map[string]string{idKey: factorID})
 	for target, source := range attributeMap {
+		if target == "factor_type" {
+			addProjectedAttribute(factorAttrs, "factor_type", duoFactorType(entityType))
+			continue
+		}
 		addProjectedAttribute(factorAttrs, target, attrs[source])
 	}
 	addEntity(entities, duoEntity(event, factorURN, entityType, firstNonEmpty(attrs["name"], factorID), factorAttrs))
 	addDuoFactorOwnerLink(entities, links, event, tenantID, factorURN, attrs["user_id"])
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func duoFactorType(entityType string) string {
+	switch entityType {
+	case "duo.phone":
+		return "phone"
+	case "duo.token":
+		return "hardware_token"
+	default:
+		return ""
+	}
 }
 
 func addDuoFactorOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, factorURN string, userID string) {

@@ -13,7 +13,6 @@ import (
 //go:embed testdata/*.json
 var fixtureFS embed.FS
 
-// NewFixture constructs the deterministic Google Workspace source used by tests.
 func NewFixture() (sourcecdk.Source, error) {
 	spec, err := loadSpec()
 	if err != nil {

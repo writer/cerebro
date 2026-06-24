@@ -24,6 +24,13 @@ const (
 	ValidationReady   = "ready"
 	ValidationWarning = "warning"
 	ValidationBlocked = "blocked"
+
+	IngestModePull    = "pull"
+	IngestModeDeposit = "deposit"
+
+	GateDefinitionValidation = "definition_validation"
+	GateSandboxProbe         = "sandbox_probe"
+	GateAdminReview          = "admin_review"
 )
 
 var (
@@ -38,6 +45,7 @@ var (
 	supportedMethods    = map[string]struct{}{"GET": {}, "POST": {}}
 	paginationTypes     = map[string]struct{}{"": {}, "none": {}, "cursor": {}, "page": {}, "offset": {}, "link": {}, "next_url": {}}
 	incrementalStates   = map[string]struct{}{"": {}, "high_watermark": {}, "opaque_cursor": {}}
+	ingestModes         = map[string]struct{}{IngestModePull: {}, IngestModeDeposit: {}}
 	projectionRelations = map[string]struct{}{
 		"attached_to": {},
 		"belongs_to":  {},
@@ -101,12 +109,25 @@ type Definition struct {
 	ConfigFields     []Field          `json:"config_fields,omitempty"`
 	Auth             AuthSpec         `json:"auth"`
 	Transport        *TransportSpec   `json:"transport,omitempty"`
+	Ingest           IngestSpec       `json:"ingest,omitempty"`
 	ResourceFamilies []ResourceFamily `json:"resource_families,omitempty"`
 	ScopeOptions     []ScopeOption    `json:"scope_options,omitempty"`
 	Validation       ValidationResult `json:"validation"`
 	Promotion        PromotionState   `json:"promotion"`
 	CreatedAt        string           `json:"created_at,omitempty"`
 	UpdatedAt        string           `json:"updated_at,omitempty"`
+}
+
+// IngestSpec selects the transport direction for a dynamic connector definition.
+type IngestSpec struct {
+	Mode    string             `json:"mode,omitempty"`
+	Deposit *DepositIngestSpec `json:"deposit,omitempty"`
+}
+
+// DepositIngestSpec describes customer-pushed records accepted for unreachable data.
+type DepositIngestSpec struct {
+	ResourceFamilies []string `json:"resource_families,omitempty"`
+	FullStateSync    bool     `json:"full_state_sync,omitempty"`
 }
 
 // Field describes non-secret configuration or credential references required by a connector definition.
@@ -302,18 +323,28 @@ type PromotionState struct {
 	NextAction     string   `json:"next_action,omitempty"`
 }
 
+// GateEvidence attests that a promotion gate was satisfied before a stage move.
+type GateEvidence struct {
+	Gate       string `json:"gate"`
+	Actor      string `json:"actor,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	ObservedAt string `json:"observed_at,omitempty"`
+}
+
 // PromotionRequest describes a lifecycle-stage promotion request.
 type PromotionRequest struct {
-	TargetStage string `json:"target_stage"`
-	Reason      string `json:"reason,omitempty"`
+	TargetStage  string         `json:"target_stage"`
+	Reason       string         `json:"reason,omitempty"`
+	GateEvidence []GateEvidence `json:"gate_evidence,omitempty"`
 }
 
 // PromotionResult describes a completed lifecycle-stage promotion.
 type PromotionResult struct {
-	Definition Definition `json:"definition"`
-	Promoted   bool       `json:"promoted"`
-	Target     string     `json:"target_stage"`
-	NextAction string     `json:"next_action"`
+	Definition    Definition     `json:"definition"`
+	Promoted      bool           `json:"promoted"`
+	Target        string         `json:"target_stage"`
+	NextAction    string         `json:"next_action"`
+	AcceptedGates []GateEvidence `json:"accepted_gates,omitempty"`
 }
 
 // Normalize fills defaults, trims strings, and recalculates validation and promotion metadata.
@@ -356,6 +387,7 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.TokenParams = normalizeStringMap(definition.Auth.TokenParams)
 	definition.Auth.RefreshParams = normalizeStringMap(definition.Auth.RefreshParams)
 	definition.Transport = normalizeTransportSpec(definition.Transport)
+	definition.Ingest = normalizeIngestSpec(definition.Ingest)
 	definition.ConfigFields = normalizeFields(definition.ConfigFields)
 	definition.Auth.CredentialFields = normalizeFields(definition.Auth.CredentialFields)
 	definition.Auth.SupportedStoreIDs = normalizeStringList(definition.Auth.SupportedStoreIDs)
@@ -417,6 +449,7 @@ func Validate(definition Definition) ValidationResult {
 		}
 	}
 	validateTransport(definition.Transport, add)
+	validateIngest(definition, add)
 	if len(definition.ResourceFamilies) == 0 {
 		add(blocking("resources", "Resource families", "Add at least one read-only resource family."))
 	} else {
@@ -427,8 +460,12 @@ func Validate(definition Definition) ValidationResult {
 			add(blocking("family_"+family.ID, "Resource family ID", "Family ids must be lowercase identifiers."))
 		}
 		path := strings.TrimSpace(family.Path)
-		if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://") {
+		depositFamily := isDepositResourceFamily(definition, family.ID)
+		if !depositFamily && (path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://")) {
 			add(blocking("path_"+family.ID, "Resource path", "Resource paths must be relative API paths such as /v1/assets."))
+		}
+		if depositFamily && path != "" && (!strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://")) {
+			add(blocking("path_"+family.ID, "Resource path", "Deposit resource paths may be omitted; when present they must be relative API paths."))
 		}
 		if method := strings.ToUpper(strings.TrimSpace(family.Method)); method != "" {
 			if _, ok := supportedMethods[method]; !ok {
@@ -498,16 +535,72 @@ func Promote(definition Definition, request PromotionRequest) (PromotionResult, 
 			NextAction: normalized.Validation.Summary,
 		}, nil
 	}
+	accepted, missing := acceptGateEvidence(evidenceGatesForStage(target), request.GateEvidence)
+	if len(missing) > 0 {
+		return PromotionResult{
+			Definition:    normalized,
+			Promoted:      false,
+			Target:        target,
+			NextAction:    fmt.Sprintf("Provide %s gate evidence before promoting to %s.", strings.Join(missing, ", "), target),
+			AcceptedGates: accepted,
+		}, nil
+	}
 	normalized.Stage = target
 	normalized.Validation = Validate(normalized)
 	normalized.Promotion = promotionState(normalized)
 	normalized.Promotion.LastTarget = target
 	return PromotionResult{
-		Definition: normalized,
-		Promoted:   true,
-		Target:     target,
-		NextAction: normalized.Promotion.NextAction,
+		Definition:    normalized,
+		Promoted:      true,
+		Target:        target,
+		NextAction:    normalized.Promotion.NextAction,
+		AcceptedGates: accepted,
 	}, nil
+}
+
+// evidenceGatesForStage lists the human-attested gates required before a target stage.
+func evidenceGatesForStage(target string) []string {
+	switch target {
+	case StagePilot:
+		return []string{GateSandboxProbe}
+	case StageApproved, StageCertified:
+		return []string{GateAdminReview}
+	default:
+		return nil
+	}
+}
+
+// acceptGateEvidence matches provided evidence against required gates, returning the
+// normalized accepted evidence and any still-missing gate IDs.
+func acceptGateEvidence(required []string, provided []GateEvidence) ([]GateEvidence, []string) {
+	supplied := make(map[string]GateEvidence, len(provided))
+	for _, evidence := range provided {
+		gate := strings.TrimSpace(evidence.Gate)
+		actor := strings.TrimSpace(evidence.Actor)
+		if gate == "" || actor == "" {
+			continue
+		}
+		normalized := GateEvidence{
+			Gate:       gate,
+			Actor:      actor,
+			Detail:     strings.TrimSpace(evidence.Detail),
+			ObservedAt: strings.TrimSpace(evidence.ObservedAt),
+		}
+		if normalized.ObservedAt == "" {
+			normalized.ObservedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		supplied[gate] = normalized
+	}
+	accepted := make([]GateEvidence, 0, len(required))
+	var missing []string
+	for _, gate := range required {
+		if evidence, ok := supplied[gate]; ok {
+			accepted = append(accepted, evidence)
+			continue
+		}
+		missing = append(missing, gate)
+	}
+	return accepted, missing
 }
 
 func promotionState(definition Definition) PromotionState {
@@ -523,13 +616,8 @@ func promotionState(definition Definition) PromotionState {
 			NextAction: "Connector is certified. Code promotion can be requested through the hardened source path.",
 		}
 	}
-	required := []string{"definition_validation"}
-	if next == StagePilot {
-		required = append(required, "sandbox_probe")
-	}
-	if next == StageApproved || next == StageCertified {
-		required = append(required, "admin_review")
-	}
+	required := []string{GateDefinitionValidation}
+	required = append(required, evidenceGatesForStage(next)...)
 	return PromotionState{
 		EligibleStages: []string{next},
 		RequiredGates:  required,
@@ -628,6 +716,50 @@ func validateTransport(transport *TransportSpec, add func(ValidationCheck)) {
 			add(blocking("retry_attempts", "Retry attempts", "Retry attempts must not be negative."))
 		}
 	}
+}
+
+func validateIngest(definition Definition, add func(ValidationCheck)) {
+	mode := strings.TrimSpace(definition.Ingest.Mode)
+	if mode == "" {
+		mode = IngestModePull
+	}
+	if _, ok := ingestModes[mode]; !ok {
+		add(blocking("ingest_mode", "Ingest mode", "Ingest mode must be pull or deposit."))
+		return
+	}
+	if mode == IngestModePull {
+		add(passing("ingest_mode", "Ingest mode", "Cerebro pulls records from the provider with the declarative runtime."))
+		return
+	}
+	add(passing("ingest_mode", "Ingest mode", "Connector accepts deposit records through a typed, connector-scoped ingest surface."))
+	if definition.Ingest.Deposit == nil || len(definition.Ingest.Deposit.ResourceFamilies) == 0 {
+		return
+	}
+	families := map[string]struct{}{}
+	for _, family := range definition.ResourceFamilies {
+		families[strings.TrimSpace(family.ID)] = struct{}{}
+	}
+	for _, familyID := range definition.Ingest.Deposit.ResourceFamilies {
+		if _, ok := families[strings.TrimSpace(familyID)]; !ok {
+			add(blocking("ingest_deposit_family_"+familyID, "Deposit family", "Deposit resource families must reference a modeled resource family."))
+		}
+	}
+}
+
+func isDepositResourceFamily(definition Definition, familyID string) bool {
+	if strings.TrimSpace(definition.Ingest.Mode) != IngestModeDeposit {
+		return false
+	}
+	if definition.Ingest.Deposit == nil || len(definition.Ingest.Deposit.ResourceFamilies) == 0 {
+		return true
+	}
+	familyID = strings.TrimSpace(familyID)
+	for _, candidate := range definition.Ingest.Deposit.ResourceFamilies {
+		if strings.TrimSpace(candidate) == familyID {
+			return true
+		}
+	}
+	return false
 }
 
 func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationCheck)) {
@@ -928,6 +1060,36 @@ func normalizeTransportSpec(transport *TransportSpec) *TransportSpec {
 		next.Retry = &retry
 	}
 	return &next
+}
+
+func normalizeIngestSpec(ingest IngestSpec) IngestSpec {
+	ingest.Mode = strings.ToLower(strings.TrimSpace(ingest.Mode))
+	if ingest.Mode == "" {
+		ingest.Mode = IngestModePull
+	}
+	if ingest.Deposit != nil {
+		deposit := *ingest.Deposit
+		deposit.ResourceFamilies = normalizeIngestResourceFamilies(deposit.ResourceFamilies)
+		ingest.Deposit = &deposit
+	}
+	return ingest
+}
+
+func normalizeIngestResourceFamilies(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		family := normalizeIdentifier(value)
+		if family == "" {
+			continue
+		}
+		if _, ok := seen[family]; ok {
+			continue
+		}
+		seen[family] = struct{}{}
+		normalized = append(normalized, family)
+	}
+	return normalized
 }
 
 func normalizePaginationSpec(pagination *PaginationSpec) *PaginationSpec {

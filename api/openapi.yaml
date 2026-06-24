@@ -796,6 +796,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectorDefinitionValidationResponse'
+  /connector-definitions/preview:
+    post:
+      summary: Run a bounded live preview for a dynamic connector definition
+      tags:
+        - Connectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDefinitionPreviewRequest'
+      responses:
+        '200':
+          description: Bounded check/read preview for a runtime connector definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionPreviewResponse'
   /connector-definitions/plan:
     post:
       summary: Build a Source CDK promotion plan without persisting it
@@ -849,6 +867,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectorDefinitionResponse'
+  /connector-definitions/{definitionID}/versions:
+    get:
+      summary: List the immutable version history of a connector definition
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/definitionID'
+      responses:
+        '200':
+          description: Connector definition version snapshots, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDefinitionVersionsResponse'
+        '404':
+          description: Connector definition was not found.
   /connector-definitions/{definitionID}/promotion-plan:
     get:
       summary: Get a Source CDK promotion plan for a stored connector definition
@@ -884,6 +918,10 @@ paths:
                   enum: [sandbox, pilot, approved, certified]
                 reason:
                   type: string
+                gate_evidence:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ConnectorDefinitionGateEvidence'
       responses:
         '200':
           description: Promotion result with the updated definition when gates pass.
@@ -1066,6 +1104,26 @@ paths:
       responses:
         '200':
           description: Stored runtime with sensitive config redacted, credential metadata, and the applied typed scope policy when provided.
+  /connectors/{sourceID}/deposits:
+    post:
+      summary: Deposit typed records for a runtime connector
+      tags:
+        - Connectors
+      parameters:
+        - $ref: '#/components/parameters/sourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorDepositRequest'
+      responses:
+        '200':
+          description: Deposit ingest result with append-log, projection, and per-record validation counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDepositResponse'
   /source-runtimes:
     get:
       summary: List source runtime configurations
@@ -1983,6 +2041,189 @@ paths:
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+  /grc/dashboards:
+    get:
+      summary: List custom GRC dashboards
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: organization_id
+          in: query
+          schema:
+            type: string
+        - name: workspace_id
+          in: query
+          schema:
+            type: string
+        - name: owner_user_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Tenant-scoped saved dashboard configurations.
+    post:
+      summary: Create custom GRC dashboard
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                tenant_id:
+                  type: string
+                organization_id:
+                  type: string
+                workspace_id:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                visibility:
+                  type: string
+                  enum: [private, workspace, organization]
+                schema_version:
+                  type: integer
+                  minimum: 1
+                  maximum: 1
+                  default: 1
+                  description: Widget schema version understood by the server. Writes with a higher version are rejected.
+                layout:
+                  type: object
+                  additionalProperties: true
+                widgets:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    required:
+                      - id
+                      - type
+                    properties:
+                      id:
+                        type: string
+                        description: Stable, unique widget identifier within the dashboard.
+                      type:
+                        type: string
+                        enum:
+                          - trend_metric_cards
+                          - trend_chart
+                          - trend_aging_table
+                          - trend_period_comparison
+                          - summary_metrics
+                          - findings_table
+                          - framework_progress
+                          - connector_health
+                          - markdown_note
+                      title:
+                        type: string
+                      query:
+                        type: object
+                        additionalProperties: true
+                      layout:
+                        type: object
+                        additionalProperties: true
+                    additionalProperties: true
+                filters:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Custom dashboard created.
+  /grc/dashboards/{dashboardID}:
+    get:
+      summary: Get custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Custom dashboard configuration.
+        '404':
+          description: Custom dashboard was not found.
+    patch:
+      summary: Update custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Custom dashboard updated.
+        '400':
+          description: Request body failed validation.
+        '403':
+          description: Only the dashboard owner may modify it.
+        '404':
+          description: Custom dashboard was not found.
+    delete:
+      summary: Archive custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Custom dashboard archived.
+        '403':
+          description: Only the dashboard owner may delete it.
+        '404':
+          description: Custom dashboard was not found.
+  /grc/dashboards/{dashboardID}/clone:
+    post:
+      summary: Clone custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Custom dashboard cloned.
+        '400':
+          description: Request body failed validation.
+        '404':
+          description: Custom dashboard was not found.
   /grc/trends:
     get:
       summary: GRC finding trends
@@ -5772,6 +6013,92 @@ components:
           type: object
           additionalProperties:
             type: string
+    ConnectorDepositRequest:
+      type: object
+      required:
+        - runtime_id
+      properties:
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        family_id:
+          type: string
+          description: Required when more than one deposit-enabled family is modeled.
+        batch_id:
+          type: string
+          description: Stable client batch id used to derive deterministic source event ids for retries.
+        idempotency_key:
+          type: string
+          description: Stable request id used to derive deterministic source event ids for retries.
+        occurred_at:
+          type: string
+          format: date-time
+        full_state:
+          type: boolean
+          description: Marks the deposited records as a full-state snapshot for the selected family.
+        record:
+          type: object
+          additionalProperties: true
+          description: Single record convenience form.
+        records:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: true
+    ConnectorDepositRecordError:
+      type: object
+      required:
+        - index
+        - detail
+      properties:
+        index:
+          type: integer
+        source_event_id:
+          type: string
+        detail:
+          type: string
+    ConnectorDepositResponse:
+      type: object
+      required:
+        - source_id
+        - runtime_id
+        - tenant_id
+        - family_id
+        - records_accepted
+        - records_rejected
+        - events_appended
+        - entities_projected
+        - links_projected
+      properties:
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        tenant_id:
+          type: string
+        family_id:
+          type: string
+        records_accepted:
+          type: integer
+          format: int32
+        records_rejected:
+          type: integer
+          format: int32
+        events_appended:
+          type: integer
+          format: int32
+        entities_projected:
+          type: integer
+          format: int32
+        links_projected:
+          type: integer
+          format: int32
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDepositRecordError'
     ConnectorDefinitionListResponse:
       type: object
       required:
@@ -5798,6 +6125,38 @@ components:
           format: date-time
         definition:
           $ref: '#/components/schemas/ConnectorDefinition'
+    ConnectorDefinitionVersionsResponse:
+      type: object
+      required:
+        - definition_id
+        - versions
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition_id:
+          type: string
+        tenant_id:
+          type: string
+        versions:
+          type: array
+          items:
+            type: object
+            required:
+              - version
+              - definition
+            properties:
+              version:
+                type: integer
+                minimum: 1
+              stage:
+                type: string
+                enum: [draft, sandbox, pilot, approved, certified]
+              created_at:
+                type: string
+                format: date-time
+              definition:
+                $ref: '#/components/schemas/ConnectorDefinition'
     ConnectorDefinitionValidationResponse:
       type: object
       required:
@@ -5814,6 +6173,47 @@ components:
           $ref: '#/components/schemas/ConnectorDefinitionValidation'
         promotion:
           $ref: '#/components/schemas/ConnectorDefinitionPromotion'
+    ConnectorDefinitionPreviewRequest:
+      type: object
+      required:
+        - definition
+      properties:
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        page_limit:
+          type: integer
+          minimum: 0
+          maximum: 3
+        check_only:
+          type: boolean
+    ConnectorDefinitionPreviewResponse:
+      type: object
+      required:
+        - definition
+        - status
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/ConnectorDefinition'
+        status:
+          type: string
+          enum: [checked, previewed]
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pages_read:
+          type: integer
+          minimum: 0
+        next_cursor:
+          type: string
     ConnectorDefinitionPlanRequest:
       type: object
       required:
@@ -6008,6 +6408,24 @@ components:
               type: string
             next_action:
               type: string
+            accepted_gates:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConnectorDefinitionGateEvidence'
+    ConnectorDefinitionGateEvidence:
+      type: object
+      required:
+        - gate
+      properties:
+        gate:
+          type: string
+        actor:
+          type: string
+        detail:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
     ConnectorDefinition:
       type: object
       required:
@@ -6054,6 +6472,8 @@ components:
                 type: string
             requires_references:
               type: boolean
+        ingest:
+          $ref: '#/components/schemas/ConnectorDefinitionIngest'
         resource_families:
           type: array
           items:
@@ -6072,6 +6492,21 @@ components:
         updated_at:
           type: string
           format: date-time
+    ConnectorDefinitionIngest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [pull, deposit]
+        deposit:
+          type: object
+          properties:
+            resource_families:
+              type: array
+              items:
+                type: string
+            full_state_sync:
+              type: boolean
     ConnectorDefinitionField:
       type: object
       required:
@@ -6095,7 +6530,6 @@ components:
       type: object
       required:
         - id
-        - path
         - id_field
       properties:
         id:
@@ -6106,7 +6540,7 @@ components:
           type: string
         method:
           type: string
-          enum: [GET]
+          enum: [GET, POST]
         list_key:
           type: string
         id_field:

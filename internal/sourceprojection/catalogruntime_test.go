@@ -116,6 +116,23 @@ func TestCatalogRuntimeProjectorsCoverGeneratedTemplates(t *testing.T) {
 	}
 }
 
+func TestCatalogRuntimeProjectorRegistrationAcceptsCatalogReadyEntries(t *testing.T) {
+	projectors := map[string]ProjectFunc{}
+	registerCatalogRuntimeProjectorsForEntries(projectors, []connectorcatalog.Entry{{
+		Status: connectorcatalog.StatusCatalogReady,
+		Definition: connectordefinitions.Definition{
+			SourceID: "example_catalog",
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:    "assets",
+				Event: connectordefinitions.EventMappingSpec{Kind: "example_catalog.asset"},
+			}},
+		},
+	}})
+	if projectors["example_catalog.asset"] == nil {
+		t.Fatal("catalog-ready entry did not register catalog runtime projector")
+	}
+}
+
 func TestCatalogRuntimeProjectorRegistrationDoesNotOverrideStaticProjector(t *testing.T) {
 	called := false
 	projectors := map[string]ProjectFunc{
@@ -140,6 +157,208 @@ func TestCatalogRuntimeProjectorRegistrationDoesNotOverrideStaticProjector(t *te
 	}
 	if !called {
 		t.Fatal("catalog runtime registration replaced the existing static projector")
+	}
+}
+
+func TestRegistryRegistersConnectorDefinitionProjectors(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: "example_dynamic",
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "example.dynamic.asset",
+					URNKind:        "example_dynamic_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Validation.Status == connectordefinitions.ValidationBlocked {
+		t.Fatalf("definition blocked unexpectedly: %#v", definition.Validation.Checks)
+	}
+	registry.RegisterConnectorDefinitions(definition)
+	registry.RegisterConnectorDefinitions(definition)
+	if got := len(registry.connectorDefinitionFingerprints); got != 1 {
+		t.Fatalf("registered connector fingerprints = %d, want 1", got)
+	}
+	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant-a",
+		SourceId: "example_dynamic",
+		Kind:     "example_dynamic.asset",
+		Attributes: map[string]string{
+			"id":   "asset-1",
+			"name": "Asset One",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "example.dynamic.asset") {
+		t.Fatalf("projected entities missing dynamic asset type: %#v", entities)
+	}
+}
+
+func TestRegistryUpdatesConnectorDefinitionProjectors(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	base := connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: "example_dynamic",
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     "example.dynamic.asset",
+					URNKind:        "example_dynamic_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+			},
+		}},
+	}
+	initial, err := connectordefinitions.Normalize(base)
+	if err != nil {
+		t.Fatalf("Normalize(initial) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(initial)
+	updated := base
+	updated.ResourceFamilies = append(updated.ResourceFamilies, connectordefinitions.ResourceFamily{
+		ID:        "findings",
+		Path:      "/v1/findings",
+		IDField:   "id",
+		NameField: "name",
+		Event:     connectordefinitions.EventMappingSpec{Kind: "example_dynamic.finding"},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Entity: &connectordefinitions.ProjectionEntitySpec{
+				EntityType:     "example.dynamic.finding",
+				URNKind:        "example_dynamic_finding",
+				IDAttributes:   []string{"id"},
+				LabelAttribute: "name",
+			},
+		},
+	})
+	normalized, err := connectordefinitions.Normalize(updated)
+	if err != nil {
+		t.Fatalf("Normalize(updated) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(normalized)
+	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-2",
+		TenantId: "tenant-a",
+		SourceId: "example_dynamic",
+		Kind:     "example_dynamic.finding",
+		Attributes: map[string]string{
+			"id":   "finding-1",
+			"name": "Finding One",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "example.dynamic.finding") {
+		t.Fatalf("projected entities missing updated finding type: %#v", entities)
+	}
+}
+
+func TestRegistryKeepsSharedKindProjectorsAcrossUpdates(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	sourceA, err := connectordefinitions.Normalize(sharedKindDefinition("source_a", "shared.source_a.asset"))
+	if err != nil {
+		t.Fatalf("Normalize(sourceA) error = %v", err)
+	}
+	sourceB, err := connectordefinitions.Normalize(sharedKindDefinition("source_b", "shared.source_b.asset"))
+	if err != nil {
+		t.Fatalf("Normalize(sourceB) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(sourceA, sourceB)
+
+	updatedA, err := connectordefinitions.Normalize(sharedKindDefinition("source_a", "shared.source_a.updated"))
+	if err != nil {
+		t.Fatalf("Normalize(updatedA) error = %v", err)
+	}
+	registry.RegisterConnectorDefinitions(updatedA)
+
+	entities, _, err := registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-a",
+		TenantId: "tenant-a",
+		SourceId: "source_a",
+		Kind:     "shared.asset",
+		Attributes: map[string]string{
+			"id":   "asset-a",
+			"name": "Asset A",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(source_a) error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "shared.source_a.updated") {
+		t.Fatalf("source_a projected entities = %#v, want updated type", entities)
+	}
+
+	entities, _, err = registry.Project(&cerebrov1.EventEnvelope{
+		Id:       "event-b",
+		TenantId: "tenant-a",
+		SourceId: "source_b",
+		Kind:     "shared.asset",
+		Attributes: map[string]string{
+			"id":   "asset-b",
+			"name": "Asset B",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project(source_b) error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "shared.source_b.asset") {
+		t.Fatalf("source_b projected entities = %#v, want original type", entities)
+	}
+}
+
+func sharedKindDefinition(sourceID string, entityType string) connectordefinitions.Definition {
+	return connectordefinitions.Definition{
+		TenantID: "tenant-a",
+		SourceID: sourceID,
+		Auth:     connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Path:      "/v1/assets",
+			IDField:   "id",
+			NameField: "name",
+			Event:     connectordefinitions.EventMappingSpec{Kind: "shared.asset"},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Entity: &connectordefinitions.ProjectionEntitySpec{
+					EntityType:     entityType,
+					URNKind:        sourceID + "_asset",
+					IDAttributes:   []string{"id"},
+					LabelAttribute: "name",
+				},
+			},
+		}},
 	}
 }
 

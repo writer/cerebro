@@ -11,7 +11,7 @@ import (
 )
 
 func registerCatalogRuntimeProjectors(projectors map[string]ProjectFunc) {
-	catalog, err := connectorcatalog.Builtin()
+	catalog, err := connectorcatalog.BuiltinRuntime()
 	if err != nil {
 		log.Printf("sourceprojection: load connector catalog runtime projectors: %v", err)
 		return
@@ -24,7 +24,7 @@ func registerCatalogRuntimeProjectorsForEntries(projectors map[string]ProjectFun
 		return
 	}
 	for _, entry := range entries {
-		if entry.Status != connectorcatalog.StatusGenerateable {
+		if !catalogRuntimeProjectorEligible(entry.Status) {
 			continue
 		}
 		sourceID := strings.TrimSpace(entry.Definition.SourceID)
@@ -49,6 +49,29 @@ func registerCatalogRuntimeProjectorsForEntries(projectors map[string]ProjectFun
 			projectors[kind] = catalogRuntimeProjectorFor(sourceID, resource)
 		}
 	}
+}
+
+func catalogRuntimeProjectorEligible(status string) bool {
+	return status == connectorcatalog.StatusGenerateable || status == connectorcatalog.StatusCatalogReady
+}
+
+func catalogRuntimeDefinitionProjectors(definition connectordefinitions.Definition) map[string]ProjectFunc {
+	sourceID := strings.TrimSpace(definition.SourceID)
+	if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
+		return nil
+	}
+	projectors := make(map[string]ProjectFunc, len(definition.ResourceFamilies))
+	for _, resource := range definition.ResourceFamilies {
+		kind := catalogRuntimeEventKind(sourceID, resource)
+		if kind == "" {
+			continue
+		}
+		if _, ok := projectors[kind]; ok {
+			continue
+		}
+		projectors[kind] = catalogRuntimeProjectorFor(sourceID, resource)
+	}
+	return projectors
 }
 
 func catalogRuntimeEventKind(sourceID string, resource connectordefinitions.ResourceFamily) string {

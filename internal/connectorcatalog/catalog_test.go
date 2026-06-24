@@ -149,13 +149,13 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if analysis.Summary.Total != 138 {
-		t.Fatalf("summary total = %d, want 138", analysis.Summary.Total)
+	if analysis.Summary.Total != 199 {
+		t.Fatalf("summary total = %d, want 199", analysis.Summary.Total)
 	}
-	if len(analysis.Entries) != 138 {
-		t.Fatalf("entries len = %d, want 138", len(analysis.Entries))
+	if len(analysis.Entries) != 199 {
+		t.Fatalf("entries len = %d, want 199", len(analysis.Entries))
 	}
-	if analysis.Summary.Generateable != 138 {
+	if analysis.Summary.Generateable != 199 {
 		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
 	}
 	if analysis.Summary.NeedsAuthExtension != 0 {
@@ -175,6 +175,24 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 		analysis.Summary.NeedsBespokeRuntime,
 		analysis.Summary.CatalogReady,
 	)
+}
+
+func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
+	analysis, err := BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
+	}
+	if analysis.Summary.Total != 199 || len(analysis.Entries) != 199 {
+		t.Fatalf("runtime catalog size = total %d entries %d, want 199", analysis.Summary.Total, len(analysis.Entries))
+	}
+	if analysis.Summary.CatalogReady != 199 || analysis.Summary.Generateable != 0 {
+		t.Fatalf("runtime summary = %#v, want catalog-ready entries without sourcegen dry-run", analysis.Summary)
+	}
+	for _, entry := range analysis.Entries {
+		if entry.SourcegenDryRun || entry.Generateable || entry.Status != StatusCatalogReady {
+			t.Fatalf("entry %s status=%q sourcegen=%v generateable=%v, want runtime catalog-ready only", entry.Definition.SourceID, entry.Status, entry.SourcegenDryRun, entry.Generateable)
+		}
+	}
 }
 
 func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
@@ -247,6 +265,9 @@ func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
 	enrollments := catalogFamily(t, definition.ResourceFamilies, "training_enrollments")
 	if enrollments.Pagination == nil || enrollments.Pagination.Type != "page" || enrollments.Pagination.PageParam != "page" || enrollments.Pagination.PageSizeParam != "per_page" || enrollments.Pagination.StartPage != 1 {
 		t.Fatalf("training enrollments pagination = %#v, want page/per_page starting at 1", enrollments.Pagination)
+	}
+	if len(enrollments.Coverage) != 1 || !hasString(enrollments.Coverage[0].Families, "training_enrollments") {
+		t.Fatalf("training enrollments coverage = %#v, want family reference to training_enrollments", enrollments.Coverage)
 	}
 }
 

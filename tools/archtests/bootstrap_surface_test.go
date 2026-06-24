@@ -38,7 +38,20 @@ import (
 // explicit error returns and guard clauses across bootstrap handlers. Tenant
 // dynamic connector runtimes add connector-library response mapping and setup
 // method shaping while runnable source construction stays behind internal/sourceregistry.
-const bootstrapProductionGoLineBudget = 25538
+// Runtime connector previews add thin HTTP request/response mapping while live
+// check/read behavior stays behind internal/connectorpreview. File-organization
+// refactor extracted finding, graph, source-runtime, and report handlers from
+// app.go into domain-scoped files; the budget increase covers only the per-file
+// package declarations and import blocks with no new behavior. Connector deposit
+// ingest adds HTTP request/response mapping while runtime validation, append-log
+// persistence, and graph projection stay behind internal/sourceruntime. Connector
+// definition version history adds a thin GET handler plus version-record response
+// mapping; the immutable snapshots are read through the ConnectorDefinitionStore
+// port and storage stays in internal/statestore/postgres. Custom GRC dashboards
+// add route wiring plus actor stamping while HTTP behavior lives behind
+// internal/sourcehttp/customdashboards and storage stays behind the
+// CustomDashboardStore port.
+const bootstrapProductionGoLineBudget = 25901
 
 type bootstrapFileLineCount struct {
 	path  string

@@ -1269,6 +1269,41 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeSkipsDisabledRuntime(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				Config:   map[string]string{"enabled": "false"},
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-github",
+		PageLimit: 2,
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetEventsAppended() != 0 || resp.GetPagesRead() != 0 {
+		t.Fatalf("Sync() appended/pages = %d/%d, want 0/0", resp.GetEventsAppended(), resp.GetPagesRead())
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+	if store.putCount != 0 {
+		t.Fatalf("PutSourceRuntime calls = %d, want 0", store.putCount)
+	}
+}
+
 func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

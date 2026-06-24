@@ -144,14 +144,13 @@ func TestReadSynthesizesPageCursorForFullPages(t *testing.T) {
 	defer server.Close()
 
 	source := newCustomTestSource(t, server.URL, Family{
-		Name:           "enrollments",
-		Path:           "/enrollments",
-		CursorParam:    "page",
-		PageSizeParams: []string{"per_page"},
-		PagePagination: true,
-		PageStart:      1,
-		URNKind:        "test_enrollment",
-		IDKeys:         []string{"id"},
+		Name:            "enrollments",
+		Path:            "/enrollments",
+		CursorParam:     "page",
+		PageSizeParams:  []string{"per_page"},
+		PageFirstCursor: "1",
+		URNKind:         "test_enrollment",
+		IDKeys:          []string{"id"},
 	})
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",

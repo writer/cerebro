@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/connectorcredentials"
+	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/connectorpreview"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -38,9 +40,30 @@ type connectorDefinitionValidationResponse struct {
 	Support     connectordefinitions.SupportReport    `json:"support"`
 }
 
+type connectorDefinitionPreviewRequest struct {
+	Definition connectordefinitions.Definition `json:"definition"`
+	Config     map[string]string               `json:"config,omitempty"`
+	PageLimit  uint32                          `json:"page_limit,omitempty"`
+	CheckOnly  bool                            `json:"check_only,omitempty"`
+}
+
 type connectorDefinitionPromotionResponse struct {
 	GeneratedAt string                               `json:"generated_at"`
 	Result      connectordefinitions.PromotionResult `json:"result"`
+}
+
+type connectorDefinitionVersionEntry struct {
+	Version    int                             `json:"version"`
+	Stage      string                          `json:"stage"`
+	CreatedAt  string                          `json:"created_at,omitempty"`
+	Definition connectordefinitions.Definition `json:"definition"`
+}
+
+type connectorDefinitionVersionsResponse struct {
+	GeneratedAt  string                            `json:"generated_at"`
+	DefinitionID string                            `json:"definition_id"`
+	TenantID     string                            `json:"tenant_id,omitempty"`
+	Versions     []connectorDefinitionVersionEntry `json:"versions"`
 }
 
 func (a *App) handleListConnectorDefinitions(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +97,7 @@ func (a *App) handleListConnectorDefinitions(w http.ResponseWriter, r *http.Requ
 	}
 	definitions := make([]connectordefinitions.Definition, 0, len(records))
 	for _, record := range records {
-		definition, err := connectorDefinitionFromRecord(record)
+		definition, err := connectordefinitionrecords.FromRecord(record)
 		if err != nil {
 			writeConnectorError(w, err)
 			return
@@ -124,6 +147,40 @@ func (a *App) handleValidateConnectorDefinition(w http.ResponseWriter, r *http.R
 	})
 }
 
+func (a *App) handlePreviewConnectorDefinition(w http.ResponseWriter, r *http.Request) {
+	var request connectorDefinitionPreviewRequest
+	if err := readConnectorJSON(r, &request); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	tenantID, err := effectiveTenantFilter(r.Context(), request.Definition.TenantID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	request.Definition.TenantID = tenantID
+	normalized, err := connectordefinitions.Normalize(request.Definition)
+	if err != nil {
+		writeConnectorError(w, fmt.Errorf("%w: %w", connectorcredentials.ErrInvalidRequest, err))
+		return
+	}
+	if err := authorizeTenantID(r.Context(), normalized.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	config, err := connectorRuntimeConfig(request.Config)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	response, err := connectorpreview.Run(r.Context(), normalized, config, request.PageLimit, request.CheckOnly)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (a *App) handleCreateConnectorDefinition(w http.ResponseWriter, r *http.Request) {
 	definition := connectordefinitions.Definition{}
 	if err := readConnectorJSON(r, &definition); err != nil {
@@ -157,7 +214,7 @@ func (a *App) handleGetConnectorDefinition(w http.ResponseWriter, r *http.Reques
 		writeConnectorError(w, err)
 		return
 	}
-	definition, err := connectorDefinitionFromRecord(record)
+	definition, err := connectordefinitionrecords.FromRecord(record)
 	if err != nil {
 		writeConnectorError(w, err)
 		return
@@ -169,6 +226,61 @@ func (a *App) handleGetConnectorDefinition(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, connectorDefinitionResponse{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Definition:  definition,
+	})
+}
+
+func (a *App) handleListConnectorDefinitionVersions(w http.ResponseWriter, r *http.Request) {
+	definitionID := strings.TrimSpace(r.PathValue("definitionID"))
+	if definitionID == "" {
+		writeConnectorError(w, fmt.Errorf("%w: definition_id is required", connectorcredentials.ErrInvalidRequest))
+		return
+	}
+	store := connectorDefinitionStore(a.deps.StateStore)
+	if store == nil {
+		writeConnectorError(w, sourceruntime.ErrRuntimeUnavailable)
+		return
+	}
+	record, err := store.GetConnectorDefinition(r.Context(), definitionID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), record.TenantID); err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	versions, err := store.ListConnectorDefinitionVersions(r.Context(), definitionID)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	entries := make([]connectorDefinitionVersionEntry, 0, len(versions))
+	for _, version := range versions {
+		definition, err := connectordefinitionrecords.FromVersionRecord(version)
+		if err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		if err := authorizeTenantID(r.Context(), definition.TenantID); err != nil {
+			writeConnectorError(w, err)
+			return
+		}
+		createdAt := ""
+		if !version.CreatedAt.IsZero() {
+			createdAt = version.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		entries = append(entries, connectorDefinitionVersionEntry{
+			Version:    version.Version,
+			Stage:      version.Stage,
+			CreatedAt:  createdAt,
+			Definition: definition,
+		})
+	}
+	writeJSON(w, http.StatusOK, connectorDefinitionVersionsResponse{
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		DefinitionID: definitionID,
+		TenantID:     record.TenantID,
+		Versions:     entries,
 	})
 }
 
@@ -215,7 +327,7 @@ func (a *App) handlePromoteConnectorDefinition(w http.ResponseWriter, r *http.Re
 		writeConnectorError(w, err)
 		return
 	}
-	definition, err := connectorDefinitionFromRecord(record)
+	definition, err := connectordefinitionrecords.FromRecord(record)
 	if err != nil {
 		writeConnectorError(w, err)
 		return
@@ -299,38 +411,7 @@ func (a *App) saveConnectorDefinition(ctx context.Context, definition connectord
 	if err != nil {
 		return connectordefinitions.Definition{}, err
 	}
-	return connectorDefinitionFromRecord(record)
-}
-
-func connectorDefinitionFromRecord(record *ports.ConnectorDefinitionRecord) (connectordefinitions.Definition, error) {
-	if record == nil {
-		return connectordefinitions.Definition{}, fmt.Errorf("%w: definition record is required", connectorcredentials.ErrInvalidRequest)
-	}
-	definition := connectordefinitions.Definition{}
-	if err := json.Unmarshal(record.DefinitionJSON, &definition); err != nil {
-		return connectordefinitions.Definition{}, fmt.Errorf("decode connector definition %q: %w", record.ID, err)
-	}
-	definition.ID = record.ID
-	definition.TenantID = record.TenantID
-	definition.SourceID = record.SourceID
-	definition.DisplayName = record.DisplayName
-	definition.Runtime = record.Runtime
-	definition.Stage = record.Stage
-	definition.CurrentVersion = record.CurrentVersion
-	if !record.CreatedAt.IsZero() {
-		definition.CreatedAt = record.CreatedAt.UTC().Format(time.RFC3339)
-	}
-	if !record.UpdatedAt.IsZero() {
-		definition.UpdatedAt = record.UpdatedAt.UTC().Format(time.RFC3339)
-	}
-	normalized, err := connectordefinitions.Normalize(definition)
-	if err != nil {
-		return connectordefinitions.Definition{}, fmt.Errorf("normalize connector definition %q: %w", record.ID, err)
-	}
-	normalized.CurrentVersion = record.CurrentVersion
-	normalized.CreatedAt = definition.CreatedAt
-	normalized.UpdatedAt = definition.UpdatedAt
-	return normalized, nil
+	return connectordefinitionrecords.FromRecord(record)
 }
 
 func (a *App) connectorTenantDefinitions(ctx context.Context, tenantID string) []connectordefinitions.Definition {
@@ -348,7 +429,7 @@ func (a *App) connectorTenantDefinitions(ctx context.Context, tenantID string) [
 	}
 	definitions := make([]connectordefinitions.Definition, 0, len(records))
 	for _, record := range records {
-		definition, err := connectorDefinitionFromRecord(record)
+		definition, err := connectordefinitionrecords.FromRecord(record)
 		if err != nil || authorizeTenantID(ctx, definition.TenantID) != nil {
 			continue
 		}

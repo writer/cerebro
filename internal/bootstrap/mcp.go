@@ -18,6 +18,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
@@ -682,7 +683,7 @@ func (app *App) mcpListConnectorDefinitions(r *http.Request, args map[string]any
 	}
 	definitions := make([]any, 0, len(records))
 	for _, record := range records {
-		definition, err := connectorDefinitionFromRecord(record)
+		definition, err := connectordefinitionrecords.FromRecord(record)
 		if err != nil {
 			return nil, err
 		}

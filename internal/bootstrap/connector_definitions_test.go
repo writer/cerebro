@@ -4,17 +4,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcegen"
 )
+
+type failAfterAppendLog struct {
+	failAfter int
+	events    []*cerebrov1.EventEnvelope
+}
+
+func (l *failAfterAppendLog) Ping(context.Context) error { return nil }
+
+func (l *failAfterAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	if len(l.events) >= l.failAfter {
+		return errors.New("append failed")
+	}
+	l.events = append(l.events, event)
+	return nil
+}
 
 type testConnectorDefinitionPlanResponse struct {
 	Plan *sourcegen.PromotionPlan `json:"plan"`
@@ -23,6 +40,9 @@ type testConnectorDefinitionPlanResponse struct {
 func (s *connectorTestStore) PutConnectorDefinition(_ context.Context, record *ports.ConnectorDefinitionRecord) (*ports.ConnectorDefinitionRecord, error) {
 	if s.definitions == nil {
 		s.definitions = map[string]*ports.ConnectorDefinitionRecord{}
+	}
+	if s.definitionVersions == nil {
+		s.definitionVersions = map[string][]*ports.ConnectorDefinitionVersionRecord{}
 	}
 	cloned := cloneConnectorDefinitionRecord(record)
 	now := time.Now().UTC()
@@ -37,7 +57,30 @@ func (s *connectorTestStore) PutConnectorDefinition(_ context.Context, record *p
 	}
 	cloned.UpdatedAt = now
 	s.definitions[record.ID] = cloned
+	s.definitionVersions[record.ID] = append(s.definitionVersions[record.ID], &ports.ConnectorDefinitionVersionRecord{
+		DefinitionID:   cloned.ID,
+		Version:        cloned.CurrentVersion,
+		TenantID:       cloned.TenantID,
+		SourceID:       cloned.SourceID,
+		Stage:          cloned.Stage,
+		DefinitionJSON: append([]byte{}, cloned.DefinitionJSON...),
+		CreatedAt:      now,
+	})
 	return cloneConnectorDefinitionRecord(cloned), nil
+}
+
+func (s *connectorTestStore) ListConnectorDefinitionVersions(_ context.Context, definitionID string) ([]*ports.ConnectorDefinitionVersionRecord, error) {
+	stored := s.definitionVersions[definitionID]
+	versions := make([]*ports.ConnectorDefinitionVersionRecord, 0, len(stored))
+	for _, version := range stored {
+		cloned := *version
+		cloned.DefinitionJSON = append([]byte{}, version.DefinitionJSON...)
+		versions = append(versions, &cloned)
+	}
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i].Version > versions[j].Version
+	})
+	return versions, nil
 }
 
 func (s *connectorTestStore) GetConnectorDefinition(_ context.Context, id string) (*ports.ConnectorDefinitionRecord, error) {
@@ -162,6 +205,157 @@ func TestConnectorDefinitionCreateListAndPromote(t *testing.T) {
 	}
 	if promoted.Result.Definition.CurrentVersion != 2 {
 		t.Fatalf("promoted version = %d, want 2", promoted.Result.Definition.CurrentVersion)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointListsImmutableHistory(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	createResp, err := server.Client().Post(server.URL+"/connector-definitions", "application/json", stringsReader(t, `{
+		"tenant_id": "tenant-a",
+		"source_id": "example_api",
+		"display_name": "Example API",
+		"runtime": "json_api",
+		"auth": {"model": "bearer_token", "credential_fields": [{"key": "token", "secret": true, "reference_only": true}]},
+		"resource_families": [{"id": "assets", "path": "/v1/assets", "id_field": "id"}]
+	}`))
+	if err != nil {
+		t.Fatalf("POST /connector-definitions error = %v", err)
+	}
+	defer closeResponseBody(t, createResp)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
+	}
+	var created connectorDefinitionResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	promoteResp, err := server.Client().Post(server.URL+"/connector-definitions/"+created.Definition.ID+"/promote", "application/json", stringsReader(t, `{"target_stage":"sandbox"}`))
+	if err != nil {
+		t.Fatalf("POST promote error = %v", err)
+	}
+	defer closeResponseBody(t, promoteResp)
+	if promoteResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST promote status = %d, want 200", promoteResp.StatusCode)
+	}
+
+	versionsResp, err := server.Client().Get(server.URL + "/connector-definitions/" + created.Definition.ID + "/versions")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, versionsResp)
+	if versionsResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET versions status = %d, want 200", versionsResp.StatusCode)
+	}
+	var versions connectorDefinitionVersionsResponse
+	if err := json.NewDecoder(versionsResp.Body).Decode(&versions); err != nil {
+		t.Fatalf("decode versions response: %v", err)
+	}
+	if versions.DefinitionID != created.Definition.ID || versions.TenantID != "tenant-a" {
+		t.Fatalf("versions identity = %#v, want stored definition", versions)
+	}
+	if len(versions.Versions) != 2 {
+		t.Fatalf("versions = %#v, want two immutable snapshots", versions.Versions)
+	}
+	if versions.Versions[0].Version != 2 || versions.Versions[0].Stage != connectordefinitions.StageSandbox {
+		t.Fatalf("newest version = %#v, want version 2 at sandbox", versions.Versions[0])
+	}
+	if versions.Versions[1].Version != 1 || versions.Versions[1].Stage != connectordefinitions.StageDraft {
+		t.Fatalf("oldest version = %#v, want version 1 at draft", versions.Versions[1])
+	}
+	if versions.Versions[1].Definition.Stage != connectordefinitions.StageDraft || versions.Versions[1].Definition.CurrentVersion != 1 {
+		t.Fatalf("oldest snapshot definition = %#v, want immutable draft/1", versions.Versions[1].Definition)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointReturnsNotFound(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connector-definitions/missing-definition/versions")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET versions status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointRejectsCrossTenantPrincipal(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	definition := putTestConnectorDefinition(t, store, connectordefinitions.Definition{
+		TenantID:    "tenant-b",
+		SourceID:    "example_api",
+		DisplayName: "Example API",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "tenant-a-key",
+				Principal: "tenant-a-admin",
+				TenantID:  "tenant-a",
+			}},
+		},
+	}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/connector-definitions/"+definition.ID+"/versions", nil)
+	if err != nil {
+		t.Fatalf("NewRequest versions: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer tenant-a-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET versions status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestConnectorDefinitionVersionsEndpointRejectsMalformedSnapshot(t *testing.T) {
+	store := &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}
+	definition := putTestConnectorDefinition(t, store, connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "example_api",
+		DisplayName: "Example API",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets",
+			IDField: "id",
+		}},
+	})
+	store.definitionVersions[definition.ID][0].DefinitionJSON = []byte(`{"source_id":`)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connector-definitions/" + definition.ID + "/versions")
+	if err != nil {
+		t.Fatalf("GET /connector-definitions/{id}/versions error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("GET versions status = %d, want 500", resp.StatusCode)
 	}
 }
 
@@ -514,6 +708,206 @@ func TestConnectorDefinitionStoredPromotionPlan(t *testing.T) {
 	}
 }
 
+func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "custom_deposit",
+		DisplayName: "Custom Deposit",
+		Runtime:     connectordefinitions.RuntimeJSONAPI,
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Ingest: connectordefinitions.IngestSpec{
+			Mode: connectordefinitions.IngestModeDeposit,
+			Deposit: &connectordefinitions.DepositIngestSpec{
+				ResourceFamilies: []string{"assets"},
+				FullStateSync:    true,
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "assets",
+			Label:     "Assets",
+			IDField:   "id",
+			NameField: "name",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "custom_deposit.assets",
+				SchemaRef: "custom_deposit/assets/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	definitionJSON, err := json.Marshal(definition)
+	if err != nil {
+		t.Fatalf("marshal definition: %v", err)
+	}
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-deposit": {
+				Id:       "runtime-deposit",
+				SourceId: "custom_deposit",
+				TenantId: "tenant-a",
+				Config:   map[string]string{},
+			},
+		}},
+		definitions: map[string]*ports.ConnectorDefinitionRecord{
+			definition.ID: {
+				ID:             definition.ID,
+				TenantID:       definition.TenantID,
+				SourceID:       definition.SourceID,
+				DisplayName:    definition.DisplayName,
+				Runtime:        definition.Runtime,
+				Stage:          definition.Stage,
+				DefinitionJSON: definitionJSON,
+			},
+		},
+	}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: store,
+		GraphStore: store,
+		AppendLog:  appendLog,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"tenant_id":"tenant-a","runtime_id":"runtime-deposit","family_id":"assets","batch_id":"batch-1","full_state":true,"records":[{"id":"asset-1","name":"Asset One"}]}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/custom_deposit/deposits", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/deposits error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /connectors/{sourceID}/deposits status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		SourceID          string `json:"source_id"`
+		RuntimeID         string `json:"runtime_id"`
+		FamilyID          string `json:"family_id"`
+		RecordsAccepted   uint32 `json:"records_accepted"`
+		RecordsRejected   uint32 `json:"records_rejected"`
+		EventsAppended    uint32 `json:"events_appended"`
+		EntitiesProjected uint32 `json:"entities_projected"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.SourceID != "custom_deposit" || payload.RuntimeID != "runtime-deposit" || payload.FamilyID != "assets" {
+		t.Fatalf("response identity = %#v", payload)
+	}
+	if payload.RecordsAccepted != 1 || payload.EventsAppended != 1 || payload.RecordsRejected != 0 {
+		t.Fatalf("deposit counts = %#v, want one accepted/appended", payload)
+	}
+	if payload.EntitiesProjected == 0 {
+		t.Fatalf("entities_projected = 0, want dynamic projector output")
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("append log events = %d, want 1", len(appendLog.events))
+	}
+	event := appendLog.events[0]
+	if event.GetKind() != "custom_deposit.assets" || event.GetAttributes()["resource_id"] != "asset-1" || event.GetAttributes()["source_runtime_id"] != "runtime-deposit" {
+		t.Fatalf("event = %#v", event)
+	}
+	if len(store.entities) == 0 {
+		t.Fatal("projected entities empty, want deposited asset projection")
+	}
+	runtime, err := store.GetSourceRuntime(context.Background(), "runtime-deposit")
+	if err != nil {
+		t.Fatalf("GetSourceRuntime() error = %v", err)
+	}
+	if got := runtime.GetConfig()[runtimeRecordsAcceptedConfigKey]; got != "1" {
+		t.Fatalf("runtime records accepted = %q, want 1", got)
+	}
+}
+
+func TestConnectorDepositRecordsRuntimeFailureAfterPartialAppend(t *testing.T) {
+	definition, err := connectordefinitions.Normalize(connectordefinitions.Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "custom_deposit",
+		DisplayName: "Custom Deposit",
+		Runtime:     connectordefinitions.RuntimeJSONAPI,
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Ingest: connectordefinitions.IngestSpec{
+			Mode: connectordefinitions.IngestModeDeposit,
+			Deposit: &connectordefinitions.DepositIngestSpec{
+				ResourceFamilies: []string{"assets"},
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:         "assets",
+			Label:      "Assets",
+			IDField:    "id",
+			NameField:  "name",
+			Event:      connectordefinitions.EventMappingSpec{Kind: "custom_deposit.assets", SchemaRef: "custom_deposit/assets/v1"},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	definitionJSON, err := json.Marshal(definition)
+	if err != nil {
+		t.Fatalf("marshal definition: %v", err)
+	}
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-deposit": {
+				Id:       "runtime-deposit",
+				SourceId: "custom_deposit",
+				TenantId: "tenant-a",
+				Config:   map[string]string{},
+			},
+		}},
+		definitions: map[string]*ports.ConnectorDefinitionRecord{
+			definition.ID: {
+				ID:             definition.ID,
+				TenantID:       definition.TenantID,
+				SourceID:       definition.SourceID,
+				DisplayName:    definition.DisplayName,
+				Runtime:        definition.Runtime,
+				Stage:          definition.Stage,
+				DefinitionJSON: definitionJSON,
+			},
+		},
+	}
+	appendLog := &failAfterAppendLog{failAfter: 1}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: store,
+		GraphStore: store,
+		AppendLog:  appendLog,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := []byte(`{"tenant_id":"tenant-a","runtime_id":"runtime-deposit","family_id":"assets","batch_id":"batch-1","records":[{"id":"asset-1","name":"Asset One"},{"id":"asset-2","name":"Asset Two"}]}`)
+	resp, err := server.Client().Post(server.URL+"/connectors/custom_deposit/deposits", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /connectors/{sourceID}/deposits error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("POST /connectors/{sourceID}/deposits status = %d, want 500", resp.StatusCode)
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("append log events = %d, want one partial append", len(appendLog.events))
+	}
+	runtime, err := store.GetSourceRuntime(context.Background(), "runtime-deposit")
+	if err != nil {
+		t.Fatalf("GetSourceRuntime() error = %v", err)
+	}
+	for key, want := range map[string]string{
+		runtimeStatusConfigKey:              "failed",
+		runtimeRecordsScannedConfigKey:      "2",
+		runtimeRecordsAcceptedConfigKey:     "1",
+		runtimeRecordsRejectedConfigKey:     "0",
+		runtimeLastFailureCategoryConfigKey: "sync_failed",
+	} {
+		if got := runtime.GetConfig()[key]; got != want {
+			t.Fatalf("runtime config[%s] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestConnectorDefinitionListRequiresDefinitionStore(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -527,6 +921,32 @@ func TestConnectorDefinitionListRequiresDefinitionStore(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("GET /connector-definitions status = %d, want 503", resp.StatusCode)
 	}
+}
+
+func putTestConnectorDefinition(t *testing.T, store *connectorTestStore, definition connectordefinitions.Definition) connectordefinitions.Definition {
+	t.Helper()
+	normalized, err := connectordefinitions.Normalize(definition)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatalf("marshal connector definition: %v", err)
+	}
+	record, err := store.PutConnectorDefinition(context.Background(), &ports.ConnectorDefinitionRecord{
+		ID:             normalized.ID,
+		TenantID:       normalized.TenantID,
+		SourceID:       normalized.SourceID,
+		DisplayName:    normalized.DisplayName,
+		Runtime:        normalized.Runtime,
+		Stage:          normalized.Stage,
+		DefinitionJSON: payload,
+	})
+	if err != nil {
+		t.Fatalf("PutConnectorDefinition() error = %v", err)
+	}
+	normalized.CurrentVersion = record.CurrentVersion
+	return normalized
 }
 
 func cloneConnectorDefinitionRecord(record *ports.ConnectorDefinitionRecord) *ports.ConnectorDefinitionRecord {

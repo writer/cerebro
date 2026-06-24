@@ -1,6 +1,7 @@
 package openapigen
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -84,6 +85,52 @@ func TestGenerateInfersAPIKeyAndRootArray(t *testing.T) {
 	}
 	if len(report.Skipped) != 0 {
 		t.Fatalf("skipped = %#v, want none", report.Skipped)
+	}
+}
+
+func TestGenerateListGETOnlyDropsPostListings(t *testing.T) {
+	doc := loadFixture(t, postListingFixture)
+	withPost, _, err := Generate(doc, Request{SourceID: "mixed", AllFamilies: true})
+	if err != nil {
+		t.Fatalf("Generate(all) error = %v", err)
+	}
+	sawPost := false
+	for _, family := range withPost.ResourceFamilies {
+		if strings.EqualFold(family.Method, "POST") {
+			sawPost = true
+		}
+	}
+	if !sawPost {
+		t.Fatalf("expected a POST listing family without ListGETOnly")
+	}
+	getOnly, _, err := Generate(doc, Request{SourceID: "mixed", AllFamilies: true, ListGETOnly: true})
+	if err != nil {
+		t.Fatalf("Generate(get-only) error = %v", err)
+	}
+	if len(getOnly.ResourceFamilies) == 0 {
+		t.Fatalf("GET-only dropped all families")
+	}
+	for _, family := range getOnly.ResourceFamilies {
+		if family.Method != "" && !strings.EqualFold(family.Method, "GET") {
+			t.Fatalf("GET-only produced non-GET family: %s %s", family.Method, family.Path)
+		}
+	}
+}
+
+func TestGenerateHandlesMissingComponents(t *testing.T) {
+	doc := loadFixture(t, noComponentsFixture)
+	if doc.Components != nil {
+		t.Fatalf("fixture unexpectedly has components")
+	}
+	definition, report, err := Generate(doc, Request{SourceID: "no_components"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if definition.Auth.Model != "bearer_token" {
+		t.Fatalf("auth model = %q, want bearer_token fallback", definition.Auth.Model)
+	}
+	if len(definition.ResourceFamilies) == 0 || report.EndpointCount == 0 {
+		t.Fatalf("expected at least one resource family, report = %#v", report)
 	}
 }
 
@@ -250,6 +297,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+`
+
+// postListingFixture has one GET list endpoint and one POST "search" listing,
+// so generation includes a POST family unless ListGETOnly is set.
+const postListingFixture = `
+openapi: 3.0.3
+info:
+  title: Mixed Methods API
+servers:
+  - url: https://api.example.test
+paths:
+  /widgets:
+    get:
+      operationId: listWidgets
+      responses:
+        '200':
+          description: Widgets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+  /things/search:
+    post:
+      operationId: searchThings
+      responses:
+        '200':
+          description: Things.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+`
+
+// noComponentsFixture omits the components section entirely so doc.Components is
+// nil; this previously panicked inferAuth via sortedSecuritySchemes.
+const noComponentsFixture = `
+openapi: 3.0.3
+info:
+  title: No Components API
+servers:
+  - url: https://api.example.test
+paths:
+  /widgets:
+    get:
+      operationId: listWidgets
+      responses:
+        '200':
+          description: Widgets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
 `
 
 // #nosec G101 -- OpenAPI auth scheme fixture names only, not credential material.

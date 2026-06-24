@@ -117,6 +117,38 @@ func TestAskQueryHTTPRoutesRequireWriteScope(t *testing.T) {
 	}
 }
 
+func TestCustomDashboardHTTPRoutesRequireWriteScope(t *testing.T) {
+	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/dashboards")
+	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+		t.Fatalf("GET /grc/dashboards policy = %#v, want read scope", readPolicy)
+	}
+
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/grc/dashboards"},
+		{method: http.MethodPatch, path: "/grc/dashboards/dashboard-1"},
+		{method: http.MethodDelete, path: "/grc/dashboards/dashboard-1"},
+		{method: http.MethodPost, path: "/grc/dashboards/dashboard-1/clone"},
+	} {
+		policy := httpRoutePolicyFor(tt.method, tt.path)
+		if policy.Scope != scopeDashboardsWrite || policy.AdminOnly {
+			t.Fatalf("%s %s policy = %#v, want dashboard write scope", tt.method, tt.path, policy)
+		}
+
+		readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+		if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
+			t.Fatalf("read-only principal authorized for %s %s: %v", tt.method, tt.path, err)
+		}
+
+		writer := authPrincipal{Scopes: []string{scopeDashboardsWrite}}
+		if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
+			t.Fatalf("dashboard writer rejected for %s %s: %v", tt.method, tt.path, err)
+		}
+	}
+}
+
 func TestRiskScoringConfigHTTPRoutesRequireWriteScope(t *testing.T) {
 	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/risk-scoring-config")
 	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {

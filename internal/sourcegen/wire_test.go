@@ -85,6 +85,37 @@ func TestWireSourceRegistryAppendsWhenAlphabeticallyLast(t *testing.T) {
 	}
 }
 
+// TestProjectionFuncNameMatchesGeneratorNaming guards the wire/generator
+// contract: the projector function names wire references in the projection
+// registry must be the exact unexported names the generator defines. A prior
+// bug derived PascalCase names (e.g. ConjurResourceProjections) which are
+// undefined and fail to compile.
+func TestProjectionFuncNameMatchesGeneratorNaming(t *testing.T) {
+	cases := []struct {
+		sourceID string
+		kind     string
+		want     string
+	}{
+		{"conjur", "conjur.resource", "conjurResourceProjections"},
+		{"conjur", "conjur.resource_2", "conjurResource2Projections"},
+		{"conjur", "conjur.authenticator", "conjurAuthenticatorProjections"},
+		{"hashicorp_vault", "hashicorp_vault.secret", "hashicorpVaultSecretProjections"},
+	}
+	for _, tc := range cases {
+		got := projectionFuncName(tc.sourceID, tc.kind)
+		if got != tc.want {
+			t.Errorf("projectionFuncName(%q, %q) = %q, want %q", tc.sourceID, tc.kind, got, tc.want)
+		}
+		if r := []rune(got)[0]; r < 'a' || r > 'z' {
+			t.Errorf("projectionFuncName(%q, %q) = %q must start lowercase to match the generator", tc.sourceID, tc.kind, got)
+		}
+		family := strings.TrimPrefix(tc.kind, tc.sourceID+".")
+		if want := lowerCamelIdentifier(tc.sourceID + "_" + family + "_projections"); got != want {
+			t.Errorf("projectionFuncName(%q, %q) = %q diverged from generator formula %q", tc.sourceID, tc.kind, got, want)
+		}
+	}
+}
+
 // TestWireSourceRegistryInsertsAlphabetically covers the in-order path so both
 // insertion branches stay consistent and correctly indented.
 func TestWireSourceRegistryInsertsAlphabetically(t *testing.T) {

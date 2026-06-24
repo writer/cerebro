@@ -1,13 +1,24 @@
 package sourceprojection
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+// ProjectionHandler processes events for a specific source type or event kind.
+type ProjectionHandler interface {
+	// Handles reports which event kind prefixes this handler processes.
+	Handles() []string
+}
 
 // ProjectFunc converts one source event into graph projection records.
 type ProjectFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
@@ -20,12 +31,25 @@ type EventProjector struct {
 
 // Registry indexes projectors by event kind.
 type Registry struct {
-	projectors map[string]ProjectFunc
+	mu                              sync.RWMutex
+	projectors                      map[string]ProjectFunc
+	handlers                        map[string]ProjectionHandler
+	connectorDefinitionFingerprints map[string]string
+	connectorDefinitionKinds        map[string]map[string]struct{}
+	connectorDefinitionBases        map[string]ProjectFunc
+	connectorDefinitionProjectors   map[string]map[string]ProjectFunc
 }
 
 // NewRegistry constructs an event projection registry.
 func NewRegistry(projectors ...EventProjector) (*Registry, error) {
-	registry := &Registry{projectors: make(map[string]ProjectFunc, len(projectors))}
+	registry := &Registry{
+		projectors:                      make(map[string]ProjectFunc, len(projectors)),
+		handlers:                        make(map[string]ProjectionHandler),
+		connectorDefinitionFingerprints: map[string]string{},
+		connectorDefinitionKinds:        map[string]map[string]struct{}{},
+		connectorDefinitionBases:        map[string]ProjectFunc{},
+		connectorDefinitionProjectors:   map[string]map[string]ProjectFunc{},
+	}
 	for _, projector := range projectors {
 		kind := strings.TrimSpace(projector.Kind)
 		if kind == "" {
@@ -40,6 +64,122 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 		registry.projectors[kind] = projector.Project
 	}
 	return registry, nil
+}
+
+// RegisterConnectorDefinitions adds declarative runtime connector projectors to the registry.
+func (r *Registry) RegisterConnectorDefinitions(definitions ...connectordefinitions.Definition) {
+	if r == nil || len(definitions) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ensureConnectorDefinitionState()
+	for _, definition := range definitions {
+		sourceID := strings.TrimSpace(definition.SourceID)
+		if sourceID == "" || definition.Validation.Status == connectordefinitions.ValidationBlocked {
+			continue
+		}
+		fingerprint := connectorDefinitionProjectorFingerprint(definition)
+		if r.connectorDefinitionFingerprints[sourceID] == fingerprint {
+			continue
+		}
+		r.unregisterConnectorDefinitionProjectors(sourceID)
+		sourceProjectors := catalogRuntimeDefinitionProjectors(definition)
+		if len(sourceProjectors) == 0 {
+			continue
+		}
+		kinds := make([]string, 0, len(sourceProjectors))
+		for kind, projector := range sourceProjectors {
+			if _, ok := r.connectorDefinitionProjectors[kind]; !ok {
+				r.connectorDefinitionBases[kind] = r.projectors[kind]
+				r.connectorDefinitionProjectors[kind] = map[string]ProjectFunc{}
+			}
+			r.connectorDefinitionProjectors[kind][sourceID] = projector
+			r.projectors[kind] = connectorDefinitionDispatchProjector(r.connectorDefinitionBases[kind], r.connectorDefinitionProjectors[kind])
+			kinds = append(kinds, kind)
+		}
+		r.connectorDefinitionFingerprints[sourceID] = fingerprint
+		r.connectorDefinitionKinds[sourceID] = kindSet(kinds)
+	}
+}
+
+func (r *Registry) ensureConnectorDefinitionState() {
+	if r.connectorDefinitionFingerprints == nil {
+		r.connectorDefinitionFingerprints = map[string]string{}
+	}
+	if r.connectorDefinitionKinds == nil {
+		r.connectorDefinitionKinds = map[string]map[string]struct{}{}
+	}
+	if r.connectorDefinitionBases == nil {
+		r.connectorDefinitionBases = map[string]ProjectFunc{}
+	}
+	if r.connectorDefinitionProjectors == nil {
+		r.connectorDefinitionProjectors = map[string]map[string]ProjectFunc{}
+	}
+}
+
+func (r *Registry) unregisterConnectorDefinitionProjectors(sourceID string) {
+	kinds := r.connectorDefinitionKinds[sourceID]
+	for kind := range kinds {
+		sourceProjectors := r.connectorDefinitionProjectors[kind]
+		if sourceProjectors != nil {
+			delete(sourceProjectors, sourceID)
+			if len(sourceProjectors) > 0 {
+				r.projectors[kind] = connectorDefinitionDispatchProjector(r.connectorDefinitionBases[kind], sourceProjectors)
+				continue
+			}
+		}
+		base, ok := r.connectorDefinitionBases[kind]
+		if ok && base != nil {
+			r.projectors[kind] = base
+		} else {
+			delete(r.projectors, kind)
+		}
+		delete(r.connectorDefinitionBases, kind)
+		delete(r.connectorDefinitionProjectors, kind)
+	}
+	delete(r.connectorDefinitionKinds, sourceID)
+	delete(r.connectorDefinitionFingerprints, sourceID)
+}
+
+func connectorDefinitionDispatchProjector(base ProjectFunc, sourceProjectors map[string]ProjectFunc) ProjectFunc {
+	projectors := make(map[string]ProjectFunc, len(sourceProjectors))
+	for sourceID, projector := range sourceProjectors {
+		if projector != nil {
+			projectors[sourceID] = projector
+		}
+	}
+	return func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		if event != nil {
+			if projector := projectors[strings.TrimSpace(event.GetSourceId())]; projector != nil {
+				return projector(event)
+			}
+		}
+		if base != nil {
+			return base(event)
+		}
+		return nil, nil, nil
+	}
+}
+
+func connectorDefinitionProjectorFingerprint(definition connectordefinitions.Definition) string {
+	body, err := json.Marshal(struct {
+		SourceID         string                                `json:"source_id"`
+		ResourceFamilies []connectordefinitions.ResourceFamily `json:"resource_families"`
+	}{SourceID: strings.TrimSpace(definition.SourceID), ResourceFamilies: definition.ResourceFamilies})
+	if err != nil {
+		return strings.TrimSpace(definition.SourceID)
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+func kindSet(kinds []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(kinds))
+	for _, kind := range kinds {
+		out[kind] = struct{}{}
+	}
+	return out
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
@@ -549,6 +689,16 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"openai.usage_web_search_call":                  openAIUsageMetricProjections,
 	"openai.user":                                   openAIUserProjections,
 	"openai.user_role":                              openAIUserRoleProjections,
+	"meraki.accesspolicy":                           merakiAccesspolicyProjections,
+	"meraki.eventtype":                              merakiEventtypeProjections,
+	"meraki.merakiauthuser":                         merakiMerakiauthuserProjections,
+	"meraki.organization":                           merakiOrganizationProjections,
+	"writer.application":                            genericInventoryProjections,
+	"writer.application_graph":                      genericInventoryProjections,
+	"writer.application_job":                        genericInventoryProjections,
+	"writer.file":                                   genericInventoryProjections,
+	"writer.graph":                                  genericInventoryProjections,
+	"writer.model":                                  genericInventoryProjections,
 	"pagerduty.escalation_policy":                   pagerDutyEscalationPolicyProjections,
 	"pagerduty.integration":                         pagerDutyIntegrationProjections,
 	"pagerduty.schedule":                            genericInventoryProjections,
@@ -556,6 +706,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"pagerduty.team":                                genericInventoryProjections,
 	"pagerduty.user":                                pagerDutyUserProjections,
 	"pagerduty.vendor":                              genericInventoryProjections,
+	"probely.event":                                 probelyEventProjections,
+	"probely.framework":                             probelyFrameworkProjections,
+	"probely.needs_attention_top":                   probelyNeedsAttentionTopProjections,
+	"probely.user":                                  probelyUserProjections,
 	"slack.channel":                                 slackTeamScopedProjections,
 	"slack.team":                                    slackTeamProjections,
 	"slack.user":                                    slackUserProjections,
@@ -611,6 +765,39 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"akeyless.auth_methods": akeylessAuthMethodsProjections,
 	"akeyless.roles":        akeylessRolesProjections,
 	"akeyless.audit_events": akeylessAuditEventsProjections,
+	// conjur generated projectors (sourcegen promotion)
+	"conjur.authenticator": conjurAuthenticatorProjections,
+	"conjur.resource":      conjurResourceProjections,
+	"conjur.resource_2":    conjurResource2Projections,
+	"conjur.resource_3":    conjurResource3Projections,
+
+	// box generated projectors (sourcegen promotion)
+	"box.audit_events":   boxAuditEventsProjections,
+	"box.content_assets": boxContentAssetsProjections,
+	"box.users":          boxUsersProjections,
+
+	// asana generated projectors (sourcegen promotion)
+	"asana.audit_events": asanaAuditEventsProjections,
+	"asana.projects":     asanaProjectsProjections,
+	"asana.users":        asanaUsersProjections,
+
+	// twilio generated projectors (sourcegen promotion)
+	"twilio.accounts":     twilioAccountsProjections,
+	"twilio.audit_events": twilioAuditEventsProjections,
+	"twilio.keys":         twilioKeysProjections,
+
+	// linode generated projectors (sourcegen promotion)
+	"linode.credential": linodeCredentialProjections,
+	"linode.event":      linodeEventProjections,
+	"linode.issue":      linodeIssueProjections,
+	"linode.user":       linodeUserProjections,
+
+	// discord generated projectors (sourcegen promotion)
+	"discord.audit_log":  discordAuditLogProjections,
+	"discord.member":     discordMemberProjections,
+	"discord.permission": discordPermissionProjections,
+	"discord.role":       discordRoleProjections,
+
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 
@@ -623,11 +810,47 @@ func BuiltinRegistry() *Registry {
 	return builtinRegistry
 }
 
+// Register adds a handler for the kind prefixes it declares via Handles.
+func (r *Registry) Register(h ProjectionHandler) {
+	if r == nil || h == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.handlers == nil {
+		r.handlers = make(map[string]ProjectionHandler)
+	}
+	for _, prefix := range h.Handles() {
+		r.handlers[prefix] = h
+	}
+}
+
+// Lookup finds the handler for a given event kind by trying progressively
+// shorter prefixes until a match is found.
+func (r *Registry) Lookup(kind string) (ProjectionHandler, bool) {
+	if r == nil {
+		return nil, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.handlers == nil {
+		return nil, false
+	}
+	for i := len(kind); i > 0; i-- {
+		if h, ok := r.handlers[kind[:i]]; ok {
+			return h, true
+		}
+	}
+	return nil, false
+}
+
 // Kinds returns sorted registered event kinds.
 func (r *Registry) Kinds() []string {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	kinds := make([]string, 0, len(r.projectors))
 	for kind := range r.projectors {
 		kinds = append(kinds, kind)
@@ -644,6 +867,8 @@ func (r *Registry) Project(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	if r == nil {
 		return nil, nil, nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	project, ok := r.projectors[strings.TrimSpace(event.GetKind())]
 	if !ok {
 		return nil, nil, nil
