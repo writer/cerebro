@@ -265,11 +265,17 @@ def create_runtime_secrets(
     import_arns = import_arns or {}
 
     if api_keys is None:
+        # The application rejects any CEREBRO_API_KEYS entry that omits a
+        # tenant_id once CEREBRO_ALLOWED_TENANTS is configured. A generated key
+        # must therefore carry the same principal/tenant that
+        # _api_credentials_json_from_api_keys assigns by default
+        # (legacy-api-key-1 / writer) so a tenant-scoped stack can bootstrap
+        # without an explicitly supplied apiKeys value.
         api_keys = random.RandomPassword(
             f"{name}-api-key",
             length=48,
             special=False,
-        ).result
+        ).result.apply(lambda token: f"{token}:legacy-api-key-1:writer")
 
     api_credentials_json = pulumi.Output.secret(api_keys).apply(_api_credentials_json_from_api_keys)
     secret_values = {
