@@ -119,6 +119,20 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         self.assertIn('--output "deploy-preflight-${STACK_NAME}.json"', workflow)
         self.assertIn('--output "deploy-preflight-sec-dev.json"', workflow)
 
+    def test_static_infra_validation_checks_latest_release_promotion_compatibility(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        static_checks = workflow.split("- name: Run static checks", 1)[1].split("\n  #", 1)[0]
+
+        self.assertIn("scripts/verify_latest_runtime_contracts.py", static_checks)
+        self.assertLess(
+            static_checks.index("scripts/validate_stack_config.py"),
+            static_checks.index("scripts/verify_latest_runtime_contracts.py"),
+        )
+        self.assertLess(
+            static_checks.index("scripts/verify_latest_runtime_contracts.py"),
+            static_checks.index("python -m unittest discover -s tests"),
+        )
+
     def test_runtime_contract_download_uses_stack_specific_assets(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         contract_step = workflow.split("- name: Download and verify runtime deploy contract", 1)[1].split(
