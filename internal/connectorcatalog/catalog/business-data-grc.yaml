@@ -1452,7 +1452,7 @@ entries:
             - id: training_enrollments
               type: audit_event
               title: Training enrollments
-              families: [audit_events]
+              families: [training_enrollments]
               support: partial
               high_value: true
           pagination:

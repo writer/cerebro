@@ -142,7 +142,7 @@ func cursorParam(pagination *connectordefinitions.PaginationSpec) string {
 }
 
 func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {
-	if pagination == nil || strings.TrimSpace(pagination.Type) != "page" {
+	if pagination == nil || strings.TrimSpace(pagination.Type) != "page" || strings.TrimSpace(pagination.PageParam) == "" {
 		return ""
 	}
 	return strconv.Itoa(pagination.StartPage)

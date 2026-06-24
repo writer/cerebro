@@ -153,6 +153,56 @@ func TestSourceDefinitionUsesPagePagination(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionDoesNotSynthesizeCursorWithoutPageParam(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("cursor"); got != "" {
+			t.Fatalf("cursor query = %q, want empty", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "2" {
+			t.Fatalf("per_page query = %q, want 2", got)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "A"}, {"id": "B"}})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "bearer_token"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "audit_event"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "partial"}},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:          "page",
+				PageSizeParam: "per_page",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil", pull.NextCursor)
+	}
+}
+
 func TestSourceAuthModels(t *testing.T) {
 	tests := []struct {
 		name           string

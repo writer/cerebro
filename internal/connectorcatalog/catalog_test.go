@@ -266,6 +266,9 @@ func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
 	if enrollments.Pagination == nil || enrollments.Pagination.Type != "page" || enrollments.Pagination.PageParam != "page" || enrollments.Pagination.PageSizeParam != "per_page" || enrollments.Pagination.StartPage != 1 {
 		t.Fatalf("training enrollments pagination = %#v, want page/per_page starting at 1", enrollments.Pagination)
 	}
+	if len(enrollments.Coverage) != 1 || !hasString(enrollments.Coverage[0].Families, "training_enrollments") {
+		t.Fatalf("training enrollments coverage = %#v, want family reference to training_enrollments", enrollments.Coverage)
+	}
 }
 
 func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
