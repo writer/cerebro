@@ -525,6 +525,7 @@ func grcVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		Label:      firstAttribute(attrs, "name", "vendor_id"),
 		Attributes: grcAttributes(attrs, map[string]string{"vendor_id": vendorID, "source_system": provider}),
 	})
+	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, firstAttribute(attrs, "name"), "grc_vendor_name_alias", "0.90")
 	addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, relationHasIdentifier, firstAttribute(attrs, "website_url", "website", "url", "domain"), "grc_vendor_website_host", "0.95")
 	for _, ownerID := range []string{firstAttribute(attrs, "security_owner_user_id"), firstAttribute(attrs, "business_owner_user_id")} {
 		if ownerID == "" {

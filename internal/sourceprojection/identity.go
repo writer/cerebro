@@ -37,17 +37,20 @@ func oktaApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if err != nil {
 		return nil, nil, err
 	}
-	saasEntity, saasLink, err := oktaSaaSApplicationProjection(event)
+	saasEntities, saasLinks, err := oktaSaaSApplicationProjections(event)
 	if err != nil {
 		return nil, nil, err
 	}
-	if saasEntity != nil {
-		entities = append(entities, saasEntity)
+	entityMap := map[string]*ports.ProjectedEntity{}
+	linkMap := map[string]*ports.ProjectedLink{}
+	for _, entity := range append(entities, saasEntities...) {
+		addEntity(entityMap, entity)
 	}
-	if saasLink != nil {
-		links = append(links, saasLink)
+	for _, link := range append(links, saasLinks...) {
+		addLink(linkMap, link)
 	}
-	return entities, links, nil
+	projectedEntities, projectedLinks := entitiesAndLinks(entityMap, linkMap)
+	return projectedEntities, projectedLinks, nil
 }
 
 func oktaPolicyRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -62,14 +65,22 @@ func oktaAdminRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	return identityRoleAssignmentProjections(event, oktaIdentityProfile)
 }
 
-func oktaSaaSApplicationProjection(event *cerebrov1.EventEnvelope) (*ports.ProjectedEntity, *ports.ProjectedLink, error) {
+type oktaSaaSApplicationClassification struct {
+	Active         bool
+	Confidence     string
+	LifecycleState string
+	Reasons        []string
+}
+
+func oktaSaaSApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
 	appID := firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"])
-	if appID == "" || !oktaApplicationLooksLikeSaaS(attributes) {
+	classification, ok := oktaSaaSApplicationClassificationFor(attributes)
+	if appID == "" || !ok {
 		return nil, nil, nil
 	}
 	appURN := identityApplicationURN(tenantID, oktaIdentityProfile.Provider, appID)
@@ -77,44 +88,63 @@ func oktaSaaSApplicationProjection(event *cerebrov1.EventEnvelope) (*ports.Proje
 	if appURN == "" || saasURN == "" {
 		return nil, nil, nil
 	}
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
 	appName := firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], appID)
+	matchReason := strings.Join(classification.Reasons, ",")
 	saasAttributes := map[string]string{
-		"app_id":          appID,
-		"app_label":       strings.TrimSpace(attributes["app_label"]),
-		"app_name":        appName,
-		"client_id":       strings.TrimSpace(attributes["client_id"]),
-		"domain":          strings.TrimSpace(attributes["domain"]),
-		"name":            strings.TrimSpace(attributes["name"]),
-		"oauth2":          strings.TrimSpace(attributes["oauth2"]),
-		"saml":            strings.TrimSpace(attributes["saml"]),
-		"sign_on_mode":    strings.TrimSpace(attributes["sign_on_mode"]),
-		"source_app_id":   appID,
-		"source_provider": oktaIdentityProfile.Provider,
-		"status":          strings.TrimSpace(attributes["status"]),
+		"active":                         boolString(classification.Active),
+		"app_id":                         appID,
+		"app_label":                      strings.TrimSpace(attributes["app_label"]),
+		"app_name":                       appName,
+		"classification_confidence":      classification.Confidence,
+		"client_id":                      strings.TrimSpace(attributes["client_id"]),
+		"domain":                         strings.TrimSpace(attributes["domain"]),
+		"lifecycle_state":                classification.LifecycleState,
+		"match_reason":                   matchReason,
+		"name":                           strings.TrimSpace(attributes["name"]),
+		"oauth2":                         strings.TrimSpace(attributes["oauth2"]),
+		"post_logout_redirect_uri_hosts": strings.TrimSpace(attributes["post_logout_redirect_uri_hosts"]),
+		"redirect_uri_hosts":             strings.TrimSpace(attributes["redirect_uri_hosts"]),
+		"saml":                           strings.TrimSpace(attributes["saml"]),
+		"sign_on_mode":                   strings.TrimSpace(attributes["sign_on_mode"]),
+		"source_app_id":                  appID,
+		"source_provider":                oktaIdentityProfile.Provider,
+		"status":                         strings.TrimSpace(attributes["status"]),
 	}
 	trimEmptyProjectionAttributes(saasAttributes)
-	entity := &ports.ProjectedEntity{
+	addEntity(entities, &ports.ProjectedEntity{
 		URN:        saasURN,
 		TenantID:   tenantID,
 		SourceID:   event.GetSourceId(),
 		EntityType: "saas.application",
 		Label:      appName,
 		Attributes: saasAttributes,
-	}
-	link := projectedLink(tenantID, event.GetSourceId(), appURN, saasURN, relationRepresents, map[string]string{
+	})
+	linkAttrs := map[string]string{
+		"active":          boolString(classification.Active),
+		"confidence":      classification.Confidence,
 		"event_id":        event.GetId(),
+		"match_reason":    matchReason,
 		"match_type":      "okta_saas_application",
 		"source_app_id":   appID,
 		"source_provider": oktaIdentityProfile.Provider,
-	})
-	return entity, link, nil
+	}
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, saasURN, relationRepresents, linkAttrs))
+	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, saasURN, appName, "okta_saas_application_name", "0.80")
+	for _, host := range splitCSV(attributes["redirect_uri_hosts"]) {
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, saasURN, relationHasIdentifier, host, "okta_saas_application_redirect_host", "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, "okta_saas_application_redirect_domain", "0.95")
+	}
+	for _, host := range splitCSV(attributes["post_logout_redirect_uri_hosts"]) {
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, saasURN, relationHasIdentifier, host, "okta_saas_application_post_logout_redirect_host", "0.90")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, "okta_saas_application_post_logout_redirect_domain", "0.90")
+	}
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
 }
 
-func oktaApplicationLooksLikeSaaS(attributes map[string]string) bool {
-	status := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["status"], "active")))
-	if status != "active" && status != "enabled" {
-		return false
-	}
+func oktaSaaSApplicationClassificationFor(attributes map[string]string) (oktaSaaSApplicationClassification, bool) {
 	name := strings.ToLower(strings.Join([]string{
 		attributes["app_name"],
 		attributes["app_label"],
@@ -122,24 +152,39 @@ func oktaApplicationLooksLikeSaaS(attributes map[string]string) bool {
 	}, " "))
 	for _, marker := range []string{"test", "sandbox", "dev", "internal"} {
 		if strings.Contains(name, marker) {
-			return false
+			return oktaSaaSApplicationClassification{}, false
 		}
+	}
+	status := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["status"], "active")))
+	classification := oktaSaaSApplicationClassification{
+		Active:         status == "active" || status == "enabled",
+		Confidence:     "0.75",
+		LifecycleState: status,
+	}
+	if classification.LifecycleState == "" {
+		classification.LifecycleState = "active"
 	}
 	signOnMode := strings.ToLower(strings.TrimSpace(attributes["sign_on_mode"]))
 	for _, marker := range []string{"saml", "oidc", "oauth", "openid"} {
-		if strings.Contains(signOnMode, marker) || strings.Contains(name, marker) {
-			return true
+		if strings.Contains(signOnMode, marker) {
+			classification.Reasons = append(classification.Reasons, "sign_on_mode_"+marker)
+			classification.Confidence = "0.95"
 		}
 	}
-	if projectionBool(attributes["saml"]) || projectionBool(attributes["oauth2"]) {
-		return true
+	if projectionBool(attributes["saml"]) {
+		classification.Reasons = append(classification.Reasons, "saml_enabled")
+		classification.Confidence = "0.95"
+	}
+	if projectionBool(attributes["oauth2"]) {
+		classification.Reasons = append(classification.Reasons, "oauth2_enabled")
+		classification.Confidence = "0.95"
 	}
 	for _, marker := range []string{"org2org", "vendor", "partner", "supplier", "contractor", "external"} {
 		if strings.Contains(name, marker) {
-			return true
+			classification.Reasons = append(classification.Reasons, "name_hint_"+marker)
 		}
 	}
-	return false
+	return classification, len(classification.Reasons) != 0
 }
 
 func awsIAMUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

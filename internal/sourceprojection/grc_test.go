@@ -52,6 +52,7 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	vendorURN := "urn:cerebro:writer:vendor:vanta:vendor-1"
 	ownerURN := "urn:cerebro:writer:user:vanta:user-1"
 	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
+	aliasURN := "urn:cerebro:writer:vendor_alias:acme-saas"
 	if entity := state.entities[vendorURN]; entity == nil || entity.EntityType != "vendor" {
 		t.Fatalf("vendor entity missing: %#v", entity)
 	}
@@ -64,8 +65,12 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	if entity := state.entities[hostURN]; entity == nil || entity.EntityType != "internet.host" {
 		t.Fatalf("internet host entity missing: %#v", entity)
 	}
+	if entity := state.entities[aliasURN]; entity == nil || entity.EntityType != "vendor.alias" {
+		t.Fatalf("vendor alias entity missing: %#v", entity)
+	}
 	assertProjectedLink(t, state, vendorURN, relationOwnedBy, ownerURN)
 	assertProjectedLink(t, state, vendorURN, relationHasIdentifier, hostURN)
+	assertProjectedLink(t, state, vendorURN, relationHasIdentifier, aliasURN)
 }
 
 func TestProjectGRCVendorLinksAccountManagerEmail(t *testing.T) {

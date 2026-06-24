@@ -882,12 +882,13 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 7 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 7", result.EntitiesProjected)
+	if result.EntitiesProjected != 8 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 8", result.EntitiesProjected)
 	}
 
 	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
 	saasURN := "urn:cerebro:writer:saas_application:okta:0oa-client"
+	aliasURN := "urn:cerebro:writer:vendor_alias:production-client"
 	orgURN := "urn:cerebro:writer:okta_org:writer.okta.com"
 	entity, ok := state.entities[clientURN]
 	if !ok {
@@ -916,20 +917,30 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 		t.Fatalf("saas entity type = %q, want saas.application", got)
 	}
 	saasAttributes := map[string]string{
-		"app_id":          "0oa-client",
-		"app_name":        "Production Client",
-		"source_app_id":   "0oa-client",
-		"source_provider": "okta",
-		"status":          "ACTIVE",
-		"sign_on_mode":    "OPENID_CONNECT",
+		"active":                    "true",
+		"app_id":                    "0oa-client",
+		"app_name":                  "Production Client",
+		"classification_confidence": "0.95",
+		"lifecycle_state":           "active",
+		"match_reason":              "sign_on_mode_openid",
+		"source_app_id":             "0oa-client",
+		"source_provider":           "okta",
+		"status":                    "ACTIVE",
+		"sign_on_mode":              "OPENID_CONNECT",
 	}
 	for key, want := range saasAttributes {
 		if got := saasEntity.Attributes[key]; got != want {
 			t.Fatalf("saas Attributes[%q] = %q, want %q", key, got, want)
 		}
 	}
+	if alias := state.entities[aliasURN]; alias == nil || alias.EntityType != "vendor.alias" {
+		t.Fatalf("vendor alias entity missing or wrong: %#v", alias)
+	}
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, clientURN, relationRepresents, saasURN)
+	assertProjectedLink(t, state, saasURN, relationHasIdentifier, aliasURN)
+	assertProjectedLink(t, state, saasURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:app.example.com")
+	assertProjectedLink(t, state, saasURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:logout.example.com")
 	assertProjectedLink(t, state, clientURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:app.example.com")
 	assertProjectedLink(t, state, clientURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:logout.example.com")
 	assertProjectedLink(t, state, clientURN, relationContains, "urn:cerebro:writer:okta_oauth_client:0oa-client-id")
@@ -944,6 +955,7 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 		wantSaaS   bool
 		wantAppID  string
 		wantAppURN string
+		wantActive string
 	}{
 		{
 			name: "active saml app",
@@ -956,6 +968,7 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 			wantSaaS:   true,
 			wantAppID:  "0oa-saml",
 			wantAppURN: "urn:cerebro:writer:okta_application:0oa-saml",
+			wantActive: "true",
 		},
 		{
 			name: "enabled vendor name",
@@ -967,6 +980,7 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 			wantSaaS:   true,
 			wantAppID:  "0oa-vendor",
 			wantAppURN: "urn:cerebro:writer:okta_application:0oa-vendor",
+			wantActive: "true",
 		},
 		{
 			name: "inactive saml app",
@@ -976,8 +990,10 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 				"sign_on_mode": "SAML_2_0",
 				"status":       "INACTIVE",
 			},
+			wantSaaS:   true,
 			wantAppID:  "0oa-inactive",
 			wantAppURN: "urn:cerebro:writer:okta_application:0oa-inactive",
+			wantActive: "false",
 		},
 		{
 			name: "internal dev sandbox app",
@@ -1016,6 +1032,10 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 				t.Fatalf("saas entity exists = %v, want %v; entities=%v", exists, tt.wantSaaS, state.entities)
 			}
 			if tt.wantSaaS {
+				if got := state.entities[saasURN].Attributes["active"]; got != tt.wantActive {
+					t.Fatalf("saas active = %q, want %q", got, tt.wantActive)
+				}
+				assertProjectedLink(t, state, saasURN, relationHasIdentifier, "urn:cerebro:writer:vendor_alias:"+vendorAliasKey(attrs["app_name"]))
 				assertProjectedLink(t, state, tt.wantAppURN, relationRepresents, saasURN)
 				return
 			}
