@@ -22,6 +22,8 @@ type Family struct {
 	CursorParam           string
 	NextCursorKeys        []string
 	HasMoreKey            string
+	PagePagination        bool
+	PageStart             int
 	URNKind               string
 	IDKeys                []string
 	TimestampKeys         []string
