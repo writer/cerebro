@@ -1,0 +1,666 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .slide {
+        font-family: Arial, Helvetica, sans-serif;
+        color: #14213d;
+        background: #f7f9fc;
+        padding: 42px 54px;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+      }
+      .slide.dark {
+        color: #ffffff;
+        background: linear-gradient(135deg, #09101f 0%, #14213d 58%, #2256b5 100%);
+      }
+      .slide.white {
+        background: #ffffff;
+      }
+      h1 {
+        font-size: 39px;
+        line-height: 1.08;
+        margin: 0 0 14px;
+        letter-spacing: -1px;
+      }
+      h2 {
+        font-size: 29px;
+        line-height: 1.12;
+        margin: 0 0 16px;
+        letter-spacing: -0.4px;
+      }
+      h3 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      p {
+        font-size: 21px;
+        line-height: 1.36;
+        margin: 0;
+      }
+      ul {
+        margin: 14px 0 0;
+        padding-left: 26px;
+        font-size: 20px;
+        line-height: 1.33;
+      }
+      li {
+        margin: 7px 0;
+      }
+      code {
+        font-family: Menlo, Consolas, monospace;
+        background: #eef4ff;
+        color: #163f8f;
+        border-radius: 5px;
+        padding: 2px 5px;
+        font-size: 0.88em;
+      }
+      .dark code {
+        background: rgba(255, 255, 255, 0.14);
+        color: #dbe8ff;
+      }
+      .eyebrow {
+        color: #2f6fed;
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1.7px;
+        margin-bottom: 10px;
+      }
+      .dark .eyebrow {
+        color: #9dc1ff;
+      }
+      .subtitle {
+        font-size: 23px;
+        color: #d8e4ff;
+        width: 82%;
+      }
+      .muted {
+        color: #5f6f89;
+      }
+      .dark .muted {
+        color: #d8e4ff;
+      }
+      .accent {
+        color: #2f6fed;
+        font-weight: 800;
+      }
+      .dark .accent {
+        color: #9dc1ff;
+      }
+      .footer {
+        position: absolute;
+        bottom: 20px;
+        left: 54px;
+        right: 54px;
+        font-size: 12.5px;
+        color: #7a879a;
+        display: flex;
+        justify-content: space-between;
+      }
+      .dark .footer {
+        color: #b8c9ee;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 22px;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 14px;
+        padding: 16px;
+        min-height: 118px;
+        box-shadow: 0 8px 20px rgba(20, 33, 61, 0.07);
+      }
+      .card p {
+        font-size: 17px;
+        color: #526179;
+      }
+      .two {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 20px;
+      }
+      .panel {
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 15px;
+        padding: 18px;
+      }
+      .panel p,
+      .panel li {
+        font-size: 17.5px;
+      }
+      .repo-map {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 10px 18px;
+        margin-top: 20px;
+        font-size: 18px;
+      }
+      .path {
+        font-family: Menlo, Consolas, monospace;
+        font-size: 15px;
+        color: #2157bf;
+        background: #eaf1ff;
+        padding: 8px 10px;
+        border-radius: 8px;
+      }
+      .desc {
+        color: #3a4961;
+        padding-top: 7px;
+      }
+      .flow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 24px;
+      }
+      .node {
+        width: 118px;
+        min-height: 74px;
+        border-radius: 13px;
+        background: #ffffff;
+        border: 1px solid #d8e2f0;
+        padding: 10px;
+        text-align: center;
+        box-shadow: 0 8px 18px rgba(20, 33, 61, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15.5px;
+        font-weight: 800;
+      }
+      .arrow {
+        color: #2f6fed;
+        font-size: 26px;
+        font-weight: 800;
+      }
+      .step-list {
+        counter-reset: step;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 18px;
+        margin-top: 20px;
+      }
+      .step {
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 14px;
+        padding: 14px 14px 14px 52px;
+        min-height: 72px;
+        position: relative;
+      }
+      .step:before {
+        counter-increment: step;
+        content: counter(step);
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: #2f6fed;
+        color: #ffffff;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+      }
+      .step strong {
+        display: block;
+        font-size: 17px;
+        margin-bottom: 4px;
+      }
+      .step span {
+        color: #526179;
+        font-size: 15px;
+        line-height: 1.25;
+      }
+      .matrix {
+        display: grid;
+        grid-template-columns: 0.9fr 1.2fr 1.2fr;
+        border: 1px solid #dbe4f0;
+        border-radius: 14px;
+        overflow: hidden;
+        margin-top: 20px;
+        background: #ffffff;
+      }
+      .cell {
+        padding: 13px;
+        border-right: 1px solid #dbe4f0;
+        border-bottom: 1px solid #dbe4f0;
+        font-size: 16px;
+        line-height: 1.25;
+      }
+      .cell:nth-child(3n) {
+        border-right: 0;
+      }
+      .head {
+        background: #eaf1ff;
+        color: #163f8f;
+        font-weight: 800;
+      }
+      .agenda {
+        display: grid;
+        grid-template-columns: 62px 1fr;
+        gap: 10px 16px;
+        margin-top: 18px;
+      }
+      .time {
+        color: #2f6fed;
+        font-size: 17px;
+        font-weight: 800;
+      }
+      .topic {
+        font-size: 18px;
+        line-height: 1.23;
+      }
+      .callout {
+        border-left: 6px solid #2f6fed;
+        padding: 13px 0 13px 17px;
+        margin-top: 20px;
+        font-size: 22px;
+        line-height: 1.26;
+        background: #f1f6ff;
+      }
+      .dark .callout {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .checklist {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 18px;
+        margin-top: 22px;
+      }
+      .check {
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 12px;
+        padding: 13px 14px;
+        font-size: 17px;
+        line-height: 1.25;
+      }
+      .check:before {
+        content: "✓ ";
+        color: #2f6fed;
+        font-weight: 900;
+      }
+      .tag {
+        display: inline-block;
+        padding: 7px 11px;
+        background: #e8f0ff;
+        color: #2157bf;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 800;
+        margin: 4px 5px 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide dark" data-notes="Open by saying that this is an onboarding walkthrough, not a deep dive into every package. The goal is to give new contributors a reliable mental model for where data enters, where it becomes durable, and where it is safe to build.">
+      <div class="eyebrow">Cerebro Lunch & Learn</div>
+      <h1>Cerebro’s Durable Signal Pipeline</h1>
+      <p class="subtitle">A practical onboarding guide to sources, runtime sync, durable storage, graph projection, and findings.</p>
+      <div class="footer">
+        <span>github.com/writer/cerebro</span>
+        <span>New-codebase walkthrough</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="Keep this plain. Cerebro is best understood as the system that turns many external signals into one trustworthy operational substrate. Avoid starting with stores or internals until the audience understands the job of the system.">
+      <div class="eyebrow">Start here</div>
+      <h1>What Cerebro does, in plain language</h1>
+      <p>Cerebro collects operational and security signals from external systems, normalizes them into durable records, projects useful relationships into a graph, and exposes findings, reports, APIs, CLI commands, SDKs, and MCP tools on top.</p>
+      <div class="cards">
+        <div class="card">
+          <h3>Collect</h3>
+          <p>Cloud, SaaS, identity, endpoint, vulnerability, compliance, and workflow signals.</p>
+        </div>
+        <div class="card">
+          <h3>Make durable</h3>
+          <p>Persist current state, append replayable events, and track runtime progress.</p>
+        </div>
+        <div class="card">
+          <h3>Explain risk</h3>
+          <p>Produce graph context, durable findings, evidence, reports, and actions.</p>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Entry points: README.md, docs/start/getting-started.md</span>
+        <span>2</span>
+      </div>
+    </section>
+
+    <section class="slide" data-notes="This slide orients people before code. Emphasize that new contributors should first identify whether they are changing an external integration, runtime behavior, API boundary, finding rule, graph query, or operations workflow.">
+      <div class="eyebrow">Repo map</div>
+      <h1>Where to look first</h1>
+      <div class="repo-map">
+        <div class="path">sources/*</div>
+        <div class="desc">Built-in integrations and source catalogs.</div>
+        <div class="path">internal/sourcecdk</div>
+        <div class="desc">The contract every source implements.</div>
+        <div class="path">internal/sourceruntime</div>
+        <div class="desc">Persisted runtime config, sync, cursor, checkpoint, append, and projection flow.</div>
+        <div class="path">internal/findings</div>
+        <div class="desc">Rule registry, finding evaluation, durable finding records, and generated policy rules.</div>
+        <div class="path">internal/bootstrap</div>
+        <div class="desc">HTTP, Connect RPC, auth, request mapping, and dependency wiring.</div>
+        <div class="path">docs/engineering/non-goals.md</div>
+        <div class="desc">Scope guardrails reviewers expect contributors to know.</div>
+      </div>
+      <div class="footer">
+        <span>Rule of thumb: domain behavior should live behind a domain package, not in bootstrap.</span>
+        <span>3</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="Define shared vocabulary early. People new to Cerebro often confuse source events, claims, findings, and graph rows. Make clear that each layer has a different responsibility.">
+      <div class="eyebrow">Vocabulary</div>
+      <h1>The nouns you need before reading code</h1>
+      <div class="cards">
+        <div class="card">
+          <h3>Source</h3>
+          <p>Integration code that checks config, discovers objects, and reads pages of typed events.</p>
+        </div>
+        <div class="card">
+          <h3>Runtime</h3>
+          <p>A persisted, tenant-scoped source configuration plus progress state.</p>
+        </div>
+        <div class="card">
+          <h3>Event</h3>
+          <p>A replayable observation emitted by a source and accepted by runtime sync.</p>
+        </div>
+        <div class="card">
+          <h3>Claim</h3>
+          <p>Normalized state produced by runtime or SDK paths.</p>
+        </div>
+        <div class="card">
+          <h3>Finding</h3>
+          <p>A durable, remediable risk state with lineage, fingerprinting, and evidence.</p>
+        </div>
+        <div class="card">
+          <h3>Graph projection</h3>
+          <p>Neo4j rows rebuilt from durable state so relationships can be queried safely.</p>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Keep these separate: raw event, current state, graph projection, finding outcome.</span>
+        <span>4</span>
+      </div>
+    </section>
+
+    <section class="slide" data-notes="Use the example as the running story for the rest of the deck. The exact provider is less important than the shape: a source observes something, runtime sync accepts it, projection updates relationships, and a rule can later evaluate risk.">
+      <div class="eyebrow">Running example</div>
+      <h1>Follow one signal through the system</h1>
+      <p>Imagine a source observes: <span class="accent">a privileged identity now has access to a sensitive resource</span>.</p>
+      <div class="flow">
+        <div class="node">Provider API page</div>
+        <div class="arrow">→</div>
+        <div class="node">Source event</div>
+        <div class="arrow">→</div>
+        <div class="node">Append log</div>
+        <div class="arrow">→</div>
+        <div class="node">Current state</div>
+        <div class="arrow">→</div>
+        <div class="node">Graph relation</div>
+        <div class="arrow">→</div>
+        <div class="node">Finding</div>
+      </div>
+      <ul>
+        <li>The provider page is not trusted as durable history.</li>
+        <li>The source event becomes replayable only after runtime sync accepts and appends it.</li>
+        <li>The graph helps answer “what can this identity reach?”</li>
+        <li>The finding is the durable, actionable risk outcome.</li>
+      </ul>
+      <div class="footer">
+        <span>Use this example while reading sourcecdk and sourceruntime code.</span>
+        <span>5</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="Show the Source interface and explain that this boundary keeps external systems from leaking into the rest of Cerebro. Sources should be small and deterministic from the platform point of view.">
+      <div class="eyebrow">Part 1: Source CDK</div>
+      <h1>Sources are the only path to the outside world</h1>
+      <div class="two">
+        <div class="panel">
+          <h3>The source contract</h3>
+          <ul>
+            <li><code>Spec()</code>: stable identity and metadata.</li>
+            <li><code>Check()</code>: validate config and credentials.</li>
+            <li><code>Discover()</code>: list discoverable objects.</li>
+            <li><code>Read()</code>: return one page of events plus cursor data.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>The boundary</h3>
+          <ul>
+            <li>No direct store writes.</li>
+            <li>No graph projection.</li>
+            <li>No finding IDs or runtime IDs.</li>
+            <li>No custom persistence or replay logic.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">A source describes what it saw. Cerebro decides how to persist, replay, project, and evaluate it.</div>
+      <div class="footer">
+        <span>Code: internal/sourcecdk/source.go and sources/*/catalog.yaml</span>
+        <span>6</span>
+      </div>
+    </section>
+
+    <section class="slide" data-notes="Walk slowly through this sequence. The order is the lesson: read, validate, append, project, then advance. If the order changes, replay and recovery guarantees become harder to reason about.">
+      <div class="eyebrow">Part 2: Runtime sync</div>
+      <h1>Runtime sync turns source pages into durable progress</h1>
+      <div class="step-list">
+        <div class="step"><strong>Load runtime</strong><span>Find the source ID, tenant ID, config, cursor, and checkpoint.</span></div>
+        <div class="step"><strong>Resolve config</strong><span>Handle safe <code>env:</code> references and redact sensitive values.</span></div>
+        <div class="step"><strong>Read one page</strong><span>Call the source with the current cursor and checkpoint.</span></div>
+        <div class="step"><strong>Validate events</strong><span>Accept well-formed events and quarantine invalid records.</span></div>
+        <div class="step"><strong>Append first</strong><span>Write accepted events to JetStream before projection.</span></div>
+        <div class="step"><strong>Project, then advance</strong><span>Update projections, then move cursor/checkpoint progress.</span></div>
+      </div>
+      <div class="footer">
+        <span>Code: internal/sourceruntime/service.go</span>
+        <span>7</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="New contributors should understand that the stores are not interchangeable. This slide explains why Cerebro is not simply writing the same data three times.">
+      <div class="eyebrow">Part 3: Durability</div>
+      <h1>Each store has one job</h1>
+      <div class="matrix">
+        <div class="cell head">Store</div>
+        <div class="cell head">What it is for</div>
+        <div class="cell head">What it is not for</div>
+        <div class="cell"><strong>JetStream</strong></div>
+        <div class="cell">Append log for source runtime sync, replay, and workflow events.</div>
+        <div class="cell">Not a query model for current findings or reports.</div>
+        <div class="cell"><strong>Postgres</strong></div>
+        <div class="cell">Current state: runtimes, claims, findings, evidence, reports, evaluation runs.</div>
+        <div class="cell">Not the place for arbitrary graph traversal.</div>
+        <div class="cell"><strong>Neo4j/Aura</strong></div>
+        <div class="cell">Graph projection and bounded relationship queries.</div>
+        <div class="cell">Not the source of truth and not a fourth durable store.</div>
+      </div>
+      <div class="callout">If Neo4j disappears, Cerebro should be able to rebuild graph state from durable records.</div>
+      <div class="footer">
+        <span>Docs: docs/engineering/durability-contract.md</span>
+        <span>8</span>
+      </div>
+    </section>
+
+    <section class="slide" data-notes="This slide makes failure behavior concrete. The most important idea is that cursor advancement is a commit signal, so it must not happen too early.">
+      <div class="eyebrow">Failure model</div>
+      <h1>Why the sync order matters</h1>
+      <div class="matrix">
+        <div class="cell head">If this fails</div>
+        <div class="cell head">What should be true</div>
+        <div class="cell head">Why it matters</div>
+        <div class="cell">Source read</div>
+        <div class="cell">No append, no projection, no cursor advance.</div>
+        <div class="cell">The page can be retried safely.</div>
+        <div class="cell">Event validation</div>
+        <div class="cell">Bad records are rejected or quarantined.</div>
+        <div class="cell">Invalid shape does not poison durable state.</div>
+        <div class="cell">Append</div>
+        <div class="cell">Projection and cursor advancement do not proceed.</div>
+        <div class="cell">No unreplayable graph or current-state write.</div>
+        <div class="cell">Projection</div>
+        <div class="cell">Cursor does not advance until configured projection succeeds.</div>
+        <div class="cell">Operators can repair without losing the page.</div>
+      </div>
+      <div class="footer">
+        <span>Reviewer shortcut: ask “what is the durable record and when does progress advance?”</span>
+        <span>9</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="Explain findings with user value. The point is not to mirror everything vendors emit. Cerebro findings should tell a human what risk exists, where it is anchored, why it matters, and how it can be remediated.">
+      <div class="eyebrow">Part 4: Findings</div>
+      <h1>A finding is an actionable risk state</h1>
+      <div class="two">
+        <div class="panel">
+          <h3>Good finding shape</h3>
+          <ul>
+            <li>Current condition, not just an event that happened once.</li>
+            <li>Stable fingerprint anchored to a durable resource or graph path.</li>
+            <li>Clear affected asset, identity, control, or owner.</li>
+            <li>Evidence and enough context to remediate.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>How evaluation works</h3>
+          <ul>
+            <li>Rules are registered in a discoverable catalog.</li>
+            <li>One rule is evaluated per request.</li>
+            <li>Evaluation runs are persisted for auditability.</li>
+            <li>Clients read persisted findings after evaluation.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">Do not turn every upstream alert into a finding. Turn durable, remediable risk into a finding.</div>
+      <div class="footer">
+        <span>Docs: docs/domains/findings-platform-architecture.md</span>
+        <span>10</span>
+      </div>
+    </section>
+
+    <section class="slide" data-notes="This slide connects graph projection to findings. Emphasize that graph context makes risk composition possible, but graph writes must stay governed because stale or unsafe graph data makes conclusions untrustworthy.">
+      <div class="eyebrow">Part 5: Graph</div>
+      <h1>The graph answers relationship questions</h1>
+      <p>Neo4j projection helps Cerebro answer questions that are hard to express from one raw event or one current-state row.</p>
+      <div class="cards">
+        <div class="card">
+          <h3>Reachability</h3>
+          <p>What can this identity, endpoint, package, account, or resource reach?</p>
+        </div>
+        <div class="card">
+          <h3>Impact</h3>
+          <p>If this vulnerability or exposure exists, what assets or owners are affected?</p>
+        </div>
+        <div class="card">
+          <h3>Risk composition</h3>
+          <p>Which separate signals combine into a higher-priority risk path?</p>
+        </div>
+      </div>
+      <ul>
+        <li>Use platform routes and bounded graph operations where possible.</li>
+        <li>LLM-authored Cypher is read-only, tenant-scoped, procedure-free, and <code>LIMIT</code>-bounded.</li>
+        <li>Rebuilds should start as dry runs and rely on durable records.</li>
+      </ul>
+      <div class="footer">
+        <span>Docs: docs/domains/graph-operations.md, internal/graphagent/validator.go</span>
+        <span>11</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="Make this slide practical. These are the traps that can make a local change look fine while breaking replay, graph trust, finding stability, or operational safety later.">
+      <div class="eyebrow">Common mistakes</div>
+      <h1>What to avoid when changing Cerebro</h1>
+      <div class="checklist">
+        <div class="check">Putting provider-specific orchestration into platform services.</div>
+        <div class="check">Letting a source write to Postgres, JetStream, or Neo4j directly.</div>
+        <div class="check">Advancing a cursor before accepted events are safely appended and projected.</div>
+        <div class="check">Treating Neo4j as authoritative current state.</div>
+        <div class="check">Creating findings that mirror raw vendor alerts one-to-one.</div>
+        <div class="check">Fingerprinting findings on event IDs, timestamps, run IDs, or display names.</div>
+        <div class="check">Adding graph queries without tenant scope, limits, or rebuild thinking.</div>
+        <div class="check">Growing bootstrap with domain behavior instead of request mapping.</div>
+      </div>
+      <div class="footer">
+        <span>Docs: docs/engineering/non-goals.md and AGENTS.md finding guidance</span>
+        <span>12</span>
+      </div>
+    </section>
+
+    <section class="slide" data-notes="Use this as a reusable code review checklist. Encourage reviewers to ask these questions even for small changes, because many correctness issues appear at the seams between packages.">
+      <div class="eyebrow">Reviewer checklist</div>
+      <h1>Before approving a Cerebro change, ask</h1>
+      <div class="checklist">
+        <div class="check">What is the durable record for this write?</div>
+        <div class="check">Can graph state be rebuilt without treating Neo4j as source of truth?</div>
+        <div class="check">Does runtime progress advance only after safe append and projection?</div>
+        <div class="check">Is tenant scope enforced before domain logic runs?</div>
+        <div class="check">Does source code stay inside the Source CDK boundary?</div>
+        <div class="check">Is finding identity stable across replay and provider quirks?</div>
+        <div class="check">Is bootstrap only mapping transport, auth, and dependencies?</div>
+        <div class="check">Does this cross a documented non-goal?</div>
+      </div>
+      <div class="footer">
+        <span>Keep this slide open during source, finding, graph, and workflow PR reviews.</span>
+        <span>13</span>
+      </div>
+    </section>
+
+    <section class="slide white" data-notes="This agenda is for the live session. The first half builds the mental model, the middle walks the code path, and the end gives people review habits they can use immediately.">
+      <div class="eyebrow">Suggested 75-minute flow</div>
+      <h1>How to run the session</h1>
+      <div class="agenda">
+        <div class="time">10m</div>
+        <div class="topic"><strong>Plain-language overview</strong><br><span class="muted">What Cerebro collects, stores, projects, and exposes.</span></div>
+        <div class="time">10m</div>
+        <div class="topic"><strong>Repo and vocabulary map</strong><br><span class="muted">Sources, runtimes, events, claims, findings, graph projection.</span></div>
+        <div class="time">15m</div>
+        <div class="topic"><strong>Source CDK walkthrough</strong><br><span class="muted">Read <code>internal/sourcecdk/source.go</code> together.</span></div>
+        <div class="time">20m</div>
+        <div class="topic"><strong>Runtime sync walkthrough</strong><br><span class="muted">Trace one page through read, validate, append, project, advance.</span></div>
+        <div class="time">10m</div>
+        <div class="topic"><strong>Findings and graph</strong><br><span class="muted">Explain risk states, graph context, and safety constraints.</span></div>
+        <div class="time">10m</div>
+        <div class="topic"><strong>Review drill</strong><br><span class="muted">Apply the checklist to a recent source, finding, or graph PR.</span></div>
+      </div>
+      <div class="footer">
+        <span>Format: short explanations, code walkthrough, then reviewer practice.</span>
+        <span>14</span>
+      </div>
+    </section>
+
+    <section class="slide dark" data-notes="Close by asking people to name one invariant they will remember. The ideal answers are source boundary, append before projection, cursor after projection, Neo4j as projection, findings as durable risk states, and tenant-scoped graph safety.">
+      <div class="eyebrow">Wrap-up</div>
+      <h1>The core mental model</h1>
+      <p class="subtitle">Cerebro is trustworthy when external signals become replayable events, current state remains durable, graph data stays rebuildable, and findings represent stable risk.</p>
+      <div style="margin-top: 28px;">
+        <span class="tag">Source boundary</span>
+        <span class="tag">Append before project</span>
+        <span class="tag">Progress after projection</span>
+        <span class="tag">Neo4j is projection</span>
+        <span class="tag">Findings are risk states</span>
+        <span class="tag">Tenant-scoped graph safety</span>
+      </div>
+      <div class="callout">One question to leave with: “What invariant could this change accidentally violate?”</div>
+      <div class="footer">
+        <span>Next step: read a small source and trace its events through runtime sync.</span>
+        <span>15</span>
+      </div>
+    </section>
+  </body>
+</html>

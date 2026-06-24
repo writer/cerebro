@@ -1,0 +1,444 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .slide {
+        font-family: Arial, Helvetica, sans-serif;
+        color: #14213d;
+        background: #f7f9fc;
+        padding: 46px 56px;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+      }
+      .slide.dark {
+        color: #ffffff;
+        background: linear-gradient(135deg, #0b1020 0%, #14213d 58%, #1f4b99 100%);
+      }
+      .slide.white {
+        background: #ffffff;
+      }
+      h1 {
+        font-size: 42px;
+        line-height: 1.06;
+        margin: 0 0 16px;
+        letter-spacing: -1.1px;
+      }
+      h2 {
+        font-size: 30px;
+        line-height: 1.12;
+        margin: 0 0 18px;
+        letter-spacing: -0.5px;
+      }
+      p {
+        font-size: 22px;
+        line-height: 1.38;
+        margin: 0;
+      }
+      ul {
+        margin: 16px 0 0;
+        padding-left: 28px;
+        font-size: 22px;
+        line-height: 1.36;
+      }
+      li {
+        margin: 8px 0;
+      }
+      .eyebrow {
+        color: #2f6fed;
+        font-size: 14px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.8px;
+        margin-bottom: 12px;
+      }
+      .dark .eyebrow {
+        color: #9dc1ff;
+      }
+      .subtitle {
+        font-size: 24px;
+        color: #d8e4ff;
+        width: 78%;
+      }
+      .muted {
+        color: #5f6f89;
+      }
+      .dark .muted {
+        color: #d8e4ff;
+      }
+      .accent {
+        color: #2f6fed;
+        font-weight: 700;
+      }
+      .dark .accent {
+        color: #9dc1ff;
+      }
+      .card-row {
+        display: flex;
+        gap: 16px;
+        margin-top: 22px;
+      }
+      .card {
+        flex: 1;
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 14px;
+        padding: 18px;
+        min-height: 114px;
+        box-shadow: 0 10px 24px rgba(20, 33, 61, 0.08);
+      }
+      .card h3 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      .card p {
+        font-size: 17px;
+        color: #526179;
+      }
+      .flow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 30px;
+      }
+      .node {
+        width: 128px;
+        min-height: 76px;
+        border-radius: 14px;
+        background: #ffffff;
+        border: 1px solid #d8e2f0;
+        padding: 12px;
+        text-align: center;
+        box-shadow: 0 8px 18px rgba(20, 33, 61, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 17px;
+        font-weight: 700;
+      }
+      .arrow {
+        color: #2f6fed;
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 20px;
+      }
+      .panel {
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 16px;
+        padding: 20px;
+      }
+      .panel h3 {
+        font-size: 22px;
+        margin: 0 0 8px;
+      }
+      .panel p,
+      .panel li {
+        font-size: 18px;
+      }
+      .matrix {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 14px;
+        margin-top: 22px;
+      }
+      .matrix .box {
+        background: #ffffff;
+        border: 1px solid #dbe4f0;
+        border-radius: 14px;
+        padding: 16px;
+        min-height: 118px;
+      }
+      .matrix .box strong {
+        display: block;
+        color: #2f6fed;
+        font-size: 20px;
+        margin-bottom: 8px;
+      }
+      .matrix .box span {
+        color: #526179;
+        font-size: 17px;
+        line-height: 1.28;
+      }
+      .agenda {
+        display: grid;
+        grid-template-columns: 64px 1fr;
+        gap: 12px 18px;
+        margin-top: 22px;
+      }
+      .time {
+        color: #2f6fed;
+        font-size: 18px;
+        font-weight: 800;
+      }
+      .topic {
+        font-size: 19px;
+        line-height: 1.26;
+      }
+      .pill {
+        display: inline-block;
+        padding: 7px 12px;
+        background: #e8f0ff;
+        color: #2157bf;
+        border-radius: 999px;
+        font-size: 15px;
+        font-weight: 700;
+        margin: 4px 6px 4px 0;
+      }
+      .footer {
+        position: absolute;
+        bottom: 24px;
+        left: 56px;
+        right: 56px;
+        font-size: 13px;
+        color: #7a879a;
+        display: flex;
+        justify-content: space-between;
+      }
+      .dark .footer {
+        color: #b8c9ee;
+      }
+      .big-number {
+        font-size: 92px;
+        font-weight: 800;
+        line-height: 0.9;
+        color: rgba(47, 111, 237, 0.14);
+        position: absolute;
+        right: 46px;
+        top: 32px;
+      }
+      .quote {
+        border-left: 6px solid #2f6fed;
+        padding-left: 18px;
+        margin-top: 24px;
+        font-size: 25px;
+        line-height: 1.28;
+        color: #14213d;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide dark">
+      <div class="eyebrow">Lunch & Learn</div>
+      <h1>From Source Runtime to Graph-Backed Findings</h1>
+      <p class="subtitle">How Cerebro turns cloud, SaaS, identity, workflow, and security signals into durable operational context.</p>
+      <div class="footer">
+        <span>github.com/writer/cerebro</span>
+        <span>Team session</span>
+      </div>
+    </section>
+
+    <section class="slide white">
+      <div class="eyebrow">Why this session</div>
+      <h1>The best team learning topic is the durable signal pipeline</h1>
+      <p class="muted">It crosses the repo’s most important seams: source integrations, runtime sync, append-log durability, current state, graph projection, findings, and operational safety.</p>
+      <div class="quote">If engineers understand this path, they can add sources, findings, graph behavior, and workflows without breaking replayability or trust.</div>
+      <div class="footer">
+        <span>Evidence: README, architecture, durability contract, source runtime guide</span>
+        <span>2</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Mental model</div>
+      <h1>Cerebro is an operations data platform</h1>
+      <div class="flow">
+        <div class="node">Sources</div>
+        <div class="arrow">→</div>
+        <div class="node">Runtime sync</div>
+        <div class="arrow">→</div>
+        <div class="node">JetStream + Postgres</div>
+        <div class="arrow">→</div>
+        <div class="node">Neo4j projection</div>
+        <div class="arrow">→</div>
+        <div class="node">Findings, reports, MCP</div>
+      </div>
+      <ul>
+        <li>Sources emit typed events through the Source CDK.</li>
+        <li>Runtime sync validates, appends, projects, and advances progress.</li>
+        <li>Findings and graph queries consume durable state, not one-off source logic.</li>
+      </ul>
+      <div class="footer">
+        <span>Source: README.md and docs/reference/architecture.md</span>
+        <span>3</span>
+      </div>
+    </section>
+
+    <section class="slide white">
+      <div class="eyebrow">Core invariant</div>
+      <h1>Three stores, three responsibilities</h1>
+      <div class="matrix">
+        <div class="box">
+          <strong>JetStream</strong>
+          <span>Append log for source runtime sync, replay, workflow events, and rebuild paths.</span>
+        </div>
+        <div class="box">
+          <strong>Postgres</strong>
+          <span>Current state for runtimes, claims, findings, evidence, reports, evaluations, and projections.</span>
+        </div>
+        <div class="box">
+          <strong>Neo4j/Aura</strong>
+          <span>Graph projection and query backend. Useful, but never independently authoritative.</span>
+        </div>
+      </div>
+      <p style="margin-top: 26px;"><span class="accent">Takeaway:</span> graph state must be rebuildable from durable records. No fourth store, no silent fallbacks, no graph-direct writes outside approved projection paths.</p>
+      <div class="footer">
+        <span>Source: docs/engineering/durability-contract.md and non-goals.md</span>
+        <span>4</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="big-number">1</div>
+      <div class="eyebrow">Part one</div>
+      <h1>Source CDK: the boundary to the outside world</h1>
+      <div class="split">
+        <div class="panel">
+          <h3>What a source owns</h3>
+          <ul>
+            <li><code>Spec()</code></li>
+            <li><code>Check(...)</code></li>
+            <li><code>Discover(...)</code></li>
+            <li><code>Read(...)</code> one page of events</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>What a source must not own</h3>
+          <ul>
+            <li>Persistence</li>
+            <li>Graph projection</li>
+            <li>Finding identity</li>
+            <li>Runtime IDs or cursor advancement policy</li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Walkthrough: internal/sourcecdk/source.go</span>
+        <span>5</span>
+      </div>
+    </section>
+
+    <section class="slide white">
+      <div class="big-number">2</div>
+      <div class="eyebrow">Part two</div>
+      <h1>Runtime sync: the correctness-critical path</h1>
+      <ul>
+        <li>Load persisted runtime and resolve safe source configuration.</li>
+        <li>Start from the runtime cursor and optional checkpoint.</li>
+        <li>Read pages, validate emitted source events, and quarantine invalid records.</li>
+        <li>Append accepted events before projection.</li>
+        <li>Project through configured stores, then advance cursor/checkpoint progress.</li>
+      </ul>
+      <div class="quote">The cursor is allowed to move only after accepted events have been appended and projected.</div>
+      <div class="footer">
+        <span>Walkthrough: internal/sourceruntime/service.go</span>
+        <span>6</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="big-number">3</div>
+      <div class="eyebrow">Part three</div>
+      <h1>Findings: durable risk states, not raw alerts</h1>
+      <div class="card-row">
+        <div class="card">
+          <h3>Rule registry</h3>
+          <p>Rules are discoverable and registered, not hardcoded into service orchestration.</p>
+        </div>
+        <div class="card">
+          <h3>One rule per run</h3>
+          <p>Evaluation lineage, fingerprints, failures, and persisted records stay attributable.</p>
+        </div>
+        <div class="card">
+          <h3>Current-state outcome</h3>
+          <p>Findings represent remediable control gaps or durable risk states.</p>
+        </div>
+      </div>
+      <p style="margin-top: 26px;">Good findings are <span class="accent">current, graph-anchored, actionable, and risk-composed</span>.</p>
+      <div class="footer">
+        <span>Source: docs/domains/findings-platform-architecture.md</span>
+        <span>7</span>
+      </div>
+    </section>
+
+    <section class="slide white">
+      <div class="big-number">4</div>
+      <div class="eyebrow">Part four</div>
+      <h1>Graph safety: powerful, bounded, rebuildable</h1>
+      <div class="split">
+        <div class="panel">
+          <h3>Operational rules</h3>
+          <ul>
+            <li>Prefer platform routes over raw Cypher.</li>
+            <li>Keep traversal limits small.</li>
+            <li>Use tenant-scoped routes and URNs.</li>
+            <li>Start rebuilds with dry runs.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Agent query guardrails</h3>
+          <ul>
+            <li>Read-only Cypher.</li>
+            <li>Numeric <code>LIMIT</code> required.</li>
+            <li>Tenant scope required.</li>
+            <li>No procedures or write tokens.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Source: docs/domains/graph-operations.md and internal/graphagent/validator.go</span>
+        <span>8</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">75-minute plan</div>
+      <h1>Session agenda</h1>
+      <div class="agenda">
+        <div class="time">10m</div>
+        <div class="topic"><strong>Cerebro mental model</strong><br><span class="muted">What the platform is and how data flows.</span></div>
+        <div class="time">15m</div>
+        <div class="topic"><strong>Source CDK contract</strong><br><span class="muted">What sources own, and what they must never own.</span></div>
+        <div class="time">20m</div>
+        <div class="topic"><strong>Runtime sync lifecycle</strong><br><span class="muted">Cursor, validation, append, projection, checkpoint.</span></div>
+        <div class="time">15m</div>
+        <div class="topic"><strong>Durability invariants</strong><br><span class="muted">JetStream vs Postgres vs Neo4j.</span></div>
+        <div class="time">10m</div>
+        <div class="topic"><strong>Findings and graph safety</strong><br><span class="muted">Risk states, rule lineage, bounded graph usage.</span></div>
+        <div class="time">5m</div>
+        <div class="topic"><strong>Review checklist</strong><br><span class="muted">What invariant could this change violate?</span></div>
+      </div>
+      <div class="footer">
+        <span>Suggested format: code walkthrough + architecture discussion</span>
+        <span>9</span>
+      </div>
+    </section>
+
+    <section class="slide dark">
+      <div class="eyebrow">Discussion prompts</div>
+      <h1>Questions for the team</h1>
+      <ul>
+        <li>Where do new integrations most often risk leaking source-specific logic into platform code?</li>
+        <li>Which failure mode is hardest to debug today: append, projection, cursor, graph drift, or findings lineage?</li>
+        <li>What should every PR reviewer ask before approving graph-affecting writes?</li>
+        <li>What would make onboarding a new source or finding rule safer?</li>
+      </ul>
+      <div style="margin-top: 24px;">
+        <span class="pill">Replayability</span>
+        <span class="pill">Tenant scope</span>
+        <span class="pill">Finding quality</span>
+        <span class="pill">Graph safety</span>
+      </div>
+      <div class="footer">
+        <span>Close with one shared invariant checklist</span>
+        <span>10</span>
+      </div>
+    </section>
+  </body>
+</html>
