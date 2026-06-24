@@ -29,10 +29,14 @@ type CustomDashboard struct {
 }
 
 type CustomDashboardFilter struct {
-	TenantID        string
-	OrganizationID  string
-	WorkspaceID     string
-	OwnerUserID     string
+	TenantID       string
+	OrganizationID string
+	WorkspaceID    string
+	OwnerUserID    string
+	// ViewerUserID, when set, restricts private dashboards to the viewer so
+	// visibility is enforced in the query rather than only in memory after a
+	// LIMIT has already been applied.
+	ViewerUserID    string
 	IncludeArchived bool
 	Limit           uint32
 }

@@ -48,8 +48,12 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Set(param, strconv.Itoa(pageSize))
 		}
 	}
-	if cursor := strings.TrimSpace(cursor); cursor != "" {
-		query.Set(cursorParam(family), cursor)
+	pageCursor := strings.TrimSpace(cursor)
+	if pageCursor == "" {
+		pageCursor = strings.TrimSpace(family.PageFirstCursor)
+	}
+	if pageCursor != "" {
+		query.Set(cursorParam(family), pageCursor)
 	}
 	var body json.RawMessage
 	if err := s.getJSON(ctx, settings, query, &body); err != nil {
@@ -59,6 +63,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if err != nil {
 		return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 	}
+	next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
 	records := make([]record, 0, len(items))
 	for _, item := range items {
 		item, err = rawWithPathParams(item, settings.pathParams)
@@ -137,6 +142,21 @@ func cursorParam(family Family) string {
 		return param
 	}
 	return "cursor"
+}
+
+func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount int, next string) string {
+	if strings.TrimSpace(family.PageFirstCursor) == "" || strings.TrimSpace(next) != "" || pageSize < 1 || itemCount < pageSize {
+		return next
+	}
+	current := strings.TrimSpace(cursor)
+	if current == "" {
+		current = strings.TrimSpace(family.PageFirstCursor)
+	}
+	page, err := strconv.Atoi(current)
+	if err != nil {
+		return next
+	}
+	return strconv.Itoa(page + 1)
 }
 
 func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Values {

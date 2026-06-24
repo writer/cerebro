@@ -2174,6 +2174,12 @@ paths:
       responses:
         '200':
           description: Custom dashboard updated.
+        '400':
+          description: Request body failed validation.
+        '403':
+          description: Only the dashboard owner may modify it.
+        '404':
+          description: Custom dashboard was not found.
     delete:
       summary: Archive custom GRC dashboard
       tags:
@@ -2187,6 +2193,10 @@ paths:
       responses:
         '204':
           description: Custom dashboard archived.
+        '403':
+          description: Only the dashboard owner may delete it.
+        '404':
+          description: Custom dashboard was not found.
   /grc/dashboards/{dashboardID}/clone:
     post:
       summary: Clone custom GRC dashboard
@@ -2210,6 +2220,10 @@ paths:
       responses:
         '201':
           description: Custom dashboard cloned.
+        '400':
+          description: Request body failed validation.
+        '404':
+          description: Custom dashboard was not found.
   /grc/trends:
     get:
       summary: GRC finding trends
