@@ -50,3 +50,43 @@ func vendorAliasKey(value string) string {
 	}
 	return strings.Trim(builder.String(), "-")
 }
+
+func containsAnyNormalizedToken(value string, markers ...string) bool {
+	markerSet := map[string]struct{}{}
+	for _, marker := range markers {
+		normalized := strings.ToLower(strings.TrimSpace(marker))
+		if normalized != "" {
+			markerSet[normalized] = struct{}{}
+		}
+	}
+	if len(markerSet) == 0 {
+		return false
+	}
+	for _, token := range normalizedTokens(value) {
+		if _, ok := markerSet[token]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizedTokens(value string) []string {
+	var tokens []string
+	var builder strings.Builder
+	flush := func() {
+		if builder.Len() == 0 {
+			return
+		}
+		tokens = append(tokens, builder.String())
+		builder.Reset()
+	}
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			builder.WriteRune(r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return tokens
+}

@@ -996,6 +996,32 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 			wantActive: "false",
 		},
 		{
+			name: "device substring is not excluded",
+			attrs: map[string]string{
+				"app_id":       "0oa-device",
+				"app_name":     "Jamf Device Management",
+				"sign_on_mode": "SAML_2_0",
+				"status":       "ACTIVE",
+			},
+			wantSaaS:   true,
+			wantAppID:  "0oa-device",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-device",
+			wantActive: "true",
+		},
+		{
+			name: "international substring is not excluded",
+			attrs: map[string]string{
+				"app_id":       "0oa-international",
+				"app_name":     "International Banking Portal",
+				"sign_on_mode": "OPENID_CONNECT",
+				"status":       "ACTIVE",
+			},
+			wantSaaS:   true,
+			wantAppID:  "0oa-international",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-international",
+			wantActive: "true",
+		},
+		{
 			name: "internal dev sandbox app",
 			attrs: map[string]string{
 				"app_id":       "0oa-internal",

@@ -150,19 +150,14 @@ func oktaSaaSApplicationClassificationFor(attributes map[string]string) (oktaSaa
 		attributes["app_label"],
 		attributes["name"],
 	}, " "))
-	for _, marker := range []string{"test", "sandbox", "dev", "internal"} {
-		if strings.Contains(name, marker) {
-			return oktaSaaSApplicationClassification{}, false
-		}
+	if containsAnyNormalizedToken(name, "test", "sandbox", "dev", "internal") {
+		return oktaSaaSApplicationClassification{}, false
 	}
 	status := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["status"], "active")))
 	classification := oktaSaaSApplicationClassification{
 		Active:         status == "active" || status == "enabled",
 		Confidence:     "0.75",
 		LifecycleState: status,
-	}
-	if classification.LifecycleState == "" {
-		classification.LifecycleState = "active"
 	}
 	signOnMode := strings.ToLower(strings.TrimSpace(attributes["sign_on_mode"]))
 	for _, marker := range []string{"saml", "oidc", "oauth", "openid"} {
