@@ -714,6 +714,56 @@ config:
     - graph_page_limit=5
     - event_limit=1000
   cerebro:orchestratorSchedules:
+    - name: aurelius-verdicts-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-verdicts
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aurelius-findings-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-findings
+        - page_limit=1
+        - graph_page_limit=1
+        - event_limit=2000
+    - name: aurelius-image-scans-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-image-scans
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aurelius-catalog-promotions
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-catalog-promotions
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=500
+    - name: aurelius-policy-exceptions
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-policy-exceptions
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=500
     - name: security-tooling-map-tools
       scheduleExpression: cron(6 * * * ? *)
       taskCount: 1
@@ -2160,6 +2210,61 @@ config:
         - graph_page_limit=100
         - event_limit=1000
   cerebro:sourceRuntimes:
+    - id: writer-aurelius-verdicts
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: verdict
+        page_size: "100"
+        prefix: aurelius/verdicts/
+        region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-prod
+        tenant_id: writer
+    - id: writer-aurelius-findings
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: finding
+        page_size: "100"
+        prefix: aurelius/findings/
+        region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-prod
+        tenant_id: writer
+    - id: writer-aurelius-image-scans
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: image_scan
+        page_size: "100"
+        prefix: aurelius/image_scans/
+        region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-prod
+        tenant_id: writer
+    - id: writer-aurelius-catalog-promotions
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: catalog_promotion
+        page_size: "100"
+        prefix: aurelius/catalog_promotions/
+        region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-prod
+        tenant_id: writer
+    - id: writer-aurelius-policy-exceptions
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: policy_exception
+        page_size: "100"
+        prefix: aurelius/policy_exceptions/
+        region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-prod
+        tenant_id: writer
     - id: writer-security-tooling-map-tools
       sourceId: security_tooling_map
       tenantId: writer
@@ -3483,6 +3588,23 @@ config:
   # IAM scope retained for internal S3 source runtimes. Runtime source configs
   # provide bucket/prefix details to Cerebro; these entries grant task access.
   cerebro:s3Sources:
+    # Aurelius NDJSON exporter archives. The bucket lives in account
+    # 502497380968 (aurelius-prod); cerebro reads it cross-account by
+    # assuming the dedicated reader role cerebro-aurelius-source-prod,
+    # named to match cerebro's task-role inline allow-list
+    # (cerebro-*-source-*). The role is provisioned by the security
+    # repo Pulumi.aurelius-prod.yaml (cerebroReaderPrincipalArns).
+    - name: aurelius
+      bucket: writer-aurelius-scan-results-prod
+      bucketArn: arn:aws:s3:::writer-aurelius-scan-results-prod
+      region: us-east-1
+      roleArn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-prod
+      prefixes:
+        - "aurelius/verdicts/"
+        - "aurelius/findings/"
+        - "aurelius/image_scans/"
+        - "aurelius/catalog_promotions/"
+        - "aurelius/policy_exceptions/"
     - name: kolide
       bucket: writer-kolide-telemetry
       region: us-east-1
