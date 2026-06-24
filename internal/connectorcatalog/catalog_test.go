@@ -149,13 +149,13 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if analysis.Summary.Total != 137 {
-		t.Fatalf("summary total = %d, want 137", analysis.Summary.Total)
+	if analysis.Summary.Total != 138 {
+		t.Fatalf("summary total = %d, want 138", analysis.Summary.Total)
 	}
-	if len(analysis.Entries) != 137 {
-		t.Fatalf("entries len = %d, want 137", len(analysis.Entries))
+	if len(analysis.Entries) != 138 {
+		t.Fatalf("entries len = %d, want 138", len(analysis.Entries))
 	}
-	if analysis.Summary.Generateable != 137 {
+	if analysis.Summary.Generateable != 138 {
 		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
 	}
 	if analysis.Summary.NeedsAuthExtension != 0 {
@@ -211,19 +211,53 @@ func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
 	if len(definition.ConfigFields) != 1 || definition.ConfigFields[0].Key != "domain" || !definition.ConfigFields[0].Required {
 		t.Fatalf("auth0 config fields = %#v, want required domain", definition.ConfigFields)
 	}
-	assertCatalogFamily(t, definition.ResourceFamilies, "users", "/users", "$[*]", "user_id")
-	assertCatalogFamily(t, definition.ResourceFamilies, "roles", "/roles", "$[*]", "id")
-	assertCatalogFamily(t, definition.ResourceFamilies, "audit_events", "/logs", "$[*]", "log_id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "users", "/users", "user_id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "roles", "/roles", "id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "audit_events", "/logs", "log_id")
 }
 
-func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, selector string, idField string) {
+func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
+	entry, ok, err := BuiltinEntry("knowbe4")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(knowbe4) ok = false, want true")
+	}
+	definition := entry.Definition
+	if definition.Transport == nil || definition.Transport.BaseURL != "https://${config.region}.api.knowbe4.com/v1" {
+		t.Fatalf("knowbe4 transport = %#v, want regional Reporting API base", definition.Transport)
+	}
+	if definition.Transport.Verification == nil || definition.Transport.Verification.Path != "/users" {
+		t.Fatalf("knowbe4 verification = %#v, want /users", definition.Transport.Verification)
+	}
+	if definition.Auth.Model != "bearer_token" {
+		t.Fatalf("knowbe4 auth model = %q, want bearer_token", definition.Auth.Model)
+	}
+	if len(definition.ConfigFields) != 1 || definition.ConfigFields[0].Key != "region" || !definition.ConfigFields[0].Required {
+		t.Fatalf("knowbe4 config fields = %#v, want required region", definition.ConfigFields)
+	}
+	if !hasString(definition.Categories, "security_training") {
+		t.Fatalf("knowbe4 categories = %#v, want security_training", definition.Categories)
+	}
+	assertCatalogFamily(t, definition.ResourceFamilies, "users", "/users", "id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "groups", "/groups", "id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "training_enrollments", "/training/enrollments", "id")
+	assertCatalogFamily(t, definition.ResourceFamilies, "phishing_campaigns", "/phishing/campaigns", "id")
+	enrollments := catalogFamily(t, definition.ResourceFamilies, "training_enrollments")
+	if enrollments.Pagination == nil || enrollments.Pagination.Type != "page" || enrollments.Pagination.PageParam != "page" || enrollments.Pagination.PageSizeParam != "per_page" || enrollments.Pagination.StartPage != 1 {
+		t.Fatalf("training enrollments pagination = %#v, want page/per_page starting at 1", enrollments.Pagination)
+	}
+}
+
+func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
 	t.Helper()
 	for _, family := range families {
 		if family.ID != id {
 			continue
 		}
-		if family.Path != path || family.RecordSelector != selector || family.IDField != idField {
-			t.Fatalf("family %s = %#v, want path=%s selector=%s id_field=%s", id, family, path, selector, idField)
+		if family.Path != path || family.RecordSelector != "$[*]" || family.IDField != idField {
+			t.Fatalf("family %s = %#v, want path=%s selector=$[*] id_field=%s", id, family, path, idField)
 		}
 		return
 	}
@@ -236,6 +270,7 @@ func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 		"ethena":        StatusGenerateable,
 		"google_drive":  StatusGenerateable,
 		"hitrust_mycsf": StatusGenerateable,
+		"knowbe4":       StatusGenerateable,
 		"ramp":          StatusGenerateable,
 		"rippling":      StatusGenerateable,
 		"segment":       StatusGenerateable,
@@ -293,6 +328,15 @@ func TestBuiltinCatalogPreviouslyBlockedEntriesAreGenerateable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func minimalDefinitionYAML() string {

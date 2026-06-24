@@ -29,6 +29,7 @@ type Request struct {
 	AuthModel   string
 	MaxFamilies int
 	AllFamilies bool
+	ListGETOnly bool
 }
 
 // Endpoint reports one OpenAPI endpoint considered by the generator.
@@ -75,7 +76,7 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 	tenantID := normalizeID(firstNonEmpty(request.TenantID, defaultTenantID))
 	baseURL, baseURLConfigField := inferBaseURL(doc, request.BaseURL)
 	auth := inferAuth(doc, request.AuthModel)
-	candidates := collectCandidates(doc, sourceID)
+	candidates := collectCandidates(doc, sourceID, request.ListGETOnly)
 	if len(candidates) == 0 {
 		return connectordefinitions.Definition{}, Report{}, fmt.Errorf("no sourcegen-ready GET list endpoints found in OpenAPI document")
 	}
@@ -134,7 +135,7 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 	return normalized, report, nil
 }
 
-func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
+func collectCandidates(doc *openapi3.T, sourceID string, listGETOnly bool) []candidate {
 	paths := sortedPathItems(doc)
 	candidates := []candidate{}
 	for _, pair := range paths {
@@ -149,7 +150,7 @@ func collectCandidates(doc *openapi3.T, sourceID string) []candidate {
 				continue
 			}
 			schema := responseSchema(operation)
-			if method != "GET" && (method != "POST" || !isPostListing(operation, schema)) {
+			if method != "GET" && (listGETOnly || method != "POST" || !isPostListing(operation, schema)) {
 				continue
 			}
 			selector, listKey, itemSchema, ok := recordShape(pair.path, schema)

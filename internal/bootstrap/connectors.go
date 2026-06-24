@@ -1702,10 +1702,9 @@ var connectorSchemas = map[string]connectorSchema{
 		RequiredCredentials: []string{"token"},
 	},
 	"google_workspace": {
-		ConfigKeys:          stringSet("domain", "family", "customer_id", "group_key"),
-		CredentialKeys:      stringSet("token"),
-		RequiredConfig:      []string{"domain"},
-		RequiredCredentials: []string{"token"},
+		ConfigKeys:     stringSet("domain", "family", "customer_id", "group_key", "service_account_email", "delegated_admin_email", "subject_email", "client_id"),
+		CredentialKeys: stringSet("token", "private_key", "service_account_private_key", "client_secret", "refresh_token"),
+		RequiredConfig: []string{"domain"},
 	},
 	"okta": {
 		ConfigKeys:          stringSet("domain", "family"),

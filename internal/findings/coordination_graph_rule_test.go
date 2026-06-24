@@ -20,6 +20,16 @@ func TestCoordinationGraphRuleSupportsRuntime(t *testing.T) {
 	}
 }
 
+func TestCoordinationGraphRuleSupportsRuntimeRestrictsSourceOnlyRules(t *testing.T) {
+	rule := newFindingIsolatedOpenAnchorRule()
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{TenantId: "writer", SourceId: "graph"}) {
+		t.Fatal("SupportsRuntime(graph) = false, want true")
+	}
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{TenantId: "writer", SourceId: "okta", Config: map[string]string{"family": "application"}}) {
+		t.Fatal("SupportsRuntime(okta application) = true, want false")
+	}
+}
+
 func TestCoordinationGraphRuleQueryRequiresTenant(t *testing.T) {
 	rule := newGRCSourceConcentratedOpenFindingsRule().(GraphRule)
 	if got := rule.QueryFor(&cerebrov1.SourceRuntime{}); got.Query != "" {

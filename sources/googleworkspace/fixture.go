@@ -29,7 +29,6 @@ func NewFixture() (sourcecdk.Source, error) {
 			family:      family,
 			domain:      "writer.com",
 			customerID:  "C01",
-			token:       "test-token",
 			baseURL:     defaultBaseURL,
 			groupKey:    "security@writer.com",
 			application: "admin",

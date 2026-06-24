@@ -1,0 +1,937 @@
+# Scaled connector-import manifest.
+# Sources: APIs.guru directory (CC0) curated for ops relevance, plus
+# Steampipe-plugin-derived providers (via tools/steampipeconvert).
+# Specs are resolved and (if Swagger 2.0) converted to OpenAPI 3 at import.
+targets:
+- source_id: adyen
+  display_name: Adyen
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: adyen.com:AccountService
+  max_families: 6
+- source_id: api2cart
+  display_name: API2Cart
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: api2cart.com
+  max_families: 6
+- source_id: apideck
+  display_name: Apideck
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: apideck.com:accounting
+  max_families: 6
+- source_id: beanstream
+  display_name: Beanstream (Bambora)
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: beanstream.com
+  max_families: 6
+- source_id: biapi
+  display_name: Powens (Budgea)
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: biapi.pro
+  max_families: 6
+- source_id: bigredcloud
+  display_name: Big Red Cloud
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: bigredcloud.com
+  max_families: 6
+- source_id: billingo
+  display_name: Billingo
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: billingo.hu
+  max_families: 6
+- source_id: braze
+  display_name: Braze
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: braze.com
+  max_families: 6
+- source_id: bunq
+  display_name: bunq
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: bunq.com
+  max_families: 6
+- source_id: cloud_elements
+  display_name: Cloud Elements
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: cloud-elements.com:ecwid
+  max_families: 6
+- source_id: codat
+  display_name: Codat
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: codat.io:accounting
+  max_families: 6
+- source_id: credas
+  display_name: Credas
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: credas.co.uk:pi
+  max_families: 6
+- source_id: docusign
+  display_name: DocuSign
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: docusign.net
+  max_families: 6
+- source_id: envoice
+  display_name: Envoice
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: envoice.in
+  max_families: 6
+- source_id: fire
+  display_name: Fire
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: fire.com
+  max_families: 6
+- source_id: frankiefinancial
+  display_name: Frankie Financial
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: frankiefinancial.io
+  max_families: 6
+- source_id: fraudlabspro
+  display_name: FraudLabs Pro
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: fraudlabspro.com:fraud-detection
+  max_families: 6
+- source_id: google_search_console
+  display_name: Google Search Console
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: googleapis.com:searchconsole
+  max_families: 6
+  auth_model: oauth_client_credentials
+- source_id: interzoid
+  display_name: Interzoid
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: interzoid.com:getareacodefromnumber
+  max_families: 6
+- source_id: loket
+  display_name: Loket
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: loket.nl
+  max_families: 6
+- source_id: magento
+  display_name: Magento
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: magento.com
+  max_families: 6
+- source_id: nbg
+  display_name: NBG Open Banking
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: nbg.gr
+  max_families: 6
+- source_id: netlicensing
+  display_name: Labs64 NetLicensing
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: netlicensing.io
+  max_families: 6
+- source_id: nordigen
+  display_name: Nordigen
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: nordigen.com
+  max_families: 6
+- source_id: ntropy
+  display_name: Ntropy
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: ntropy.network
+  max_families: 6
+- source_id: obono
+  display_name: obono
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: obono.at
+  max_families: 6
+- source_id: openai
+  display_name: OpenAI
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: openai.com
+  max_families: 6
+  auth_model: bearer_token
+- source_id: openfintech
+  display_name: OpenFinTech
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: openfintech.io
+  max_families: 6
+- source_id: owler
+  display_name: Owler
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: owler.com
+  max_families: 6
+- source_id: pay1
+  display_name: PAYONE
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: pay1.de:link
+  max_families: 6
+- source_id: paylocity
+  display_name: Paylocity
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: paylocity.com
+  max_families: 6
+- source_id: payrun
+  display_name: PayRun.io
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: payrun.io
+  max_families: 6
+- source_id: pendo
+  display_name: Pendo
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: pendo.io
+  max_families: 6
+- source_id: personio
+  display_name: Personio
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: personio.de:authentication
+  max_families: 6
+- source_id: qualpay
+  display_name: Qualpay
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: qualpay.com
+  max_families: 6
+- source_id: qualtrics
+  display_name: Qualtrics
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: qualtrics.com
+  max_families: 6
+- source_id: rebilly
+  display_name: Rebilly
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: rebilly.com
+  max_families: 6
+- source_id: salesloft
+  display_name: Salesloft
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: salesloft.com
+  max_families: 6
+- source_id: shipengine
+  display_name: ShipEngine
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: shipengine.com
+  max_families: 6
+- source_id: shipstation
+  display_name: ShipStation
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: shipstation.com
+  max_families: 6
+- source_id: taxamo
+  display_name: Taxamo
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: taxamo.com
+  max_families: 6
+- source_id: truora
+  display_name: Truora
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: truora.com
+  max_families: 6
+- source_id: velopayments
+  display_name: Velo Payments
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: velopayments.com
+  max_families: 6
+- source_id: xero
+  display_name: Xero
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: xero.com:xero-identity
+  max_families: 6
+- source_id: yodlee
+  display_name: Envestnet Yodlee
+  domain: business-data-grc
+  categories:
+  - saas
+  apis_guru: yodlee.com
+  max_families: 6
+- source_id: autotask
+  display_name: Datto Autotask PSA
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: autotask.net
+  max_families: 6
+- source_id: bulksms
+  display_name: BulkSMS
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: bulksms.com
+  max_families: 6
+- source_id: callfire
+  display_name: CallFire
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: callfire.com
+  max_families: 6
+- source_id: clicksend
+  display_name: ClickSend
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: clicksend.com
+  max_families: 6
+- source_id: d7networks
+  display_name: D7 Networks
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: d7networks.com
+  max_families: 6
+- source_id: discourse
+  display_name: Discourse
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: discourse.local
+  max_families: 6
+- source_id: dracoon
+  display_name: DRACOON
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: dracoon.team
+  max_families: 6
+- source_id: isendpro
+  display_name: iSendPro
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: isendpro.com
+  max_families: 6
+- source_id: mastodon
+  display_name: Mastodon
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: mastodon.local
+  max_families: 6
+  auth_model: bearer_token
+- source_id: sakari
+  display_name: Sakari
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: sakari.io
+  max_families: 6
+- source_id: sendgrid
+  display_name: SendGrid
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: sendgrid.com
+  max_families: 6
+- source_id: slack
+  display_name: Slack
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: slack.com
+  max_families: 6
+- source_id: surevoip
+  display_name: SureVoIP
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: surevoip.co.uk
+  max_families: 6
+- source_id: telegram
+  display_name: Telegram Bot
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: telegram.org
+  max_families: 6
+- source_id: thesmsworks
+  display_name: The SMS Works
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: thesmsworks.co.uk
+  max_families: 6
+- source_id: trello
+  display_name: Trello
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: trello.com
+  max_families: 6
+- source_id: twitter
+  display_name: Twitter
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: twitter.com:current
+  max_families: 6
+  auth_model: bearer_token
+- source_id: vonage
+  display_name: Vonage
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: vonage.com:account
+  max_families: 6
+- source_id: whatsapp
+  display_name: WhatsApp Business
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: whatsapp.local
+  max_families: 6
+- source_id: winsms
+  display_name: WinSMS
+  domain: collaboration-productivity
+  categories:
+  - saas
+  apis_guru: winsms.co.za
+  max_families: 6
+- source_id: ably
+  display_name: Ably
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: ably.io:platform
+  max_families: 6
+- source_id: airbyte
+  display_name: Airbyte
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: airbyte.local:config
+  max_families: 6
+- source_id: apache
+  display_name: Apache Airflow
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: apache.org
+  max_families: 6
+- source_id: api2pdf
+  display_name: Api2Pdf
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: api2pdf.com
+  max_families: 6
+- source_id: apicurio
+  display_name: Apicurio Registry
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: apicurio.local:registry
+  max_families: 6
+- source_id: apigee
+  display_name: Apigee Registry
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: apigee.local:registry
+  max_families: 6
+- source_id: apimatic
+  display_name: APIMatic
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: apimatic.io
+  max_families: 6
+- source_id: appveyor
+  display_name: AppVeyor
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: appveyor.com
+  max_families: 6
+- source_id: appwrite
+  display_name: Appwrite
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: appwrite.io:client
+  max_families: 6
+- source_id: blazemeter
+  display_name: BlazeMeter
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: blazemeter.com
+  max_families: 6
+- source_id: clever_cloud
+  display_name: Clever Cloud
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: clever-cloud.com
+  max_families: 6
+- source_id: combell
+  display_name: Combell
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: combell.com
+  max_families: 6
+- source_id: configcat
+  display_name: ConfigCat
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: configcat.com
+  max_families: 6
+- source_id: exavault
+  display_name: ExaVault
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: exavault.com
+  max_families: 6
+- source_id: formapi
+  display_name: FormAPI
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: formapi.io
+  max_families: 6
+- source_id: gitea
+  display_name: Gitea
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: gitea.io
+  max_families: 6
+- source_id: github
+  display_name: GitHub
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: github.com
+  max_families: 6
+  auth_model: bearer_token
+- source_id: godaddy
+  display_name: GoDaddy
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: ote-godaddy.com:domains
+  max_families: 6
+  auth_model: api_key
+- source_id: hetzner
+  display_name: Hetzner Cloud
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: hetzner.cloud
+  max_families: 6
+- source_id: kubernetes
+  display_name: Kubernetes
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: kubernetes.io
+  max_families: 6
+- source_id: lambdatest
+  display_name: LambdaTest
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: lambdatest.com
+  max_families: 6
+- source_id: meraki
+  display_name: Cisco Meraki
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: meraki.com
+  max_families: 6
+- source_id: meshery
+  display_name: Meshery
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: meshery.local
+  max_families: 6
+- source_id: mist
+  display_name: Juniper Mist
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: mist.com
+  max_families: 6
+- source_id: netboxdemo
+  display_name: NetBox
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: netboxdemo.com
+  max_families: 6
+- source_id: netlify
+  display_name: Netlify
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: netlify.com
+  max_families: 6
+- source_id: nlpcloud
+  display_name: NLP Cloud
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: nlpcloud.io
+  max_families: 6
+- source_id: opensuse
+  display_name: openSUSE Open Build Service
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: opensuse.org:obs
+  max_families: 6
+- source_id: pdfblocks
+  display_name: PDF Blocks
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: pdfblocks.com
+  max_families: 6
+- source_id: pdfgeneratorapi
+  display_name: PDF Generator API
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: pdfgeneratorapi.com
+  max_families: 6
+- source_id: pinecone
+  display_name: Pinecone
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: pinecone.io
+  max_families: 6
+- source_id: powerdns
+  display_name: PowerDNS
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: powerdns.local
+  max_families: 6
+- source_id: rbaskets
+  display_name: Request Baskets
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: rbaskets.in
+  max_families: 6
+- source_id: readme
+  display_name: ReadMe
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: readme.io
+  max_families: 6
+- source_id: stream_io_api
+  display_name: Stream
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: stream-io-api.com
+  max_families: 6
+- source_id: svix
+  display_name: Svix
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: svix.com
+  max_families: 6
+- source_id: swaggerhub
+  display_name: SwaggerHub
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: swaggerhub.com
+  max_families: 6
+- source_id: urlbox
+  display_name: Urlbox
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: urlbox.io
+  max_families: 6
+- source_id: vectara
+  display_name: Vectara
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: vectara.io
+  max_families: 6
+- source_id: wso2apistore
+  display_name: WSO2 API Manager
+  domain: devops-ci-cd
+  categories:
+  - saas
+  apis_guru: wso2apistore.com:transform
+  max_families: 6
+- source_id: authentiq
+  display_name: Authentiq
+  domain: identity-access-secrets
+  categories:
+  - saas
+  apis_guru: authentiq.io
+  max_families: 6
+- source_id: conjur
+  display_name: CyberArk Conjur
+  domain: identity-access-secrets
+  categories:
+  - saas
+  apis_guru: conjur.local
+  max_families: 6
+- source_id: google_directory
+  display_name: Google Directory
+  domain: identity-access-secrets
+  categories:
+  - saas
+  apis_guru: googleapis.com:admin
+  max_families: 6
+  auth_model: oauth_client_credentials
+- source_id: n_auth
+  display_name: nextAuth
+  domain: identity-access-secrets
+  categories:
+  - saas
+  apis_guru: n-auth.com
+  max_families: 6
+- source_id: okta
+  display_name: Okta
+  domain: identity-access-secrets
+  categories:
+  - saas
+  apis_guru: okta.local
+  max_families: 6
+- source_id: circl
+  display_name: CIRCL hashlookup
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: circl.lu:hashlookup
+  max_families: 6
+- source_id: cycat
+  display_name: CyCAT
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: cycat.org
+  max_families: 6
+- source_id: domainsdb
+  display_name: DomainsDB
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: domainsdb.info
+  max_families: 6
+- source_id: elmah
+  display_name: elmah.io
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: elmah.io
+  max_families: 6
+- source_id: influxdata
+  display_name: InfluxDB
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: influxdata.com
+  max_families: 6
+- source_id: ip2location
+  display_name: IP2Location
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: ip2location.com:geolocation
+  max_families: 6
+- source_id: ip2locationio
+  display_name: ip2location.io
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: ip2location.io
+  max_families: 6
+  auth_model: api_key
+- source_id: ip2proxy
+  display_name: IP2Proxy
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: ip2proxy.com
+  max_families: 6
+- source_id: ip2whois
+  display_name: IP2WHOIS
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: ip2whois.com
+  max_families: 6
+- source_id: moderatecontent
+  display_name: ModerateContent
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: moderatecontent.com
+  max_families: 6
+- source_id: neutrinoapi
+  display_name: Neutrino API
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: neutrinoapi.net
+  max_families: 6
+- source_id: signl4
+  display_name: SIGNL4
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: signl4.com
+  max_families: 6
+- source_id: threatjammer
+  display_name: ThreatJammer
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: threatjammer.com
+  max_families: 6
+- source_id: victorops
+  display_name: VictorOps
+  domain: observability-soar-threat-intel
+  categories:
+  - saas
+  apis_guru: victorops.com
+  max_families: 6
+- source_id: cisco
+  display_name: Cisco PSIRT openVuln
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: cisco.com
+  max_families: 6
+- source_id: code_scan
+  display_name: CodeScan
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: code-scan.com
+  max_families: 6
+- source_id: firmalyzer
+  display_name: Firmalyzer IoTVAS
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: firmalyzer.com:iotvas
+  max_families: 6
+- source_id: openpolicy
+  display_name: Open Policy Agent
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: openpolicy.local
+  max_families: 6
+- source_id: patrowl
+  display_name: PatrOwl
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: patrowl.local
+  max_families: 6
+- source_id: probely
+  display_name: Probely
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: probely.com
+  max_families: 6
+- source_id: redhat
+  display_name: Red Hat Patchman
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: redhat.local:patchman-engine
+  max_families: 6
+- source_id: stellastra
+  display_name: Stellastra
+  domain: security-posture-vulnerability
+  categories:
+  - saas
+  apis_guru: stellastra.com
+  max_families: 6

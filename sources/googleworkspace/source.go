@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/googleworkspaceauth"
 )
 
 //go:embed catalog.yaml
@@ -49,11 +50,11 @@ type settings struct {
 	family      string
 	domain      string
 	customerID  string
-	token       string
 	baseURL     string
 	groupKey    string
 	application string
 	perPage     int
+	auth        googleworkspaceauth.Settings
 }
 
 type userRecord struct {
@@ -160,22 +161,16 @@ func New() (*Source, error) {
 	return source, nil
 }
 
-// Spec returns static source metadata.
-func (s *Source) Spec() *cerebrov1.SourceSpec {
-	return s.spec
-}
+func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
 
-// Check validates that the configured family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.families.Check(ctx, cfg)
 }
 
-// Discover returns tenant-scoped URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.families.Discover(ctx, cfg)
 }
 
-// Read returns one page of normalized Google Workspace events.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.families.Read(ctx, cfg, cursor)
 }
@@ -266,11 +261,11 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		family:      sourcecdk.ConfigValue(cfg, "family"),
 		domain:      sourcecdk.ConfigValue(cfg, "domain"),
 		customerID:  sourcecdk.ConfigValue(cfg, "customer_id"),
-		token:       sourcecdk.ConfigValue(cfg, "token"),
 		baseURL:     sourcecdk.ConfigValue(cfg, "base_url"),
 		groupKey:    sourcecdk.ConfigValue(cfg, "group_key"),
 		application: sourcecdk.ConfigValue(cfg, "application"),
 		perPage:     defaultPageSize,
+		auth:        googleworkspaceauth.FromConfig(cfg),
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -286,8 +281,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.customerID == "" {
 		settings.customerID = defaultCustomerID
 	}
-	if settings.token == "" {
-		return settings, fmt.Errorf("google_workspace token is required")
+	if err := googleworkspaceauth.Validate(settings.auth); err != nil {
+		return settings, err
 	}
 	if settings.baseURL == "" {
 		settings.baseURL = defaultBaseURL
@@ -375,7 +370,11 @@ func (s *Source) getJSON(ctx context.Context, settings settings, path string, qu
 		return fmt.Errorf("build request %s: %w", path, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+settings.token)
+	bearerToken, err := googleworkspaceauth.BearerToken(ctx, settings.auth)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
 	client := s.client
 	if client == nil {
 		client = sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: "google_workspace"})
@@ -408,10 +407,10 @@ func (s *Source) safeClient() *http.Client {
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
-	if source != nil && source.lookupIPAddrs != nil {
-		return source.lookupIPAddrs
+	if source == nil || source.lookupIPAddrs == nil {
+		return net.DefaultResolver.LookupIPAddr
 	}
-	return net.DefaultResolver.LookupIPAddr
+	return source.lookupIPAddrs
 }
 
 func (s *Source) sourceEvent(ctx context.Context, settings settings, raw json.RawMessage) (*primitives.Event, error) {
