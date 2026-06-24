@@ -117,7 +117,7 @@ func TestProjectEventRejectsRawSensitiveAttribute(t *testing.T) {
 }
 
 func TestSensitiveAttributeKeyOnlyMatchesIPAsToken(t *testing.T) {
-	for _, key := range []string{"ip", "source_ip", "ip_address", "public-ip", "network.ip"} {
+	for _, key := range []string{"ip", "source_ip", "ip_address", "public-ip", "network.ip", "ipv4_address", "source_ipv6", "ipv4.src"} {
 		if !sensitiveAttributeKey(key) {
 			t.Fatalf("sensitiveAttributeKey(%q) = false, want true", key)
 		}

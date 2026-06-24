@@ -289,16 +289,17 @@ func sensitiveAttributeMarker(key string) bool {
 }
 
 func sensitiveIPAttributeKey(key string) bool {
-	switch key {
-	case "ip", "ipv4", "ipv6":
-		return true
-	}
-	for _, delimiter := range []string{"_", "-", "."} {
-		token := delimiter + "ip" + delimiter
-		if strings.HasPrefix(key, "ip"+delimiter) ||
-			strings.HasSuffix(key, delimiter+"ip") ||
-			strings.Contains(key, token) {
+	for _, marker := range []string{"ip", "ipv4", "ipv6"} {
+		if key == marker {
 			return true
+		}
+		for _, delimiter := range []string{"_", "-", "."} {
+			token := delimiter + marker + delimiter
+			if strings.HasPrefix(key, marker+delimiter) ||
+				strings.HasSuffix(key, delimiter+marker) ||
+				strings.Contains(key, token) {
+				return true
+			}
 		}
 	}
 	return false
