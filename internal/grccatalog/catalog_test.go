@@ -49,7 +49,7 @@ func TestValidateWidgetQueryEnforcesEnum(t *testing.T) {
 }
 
 func TestValidateWidgetQueryEnforcesTypes(t *testing.T) {
-	if err := ValidateWidgetQuery(WidgetQuery{SourceID: "findings", Params: map[string]string{"min_age_days": "soon"}}); !errors.Is(err, ErrInvalidQuery) {
+	if err := ValidateWidgetQuery(WidgetQuery{SourceID: "findings", Params: map[string]string{"age_min_days": "soon"}}); !errors.Is(err, ErrInvalidQuery) {
 		t.Fatalf("bad int error = %v, want ErrInvalidQuery", err)
 	}
 	if err := ValidateWidgetQuery(WidgetQuery{SourceID: "trends", Params: map[string]string{"compare": "maybe"}}); !errors.Is(err, ErrInvalidQuery) {
@@ -105,7 +105,7 @@ func TestCatalogAdvertisesOnlyHonoredParams(t *testing.T) {
 func TestValidateWidgetQueryAcceptsBoundedQuery(t *testing.T) {
 	err := ValidateWidgetQuery(WidgetQuery{
 		SourceID: "findings",
-		Params:   map[string]string{"status": "open", "severity": "high", "min_age_days": "30", "runtime_id": "rt-1"},
+		Params:   map[string]string{"status": "open", "severity": "high", "age_min_days": "30", "runtime_id": "rt-1"},
 		Limit:    50,
 	})
 	if err != nil {
