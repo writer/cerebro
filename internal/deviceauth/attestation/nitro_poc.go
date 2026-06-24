@@ -81,7 +81,7 @@ func (v *NitroPOCVerifier) Verify(_ context.Context, in Input) (*Result, error) 
 	}
 	keyHash := sha256.Sum256(pubDER)
 	return &Result{
-		AssuranceLevel: "hardware",
+		AssuranceLevel: "software",
 		PublicKey:      pubDER,
 		KeyID:          hex.EncodeToString(keyHash[:]),
 		Vendor:         FormatAWSNitroEnclavePOC,

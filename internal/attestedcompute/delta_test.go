@@ -61,11 +61,14 @@ func TestProjectEventAcceptsBlindedGraphDelta(t *testing.T) {
 	if len(entities) != 3 || len(links) != 2 {
 		t.Fatalf("ProjectEvent() produced %d entities/%d links, want 3/2", len(entities), len(links))
 	}
-	if got := entities[0].Attributes["attested_compute_measurement"]; got == "" {
-		t.Fatalf("attestation measurement not stamped on entity")
+	if got := entities[0].Attributes["attested_compute_verification_status"]; got != "unverified_poc" {
+		t.Fatalf("attestation verification status = %q, want unverified_poc", got)
 	}
-	if got := links[0].Attributes["attested_compute_key_id"]; got != "collector-key" {
-		t.Fatalf("link attestation key = %q, want collector-key", got)
+	if got := entities[0].Attributes["attested_compute_claimed_measurement"]; got == "" {
+		t.Fatalf("claimed attestation measurement not stamped on entity")
+	}
+	if got := links[0].Attributes["attested_compute_claimed_key_id"]; got != "collector-key" {
+		t.Fatalf("link claimed attestation key = %q, want collector-key", got)
 	}
 }
 
@@ -80,6 +83,20 @@ func TestProjectEventRejectsRawSensitiveLabel(t *testing.T) {
 	}
 	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
 		t.Fatalf("ProjectEvent() error = nil, want raw label rejection")
+	}
+}
+
+func TestProjectEventRejectsCaseInsensitiveSensitiveEntityBypass(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:okta.user:alice@example.com",
+			EntityType: "OKTA.USER",
+			Label:      "alice@example.com",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want case-insensitive sensitive entity rejection")
 	}
 }
 
@@ -100,6 +117,20 @@ func TestProjectEventRejectsRawSensitiveAttribute(t *testing.T) {
 	}
 }
 
+func TestProjectEventRejectsRawSensitiveLinkEndpoint(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Links: []Link{{
+			FromURN:  "urn:cerebro:tenant-a:okta.user:alice@example.com",
+			ToURN:    "urn:cerebro:tenant-a:data.classification:restricted",
+			Relation: "has_classification",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want raw sensitive link endpoint rejection")
+	}
+}
+
 func TestProjectEventRejectsCrossTenantURN(t *testing.T) {
 	payload := GraphDelta{
 		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
@@ -111,6 +142,35 @@ func TestProjectEventRejectsCrossTenantURN(t *testing.T) {
 	}
 	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
 		t.Fatalf("ProjectEvent() error = nil, want cross-tenant rejection")
+	}
+}
+
+func TestProjectEventDropsCallerSuppliedAttestationAttributes(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: "aws-nitro-enclave-poc", ImageDigest: "sha256:abc"},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:data.classification:restricted",
+			EntityType: "data.classification",
+			Label:      "restricted",
+			Attributes: map[string]string{
+				"attested_compute_claimed_key_id":      "fake-key",
+				"attested_compute_claimed_measurement": "fake-measurement",
+			},
+		}},
+	}
+	entities, _, err := ProjectEvent(eventWithPayload(t, payload))
+	if err != nil {
+		t.Fatalf("ProjectEvent() error = %v", err)
+	}
+	attributes := entities[0].Attributes
+	if got := attributes["attested_compute_claimed_key_id"]; got != "" {
+		t.Fatalf("caller-supplied claimed key id survived = %q", got)
+	}
+	if got := attributes["attested_compute_claimed_measurement"]; got != "" {
+		t.Fatalf("caller-supplied claimed measurement survived = %q", got)
+	}
+	if got := attributes["attested_compute_claimed_image_digest"]; got != "sha256:abc" {
+		t.Fatalf("claimed image digest = %q, want sha256:abc", got)
 	}
 }
 

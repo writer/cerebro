@@ -11,6 +11,10 @@ import (
 )
 
 func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
+	registry, err := NewRegistry(EventProjector{Kind: attestedcompute.EventKindGraphDelta, Project: attestedComputeGraphDeltaProjections})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
 	tokenizer, err := attestedcompute.NewTokenizer([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
 		t.Fatalf("NewTokenizer() error = %v", err)
@@ -48,7 +52,7 @@ func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
 		},
 	}
 
-	entities, links, err := New(nil, nil).ProjectRecords(event)
+	entities, links, err := NewWithRegistry(nil, nil, registry).ProjectRecords(event)
 	if err != nil {
 		t.Fatalf("ProjectRecords() error = %v", err)
 	}
@@ -66,7 +70,10 @@ func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
 	if links[0].Relation != "can_admin" {
 		t.Fatalf("link relation = %q, want can_admin", links[0].Relation)
 	}
-	if got := links[0].Attributes["attested_compute_format"]; got != "aws-nitro-enclave-poc" {
-		t.Fatalf("link attestation format = %q, want aws-nitro-enclave-poc", got)
+	if got := links[0].Attributes["attested_compute_verification_status"]; got != "unverified_poc" {
+		t.Fatalf("link attestation verification status = %q, want unverified_poc", got)
+	}
+	if got := links[0].Attributes["attested_compute_claimed_format"]; got != "aws-nitro-enclave-poc" {
+		t.Fatalf("link claimed attestation format = %q, want aws-nitro-enclave-poc", got)
 	}
 }

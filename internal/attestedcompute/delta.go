@@ -118,6 +118,9 @@ func projectLink(tenantID string, sourceID string, attestation Attestation, link
 	if !tenantScopedURN(tenantID, fromURN) || !tenantScopedURN(tenantID, toURN) {
 		return nil, fmt.Errorf("attested compute link endpoints must stay inside tenant scope")
 	}
+	if unblindedSensitiveURN(tenantID, fromURN) || unblindedSensitiveURN(tenantID, toURN) {
+		return nil, fmt.Errorf("attested compute link endpoints for sensitive entity types must use attested token urns")
+	}
 	if !allowedRelation(relation) {
 		return nil, fmt.Errorf("attested compute relation %q is not allowed", relation)
 	}
@@ -154,6 +157,9 @@ func sanitizeAttributes(tenantID string, input map[string]string) (map[string]st
 		if key == "" || value == "" {
 			continue
 		}
+		if reservedAttestedComputeAttribute(key) {
+			continue
+		}
 		if sensitiveAttributeKey(key) && !blindedValue(tenantID, value) {
 			return nil, fmt.Errorf("%s must be tokenized or tenant-scoped attested urn", key)
 		}
@@ -166,10 +172,11 @@ func stampAttestation(attributes map[string]string, attestation Attestation) {
 	if attributes == nil {
 		return
 	}
-	addAttribute(attributes, "attested_compute_format", attestation.Format)
-	addAttribute(attributes, "attested_compute_measurement", attestation.Measurement)
-	addAttribute(attributes, "attested_compute_key_id", attestation.KeyID)
-	addAttribute(attributes, "attested_compute_image_digest", attestation.ImageDigest)
+	attributes["attested_compute_verification_status"] = "unverified_poc"
+	addAttribute(attributes, "attested_compute_claimed_format", attestation.Format)
+	addAttribute(attributes, "attested_compute_claimed_measurement", attestation.Measurement)
+	addAttribute(attributes, "attested_compute_claimed_key_id", attestation.KeyID)
+	addAttribute(attributes, "attested_compute_claimed_image_digest", attestation.ImageDigest)
 }
 
 func addAttribute(attributes map[string]string, key string, value string) {
@@ -191,13 +198,28 @@ func attestedURN(tenantID string, urn string) bool {
 	return tenantID != "" && strings.HasPrefix(urn, "urn:cerebro:"+tenantID+":attested:")
 }
 
+func unblindedSensitiveURN(tenantID string, urn string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	urn = strings.TrimSpace(urn)
+	if tenantID == "" || urn == "" || attestedURN(tenantID, urn) {
+		return false
+	}
+	prefix := "urn:cerebro:" + tenantID + ":"
+	if !strings.HasPrefix(urn, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(urn, prefix)
+	entityType, _, _ := strings.Cut(rest, ":")
+	return sensitiveEntityType(entityType)
+}
+
 func blindedValue(tenantID string, value string) bool {
 	value = strings.TrimSpace(value)
 	return TokenLike(value) || attestedURN(tenantID, value)
 }
 
 func sensitiveEntityType(entityType string) bool {
-	entityType = strings.TrimSpace(entityType)
+	entityType = strings.ToLower(strings.TrimSpace(entityType))
 	if entityType == "" {
 		return false
 	}
@@ -224,6 +246,10 @@ func sensitiveEntityType(entityType string) bool {
 	default:
 		return false
 	}
+}
+
+func reservedAttestedComputeAttribute(key string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "attested_compute_")
 }
 
 func sensitiveAttributeKey(key string) bool {

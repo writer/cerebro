@@ -188,7 +188,6 @@ func kindSet(kinds []string) map[string]struct{} {
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
-	"attested_compute.graph_delta":                  attestedComputeGraphDeltaProjections,
 	"backstage.component":                           backstageComponentProjections,
 	"auth0.audit_events":                            auth0AuditEventsProjections,
 	"auth0.roles":                                   auth0RolesProjections,

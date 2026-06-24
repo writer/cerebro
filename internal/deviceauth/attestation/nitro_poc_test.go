@@ -35,7 +35,7 @@ func TestNitroPOCVerifierBindsMeasurementNonceAndKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if result.AssuranceLevel != "hardware" || result.Vendor != FormatAWSNitroEnclavePOC {
+	if result.AssuranceLevel != "software" || result.Vendor != FormatAWSNitroEnclavePOC {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if len(result.PublicKey) == 0 || result.KeyID == "" {
