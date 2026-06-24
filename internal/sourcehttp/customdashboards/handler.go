@@ -195,23 +195,28 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if tenantID == "" {
+		writeError(w, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest))
+		return
+	}
 	limit, err := uint32QueryParam(r, "limit")
 	if err != nil {
 		writeError(w, fmt.Errorf("%w: %w", ErrInvalidRequest, err))
 		return
 	}
+	viewer := h.actorID(r.Context())
 	dashboards, err := h.store.ListCustomDashboards(r.Context(), ports.CustomDashboardFilter{
 		TenantID:       tenantID,
 		OrganizationID: strings.TrimSpace(r.URL.Query().Get("organization_id")),
 		WorkspaceID:    strings.TrimSpace(r.URL.Query().Get("workspace_id")),
 		OwnerUserID:    strings.TrimSpace(r.URL.Query().Get("owner_user_id")),
+		ViewerUserID:   viewer,
 		Limit:          limit,
 	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	viewer := h.actorID(r.Context())
 	views := make([]View, 0, len(dashboards))
 	for _, dashboard := range dashboards {
 		if !canView(viewer, dashboard) {
@@ -383,8 +388,14 @@ func (h *Handler) dashboardFromRequest(r *http.Request) (*ports.CustomDashboard,
 }
 
 // canView enforces dashboard visibility within an already tenant-authorized
-// request. Private dashboards are restricted to their owner; workspace and
-// organization dashboards remain visible to any authorized tenant member.
+// request. Private dashboards are restricted to their owner.
+//
+// NOTE: workspace and organization dashboards are currently visible to ANY
+// authorized member of the tenant. The auth principal carries no workspace or
+// organization membership claim, so these tiers cannot yet be scoped below the
+// tenant; they effectively mean "shared with the tenant". Enforcing true
+// workspace/organization boundaries requires a membership claim on the
+// principal and is tracked as follow-up work, not a behavior change here.
 func canView(viewer string, dashboard *ports.CustomDashboard) bool {
 	if dashboard.Visibility != visibilityPrivate {
 		return true

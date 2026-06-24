@@ -124,6 +124,9 @@ func (s *Store) ListCustomDashboards(ctx context.Context, filter ports.CustomDas
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
 	}
+	if strings.TrimSpace(filter.TenantID) == "" {
+		return nil, errors.New("custom dashboard list requires a tenant_id")
+	}
 	if err := s.ensureCustomDashboardTables(ctx); err != nil {
 		return nil, err
 	}
@@ -141,6 +144,10 @@ func (s *Store) ListCustomDashboards(ctx context.Context, filter ports.CustomDas
 	addStringClause("organization_id", filter.OrganizationID)
 	addStringClause("workspace_id", filter.WorkspaceID)
 	addStringClause("owner_user_id", filter.OwnerUserID)
+	if viewer := strings.TrimSpace(filter.ViewerUserID); viewer != "" {
+		args = append(args, viewer)
+		clauses = append(clauses, fmt.Sprintf("(visibility <> 'private' OR owner_user_id = $%d)", len(args)))
+	}
 	if !filter.IncludeArchived {
 		clauses = append(clauses, "archived_at IS NULL")
 	}

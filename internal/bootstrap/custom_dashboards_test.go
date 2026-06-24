@@ -184,6 +184,23 @@ func TestHandleCreateCustomDashboardAcceptsBroadenedWidgets(t *testing.T) {
 	}
 }
 
+func TestHandleListCustomDashboardRequiresTenant(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	store.dashboards["local"] = &ports.CustomDashboard{ID: "local", TenantID: "local", OwnerUserID: "person@example.test", Name: "local", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["other"] = &ports.CustomDashboard{ID: "other", TenantID: "other", OwnerUserID: "intruder@example.test", Name: "other", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	app := askQueryTestApp(store)
+
+	request := httptest.NewRequest(http.MethodGet, "/grc/dashboards", nil)
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{Name: "person@example.test"},
+	}))
+	recorder := httptest.NewRecorder()
+	customDashboardTestHandler(app).List(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("list without a resolvable tenant status = %d, want 400 (must not fan out across tenants) (body %s)", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHandleCustomDashboardVisibilityHidesPrivateFromNonOwner(t *testing.T) {
 	store := newStubCustomDashboardStore()
 	store.dashboards["mine"] = &ports.CustomDashboard{ID: "mine", TenantID: "local", OwnerUserID: "person@example.test", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
