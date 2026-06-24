@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/writer/cerebro/internal/grccatalog"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -565,8 +566,9 @@ func normalizeWidgets(raw json.RawMessage) (json.RawMessage, error) {
 	seen := make(map[string]struct{}, len(widgets))
 	for index, entry := range widgets {
 		var widget struct {
-			ID   string `json:"id"`
-			Type string `json:"type"`
+			ID    string          `json:"id"`
+			Type  string          `json:"type"`
+			Query json.RawMessage `json:"query"`
 		}
 		if err := json.Unmarshal(entry, &widget); err != nil {
 			return nil, fmt.Errorf("%w: widget %d must be a JSON object", ErrInvalidRequest, index)
@@ -583,8 +585,40 @@ func normalizeWidgets(raw json.RawMessage) (json.RawMessage, error) {
 		if _, ok := knownWidgetTypes[widgetType]; !ok {
 			return nil, fmt.Errorf("%w: widget %q has unsupported type %q", ErrInvalidRequest, id, widgetType)
 		}
+		if err := validateWidgetQuery(id, widget.Query); err != nil {
+			return nil, err
+		}
 	}
 	return append(json.RawMessage(nil), raw...), nil
+}
+
+// validateWidgetQuery validates a widget's optional query against the GRC
+// report catalog. It is lenient about legacy or descriptive query fields:
+// validation only applies once a widget binds a catalog source_id, so existing
+// dashboards that carry no source binding remain valid.
+func validateWidgetQuery(widgetID string, raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	var query struct {
+		SourceID string            `json:"source_id"`
+		Params   map[string]string `json:"params"`
+		Limit    uint32            `json:"limit"`
+	}
+	if err := json.Unmarshal(raw, &query); err != nil {
+		return fmt.Errorf("%w: widget %q has an invalid query", ErrInvalidRequest, widgetID)
+	}
+	if strings.TrimSpace(query.SourceID) == "" {
+		return nil
+	}
+	if err := grccatalog.ValidateWidgetQuery(grccatalog.WidgetQuery{SourceID: query.SourceID, Params: query.Params, Limit: query.Limit}); err != nil {
+		return fmt.Errorf("%w: widget %q query: %s", ErrInvalidRequest, widgetID, err.Error())
+	}
+	return nil
 }
 
 func uint32QueryParam(r *http.Request, key string) (uint32, error) {

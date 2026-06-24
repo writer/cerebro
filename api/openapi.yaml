@@ -4210,6 +4210,54 @@ paths:
             application/json:
               schema:
                 type: object
+  /grc/query:
+    post:
+      summary: Run one bounded report-catalog query
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - source_id
+              properties:
+                source_id:
+                  type: string
+                params:
+                  type: object
+                  additionalProperties:
+                    type: string
+                limit:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Envelope wrapping the selected source's tenant-scoped, row-limited result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Unknown source, unknown parameter, malformed value, or out-of-range limit.
+        '403':
+          description: Tenant access forbidden.
+        '503':
+          description: Backing GRC data source unavailable.
+  /grc/report-catalog:
+    get:
+      summary: List bounded GRC report query sources
+      tags:
+        - GRC
+      responses:
+        '200':
+          description: The allowlisted report source catalog with declared parameters, visualizations, and row limits.
+          content:
+            application/json:
+              schema:
+                type: object
 
 components:
   securitySchemes:

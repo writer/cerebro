@@ -93,6 +93,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Exact: "/grc/risk-scoring-config", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/grc/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodPost, Exact: "/grc/ask", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/grc/query", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPut, Exact: "/grc/risk-scoring-config", Scope: scopeRiskScoringWrite, Static: true},
 	{Method: http.MethodDelete, Exact: "/grc/risk-scoring-config", Scope: scopeRiskScoringWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/control-packets", Scope: scopeCosmoSecurityRead, Static: true},
