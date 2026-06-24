@@ -10,8 +10,6 @@ import (
 	"github.com/writer/cerebro/internal/securitytooling"
 )
 
-const relationDependsOn = "depends_on"
-
 func backstageComponentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
