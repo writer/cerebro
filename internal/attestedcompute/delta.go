@@ -277,8 +277,27 @@ func sensitiveAttributeKey(key string) bool {
 	case "is_admin", "is_delegated_admin", "is_public", "mfa_enrolled", "mfa_enforced", "status", "severity", "confidence", "observed_at", "at", "last_observed_at", "sensitivity_label":
 		return false
 	}
-	for _, marker := range []string{"arn", "email", "hostname", "ip", "label", "name", "principal", "resource_id", "resource_urn", "user", "urn"} {
+	if sensitiveIPAttributeKey(normalized) {
+		return true
+	}
+	for _, marker := range []string{"arn", "email", "hostname", "label", "name", "principal", "resource_id", "resource_urn", "user", "urn"} {
 		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func sensitiveIPAttributeKey(key string) bool {
+	switch key {
+	case "ip", "ipv4", "ipv6":
+		return true
+	}
+	for _, delimiter := range []string{"_", "-", "."} {
+		token := delimiter + "ip" + delimiter
+		if strings.HasPrefix(key, "ip"+delimiter) ||
+			strings.HasSuffix(key, delimiter+"ip") ||
+			strings.Contains(key, token) {
 			return true
 		}
 	}

@@ -117,6 +117,19 @@ func TestProjectEventRejectsRawSensitiveAttribute(t *testing.T) {
 	}
 }
 
+func TestSensitiveAttributeKeyOnlyMatchesIPAsToken(t *testing.T) {
+	for _, key := range []string{"ip", "source_ip", "ip_address", "public-ip", "network.ip"} {
+		if !sensitiveAttributeKey(key) {
+			t.Fatalf("sensitiveAttributeKey(%q) = false, want true", key)
+		}
+	}
+	for _, key := range []string{"description", "ownership", "ship_date"} {
+		if sensitiveAttributeKey(key) {
+			t.Fatalf("sensitiveAttributeKey(%q) = true, want false", key)
+		}
+	}
+}
+
 func TestProjectEventRejectsRawSensitiveLinkEndpoint(t *testing.T) {
 	payload := GraphDelta{
 		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
