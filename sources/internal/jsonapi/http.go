@@ -49,8 +49,8 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		}
 	}
 	pageCursor := strings.TrimSpace(cursor)
-	if family.PagePagination && pageCursor == "" {
-		pageCursor = strconv.Itoa(family.PageStart)
+	if pageCursor == "" {
+		pageCursor = strings.TrimSpace(family.PageFirstCursor)
 	}
 	if pageCursor != "" {
 		query.Set(cursorParam(family), pageCursor)
@@ -145,12 +145,12 @@ func cursorParam(family Family) string {
 }
 
 func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount int, next string) string {
-	if !family.PagePagination || strings.TrimSpace(next) != "" || pageSize < 1 || itemCount < pageSize {
+	if strings.TrimSpace(family.PageFirstCursor) == "" || strings.TrimSpace(next) != "" || pageSize < 1 || itemCount < pageSize {
 		return next
 	}
 	current := strings.TrimSpace(cursor)
 	if current == "" {
-		current = strconv.Itoa(family.PageStart)
+		current = strings.TrimSpace(family.PageFirstCursor)
 	}
 	page, err := strconv.Atoi(current)
 	if err != nil {
