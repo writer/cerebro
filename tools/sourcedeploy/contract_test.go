@@ -175,6 +175,72 @@ runtimes:
 	}
 }
 
+func TestRenderContractRejectsRelativeJSONAPIHealthPath(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", "")
+	mkSourceHealthReceipt(t, root, "okta", `{
+  "receipt_kind": "source_health.receipt",
+  "source_type": "json_api",
+  "adapter_health_path": "healthz",
+  "expected_cadence_seconds": 3600,
+  "stale_after_seconds": 7200
+}`)
+
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if _, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"}); err == nil {
+		t.Fatal("RenderContract error = nil, want json_api adapter health path error")
+	}
+}
+
+func TestRenderContractAllowsCloudAPIOperationHealthPath(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mkSource(t, root, "aws", "id: aws\nemitted_kinds:\n  - aws.public_endpoint\n", "")
+	mkSourceHealthReceipt(t, root, "aws", `{
+  "receipt_kind": "source_health.receipt",
+  "source_type": "cloud_api",
+  "adapter_health_path": "sts:GetCallerIdentity",
+  "expected_cadence_seconds": 86400,
+  "stale_after_seconds": 86400
+}`)
+
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"})
+	if err != nil {
+		t.Fatalf("RenderContract: %v", err)
+	}
+	if got := contract.Sources[0].SourceHealthReceipt["adapter_health_path"]; got != "sts:GetCallerIdentity" {
+		t.Fatalf("adapter_health_path = %v, want sts:GetCallerIdentity", got)
+	}
+}
+
+func TestRenderContractAllowsJSONAPIReceiptWithoutHealthPath(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", "")
+	mkSourceHealthReceipt(t, root, "okta", `{
+  "receipt_kind": "source_health.receipt",
+  "source_type": "json_api",
+  "expected_cadence_seconds": 3600,
+  "stale_after_seconds": 7200
+}`)
+
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if _, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"}); err != nil {
+		t.Fatalf("RenderContract: %v", err)
+	}
+}
+
 func TestRenderContractStampsMissingSourceHealthReceiptSourceID(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
