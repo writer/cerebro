@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	EventKindGraphDelta = "attested_compute.graph_delta"
-	TokenPrefix         = "tok_"
+	AttestationFormatAWSNitroEnclavePOC = "aws-nitro-enclave-poc"
+	EventKindGraphDelta                 = "attested_compute.graph_delta"
+	TokenPrefix                         = "tok_"
 )
 
 type Tokenizer struct {

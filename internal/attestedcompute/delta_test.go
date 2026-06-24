@@ -18,7 +18,7 @@ func TestProjectEventAcceptsBlindedGraphDelta(t *testing.T) {
 	resourceToken := tokenizer.Token("aws.arn", "arn:aws:s3:::sensitive-bucket")
 	payload := GraphDelta{
 		Attestation: Attestation{
-			Format:      "aws-nitro-enclave-poc",
+			Format:      AttestationFormatAWSNitroEnclavePOC,
 			Measurement: strings.Repeat("a", 96),
 			KeyID:       "collector-key",
 		},
@@ -64,17 +64,16 @@ func TestProjectEventAcceptsBlindedGraphDelta(t *testing.T) {
 	if got := entities[0].Attributes["attested_compute_verification_status"]; got != "unverified_poc" {
 		t.Fatalf("attestation verification status = %q, want unverified_poc", got)
 	}
-	if got := entities[0].Attributes["attested_compute_claimed_measurement"]; got == "" {
-		t.Fatalf("claimed attestation measurement not stamped on entity")
-	}
-	if got := links[0].Attributes["attested_compute_claimed_key_id"]; got != "collector-key" {
-		t.Fatalf("link claimed attestation key = %q, want collector-key", got)
+	for _, key := range []string{"attested_compute_claimed_format", "attested_compute_claimed_measurement", "attested_compute_claimed_key_id", "attested_compute_claimed_image_digest"} {
+		if got := entities[0].Attributes[key]; got != "" {
+			t.Fatalf("%s = %q, want empty for unverified attestation", key, got)
+		}
 	}
 }
 
 func TestProjectEventRejectsRawSensitiveLabel(t *testing.T) {
 	payload := GraphDelta{
-		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
 		Entities: []Entity{{
 			URN:        "urn:cerebro:tenant-a:attested:okta.user:tok_abc",
 			EntityType: "okta.user",
@@ -88,7 +87,7 @@ func TestProjectEventRejectsRawSensitiveLabel(t *testing.T) {
 
 func TestProjectEventRejectsCaseInsensitiveSensitiveEntityBypass(t *testing.T) {
 	payload := GraphDelta{
-		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
 		Entities: []Entity{{
 			URN:        "urn:cerebro:tenant-a:okta.user:alice@example.com",
 			EntityType: "OKTA.USER",
@@ -102,7 +101,7 @@ func TestProjectEventRejectsCaseInsensitiveSensitiveEntityBypass(t *testing.T) {
 
 func TestProjectEventRejectsRawSensitiveAttribute(t *testing.T) {
 	payload := GraphDelta{
-		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
 		Entities: []Entity{{
 			URN:        "urn:cerebro:tenant-a:attested:okta.user:tok_abc",
 			EntityType: "okta.user",
@@ -130,9 +129,22 @@ func TestSensitiveAttributeKeyOnlyMatchesIPAsToken(t *testing.T) {
 	}
 }
 
+func TestSensitiveAttributeKeyDoesNotAllowSafePrefixPIIBypass(t *testing.T) {
+	for _, key := range []string{"risk_email", "control_user_name", "classification_arn", "posture_principal"} {
+		if !sensitiveAttributeKey(key) {
+			t.Fatalf("sensitiveAttributeKey(%q) = false, want true", key)
+		}
+	}
+	for _, key := range []string{"risk_score", "control_status", "classification_level", "posture_state"} {
+		if sensitiveAttributeKey(key) {
+			t.Fatalf("sensitiveAttributeKey(%q) = true, want false", key)
+		}
+	}
+}
+
 func TestProjectEventRejectsRawSensitiveLinkEndpoint(t *testing.T) {
 	payload := GraphDelta{
-		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
 		Links: []Link{{
 			FromURN:  "urn:cerebro:tenant-a:okta.user:alice@example.com",
 			ToURN:    "urn:cerebro:tenant-a:data.classification:restricted",
@@ -146,7 +158,7 @@ func TestProjectEventRejectsRawSensitiveLinkEndpoint(t *testing.T) {
 
 func TestProjectEventRejectsCrossTenantURN(t *testing.T) {
 	payload := GraphDelta{
-		Attestation: Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)},
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
 		Entities: []Entity{{
 			URN:        "urn:cerebro:other:attested:okta.user:tok_abc",
 			EntityType: "okta.user",
@@ -204,7 +216,7 @@ func TestProjectEventRejectsAttestedURNWithRawTokenSegment(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.delta.Attestation = Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)}
+			tc.delta.Attestation = Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)}
 			if _, _, err := ProjectEvent(eventWithPayload(t, tc.delta)); err == nil {
 				t.Fatalf("ProjectEvent() error = nil, want raw attested URN token rejection")
 			}
@@ -214,7 +226,7 @@ func TestProjectEventRejectsAttestedURNWithRawTokenSegment(t *testing.T) {
 
 func TestProjectEventDropsCallerSuppliedAttestationAttributes(t *testing.T) {
 	payload := GraphDelta{
-		Attestation: Attestation{Format: "aws-nitro-enclave-poc", ImageDigest: "sha256:abc"},
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, ImageDigest: "sha256:abc"},
 		Entities: []Entity{{
 			URN:        "urn:cerebro:tenant-a:data.classification:restricted",
 			EntityType: "data.classification",
@@ -236,8 +248,22 @@ func TestProjectEventDropsCallerSuppliedAttestationAttributes(t *testing.T) {
 	if got := attributes["attested_compute_claimed_measurement"]; got != "" {
 		t.Fatalf("caller-supplied claimed measurement survived = %q", got)
 	}
-	if got := attributes["attested_compute_claimed_image_digest"]; got != "sha256:abc" {
-		t.Fatalf("claimed image digest = %q, want sha256:abc", got)
+	if got := attributes["attested_compute_claimed_image_digest"]; got != "" {
+		t.Fatalf("claimed image digest = %q, want empty for unverified attestation", got)
+	}
+}
+
+func TestProjectEventRejectsUnsupportedAttestationFormat(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: "self-asserted", ImageDigest: "sha256:abc"},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:data.classification:restricted",
+			EntityType: "data.classification",
+			Label:      "restricted",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want unsupported attestation format rejection")
 	}
 }
 

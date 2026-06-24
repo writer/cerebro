@@ -60,7 +60,7 @@ func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*
 	sourceID := strings.TrimSpace(event.GetSourceId())
 	entities := make([]*ports.ProjectedEntity, 0, len(delta.Entities))
 	for _, entity := range delta.Entities {
-		projected, err := projectEntity(tenantID, sourceID, delta.Attestation, entity)
+		projected, err := projectEntity(tenantID, sourceID, entity)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -68,7 +68,7 @@ func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*
 	}
 	links := make([]*ports.ProjectedLink, 0, len(delta.Links))
 	for _, link := range delta.Links {
-		projected, err := projectLink(tenantID, sourceID, delta.Attestation, link)
+		projected, err := projectLink(tenantID, sourceID, link)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -77,7 +77,7 @@ func ProjectEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*
 	return entities, links, nil
 }
 
-func projectEntity(tenantID string, sourceID string, attestation Attestation, entity Entity) (*ports.ProjectedEntity, error) {
+func projectEntity(tenantID string, sourceID string, entity Entity) (*ports.ProjectedEntity, error) {
 	urn := strings.TrimSpace(entity.URN)
 	entityType := strings.TrimSpace(entity.EntityType)
 	if urn == "" || entityType == "" {
@@ -97,7 +97,7 @@ func projectEntity(tenantID string, sourceID string, attestation Attestation, en
 	if err != nil {
 		return nil, fmt.Errorf("attested compute entity %q attributes: %w", urn, err)
 	}
-	stampAttestation(attributes, attestation)
+	stampAttestation(attributes)
 	return &ports.ProjectedEntity{
 		URN:        urn,
 		TenantID:   tenantID,
@@ -108,7 +108,7 @@ func projectEntity(tenantID string, sourceID string, attestation Attestation, en
 	}, nil
 }
 
-func projectLink(tenantID string, sourceID string, attestation Attestation, link Link) (*ports.ProjectedLink, error) {
+func projectLink(tenantID string, sourceID string, link Link) (*ports.ProjectedLink, error) {
 	fromURN := strings.TrimSpace(link.FromURN)
 	toURN := strings.TrimSpace(link.ToURN)
 	relation := strings.TrimSpace(link.Relation)
@@ -128,7 +128,7 @@ func projectLink(tenantID string, sourceID string, attestation Attestation, link
 	if err != nil {
 		return nil, fmt.Errorf("attested compute link %q attributes: %w", relation, err)
 	}
-	stampAttestation(attributes, attestation)
+	stampAttestation(attributes)
 	return &ports.ProjectedLink{
 		TenantID:   tenantID,
 		SourceID:   sourceID,
@@ -140,8 +140,12 @@ func projectLink(tenantID string, sourceID string, attestation Attestation, link
 }
 
 func validateAttestation(attestation Attestation) error {
-	if strings.TrimSpace(attestation.Format) == "" {
+	format := strings.TrimSpace(attestation.Format)
+	if format == "" {
 		return fmt.Errorf("attested compute attestation format is required")
+	}
+	if format != AttestationFormatAWSNitroEnclavePOC {
+		return fmt.Errorf("attested compute attestation format %q is unsupported", format)
 	}
 	if strings.TrimSpace(attestation.Measurement) == "" && strings.TrimSpace(attestation.ImageDigest) == "" {
 		return fmt.Errorf("attested compute attestation measurement or image_digest is required")
@@ -168,22 +172,11 @@ func sanitizeAttributes(tenantID string, input map[string]string) (map[string]st
 	return out, nil
 }
 
-func stampAttestation(attributes map[string]string, attestation Attestation) {
+func stampAttestation(attributes map[string]string) {
 	if attributes == nil {
 		return
 	}
 	attributes["attested_compute_verification_status"] = "unverified_poc"
-	addAttribute(attributes, "attested_compute_claimed_format", attestation.Format)
-	addAttribute(attributes, "attested_compute_claimed_measurement", attestation.Measurement)
-	addAttribute(attributes, "attested_compute_claimed_key_id", attestation.KeyID)
-	addAttribute(attributes, "attested_compute_claimed_image_digest", attestation.ImageDigest)
-}
-
-func addAttribute(attributes map[string]string, key string, value string) {
-	value = strings.TrimSpace(value)
-	if value != "" {
-		attributes[key] = value
-	}
 }
 
 func tenantScopedURN(tenantID string, urn string) bool {
@@ -266,6 +259,13 @@ func sensitiveAttributeKey(key string) bool {
 	if normalized == "" {
 		return false
 	}
+	switch normalized {
+	case "is_admin", "is_delegated_admin", "is_public", "mfa_enrolled", "mfa_enforced", "status", "severity", "confidence", "observed_at", "at", "last_observed_at", "sensitivity_label":
+		return false
+	}
+	if sensitiveAttributeMarker(normalized) {
+		return true
+	}
 	if strings.HasPrefix(normalized, "risk_") ||
 		strings.HasPrefix(normalized, "posture_") ||
 		strings.HasPrefix(normalized, "control_") ||
@@ -273,15 +273,15 @@ func sensitiveAttributeKey(key string) bool {
 		strings.HasPrefix(normalized, "attested_compute_") {
 		return false
 	}
-	switch normalized {
-	case "is_admin", "is_delegated_admin", "is_public", "mfa_enrolled", "mfa_enforced", "status", "severity", "confidence", "observed_at", "at", "last_observed_at", "sensitivity_label":
-		return false
-	}
-	if sensitiveIPAttributeKey(normalized) {
+	return false
+}
+
+func sensitiveAttributeMarker(key string) bool {
+	if sensitiveIPAttributeKey(key) {
 		return true
 	}
 	for _, marker := range []string{"arn", "email", "hostname", "label", "name", "principal", "resource_id", "resource_urn", "user", "urn"} {
-		if strings.Contains(normalized, marker) {
+		if strings.Contains(key, marker) {
 			return true
 		}
 	}

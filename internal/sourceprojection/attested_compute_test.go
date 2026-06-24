@@ -21,7 +21,7 @@ func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
 	resourceURN := attestedcompute.TokenURN("tenant-a", "aws.s3_bucket", resourceToken)
 	payload := attestedcompute.GraphDelta{
 		Attestation: attestedcompute.Attestation{
-			Format:      "aws-nitro-enclave-poc",
+			Format:      attestedcompute.AttestationFormatAWSNitroEnclavePOC,
 			Measurement: strings.Repeat("a", 96),
 			KeyID:       "collector-key",
 		},
@@ -69,7 +69,7 @@ func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
 	if got := links[0].Attributes["attested_compute_verification_status"]; got != "unverified_poc" {
 		t.Fatalf("link attestation verification status = %q, want unverified_poc", got)
 	}
-	if got := links[0].Attributes["attested_compute_claimed_format"]; got != "aws-nitro-enclave-poc" {
-		t.Fatalf("link claimed attestation format = %q, want aws-nitro-enclave-poc", got)
+	if got := links[0].Attributes["attested_compute_claimed_format"]; got != "" {
+		t.Fatalf("link claimed attestation format = %q, want empty for unverified attestation", got)
 	}
 }
