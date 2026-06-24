@@ -12,16 +12,113 @@
 /api/ @writer/security
 /proto/ @writer/security
 /gen/ @writer/security
-/internal/bootstrap/ @writer/security
-/internal/config/ @writer/security
-/internal/statestore/ @writer/security
-/internal/graphstore/ @writer/security
-/internal/findings/ @writer/security
-/internal/deviceauth/ @writer/security
-/internal/mcpoauth/ @writer/security
 /scripts/ @writer/security
 /tools/ @writer/security
-/policies/ @writer/security
-/sources/ @writer/security
 /sdk/python/ @writer/security
 /sdk/typescript/ @writer/security
+
+# --- Per-domain ownership ---
+# Domain ownership mirrors the RBAC roles defined in internal/authz.
+# Each domain section lists the packages that domain owns for code review.
+# All domains currently map to @writer/security; update team assignments
+# when domain-specific review teams are created.
+
+# Bootstrap and platform infrastructure (admin)
+/internal/bootstrap/ @writer/security
+/internal/config/ @writer/security
+/internal/authz/ @writer/security
+/internal/ports/ @writer/security
+/internal/observability/ @writer/security
+/internal/telemetry/ @writer/security
+/internal/buildinfo/ @writer/security
+/internal/panicsafe/ @writer/security
+/internal/endpointtelemetry/ @writer/security
+/internal/querycache/ @writer/security
+
+# Findings and detection (finding_manager, analyst)
+/internal/findings/ @writer/security
+/internal/findingapi/ @writer/security
+/internal/findingdsl/ @writer/security
+/internal/findingevidence/ @writer/security
+/internal/findingmemory/ @writer/security
+/internal/riskplan/ @writer/security
+/internal/proactivetriage/ @writer/security
+/internal/correlation/ @writer/security
+/internal/runtimeresponse/ @writer/security
+
+# GRC domain (grc_reviewer, analyst)
+/internal/grccatalog/ @writer/security
+/internal/grccontrol/ @writer/security
+/internal/grcinventory/ @writer/security
+/internal/grcprogram/ @writer/security
+/internal/grctrends/ @writer/security
+/internal/compliance/ @writer/security
+/internal/securityevents/ @writer/security
+/internal/securitytooling/ @writer/security
+
+# Source management (source_manager, connector_manager)
+/internal/sourcecdk/ @writer/security
+/internal/sourcegen/ @writer/security
+/internal/sourceconfig/ @writer/security
+/internal/sourcehttp/ @writer/security
+/internal/sourceidentity/ @writer/security
+/internal/sourceops/ @writer/security
+/internal/sourceplanapi/ @writer/security
+/internal/sourceprojection/ @writer/security
+/internal/sourceregistry/ @writer/security
+/internal/sourceruntime/ @writer/security
+/internal/sourcecoverage/ @writer/security
+/internal/sourcehealth/ @writer/security
+/internal/sourcehealthview/ @writer/security
+/internal/resourcescope/ @writer/security
+/internal/connectorcatalog/ @writer/security
+/internal/connectorcredentials/ @writer/security
+/internal/connectordefinitions/ @writer/security
+/internal/connectordefinitionrecords/ @writer/security
+/internal/connectordiagnostics/ @writer/security
+/internal/connectorimport/ @writer/security
+/internal/connectorpreflight/ @writer/security
+/internal/connectorpreview/ @writer/security
+/internal/connectorsecretstores/ @writer/security
+/sources/ @writer/security
+/policies/ @writer/security
+
+# Agent platform (admin, job_manager)
+/internal/agentplatform/ @writer/security
+/internal/agentauthoring/ @writer/security
+/internal/agentplatformcoverage/ @writer/security
+/internal/a2agateway/ @writer/security
+/internal/knowledge/ @writer/security
+/internal/jobs/ @writer/security
+
+# Graph domain (analyst, viewer)
+/internal/graphstore/ @writer/security
+/internal/graphquery/ @writer/security
+/internal/graphingest/ @writer/security
+/internal/graphrebuild/ @writer/security
+/internal/graphactions/ @writer/security
+/internal/graphactionapi/ @writer/security
+/internal/graphactionworkflow/ @writer/security
+/internal/graphagent/ @writer/security
+/internal/graphfacts/ @writer/security
+/internal/graphprovenance/ @writer/security
+/internal/projectionmeta/ @writer/security
+
+# State stores and append log (admin)
+/internal/statestore/ @writer/security
+/internal/appendlog/ @writer/security
+/internal/appendlogindex/ @writer/security
+/internal/eventregistry/ @writer/security
+/internal/workflowevents/ @writer/security
+/internal/workflowprojection/ @writer/security
+/internal/claims/ @writer/security
+/internal/primitives/ @writer/security
+/internal/reports/ @writer/security
+/internal/knowledge/ @writer/security
+
+# Auth and device (admin)
+/internal/deviceauth/ @writer/security
+/internal/mcpoauth/ @writer/security
+
+# Vulnerability database (analyst)
+/internal/vulndb/ @writer/security
