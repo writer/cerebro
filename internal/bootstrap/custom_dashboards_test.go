@@ -195,6 +195,16 @@ func TestHandleCreateCustomDashboardValidatesWidgetCatalogQuery(t *testing.T) {
 			t.Fatalf("status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
 		}
 	})
+	t.Run("accepts a report widget bound to a catalog source", func(t *testing.T) {
+		store := newStubCustomDashboardStore()
+		app := askQueryTestApp(store)
+		body := `{"name":"Report","widgets":[{"id":"w1","type":"report","title":"Open findings","query":{"source_id":"findings","params":{"status":"open"},"limit":25}}]}`
+		recorder := httptest.NewRecorder()
+		customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", body))
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
+		}
+	})
 	t.Run("tolerates a legacy query with no catalog binding", func(t *testing.T) {
 		store := newStubCustomDashboardStore()
 		app := askQueryTestApp(store)

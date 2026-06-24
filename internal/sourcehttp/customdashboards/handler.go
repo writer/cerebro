@@ -40,7 +40,8 @@ var (
 
 // knownWidgetTypes is the catalog of widget kinds the renderer understands.
 // Writes are rejected for unknown types so dashboards stay forward-compatible
-// with the documented schema_version.
+// with the documented schema_version. The "report" kind binds a GRC report
+// catalog source via its query.source_id and is rendered from /grc/query.
 var knownWidgetTypes = map[string]struct{}{
 	"trend_metric_cards":      {},
 	"trend_chart":             {},
@@ -51,6 +52,7 @@ var knownWidgetTypes = map[string]struct{}{
 	"framework_progress":      {},
 	"connector_health":        {},
 	"markdown_note":           {},
+	"report":                  {},
 }
 
 type TenantResolver func(context.Context, string) (string, error)
