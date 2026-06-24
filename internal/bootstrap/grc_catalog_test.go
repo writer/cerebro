@@ -120,10 +120,17 @@ func TestWriteGRCQueryResponseEnvelopesSuccessAndPropagatesErrors(t *testing.T) 
 	}
 
 	failed := &capturedHTTPResponse{header: http.Header{}, statusCode: http.StatusForbidden}
-	failed.body.WriteString(`{"error":"forbidden"}`)
+	failed.header.Set("Content-Type", "text/plain; charset=utf-8")
+	failed.body.WriteString("Forbidden\n")
 	errorRecorder := httptest.NewRecorder()
 	writeGRCQueryResponse(errorRecorder, source, failed)
 	if errorRecorder.Code != http.StatusForbidden {
 		t.Fatalf("error status = %d, want 403", errorRecorder.Code)
+	}
+	if got := errorRecorder.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
+		t.Fatalf("error Content-Type = %q, want the backing handler's text/plain forwarded verbatim", got)
+	}
+	if errorRecorder.Body.String() != "Forbidden\n" {
+		t.Fatalf("error body = %q, want the backing plain-text body forwarded verbatim", errorRecorder.Body.String())
 	}
 }

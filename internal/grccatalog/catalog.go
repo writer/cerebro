@@ -172,20 +172,30 @@ func indexCatalog(sources []Source) map[string]Source {
 	return index
 }
 
-// scopeParams are the shared, tenant-safe scoping inputs honored by every
-// runtime-scoped GRC read. tenant_id and limit are intentionally excluded:
-// tenant is always resolved from the authenticated principal, and limit is a
-// dedicated WidgetQuery field clamped to the source maximum.
-func scopeParams() []Param {
+// runtimeScopeParams are the runtime-selection inputs honored by GRC reads that
+// resolve a set of source runtimes before querying (findings, controls,
+// evidence, trends). tenant_id and limit are intentionally excluded: tenant is
+// always resolved from the authenticated principal, and limit is a dedicated
+// WidgetQuery field clamped to the source maximum. Each parameter here is
+// consumed by the backing handler; the catalog never advertises an input the
+// handler ignores.
+func runtimeScopeParams() []Param {
 	return []Param{
 		{ID: "runtime_id", Type: ParamString, Scope: true, Description: "Restrict to one source runtime."},
 		{ID: "runtime_ids", Type: ParamString, Scope: true, Description: "Restrict to a comma-separated set of source runtimes."},
-		{ID: "source_id", Type: ParamString, Scope: true, Description: "Restrict to one source family."},
+		sourceScopeParam(),
 	}
 }
 
-func withScope(params ...Param) []Param {
-	return append(scopeParams(), params...)
+// sourceScopeParam restricts a read to one source family. It is honored both by
+// the runtime-scoped reads and by the inventory reads, which pass it through to
+// the graph query service.
+func sourceScopeParam() Param {
+	return Param{ID: "source_id", Type: ParamString, Scope: true, Description: "Restrict to one source family."}
+}
+
+func withRuntimeScope(params ...Param) []Param {
+	return append(runtimeScopeParams(), params...)
 }
 
 func buildCatalog() []Source {
@@ -197,7 +207,7 @@ func buildCatalog() []Source {
 			Description: "Risk-inbox findings grouped for review, filterable by status, severity, rule, framework, and age.",
 			Method:      "GET",
 			Path:        "/grc/findings",
-			Params: withScope(
+			Params: withRuntimeScope(
 				Param{ID: "status", Type: ParamString, Description: "Lifecycle status filter, or \"all\" for every status."},
 				Param{ID: "finding_id", Type: ParamString, Description: "Restrict to one finding."},
 				Param{ID: "rule_id", Type: ParamString, Description: "Restrict to findings from one rule."},
@@ -217,15 +227,13 @@ func buildCatalog() []Source {
 			Exportable:     true,
 		},
 		{
-			ID:          "controls",
-			Domain:      "controls",
-			Title:       "Control posture",
-			Description: "Open findings grouped into control posture rows with evidence counts.",
-			Method:      "GET",
-			Path:        "/grc/controls",
-			Params: withScope(
-				Param{ID: "status", Type: ParamString, Description: "Lifecycle status filter, or \"all\" for every status."},
-			),
+			ID:             "controls",
+			Domain:         "controls",
+			Title:          "Control posture",
+			Description:    "Open findings grouped into control posture rows with evidence counts.",
+			Method:         "GET",
+			Path:           "/grc/controls",
+			Params:         runtimeScopeParams(),
 			Visualizations: []string{"table", "metric"},
 			DefaultLimit:   DefaultLimit,
 			MaxLimit:       MaxLimit,
@@ -239,7 +247,7 @@ func buildCatalog() []Source {
 			Description: "Evidence records linked to findings, runs, rules, or a graph root.",
 			Method:      "GET",
 			Path:        "/grc/evidence",
-			Params: withScope(
+			Params: withRuntimeScope(
 				Param{ID: "finding_id", Type: ParamString, Description: "Restrict to evidence for one finding."},
 				Param{ID: "run_id", Type: ParamString, Description: "Restrict to evidence from one evaluation run."},
 				Param{ID: "rule_id", Type: ParamString, Description: "Restrict to evidence from one rule."},
@@ -257,7 +265,7 @@ func buildCatalog() []Source {
 			Description: "Time-bucketed finding counts and aging, optionally compared to the prior period.",
 			Method:      "GET",
 			Path:        "/grc/trends",
-			Params: withScope(
+			Params: withRuntimeScope(
 				Param{ID: "days", Type: ParamInt, Description: "Lookback window in days (1-366)."},
 				Param{ID: "interval", Type: ParamEnum, AllowedValues: []string{"day", "week", "month"}, Description: "Bucket interval."},
 				Param{ID: "severity", Type: ParamString, Description: "Severity filter (critical, high, medium, low)."},
@@ -282,39 +290,51 @@ func buildCatalog() []Source {
 			MaxLimit:       MaxLimit,
 		},
 		{
-			ID:             "control-coverage",
-			Domain:         "controls",
-			Title:          "Control coverage",
-			Description:    "Framework control coverage posture for the tenant.",
-			Method:         "GET",
-			Path:           "/grc/control-coverage",
-			Params:         withScope(),
+			ID:          "control-coverage",
+			Domain:      "controls",
+			Title:       "Control coverage",
+			Description: "Framework control coverage posture for the tenant.",
+			Method:      "GET",
+			Path:        "/grc/control-coverage",
+			Params: []Param{
+				{ID: "profile", Type: ParamString, Description: "Restrict to one builtin control profile."},
+			},
 			Visualizations: []string{"table", "metric"},
 			DefaultLimit:   DefaultLimit,
 			MaxLimit:       MaxLimit,
 			CacheScope:     "findings",
 		},
 		{
-			ID:             "inventory-assets",
-			Domain:         "inventory",
-			Title:          "Inventory assets",
-			Description:    "Governed asset inventory with finding and evidence context.",
-			Method:         "GET",
-			Path:           "/grc/inventory/assets",
-			Params:         withScope(),
+			ID:          "inventory-assets",
+			Domain:      "inventory",
+			Title:       "Inventory assets",
+			Description: "Governed asset inventory with finding and evidence context.",
+			Method:      "GET",
+			Path:        "/grc/inventory/assets",
+			Params: []Param{
+				sourceScopeParam(),
+				{ID: "category_id", Type: ParamString, Description: "Restrict to assets in one inventory category."},
+				{ID: "entity_type", Type: ParamString, Description: "Restrict to one entity type."},
+				{ID: "q", Type: ParamString, Description: "Free-text asset search."},
+				{ID: "scope_state", Type: ParamString, Description: "Filter by inventory scope state."},
+				{ID: "review_state", Type: ParamString, Description: "Filter by review disposition."},
+				{ID: "accountability_state", Type: ParamString, Description: "Filter by accountability state."},
+			},
 			Visualizations: []string{"table"},
 			DefaultLimit:   DefaultLimit,
 			MaxLimit:       MaxLimit,
 			CacheScope:     "inventory",
 		},
 		{
-			ID:             "inventory-categories",
-			Domain:         "inventory",
-			Title:          "Inventory categories",
-			Description:    "Asset inventory grouped by category.",
-			Method:         "GET",
-			Path:           "/grc/inventory/categories",
-			Params:         withScope(),
+			ID:          "inventory-categories",
+			Domain:      "inventory",
+			Title:       "Inventory categories",
+			Description: "Asset inventory grouped by category.",
+			Method:      "GET",
+			Path:        "/grc/inventory/categories",
+			Params: []Param{
+				sourceScopeParam(),
+			},
 			Visualizations: []string{"table", "metric"},
 			DefaultLimit:   DefaultLimit,
 			MaxLimit:       MaxLimit,

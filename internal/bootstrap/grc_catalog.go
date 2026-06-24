@@ -102,9 +102,9 @@ func writeGRCQueryResponse(w http.ResponseWriter, source grccatalog.Source, capt
 		return
 	}
 	if captured.statusCode != http.StatusOK {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		copyHeaders(w.Header(), captured.header)
 		w.WriteHeader(captured.statusCode)
-		_, _ = w.Write(captured.body.Bytes()) // #nosec G705 -- trusted JSON error body from internal GRC handler, served as application/json.
+		_, _ = w.Write(captured.body.Bytes()) // #nosec G705 -- GRC errors are plain text via http.Error; forward the captured status, headers, and body verbatim instead of mislabeling them as JSON.
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
