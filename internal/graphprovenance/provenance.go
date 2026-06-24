@@ -77,7 +77,11 @@ LIMIT 1`,
 }
 
 func TenantIDFromURN(urn string) string {
-	return cerebrourn.TenantID(urn)
+	parsed, err := cerebrourn.Parse(urn)
+	if err != nil || len(parsed.Parts) == 0 {
+		return ""
+	}
+	return parsed.TenantID
 }
 
 func fromRow(row ports.CypherRow) (Response, error) {

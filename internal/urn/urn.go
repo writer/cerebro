@@ -39,7 +39,7 @@ func Parse(raw string) (URN, error) {
 		return URN{}, fmt.Errorf("invalid cerebro urn %q", value)
 	}
 	for i, part := range parts[2:] {
-		if strings.TrimSpace(part) != part || (i < 2 && part == "") {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
 			return URN{}, fmt.Errorf("invalid cerebro urn %q", value)
 		}
 	}
