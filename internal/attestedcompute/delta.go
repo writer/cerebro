@@ -276,7 +276,7 @@ func sensitiveAttributeKey(key string) bool {
 		strings.HasPrefix(normalized, "attested_compute_") {
 		return false
 	}
-	return false
+	return true
 }
 
 func sensitiveAttributeMarker(key string) bool {

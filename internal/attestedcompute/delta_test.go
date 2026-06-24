@@ -137,8 +137,16 @@ func TestSensitiveAttributeKeyOnlyMatchesIPAsToken(t *testing.T) {
 		}
 	}
 	for _, key := range []string{"description", "ownership", "ship_date"} {
-		if sensitiveAttributeKey(key) {
-			t.Fatalf("sensitiveAttributeKey(%q) = true, want false", key)
+		if sensitiveIPAttributeKey(key) {
+			t.Fatalf("sensitiveIPAttributeKey(%q) = true, want false", key)
+		}
+	}
+}
+
+func TestSensitiveAttributeKeyFailsClosedForUnknownKeys(t *testing.T) {
+	for _, key := range []string{"description", "ownership", "ship_date", "account_id"} {
+		if !sensitiveAttributeKey(key) {
+			t.Fatalf("sensitiveAttributeKey(%q) = false, want true", key)
 		}
 	}
 }
