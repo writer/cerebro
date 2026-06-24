@@ -1090,6 +1090,38 @@ func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
 	}
 }
 
+func TestProjectOktaApplicationSaaSSkipsOpaqueVendorAlias(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-application-opaque",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.application",
+		Attributes: map[string]string{
+			"app_id":       "0oa-opaque",
+			"client_id":    "opaque-client-id",
+			"domain":       "writer.okta.com",
+			"sign_on_mode": "SAML_2_0",
+			"status":       "ACTIVE",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	saasURN := "urn:cerebro:writer:saas_application:okta:0oa-opaque"
+	if entity := state.entities[saasURN]; entity == nil || entity.EntityType != "saas.application" {
+		t.Fatalf("saas entity missing or wrong: %#v", entity)
+	}
+	for urn, entity := range state.entities {
+		if entity.EntityType == "vendor.alias" {
+			t.Fatalf("unexpected vendor alias %q: %#v", urn, entity)
+		}
+	}
+	assertProjectedLinkMissing(t, state, saasURN, relationHasIdentifier, "urn:cerebro:writer:vendor_alias:"+vendorAliasKey("opaque-client-id"))
+	assertProjectedLinkMissing(t, state, saasURN, relationHasIdentifier, "urn:cerebro:writer:vendor_alias:"+vendorAliasKey("0oa-opaque"))
+}
+
 func TestProjectOktaPolicyRule(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

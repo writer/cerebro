@@ -90,7 +90,8 @@ func oktaSaaSApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	appName := firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], appID)
+	appDisplayName := firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"])
+	appName := firstNonEmpty(appDisplayName, attributes["client_id"], appID)
 	matchReason := strings.Join(classification.Reasons, ",")
 	saasAttributes := map[string]string{
 		"active":                         boolString(classification.Active),
@@ -131,7 +132,7 @@ func oktaSaaSApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 		"source_provider": oktaIdentityProfile.Provider,
 	}
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, saasURN, relationRepresents, linkAttrs))
-	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, saasURN, appName, "okta_saas_application_name", "0.80")
+	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, saasURN, appDisplayName, "okta_saas_application_name", "0.80")
 	for _, host := range splitCSV(attributes["redirect_uri_hosts"]) {
 		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, saasURN, relationHasIdentifier, host, "okta_saas_application_redirect_host", "0.95")
 		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, "okta_saas_application_redirect_domain", "0.95")
