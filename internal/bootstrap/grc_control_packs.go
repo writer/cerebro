@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/grccontrol"
 )
@@ -141,6 +142,10 @@ func (a *App) buildGRCControlEvidencePacket(r *http.Request) (grccontrol.PacketR
 	if err != nil {
 		return grccontrol.PacketResult{}, err
 	}
+	return a.buildGRCControlEvidencePacketWithScope(r, scope, runtimes)
+}
+
+func (a *App) buildGRCControlEvidencePacketWithScope(r *http.Request, scope grcScope, runtimes []*cerebrov1.SourceRuntime) (grccontrol.PacketResult, error) {
 	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
 	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
 	if err != nil {

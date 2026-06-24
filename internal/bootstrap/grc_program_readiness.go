@@ -17,11 +17,6 @@ type grcProgramReadinessResponse struct {
 }
 
 func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) {
-	result, err := a.buildGRCControlEvidencePacket(r)
-	if err != nil {
-		writeGRCControlPacketError(w, err)
-		return
-	}
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		writeGRCError(w, err)
@@ -30,6 +25,11 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
 		writeGRCError(w, err)
+		return
+	}
+	result, err := a.buildGRCControlEvidencePacketWithScope(r, scope, runtimes)
+	if err != nil {
+		writeGRCControlPacketError(w, err)
 		return
 	}
 	generatedAt := time.Now().UTC()
@@ -65,18 +65,7 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 func grcProgramConnectors(connectors []grcConnector) []grcprogram.Connector {
 	items := make([]grcprogram.Connector, 0, len(connectors))
 	for _, connector := range connectors {
-		items = append(items, grcprogram.Connector{
-			RuntimeID:           connector.RuntimeID,
-			SourceID:            connector.SourceID,
-			TenantID:            connector.TenantID,
-			Status:              connector.Status,
-			Freshness:           connector.Freshness,
-			SyncLagSeconds:      connector.SyncLagSeconds,
-			CheckpointWatermark: connector.CheckpointWatermark,
-			WatermarkLagSeconds: connector.WatermarkLagSeconds,
-			WatermarkFreshness:  connector.WatermarkFreshness,
-			LastSyncedAt:        connector.LastSyncedAt,
-		})
+		items = append(items, grcprogram.Connector(connector))
 	}
 	return items
 }
