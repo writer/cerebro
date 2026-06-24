@@ -23,7 +23,7 @@ var ensureGRCFindingDispositionStatements = []string{
 }
 
 func (s *Store) ensureGRCFindingDispositionTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.grcFindingDispositionReady, "grc finding disposition", ensureGRCFindingDispositionStatements)
+	return s.ensureStatements(ctx, &s.grc.findingDisposition, "grc finding disposition", ensureGRCFindingDispositionStatements)
 }
 
 func (s *Store) UpsertGRCFindingDispositions(ctx context.Context, update ports.GRCFindingDispositionBulkUpdate) ([]*ports.GRCFindingDispositionRecord, error) {

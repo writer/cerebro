@@ -175,7 +175,7 @@ LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
 }
 
 func (s *Store) ensureGRCInventoryScopeTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.grcInventoryScopeReady, "grc inventory scope", ensureGRCInventoryScopeStatements)
+	return s.ensureStatements(ctx, &s.grc.inventoryScope, "grc inventory scope", ensureGRCInventoryScopeStatements)
 }
 
 func (s *Store) CreateGRCInventoryAssetReport(ctx context.Context, record ports.GRCInventoryAssetReportRecord) (*ports.GRCInventoryAssetReportRecord, error) {
@@ -363,7 +363,7 @@ RETURNING id, tenant_id, asset_urn, source_id, reason, reporter, triage_status, 
 }
 
 func (s *Store) ensureGRCInventoryAssetReportTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.grcInventoryAssetReportReady, "grc inventory asset report", ensureGRCInventoryAssetReportStatements)
+	return s.ensureStatements(ctx, &s.grc.inventoryAssetReport, "grc inventory asset report", ensureGRCInventoryAssetReportStatements)
 }
 
 func scanGRCInventoryScope(row scanner) (*ports.GRCInventoryScopeRecord, error) {

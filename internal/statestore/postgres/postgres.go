@@ -35,32 +35,37 @@ type askTablesReady struct {
 	savedQuery bool
 }
 
+type grcTablesReady struct {
+	inventoryScope       bool
+	inventoryAssetReport bool
+	findingDisposition   bool
+	customDashboards     bool
+}
+
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
-	db                           *sql.DB
-	schemaMu                     sync.Mutex
-	claimTablesReady             bool
-	projectionTablesReady        bool
-	findingTablesReady           bool
-	reportTablesReady            bool
-	sourceRuntimeTableReady      bool
-	findingEvidenceReady         bool
-	findingEvaluationRunReady    bool
-	findingIntel                 findingIntelReady
-	vulnDBTablesReady            bool
-	deviceAuthTablesReady        bool
-	mcpOAuthTablesReady          bool
-	startupLeaseTableReady       bool
-	schemaMigrationsReady        bool
-	ask                          askTablesReady
-	jobTablesReady               bool
-	runtimeBlocklistReady        bool
-	grcInventoryScopeReady       bool
-	grcInventoryAssetReportReady bool
-	grcFindingDispositionReady   bool
-	connectorCredentialReady     bool
-	connectorDefinitionReady     bool
-	appendLogRuntimeIndexReady   bool
+	db                         *sql.DB
+	schemaMu                   sync.Mutex
+	claimTablesReady           bool
+	projectionTablesReady      bool
+	findingTablesReady         bool
+	reportTablesReady          bool
+	sourceRuntimeTableReady    bool
+	findingEvidenceReady       bool
+	findingEvaluationRunReady  bool
+	findingIntel               findingIntelReady
+	vulnDBTablesReady          bool
+	deviceAuthTablesReady      bool
+	mcpOAuthTablesReady        bool
+	startupLeaseTableReady     bool
+	schemaMigrationsReady      bool
+	ask                        askTablesReady
+	jobTablesReady             bool
+	runtimeBlocklistReady      bool
+	grc                        grcTablesReady
+	connectorCredentialReady   bool
+	connectorDefinitionReady   bool
+	appendLogRuntimeIndexReady bool
 }
 
 // Open opens a Postgres-backed current-state store.

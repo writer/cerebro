@@ -47,8 +47,11 @@ import (
 // persistence, and graph projection stay behind internal/sourceruntime. Connector
 // definition version history adds a thin GET handler plus version-record response
 // mapping; the immutable snapshots are read through the ConnectorDefinitionStore
-// port and storage stays in internal/statestore/postgres.
-const bootstrapProductionGoLineBudget = 25871
+// port and storage stays in internal/statestore/postgres. Custom GRC dashboards
+// add route wiring plus actor stamping while HTTP behavior lives behind
+// internal/sourcehttp/customdashboards and storage stays behind the
+// CustomDashboardStore port.
+const bootstrapProductionGoLineBudget = 25901
 
 type bootstrapFileLineCount struct {
 	path  string
