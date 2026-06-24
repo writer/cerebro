@@ -241,6 +241,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if !canMutate(h.actorID(r.Context()), existing) {
+		writeError(w, fmt.Errorf("%w: only the dashboard owner can modify it", ErrForbidden))
+		return
+	}
 	var request updateRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&request); err != nil {
 		writeError(w, fmt.Errorf("%w: decode custom dashboard: %w", ErrInvalidRequest, err))
@@ -310,6 +314,10 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if !canMutate(h.actorID(r.Context()), existing) {
+		writeError(w, fmt.Errorf("%w: only the dashboard owner can delete it", ErrForbidden))
+		return
+	}
 	if err := h.store.DeleteCustomDashboard(r.Context(), existing.ID); err != nil {
 		writeError(w, err)
 		return
@@ -341,6 +349,7 @@ func (h *Handler) Clone(w http.ResponseWriter, r *http.Request) {
 	clone := *existing
 	clone.ID, clone.Name, clone.OwnerUserID = NewID(), name, actor
 	clone.CreatedBy, clone.UpdatedBy = actor, actor
+	clone.Visibility = visibilityPrivate
 	if err := h.store.PutCustomDashboard(r.Context(), &clone); err != nil {
 		writeError(w, err)
 		return
@@ -382,6 +391,14 @@ func canView(viewer string, dashboard *ports.CustomDashboard) bool {
 	}
 	owner := strings.TrimSpace(dashboard.OwnerUserID)
 	return owner != "" && owner == strings.TrimSpace(viewer)
+}
+
+// canMutate restricts mutating operations (update, delete) to the dashboard
+// owner. Sharing a dashboard at workspace or organization visibility grants
+// read access to other tenant members but never edit or delete rights.
+func canMutate(actor string, dashboard *ports.CustomDashboard) bool {
+	owner := strings.TrimSpace(dashboard.OwnerUserID)
+	return owner != "" && owner == strings.TrimSpace(actor)
 }
 
 func NormalizeContent(name string, description string, visibility string, layout json.RawMessage, widgets json.RawMessage, filters json.RawMessage) (string, string, string, json.RawMessage, json.RawMessage, json.RawMessage, error) {
