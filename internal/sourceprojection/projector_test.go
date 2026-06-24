@@ -882,11 +882,12 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 6 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 6", result.EntitiesProjected)
+	if result.EntitiesProjected != 7 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 7", result.EntitiesProjected)
 	}
 
 	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	saasURN := "urn:cerebro:writer:saas_application:okta:0oa-client"
 	orgURN := "urn:cerebro:writer:okta_org:writer.okta.com"
 	entity, ok := state.entities[clientURN]
 	if !ok {
@@ -907,12 +908,120 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
 		}
 	}
+	saasEntity, ok := state.entities[saasURN]
+	if !ok {
+		t.Fatalf("state entity %q missing", saasURN)
+	}
+	if got := saasEntity.EntityType; got != "saas.application" {
+		t.Fatalf("saas entity type = %q, want saas.application", got)
+	}
+	saasAttributes := map[string]string{
+		"app_id":          "0oa-client",
+		"app_name":        "Production Client",
+		"source_app_id":   "0oa-client",
+		"source_provider": "okta",
+		"status":          "ACTIVE",
+		"sign_on_mode":    "OPENID_CONNECT",
+	}
+	for key, want := range saasAttributes {
+		if got := saasEntity.Attributes[key]; got != want {
+			t.Fatalf("saas Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, clientURN, relationRepresents, saasURN)
 	assertProjectedLink(t, state, clientURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:app.example.com")
 	assertProjectedLink(t, state, clientURN, relationHasIdentifier, "urn:cerebro:writer:internet_host:logout.example.com")
 	assertProjectedLink(t, state, clientURN, relationContains, "urn:cerebro:writer:okta_oauth_client:0oa-client-id")
 	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:app.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:logout.example.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:example.com")
+}
+
+func TestProjectOktaApplicationSaaSClassification(t *testing.T) {
+	tests := []struct {
+		name       string
+		attrs      map[string]string
+		wantSaaS   bool
+		wantAppID  string
+		wantAppURN string
+	}{
+		{
+			name: "active saml app",
+			attrs: map[string]string{
+				"app_id":       "0oa-saml",
+				"app_name":     "Acme",
+				"sign_on_mode": "SAML_2_0",
+				"status":       "ACTIVE",
+			},
+			wantSaaS:   true,
+			wantAppID:  "0oa-saml",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-saml",
+		},
+		{
+			name: "enabled vendor name",
+			attrs: map[string]string{
+				"app_id":   "0oa-vendor",
+				"app_name": "Vendor Portal",
+				"status":   "ENABLED",
+			},
+			wantSaaS:   true,
+			wantAppID:  "0oa-vendor",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-vendor",
+		},
+		{
+			name: "inactive saml app",
+			attrs: map[string]string{
+				"app_id":       "0oa-inactive",
+				"app_name":     "Acme",
+				"sign_on_mode": "SAML_2_0",
+				"status":       "INACTIVE",
+			},
+			wantAppID:  "0oa-inactive",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-inactive",
+		},
+		{
+			name: "internal dev sandbox app",
+			attrs: map[string]string{
+				"app_id":       "0oa-internal",
+				"app_name":     "Internal Dev Sandbox",
+				"sign_on_mode": "OPENID_CONNECT",
+				"status":       "ACTIVE",
+			},
+			wantAppID:  "0oa-internal",
+			wantAppURN: "urn:cerebro:writer:okta_application:0oa-internal",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+			attrs := map[string]string{"domain": "writer.okta.com"}
+			for key, value := range tt.attrs {
+				attrs[key] = value
+			}
+			_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "okta-application-" + tt.wantAppID,
+				TenantId:   "writer",
+				SourceId:   "okta",
+				Kind:       "okta.application",
+				Attributes: attrs,
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			saasURN := "urn:cerebro:writer:saas_application:okta:" + tt.wantAppID
+			_, exists := state.entities[saasURN]
+			if exists != tt.wantSaaS {
+				t.Fatalf("saas entity exists = %v, want %v; entities=%v", exists, tt.wantSaaS, state.entities)
+			}
+			if tt.wantSaaS {
+				assertProjectedLink(t, state, tt.wantAppURN, relationRepresents, saasURN)
+				return
+			}
+			assertProjectedLinkMissing(t, state, tt.wantAppURN, relationRepresents, saasURN)
+		})
+	}
 }
 
 func TestProjectOktaPolicyRule(t *testing.T) {

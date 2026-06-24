@@ -33,7 +33,21 @@ func oktaGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 }
 
 func oktaApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityApplicationProjections(event, oktaIdentityProfile)
+	entities, links, err := identityApplicationProjections(event, oktaIdentityProfile)
+	if err != nil {
+		return nil, nil, err
+	}
+	saasEntity, saasLink, err := oktaSaaSApplicationProjection(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	if saasEntity != nil {
+		entities = append(entities, saasEntity)
+	}
+	if saasLink != nil {
+		links = append(links, saasLink)
+	}
+	return entities, links, nil
 }
 
 func oktaPolicyRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -46,6 +60,86 @@ func oktaAppAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 
 func oktaAdminRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityRoleAssignmentProjections(event, oktaIdentityProfile)
+}
+
+func oktaSaaSApplicationProjection(event *cerebrov1.EventEnvelope) (*ports.ProjectedEntity, *ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	appID := firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"])
+	if appID == "" || !oktaApplicationLooksLikeSaaS(attributes) {
+		return nil, nil, nil
+	}
+	appURN := identityApplicationURN(tenantID, oktaIdentityProfile.Provider, appID)
+	saasURN := projectionURN(tenantID, "saas_application", oktaIdentityProfile.Provider, appID)
+	if appURN == "" || saasURN == "" {
+		return nil, nil, nil
+	}
+	appName := firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], appID)
+	saasAttributes := map[string]string{
+		"app_id":          appID,
+		"app_label":       strings.TrimSpace(attributes["app_label"]),
+		"app_name":        appName,
+		"client_id":       strings.TrimSpace(attributes["client_id"]),
+		"domain":          strings.TrimSpace(attributes["domain"]),
+		"name":            strings.TrimSpace(attributes["name"]),
+		"oauth2":          strings.TrimSpace(attributes["oauth2"]),
+		"saml":            strings.TrimSpace(attributes["saml"]),
+		"sign_on_mode":    strings.TrimSpace(attributes["sign_on_mode"]),
+		"source_app_id":   appID,
+		"source_provider": oktaIdentityProfile.Provider,
+		"status":          strings.TrimSpace(attributes["status"]),
+	}
+	trimEmptyProjectionAttributes(saasAttributes)
+	entity := &ports.ProjectedEntity{
+		URN:        saasURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "saas.application",
+		Label:      appName,
+		Attributes: saasAttributes,
+	}
+	link := projectedLink(tenantID, event.GetSourceId(), appURN, saasURN, relationRepresents, map[string]string{
+		"event_id":        event.GetId(),
+		"match_type":      "okta_saas_application",
+		"source_app_id":   appID,
+		"source_provider": oktaIdentityProfile.Provider,
+	})
+	return entity, link, nil
+}
+
+func oktaApplicationLooksLikeSaaS(attributes map[string]string) bool {
+	status := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["status"], "active")))
+	if status != "active" && status != "enabled" {
+		return false
+	}
+	name := strings.ToLower(strings.Join([]string{
+		attributes["app_name"],
+		attributes["app_label"],
+		attributes["name"],
+	}, " "))
+	for _, marker := range []string{"test", "sandbox", "dev", "internal"} {
+		if strings.Contains(name, marker) {
+			return false
+		}
+	}
+	signOnMode := strings.ToLower(strings.TrimSpace(attributes["sign_on_mode"]))
+	for _, marker := range []string{"saml", "oidc", "oauth", "openid"} {
+		if strings.Contains(signOnMode, marker) || strings.Contains(name, marker) {
+			return true
+		}
+	}
+	if projectionBool(attributes["saml"]) || projectionBool(attributes["oauth2"]) {
+		return true
+	}
+	for _, marker := range []string{"org2org", "vendor", "partner", "supplier", "contractor", "external"} {
+		if strings.Contains(name, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func awsIAMUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
