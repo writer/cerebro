@@ -2041,6 +2041,175 @@ paths:
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+  /grc/dashboards:
+    get:
+      summary: List custom GRC dashboards
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: organization_id
+          in: query
+          schema:
+            type: string
+        - name: workspace_id
+          in: query
+          schema:
+            type: string
+        - name: owner_user_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Tenant-scoped saved dashboard configurations.
+    post:
+      summary: Create custom GRC dashboard
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                tenant_id:
+                  type: string
+                organization_id:
+                  type: string
+                workspace_id:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                visibility:
+                  type: string
+                  enum: [private, workspace, organization]
+                schema_version:
+                  type: integer
+                  minimum: 1
+                  maximum: 1
+                  default: 1
+                  description: Widget schema version understood by the server. Writes with a higher version are rejected.
+                layout:
+                  type: object
+                  additionalProperties: true
+                widgets:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    required:
+                      - id
+                      - type
+                    properties:
+                      id:
+                        type: string
+                        description: Stable, unique widget identifier within the dashboard.
+                      type:
+                        type: string
+                        enum:
+                          - trend_metric_cards
+                          - trend_chart
+                          - trend_aging_table
+                          - trend_period_comparison
+                          - summary_metrics
+                          - findings_table
+                          - framework_progress
+                          - connector_health
+                          - markdown_note
+                      title:
+                        type: string
+                      query:
+                        type: object
+                        additionalProperties: true
+                      layout:
+                        type: object
+                        additionalProperties: true
+                    additionalProperties: true
+                filters:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Custom dashboard created.
+  /grc/dashboards/{dashboardID}:
+    get:
+      summary: Get custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Custom dashboard configuration.
+        '404':
+          description: Custom dashboard was not found.
+    patch:
+      summary: Update custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Custom dashboard updated.
+    delete:
+      summary: Archive custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Custom dashboard archived.
+  /grc/dashboards/{dashboardID}/clone:
+    post:
+      summary: Clone custom GRC dashboard
+      tags:
+        - GRC
+      parameters:
+        - name: dashboardID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Custom dashboard cloned.
   /grc/trends:
     get:
       summary: GRC finding trends
