@@ -195,7 +195,13 @@ func tenantScopedURN(tenantID string, urn string) bool {
 func attestedURN(tenantID string, urn string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	urn = strings.TrimSpace(urn)
-	return tenantID != "" && strings.HasPrefix(urn, "urn:cerebro:"+tenantID+":attested:")
+	prefix := "urn:cerebro:" + tenantID + ":attested:"
+	if tenantID == "" || !strings.HasPrefix(urn, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(urn, prefix)
+	entityType, token, ok := strings.Cut(rest, ":")
+	return ok && strings.TrimSpace(entityType) != "" && TokenLike(token)
 }
 
 func unblindedSensitiveURN(tenantID string, urn string) bool {
@@ -209,6 +215,9 @@ func unblindedSensitiveURN(tenantID string, urn string) bool {
 		return false
 	}
 	rest := strings.TrimPrefix(urn, prefix)
+	if strings.HasPrefix(rest, "attested:") {
+		return true
+	}
 	entityType, _, _ := strings.Cut(rest, ":")
 	return sensitiveEntityType(entityType)
 }

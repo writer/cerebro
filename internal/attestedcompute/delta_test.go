@@ -145,6 +145,60 @@ func TestProjectEventRejectsCrossTenantURN(t *testing.T) {
 	}
 }
 
+func TestProjectEventRejectsAttestedURNWithRawTokenSegment(t *testing.T) {
+	tokenizer, err := NewTokenizer([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatalf("NewTokenizer() error = %v", err)
+	}
+	userToken := tokenizer.Token("identity.email", "alice@example.com")
+	rawAttestedURN := "urn:cerebro:tenant-a:attested:okta.user:alice@example.com"
+	validTokenURN := TokenURN("tenant-a", "okta.user", userToken)
+	for _, tc := range []struct {
+		name  string
+		delta GraphDelta
+	}{
+		{
+			name: "entity urn",
+			delta: GraphDelta{
+				Entities: []Entity{{
+					URN:        rawAttestedURN,
+					EntityType: "okta.user",
+				}},
+			},
+		},
+		{
+			name: "link endpoint",
+			delta: GraphDelta{
+				Links: []Link{{
+					FromURN:  rawAttestedURN,
+					ToURN:    "urn:cerebro:tenant-a:data.classification:restricted",
+					Relation: "has_classification",
+				}},
+			},
+		},
+		{
+			name: "sensitive attribute",
+			delta: GraphDelta{
+				Entities: []Entity{{
+					URN:        validTokenURN,
+					EntityType: "okta.user",
+					Label:      userToken,
+					Attributes: map[string]string{
+						"user_urn": rawAttestedURN,
+					},
+				}},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.delta.Attestation = Attestation{Format: "aws-nitro-enclave-poc", Measurement: strings.Repeat("a", 96)}
+			if _, _, err := ProjectEvent(eventWithPayload(t, tc.delta)); err == nil {
+				t.Fatalf("ProjectEvent() error = nil, want raw attested URN token rejection")
+			}
+		})
+	}
+}
+
 func TestProjectEventDropsCallerSuppliedAttestationAttributes(t *testing.T) {
 	payload := GraphDelta{
 		Attestation: Attestation{Format: "aws-nitro-enclave-poc", ImageDigest: "sha256:abc"},

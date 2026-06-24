@@ -11,10 +11,6 @@ import (
 )
 
 func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
-	registry, err := NewRegistry(EventProjector{Kind: attestedcompute.EventKindGraphDelta, Project: attestedComputeGraphDeltaProjections})
-	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
-	}
 	tokenizer, err := attestedcompute.NewTokenizer([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
 		t.Fatalf("NewTokenizer() error = %v", err)
@@ -52,7 +48,7 @@ func TestAttestedComputeGraphDeltaProjectsIntoGraphRecords(t *testing.T) {
 		},
 	}
 
-	entities, links, err := NewWithRegistry(nil, nil, registry).ProjectRecords(event)
+	entities, links, err := NewWithRegistry(nil, nil, BuiltinRegistry()).ProjectRecords(event)
 	if err != nil {
 		t.Fatalf("ProjectRecords() error = %v", err)
 	}
