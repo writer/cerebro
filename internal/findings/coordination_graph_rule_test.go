@@ -21,12 +21,21 @@ func TestCoordinationGraphRuleSupportsRuntime(t *testing.T) {
 }
 
 func TestCoordinationGraphRuleSupportsRuntimeRestrictsSourceOnlyRules(t *testing.T) {
-	rule := newFindingIsolatedOpenAnchorRule()
-	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{TenantId: "writer", SourceId: "graph"}) {
-		t.Fatal("SupportsRuntime(graph) = false, want true")
-	}
-	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{TenantId: "writer", SourceId: "okta", Config: map[string]string{"family": "application"}}) {
-		t.Fatal("SupportsRuntime(okta application) = true, want false")
+	for _, tc := range []struct {
+		name string
+		rule Rule
+	}{
+		{name: "isolated open finding anchor", rule: newFindingIsolatedOpenAnchorRule()},
+		{name: "aws ec2 eni link missing", rule: newGraphAWSEC2ENILinkMissingRule()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.rule.SupportsRuntime(&cerebrov1.SourceRuntime{TenantId: "writer", SourceId: "graph"}) {
+				t.Fatal("SupportsRuntime(graph) = false, want true")
+			}
+			if tc.rule.SupportsRuntime(&cerebrov1.SourceRuntime{TenantId: "writer", SourceId: "okta", Config: map[string]string{"family": "application"}}) {
+				t.Fatal("SupportsRuntime(okta application) = true, want false")
+			}
+		})
 	}
 }
 

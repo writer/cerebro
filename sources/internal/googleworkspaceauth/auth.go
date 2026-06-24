@@ -69,7 +69,7 @@ func Validate(settings Settings) error {
 	return fmt.Errorf("google_workspace requires token, service account delegation (service_account_email, private_key, delegated_admin_email), or OAuth (client_id, client_secret, refresh_token)")
 }
 
-func BearerToken(ctx context.Context, settings Settings) (string, error) {
+func BearerToken(settings Settings) (string, error) {
 	if strings.TrimSpace(settings.Token) != "" {
 		return strings.TrimSpace(settings.Token), nil
 	}
@@ -77,9 +77,7 @@ func BearerToken(ctx context.Context, settings Settings) (string, error) {
 	if cacheKey == "" {
 		return "", fmt.Errorf("google_workspace auth is not configured")
 	}
-	source, err := cachedTokenSource(cacheKey, func() (oauth2.TokenSource, error) {
-		return tokenSource(ctx, settings)
-	})
+	source, err := cachedBearerTokenSource(cacheKey, settings)
 	if err != nil {
 		return "", err
 	}
@@ -113,6 +111,12 @@ func tokenSource(ctx context.Context, settings Settings) (oauth2.TokenSource, er
 		return oauthRefreshTokenSource(ctx, settings), nil
 	}
 	return nil, fmt.Errorf("google_workspace auth is not configured")
+}
+
+func cachedBearerTokenSource(cacheKey string, settings Settings) (oauth2.TokenSource, error) {
+	return cachedTokenSource(cacheKey, func() (oauth2.TokenSource, error) {
+		return tokenSource(context.Background(), settings)
+	})
 }
 
 func cachedTokenSource(cacheKey string, factory func() (oauth2.TokenSource, error)) (oauth2.TokenSource, error) {
