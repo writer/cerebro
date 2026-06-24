@@ -58,8 +58,16 @@ docker compose up --build
 | Built-in source integrations | [Source catalog](reference/sources.md) |
 | Source runtime sync | [Source runtime guide](domains/source-runtime-guide.md) |
 | Graph operations | [Graph operations](domains/graph-operations.md) |
+| GRC architecture | [GRC architecture](domains/grc-architecture.md) |
 | Compliance control coverage | [Compliance controls](domains/compliance-controls.md) |
 | Policies | [Policies](domains/policies.md) |
+| Security operations | [Security operations](domains/security-operations.md) |
+| Source health and coverage | [Source health and coverage](domains/source-health-and-coverage.md) |
+| Agent platform services | [Agent platform services](domains/agent-platform-services.md) |
+| Risk planning, graph provenance, and query cache | [Risk, graph, and cache](domains/risk-graph-and-cache.md) |
+| Findings platform | [Findings platform architecture](domains/findings-platform-architecture.md) |
+| Finding candidate operations | [Finding candidate operations](domains/finding-candidate-operations.md) |
+| Policy rule extensions | [Policy rule extensions](domains/policy-rule-extensions.md) |
 | MCP setup | [MCP native Droid setup](domains/mcp-droid-setup.md) |
 | Endpoint telemetry | [Endpoint security platform integration](domains/endpoint-security-platform-integration.md) |
 | Release artifacts | [Release contract](operations/release-contract.md) |

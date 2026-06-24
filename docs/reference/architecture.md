@@ -101,6 +101,12 @@ context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
 
+The GRC domain packages (grccatalog, grccontrol, grcinventory, grcprogram,
+grctrends, and compliance) are documented in
+[docs/domains/grc-architecture.md](../domains/grc-architecture.md). The
+bootstrap-budget paragraphs below describe only the transport-boundary adapters
+that wire those domain packages into HTTP routes.
+
 The GRC report packet routes add small HTTP adapters that resolve request scope,
 load findings, evidence, and graph proof, decode generated custom control-pack
 requests, and hand readiness, posture calculation, scope metadata, redaction
