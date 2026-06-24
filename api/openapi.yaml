@@ -2041,6 +2041,31 @@ paths:
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+  /grc/program-readiness:
+    get:
+      summary: GRC program readiness
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+        - name: framework
+          in: query
+          schema:
+            type: string
+        - name: control
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Program-level audit readiness, prioritized work items, proof bundle links, and connector coverage.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards

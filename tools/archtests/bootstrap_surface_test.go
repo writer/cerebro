@@ -54,8 +54,11 @@ import (
 // catalog handler plus a bounded query resolver that dispatches to existing GRC
 // read handlers; the allowlisted source catalog and query validation live in
 // internal/grccatalog, so bootstrap keeps only routing, request/response
-// mapping, and the source-to-handler dispatch.
-const bootstrapProductionGoLineBudget = 25968
+// mapping, and the source-to-handler dispatch. GRC program readiness adds a
+// thin HTTP handler that composes existing GRC packet builders, connector
+// health mapping, and source coverage into the internal/grcprogram readiness
+// domain response.
+const bootstrapProductionGoLineBudget = 26050
 
 type bootstrapFileLineCount struct {
 	path  string

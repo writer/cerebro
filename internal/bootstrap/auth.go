@@ -1537,7 +1537,7 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/grc/audit-packets/{packetID}"
 	case strings.HasPrefix(path, "/grc/"):
 		switch path {
-		case "/grc/dashboard", "/grc/ask", "/grc/findings", "/grc/controls", "/grc/evidence", "/grc/control-packets":
+		case "/grc/program-readiness", "/grc/dashboard", "/grc/ask", "/grc/findings", "/grc/controls", "/grc/evidence", "/grc/control-packets":
 			return prefix + path
 		default:
 			return prefix + "/grc/{subresource}"
