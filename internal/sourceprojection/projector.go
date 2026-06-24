@@ -14,47 +14,50 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/telemetry"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 var emailIdentifierPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
 
 const (
-	relationActedOn            = "acted_on"
-	relationAffectedBy         = "affected_by"
-	relationAffects            = "affects"
-	relationAuthored           = "authored"
-	relationBelongsTo          = "belongs_to"
-	relationCanPerform         = "can_perform"
-	relationHasIdentifier      = "has_identifier"
-	relationAssignedTo         = "assigned_to"
-	relationAssociatedWith     = "associated_with"
-	relationAttachedTo         = "attached_to"
-	relationCanAssume          = "can_assume"
-	relationCanAdmin           = "can_admin"
-	relationCanImpersonate     = "can_impersonate"
-	relationCanReach           = "can_reach"
-	relationContains           = "contains"
-	relationConfersCapability  = "confers_capability"
-	relationGrantsEntitlement  = "grants_entitlement"
-	relationHasClassification  = "has_classification"
-	relationHasDNSRecord       = "has_dns_record"
-	relationHasEvidence        = "has_evidence"
-	relationMemberOf           = "member_of"
-	relationObservedOn         = "observed_on"
-	relationOwnedBy            = "owned_by"
-	relationRepresents         = "represents"
-	relationRepresentsIdentity = "represents_identity"
-	relationResolvesTo         = "resolves_to"
-	relationRunsAs             = "runs_as"
-	relationSameActor          = "same_actor"
-	relationSupports           = "supports"
-	relationTaggedAs           = "tagged_as"
-	relationTargeted           = "targeted"
-	relationCNAMETo            = "cname_to"
+	relationActedOn            = fabriccontract.RelationActedOn
+	relationAffectedBy         = fabriccontract.RelationAffectedBy
+	relationAffects            = fabriccontract.RelationAffects
+	relationAuthored           = fabriccontract.RelationAuthored
+	relationBelongsTo          = fabriccontract.RelationBelongsTo
+	relationCanPerform         = fabriccontract.RelationCanPerform
+	relationHasIdentifier      = fabriccontract.RelationHasIdentifier
+	relationAssignedTo         = fabriccontract.RelationAssignedTo
+	relationAssociatedWith     = fabriccontract.RelationAssociatedWith
+	relationAttachedTo         = fabriccontract.RelationAttachedTo
+	relationCanAssume          = fabriccontract.RelationCanAssume
+	relationCanAdmin           = fabriccontract.RelationCanAdmin
+	relationCanImpersonate     = fabriccontract.RelationCanImpersonate
+	relationCanReach           = fabriccontract.RelationCanReach
+	relationContains           = fabriccontract.RelationContains
+	relationConfersCapability  = fabriccontract.RelationConfersCapability
+	relationDependsOn          = fabriccontract.RelationDependsOn
+	relationGrantsEntitlement  = fabriccontract.RelationGrantsEntitlement
+	relationHasClassification  = fabriccontract.RelationHasClassification
+	relationHasDNSRecord       = fabriccontract.RelationHasDNSRecord
+	relationHasEvidence        = fabriccontract.RelationHasEvidence
+	relationMemberOf           = fabriccontract.RelationMemberOf
+	relationObservedOn         = fabriccontract.RelationObservedOn
+	relationOwnedBy            = fabriccontract.RelationOwnedBy
+	relationRepresents         = fabriccontract.RelationRepresents
+	relationRepresentsIdentity = fabriccontract.RelationRepresentsIdentity
+	relationResolvesTo         = fabriccontract.RelationResolvesTo
+	relationRunsAs             = fabriccontract.RelationRunsAs
+	relationSameActor          = fabriccontract.RelationSameActor
+	relationSupports           = fabriccontract.RelationSupports
+	relationTaggedAs           = fabriccontract.RelationTaggedAs
+	relationTargeted           = fabriccontract.RelationTargeted
+	relationCNAMETo            = fabriccontract.RelationCNAMETo
 	defaultCleanupLimit        = 1000
 )
 
@@ -507,7 +510,26 @@ func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	normalizeProjectedEntityTypes(entities)
 	stampProjectionRuntime(event, entities, links)
+	if err := validateProjectedFabricContract(links); err != nil {
+		return nil, nil, err
+	}
 	return entities, links, nil
+}
+
+func validateProjectedFabricContract(links []*ports.ProjectedLink) error {
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		relation := strings.TrimSpace(link.Relation)
+		if relation == "" {
+			return fmt.Errorf("projected link relation is required")
+		}
+		if !fabriccontract.IsRelation(relation) {
+			return fmt.Errorf("projected link relation %q is outside the fabric contract", relation)
+		}
+	}
+	return nil
 }
 
 // ProjectCleanupRecords returns stale projection entity URNs that should be
@@ -935,21 +957,11 @@ func projectedLink(tenantID string, sourceID string, fromURN string, toURN strin
 }
 
 func projectionURN(tenantID string, kind string, parts ...string) string {
-	tenant := strings.TrimSpace(tenantID)
-	entityKind := strings.TrimSpace(kind)
-	if tenant == "" || entityKind == "" {
+	value, err := cerebrourn.Mint(tenantID, kind, parts...)
+	if err != nil {
 		return ""
 	}
-	values := make([]string, 0, len(parts)+3)
-	values = append(values, "urn", "cerebro", tenant, entityKind)
-	for _, part := range parts {
-		value := strings.TrimSpace(part)
-		if value == "" {
-			continue
-		}
-		values = append(values, value)
-	}
-	return strings.Join(values, ":")
+	return value
 }
 
 func identifierURN(tenantID string, raw string) (string, string, string) {

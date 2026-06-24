@@ -10,6 +10,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 var ErrInvalidConfig = errors.New("invalid source config")
@@ -19,29 +20,14 @@ type URN string
 
 // ParseURN validates the canonical Cerebro URN format.
 func ParseURN(raw string) (URN, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", fmt.Errorf("urn is required")
+	parsed, err := cerebrourn.Parse(raw)
+	if err != nil {
+		return "", err
 	}
-	if !strings.HasPrefix(value, "urn:cerebro:") {
-		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	if len(parsed.Parts) == 0 {
+		return "", fmt.Errorf("invalid cerebro urn %q", strings.TrimSpace(raw))
 	}
-	parts := strings.Split(value, ":")
-	if len(parts) > 3 && parts[3] == "runtime" && (len(parts) < 7 || parts[5] == "") {
-		return "", fmt.Errorf("invalid cerebro urn %q", value)
-	}
-	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
-		return "", fmt.Errorf("invalid cerebro urn %q", value)
-	}
-	if parts[len(parts)-1] == "" {
-		return "", fmt.Errorf("invalid cerebro urn %q", value)
-	}
-	for i, part := range parts[2:] {
-		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
-			return "", fmt.Errorf("invalid cerebro urn %q", value)
-		}
-	}
-	return URN(value), nil
+	return URN(parsed.String()), nil
 }
 
 // String returns the raw URN string.

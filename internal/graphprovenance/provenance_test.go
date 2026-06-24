@@ -2,8 +2,10 @@ package graphprovenance
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -42,14 +44,29 @@ func TestTenantIDFromURNRejectsMalformedURN(t *testing.T) {
 	if got := TenantIDFromURN("not-a-urn"); got != "" {
 		t.Fatalf("TenantIDFromURN malformed = %q, want empty", got)
 	}
+	if got := TenantIDFromURN("urn:cerebro:tenant-a:asset"); got != "" {
+		t.Fatalf("TenantIDFromURN kind-only = %q, want empty", got)
+	}
 	if got := TenantIDFromURN("urn:cerebro:tenant-a:asset:one"); got != "tenant-a" {
 		t.Fatalf("TenantIDFromURN = %q, want tenant-a", got)
+	}
+}
+
+func TestServiceGetRejectsKindOnlyURN(t *testing.T) {
+	store := &recordingStore{}
+	_, err := New(store).Get(context.Background(), Request{URN: "urn:cerebro:tenant-a:asset"})
+	if !errors.Is(err, graphquery.ErrInvalidRequest) {
+		t.Fatalf("Get() error = %v, want ErrInvalidRequest", err)
+	}
+	if store.called {
+		t.Fatal("Get() queried store for kind-only URN")
 	}
 }
 
 type recordingStore struct {
 	rows    []ports.CypherRow
 	request ports.CypherQueryRequest
+	called  bool
 }
 
 func (s *recordingStore) Ping(context.Context) error { return nil }
@@ -59,6 +76,7 @@ func (s *recordingStore) GetEntityNeighborhood(context.Context, string, int) (*p
 }
 
 func (s *recordingStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.called = true
 	s.request = request
 	return s.rows, nil
 }
