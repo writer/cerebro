@@ -211,7 +211,7 @@ func unblindedSensitiveURN(tenantID string, urn string) bool {
 		return false
 	}
 	rest := strings.TrimPrefix(urn, prefix)
-	if strings.HasPrefix(rest, "attested:") {
+	if strings.HasPrefix(strings.ToLower(rest), "attested:") {
 		return true
 	}
 	entityType, _, _ := strings.Cut(rest, ":")
@@ -283,7 +283,7 @@ func sensitiveAttributeMarker(key string) bool {
 	if sensitiveIPAttributeKey(key) {
 		return true
 	}
-	for _, marker := range []string{"arn", "email", "hostname", "label", "name", "principal", "resource_id", "resource_urn", "user", "urn"} {
+	for _, marker := range []string{"arn", "email", "hostname", "label", "name", "owner", "principal", "resource_id", "resource_urn", "user", "urn"} {
 		if strings.Contains(key, marker) {
 			return true
 		}

@@ -100,16 +100,21 @@ func TestProjectEventRejectsCaseInsensitiveSensitiveEntityBypass(t *testing.T) {
 }
 
 func TestProjectEventRejectsSensitiveURNWithBenignDeclaredType(t *testing.T) {
-	payload := GraphDelta{
-		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
-		Entities: []Entity{{
-			URN:        "urn:cerebro:tenant-a:okta.user:alice@example.com",
-			EntityType: "data.classification",
-			Label:      "restricted",
-		}},
-	}
-	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
-		t.Fatalf("ProjectEvent() error = nil, want sensitive URN rejection")
+	for _, urn := range []string{
+		"urn:cerebro:tenant-a:okta.user:alice@example.com",
+		"urn:cerebro:tenant-a:Attested:okta.user:alice@example.com",
+	} {
+		payload := GraphDelta{
+			Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
+			Entities: []Entity{{
+				URN:        urn,
+				EntityType: "data.classification",
+				Label:      "restricted",
+			}},
+		}
+		if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+			t.Fatalf("ProjectEvent() error = nil for %q, want sensitive URN rejection", urn)
+		}
 	}
 }
 
@@ -152,7 +157,7 @@ func TestSensitiveAttributeKeyFailsClosedForUnknownKeys(t *testing.T) {
 }
 
 func TestSensitiveAttributeKeyDoesNotAllowSafePrefixPIIBypass(t *testing.T) {
-	for _, key := range []string{"risk_email", "control_user_name", "classification_arn", "posture_principal"} {
+	for _, key := range []string{"risk_email", "control_user_name", "classification_arn", "posture_principal", "risk_owner"} {
 		if !sensitiveAttributeKey(key) {
 			t.Fatalf("sensitiveAttributeKey(%q) = false, want true", key)
 		}
