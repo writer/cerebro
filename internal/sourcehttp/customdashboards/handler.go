@@ -298,10 +298,12 @@ func (h *Handler) Clone(w http.ResponseWriter, r *http.Request) {
 	actor := h.actorID(r.Context())
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
-		name = "Copy of " + strings.TrimSpace(existing.Name)
-	}
-	if strings.TrimSpace(name) == "Copy of" {
-		name = defaultCustomDashboardName
+		name = strings.TrimSpace(existing.Name)
+		if name == "" {
+			name = defaultCustomDashboardName
+		} else {
+			name = "Copy of " + name
+		}
 	}
 	clone := *existing
 	clone.ID, clone.Name, clone.OwnerUserID = NewID(), name, actor
