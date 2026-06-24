@@ -520,6 +520,7 @@ var exactRouteLabels = map[string]struct{}{
 	"/oauth/revoke":                                                       {},
 	"/oauth/register":                                                     {},
 	"/reports":                                                            {},
+	"/grc/program-readiness":                                              {},
 	"/grc/dashboard":                                                      {},
 	"/grc/ask":                                                            {},
 	"/grc/findings":                                                       {},
