@@ -31,18 +31,21 @@ func TestScanCustomDashboard(t *testing.T) {
 	}
 }
 
-func TestCustomDashboardSchemaCreatesUserOrganizationWorkspaceModels(t *testing.T) {
+func TestCustomDashboardSchemaCreatesTableAndIndexes(t *testing.T) {
 	joined := strings.Join(ensureCustomDashboardStatements, "\n")
 	for _, fragment := range []string{
-		"CREATE TABLE IF NOT EXISTS dashboard_users",
-		"CREATE TABLE IF NOT EXISTS dashboard_organizations",
-		"CREATE TABLE IF NOT EXISTS dashboard_workspaces",
 		"CREATE TABLE IF NOT EXISTS custom_dashboards",
+		"custom_dashboards_tenant_updated_idx",
 		"custom_dashboards_workspace_updated_idx",
 		"custom_dashboards_owner_updated_idx",
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("custom dashboard schema missing %q:\n%s", fragment, joined)
+		}
+	}
+	for _, removed := range []string{"dashboard_users", "dashboard_organizations", "dashboard_workspaces"} {
+		if strings.Contains(joined, removed) {
+			t.Fatalf("custom dashboard schema should not reference unused identity table %q:\n%s", removed, joined)
 		}
 	}
 }

@@ -8,36 +8,6 @@ import (
 
 var ErrCustomDashboardNotFound = errors.New("custom dashboard not found")
 
-type DashboardUser struct {
-	ID          string
-	Provider    string
-	Subject     string
-	Email       string
-	DisplayName string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	LastSeenAt  time.Time
-}
-
-type DashboardOrganization struct {
-	ID        string
-	Name      string
-	Slug      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type DashboardWorkspace struct {
-	ID               string
-	OrganizationID   string
-	TenantID         string
-	Name             string
-	Slug             string
-	DefaultScopeJSON string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-}
-
 type CustomDashboard struct {
 	ID             string
 	TenantID       string

@@ -132,8 +132,8 @@ func TestHandleCreateCustomDashboardRejectsInvalidJSONShapes(t *testing.T) {
 
 func TestHandleListCustomDashboardsScopesToTenant(t *testing.T) {
 	store := newStubCustomDashboardStore()
-	store.dashboards["a"] = &ports.CustomDashboard{ID: "a", TenantID: "local", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
-	store.dashboards["b"] = &ports.CustomDashboard{ID: "b", TenantID: "other", Name: "theirs", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["a"] = &ports.CustomDashboard{ID: "a", TenantID: "local", OwnerUserID: "person@example.test", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["b"] = &ports.CustomDashboard{ID: "b", TenantID: "other", OwnerUserID: "person@example.test", Name: "theirs", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
 	app := askQueryTestApp(store)
 
 	recorder := httptest.NewRecorder()
@@ -150,10 +150,85 @@ func TestHandleListCustomDashboardsScopesToTenant(t *testing.T) {
 	}
 }
 
+func TestHandleCreateCustomDashboardRejectsUnknownWidgets(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "unknown type", body: `{"name":"bad","widgets":[{"id":"w1","type":"frobnicate"}]}`},
+		{name: "missing id", body: `{"name":"bad","widgets":[{"type":"trend_chart"}]}`},
+		{name: "duplicate id", body: `{"name":"bad","widgets":[{"id":"w1","type":"trend_chart"},{"id":"w1","type":"summary_metrics"}]}`},
+		{name: "unsupported schema_version", body: `{"name":"bad","schema_version":99,"widgets":[{"id":"w1","type":"summary_metrics"}]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newStubCustomDashboardStore()
+			app := askQueryTestApp(store)
+			recorder := httptest.NewRecorder()
+			customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", tc.body))
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestHandleCreateCustomDashboardAcceptsBroadenedWidgets(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	app := askQueryTestApp(store)
+	body := `{"name":"Overview","widgets":[{"id":"kpis","type":"summary_metrics"},{"id":"findings","type":"findings_table"},{"id":"frameworks","type":"framework_progress"},{"id":"connectors","type":"connector_health"},{"id":"note","type":"markdown_note"}]}`
+	recorder := httptest.NewRecorder()
+	customDashboardTestHandler(app).Create(recorder, customDashboardTestRequest(http.MethodPost, "/grc/dashboards", body))
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 (body %s)", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHandleCustomDashboardVisibilityHidesPrivateFromNonOwner(t *testing.T) {
+	store := newStubCustomDashboardStore()
+	store.dashboards["mine"] = &ports.CustomDashboard{ID: "mine", TenantID: "local", OwnerUserID: "person@example.test", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["theirs"] = &ports.CustomDashboard{ID: "theirs", TenantID: "local", OwnerUserID: "other@example.test", Name: "theirs", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["shared"] = &ports.CustomDashboard{ID: "shared", TenantID: "local", OwnerUserID: "other@example.test", Name: "shared", Visibility: "workspace", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	app := askQueryTestApp(store)
+
+	listRecorder := httptest.NewRecorder()
+	customDashboardTestHandler(app).List(listRecorder, customDashboardTestRequest(http.MethodGet, "/grc/dashboards", ""))
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200 (body %s)", listRecorder.Code, listRecorder.Body.String())
+	}
+	var listResponse customdashboards.ListResponse
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	got := map[string]bool{}
+	for _, dashboard := range listResponse.Dashboards {
+		got[dashboard.ID] = true
+	}
+	if !got["mine"] || !got["shared"] || got["theirs"] {
+		t.Fatalf("list visibility filter wrong, got %+v", got)
+	}
+
+	getRecorder := httptest.NewRecorder()
+	getRequest := customDashboardTestRequest(http.MethodGet, "/grc/dashboards/theirs", "")
+	getRequest.SetPathValue("dashboardID", "theirs")
+	customDashboardTestHandler(app).Get(getRecorder, getRequest)
+	if getRecorder.Code != http.StatusNotFound {
+		t.Fatalf("get private dashboard of another owner = %d, want 404", getRecorder.Code)
+	}
+
+	sharedRecorder := httptest.NewRecorder()
+	sharedRequest := customDashboardTestRequest(http.MethodGet, "/grc/dashboards/shared", "")
+	sharedRequest.SetPathValue("dashboardID", "shared")
+	customDashboardTestHandler(app).Get(sharedRecorder, sharedRequest)
+	if sharedRecorder.Code != http.StatusOK {
+		t.Fatalf("get workspace-visible dashboard = %d, want 200 (body %s)", sharedRecorder.Code, sharedRecorder.Body.String())
+	}
+}
+
 func TestHandleUpdateAndDeleteCustomDashboardScopeTenant(t *testing.T) {
 	store := newStubCustomDashboardStore()
-	store.dashboards["a"] = &ports.CustomDashboard{ID: "a", TenantID: "local", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
-	store.dashboards["b"] = &ports.CustomDashboard{ID: "b", TenantID: "other", Name: "theirs", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["a"] = &ports.CustomDashboard{ID: "a", TenantID: "local", OwnerUserID: "person@example.test", Name: "mine", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
+	store.dashboards["b"] = &ports.CustomDashboard{ID: "b", TenantID: "other", OwnerUserID: "other@example.test", Name: "theirs", Visibility: "private", SchemaVersion: 1, LayoutJSON: "{}", WidgetsJSON: "[]", FiltersJSON: "{}"}
 	app := askQueryTestApp(store)
 
 	updateRecorder := httptest.NewRecorder()

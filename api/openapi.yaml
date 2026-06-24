@@ -2093,13 +2093,44 @@ paths:
                 schema_version:
                   type: integer
                   minimum: 1
+                  maximum: 1
+                  default: 1
+                  description: Widget schema version understood by the server. Writes with a higher version are rejected.
                 layout:
                   type: object
                   additionalProperties: true
                 widgets:
                   type: array
+                  maxItems: 50
                   items:
                     type: object
+                    required:
+                      - id
+                      - type
+                    properties:
+                      id:
+                        type: string
+                        description: Stable, unique widget identifier within the dashboard.
+                      type:
+                        type: string
+                        enum:
+                          - trend_metric_cards
+                          - trend_chart
+                          - trend_aging_table
+                          - trend_period_comparison
+                          - summary_metrics
+                          - findings_table
+                          - framework_progress
+                          - connector_health
+                          - markdown_note
+                      title:
+                        type: string
+                      query:
+                        type: object
+                        additionalProperties: true
+                      layout:
+                        type: object
+                        additionalProperties: true
                     additionalProperties: true
                 filters:
                   type: object

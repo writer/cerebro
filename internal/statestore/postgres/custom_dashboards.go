@@ -13,39 +13,6 @@ import (
 var _ ports.CustomDashboardStore = (*Store)(nil)
 
 var ensureCustomDashboardStatements = []string{
-	`CREATE TABLE IF NOT EXISTS dashboard_users (
-  id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL DEFAULT '',
-  subject TEXT NOT NULL DEFAULT '',
-  email TEXT NOT NULL DEFAULT '',
-  display_name TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_seen_at TIMESTAMPTZ
-)`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS dashboard_users_provider_subject_idx ON dashboard_users (provider, subject) WHERE provider <> '' AND subject <> ''`,
-	`CREATE INDEX IF NOT EXISTS dashboard_users_email_idx ON dashboard_users (email) WHERE email <> ''`,
-	`CREATE TABLE IF NOT EXISTS dashboard_organizations (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS dashboard_organizations_slug_idx ON dashboard_organizations (slug) WHERE slug <> ''`,
-	`CREATE TABLE IF NOT EXISTS dashboard_workspaces (
-  id TEXT PRIMARY KEY,
-  organization_id TEXT NOT NULL DEFAULT '',
-  tenant_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL DEFAULT '',
-  default_scope_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`,
-	`CREATE INDEX IF NOT EXISTS dashboard_workspaces_tenant_idx ON dashboard_workspaces (tenant_id, updated_at DESC)`,
-	`CREATE INDEX IF NOT EXISTS dashboard_workspaces_org_idx ON dashboard_workspaces (organization_id, updated_at DESC) WHERE organization_id <> ''`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS dashboard_workspaces_org_slug_idx ON dashboard_workspaces (organization_id, slug) WHERE organization_id <> '' AND slug <> ''`,
 	`CREATE TABLE IF NOT EXISTS custom_dashboards (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,

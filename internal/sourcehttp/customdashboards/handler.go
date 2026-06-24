@@ -21,13 +21,35 @@ const (
 	maxBodyBytes               = 1 << 20
 	maxNameBytes               = 200
 	maxDescriptionBytes        = 1000
+	maxWidgets                 = 50
+	currentSchemaVersion       = 1
 	defaultCustomDashboardName = "Custom dashboard"
+
+	visibilityPrivate      = "private"
+	visibilityWorkspace    = "workspace"
+	visibilityOrganization = "organization"
 )
 
 var (
 	ErrUnavailable    = errors.New("custom dashboards are not configured")
 	ErrInvalidRequest = errors.New("invalid custom dashboard request")
+	ErrForbidden      = errors.New("custom dashboard access is forbidden")
 )
+
+// knownWidgetTypes is the catalog of widget kinds the renderer understands.
+// Writes are rejected for unknown types so dashboards stay forward-compatible
+// with the documented schema_version.
+var knownWidgetTypes = map[string]struct{}{
+	"trend_metric_cards":      {},
+	"trend_chart":             {},
+	"trend_aging_table":       {},
+	"trend_period_comparison": {},
+	"summary_metrics":         {},
+	"findings_table":          {},
+	"framework_progress":      {},
+	"connector_health":        {},
+	"markdown_note":           {},
+}
 
 type TenantResolver func(context.Context, string) (string, error)
 type TenantAuthorizer func(context.Context, string) error
@@ -128,6 +150,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	schemaVersion, err := validateSchemaVersion(request.SchemaVersion)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	actor := h.actorID(r.Context())
 	dashboard := &ports.CustomDashboard{
 		ID:             NewID(),
@@ -138,7 +165,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:           name,
 		Description:    description,
 		Visibility:     visibility,
-		SchemaVersion:  normalizeSchemaVersion(request.SchemaVersion),
+		SchemaVersion:  schemaVersion,
 		LayoutJSON:     string(layout),
 		WidgetsJSON:    string(widgets),
 		FiltersJSON:    string(filters),
@@ -183,8 +210,12 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	viewer := h.actorID(r.Context())
 	views := make([]View, 0, len(dashboards))
 	for _, dashboard := range dashboards {
+		if !canView(viewer, dashboard) {
+			continue
+		}
 		views = append(views, NewView(dashboard))
 	}
 	writeJSON(w, http.StatusOK, ListResponse{Dashboards: views})
@@ -248,7 +279,12 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		existing.WorkspaceID = strings.TrimSpace(*request.WorkspaceID)
 	}
 	if request.SchemaVersion != nil {
-		existing.SchemaVersion = normalizeSchemaVersion(*request.SchemaVersion)
+		schemaVersion, err := validateSchemaVersion(*request.SchemaVersion)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		existing.SchemaVersion = schemaVersion
 	}
 	existing.UpdatedBy = h.actorID(r.Context())
 	if err := h.store.PutCustomDashboard(r.Context(), existing); err != nil {
@@ -334,7 +370,21 @@ func (h *Handler) dashboardFromRequest(r *http.Request) (*ports.CustomDashboard,
 	if !dashboard.ArchivedAt.IsZero() {
 		return nil, ports.ErrCustomDashboardNotFound
 	}
+	if !canView(h.actorID(r.Context()), dashboard) {
+		return nil, ports.ErrCustomDashboardNotFound
+	}
 	return dashboard, nil
+}
+
+// canView enforces dashboard visibility within an already tenant-authorized
+// request. Private dashboards are restricted to their owner; workspace and
+// organization dashboards remain visible to any authorized tenant member.
+func canView(viewer string, dashboard *ports.CustomDashboard) bool {
+	if dashboard.Visibility != visibilityPrivate {
+		return true
+	}
+	owner := strings.TrimSpace(dashboard.OwnerUserID)
+	return owner != "" && owner == strings.TrimSpace(viewer)
 }
 
 func NormalizeContent(name string, description string, visibility string, layout json.RawMessage, widgets json.RawMessage, filters json.RawMessage) (string, string, string, json.RawMessage, json.RawMessage, json.RawMessage, error) {
@@ -357,7 +407,7 @@ func NormalizeContent(name string, description string, visibility string, layout
 	if err != nil {
 		return "", "", "", nil, nil, nil, err
 	}
-	normalizedWidgets, err := normalizeJSON(widgets, "widgets", "array", []byte("[]"))
+	normalizedWidgets, err := normalizeWidgets(widgets)
 	if err != nil {
 		return "", "", "", nil, nil, nil, err
 	}
@@ -401,7 +451,11 @@ func (h *Handler) resolveTenant(ctx context.Context, requested string) (string, 
 	if h.resolve == nil {
 		return strings.TrimSpace(requested), nil
 	}
-	return h.resolve(ctx, requested)
+	tenantID, err := h.resolve(ctx, requested)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrForbidden, err)
+	}
+	return tenantID, nil
 }
 
 func (h *Handler) authorizeTenant(ctx context.Context, tenantID string) error {
@@ -424,10 +478,10 @@ func (h *Handler) actorID(ctx context.Context) string {
 func normalizeVisibility(visibility string) (string, error) {
 	value := strings.ToLower(strings.TrimSpace(visibility))
 	if value == "" {
-		value = "private"
+		value = visibilityPrivate
 	}
 	switch value {
-	case "private", "workspace", "organization":
+	case visibilityPrivate, visibilityWorkspace, visibilityOrganization:
 		return value, nil
 	default:
 		return "", fmt.Errorf("%w: visibility must be private, workspace, or organization", ErrInvalidRequest)
@@ -455,11 +509,54 @@ func normalizeJSON(raw json.RawMessage, field string, kind string, fallback json
 	return append(json.RawMessage(nil), raw...), nil
 }
 
-func normalizeSchemaVersion(version int) int {
-	if version <= 0 {
-		return 1
+// validateSchemaVersion rejects schema versions the server does not yet
+// understand so clients cannot persist dashboards this build cannot render.
+func validateSchemaVersion(version int) (int, error) {
+	if version == 0 {
+		return currentSchemaVersion, nil
 	}
-	return version
+	if version < 0 || version > currentSchemaVersion {
+		return 0, fmt.Errorf("%w: schema_version %d is not supported (max %d)", ErrInvalidRequest, version, currentSchemaVersion)
+	}
+	return version, nil
+}
+
+// normalizeWidgets validates that widgets is a JSON array of well-formed widget
+// definitions: each entry needs a unique id and a type from the known catalog.
+func normalizeWidgets(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || strings.TrimSpace(string(raw)) == "" || string(raw) == "null" {
+		return json.RawMessage("[]"), nil
+	}
+	var widgets []json.RawMessage
+	if err := json.Unmarshal(raw, &widgets); err != nil {
+		return nil, fmt.Errorf("%w: widgets must be a JSON array", ErrInvalidRequest)
+	}
+	if len(widgets) > maxWidgets {
+		return nil, fmt.Errorf("%w: at most %d widgets are allowed", ErrInvalidRequest, maxWidgets)
+	}
+	seen := make(map[string]struct{}, len(widgets))
+	for index, entry := range widgets {
+		var widget struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(entry, &widget); err != nil {
+			return nil, fmt.Errorf("%w: widget %d must be a JSON object", ErrInvalidRequest, index)
+		}
+		id := strings.TrimSpace(widget.ID)
+		if id == "" {
+			return nil, fmt.Errorf("%w: widget %d is missing an id", ErrInvalidRequest, index)
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return nil, fmt.Errorf("%w: widget id %q is duplicated", ErrInvalidRequest, id)
+		}
+		seen[id] = struct{}{}
+		widgetType := strings.TrimSpace(widget.Type)
+		if _, ok := knownWidgetTypes[widgetType]; !ok {
+			return nil, fmt.Errorf("%w: widget %q has unsupported type %q", ErrInvalidRequest, id, widgetType)
+		}
+	}
+	return append(json.RawMessage(nil), raw...), nil
 }
 
 func uint32QueryParam(r *http.Request, key string) (uint32, error) {
@@ -489,7 +586,7 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, ErrInvalidRequest):
 		status = http.StatusBadRequest
-	case strings.Contains(strings.ToLower(err.Error()), "tenant"):
+	case errors.Is(err, ErrForbidden):
 		status = http.StatusForbidden
 	}
 	message := err.Error()
