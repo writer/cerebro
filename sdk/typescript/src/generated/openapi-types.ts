@@ -576,6 +576,7 @@ export type ConnectorDefinition = {
   description?: string;
   display_name: string;
   id?: string;
+  ingest?: ConnectorDefinitionIngest;
   promotion?: ConnectorDefinitionPromotion;
   resource_families?: ConnectorDefinitionResourceFamily[];
   runtime?: "json_api";
@@ -597,6 +598,18 @@ export type ConnectorDefinitionField = {
   secret?: boolean;
 };
 
+export type ConnectorDefinitionGateEvidence = {
+  actor?: string;
+  detail?: string;
+  gate: string;
+  observed_at?: string;
+};
+
+export type ConnectorDefinitionIngest = {
+  deposit?: { full_state_sync?: boolean; resource_families?: string[] };
+  mode?: "pull" | "deposit";
+};
+
 export type ConnectorDefinitionListResponse = {
   definitions: ConnectorDefinition[];
   generated_at?: string;
@@ -616,6 +629,22 @@ export type ConnectorDefinitionPlanResponse = {
   plan: SourceCDKPromotionPlan;
 };
 
+export type ConnectorDefinitionPreviewRequest = {
+  check_only?: boolean;
+  config?: Record<string, string>;
+  definition: ConnectorDefinition;
+  page_limit?: number;
+};
+
+export type ConnectorDefinitionPreviewResponse = {
+  definition: ConnectorDefinition;
+  events?: Record<string, unknown>[];
+  generated_at?: string;
+  next_cursor?: string;
+  pages_read?: number;
+  status: "checked" | "previewed";
+};
+
 export type ConnectorDefinitionPromotion = {
   eligible_stages?: string[];
   last_target?: string;
@@ -625,7 +654,7 @@ export type ConnectorDefinitionPromotion = {
 
 export type ConnectorDefinitionPromotionResponse = {
   generated_at?: string;
-  result: { definition?: ConnectorDefinition; next_action?: string; promoted?: boolean; target_stage?: string };
+  result: { accepted_gates?: ConnectorDefinitionGateEvidence[]; definition?: ConnectorDefinition; next_action?: string; promoted?: boolean; target_stage?: string };
 };
 
 export type ConnectorDefinitionResourceFamily = {
@@ -635,9 +664,9 @@ export type ConnectorDefinitionResourceFamily = {
   id_field: string;
   label?: string;
   list_key?: string;
-  method?: "GET";
+  method?: "GET" | "POST";
   name_field?: string;
-  path: string;
+  path?: string;
   updated_at_field?: string;
 };
 
@@ -679,6 +708,44 @@ export type ConnectorDefinitionValidationResponse = {
   generated_at?: string;
   promotion: ConnectorDefinitionPromotion;
   validation: ConnectorDefinitionValidation;
+};
+
+export type ConnectorDefinitionVersionsResponse = {
+  definition_id: string;
+  generated_at?: string;
+  tenant_id?: string;
+  versions: { created_at?: string; definition?: ConnectorDefinition; stage?: "draft" | "sandbox" | "pilot" | "approved" | "certified"; version?: number }[];
+};
+
+export type ConnectorDepositRecordError = {
+  detail: string;
+  index: number;
+  source_event_id?: string;
+};
+
+export type ConnectorDepositRequest = {
+  batch_id?: string;
+  family_id?: string;
+  full_state?: boolean;
+  idempotency_key?: string;
+  occurred_at?: string;
+  record?: Record<string, unknown>;
+  records?: Record<string, unknown>[];
+  runtime_id: string;
+  tenant_id?: string;
+};
+
+export type ConnectorDepositResponse = {
+  entities_projected: number;
+  errors?: ConnectorDepositRecordError[];
+  events_appended: number;
+  family_id: string;
+  links_projected: number;
+  records_accepted: number;
+  records_rejected: number;
+  runtime_id: string;
+  source_id: string;
+  tenant_id: string;
 };
 
 export type CreatePlatformJobRequest = {
