@@ -1,43 +1,67 @@
 sourceId: google_workspace
 secretKeys:
+  - GOOGLE_WORKSPACE_CLIENT_ID
+  - GOOGLE_WORKSPACE_CLIENT_SECRET
   - GOOGLE_WORKSPACE_CUSTOMER_ID
+  - GOOGLE_WORKSPACE_DELEGATED_ADMIN_EMAIL
   - GOOGLE_WORKSPACE_DOMAIN
   - GOOGLE_WORKSPACE_GROUP_KEY
+  - GOOGLE_WORKSPACE_PRIVATE_KEY
+  - GOOGLE_WORKSPACE_REFRESH_TOKEN
+  - GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL
   - GOOGLE_WORKSPACE_TOKEN
 runtimes:
   - localId: audit
     config:
       customer_id: env:GOOGLE_WORKSPACE_CUSTOMER_ID
+      delegated_admin_email: env:GOOGLE_WORKSPACE_DELEGATED_ADMIN_EMAIL
       domain: env:GOOGLE_WORKSPACE_DOMAIN
       family: audit
       per_page: "100"
+      private_key: env:GOOGLE_WORKSPACE_PRIVATE_KEY
+      service_account_email: env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL
       token: env:GOOGLE_WORKSPACE_TOKEN
   - localId: group
     config:
       customer_id: env:GOOGLE_WORKSPACE_CUSTOMER_ID
+      delegated_admin_email: env:GOOGLE_WORKSPACE_DELEGATED_ADMIN_EMAIL
       domain: env:GOOGLE_WORKSPACE_DOMAIN
       family: group
       per_page: "100"
+      private_key: env:GOOGLE_WORKSPACE_PRIVATE_KEY
+      service_account_email: env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL
       token: env:GOOGLE_WORKSPACE_TOKEN
   - localId: group-member
     config:
       customer_id: env:GOOGLE_WORKSPACE_CUSTOMER_ID
+      delegated_admin_email: env:GOOGLE_WORKSPACE_DELEGATED_ADMIN_EMAIL
       domain: env:GOOGLE_WORKSPACE_DOMAIN
       family: group_member
       group_key: env:GOOGLE_WORKSPACE_GROUP_KEY
       per_page: "100"
+      private_key: env:GOOGLE_WORKSPACE_PRIVATE_KEY
+      service_account_email: env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL
       token: env:GOOGLE_WORKSPACE_TOKEN
   - localId: role-assignment
     config:
       customer_id: env:GOOGLE_WORKSPACE_CUSTOMER_ID
+      delegated_admin_email: env:GOOGLE_WORKSPACE_DELEGATED_ADMIN_EMAIL
       domain: env:GOOGLE_WORKSPACE_DOMAIN
       family: role_assignment
       per_page: "100"
+      private_key: env:GOOGLE_WORKSPACE_PRIVATE_KEY
+      service_account_email: env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL
       token: env:GOOGLE_WORKSPACE_TOKEN
   - localId: user
     config:
+      client_id: env:GOOGLE_WORKSPACE_CLIENT_ID
+      client_secret: env:GOOGLE_WORKSPACE_CLIENT_SECRET
       customer_id: env:GOOGLE_WORKSPACE_CUSTOMER_ID
+      delegated_admin_email: env:GOOGLE_WORKSPACE_DELEGATED_ADMIN_EMAIL
       domain: env:GOOGLE_WORKSPACE_DOMAIN
       family: user
       per_page: "100"
+      private_key: env:GOOGLE_WORKSPACE_PRIVATE_KEY
+      refresh_token: env:GOOGLE_WORKSPACE_REFRESH_TOKEN
+      service_account_email: env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL
       token: env:GOOGLE_WORKSPACE_TOKEN

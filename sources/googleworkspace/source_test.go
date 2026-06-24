@@ -29,7 +29,7 @@ func TestCheckRequiresDomainAndToken(t *testing.T) {
 		t.Fatal("Check() error = nil, want missing domain error")
 	}
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"domain": "writer.com"})); err == nil {
-		t.Fatal("Check() error = nil, want missing token error")
+		t.Fatal("Check() error = nil, want missing auth error")
 	}
 }
 

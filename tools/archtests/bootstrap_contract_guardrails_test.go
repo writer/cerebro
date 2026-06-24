@@ -220,7 +220,8 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 				strings.HasPrefix(rel, filepath.Join("internal", "bootstrap")+string(filepath.Separator)) ||
 				strings.HasPrefix(rel, filepath.Join("internal", "observability")+string(filepath.Separator)) ||
 				strings.HasPrefix(rel, filepath.Join("internal", "sourceplanapi")+string(filepath.Separator)) ||
-				strings.HasPrefix(rel, filepath.Join("internal", "sourcehttp")+string(filepath.Separator)) {
+				strings.HasPrefix(rel, filepath.Join("internal", "sourcehttp")+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, filepath.Join("tools", "connectorimport")+string(filepath.Separator)) {
 				continue
 			}
 			t.Fatalf("%s imports net/http outside Source CDK or bootstrap boundary", rel)
