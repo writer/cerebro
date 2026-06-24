@@ -14,7 +14,10 @@ import (
 	"golang.org/x/oauth2/jwt"
 )
 
-const googleOAuthEndpoint = "https://oauth2.googleapis.com/" + "token"
+const (
+	googleOAuthEndpoint        = "https://oauth2.googleapis.com/" + "token"
+	maxTokenSourceCacheEntries = 1024
+)
 
 var (
 	workspaceReadScopes = []string{
@@ -24,7 +27,9 @@ var (
 		"https://www.googleapis.com/auth/admin.directory.rolemanagement.readonly",
 		"https://www.googleapis.com/auth/admin.reports.audit.readonly",
 	}
-	tokenSources sync.Map
+	tokenSources         sync.Map
+	tokenSourceCacheMu   sync.Mutex
+	tokenSourceCacheKeys []string
 )
 
 type Settings struct {
@@ -130,8 +135,19 @@ func cachedTokenSource(cacheKey string, factory func() (oauth2.TokenSource, erro
 		return nil, err
 	}
 	reuse := oauth2.ReuseTokenSource(nil, source)
-	actual, _ := tokenSources.LoadOrStore(cacheKey, reuse)
-	return actual.(oauth2.TokenSource), nil
+	tokenSourceCacheMu.Lock()
+	defer tokenSourceCacheMu.Unlock()
+	if cached, ok := tokenSources.Load(cacheKey); ok {
+		return cached.(oauth2.TokenSource), nil
+	}
+	tokenSources.Store(cacheKey, reuse)
+	tokenSourceCacheKeys = append(tokenSourceCacheKeys, cacheKey)
+	if len(tokenSourceCacheKeys) > maxTokenSourceCacheEntries {
+		evictKey := tokenSourceCacheKeys[0]
+		tokenSourceCacheKeys = tokenSourceCacheKeys[1:]
+		tokenSources.Delete(evictKey)
+	}
+	return reuse, nil
 }
 
 func serviceAccountTokenSource(ctx context.Context, settings Settings) (oauth2.TokenSource, error) {

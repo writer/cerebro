@@ -2,17 +2,18 @@ package googleworkspaceauth
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
 
 func TestBearerTokenCachedSourceIsNotRequestScoped(t *testing.T) {
-	tokenSources = sync.Map{}
-	t.Cleanup(func() { tokenSources = sync.Map{} })
+	resetTokenSourceCache(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("token request method = %s, want POST", r.Method)
@@ -44,8 +45,7 @@ func TestBearerTokenCachedSourceIsNotRequestScoped(t *testing.T) {
 }
 
 func TestBearerTokenCacheKeyChangesWhenOAuthClientSecretRotates(t *testing.T) {
-	tokenSources = sync.Map{}
-	t.Cleanup(func() { tokenSources = sync.Map{} })
+	resetTokenSourceCache(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := r.ParseForm(); err != nil {
@@ -88,4 +88,35 @@ func TestBearerTokenCacheKeyChangesWhenOAuthClientSecretRotates(t *testing.T) {
 	if token != "token-for-secret-b" {
 		t.Fatalf("BearerToken(secret-b) = %q, want token-for-secret-b", token)
 	}
+}
+
+func TestCachedTokenSourceEvictsOldestEntryAtCapacity(t *testing.T) {
+	resetTokenSourceCache(t)
+	for i := 0; i < maxTokenSourceCacheEntries+1; i++ {
+		token := fmt.Sprintf("token-%d", i)
+		_, err := cachedTokenSource(fmt.Sprintf("key-%d", i), func() (oauth2.TokenSource, error) {
+			return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}), nil
+		})
+		if err != nil {
+			t.Fatalf("cachedTokenSource(%d) error = %v", i, err)
+		}
+	}
+	if _, ok := tokenSources.Load("key-0"); ok {
+		t.Fatal("oldest token source was not evicted")
+	}
+	if _, ok := tokenSources.Load(fmt.Sprintf("key-%d", maxTokenSourceCacheEntries)); !ok {
+		t.Fatal("newest token source was evicted")
+	}
+}
+
+func resetTokenSourceCache(t *testing.T) {
+	t.Helper()
+	reset := func() {
+		tokenSourceCacheMu.Lock()
+		defer tokenSourceCacheMu.Unlock()
+		tokenSources = sync.Map{}
+		tokenSourceCacheKeys = nil
+	}
+	reset()
+	t.Cleanup(reset)
 }
