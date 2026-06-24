@@ -2,6 +2,8 @@ package googleworkspaceauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -160,12 +162,21 @@ func oauthRefreshTokenSource(ctx context.Context, settings Settings) oauth2.Toke
 func authCacheKey(settings Settings) string {
 	switch {
 	case serviceAccountAuthConfigured(settings):
-		return "sa:" + settings.ServiceAccountEmail + "\x00" + settings.DelegatedAdminEmail
+		return "sa:" + authCacheDigest(settings.ServiceAccountEmail, settings.DelegatedAdminEmail, settings.PrivateKey)
 	case oauthRefreshAuthConfigured(settings):
-		return "oauth:" + settings.ClientID + "\x00" + settings.RefreshToken
+		return "oauth:" + authCacheDigest(settings.ClientID, settings.ClientSecret, settings.RefreshToken)
 	default:
 		return ""
 	}
+}
+
+func authCacheDigest(values ...string) string {
+	hash := sha256.New()
+	for _, value := range values {
+		hash.Write([]byte(strings.TrimSpace(value)))
+		hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func firstNonEmpty(values ...string) string {
