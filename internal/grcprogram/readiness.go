@@ -178,7 +178,7 @@ func buildSummary(result grccontrol.PacketResult, connectors []Connector, covera
 	}
 	for _, control := range result.Controls {
 		switch controlClass(control) {
-		case "passing":
+		case "passing", "not_applicable":
 			summary.PassingControls++
 		case "failing":
 			summary.FailingControls++
@@ -266,7 +266,7 @@ func buildFrameworks(controls []Control) []Framework {
 		accumulator.OpenFindings += control.OpenFindings
 		accumulator.EvidenceItems += control.EvidenceItems
 		switch controlClassFromStatus(control.Status, control.MissingEvidence, control.StaleEvidence) {
-		case "passing":
+		case "passing", "not_applicable":
 			accumulator.PassingControls++
 		case "failing":
 			accumulator.FailingControls++
@@ -371,6 +371,10 @@ func controlClassFromStatus(status string, missingEvidence, staleEvidence int) s
 		return "stale_evidence"
 	case normalized == "manual_review" || normalized == "manual":
 		return "manual_review"
+	case normalized == "exception":
+		return "exception"
+	case normalized == "not_applicable":
+		return "not_applicable"
 	case normalized == "passing" || normalized == "satisfied" || normalized == "ready" || normalized == "ok":
 		return "passing"
 	default:
@@ -388,6 +392,8 @@ func controlAction(control grccontrol.ControlItem) string {
 		return "Refresh stale evidence"
 	case "manual_review":
 		return "Complete manual assessment"
+	case "exception":
+		return "Review accepted exception"
 	default:
 		return "Keep audit-ready"
 	}
@@ -398,12 +404,14 @@ func controlScore(control grccontrol.ControlItem) int {
 		return control.EvidenceScore
 	}
 	switch controlClass(control) {
-	case "passing":
+	case "passing", "not_applicable":
 		return 100
 	case "stale_evidence":
 		return 70
 	case "manual_review":
 		return 65
+	case "exception":
+		return 50
 	case "missing_evidence":
 		return 45
 	case "failing":
@@ -419,7 +427,9 @@ func controlRank(control Control) [5]int {
 		"missing_evidence": 1,
 		"stale_evidence":   2,
 		"manual_review":    3,
+		"exception":        4,
 		"passing":          9,
+		"not_applicable":   10,
 	}
 	class := controlClassFromStatus(control.Status, control.MissingEvidence, control.StaleEvidence)
 	return [5]int{
