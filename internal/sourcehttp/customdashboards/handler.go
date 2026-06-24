@@ -492,7 +492,14 @@ func writeError(w http.ResponseWriter, err error) {
 	case strings.Contains(strings.ToLower(err.Error()), "tenant"):
 		status = http.StatusForbidden
 	}
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	message := err.Error()
+	if status >= http.StatusInternalServerError {
+		message = strings.ToLower(http.StatusText(status))
+		if message == "" {
+			message = "internal server error"
+		}
+	}
+	writeJSON(w, status, map[string]string{"error": message})
 }
 
 func isNilInterface(value any) bool {
