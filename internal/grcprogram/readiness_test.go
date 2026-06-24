@@ -78,6 +78,9 @@ func TestBuildDistinguishesExceptionsAndNotApplicableControls(t *testing.T) {
 	if readiness.Summary.PassingControls != 1 {
 		t.Fatalf("passing controls = %d, want not-applicable control counted as passing", readiness.Summary.PassingControls)
 	}
+	if readiness.Summary.ExceptionControls != 1 {
+		t.Fatalf("exception controls = %d, want 1", readiness.Summary.ExceptionControls)
+	}
 	if len(readiness.WorkItems) != 1 || readiness.WorkItems[0].ControlID != "A.5.1" || readiness.WorkItems[0].Action == "Complete manual assessment" {
 		t.Fatalf("work items = %+v, want only exception follow-up and no manual assessment", readiness.WorkItems)
 	}

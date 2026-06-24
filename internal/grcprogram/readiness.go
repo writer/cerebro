@@ -32,6 +32,7 @@ type Summary struct {
 	MissingEvidenceControls int                                 `json:"missing_evidence_controls"`
 	StaleEvidenceControls   int                                 `json:"stale_evidence_controls"`
 	ManualReviewControls    int                                 `json:"manual_review_controls"`
+	ExceptionControls       int                                 `json:"exception_controls"`
 	EvidenceItems           int                                 `json:"evidence_items"`
 	MissingEvidenceItems    int                                 `json:"missing_evidence_items"`
 	StaleEvidenceItems      int                                 `json:"stale_evidence_items"`
@@ -57,6 +58,7 @@ type Framework struct {
 	MissingEvidenceControls int    `json:"missing_evidence_controls"`
 	StaleEvidenceControls   int    `json:"stale_evidence_controls"`
 	ManualReviewControls    int    `json:"manual_review_controls"`
+	ExceptionControls       int    `json:"exception_controls"`
 	OpenFindings            int    `json:"open_findings"`
 	EvidenceItems           int    `json:"evidence_items"`
 }
@@ -188,6 +190,8 @@ func buildSummary(result grccontrol.PacketResult, connectors []Connector, covera
 			summary.StaleEvidenceControls++
 		case "manual_review":
 			summary.ManualReviewControls++
+		case "exception":
+			summary.ExceptionControls++
 		}
 		summary.OpenFindings += control.OpenFindings
 		summary.CriticalFindings += control.CriticalFindings
@@ -276,6 +280,8 @@ func buildFrameworks(controls []Control) []Framework {
 			accumulator.StaleEvidenceControls++
 		case "manual_review":
 			accumulator.ManualReviewControls++
+		case "exception":
+			accumulator.ExceptionControls++
 		}
 	}
 	items := make([]Framework, 0, len(frameworks))
@@ -445,7 +451,7 @@ func readinessStatus(score int, summary Summary) string {
 	switch {
 	case summary.FailingControls > 0 || summary.StaleConnectors > 0:
 		return "blocked"
-	case summary.MissingEvidenceControls > 0 || summary.StaleEvidenceControls > 0 || summary.ManualReviewControls > 0 || summary.CoverageBlindSpots > 0:
+	case summary.MissingEvidenceControls > 0 || summary.StaleEvidenceControls > 0 || summary.ManualReviewControls > 0 || summary.ExceptionControls > 0 || summary.CoverageBlindSpots > 0:
 		return "needs_review"
 	case score >= 90:
 		return "ready"
@@ -458,7 +464,7 @@ func frameworkStatus(framework Framework) string {
 	switch {
 	case framework.FailingControls > 0:
 		return "blocked"
-	case framework.MissingEvidenceControls > 0 || framework.StaleEvidenceControls > 0 || framework.ManualReviewControls > 0:
+	case framework.MissingEvidenceControls > 0 || framework.StaleEvidenceControls > 0 || framework.ManualReviewControls > 0 || framework.ExceptionControls > 0:
 		return "needs_review"
 	case framework.Score >= 90:
 		return "ready"
