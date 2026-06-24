@@ -1,6 +1,7 @@
 package googleworkspaceauth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,7 +32,9 @@ func TestBearerTokenCachedSourceIsNotRequestScoped(t *testing.T) {
 	google.Endpoint.TokenURL = server.URL
 	t.Cleanup(func() { google.Endpoint = previousEndpoint })
 
-	token, err := BearerToken(Settings{
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	token, err := BearerToken(ctx, Settings{
 		ClientID:     "client-id",
 		ClientSecret: "client-secret",
 		RefreshToken: "refresh-token-" + t.Name(),
@@ -72,7 +75,7 @@ func TestBearerTokenCacheKeyChangesWhenOAuthClientSecretRotates(t *testing.T) {
 	t.Cleanup(func() { google.Endpoint = previousEndpoint })
 
 	settings := Settings{ClientID: "client-id", ClientSecret: "secret-a", RefreshToken: "refresh-token"}
-	token, err := BearerToken(settings)
+	token, err := BearerToken(context.Background(), settings)
 	if err != nil {
 		t.Fatalf("BearerToken(secret-a) error = %v", err)
 	}
@@ -81,7 +84,7 @@ func TestBearerTokenCacheKeyChangesWhenOAuthClientSecretRotates(t *testing.T) {
 	}
 
 	settings.ClientSecret = "secret-b"
-	token, err = BearerToken(settings)
+	token, err = BearerToken(context.Background(), settings)
 	if err != nil {
 		t.Fatalf("BearerToken(secret-b) error = %v", err)
 	}

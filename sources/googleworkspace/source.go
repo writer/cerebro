@@ -309,7 +309,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, path string, qu
 		return fmt.Errorf("build request %s: %w", path, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	bearerToken, err := googleworkspaceauth.BearerToken(settings.auth) //nolint:contextcheck // cached OAuth token sources must outlive request contexts
+	bearerToken, err := googleworkspaceauth.BearerToken(ctx, settings.auth)
 	if err != nil {
 		return err
 	}
