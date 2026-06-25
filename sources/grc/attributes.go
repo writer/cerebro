@@ -6,6 +6,26 @@ import (
 	"strings"
 )
 
+var attributeFieldMappings = map[string][]string{
+	familyFramework:                {"framework_id", "id", "display_name", "displayName", "name", "shorthandName", "description", "description", "num_controls_completed", "numControlsCompleted", "num_controls_total", "numControlsTotal", "num_documents_passing", "numDocumentsPassing", "num_documents_total", "numDocumentsTotal", "num_tests_passing", "numTestsPassing", "num_tests_total", "numTestsTotal"},
+	familyControl:                  {"control_id", "id", "control_external_id", "externalId", "name", "name", "description", "description", "source", "source", "domains", "domains", "owner_id", "owner.id", "role", "role", "created_at", "creationDate", "modified_at", "modificationDate"},
+	familyControlTest:              {"test_id", "id", "name", "name", "description", "description", "control_id", "controlId", "control_ids", "controlIds", "control_external_id", "controlExternalId", "control_external_ids", "controlExternalIds", "last_run_at", "lastTestRunDate", "latest_flip_at", "latestFlipDate", "failure_description", "failureDescription", "remediation_description", "remediationDescription", "version", "version", "category", "category", "integrations", "integrations", "status", "status", "owner_id", "owner.id"},
+	familyPolicy:                   {"policy_id", "id", "name", "name", "description", "description", "status", "status", "approved_at", "approvedAtDate", "latest_version_status", "latestVersion.status"},
+	familyDocument:                 {"document_id", "id", "owner_id", "ownerId", "category", "category", "description", "description", "is_sensitive", "isSensitive", "title", "title", "upload_status", "uploadStatus", "upload_status_date", "uploadStatusDate", "url", "url"},
+	familyContract:                 {"contract_id", "id", "name", "name", "vendor_id", "vendorId", "vendor_name", "vendorName", "owner_id", "ownerId", "business_owner_user_id", "businessOwnerUserId", "control_ids", "controlIds", "evidence_id", "evidenceId", "evidence_cas_uri", "evidenceCasUri", "evidence_type", "evidenceType", "status", "status", "contract_type", "contractType", "agreement_type", "agreementType", "tags", "tags", "data_types", "dataTypes", "jurisdictions", "jurisdictions", "category", "category", "customer_trust_account_id", "customerTrustAccountId", "executed_at", "executedDate", "created_at", "creationDate"},
+	familyDiscoveredVendor:         {"discovered_vendor_id", "id", "vendor_id", "id", "name", "name", "normalized_name", "normalizedName", "category", "category.name", "source", "source", "discovered_at", "discoveredDate", "account_count", "numberOfAccounts", "ignored_at", "ignored.ignoredAtDate", "ignored_reason", "ignored.ignoredReason", "ignored_by_user_id", "ignored.ignoredByUserId", "rejected_at", "rejected.rejectedAtDate", "rejected_reason", "rejected.rejectedReason", "rejected_by_user_id", "rejected.rejectedByUserId"},
+	familyEventLog:                 {"event_log_id", "id", "action", "action", "actor_type", "actor.type", "actor_id", "actor.id", "occurred_at", "date", "target_ids", "targets"},
+	familyGroup:                    {"group_id", "id", "group_name", "name", "name", "name", "created_at", "creationDate"},
+	familyVendorRiskAttribute:      {"vendor_risk_attribute_id", "id", "name", "name", "description", "description", "vendor_categories", "vendorCategories", "enabled", "enabled", "risk_level", "riskLevel"},
+	familyVendor:                   {"vendor_id", "id", "name", "name", "website_url", "websiteUrl", "account_manager_email", "accountManagerEmail", "services_provided", "servicesProvided", "security_owner_user_id", "securityOwnerUserId", "business_owner_user_id", "businessOwnerUserId", "contract_start_date", "contractStartDate", "contract_renewal_date", "contractRenewalDate", "contract_termination_date", "contractTerminationDate", "next_security_review_due_date", "nextSecurityReviewDueDate", "last_security_review_completion_date", "lastSecurityReviewCompletionDate", "category", "category.displayName", "status", "status", "inherent_risk_level", "inherentRiskLevel", "residual_risk_level", "residualRiskLevel"},
+	familyVulnerability:            {"vulnerability_id", "id", "name", "name", "description", "description", "integration_id", "integrationId", "package_identifier", "packageIdentifier", "package", "packageIdentifier", "package_purl", "packageIdentifier", "vulnerability_type", "vulnerabilityType", "target_id", "targetId", "first_detected_at", "firstDetectedDate", "source_detected_at", "sourceDetectedDate", "last_detected_at", "lastDetectedDate", "severity", "severity", "cvss_severity_score", "cvssSeverityScore", "scanner_score", "scannerScore", "is_fixable", "isFixable", "fixed_version", "fixedVersion", "remediate_by_date", "remediateByDate", "external_url", "externalURL", "scan_source", "scanSource"},
+	familyVulnerabilityRemediation: {"remediation_id", "id", "vulnerability_id", "vulnerabilityId", "vulnerable_asset_id", "vulnerableAssetId", "target_id", "vulnerableAssetId", "asset_id", "vulnerableAssetId", "severity", "severity", "detected_at", "detectedDate", "sla_deadline_at", "slaDeadlineDate", "remediation_date", "remediationDate", "remediated_at", "remediationDate", "vulnerability_status", "status", "remediation_status", "status"},
+	familyRiskScenario:             {"risk_id", "riskId", "description", "description", "likelihood", "likelihood", "impact", "impact", "residual_likelihood", "residualLikelihood", "residual_impact", "residualImpact", "categories", "categories", "cia_categories", "ciaCategories", "treatment", "treatment", "owner", "owner", "note", "note", "risk_register", "riskRegister", "review_status", "reviewStatus", "type", "type", "identified_at", "identificationDate"},
+	familyPerson:                   {"person_id", "id", "user_id", "userId", "email", "emailAddress", "department", "employment.department", "employment_end_date", "employment.endDate", "employee_number", "employment.employeeNumber", "job_title", "employment.jobTitle", "manager", "employment.manager", "manager_id", "employment.managerId", "employment_start_date", "employment.startDate", "employment_status", "employment.status", "group_ids", "groupIds"},
+	familyUser:                     {"user_id", "id", "email", "email", "display_name", "displayName", "is_active", "isActive"},
+	familyIntegration:              {"integration_id", "integrationId", "display_name", "displayName", "resource_kinds", "resourceKinds"},
+}
+
 func attributesFor(settings settings, family string, record grcRecord) map[string]string {
 	values := record.Values
 	attrs := map[string]string{
@@ -13,116 +33,14 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 		"source_provider": settings.provider,
 		"external_id":     record.ID,
 	}
+	copyFieldPairs(attrs, values, attributeFieldMappings[family])
 	switch family {
-	case familyFramework:
-		copyFields(attrs, values, map[string]string{
-			"framework_id":           "id",
-			"display_name":           "displayName",
-			"name":                   "shorthandName",
-			"description":            "description",
-			"num_controls_completed": "numControlsCompleted",
-			"num_controls_total":     "numControlsTotal",
-			"num_documents_passing":  "numDocumentsPassing",
-			"num_documents_total":    "numDocumentsTotal",
-			"num_tests_passing":      "numTestsPassing",
-			"num_tests_total":        "numTestsTotal",
-		})
-	case familyControl:
-		copyFields(attrs, values, map[string]string{
-			"control_id":          "id",
-			"control_external_id": "externalId",
-			"name":                "name",
-			"description":         "description",
-			"source":              "source",
-			"domains":             "domains",
-			"owner_id":            "owner.id",
-			"role":                "role",
-			"created_at":          "creationDate",
-			"modified_at":         "modificationDate",
-		})
 	case familyControlTest:
-		copyFields(attrs, values, map[string]string{
-			"test_id":                 "id",
-			"name":                    "name",
-			"description":             "description",
-			"control_id":              "controlId",
-			"control_ids":             "controlIds",
-			"control_external_id":     "controlExternalId",
-			"control_external_ids":    "controlExternalIds",
-			"last_run_at":             "lastTestRunDate",
-			"latest_flip_at":          "latestFlipDate",
-			"failure_description":     "failureDescription",
-			"remediation_description": "remediationDescription",
-			"version":                 "version",
-			"category":                "category",
-			"integrations":            "integrations",
-			"status":                  "status",
-			"owner_id":                "owner.id",
-		})
 		copyControlReferenceFields(attrs, values)
-	case familyPolicy:
-		copyFields(attrs, values, map[string]string{
-			"policy_id":             "id",
-			"name":                  "name",
-			"description":           "description",
-			"status":                "status",
-			"approved_at":           "approvedAtDate",
-			"latest_version_status": "latestVersion.status",
-		})
-	case familyDocument:
-		copyFields(attrs, values, map[string]string{
-			"document_id":        "id",
-			"owner_id":           "ownerId",
-			"category":           "category",
-			"description":        "description",
-			"is_sensitive":       "isSensitive",
-			"title":              "title",
-			"upload_status":      "uploadStatus",
-			"upload_status_date": "uploadStatusDate",
-			"url":                "url",
-		})
-	case familyVendor:
-		copyFields(attrs, values, map[string]string{
-			"vendor_id":                            "id",
-			"name":                                 "name",
-			"website_url":                          "websiteUrl",
-			"account_manager_email":                "accountManagerEmail",
-			"services_provided":                    "servicesProvided",
-			"security_owner_user_id":               "securityOwnerUserId",
-			"business_owner_user_id":               "businessOwnerUserId",
-			"contract_start_date":                  "contractStartDate",
-			"contract_renewal_date":                "contractRenewalDate",
-			"contract_termination_date":            "contractTerminationDate",
-			"next_security_review_due_date":        "nextSecurityReviewDueDate",
-			"last_security_review_completion_date": "lastSecurityReviewCompletionDate",
-			"category":                             "category.displayName",
-			"status":                               "status",
-			"inherent_risk_level":                  "inherentRiskLevel",
-			"residual_risk_level":                  "residualRiskLevel",
-		})
-	case familyVulnerability:
-		copyFields(attrs, values, map[string]string{
-			"vulnerability_id":    "id",
-			"name":                "name",
-			"description":         "description",
-			"integration_id":      "integrationId",
-			"package_identifier":  "packageIdentifier",
-			"package":             "packageIdentifier",
-			"package_purl":        "packageIdentifier",
-			"vulnerability_type":  "vulnerabilityType",
-			"target_id":           "targetId",
-			"first_detected_at":   "firstDetectedDate",
-			"source_detected_at":  "sourceDetectedDate",
-			"last_detected_at":    "lastDetectedDate",
-			"severity":            "severity",
-			"cvss_severity_score": "cvssSeverityScore",
-			"scanner_score":       "scannerScore",
-			"is_fixable":          "isFixable",
-			"fixed_version":       "fixedVersion",
-			"remediate_by_date":   "remediateByDate",
-			"external_url":        "externalURL",
-			"scan_source":         "scanSource",
-		})
+	case familyEventLog:
+		if targets := eventLogTargets(values); targets != "" {
+			attrs["targets"] = targets
+		}
 	case familyVulnerableAsset:
 		copyFirstField(attrs, values, "asset_id", "id", "assetId", "targetId")
 		copyFirstField(attrs, values, "target_id", "id", "assetId", "targetId")
@@ -139,52 +57,7 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 		copyFirstField(attrs, values, "last_detected_at", "lastDetectedDate", "lastSeenDate", "updatedAt")
 		copyVulnerableAssetPlatformReferences(attrs, values)
 		copyVulnerableAssetReferences(attrs, values)
-	case familyRiskScenario:
-		copyFields(attrs, values, map[string]string{
-			"risk_id":             "riskId",
-			"description":         "description",
-			"likelihood":          "likelihood",
-			"impact":              "impact",
-			"residual_likelihood": "residualLikelihood",
-			"residual_impact":     "residualImpact",
-			"categories":          "categories",
-			"cia_categories":      "ciaCategories",
-			"treatment":           "treatment",
-			"owner":               "owner",
-			"note":                "note",
-			"risk_register":       "riskRegister",
-			"review_status":       "reviewStatus",
-			"type":                "type",
-			"identified_at":       "identificationDate",
-		})
-	case familyPerson:
-		copyFields(attrs, values, map[string]string{
-			"person_id":             "id",
-			"user_id":               "userId",
-			"email":                 "emailAddress",
-			"department":            "employment.department",
-			"employment_end_date":   "employment.endDate",
-			"employee_number":       "employment.employeeNumber",
-			"job_title":             "employment.jobTitle",
-			"manager":               "employment.manager",
-			"manager_id":            "employment.managerId",
-			"employment_start_date": "employment.startDate",
-			"employment_status":     "employment.status",
-			"group_ids":             "groupIds",
-		})
-	case familyUser:
-		copyFields(attrs, values, map[string]string{
-			"user_id":      "id",
-			"email":        "email",
-			"display_name": "displayName",
-			"is_active":    "isActive",
-		})
 	case familyIntegration:
-		copyFields(attrs, values, map[string]string{
-			"integration_id": "integrationId",
-			"display_name":   "displayName",
-			"resource_kinds": "resourceKinds",
-		})
 		attrs["connection_count"] = strconv.Itoa(len(arrayValue(values, "connections")))
 		attrs["disabled_connection_count"] = strconv.Itoa(countConnections(values, true, false))
 		attrs["connection_error_count"] = strconv.Itoa(countConnections(values, false, true))
@@ -192,8 +65,9 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 	return trimEmpty(attrs)
 }
 
-func copyFields(attrs map[string]string, values map[string]any, mapping map[string]string) {
-	for target, source := range mapping {
+func copyFieldPairs(attrs map[string]string, values map[string]any, pairs []string) {
+	for i := 0; i+1 < len(pairs); i += 2 {
+		target, source := pairs[i], pairs[i+1]
 		if value := fieldString(values, source); value != "" {
 			attrs[target] = value
 		}
@@ -230,6 +104,31 @@ func copyControlReferenceFields(attrs map[string]string, values map[string]any) 
 			attrs["control_external_id"] = firstDelimitedValue(externalIDs)
 		}
 	}
+}
+
+func eventLogTargets(values map[string]any) string {
+	items := arrayValue(values, "targets")
+	if len(items) == 0 {
+		return ""
+	}
+	targets := make([]string, 0, len(items))
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		targetID := valueString(object["id"])
+		if targetID == "" {
+			continue
+		}
+		targetType := valueString(object["type"])
+		if targetType == "" {
+			targets = append(targets, targetID)
+			continue
+		}
+		targets = append(targets, targetType+":"+targetID)
+	}
+	return strings.Join(targets, ";")
 }
 
 type vulnerableAssetPlatformReference struct {

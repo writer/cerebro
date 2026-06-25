@@ -171,6 +171,201 @@ func TestProjectGRCContractLinksVendorControlsOwnerAndEvidence(t *testing.T) {
 	assertProjectedLink(t, state, evidenceURN, relationObservedOn, contractURN)
 }
 
+func TestProjectGRCDiscoveredVendorLinksAliasesCategoryAndReviewer(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-discovered-vendor-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.discovered_vendor",
+		Attributes: map[string]string{
+			"provider":             "grc",
+			"discovered_vendor_id": "discovered-vendor-1",
+			"name":                 "Acme, Inc.",
+			"normalized_name":      "Acme",
+			"category":             "AI",
+			"ignored_reason":       "duplicate",
+			"ignored_by_user_id":   "user-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	discoveryURN := "urn:cerebro:writer:vendor_discovery:grc:discovered-vendor-1"
+	aliasURN := "urn:cerebro:writer:vendor_alias:acme-inc"
+	normalizedAliasURN := "urn:cerebro:writer:vendor_alias:acme"
+	categoryURN := "urn:cerebro:writer:asset_tag:vendor_category:ai"
+	userURN := "urn:cerebro:writer:user:grc:user-1"
+	if entity := state.entities[discoveryURN]; entity == nil || entity.EntityType != "vendor.discovery" {
+		t.Fatalf("discovered vendor entity missing: %#v", entity)
+	}
+	if got := state.entities[discoveryURN].Attributes["status"]; got != "ignored" {
+		t.Fatalf("discovered vendor status = %q, want ignored", got)
+	}
+	assertProjectedLink(t, state, discoveryURN, relationHasIdentifier, aliasURN)
+	assertProjectedLink(t, state, discoveryURN, relationHasIdentifier, normalizedAliasURN)
+	assertProjectedLink(t, state, discoveryURN, relationTaggedAs, categoryURN)
+	assertProjectedLink(t, state, userURN, relationActedOn, discoveryURN)
+}
+
+func TestProjectGRCEventLogLinksActorAndTargets(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-event-log-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.event_log",
+		Attributes: map[string]string{
+			"provider":     "grc",
+			"event_log_id": "event-log-1",
+			"action":       "vendor.review.created",
+			"actor_type":   "user",
+			"actor_id":     "user-1",
+			"targets":      "vendor:vendor-1;control:control-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	eventURN := "urn:cerebro:writer:grc_audit_event:grc:event-log-1"
+	actorURN := "urn:cerebro:writer:user:grc:user-1"
+	vendorTargetURN := "urn:cerebro:writer:grc_audit_target:grc:vendor:vendor-1"
+	controlTargetURN := "urn:cerebro:writer:grc_audit_target:grc:control:control-1"
+	if entity := state.entities[eventURN]; entity == nil || entity.EntityType != "audit.event" {
+		t.Fatalf("event log entity missing: %#v", entity)
+	}
+	if got := state.entities[actorURN].Attributes["user_id"]; got != "user-1" {
+		t.Fatalf("user actor user_id = %q, want user-1", got)
+	}
+	assertProjectedLink(t, state, actorURN, relationActedOn, eventURN)
+	assertProjectedLink(t, state, eventURN, relationObservedOn, vendorTargetURN)
+	assertProjectedLink(t, state, eventURN, relationObservedOn, controlTargetURN)
+}
+
+func TestProjectGRCEventLogDoesNotSetUserIDForNonUserActor(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-event-log-2",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.event_log",
+		Attributes: map[string]string{
+			"provider":     "grc",
+			"event_log_id": "event-log-2",
+			"action":       "integration.sync.completed",
+			"actor_type":   "system",
+			"actor_id":     "automation",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	actorURN := "urn:cerebro:writer:grc_audit_actor:grc:system:automation"
+	entity := state.entities[actorURN]
+	if entity == nil || entity.EntityType != "audit.actor" {
+		t.Fatalf("non-user actor entity missing: %#v", entity)
+	}
+	if got := entity.Attributes["user_id"]; got != "" {
+		t.Fatalf("non-user actor user_id = %q, want unset", got)
+	}
+}
+
+func TestProjectGRCEventLogDefaultsMissingActorTypeToResource(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-event-log-3",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.event_log",
+		Attributes: map[string]string{
+			"provider":     "grc",
+			"event_log_id": "event-log-3",
+			"action":       "resource.updated",
+			"actor_id":     "automation",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	eventURN := "urn:cerebro:writer:grc_audit_event:grc:event-log-3"
+	actorURN := "urn:cerebro:writer:grc_audit_actor:grc:resource:automation"
+	entity := state.entities[actorURN]
+	if entity == nil || entity.EntityType != "audit.actor" {
+		t.Fatalf("default actor entity missing: %#v", entity)
+	}
+	if got := entity.Attributes["actor_type"]; got != "resource" {
+		t.Fatalf("default actor_type = %q, want resource", got)
+	}
+	assertProjectedLink(t, state, actorURN, relationActedOn, eventURN)
+	link := state.links[actorURN+"|"+relationActedOn+"|"+eventURN]
+	if got := link.Attributes["actor_type"]; got != "resource" {
+		t.Fatalf("default actor link actor_type = %q, want resource", got)
+	}
+}
+
+func TestProjectGRCGroupAndVendorRiskAttribute(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "grc-group-1",
+			TenantId: "writer",
+			SourceId: "grc",
+			Kind:     "grc.group",
+			Attributes: map[string]string{
+				"provider":   "grc",
+				"group_id":   "group-1",
+				"group_name": "Security",
+			},
+		},
+		{
+			Id:       "grc-vendor-risk-attribute-1",
+			TenantId: "writer",
+			SourceId: "grc",
+			Kind:     "grc.vendor_risk_attribute",
+			Attributes: map[string]string{
+				"provider":                 "grc",
+				"vendor_risk_attribute_id": "risk-attr-1",
+				"name":                     "Sensitive data",
+				"vendor_categories":        "AI,Infrastructure",
+				"risk_level":               "HIGH",
+				"enabled":                  "true",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.Kind, err)
+		}
+	}
+
+	groupURN := "urn:cerebro:writer:grc_group:grc:group-1"
+	attributeURN := "urn:cerebro:writer:vendor_risk_attribute:grc:risk-attr-1"
+	categoryURN := "urn:cerebro:writer:asset_tag:vendor_category:ai"
+	riskURN := "urn:cerebro:writer:asset_tag:vendor_risk_level:high"
+	if entity := state.entities[groupURN]; entity == nil || entity.EntityType != "group" {
+		t.Fatalf("group entity missing: %#v", entity)
+	}
+	if entity := state.entities[attributeURN]; entity == nil || entity.EntityType != "vendor.risk_attribute" {
+		t.Fatalf("vendor risk attribute entity missing: %#v", entity)
+	}
+	assertProjectedLink(t, state, attributeURN, relationTaggedAs, categoryURN)
+	assertProjectedLink(t, state, attributeURN, relationTaggedAs, riskURN)
+}
+
 func TestProjectGRCRegulatoryNotificationLinksIncidentAndControls(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -383,6 +578,52 @@ func TestProjectGRCIntegrationTagsResourceKinds(t *testing.T) {
 	cloudTrailURN := "urn:cerebro:writer:asset_tag:grc_resource_kind:cloudtrail"
 	assertProjectedLink(t, state, sourceURN, relationTaggedAs, accountMetadataURN)
 	assertProjectedLink(t, state, sourceURN, relationTaggedAs, cloudTrailURN)
+}
+
+func TestProjectGRCVulnerabilityRemediationLinksVulnerabilityAndAsset(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerability-remediation-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerability_remediation",
+		Attributes: map[string]string{
+			"provider":            "grc",
+			"remediation_id":      "remediation-1",
+			"vulnerability_id":    "vuln-1",
+			"vulnerable_asset_id": "asset-1",
+			"severity":            "HIGH",
+			"sla_deadline_at":     "2026-06-30T00:00:00Z",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	remediationURN := "urn:cerebro:writer:vulnerability_remediation:grc:remediation-1"
+	vulnerabilityURN := "urn:cerebro:writer:grc_vulnerability:grc:vuln-1"
+	targetURN := "urn:cerebro:writer:grc_target:grc:asset-1"
+	if entity := state.entities[remediationURN]; entity == nil || entity.EntityType != "vulnerability.remediation" {
+		t.Fatalf("vulnerability remediation entity missing: %#v", entity)
+	}
+	if got := state.entities[remediationURN].Attributes["status"]; got != "open" {
+		t.Fatalf("remediation status = %q, want open", got)
+	}
+	vulnerabilityEntity := state.entities[vulnerabilityURN]
+	if vulnerabilityEntity == nil {
+		t.Fatalf("vulnerability entity missing: %#v", vulnerabilityEntity)
+	}
+	if got := vulnerabilityEntity.Attributes["remediation_id"]; got != "" {
+		t.Fatalf("vulnerability remediation_id = %q, want unset", got)
+	}
+	if got := vulnerabilityEntity.Attributes["sla_deadline_at"]; got != "" {
+		t.Fatalf("vulnerability sla_deadline_at = %q, want unset", got)
+	}
+	assertProjectedLink(t, state, remediationURN, relationAssociatedWith, vulnerabilityURN)
+	assertProjectedLink(t, state, remediationURN, relationTargeted, targetURN)
+	assertProjectedLink(t, state, targetURN, relationAffectedBy, vulnerabilityURN)
 }
 
 func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {

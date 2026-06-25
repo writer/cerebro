@@ -260,6 +260,167 @@ func grcContractProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	return projectedEntities, projectedLinks, nil
 }
 
+func grcDiscoveredVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	discoveryID := firstAttribute(attrs, "discovered_vendor_id", "vendor_id", "external_id")
+	if discoveryID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	discoveryURN := projectionURN(tenantID, "vendor_discovery", provider, discoveryID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        discoveryURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "vendor.discovery",
+		Label:      firstAttribute(attrs, "name", "normalized_name", "discovered_vendor_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"discovered_vendor_id": discoveryID,
+			"source_system":        provider,
+			"status":               discoveredVendorStatus(attrs),
+		}),
+	})
+	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, discoveryURN, firstAttribute(attrs, "name"), "grc_discovered_vendor_name", "0.90")
+	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, discoveryURN, firstAttribute(attrs, "normalized_name"), "grc_discovered_vendor_normalized_name", "0.95")
+	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, discoveryURN, "vendor_category", firstAttribute(attrs, "category"))
+	addGRCUserActionLink(entities, links, tenantID, event.GetSourceId(), event, provider, firstAttribute(attrs, "ignored_by_user_id"), discoveryURN, "ignored")
+	addGRCUserActionLink(entities, links, tenantID, event.GetSourceId(), event, provider, firstAttribute(attrs, "rejected_by_user_id"), discoveryURN, "rejected")
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcEventLogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	eventLogID := firstAttribute(attrs, "event_log_id", "external_id")
+	if eventLogID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	eventURN := projectionURN(tenantID, "grc_audit_event", provider, eventLogID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        eventURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "audit.event",
+		Label:      firstAttribute(attrs, "action", "event_log_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"action":        firstAttribute(attrs, "action"),
+			"event_log_id":  eventLogID,
+			"source_system": provider,
+		}),
+	})
+	if actorURN := grcEventActorURN(tenantID, provider, attrs); actorURN != "" {
+		addEntity(entities, grcEventActorEntity(tenantID, event.GetSourceId(), actorURN, provider, attrs))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, eventURN, relationActedOn, map[string]string{
+			"action":     firstAttribute(attrs, "action"),
+			"actor_id":   firstAttribute(attrs, "actor_id"),
+			"actor_type": grcEventActorType(attrs),
+			"event_id":   event.GetId(),
+		}))
+	}
+	for _, target := range grcEventTargets(attrs["targets"]) {
+		targetURN := projectionURN(tenantID, "grc_audit_target", provider, target.typ, target.id)
+		if targetURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        targetURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "audit.target",
+			Label:      eventActorLabel(target.typ, target.id),
+			Attributes: grcAttributes(nil, map[string]string{
+				"source_system": provider,
+				"target_id":     target.id,
+				"target_type":   target.typ,
+			}),
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), eventURN, targetURN, relationObservedOn, map[string]string{
+			"action":      firstAttribute(attrs, "action"),
+			"event_id":    event.GetId(),
+			"match_type":  "grc_audit_event_target",
+			"target_id":   target.id,
+			"target_type": target.typ,
+		}))
+	}
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	groupID := firstAttribute(attrs, "group_id", "external_id")
+	if groupID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	groupURN := projectionURN(tenantID, "grc_group", provider, groupID)
+	entities := map[string]*ports.ProjectedEntity{}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        groupURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "group",
+		Label:      firstAttribute(attrs, "group_name", "name", "group_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"group_id":      groupID,
+			"group_name":    firstAttribute(attrs, "group_name", "name"),
+			"source_system": provider,
+		}),
+	})
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, nil)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcVendorRiskAttributeProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	attributeID := firstAttribute(attrs, "vendor_risk_attribute_id", "external_id")
+	if attributeID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	attributeURN := projectionURN(tenantID, "vendor_risk_attribute", provider, attributeID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        attributeURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "vendor.risk_attribute",
+		Label:      firstAttribute(attrs, "name", "vendor_risk_attribute_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"enabled":                  firstAttribute(attrs, "enabled"),
+			"risk_level":               firstAttribute(attrs, "risk_level"),
+			"source_system":            provider,
+			"vendor_risk_attribute_id": attributeID,
+		}),
+	})
+	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, attributeURN, "vendor_category", firstAttribute(attrs, "vendor_categories"))
+	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, attributeURN, "vendor_risk_level", firstAttribute(attrs, "risk_level"))
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func grcRegulatoryNotificationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -593,6 +754,77 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	if canonicalPackageURN != "" && vulnerabilityURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+	}
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcVulnerabilityRemediationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	remediationID := firstAttribute(attrs, "remediation_id", "external_id")
+	if remediationID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	remediationURN := projectionURN(tenantID, "vulnerability_remediation", provider, remediationID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        remediationURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "vulnerability.remediation",
+		Label:      firstAttribute(attrs, "name", "title", "remediation_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"remediation_id":      remediationID,
+			"severity":            firstAttribute(attrs, "severity"),
+			"source_system":       provider,
+			"status":              remediationStatus(attrs),
+			"vulnerability_id":    firstAttribute(attrs, "vulnerability_id"),
+			"vulnerable_asset_id": firstAttribute(attrs, "vulnerable_asset_id", "asset_id", "target_id"),
+		}),
+	})
+	vulnerabilityURN := grcProviderVulnerabilityURN(tenantID, provider, firstAttribute(attrs, "vulnerability_id"))
+	if vulnerabilityURN != "" {
+		addEntity(entities, grcProviderVulnerabilityEntity(tenantID, event.GetSourceId(), vulnerabilityURN, provider, attrs))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), remediationURN, vulnerabilityURN, relationAssociatedWith, map[string]string{
+			"event_id":         event.GetId(),
+			"match_type":       "grc_vulnerability_remediation",
+			"vulnerability_id": firstAttribute(attrs, "vulnerability_id"),
+		}))
+	}
+	if canonicalURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attrs); canonicalURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), remediationURN, canonicalURN, relationAssociatedWith, map[string]string{
+			"event_id":   event.GetId(),
+			"match_type": "grc_vulnerability_remediation_canonical",
+		}))
+		if vulnerabilityURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), vulnerabilityURN, canonicalURN, relationRepresents, map[string]string{
+				"event_id":   event.GetId(),
+				"match_type": "grc_vulnerability_identifier",
+			}))
+		}
+	}
+	targetID := firstAttribute(attrs, "vulnerable_asset_id", "asset_id", "target_id")
+	targetURN := grcTargetURN(tenantID, provider, targetID)
+	if targetURN != "" {
+		addEntity(entities, grcTargetEntity(tenantID, event.GetSourceId(), targetURN, targetID, attrs, provider))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), remediationURN, targetURN, relationTargeted, map[string]string{
+			"event_id":   event.GetId(),
+			"match_type": "grc_vulnerability_remediation_target",
+			"target_id":  targetID,
+		}))
+		if vulnerabilityURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, map[string]string{
+				"event_id":         event.GetId(),
+				"severity":         firstAttribute(attrs, "severity"),
+				"vulnerability_id": firstAttribute(attrs, "vulnerability_id"),
+			}))
+		}
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -1326,6 +1558,143 @@ func grcPolicyLikeProjections(event *cerebrov1.EventEnvelope, policyType string,
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func discoveredVendorStatus(attrs map[string]string) string {
+	switch {
+	case firstAttribute(attrs, "rejected_at", "rejected_reason", "rejected_by_user_id") != "":
+		return "rejected"
+	case firstAttribute(attrs, "ignored_at", "ignored_reason", "ignored_by_user_id") != "":
+		return "ignored"
+	default:
+		return "discovered"
+	}
+}
+
+func remediationStatus(attrs map[string]string) string {
+	if status := firstAttribute(attrs, "remediation_status", "vulnerability_status", "status"); status != "" {
+		return status
+	}
+	if firstAttribute(attrs, "remediated_at", "remediation_date") != "" {
+		return "remediated"
+	}
+	return "open"
+}
+
+func addGRCUserActionLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, provider string, userID string, toURN string, action string) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" || strings.TrimSpace(toURN) == "" {
+		return
+	}
+	userURN := grcUserURN(tenantID, provider, userID)
+	addEntity(entities, grcUserEntity(tenantID, sourceID, userURN, userID, map[string]string{"source_system": provider, "user_id": userID}))
+	addLink(links, projectedLink(tenantID, sourceID, userURN, toURN, relationActedOn, map[string]string{
+		"action":   strings.TrimSpace(action),
+		"event_id": event.GetId(),
+		"user_id":  userID,
+	}))
+}
+
+type grcEventTarget struct {
+	typ string
+	id  string
+}
+
+func grcEventTargets(raw string) []grcEventTarget {
+	targets := []grcEventTarget{}
+	seen := map[string]struct{}{}
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		targetType, targetID, found := strings.Cut(part, ":")
+		if !found {
+			targetType = "resource"
+			targetID = part
+		}
+		target := grcEventTarget{typ: strings.TrimSpace(targetType), id: strings.TrimSpace(targetID)}
+		if target.id == "" {
+			continue
+		}
+		key := target.typ + "\x00" + target.id
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		targets = append(targets, target)
+	}
+	return targets
+}
+
+func grcEventActorURN(tenantID string, provider string, attrs map[string]string) string {
+	actorID := firstAttribute(attrs, "actor_id")
+	if actorID == "" {
+		return ""
+	}
+	actorType := grcEventActorType(attrs)
+	if strings.EqualFold(actorType, "user") {
+		return grcUserURN(tenantID, provider, actorID)
+	}
+	return projectionURN(tenantID, "grc_audit_actor", provider, actorType, actorID)
+}
+
+func grcEventActorEntity(tenantID string, sourceID string, actorURN string, provider string, attrs map[string]string) *ports.ProjectedEntity {
+	actorType := grcEventActorType(attrs)
+	actorID := firstAttribute(attrs, "actor_id")
+	entityType := "audit.actor"
+	if strings.EqualFold(actorType, "user") {
+		entityType = "user"
+	}
+	attributes := map[string]string{
+		"actor_id":      actorID,
+		"actor_type":    actorType,
+		"source_system": provider,
+	}
+	if entityType == "user" {
+		attributes["user_id"] = actorID
+	}
+	return &ports.ProjectedEntity{
+		URN:        actorURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: entityType,
+		Label:      eventActorLabel(actorType, actorID),
+		Attributes: grcAttributes(nil, attributes),
+	}
+}
+
+func grcEventActorType(attrs map[string]string) string {
+	return firstNonEmpty(firstAttribute(attrs, "actor_type"), "resource")
+}
+
+func eventActorLabel(actorType string, actorID string) string {
+	if strings.TrimSpace(actorType) == "" || strings.TrimSpace(actorType) == "resource" {
+		return strings.TrimSpace(actorID)
+	}
+	return strings.TrimSpace(actorType) + ":" + strings.TrimSpace(actorID)
+}
+
+func grcProviderVulnerabilityURN(tenantID string, provider string, vulnerabilityID string) string {
+	if strings.TrimSpace(vulnerabilityID) == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "grc_vulnerability", provider, vulnerabilityID)
+}
+
+func grcProviderVulnerabilityEntity(tenantID string, sourceID string, vulnerabilityURN string, provider string, attrs map[string]string) *ports.ProjectedEntity {
+	vulnerabilityID := firstAttribute(attrs, "vulnerability_id")
+	return &ports.ProjectedEntity{
+		URN:        vulnerabilityURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "vulnerability",
+		Label:      firstAttribute(attrs, "name", "title", "vulnerability_id"),
+		Attributes: grcAttributes(nil, map[string]string{
+			"source_system":    provider,
+			"vulnerability_id": vulnerabilityID,
+		}),
+	}
 }
 
 func grcAttributes(attrs map[string]string, extra map[string]string) map[string]string {
