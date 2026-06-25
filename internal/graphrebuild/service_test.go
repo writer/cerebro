@@ -2,9 +2,11 @@ package graphrebuild
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -119,6 +122,143 @@ func (r *eventReplayer) Replay(_ context.Context, req ports.ReplayRequest) ([]*c
 		}
 	}
 	return replayed, nil
+}
+
+var errSummaryProbe = errors.New("summary probe failure")
+
+type summaryProbeStore struct {
+	delay     time.Duration
+	failStage string
+	mu        sync.Mutex
+	active    int
+	maxActive int
+}
+
+func (s *summaryProbeStore) observe(ctx context.Context, stage string) error {
+	s.mu.Lock()
+	s.active++
+	if s.active > s.maxActive {
+		s.maxActive = s.active
+	}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.active--
+		s.mu.Unlock()
+	}()
+	if s.delay > 0 {
+		timer := time.NewTimer(s.delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if s.failStage == stage {
+		return errSummaryProbe
+	}
+	return nil
+}
+
+func (s *summaryProbeStore) maxObservedActive() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.maxActive
+}
+
+func (s *summaryProbeStore) Counts(ctx context.Context) (graphstore.Counts, error) {
+	if err := s.observe(ctx, "counts"); err != nil {
+		return graphstore.Counts{}, err
+	}
+	return graphstore.Counts{Nodes: 7, Relations: 11}, nil
+}
+
+func (s *summaryProbeStore) IntegrityChecks(ctx context.Context) ([]graphstore.IntegrityCheck, error) {
+	if err := s.observe(ctx, "integrity"); err != nil {
+		return nil, err
+	}
+	return []graphstore.IntegrityCheck{{Name: "fixture_check", Passed: true}}, nil
+}
+
+func (s *summaryProbeStore) PathPatterns(ctx context.Context, _ int) ([]graphstore.PathPattern, error) {
+	if err := s.observe(ctx, "patterns"); err != nil {
+		return nil, err
+	}
+	return []graphstore.PathPattern{{
+		FromType:       "github.user",
+		FirstRelation:  "authored",
+		ViaType:        "github.pull_request",
+		SecondRelation: "belongs_to",
+		ToType:         "github.code.repository",
+		Count:          2,
+	}}, nil
+}
+
+func (s *summaryProbeStore) Topology(ctx context.Context) (graphstore.Topology, error) {
+	if err := s.observe(ctx, "topology"); err != nil {
+		return graphstore.Topology{}, err
+	}
+	return graphstore.Topology{SourcesOnly: 2, SinksOnly: 3, Intermediates: 4}, nil
+}
+
+func (s *summaryProbeStore) SampleTraversals(ctx context.Context, _ int) ([]graphstore.Traversal, error) {
+	if err := s.observe(ctx, "traversals"); err != nil {
+		return nil, err
+	}
+	return []graphstore.Traversal{{
+		FromURN:        "user:octocat",
+		FirstRelation:  "authored",
+		ViaURN:         "pr:418",
+		SecondRelation: "belongs_to",
+		ToURN:          "repo:cerebro",
+	}}, nil
+}
+
+func TestCollectGraphSummaryRunsReadsConcurrently(t *testing.T) {
+	store := &summaryProbeStore{delay: 20 * time.Millisecond}
+
+	summary, err := collectGraphSummary(context.Background(), store, 3)
+	if err != nil {
+		t.Fatalf("collectGraphSummary() error = %v", err)
+	}
+	if got := store.maxObservedActive(); got < 2 {
+		t.Fatalf("max concurrent summary reads = %d, want at least 2", got)
+	}
+	if summary.counts.Nodes != 7 || summary.counts.Relations != 11 {
+		t.Fatalf("summary counts = %#v, want fixture counts", summary.counts)
+	}
+	if len(summary.integrityChecks) != 1 {
+		t.Fatalf("len(integrityChecks) = %d, want 1", len(summary.integrityChecks))
+	}
+	if len(summary.pathPatterns) != 1 {
+		t.Fatalf("len(pathPatterns) = %d, want 1", len(summary.pathPatterns))
+	}
+	if summary.topology.Intermediates != 4 {
+		t.Fatalf("topology.Intermediates = %d, want 4", summary.topology.Intermediates)
+	}
+	if len(summary.traversals) != 1 {
+		t.Fatalf("len(traversals) = %d, want 1", len(summary.traversals))
+	}
+	if summary.countDurationMillis == 0 || summary.integrityDurationMillis == 0 || summary.patternDurationMillis == 0 || summary.topologyDurationMillis == 0 || summary.traversalDurationMillis == 0 {
+		t.Fatalf("summary durations include zero values: %#v", summary)
+	}
+}
+
+func TestCollectGraphSummaryPropagatesReadErrors(t *testing.T) {
+	store := &summaryProbeStore{failStage: "patterns"}
+
+	_, err := collectGraphSummary(context.Background(), store, 3)
+	if !errors.Is(err, errSummaryProbe) {
+		t.Fatalf("collectGraphSummary() error = %v, want %v", err, errSummaryProbe)
+	}
+	var summaryErr *graphSummaryReadError
+	if !errors.As(err, &summaryErr) {
+		t.Fatalf("collectGraphSummary() error = %v, want graphSummaryReadError", err)
+	}
+	if summaryErr.stage != "verify graph path patterns" {
+		t.Fatalf("summary error stage = %q, want path pattern context", summaryErr.stage)
+	}
 }
 
 func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {

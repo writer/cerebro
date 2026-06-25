@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -28,6 +29,7 @@ const (
 	maxEventLimit       = 1000
 	defaultPreviewLimit = 5
 	maxPreviewLimit     = 20
+	graphSummaryLimit   = 5
 	stageStatusSuccess  = "success"
 )
 
@@ -39,6 +41,46 @@ type graphStore interface {
 	PathPatterns(context.Context, int) ([]graphstore.PathPattern, error)
 	Topology(context.Context) (graphstore.Topology, error)
 	SampleTraversals(context.Context, int) ([]graphstore.Traversal, error)
+}
+
+type graphSummaryStore interface {
+	Counts(context.Context) (graphstore.Counts, error)
+	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
+	PathPatterns(context.Context, int) ([]graphstore.PathPattern, error)
+	Topology(context.Context) (graphstore.Topology, error)
+	SampleTraversals(context.Context, int) ([]graphstore.Traversal, error)
+}
+
+type graphSummary struct {
+	counts                  graphstore.Counts
+	integrityChecks         []graphstore.IntegrityCheck
+	pathPatterns            []graphstore.PathPattern
+	topology                graphstore.Topology
+	traversals              []graphstore.Traversal
+	countDurationMillis     int64
+	integrityDurationMillis int64
+	patternDurationMillis   int64
+	topologyDurationMillis  int64
+	traversalDurationMillis int64
+}
+
+type graphSummaryReadError struct {
+	stage string
+	err   error
+}
+
+func (e *graphSummaryReadError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s: %v", e.stage, e.err)
+}
+
+func (e *graphSummaryReadError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
 }
 
 // Request configures one local graph rebuild dry-run.
@@ -314,75 +356,117 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		LinksProjected:    projectSummary.LinksProjected,
 	})
 
-	countStart := time.Now()
-	counts, err := graph.Counts(ctx)
+	summary, err := collectGraphSummary(ctx, graph, previewLimit)
 	if err != nil {
 		return nil, err
 	}
-	result.GraphNodes = counts.Nodes
-	result.GraphLinks = counts.Relations
+	result.GraphNodes = summary.counts.Nodes
+	result.GraphLinks = summary.counts.Relations
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:           "count_graph",
 		Status:         stageStatusSuccess,
-		DurationMillis: durationMillis(countStart),
-		GraphNodes:     counts.Nodes,
-		GraphLinks:     counts.Relations,
+		DurationMillis: summary.countDurationMillis,
+		GraphNodes:     summary.counts.Nodes,
+		GraphLinks:     summary.counts.Relations,
 	})
 
-	integrityStart := time.Now()
-	checks, err := graph.IntegrityChecks(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result.GraphAssertions = assertionPreviews(checks)
+	result.GraphAssertions = assertionPreviews(summary.integrityChecks)
 	assertionsPassed, assertionsFailed := assertionCounts(result.GraphAssertions)
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:             "verify_integrity",
 		Status:           stageStatusSuccess,
-		DurationMillis:   durationMillis(integrityStart),
+		DurationMillis:   summary.integrityDurationMillis,
 		AssertionsPassed: assertionsPassed,
 		AssertionsFailed: assertionsFailed,
 	})
 
-	patternStart := time.Now()
-	patterns, err := graph.PathPatterns(ctx, previewLimit)
-	if err != nil {
-		return nil, err
-	}
-	result.GraphPathPatterns = pathPatternPreviews(patterns)
+	result.GraphPathPatterns = pathPatternPreviews(summary.pathPatterns)
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:             "verify_path_patterns",
 		Status:           stageStatusSuccess,
-		DurationMillis:   durationMillis(patternStart),
+		DurationMillis:   summary.patternDurationMillis,
 		PatternsVerified: boundedUint32(len(result.GraphPathPatterns)),
 	})
 
-	topologyStart := time.Now()
-	topology, err := graph.Topology(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result.GraphTopology = topologyPreviews(topology)
+	result.GraphTopology = topologyPreviews(summary.topology)
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:            "verify_topology",
 		Status:          stageStatusSuccess,
-		DurationMillis:  durationMillis(topologyStart),
+		DurationMillis:  summary.topologyDurationMillis,
 		TopologyBuckets: boundedUint32(len(result.GraphTopology)),
 	})
 
-	traversalStart := time.Now()
-	traversals, err := graph.SampleTraversals(ctx, previewLimit)
-	if err != nil {
-		return nil, err
-	}
-	result.GraphTraversals = traversalPreviews(traversals)
+	result.GraphTraversals = traversalPreviews(summary.traversals)
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:               "verify_traversals",
 		Status:             stageStatusSuccess,
-		DurationMillis:     durationMillis(traversalStart),
+		DurationMillis:     summary.traversalDurationMillis,
 		TraversalsVerified: boundedUint32(len(result.GraphTraversals)),
 	})
 	return result, nil
+}
+
+func collectGraphSummary(ctx context.Context, graph graphSummaryStore, previewLimit int) (*graphSummary, error) {
+	if graph == nil {
+		return nil, fmt.Errorf("graph summary store is required")
+	}
+	summary := &graphSummary{}
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(graphSummaryLimit)
+	group.Go(func() error {
+		start := time.Now()
+		counts, err := graph.Counts(groupCtx)
+		if err != nil {
+			return &graphSummaryReadError{stage: "count graph", err: err}
+		}
+		summary.counts = counts
+		summary.countDurationMillis = durationMillis(start)
+		return nil
+	})
+	group.Go(func() error {
+		start := time.Now()
+		checks, err := graph.IntegrityChecks(groupCtx)
+		if err != nil {
+			return &graphSummaryReadError{stage: "verify graph integrity", err: err}
+		}
+		summary.integrityChecks = checks
+		summary.integrityDurationMillis = durationMillis(start)
+		return nil
+	})
+	group.Go(func() error {
+		start := time.Now()
+		patterns, err := graph.PathPatterns(groupCtx, previewLimit)
+		if err != nil {
+			return &graphSummaryReadError{stage: "verify graph path patterns", err: err}
+		}
+		summary.pathPatterns = patterns
+		summary.patternDurationMillis = durationMillis(start)
+		return nil
+	})
+	group.Go(func() error {
+		start := time.Now()
+		topology, err := graph.Topology(groupCtx)
+		if err != nil {
+			return &graphSummaryReadError{stage: "verify graph topology", err: err}
+		}
+		summary.topology = topology
+		summary.topologyDurationMillis = durationMillis(start)
+		return nil
+	})
+	group.Go(func() error {
+		start := time.Now()
+		traversals, err := graph.SampleTraversals(groupCtx, previewLimit)
+		if err != nil {
+			return &graphSummaryReadError{stage: "sample graph traversals", err: err}
+		}
+		summary.traversals = traversals
+		summary.traversalDurationMillis = durationMillis(start)
+		return nil
+	})
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return summary, nil
 }
 
 func boundedUint32(value int) uint32 {
