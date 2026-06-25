@@ -58,6 +58,29 @@ class CIWorkflowTest(unittest.TestCase):
         static_only_paths = re.compile(static_only_pattern.group(1))
         self.assertRegex("infra/tests/test_ci_workflow.py", static_only_paths)
 
+    def test_gcp_main_deploy_only_runs_for_gcp_program_changes(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        filter_block = workflow.split("- name: Filter changed paths", 1)[1].split("\n      - name:", 1)[0]
+        deps_block = filter_block.split("if grep -Eq '^infra/(pyproject.toml|uv.lock)$' changed.txt; then", 1)[
+            1
+        ].split("\n          fi", 1)[0]
+        helper_block = filter_block.split(
+            "grep -Eq '^infra/scripts/|^infra/tests/'; then",
+            1,
+        )[1].split("\n          fi", 1)[0]
+
+        self.assertIn("gcp_deploy: ${{ steps.filter.outputs.gcp_deploy }}", workflow)
+        self.assertIn("gcp_deploy=false", filter_block)
+        self.assertRegex(
+            filter_block,
+            r"if grep -Eq '\^infra/gcp/' changed\.txt; then\n\s+gcp=true\n\s+gcp_deploy=true\n\s+fi",
+        )
+        self.assertIn("gcp=true", deps_block)
+        self.assertNotIn("gcp_deploy=true", deps_block)
+        self.assertIn("gcp=true", helper_block)
+        self.assertNotIn("gcp_deploy=true", helper_block)
+        self.assertIn("needs.changes.outputs.gcp_deploy == 'true'", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

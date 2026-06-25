@@ -53,6 +53,7 @@ jobs:
       aws_sec_dev_graph_health_cache_allowed: ${{ steps.filter.outputs.aws_sec_dev_graph_health_cache_allowed }}
       aws_go_prod_graph_health_cache_allowed: ${{ steps.filter.outputs.aws_go_prod_graph_health_cache_allowed }}
       gcp: ${{ steps.filter.outputs.gcp }}
+      gcp_deploy: ${{ steps.filter.outputs.gcp_deploy }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -83,6 +84,7 @@ jobs:
           aws_sec_dev_graph_health=false
           aws_go_prod_graph_health=false
           gcp=false
+          gcp_deploy=false
           source_runtime_verifier_changed=false
           graph_health_verifier_changed=false
           deploy_verifier_changed=false
@@ -103,7 +105,10 @@ jobs:
             aws_sec_dev_deploy=true
             aws_go_prod_deploy=true
           fi
-          if grep -Eq '^infra/gcp/' changed.txt; then gcp=true; fi
+          if grep -Eq '^infra/gcp/' changed.txt; then
+            gcp=true
+            gcp_deploy=true
+          fi
           if grep -Eq '^infra/(pyproject.toml|uv.lock)$' changed.txt; then
             aws_sec_dev_deploy=true
             aws_go_prod_deploy=true
@@ -161,6 +166,7 @@ jobs:
             echo "aws_sec_dev_graph_health_cache_allowed=${aws_sec_dev_graph_health_cache_allowed}"
             echo "aws_go_prod_graph_health_cache_allowed=${aws_go_prod_graph_health_cache_allowed}"
             echo "gcp=${gcp}"
+            echo "gcp_deploy=${gcp_deploy}"
           } >> "$GITHUB_OUTPUT"
           printf 'Changed infra paths:\n'
           cat changed.txt
@@ -926,7 +932,7 @@ jobs:
     name: Deploy gcp-prod
     runs-on: ubuntu-latest
     needs: [changes, static-validation]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.gcp == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.gcp_deploy == 'true'
     environment: production
     concurrency:
       group: infra-stack-gcp-prod
