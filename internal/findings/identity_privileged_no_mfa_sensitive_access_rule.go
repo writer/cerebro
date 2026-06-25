@@ -107,8 +107,10 @@ func (r *identityPrivilegedNoMFAAccessRule) QueryFor(runtime *cerebrov1.SourceRu
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
 	actedOnSince := time.Now().UTC().Add(-identityPrivilegedNoMFAActedOnWindow).Format(time.RFC3339)
 	return ports.CypherQueryRequest{
-		Query: `MATCH (user:Entity {tenant_id: $tenant_id})-[access:RELATION]->(resource:Entity {tenant_id: $tenant_id})
-MATCH (resource)-[sensitivity:RELATION]->(marker:Entity {tenant_id: $tenant_id})
+		Query: `MATCH (marker:Entity {tenant_id: $tenant_id})
+WHERE marker.entity_type IN ['asset.tag', 'data.classification']
+MATCH (resource:Entity {tenant_id: $tenant_id})-[sensitivity:RELATION]->(marker)
+MATCH (user:Entity {tenant_id: $tenant_id})-[access:RELATION]->(resource)
 WITH user, access, resource, sensitivity, marker,
      toLower(coalesce(user.attributes_json, '')) AS user_attrs,
      coalesce(access.attributes_json, '') AS access_attrs

@@ -18,6 +18,13 @@ const (
 	cloudPublicExposurePrivilegedPrincipalRuleID   = "cloud-public-exposure-privileged-principal"
 	cloudPublicExposurePrivilegedPrincipalKind     = "finding.cloud_public_exposure_privileged_principal"
 	cloudPublicExposurePrivilegedPrincipalRowLimit = 250
+	// cloudPublicExposurePrivilegedPrincipalPerAccountCap bounds the exposure x
+	// privileged-principal cross product per cloud account. Without it the join on
+	// the account hub materializes (exposed resources) x (privileged principals)
+	// for every account before ORDER BY/LIMIT, which sorts the whole product in
+	// memory and is the dominant cost on large accounts. Capping each side keeps a
+	// deterministic, lexicographically-ordered representative sample.
+	cloudPublicExposurePrivilegedPrincipalPerAccountCap = 50
 )
 
 type cloudPublicExposurePrivilegedPrincipalRule struct {
@@ -94,9 +101,21 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) QueryFor(runtime *cerebrov1
 	}
 	return ports.CypherQueryRequest{
 		Query: `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
+WHERE public.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
+WITH account, public, reach, exposed
+ORDER BY exposed.label, exposed.urn
+WITH account, collect(DISTINCT {
+       public_urn: public.urn,
+       public_entity_type: public.entity_type,
+       public_label: public.label,
+       exposed_urn: exposed.urn,
+       exposed_entity_type: exposed.entity_type,
+       exposed_label: exposed.label,
+       reach_relation: reach.relation
+     })[0..$exposure_cap] AS exposures
+WHERE size(exposures) > 0
 MATCH (principal:Entity {tenant_id: $tenant_id})-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
-WHERE public.entity_type ENDS WITH '.public_principal'
-  AND access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
+WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
   AND (
     access.relation <> 'can_perform'
     OR coalesce(access.attributes_json, '') CONTAINS '"is_admin":"true"'
@@ -104,28 +123,45 @@ WHERE public.entity_type ENDS WITH '.public_principal'
     OR coalesce(access.attributes_json, '') CONTAINS 'AdministratorAccess'
     OR coalesce(access.attributes_json, '') CONTAINS '"permission":"*"'
   )
-RETURN public.urn AS public_urn,
-       public.entity_type AS public_entity_type,
-       public.label AS public_label,
-       exposed.urn AS exposed_urn,
-       exposed.entity_type AS exposed_entity_type,
-       exposed.label AS exposed_label,
+WITH account, exposures, principal, access, permission
+ORDER BY principal.label, permission.label
+WITH account, exposures, collect(DISTINCT {
+       principal_urn: principal.urn,
+       principal_entity_type: principal.entity_type,
+       principal_label: principal.label,
+       permission_urn: permission.urn,
+       permission_entity_type: permission.entity_type,
+       permission_label: permission.label,
+       access_relation: access.relation,
+       access_attributes_json: coalesce(access.attributes_json, '')
+     })[0..$principal_cap] AS grants
+WHERE size(grants) > 0
+UNWIND exposures AS exposure
+UNWIND grants AS grant
+RETURN exposure.public_urn AS public_urn,
+       exposure.public_entity_type AS public_entity_type,
+       exposure.public_label AS public_label,
+       exposure.exposed_urn AS exposed_urn,
+       exposure.exposed_entity_type AS exposed_entity_type,
+       exposure.exposed_label AS exposed_label,
        account.urn AS account_urn,
        account.label AS account_label,
-       principal.urn AS principal_urn,
-       principal.entity_type AS principal_entity_type,
-       principal.label AS principal_label,
-       permission.urn AS permission_urn,
-       permission.entity_type AS permission_entity_type,
-       permission.label AS permission_label,
-       reach.relation AS reach_relation,
-       access.relation AS access_relation,
-       coalesce(access.attributes_json, '') AS access_attributes_json
-ORDER BY account.label, exposed.label, principal.label, permission.label
+       grant.principal_urn AS principal_urn,
+       grant.principal_entity_type AS principal_entity_type,
+       grant.principal_label AS principal_label,
+       grant.permission_urn AS permission_urn,
+       grant.permission_entity_type AS permission_entity_type,
+       grant.permission_label AS permission_label,
+       exposure.reach_relation AS reach_relation,
+       grant.access_relation AS access_relation,
+       grant.access_attributes_json AS access_attributes_json
+ORDER BY account_label, exposed_label, principal_label, permission_label
 LIMIT $row_limit`,
 		Params: map[string]any{
-			"tenant_id": strings.TrimSpace(runtime.GetTenantId()),
-			"row_limit": int64(cloudPublicExposurePrivilegedPrincipalRowLimit),
+			"tenant_id":     strings.TrimSpace(runtime.GetTenantId()),
+			"row_limit":     int64(cloudPublicExposurePrivilegedPrincipalRowLimit),
+			"exposure_cap":  int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
+			"principal_cap": int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
 		},
 		RowLimit: cloudPublicExposurePrivilegedPrincipalRowLimit,
 	}

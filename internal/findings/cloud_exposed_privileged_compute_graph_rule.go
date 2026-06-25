@@ -90,22 +90,28 @@ func newCloudExposedPrivilegedComputeRoleRule() Rule {
 			"resource_exposure",
 		},
 	}, `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(entry:Entity {tenant_id: $tenant_id})
-MATCH (workload:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
-WHERE public.entity_type ENDS WITH '.public_principal'
-  AND workload.entity_type IN ['aws.ec2.instance', 'aws.lambda.function', 'aws.ecs.service', 'aws.ecs.task', 'aws.eks.cluster', 'aws.eks.nodegroup', 'aws.eks.fargate_profile', 'aws.eks.pod_identity_association', 'gcp.compute.instance', 'gcp.gke.cluster', 'gcp.cloud.run.service', 'gcp.cloud.function', 'gcp.cloud.sql.instance', 'azure.virtual.machine', 'azure.aks.cluster', 'azure.app.service', 'azure.function.app']
-  AND (
-    entry = workload
-    OR EXISTS {
-      MATCH (entry)-[:RELATION {relation: 'attached_to'}]->(workload)
-      WHERE entry.entity_type = 'aws.network.interface'
-    }
-    OR EXISTS {
-      MATCH (workload)-[:RELATION {relation: 'member_of'}]->(entry)
-      WHERE entry.entity_type = 'aws.security_group'
-    }
-  )
+WHERE public.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
   AND coalesce(reach.attributes_json, '') CONTAINS '"at":"'
   AND datetime(split(split(coalesce(reach.attributes_json, ''), '"at":"')[1], '"')[0]) >= datetime() - duration('P30D')
+CALL {
+  WITH entry
+  MATCH (workload:Entity {tenant_id: $tenant_id})
+  WHERE workload = entry
+  RETURN workload
+  UNION
+  WITH entry
+  MATCH (entry)-[:RELATION {relation: 'attached_to'}]->(workload:Entity {tenant_id: $tenant_id})
+  WHERE entry.entity_type = 'aws.network.interface'
+  RETURN workload
+  UNION
+  WITH entry
+  MATCH (workload:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'member_of'}]->(entry)
+  WHERE entry.entity_type = 'aws.security_group'
+  RETURN workload
+}
+WITH public, reach, entry, workload
+WHERE workload.entity_type IN ['aws.ec2.instance', 'aws.lambda.function', 'aws.ecs.service', 'aws.ecs.task', 'aws.eks.cluster', 'aws.eks.nodegroup', 'aws.eks.fargate_profile', 'aws.eks.pod_identity_association', 'gcp.compute.instance', 'gcp.gke.cluster', 'gcp.cloud.run.service', 'gcp.cloud.function', 'gcp.cloud.sql.instance', 'azure.virtual.machine', 'azure.aks.cluster', 'azure.app.service', 'azure.function.app']
+MATCH (workload)-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
 OPTIONAL MATCH (workload)-[directRun:RELATION {relation: 'runs_as'}]->(directRole:Entity {tenant_id: $tenant_id})
 OPTIONAL MATCH (workload)-[taskLink:RELATION {relation: 'depends_on'}]->(taskDefinition:Entity {tenant_id: $tenant_id, entity_type: 'aws.ecs.task_definition'})-[taskRun:RELATION {relation: 'runs_as'}]->(taskRole:Entity {tenant_id: $tenant_id, entity_type: 'aws.role'})
 WITH public, reach, entry, workload, account, taskDefinition, coalesce(directRole, taskRole) AS role, coalesce(directRun.attributes_json, taskRun.attributes_json, '') AS run_attributes_json, taskLink
