@@ -62,14 +62,7 @@ func newCloudPublicResourceExposureGraphRule() Rule {
 WHERE public.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
   AND resource.entity_type <> 'cloud.account'
   AND NOT resource.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
-  AND (
-    resource.internet_exposed = true
-    OR (resource.internet_exposed IS NULL AND (
-      coalesce(resource.attributes_json, '') CONTAINS '"internet_exposed":"true"'
-      OR coalesce(resource.attributes_json, '') CONTAINS '"external_exposure":"true"'
-      OR coalesce(resource.attributes_json, '') CONTAINS '"public":"true"'
-    ))
-  )
+  AND resource.internet_exposed = true
   AND coalesce(reach.attributes_json, '') CONTAINS '"at":"'
   AND datetime(split(split(coalesce(reach.attributes_json, ''), '"at":"')[1], '"')[0]) >= datetime() - duration('P30D')
   AND NOT EXISTS {

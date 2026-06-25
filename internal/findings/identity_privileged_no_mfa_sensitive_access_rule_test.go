@@ -124,15 +124,8 @@ func TestIdentityPrivilegedNoMfaSensitiveAccess_PrefilterCoversAllMFAFlags(t *te
 	}
 	runtime := &cerebrov1.SourceRuntime{Id: "example-google-workspace-user", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}}
 	query := graphRule.QueryFor(runtime)
-	for _, fragment := range []string{
-		`"mfa_enforced":"false"`,
-		`"mfa_enforced":false`,
-		`"is_enforced_in_2sv":"false"`,
-		`"is_enforced_in_2sv":false`,
-	} {
-		if !strings.Contains(query.Query, fragment) {
-			t.Fatalf("QueryFor() missing MFA posture prefilter fragment %q:\n%s", fragment, query.Query)
-		}
+	if !strings.Contains(query.Query, "user.mfa_disabled = true") {
+		t.Fatalf("QueryFor() missing sargable MFA predicate:\n%s", query.Query)
 	}
 
 	for _, tc := range []struct {

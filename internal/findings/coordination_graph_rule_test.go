@@ -132,7 +132,7 @@ func TestReviewCoordinationGraphRulesHaveDirectCoverage(t *testing.T) {
 		{name: "okta threat insight", rule: newOktaThreatInsightNotBlockingRule(), sourceID: "okta", family: "threat_insight", querySnippet: `"action":"block"`},
 		{name: "sentinelone stale agent", rule: newSentinelOneAgentNotUpToDateRule(), sourceID: "sentinelone", family: "agent", querySnippet: `"is_up_to_date":"false"`},
 		{name: "sentinelone unmitigated threat", rule: newSentinelOneUnmitigatedThreatRule(), sourceID: "sentinelone", family: "threat", querySnippet: `"mitigation_status":"not_mitigated"`},
-		{name: "cloud current public exposure", rule: newCloudPublicResourceExposureGraphRule(), sourceID: "aws", family: "resource_exposure", querySnippet: `"internet_exposed":"true"`},
+		{name: "cloud current public exposure", rule: newCloudPublicResourceExposureGraphRule(), sourceID: "aws", family: "resource_exposure", querySnippet: `resource.internet_exposed = true`},
 		{name: "graph aws eni link missing", rule: newGraphAWSEC2ENILinkMissingRule(), sourceID: "graph", querySnippet: "attached_instance_id"},
 	}
 

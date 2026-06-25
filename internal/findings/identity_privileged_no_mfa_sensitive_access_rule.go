@@ -112,7 +112,6 @@ WHERE marker.entity_type IN ['asset.tag', 'data.classification']
 MATCH (resource:Entity {tenant_id: $tenant_id})-[sensitivity:RELATION]->(marker)
 MATCH (user:Entity {tenant_id: $tenant_id})-[access:RELATION]->(resource)
 WITH user, access, resource, sensitivity, marker,
-     toLower(coalesce(user.attributes_json, '')) AS user_attrs,
      coalesce(access.attributes_json, '') AS access_attrs
 WHERE user.entity_type IN ['okta.user','google_workspace.user','gcp.service_account']
   AND access.relation IN ['acted_on','assigned_to','can_admin','can_perform']
@@ -127,28 +126,8 @@ WHERE user.entity_type IN ['okta.user','google_workspace.user','gcp.service_acco
       END
     ) > $acted_on_since
   )
-  AND (
-    user.is_privileged_identity = true
-    OR (user.is_privileged_identity IS NULL AND (
-      user_attrs CONTAINS '"is_admin":"true"'
-      OR user_attrs CONTAINS '"is_admin":true'
-      OR user_attrs CONTAINS '"is_delegated_admin":"true"'
-      OR user_attrs CONTAINS '"is_delegated_admin":true'
-    ))
-  )
-  AND (
-    user.mfa_disabled = true
-    OR (user.mfa_disabled IS NULL AND (
-      user_attrs CONTAINS '"mfa_enrolled":"false"'
-      OR user_attrs CONTAINS '"mfa_enrolled":false'
-      OR user_attrs CONTAINS '"mfa_enforced":"false"'
-      OR user_attrs CONTAINS '"mfa_enforced":false'
-      OR user_attrs CONTAINS '"is_enrolled_in_2sv":"false"'
-      OR user_attrs CONTAINS '"is_enrolled_in_2sv":false'
-      OR user_attrs CONTAINS '"is_enforced_in_2sv":"false"'
-      OR user_attrs CONTAINS '"is_enforced_in_2sv":false'
-    ))
-  )
+  AND user.is_privileged_identity = true
+  AND user.mfa_disabled = true
   AND (
     (sensitivity.relation = 'tagged_as' AND marker.entity_type = 'asset.tag' AND toLower(marker.label) = 'crown_jewel')
     OR

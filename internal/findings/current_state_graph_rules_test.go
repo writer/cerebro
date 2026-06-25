@@ -270,7 +270,7 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 		{
 			name: "cloud exposure uses recent reachability edge and current attributes",
 			rule: newCloudPublicResourceExposureGraphRule(),
-			want: []string{"relation: 'can_reach'", ".public_principal", `"internet_exposed":"true"`, `duration('P30D')`, "WITH DISTINCT resource"},
+			want: []string{"relation: 'can_reach'", ".public_principal", `resource.internet_exposed = true`, `duration('P30D')`, "WITH DISTINCT resource"},
 		},
 		{
 			name: "cloud exposed privileged compute links reachability to runtime role privilege",
