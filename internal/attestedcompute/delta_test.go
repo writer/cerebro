@@ -45,7 +45,6 @@ func TestProjectEventAcceptsBlindedGraphDelta(t *testing.T) {
 			{
 				URN:        "urn:cerebro:tenant-a:data.classification:restricted",
 				EntityType: "data.classification",
-				Label:      "restricted",
 			},
 		},
 		Links: []Link{
@@ -82,6 +81,20 @@ func TestProjectEventRejectsRawSensitiveLabel(t *testing.T) {
 	}
 	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
 		t.Fatalf("ProjectEvent() error = nil, want raw label rejection")
+	}
+}
+
+func TestProjectEventRejectsRawLabelForNonSensitiveEntity(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:data.classification:restricted",
+			EntityType: "data.classification",
+			Label:      "alice@example.com",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want raw non-sensitive label rejection")
 	}
 }
 
@@ -282,13 +295,77 @@ func TestProjectEventRejectsAttestedURNWithRawTokenSegment(t *testing.T) {
 	}
 }
 
+func TestProjectEventRejectsAttestedURNWithUnsafeEntityTypeSegment(t *testing.T) {
+	tokenizer, err := NewTokenizer([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatalf("NewTokenizer() error = %v", err)
+	}
+	userToken := tokenizer.Token("identity.email", "alice@example.com")
+	rawTypeAttestedURN := "urn:cerebro:tenant-a:attested:alice@example.com:" + userToken
+	validTokenURN := TokenURN("tenant-a", "okta.user", userToken)
+	for _, tc := range []struct {
+		name  string
+		delta GraphDelta
+	}{
+		{
+			name: "entity urn",
+			delta: GraphDelta{
+				Entities: []Entity{{
+					URN:        rawTypeAttestedURN,
+					EntityType: "okta.user",
+					Label:      userToken,
+				}},
+			},
+		},
+		{
+			name: "entity urn declared type mismatch",
+			delta: GraphDelta{
+				Entities: []Entity{{
+					URN:        validTokenURN,
+					EntityType: "aws.iam_user",
+					Label:      userToken,
+				}},
+			},
+		},
+		{
+			name: "link endpoint",
+			delta: GraphDelta{
+				Links: []Link{{
+					FromURN:  rawTypeAttestedURN,
+					ToURN:    "urn:cerebro:tenant-a:data.classification:restricted",
+					Relation: "has_classification",
+				}},
+			},
+		},
+		{
+			name: "sensitive attribute",
+			delta: GraphDelta{
+				Entities: []Entity{{
+					URN:        validTokenURN,
+					EntityType: "okta.user",
+					Label:      userToken,
+					Attributes: map[string]string{
+						"user_urn": rawTypeAttestedURN,
+					},
+				}},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.delta.Attestation = Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)}
+			if _, _, err := ProjectEvent(eventWithPayload(t, tc.delta)); err == nil {
+				t.Fatalf("ProjectEvent() error = nil, want unsafe attested URN entity type rejection")
+			}
+		})
+	}
+}
+
 func TestProjectEventDropsCallerSuppliedAttestationAttributes(t *testing.T) {
 	payload := GraphDelta{
 		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, ImageDigest: "sha256:abc"},
 		Entities: []Entity{{
 			URN:        "urn:cerebro:tenant-a:data.classification:restricted",
 			EntityType: "data.classification",
-			Label:      "restricted",
 			Attributes: map[string]string{
 				"attested_compute_claimed_key_id":      "fake-key",
 				"attested_compute_claimed_measurement": "fake-measurement",

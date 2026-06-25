@@ -86,15 +86,15 @@ func projectEntity(tenantID string, sourceID string, entity Entity) (*ports.Proj
 	if !tenantScopedURN(tenantID, urn) {
 		return nil, fmt.Errorf("attested compute entity urn %q is outside tenant scope", urn)
 	}
-	if sensitiveEntityType(entityType) && !attestedURN(tenantID, urn) {
+	if sensitiveEntityType(entityType) && !attestedURNForEntity(tenantID, urn, entityType) {
 		return nil, fmt.Errorf("attested compute sensitive entity %q must use an attested token urn", entityType)
 	}
 	if unblindedSensitiveURN(tenantID, urn) {
 		return nil, fmt.Errorf("attested compute entity urn %q contains a sensitive type and must use an attested token urn", urn)
 	}
 	label := strings.TrimSpace(entity.Label)
-	if sensitiveEntityType(entityType) && label != "" && !TokenLike(label) {
-		return nil, fmt.Errorf("attested compute sensitive entity %q label must be tokenized", entityType)
+	if label != "" && !TokenLike(label) {
+		return nil, fmt.Errorf("attested compute entity %q label must be tokenized", entityType)
 	}
 	attributes, err := sanitizeAttributes(tenantID, entity.Attributes)
 	if err != nil {
@@ -189,15 +189,28 @@ func tenantScopedURN(tenantID string, urn string) bool {
 }
 
 func attestedURN(tenantID string, urn string) bool {
+	_, ok := parseAttestedURN(tenantID, urn)
+	return ok
+}
+
+func attestedURNForEntity(tenantID string, urn string, entityType string) bool {
+	embeddedType, ok := parseAttestedURN(tenantID, urn)
+	return ok && strings.EqualFold(strings.TrimSpace(embeddedType), strings.TrimSpace(entityType))
+}
+
+func parseAttestedURN(tenantID string, urn string) (string, bool) {
 	tenantID = strings.TrimSpace(tenantID)
 	urn = strings.TrimSpace(urn)
 	prefix := "urn:cerebro:" + tenantID + ":attested:"
 	if tenantID == "" || !strings.HasPrefix(urn, prefix) {
-		return false
+		return "", false
 	}
 	rest := strings.TrimPrefix(urn, prefix)
 	entityType, token, ok := strings.Cut(rest, ":")
-	return ok && strings.TrimSpace(entityType) != "" && TokenLike(token)
+	if !ok || !safeEntityTypeSegment(entityType) || !TokenLike(token) {
+		return "", false
+	}
+	return entityType, true
 }
 
 func unblindedSensitiveURN(tenantID string, urn string) bool {

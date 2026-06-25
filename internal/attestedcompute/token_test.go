@@ -25,6 +25,14 @@ func TestTokenizerDeterministicAndDomainSeparated(t *testing.T) {
 	}
 }
 
+func TestTokenURNRejectsUnsafeEntityTypeSegment(t *testing.T) {
+	for _, entityType := range []string{"alice", "alice@example.com", "okta:user", "tok_rawtype", ""} {
+		if got := TokenURN("tenant", entityType, "tok_abc"); got != "" {
+			t.Fatalf("TokenURN(%q) = %q, want empty", entityType, got)
+		}
+	}
+}
+
 func TestNewTokenizerRejectsShortKey(t *testing.T) {
 	if _, err := NewTokenizer([]byte("short")); err == nil {
 		t.Fatalf("NewTokenizer() error = nil, want error")

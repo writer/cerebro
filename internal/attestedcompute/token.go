@@ -50,10 +50,27 @@ func TokenURN(tenantID string, entityType string, token string) string {
 	tenantID = strings.TrimSpace(tenantID)
 	entityType = strings.TrimSpace(entityType)
 	token = strings.TrimSpace(token)
-	if tenantID == "" || entityType == "" || !TokenLike(token) {
+	if tenantID == "" || !safeEntityTypeSegment(entityType) || !TokenLike(token) {
 		return ""
 	}
 	return "urn:cerebro:" + tenantID + ":attested:" + entityType + ":" + token
+}
+
+func safeEntityTypeSegment(entityType string) bool {
+	entityType = strings.TrimSpace(entityType)
+	if entityType == "" || TokenLike(entityType) || !strings.Contains(entityType, ".") {
+		return false
+	}
+	for _, char := range strings.ToLower(entityType) {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= '0' && char <= '9':
+		case char == '.' || char == '_' || char == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func TokenLike(value string) bool {
