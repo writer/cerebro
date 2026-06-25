@@ -107,6 +107,34 @@ func (c *RedisCache) Version(ctx context.Context, scope string) (string, error) 
 	return value, err
 }
 
+func (c *RedisCache) Versions(ctx context.Context, scopes []string) (map[string]string, error) {
+	ctx, span := telemetry.Start(ctx, "redis.cache.versions", redisTelemetryAttrs("versions", c.options.Namespace))
+	versions := make(map[string]string, len(scopes))
+	if len(scopes) == 0 {
+		redisAnnotateMain(ctx, c.options.Namespace, "versions", "completed")
+		telemetry.End(span, "completed", telemetry.Attrs())
+		return versions, nil
+	}
+	keys := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		keys = append(keys, versionKey(c.options.Namespace, scope))
+		versions[scope] = "0"
+	}
+	values, err := c.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		redisTelemetryError(ctx, span, c.options.Namespace, "versions", err)
+		return versions, err
+	}
+	for i, value := range values {
+		if raw, ok := value.(string); ok && strings.TrimSpace(raw) != "" {
+			versions[scopes[i]] = raw
+		}
+	}
+	redisAnnotateMain(ctx, c.options.Namespace, "versions", "completed")
+	telemetry.End(span, "completed", telemetry.Attrs(telemetry.Field{Key: "cache.version_scope_count", Value: len(scopes)}))
+	return versions, nil
+}
+
 func (c *RedisCache) BumpVersion(ctx context.Context, scope string) (string, error) {
 	ctx, span := telemetry.Start(ctx, "redis.cache.bump_version", redisTelemetryAttrs("bump_version", c.options.Namespace))
 	value, err := c.client.Incr(ctx, versionKey(c.options.Namespace, scope)).Result()
