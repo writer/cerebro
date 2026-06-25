@@ -7,6 +7,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from tests.pulumi_test_runtime import ensure_event_loop
+
+
+ensure_event_loop()
 
 spec = importlib.util.spec_from_file_location("web", Path(__file__).resolve().parents[1] / "aws" / "web.py")
 web = importlib.util.module_from_spec(spec)

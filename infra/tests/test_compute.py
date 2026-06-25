@@ -8,6 +8,10 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
+from tests.pulumi_test_runtime import ensure_event_loop
+
+
+ensure_event_loop()
 
 spec = importlib.util.spec_from_file_location("compute", Path(__file__).resolve().parents[1] / "aws" / "compute.py")
 compute = importlib.util.module_from_spec(spec)
