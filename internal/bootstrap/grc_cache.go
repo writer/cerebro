@@ -32,6 +32,10 @@ type queryCacheRefreshGroup struct {
 	group singleflight.Group
 }
 
+type queryCacheVersionBatcher interface {
+	Versions(context.Context, []string) (map[string]string, error)
+}
+
 func (g *queryCacheRefreshGroup) Do(key string, fn func() (*capturedHTTPResponse, error)) (*capturedHTTPResponse, error) {
 	value, err, _ := g.group.Do(key, func() (any, error) {
 		return fn()
@@ -162,6 +166,20 @@ func (a *App) grcCacheVersions(r *http.Request, tenantID string, scopes []string
 	}
 	sort.Strings(versionScopes)
 	versions := map[string]string{}
+	if batcher, ok := cache.(queryCacheVersionBatcher); ok {
+		batched, err := batcher.Versions(r.Context(), versionScopes)
+		if err == nil {
+			for _, scope := range versionScopes {
+				version := strings.TrimSpace(batched[scope])
+				if version == "" {
+					version = "0"
+				}
+				versions[scope] = version
+			}
+			return versions
+		}
+		log.Printf("grc: cache version batch failed: %v", err)
+	}
 	for _, scope := range versionScopes {
 		version, err := cache.Version(r.Context(), scope)
 		if err != nil || strings.TrimSpace(version) == "" {

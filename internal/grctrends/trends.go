@@ -11,7 +11,10 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"golang.org/x/sync/errgroup"
 )
+
+const mergeTenantConcurrency = 4
 
 type RequestParams struct {
 	Interval  string
@@ -226,6 +229,21 @@ type Comparison struct {
 	ClosedSLABreachedDelta     int       `json:"closed_sla_breached_delta"`
 }
 
+type Summary struct {
+	TotalOpened           int     `json:"total_opened"`
+	TotalClosed           int     `json:"total_closed"`
+	Net                   int     `json:"net"`
+	CurrentOpen           int     `json:"current_open"`
+	PeakOpen              int     `json:"peak_open"`
+	OpenedCritical        int     `json:"opened_critical"`
+	OpenedHigh            int     `json:"opened_high"`
+	ClosedCritical        int     `json:"closed_critical"`
+	ClosedHigh            int     `json:"closed_high"`
+	ClosedSLABreached     int     `json:"closed_sla_breached"`
+	AvgTimeToCloseSeconds float64 `json:"avg_time_to_close_seconds"`
+	ClosedSLABreachedRate float64 `json:"closed_sla_breached_rate"`
+}
+
 type Accuracy struct {
 	StatusHistory string `json:"status_history"`
 	Caveat        string `json:"caveat"`
@@ -237,6 +255,7 @@ type Response struct {
 	End          time.Time     `json:"end"`
 	Points       []Point       `json:"points"`
 	AgingBuckets []AgingBucket `json:"aging_buckets"`
+	Summary      Summary       `json:"summary"`
 	Targets      Targets       `json:"targets,omitempty"`
 	Comparison   *Comparison   `json:"comparison,omitempty"`
 	Accuracy     Accuracy      `json:"accuracy"`
@@ -301,6 +320,24 @@ func BuildTargets(params TargetParams) Targets {
 	return targets
 }
 
+func BuildSummary(trends *ports.GRCFindingTrends) Summary {
+	values := summarize(trends)
+	return Summary{
+		TotalOpened:           values.Opened,
+		TotalClosed:           values.Closed,
+		Net:                   values.Opened - values.Closed,
+		CurrentOpen:           values.CurrentOpen,
+		PeakOpen:              values.PeakOpen,
+		OpenedCritical:        values.OpenedCritical,
+		OpenedHigh:            values.OpenedHigh,
+		ClosedCritical:        values.ClosedCritical,
+		ClosedHigh:            values.ClosedHigh,
+		ClosedSLABreached:     values.ClosedSLABreached,
+		AvgTimeToCloseSeconds: values.AvgTimeToCloseSeconds,
+		ClosedSLABreachedRate: rate(values.ClosedSLABreached, values.Closed),
+	}
+}
+
 func BuildComparison(previous *ports.GRCFindingTrends, current *ports.GRCFindingTrends, previousStart time.Time, previousEnd time.Time) *Comparison {
 	prev := summarize(previous)
 	next := summarize(current)
@@ -328,24 +365,47 @@ func Merge(ctx context.Context, provider Provider, runtimes []*cerebrov1.SourceR
 		}
 		runtimeIDsByTenant[tenantID] = append(runtimeIDsByTenant[tenantID], runtimeID)
 	}
+	tenantIDs := make([]string, 0, len(runtimeIDsByTenant))
+	for tenantID, runtimeIDs := range runtimeIDsByTenant {
+		sort.Strings(runtimeIDs)
+		runtimeIDsByTenant[tenantID] = runtimeIDs
+		tenantIDs = append(tenantIDs, tenantID)
+	}
+	sort.Strings(tenantIDs)
+
+	results := make([]ports.GRCFindingTrends, len(tenantIDs))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(mergeTenantConcurrency)
+	for index, tenantID := range tenantIDs {
+		index, tenantID := index, tenantID
+		runtimeIDs := append([]string(nil), runtimeIDsByTenant[tenantID]...)
+		group.Go(func() error {
+			trends, err := provider.SummarizeGRCFindingTrends(groupCtx, ports.GRCFindingTrendsRequest{
+				FindingRequest: ports.ListFindingsRequest{
+					TenantID:   tenantID,
+					RuntimeIDs: runtimeIDs,
+					Severity:   filter.Severity,
+					Framework:  filter.Framework,
+				},
+				Start:    start,
+				End:      end,
+				Interval: interval,
+			})
+			if err != nil {
+				return err
+			}
+			results[index] = trends
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
 	merged := map[time.Time]*ports.GRCFindingTrendPoint{}
 	agingByID := map[string]ports.GRCAgingBucket{}
 	openAtStart := 0
-	for tenantID, runtimeIDs := range runtimeIDsByTenant {
-		trends, err := provider.SummarizeGRCFindingTrends(ctx, ports.GRCFindingTrendsRequest{
-			FindingRequest: ports.ListFindingsRequest{
-				TenantID:   tenantID,
-				RuntimeIDs: runtimeIDs,
-				Severity:   filter.Severity,
-				Framework:  filter.Framework,
-			},
-			Start:    start,
-			End:      end,
-			Interval: interval,
-		})
-		if err != nil {
-			return nil, err
-		}
+	for _, trends := range results {
 		openAtStart += trends.OpenAtStart
 		for _, point := range trends.Points {
 			key := point.BucketStart.UTC()
@@ -397,8 +457,13 @@ func Merge(ctx context.Context, provider Provider, runtimes []*cerebrov1.SourceR
 
 type summaryValues struct {
 	Opened                int
+	OpenedCritical        int
+	OpenedHigh            int
 	Closed                int
+	ClosedCritical        int
+	ClosedHigh            int
 	CurrentOpen           int
+	PeakOpen              int
 	ClosedSLABreached     int
 	AvgTimeToCloseSeconds float64
 	durationSecondsTotal  float64
@@ -409,16 +474,23 @@ func summarize(trends *ports.GRCFindingTrends) summaryValues {
 	if trends == nil {
 		return summaryValues{}
 	}
-	summary := summaryValues{CurrentOpen: trends.OpenAtStart}
+	summary := summaryValues{CurrentOpen: trends.OpenAtStart, PeakOpen: trends.OpenAtStart}
 	for _, point := range trends.Points {
 		summary.Opened += point.Opened
+		summary.OpenedCritical += point.OpenedCritical
+		summary.OpenedHigh += point.OpenedHigh
 		summary.Closed += point.Closed
+		summary.ClosedCritical += point.ClosedCritical
+		summary.ClosedHigh += point.ClosedHigh
 		summary.ClosedSLABreached += point.ClosedSLABreached
 		summary.durationSecondsTotal += point.ClosedDurationSecondsTotal
 		summary.durationSecondsCount += point.ClosedDurationCount
 		summary.CurrentOpen += point.Opened - point.Closed
 		if summary.CurrentOpen < 0 {
 			summary.CurrentOpen = 0
+		}
+		if summary.CurrentOpen > summary.PeakOpen {
+			summary.PeakOpen = summary.CurrentOpen
 		}
 	}
 	summary.AvgTimeToCloseSeconds = averageSeconds(summary.durationSecondsTotal, summary.durationSecondsCount)
@@ -430,4 +502,11 @@ func averageSeconds(total float64, count int) float64 {
 		return 0
 	}
 	return total / float64(count)
+}
+
+func rate(numerator int, denominator int) float64 {
+	if denominator <= 0 || numerator <= 0 {
+		return 0
+	}
+	return float64(numerator) / float64(denominator)
 }

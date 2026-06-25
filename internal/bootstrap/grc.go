@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -371,20 +372,33 @@ func (a *App) handleGRCTrends(w http.ResponseWriter, r *http.Request) {
 		Severity:  params.Severity,
 		Framework: params.Framework,
 	}
-	trends, err := a.grcFindingTrends(r, runtimes, start, end, params.Interval, filter)
-	if err != nil {
+	var trends *ports.GRCFindingTrends
+	var previous *ports.GRCFindingTrends
+	var comparison *grctrends.Comparison
+	var previousStart time.Time
+	var previousEnd time.Time
+	if params.Compare {
+		previousEnd = start
+		previousStart = previousEnd.Add(end.Sub(start) * -1)
+	}
+	group, trendsCtx := errgroup.WithContext(r.Context())
+	group.Go(func() error {
+		var err error
+		trends, err = a.grcFindingTrends(r.WithContext(trendsCtx), runtimes, start, end, params.Interval, filter)
+		return err
+	})
+	if params.Compare {
+		group.Go(func() error {
+			var err error
+			previous, err = a.grcFindingTrends(r.WithContext(trendsCtx), runtimes, previousStart, previousEnd, params.Interval, filter)
+			return err
+		})
+	}
+	if err := group.Wait(); err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	var comparison *grctrends.Comparison
 	if params.Compare {
-		previousEnd := start
-		previousStart := previousEnd.Add(end.Sub(start) * -1)
-		previous, err := a.grcFindingTrends(r, runtimes, previousStart, previousEnd, params.Interval, filter)
-		if err != nil {
-			writeGRCError(w, err)
-			return
-		}
 		comparison = grctrends.BuildComparison(previous, trends, previousStart, previousEnd)
 	}
 	writeJSON(w, http.StatusOK, grctrends.Response{
@@ -393,6 +407,7 @@ func (a *App) handleGRCTrends(w http.ResponseWriter, r *http.Request) {
 		End:          end,
 		Points:       grctrends.BuildPoints(trends),
 		AgingBuckets: grctrends.BuildAgingBuckets(trends),
+		Summary:      grctrends.BuildSummary(trends),
 		Targets:      grctrends.BuildTargets(params.TargetParams),
 		Comparison:   comparison,
 		Accuracy: grctrends.Accuracy{
