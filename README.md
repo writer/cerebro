@@ -217,6 +217,7 @@ git diff --check README.md
 - CI promotion jobs upload `promotion-receipt-<stack>` artifacts after verifying the reviewed stack image tags exist in the target ECR repository.
 - Merges to `main` deploy affected AWS/GCP stacks through `Infrastructure Deploy`; `go-prod` uses the production environment gate.
 - AWS deploys run `infra/scripts/ensure_ecr_promotion.py` before Pulumi. If a reviewed stack tag is missing from ECR, the deploy dispatches `ci.yml` on `main`, waits for promotion to finish, and verifies the exact tag again before continuing.
+- Pulumi preview jobs use separate `infra-preview-*` concurrency queues from deploy jobs so PR previews cannot replace pending `main` or manual deploys for the same stack.
 - Deploy verification can check source runtime ECS runs, source role trust drift, graph health, and graph health regressions depending on the changed paths.
 - Scheduled/manual workflows maintain source runtime drift reports, graph health insight, and runtime/web image tag proposals.
 - `workflow_dispatch` supports manual deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`; manual deploys create the same GitHub Deployment records as main deploys.

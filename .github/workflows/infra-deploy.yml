@@ -222,7 +222,7 @@ jobs:
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev_deploy == 'true'
     concurrency:
-      group: infra-stack-sec-dev
+      group: infra-preview-sec-dev
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -284,7 +284,7 @@ jobs:
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod_deploy == 'true'
     concurrency:
-      group: infra-stack-go-prod
+      group: infra-preview-go-prod
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -819,7 +819,7 @@ jobs:
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     concurrency:
-      group: infra-stack-gcp-dev
+      group: infra-preview-gcp-dev
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -874,7 +874,7 @@ jobs:
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     concurrency:
-      group: infra-stack-gcp-prod
+      group: infra-preview-gcp-prod
       cancel-in-progress: false
     permissions:
       id-token: write
