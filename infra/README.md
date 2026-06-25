@@ -73,6 +73,8 @@ The normal production path is:
 
 Manual `Infrastructure Deploy` dispatches follow the same AWS preflight and GitHub Deployment record path. A successful deploy can still finish with degraded post-deploy health; the deployment status description will call out graph health degradation, source runtime degradation, or both, and the graph-health artifact/issue remains the follow-up surface.
 
+Pull request previews use separate `infra-preview-*` concurrency queues from deploy jobs. This keeps a newer preview from replacing a pending `main` or manual deploy in GitHub Actions' single pending slot for a stack.
+
 ### Go-prod source-role trust rollout
 
 When a go-prod deploy is blocked by source runtime role trust drift:
