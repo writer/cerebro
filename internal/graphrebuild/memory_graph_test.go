@@ -199,6 +199,48 @@ func TestMemoryGraphStoreSuppressesBroadTwoHopPathSummaries(t *testing.T) {
 	}
 }
 
+func TestMemoryGraphStoreSampleTraversalsKeepsLowestKeysWithinLimit(t *testing.T) {
+	store, err := newMemoryGraphStore()
+	if err != nil {
+		t.Fatalf("newMemoryGraphStore() error = %v", err)
+	}
+	scratch := store.(*memoryGraphStore)
+	ctx := context.Background()
+
+	for _, entity := range []*ports.ProjectedEntity{
+		{URN: "urn:a", TenantID: "writer", SourceID: "fixture", EntityType: "fixture.node", Label: "a"},
+		{URN: "urn:b", TenantID: "writer", SourceID: "fixture", EntityType: "fixture.node", Label: "b"},
+		{URN: "urn:c", TenantID: "writer", SourceID: "fixture", EntityType: "fixture.node", Label: "c"},
+		{URN: "urn:via", TenantID: "writer", SourceID: "fixture", EntityType: "fixture.via", Label: "via"},
+		{URN: "urn:z", TenantID: "writer", SourceID: "fixture", EntityType: "fixture.node", Label: "z"},
+	} {
+		if err := scratch.UpsertProjectedEntity(ctx, entity); err != nil {
+			t.Fatalf("UpsertProjectedEntity(%s) error = %v", entity.URN, err)
+		}
+	}
+	for _, link := range []*ports.ProjectedLink{
+		{TenantID: "writer", SourceID: "fixture", FromURN: "urn:c", Relation: "connected_to", ToURN: "urn:via"},
+		{TenantID: "writer", SourceID: "fixture", FromURN: "urn:b", Relation: "connected_to", ToURN: "urn:via"},
+		{TenantID: "writer", SourceID: "fixture", FromURN: "urn:a", Relation: "connected_to", ToURN: "urn:via"},
+		{TenantID: "writer", SourceID: "fixture", FromURN: "urn:via", Relation: "observes", ToURN: "urn:z"},
+	} {
+		if err := scratch.UpsertProjectedLink(ctx, link); err != nil {
+			t.Fatalf("UpsertProjectedLink(%s -> %s) error = %v", link.FromURN, link.ToURN, err)
+		}
+	}
+
+	traversals, err := scratch.SampleTraversals(ctx, 2)
+	if err != nil {
+		t.Fatalf("SampleTraversals() error = %v", err)
+	}
+	if len(traversals) != 2 {
+		t.Fatalf("len(traversals) = %d, want 2", len(traversals))
+	}
+	if traversals[0].FromURN != "urn:a" || traversals[1].FromURN != "urn:b" {
+		t.Fatalf("SampleTraversals() = %#v, want lowest traversal keys urn:a and urn:b", traversals)
+	}
+}
+
 func memoryIntegrityActual(checks []graphstore.IntegrityCheck, name string) int64 {
 	for _, check := range checks {
 		if check.Name == name {

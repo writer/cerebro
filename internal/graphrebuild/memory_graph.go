@@ -39,6 +39,16 @@ type memoryURNPair struct {
 	second string
 }
 
+type memoryTraversalSample struct {
+	key       string
+	traversal graphstore.Traversal
+}
+
+type memoryTraversalSampler struct {
+	limit   int
+	samples []memoryTraversalSample
+}
+
 func newMemoryGraphStore() (graphStore, error) {
 	return &memoryGraphStore{
 		entities: make(map[string]memoryEntity),
@@ -366,12 +376,12 @@ func (s *memoryGraphStore) SampleTraversals(_ context.Context, limit int) ([]gra
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	outgoingLinks := s.memoryOutgoingLinksByFromURN()
-	traversals := []graphstore.Traversal{}
+	sampler := newMemoryTraversalSampler(limit)
 	s.visitMemoryTwoHopLinks(outgoingLinks, func(first memoryLink, second memoryLink) {
 		from := s.entities[first.FromURN]
 		via := s.entities[first.ToURN]
 		to := s.entities[second.ToURN]
-		traversals = append(traversals, graphstore.Traversal{
+		sampler.Add(graphstore.Traversal{
 			FromURN:        from.URN,
 			FromLabel:      from.Label,
 			FirstRelation:  first.Relation,
@@ -382,13 +392,7 @@ func (s *memoryGraphStore) SampleTraversals(_ context.Context, limit int) ([]gra
 			ToLabel:        to.Label,
 		})
 	})
-	sort.Slice(traversals, func(i, j int) bool {
-		return traversalKey(traversals[i]) < traversalKey(traversals[j])
-	})
-	if limit > 0 && len(traversals) > limit {
-		traversals = traversals[:limit]
-	}
-	return traversals, nil
+	return sampler.Traversals(), nil
 }
 
 func (s *memoryGraphStore) memoryOutgoingLinksByFromURN() map[string][]memoryLink {
@@ -428,6 +432,51 @@ func memoryLinkedURNPair(first string, second string) memoryURNPair {
 		first, second = second, first
 	}
 	return memoryURNPair{first: first, second: second}
+}
+
+func newMemoryTraversalSampler(limit int) *memoryTraversalSampler {
+	return &memoryTraversalSampler{
+		limit:   limit,
+		samples: make([]memoryTraversalSample, 0, max(limit, 0)),
+	}
+}
+
+func (s *memoryTraversalSampler) Add(traversal graphstore.Traversal) {
+	if s == nil {
+		return
+	}
+	sample := memoryTraversalSample{key: traversalKey(traversal), traversal: traversal}
+	if s.limit <= 0 {
+		s.samples = append(s.samples, sample)
+		return
+	}
+	if len(s.samples) < s.limit {
+		s.samples = append(s.samples, sample)
+		return
+	}
+	maxIndex := 0
+	for index := 1; index < len(s.samples); index++ {
+		if s.samples[index].key > s.samples[maxIndex].key {
+			maxIndex = index
+		}
+	}
+	if sample.key < s.samples[maxIndex].key {
+		s.samples[maxIndex] = sample
+	}
+}
+
+func (s *memoryTraversalSampler) Traversals() []graphstore.Traversal {
+	if s == nil || len(s.samples) == 0 {
+		return nil
+	}
+	sort.Slice(s.samples, func(i, j int) bool {
+		return s.samples[i].key < s.samples[j].key
+	})
+	traversals := make([]graphstore.Traversal, 0, len(s.samples))
+	for _, sample := range s.samples {
+		traversals = append(traversals, sample.traversal)
+	}
+	return traversals
 }
 
 func linkKey(fromURN string, relation string, toURN string) string {
