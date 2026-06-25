@@ -23,6 +23,7 @@ func TestBuildUsesStableFrameworkIDAndRuleScopedTestResults(t *testing.T) {
 						ID:          "automated-proof",
 						Status:      compliance.ControlEvidenceExpectationSatisfied,
 						Quality:     compliance.ControlEvidenceQualityStrong,
+						Reason:      "request evidence is current",
 						EvidenceIDs: []string{"ev-1"},
 					}},
 					Items: []compliance.ControlEvidencePacketEvidenceItem{{
@@ -30,9 +31,11 @@ func TestBuildUsesStableFrameworkIDAndRuleScopedTestResults(t *testing.T) {
 						RuleID:       "rule.fail",
 						EvidenceType: "finding_evidence",
 						Quality:      compliance.ControlEvidenceQualityStrong,
+						Reason:       "packet evidence is current",
 						ObservedAt:   observedAt,
 					}},
 				},
+				Overrides: compliance.ControlPostureOverrides{ExceptionIDs: []string{"risk accepted"}},
 			}},
 		},
 		Controls: []grccontrol.ControlItem{{
@@ -98,5 +101,18 @@ func TestBuildUsesStableFrameworkIDAndRuleScopedTestResults(t *testing.T) {
 	}
 	if response.Items[0].PacketIDs[0] == "" || response.Lineage[0].PacketIDs[0] == "" {
 		t.Fatalf("lineage links item=%#v lineage=%#v, want packet links", response.Items[0], response.Lineage[0])
+	}
+	if len(control.ExceptionIDs) != 1 || len(response.Exceptions) != 1 || control.ExceptionIDs[0] != response.Exceptions[0].ID {
+		t.Fatalf("exception links control=%#v exceptions=%#v, want stable exception cross-reference", control.ExceptionIDs, response.Exceptions)
+	}
+	reviewReasons := map[string]string{}
+	for _, review := range response.Reviews {
+		reviewReasons[review.SubjectID] = review.Reason
+	}
+	if reviewReasons[response.Requests[0].ID] != "request evidence is current" {
+		t.Fatalf("request review reason = %q, want expectation reason", reviewReasons[response.Requests[0].ID])
+	}
+	if reviewReasons[response.Packets[0].ID] != "packet evidence is current" {
+		t.Fatalf("packet review reason = %q, want evidence item reason", reviewReasons[response.Packets[0].ID])
 	}
 }

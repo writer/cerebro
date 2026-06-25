@@ -465,7 +465,7 @@ func Build(result grccontrol.PacketResult) Response {
 				EvidenceRequestIDs: []string{},
 				EvidencePacketIDs:  []string{},
 				FindingIDs:         findingIDs(item.Findings),
-				ExceptionIDs:       append([]string(nil), packetControl.Overrides.ExceptionIDs...),
+				ExceptionIDs:       exceptionIDsForControl(controlID, packetControl),
 			},
 		}
 		exceptions = append(exceptions, exceptionsForControl(control, packetControl)...)
@@ -499,7 +499,7 @@ func Build(result grccontrol.PacketResult) Response {
 			}
 			control.EvidenceRequestIDs = append(control.EvidenceRequestIDs, requestID)
 			requests = append(requests, request)
-			reviews = append(reviews, reviewFor(request.ID, request.ReviewStatus, request.Quality, generatedAt))
+			reviews = append(reviews, reviewFor(request.ID, request.ReviewStatus, expectation.Reason, generatedAt))
 			activity = append(activity, activityFor(request.ID, "evidence_request.generated", generatedAt))
 			for _, packet := range packetsForExpectation(control, request, packetControl.Evidence.Items, evidenceByID, expectation, generatedAt) {
 				packets = append(packets, packet)
@@ -982,6 +982,17 @@ func exceptionsForControl(control ControlPosture, packetControl compliance.Contr
 	return exceptions
 }
 
+func exceptionIDsForControl(controlID string, packetControl compliance.ControlEvidencePacketControl) []string {
+	ids := []string{}
+	for _, id := range packetControl.Overrides.ExceptionIDs {
+		ids = append(ids, stableID("exception", controlID, id))
+	}
+	for _, id := range packetControl.Overrides.NotApplicableIDs {
+		ids = append(ids, stableID("not-applicable", controlID, id))
+	}
+	return uniqueSortedStrings(ids)
+}
+
 func exportArtifacts(export EvidenceExport, snapshot AuditSnapshot) []EvidenceExportArtifact {
 	artifacts := make([]EvidenceExportArtifact, 0, len(export.Formats))
 	for _, format := range export.Formats {
@@ -1034,7 +1045,7 @@ func packetsForExpectation(control ControlPosture, request EvidenceRequest, item
 				RunIDs:      evidenceRunIDs(raw),
 			},
 			Freshness: freshness,
-			Review:    reviewFor(packetID, reviewStatus, string(item.Quality), generatedAt),
+			Review:    reviewFor(packetID, reviewStatus, item.Reason, generatedAt),
 			ExportArtifact: EvidenceExportRef{
 				Format: "json",
 			},
