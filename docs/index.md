@@ -62,6 +62,7 @@ docker compose up --build
 | Compliance control coverage | [Compliance controls](domains/compliance-controls.md) |
 | Policies | [Policies](domains/policies.md) |
 | Security operations | [Security operations](domains/security-operations.md) |
+| Aperio integration | [Aperio integration contract](domains/aperio-integration-contract.md) |
 | Source health and coverage | [Source health and coverage](domains/source-health-and-coverage.md) |
 | Agent platform services | [Agent platform services](domains/agent-platform-services.md) |
 | Risk planning, graph provenance, and query cache | [Risk, graph, and cache](domains/risk-graph-and-cache.md) |
