@@ -179,12 +179,12 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 	catalog := PublicDetectionCatalog{
 		Version: "test",
 		Detections: []PublicDetection{{
-			ID:           "aws-s3-bucket-no-public-access",
-			Name:         "S3 Bucket Allows Public Access",
-			SourceID:     policyRuleSourceID,
-			Tags:         []string{"aws", "policy", "s3"},
-			EvidenceType: "cloud_configuration",
-			ControlRefs:  []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+			ID:                        "aws-s3-bucket-no-public-access",
+			Name:                      "S3 Bucket Allows Public Access",
+			SourceID:                  policyRuleSourceID,
+			Tags:                      []string{"aws", "policy", "s3"},
+			PublicDetectionAuditDepth: PublicDetectionAuditDepth{EvidenceType: "cloud_configuration"},
+			ControlRefs:               []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
 		}},
 	}
 	contracts := []sourcecdk.CoverageContract{{
