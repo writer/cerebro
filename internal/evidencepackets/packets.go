@@ -72,28 +72,44 @@ type FrameworkPosture struct {
 }
 
 type ControlPosture struct {
-	ID                 string              `json:"id"`
-	FrameworkID        string              `json:"framework_id,omitempty"`
-	FrameworkName      string              `json:"framework_name,omitempty"`
-	Title              string              `json:"title,omitempty"`
-	OwnerDomain        string              `json:"owner_domain,omitempty"`
-	FrameworkVersion   string              `json:"framework_version,omitempty"`
-	FrameworkLifecycle string              `json:"framework_lifecycle,omitempty"`
-	FamilyID           string              `json:"family_id,omitempty"`
-	FamilyName         string              `json:"family_name,omitempty"`
-	Status             string              `json:"status"`
-	EvidenceQuality    string              `json:"evidence_quality,omitempty"`
-	EvidenceScore      int                 `json:"evidence_score"`
-	AuditSummary       string              `json:"audit_summary,omitempty"`
-	OpenFindings       int                 `json:"open_findings"`
-	CriticalFindings   int                 `json:"critical_findings"`
-	HighFindings       int                 `json:"high_findings"`
-	EvidenceItems      int                 `json:"evidence_items"`
-	MissingEvidence    int                 `json:"missing_evidence_items"`
-	StaleEvidence      int                 `json:"stale_evidence_items"`
-	MappedRules        []string            `json:"mapped_rules,omitempty"`
-	Reasons            []string            `json:"reasons,omitempty"`
-	Tags               []string            `json:"tags,omitempty"`
+	ControlPostureIdentity
+	ControlPostureMetadata
+	ControlPostureStatus
+	ControlPostureLinks
+}
+
+type ControlPostureIdentity struct {
+	ID                 string `json:"id"`
+	FrameworkID        string `json:"framework_id,omitempty"`
+	FrameworkName      string `json:"framework_name,omitempty"`
+	Title              string `json:"title,omitempty"`
+	OwnerDomain        string `json:"owner_domain,omitempty"`
+	FrameworkVersion   string `json:"framework_version,omitempty"`
+	FrameworkLifecycle string `json:"framework_lifecycle,omitempty"`
+	FamilyID           string `json:"family_id,omitempty"`
+	FamilyName         string `json:"family_name,omitempty"`
+}
+
+type ControlPostureMetadata struct {
+	MappedRules []string `json:"mapped_rules,omitempty"`
+	Reasons     []string `json:"reasons,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+}
+
+type ControlPostureStatus struct {
+	Status           string `json:"status"`
+	EvidenceQuality  string `json:"evidence_quality,omitempty"`
+	EvidenceScore    int    `json:"evidence_score"`
+	AuditSummary     string `json:"audit_summary,omitempty"`
+	OpenFindings     int    `json:"open_findings"`
+	CriticalFindings int    `json:"critical_findings"`
+	HighFindings     int    `json:"high_findings"`
+	EvidenceItems    int    `json:"evidence_items"`
+	MissingEvidence  int    `json:"missing_evidence_items"`
+	StaleEvidence    int    `json:"stale_evidence_items"`
+}
+
+type ControlPostureLinks struct {
 	TestResults        []ControlTestResult `json:"test_results,omitempty"`
 	EvidenceRequestIDs []string            `json:"evidence_request_ids,omitempty"`
 	EvidencePacketIDs  []string            `json:"evidence_packet_ids,omitempty"`
@@ -353,33 +369,41 @@ func Build(result grccontrol.PacketResult) Response {
 		frameworkID := stableFrameworkID(item)
 		controlID := stableControlID(frameworkID, item.ControlID)
 		control := ControlPosture{
-			ID:                 controlID,
-			FrameworkID:        frameworkID,
-			FrameworkName:      strings.TrimSpace(item.FrameworkName),
-			Title:              strings.TrimSpace(item.Title),
-			OwnerDomain:        strings.TrimSpace(item.OwnerDomain),
-			FrameworkVersion:   strings.TrimSpace(item.FrameworkVersion),
-			FrameworkLifecycle: strings.TrimSpace(item.FrameworkLifecycle),
-			FamilyID:           strings.TrimSpace(item.FamilyID),
-			FamilyName:         strings.TrimSpace(item.FamilyName),
-			Status:             strings.TrimSpace(item.Status),
-			EvidenceQuality:    strings.TrimSpace(item.EvidenceQuality),
-			EvidenceScore:      item.EvidenceScore,
-			AuditSummary:       strings.TrimSpace(item.AuditSummary),
-			OpenFindings:       item.OpenFindings,
-			CriticalFindings:   item.CriticalFindings,
-			HighFindings:       item.HighFindings,
-			EvidenceItems:      item.EvidenceItems,
-			MissingEvidence:    item.MissingEvidence,
-			StaleEvidence:      item.StaleEvidence,
-			MappedRules:        append([]string(nil), item.MappedRules...),
-			Reasons:            append([]string(nil), item.Reasons...),
-			Tags:               append([]string(nil), item.Tags...),
-			TestResults:        testResults(controlID, item),
-			EvidenceRequestIDs: []string{},
-			EvidencePacketIDs:  []string{},
-			FindingIDs:         findingIDs(item.Findings),
-			ExceptionIDs:       append([]string(nil), packetControl.Overrides.ExceptionIDs...),
+			ControlPostureIdentity: ControlPostureIdentity{
+				ID:                 controlID,
+				FrameworkID:        frameworkID,
+				FrameworkName:      strings.TrimSpace(item.FrameworkName),
+				Title:              strings.TrimSpace(item.Title),
+				OwnerDomain:        strings.TrimSpace(item.OwnerDomain),
+				FrameworkVersion:   strings.TrimSpace(item.FrameworkVersion),
+				FrameworkLifecycle: strings.TrimSpace(item.FrameworkLifecycle),
+				FamilyID:           strings.TrimSpace(item.FamilyID),
+				FamilyName:         strings.TrimSpace(item.FamilyName),
+			},
+			ControlPostureMetadata: ControlPostureMetadata{
+				MappedRules: append([]string(nil), item.MappedRules...),
+				Reasons:     append([]string(nil), item.Reasons...),
+				Tags:        append([]string(nil), item.Tags...),
+			},
+			ControlPostureStatus: ControlPostureStatus{
+				Status:           strings.TrimSpace(item.Status),
+				EvidenceQuality:  strings.TrimSpace(item.EvidenceQuality),
+				EvidenceScore:    item.EvidenceScore,
+				AuditSummary:     strings.TrimSpace(item.AuditSummary),
+				OpenFindings:     item.OpenFindings,
+				CriticalFindings: item.CriticalFindings,
+				HighFindings:     item.HighFindings,
+				EvidenceItems:    item.EvidenceItems,
+				MissingEvidence:  item.MissingEvidence,
+				StaleEvidence:    item.StaleEvidence,
+			},
+			ControlPostureLinks: ControlPostureLinks{
+				TestResults:        testResults(controlID, item),
+				EvidenceRequestIDs: []string{},
+				EvidencePacketIDs:  []string{},
+				FindingIDs:         findingIDs(item.Findings),
+				ExceptionIDs:       append([]string(nil), packetControl.Overrides.ExceptionIDs...),
+			},
 		}
 		exceptions = append(exceptions, exceptionsForControl(control, packetControl)...)
 		for _, expectation := range packetControl.Evidence.Expectations {
