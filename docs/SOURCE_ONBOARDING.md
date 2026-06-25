@@ -155,6 +155,27 @@ Run these before requesting review. They are cheap and catch the most common mis
 - **Bumping the source image:** sources are part of the Cerebro runtime image and ship with `cerebro:imageTag` bumps; you do not pin a source version independently.
 - **Renaming a runtime_id:** treat this as a full retire + reintroduce. Plan a backfill window if you need historical continuity.
 
+### Recover missing graph ingest history
+
+Graph-health follow-up issues report declared runtimes that have no current
+graph ingest run history. Use the `Source Runtime Backfill` workflow to plan
+and run bounded recovery:
+
+1. Dispatch the workflow in `plan` mode with the reported runtime ids.
+2. Copy the emitted `plan_hash` into a second dispatch using `run` mode and the
+   same inputs.
+3. For provider flakes, set `failed_run_retry_seconds` to a bounded window and
+   keep `run_attempt_timeout_seconds` lower than the total wait window.
+4. If the run still fails, inspect the `Plan and run backfill` log. Source sync
+   failures include structured context plus recent raw task logs; bootstrap
+   failures include both bootstrap structured logs and raw logs when available.
+
+Do not quarantine a runtime only to make graph health pass. Quarantine is for a
+known bad or intentionally paused runtime, and the same PR must remove the
+active `cerebro:sourceRuntimes` and `cerebro:orchestratorSchedules` references
+while adding `cerebro:temporarilyDisabledSourceRuntimes` metadata with an owner,
+reason, disabled date, review deadline, and re-enable criteria.
+
 ## Adding a new `sourceId`
 
 This runbook covers onboarding an *instance* of an existing source. If you need a new `sourceId` (a new kind of source the runtime does not yet know how to talk to):

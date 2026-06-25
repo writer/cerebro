@@ -713,6 +713,10 @@ def _task_logs(
     container_name: str = "cerebro",
 ) -> list[dict[str, Any]]:
     raw_messages = _raw_task_log_messages(task, region, log_options_cache, container_name)
+    return _parse_task_log_messages(raw_messages)
+
+
+def _parse_task_log_messages(raw_messages: list[str]) -> list[dict[str, Any]]:
     messages = []
     for raw_message in raw_messages:
         try:
@@ -745,6 +749,19 @@ def _raw_task_log_messages(
         region,
     )
     return [str(event.get("message") or "") for event in events.get("events") or []]
+
+
+def _task_log_bundle(
+    task: dict[str, Any],
+    region: str,
+    log_options_cache: dict[tuple[str, str], TaskLogOptions] | None = None,
+    container_name: str = "cerebro",
+) -> tuple[list[str], list[dict[str, Any]]]:
+    try:
+        raw_messages = _raw_task_log_messages(task, region, log_options_cache, container_name)
+    except Exception:
+        return [], _task_logs(task, region, log_options_cache, container_name)
+    return raw_messages, _parse_task_log_messages(raw_messages)
 
 
 def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> str:
@@ -780,6 +797,36 @@ def _summarize_raw_log_messages(messages: list[str], limit: int = 20) -> str:
         if line:
             lines.append(line[:2000])
     return "\n".join(lines)
+
+
+def _message_has_failure_signal(message: dict[str, Any]) -> bool:
+    level = str(message.get("level") or "").lower()
+    status = str(message.get("status") or "").lower()
+    if level in {"error", "warn", "warning"} or status in {"failed", "failure"}:
+        return True
+    return any(key in message for key in ("error", "exception", "traceback", "stack"))
+
+
+def _diagnostic_context_messages(
+    messages: list[dict[str, Any]],
+    spans: tuple[dict[str, Any] | None, ...],
+    *,
+    before: int = 4,
+    after: int = 1,
+) -> list[dict[str, Any]]:
+    span_ids = {id(span) for span in spans if span is not None}
+    anchors = {
+        index
+        for index, message in enumerate(messages)
+        if id(message) in span_ids or _message_has_failure_signal(message)
+    }
+    if not anchors:
+        return messages[-8:]
+
+    selected: set[int] = set()
+    for index in anchors:
+        selected.update(range(max(0, index - before), min(len(messages), index + after + 1)))
+    return [messages[index] for index in sorted(selected)]
 
 
 def _s3_bucket_key_from_arn(value: str) -> tuple[str, str]:
@@ -1050,14 +1097,20 @@ def _runtime_skip_retryable(reason: str) -> bool:
     return reason == "lease_not_acquired"
 
 
-def _failure_diagnostics(messages: list[dict[str, Any]], *spans: dict[str, Any] | None) -> str:
-    span_ids = {id(span) for span in spans if span is not None}
-    interesting = [
-        message
-        for message in messages
-        if id(message) in span_ids or str(message.get("level") or "").lower() in {"error", "warn", "warning"}
-    ]
-    return _summarize_log_messages(interesting, limit=8)
+def _failure_diagnostics(
+    messages: list[dict[str, Any]],
+    *spans: dict[str, Any] | None,
+    raw_messages: list[str] | None = None,
+) -> str:
+    parts: list[str] = []
+    structured = _summarize_log_messages(_diagnostic_context_messages(messages, spans), limit=16)
+    if structured:
+        parts.append("Structured task log context:\n" + structured)
+    if raw_messages:
+        raw = _summarize_raw_log_messages(raw_messages, limit=16)
+        if raw:
+            parts.append("Recent raw task logs:\n" + raw)
+    return "\n".join(parts)[:6000]
 
 
 def _verification_result_from_logs(
@@ -1068,6 +1121,7 @@ def _verification_result_from_logs(
     require_runtime_completed: bool,
     task: dict[str, Any] | None = None,
     region: str | None = None,
+    raw_messages: list[str] | None = None,
 ) -> VerificationResult | None:
     runtime_span = _latest_span(messages, "orchestrator.runtime")
     sync_span = _latest_span(messages, "source_runtime.sync")
@@ -1086,10 +1140,16 @@ def _verification_result_from_logs(
     if runtime_status == "skipped":
         raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
     if sync_status == "failed":
-        diagnostics = _failure_diagnostics(messages, sync_span, runtime_span)
+        diagnostics = _failure_diagnostics(messages, sync_span, runtime_span, raw_messages=raw_messages)
         raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "source sync", sync_status, diagnostics)
     if graph_ingest_status == "failed":
-        diagnostics = _failure_diagnostics(messages, graph_ingest_span, graph_runtime_span, runtime_span)
+        diagnostics = _failure_diagnostics(
+            messages,
+            graph_ingest_span,
+            graph_runtime_span,
+            runtime_span,
+            raw_messages=raw_messages,
+        )
         raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "graph ingest", graph_ingest_status, diagnostics)
     if require_runtime_completed and runtime_status != "completed":
         raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
@@ -1155,16 +1215,18 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         if bootstrap_container and bootstrap_container.get("exitCode") not in (None, 0):
             try:
                 bootstrap_summary = _summarize_log_messages(_task_logs(task, region, container_name=BOOTSTRAP_CONTAINER_NAME))
-                if bootstrap_summary:
-                    bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs:\n{bootstrap_summary}"
-                else:
+                try:
                     raw_bootstrap_summary = _summarize_raw_log_messages(
                         _raw_task_log_messages(task, region, container_name=BOOTSTRAP_CONTAINER_NAME)
                     )
-                    if raw_bootstrap_summary:
-                        bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} raw logs:\n{raw_bootstrap_summary}"
-                    else:
-                        bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: no structured bootstrap log events found"
+                except Exception:
+                    raw_bootstrap_summary = ""
+                bootstrap_parts = []
+                if bootstrap_summary:
+                    bootstrap_parts.append(f"{BOOTSTRAP_CONTAINER_NAME} logs (structured):\n{bootstrap_summary}")
+                if raw_bootstrap_summary and raw_bootstrap_summary != bootstrap_summary:
+                    bootstrap_parts.append(f"{BOOTSTRAP_CONTAINER_NAME} raw logs:\n{raw_bootstrap_summary}")
+                bootstrap_detail = "\n".join(bootstrap_parts) or f"{BOOTSTRAP_CONTAINER_NAME} logs: no bootstrap log events found"
             except Exception as exc:
                 bootstrap_detail = f"{BOOTSTRAP_CONTAINER_NAME} logs: unavailable ({exc})"
             log_summary = f"{log_summary}\n{bootstrap_detail}" if log_summary else bootstrap_detail
@@ -1172,8 +1234,17 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
             log_summary = f"{log_summary}\nECS task stop: {stop_summary}" if log_summary else f"ECS task stop: {stop_summary}"
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
-    messages = _task_logs(task, region)
-    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True, task=task, region=region)
+    raw_messages, messages = _task_log_bundle(task, region)
+    result = _verification_result_from_logs(
+        target,
+        task_arn,
+        exit_code,
+        messages,
+        require_runtime_completed=True,
+        task=task,
+        region=region,
+        raw_messages=raw_messages,
+    )
     if result is None:
         raise RuntimeError(f"{target.runtime_id} verification did not produce source sync and graph ingest spans")
     return result
@@ -1204,14 +1275,24 @@ def _verify_task_until_graph_ingested(
         exit_code = cerebro_container.get("exitCode") if cerebro_container else None
         bootstrap_exit_code = bootstrap_container.get("exitCode") if bootstrap_container else None
         messages: list[dict[str, Any]] = []
+        raw_messages: list[str] = []
         if task and status in {"RUNNING", "STOPPED"}:
             try:
-                messages = _task_logs(task, region, log_options_cache)
+                raw_messages, messages = _task_log_bundle(task, region, log_options_cache)
                 last_log_error = None
             except Exception as exc:
                 last_log_error = exc
         if messages:
-            result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=False, task=task, region=region)
+            result = _verification_result_from_logs(
+                target,
+                task_arn,
+                exit_code,
+                messages,
+                require_runtime_completed=False,
+                task=task,
+                region=region,
+                raw_messages=raw_messages,
+            )
             if result is not None:
                 print(
                     f"INFO: {target.runtime_id} source sync and graph ingest completed; task may continue finding-rule work",
@@ -1224,7 +1305,16 @@ def _verify_task_until_graph_ingested(
             stopped_gap: Exception | None = None
             if messages:
                 try:
-                    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True, task=task, region=region)
+                    result = _verification_result_from_logs(
+                        target,
+                        task_arn,
+                        exit_code,
+                        messages,
+                        require_runtime_completed=True,
+                        task=task,
+                        region=region,
+                        raw_messages=raw_messages,
+                    )
                     if result is not None:
                         return result
                 except RuntimeError as exc:
@@ -1266,8 +1356,17 @@ def _verify_task_until_graph_ingested(
         time.sleep(poll_seconds)
     if last_task is not None:
         try:
-            messages = _task_logs(last_task, region, log_options_cache)
-            result = _verification_result_from_logs(target, task_arn, None, messages, require_runtime_completed=False, task=last_task, region=region)
+            raw_messages, messages = _task_log_bundle(last_task, region, log_options_cache)
+            result = _verification_result_from_logs(
+                target,
+                task_arn,
+                None,
+                messages,
+                require_runtime_completed=False,
+                task=last_task,
+                region=region,
+                raw_messages=raw_messages,
+            )
             if result is not None:
                 return result
         except Exception:

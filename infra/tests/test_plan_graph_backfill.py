@@ -36,6 +36,14 @@ class PlanGraphBackfillTest(unittest.TestCase):
 
         self.assertEqual(_missing_runtime_ids_from_diagnostics(diagnostics), ["runtime-a", "runtime-b"])
 
+    def test_extract_missing_runtime_ids_stops_before_integrity_failure(self) -> None:
+        diagnostics = (
+            "ERROR: missing graph ingest run history for 1 declared runtime(s): runtime-a; "
+            "graph integrity failed 1 checks: entities_missing_typed_properties=620650"
+        )
+
+        self.assertEqual(_missing_runtime_ids_from_diagnostics(diagnostics), ["runtime-a"])
+
     def test_verify_command_groups_runtime_ids(self) -> None:
         args = SimpleNamespace(
             stack_file=Path("aws/Pulumi.sec-dev.yaml"),
@@ -46,6 +54,7 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_event_limit=30,
             wait_timeout_seconds=600,
             run_attempt_timeout_seconds=300,
+            failed_run_retry_seconds=900,
             stop_running_before_run=True,
         )
 
@@ -55,6 +64,7 @@ class PlanGraphBackfillTest(unittest.TestCase):
         self.assertIn("--succeed-after-graph-ingest", command)
         self.assertIn("--wait-timeout-seconds", command)
         self.assertIn("--run-attempt-timeout-seconds", command)
+        self.assertIn("--failed-run-retry-seconds", command)
         self.assertEqual(command.count("--runtime-id"), 2)
 
     def test_write_commands_outputs_json_command_arrays(self) -> None:
@@ -67,6 +77,7 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_event_limit=0,
             wait_timeout_seconds=0,
             run_attempt_timeout_seconds=0,
+            failed_run_retry_seconds=0,
             stop_running_before_run=False,
         )
         targets = [
@@ -94,6 +105,7 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_event_limit=0,
             wait_timeout_seconds=0,
             run_attempt_timeout_seconds=0,
+            failed_run_retry_seconds=0,
             stop_running_before_run=False,
         )
         targets = [
@@ -139,6 +151,7 @@ class PlanGraphBackfillTest(unittest.TestCase):
             run_event_limit=0,
             wait_timeout_seconds=0,
             run_attempt_timeout_seconds=0,
+            failed_run_retry_seconds=0,
             stop_running_before_run=False,
         )
         targets = plan_backfill(

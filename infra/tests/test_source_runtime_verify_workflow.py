@@ -68,6 +68,8 @@ class SourceRuntimeVerifyWorkflowTest(unittest.TestCase):
         self.assertIn("scripts/plan_graph_backfill.py", workflow)
         self.assertIn("source-runtime-backfill-plan.tsv", workflow)
         self.assertIn("--format run-json", workflow)
+        self.assertIn("failed_run_retry_seconds:", workflow)
+        self.assertIn("--failed-run-retry-seconds", workflow)
         self.assertIn("scripts/execute_graph_backfill_plan.py", workflow)
         self.assertIn("environment: production", workflow)
 
