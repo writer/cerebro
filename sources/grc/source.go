@@ -66,7 +66,7 @@ const (
 )
 
 var familyEndpoints = []struct {
-	name string
+	name grcFamily
 	path string
 }{
 	{familyFramework, "/v1/frameworks"}, {familyControl, "/v1/controls"}, {familyControlTest, "/v1/tests"},
@@ -160,30 +160,30 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	for _, endpoint := range familyEndpoints {
 		families = append(families, s.family(endpoint.name, endpoint.path))
 	}
-	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string { return settings.family }, families...)
+	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string { return string(settings.family) }, families...)
 }
 
-func (s *Source) family(name string, path string) sourcecdk.Family[settings] {
+func (s *Source) family(name grcFamily, path string) sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
-		Name: name,
+		Name: string(name),
 		Check: func(ctx context.Context, settings settings) error {
 			_, _, err := s.list(ctx, settings, path, "", 1)
 			if err != nil {
-				return fmt.Errorf("grc %s for %s: %w", name, settings.provider, err)
+				return fmt.Errorf("grc %s for %s: %w", string(name), settings.provider, err)
 			}
 			return nil
 		},
 		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
 			records, _, err := s.list(ctx, settings, path, "", settings.perPage)
 			if err != nil {
-				return nil, fmt.Errorf("grc %s for %s: %w", name, settings.provider, err)
+				return nil, fmt.Errorf("grc %s for %s: %w", string(name), settings.provider, err)
 			}
 			return urnsFor(settings, name, records)
 		},
 		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 			records, next, err := s.list(ctx, settings, path, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
 			if err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("grc %s for %s: %w", name, settings.provider, err)
+				return sourcecdk.Pull{}, fmt.Errorf("grc %s for %s: %w", string(name), settings.provider, err)
 			}
 			return pullFromRecords(settings, name, records, next)
 		},
@@ -279,10 +279,10 @@ func (s *Source) doJSON(req *http.Request, target any) error {
 	return nil
 }
 
-func parseRecord(family string, raw json.RawMessage) (grcRecord, error) {
+func parseRecord(family grcFamily, raw json.RawMessage) (grcRecord, error) {
 	values := map[string]any{}
 	if err := json.Unmarshal(raw, &values); err != nil {
-		return grcRecord{}, fmt.Errorf("decode grc %s record: %w", family, err)
+		return grcRecord{}, fmt.Errorf("decode grc %s record: %w", string(family), err)
 	}
 	id := recordID(family, values, raw)
 	return grcRecord{
@@ -292,10 +292,10 @@ func parseRecord(family string, raw json.RawMessage) (grcRecord, error) {
 	}, nil
 }
 
-func urnsFor(settings settings, family string, records []grcRecord) ([]sourcecdk.URN, error) {
+func urnsFor(settings settings, family grcFamily, records []grcRecord) ([]sourcecdk.URN, error) {
 	urns := make([]sourcecdk.URN, 0, len(records))
 	for _, record := range records {
-		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:grc_%s:%s:%s", settings.tenantID, family, settings.provider, record.ID))
+		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:grc_%s:%s:%s", settings.tenantID, string(family), settings.provider, record.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -304,7 +304,7 @@ func urnsFor(settings settings, family string, records []grcRecord) ([]sourcecdk
 	return urns, nil
 }
 
-func pullFromRecords(settings settings, family string, records []grcRecord, next string) (sourcecdk.Pull, error) {
+func pullFromRecords(settings settings, family grcFamily, records []grcRecord, next string) (sourcecdk.Pull, error) {
 	return sourcecdk.PullFromRecords(records, next,
 		func(rec grcRecord) (*primitives.Event, error) {
 			return eventFromRecord(settings, family, rec), nil
@@ -313,28 +313,28 @@ func pullFromRecords(settings settings, family string, records []grcRecord, next
 	)
 }
 
-func eventFromRecord(settings settings, family string, record grcRecord) *primitives.Event {
+func eventFromRecord(settings settings, family grcFamily, record grcRecord) *primitives.Event {
 	occurredAt := occurredAtFor(family, record.Values)
 	payload := append([]byte(nil), record.Raw...)
 	return &primitives.Event{
 		Id:         grcEventID(settings, family, record.ID),
 		TenantId:   settings.tenantID,
 		SourceId:   sourceID,
-		Kind:       "grc." + family,
+		Kind:       "grc." + string(family),
 		OccurredAt: timestamppb.New(occurredAt),
-		SchemaRef:  "grc/" + family + "/v1",
+		SchemaRef:  "grc/" + string(family) + "/v1",
 		Payload:    payload,
 		Attributes: attributesFor(settings, family, record),
 	}
 }
 
-func grcEventID(settings settings, family string, recordID string) string {
+func grcEventID(settings settings, family grcFamily, recordID string) string {
 	return strings.Join([]string{
 		"grc",
 		normalizeID(settings.provider),
 		normalizeID(settings.tenantID),
 		grcRuntimeScope(settings),
-		normalizeID(family),
+		normalizeID(string(family)),
 		normalizeID(recordID),
 	}, "-")
 }
@@ -357,7 +357,7 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func recordID(family string, values map[string]any, raw json.RawMessage) string {
+func recordID(family grcFamily, values map[string]any, raw json.RawMessage) string {
 	for _, key := range recordIDKeys(family) {
 		if value := fieldString(values, key); value != "" {
 			return normalizeID(value)
@@ -367,7 +367,7 @@ func recordID(family string, values map[string]any, raw json.RawMessage) string 
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-func recordIDKeys(family string) []string {
+func recordIDKeys(family grcFamily) []string {
 	switch family {
 	case familyRiskScenario:
 		return []string{"riskId", "id"}
@@ -400,8 +400,8 @@ func normalizeID(value string) string {
 	return strings.ReplaceAll(value, " ", "_")
 }
 
-func occurredAtFor(family string, values map[string]any) time.Time {
-	for _, key := range timestampKeys(family) {
+func occurredAtFor(family grcFamily, values map[string]any) time.Time {
+	for _, key := range timestampKeySets[family] {
 		if value := fieldString(values, key); value != "" {
 			if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
 				return parsed.UTC()
@@ -414,7 +414,7 @@ func occurredAtFor(family string, values map[string]any) time.Time {
 	return time.Now().UTC()
 }
 
-var timestampKeySets = map[string][]string{
+var timestampKeySets = map[grcFamily][]string{
 	familyControl: {"modificationDate", "creationDate"}, familyControlTest: {"lastTestRunDate", "latestFlipDate"},
 	familyPolicy: {"approvedAtDate"}, familyDocument: {"uploadStatusDate"}, familyContract: {"executedDate", "creationDate"},
 	familyRegulatoryNotification: {"sentAt", "submittedAt", "notificationDate", "createdAt", "updatedAt"},
@@ -425,10 +425,6 @@ var timestampKeySets = map[string][]string{
 	familyVulnerability: {"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}, familyVulnerabilityRemediation: {"remediationDate", "detectedDate"},
 	familyVulnerableAsset: {"lastDetectedDate", "lastSeenDate", "updatedAt"}, familyRiskScenario: {"identificationDate"},
 	familyPerson: {"employment.startDate", "employment.endDate"},
-}
-
-func timestampKeys(family string) []string {
-	return timestampKeySets[family]
 }
 
 func fieldString(values map[string]any, path string) string {
