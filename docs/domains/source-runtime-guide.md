@@ -248,6 +248,11 @@ POST /source-runtimes/{runtimeID}/findings/evaluate
 
 The SDK source is useful for application-owned inventory or posture claims. SDK runtimes may declare comma- or newline-separated `inventory_urns` for preview discovery, but durable inventory and posture evidence should still be written as runtime claims. See [`docs/start/getting-started.md`](../start/getting-started.md) for a local claim write.
 
+Aperio is the canonical SaaS detection-pack producer for `aperio_saas_dr`. Its runtime should write findings, OAuth
+grant topology, lifecycle refs, and response-action evidence through the same source-runtime claim and finding
+contracts. See [Aperio integration contract](aperio-integration-contract.md) for the shared claim vocabulary and
+ownership boundaries.
+
 ## Graph ingest from runtime
 
 When graph is enabled:
