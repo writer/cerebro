@@ -171,6 +171,32 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
                 job_block = workflow.split(f"name: {job_name}", 1)[1].split("    steps:", 1)[0]
                 self.assertIn("timeout-minutes: 20", job_block)
 
+    def test_pulumi_preview_jobs_do_not_share_deploy_concurrency_groups(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        preview_jobs = (
+            ("  deploy-sec-dev:", "infra-preview-sec-dev"),
+            ("  preview-go-prod:", "infra-preview-go-prod"),
+            ("  deploy-gcp-dev:", "infra-preview-gcp-dev"),
+            ("  preview-gcp-prod:", "infra-preview-gcp-prod"),
+        )
+        for job_marker, group in preview_jobs:
+            with self.subTest(job_marker=job_marker):
+                job_block = workflow.split(job_marker, 1)[1].split("    steps:", 1)[0]
+                self.assertIn(f"group: {group}", job_block)
+                self.assertNotIn("group: infra-stack-", job_block)
+                self.assertIn("cancel-in-progress: false", job_block)
+
+        deploy_jobs = (
+            ("  deploy-sec-dev-main:", "infra-stack-sec-dev"),
+            ("  deploy-go-prod:", "infra-stack-go-prod"),
+            ("  deploy-gcp-prod:", "infra-stack-gcp-prod"),
+            ("  deploy-manual:", "infra-stack-${{ github.event.inputs.environment }}"),
+        )
+        for job_marker, group in deploy_jobs:
+            with self.subTest(job_marker=job_marker):
+                job_block = workflow.split(job_marker, 1)[1].split("    steps:", 1)[0]
+                self.assertIn(f"group: {group}", job_block)
+
     def test_main_aws_deploy_jobs_have_timeout(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         for job_name in ("Deploy sec-dev", "Deploy go-prod"):
