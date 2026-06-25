@@ -471,6 +471,9 @@ func validateSourceCoverageDeepContract(path string, contract *sourcecdk.Coverag
 			continue
 		}
 		prefix := fmt.Sprintf("coverage_contract dimension %q", dimension.ID)
+		if auditEventLikeCoverageDimension(dimension) && strings.TrimSpace(dimension.Type) == "entity_family" {
+			issues = append(issues, issue{path: path, message: prefix + ` looks like audit event coverage and must use type "audit_event"`})
+		}
 		switch strings.ToLower(strings.TrimSpace(dimension.Support)) {
 		case sourcecdk.CoverageSupportSupported, sourcecdk.CoverageSupportPartial:
 			if len(dimension.EvidenceTypes) == 0 {
@@ -498,6 +501,22 @@ func validateSourceCoverageDeepContract(path string, contract *sourcecdk.Coverag
 		}
 	}
 	return issues
+}
+
+func auditEventLikeCoverageDimension(dimension sourcecdk.CoverageDimension) bool {
+	values := []string{dimension.ID, dimension.Title}
+	values = append(values, dimension.Families...)
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		normalized = strings.NewReplacer(" ", "_", "-", "_").Replace(normalized)
+		switch {
+		case normalized == "audit", normalized == "audit_event", normalized == "audit_events", normalized == "audit_log", normalized == "audit_logs":
+			return true
+		case strings.Contains(normalized, "audit_event"), strings.Contains(normalized, "audit_log"):
+			return true
+		}
+	}
+	return false
 }
 
 func validateRuntimeFamilyFixtures(root string, sourceDir string, runtimeFamilies []string) []issue {
