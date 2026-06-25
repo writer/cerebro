@@ -123,6 +123,24 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRuleSupportsJoinProducerRunt
 	}
 }
 
+func TestCloudPublicExposurePrivilegedPrincipalSignalsPerAccountCapTruncation(t *testing.T) {
+	// The per-account cap must compare the full collected sizes against the cap and
+	// surface graph_rule_truncated so the service skips stale-finding resolution when
+	// it drops data; slicing before measuring would hide the capping and silently
+	// auto-resolve still-active findings.
+	rule := newCloudPublicExposurePrivilegedPrincipalRule().(GraphRule)
+	query := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-effective-permission", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "effective_permission"}})
+	for _, fragment := range []string{
+		"size(all_exposures) > $exposure_cap AS exposures_capped",
+		"(exposures_capped OR size(all_grants) > $principal_cap) AS account_capped",
+		"account_capped AS graph_rule_truncated",
+	} {
+		if !strings.Contains(query.Query, fragment) {
+			t.Fatalf("QueryFor() missing per-account cap truncation fragment %q:\n%s", fragment, query.Query)
+		}
+	}
+}
+
 func TestCloudCurrentPublicExposureGraphRuleRequiresStampedRecentReachability(t *testing.T) {
 	rule := newCloudPublicResourceExposureGraphRule().(GraphRule)
 	query := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-resource-exposure", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "resource_exposure"}})

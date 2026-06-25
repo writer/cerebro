@@ -24,6 +24,11 @@ const (
 	// for every account before ORDER BY/LIMIT, which sorts the whole product in
 	// memory and is the dominant cost on large accounts. Capping each side keeps a
 	// deterministic, lexicographically-ordered representative sample.
+	//
+	// When the cap actually drops data the query emits graph_rule_truncated=true
+	// so the service marks the evaluation truncated and skips stale-finding
+	// auto-resolution; otherwise capping a large account below the row limit would
+	// silently close still-active findings for the dropped combinations.
 	cloudPublicExposurePrivilegedPrincipalPerAccountCap = 50
 )
 
@@ -112,7 +117,8 @@ WITH account, collect(DISTINCT {
        exposed_entity_type: exposed.entity_type,
        exposed_label: exposed.label,
        reach_relation: reach.relation
-     })[0..$exposure_cap] AS exposures
+     }) AS all_exposures
+WITH account, size(all_exposures) > $exposure_cap AS exposures_capped, all_exposures[0..$exposure_cap] AS exposures
 WHERE size(exposures) > 0
 MATCH (principal:Entity {tenant_id: $tenant_id})-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
 WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
@@ -123,9 +129,9 @@ WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_imperso
     OR coalesce(access.attributes_json, '') CONTAINS 'AdministratorAccess'
     OR coalesce(access.attributes_json, '') CONTAINS '"permission":"*"'
   )
-WITH account, exposures, principal, access, permission
+WITH account, exposures, exposures_capped, principal, access, permission
 ORDER BY principal.label, permission.label
-WITH account, exposures, collect(DISTINCT {
+WITH account, exposures, exposures_capped, collect(DISTINCT {
        principal_urn: principal.urn,
        principal_entity_type: principal.entity_type,
        principal_label: principal.label,
@@ -134,7 +140,8 @@ WITH account, exposures, collect(DISTINCT {
        permission_label: permission.label,
        access_relation: access.relation,
        access_attributes_json: coalesce(access.attributes_json, '')
-     })[0..$principal_cap] AS grants
+     }) AS all_grants
+WITH account, exposures, (exposures_capped OR size(all_grants) > $principal_cap) AS account_capped, all_grants[0..$principal_cap] AS grants
 WHERE size(grants) > 0
 UNWIND exposures AS exposure
 UNWIND grants AS grant
@@ -154,7 +161,8 @@ RETURN exposure.public_urn AS public_urn,
        grant.permission_label AS permission_label,
        exposure.reach_relation AS reach_relation,
        grant.access_relation AS access_relation,
-       grant.access_attributes_json AS access_attributes_json
+       grant.access_attributes_json AS access_attributes_json,
+       account_capped AS graph_rule_truncated
 ORDER BY account_label, exposed_label, principal_label, permission_label
 LIMIT $row_limit`,
 		Params: map[string]any{

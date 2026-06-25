@@ -162,7 +162,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result.RowsRead = boundedUint32(len(rows))
-	result.Truncated = cypherRowsTruncated(queryRequest, len(rows))
+	result.Truncated = cypherRowsTruncated(queryRequest, len(rows)) || cypherRowsSignalTruncated(rows)
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {
 		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
@@ -246,6 +246,42 @@ func cypherRowsTruncated(request ports.CypherQueryRequest, rowsReturned int) boo
 		cap = ports.MaxCypherQueryRows
 	}
 	return rowsReturned >= cap
+}
+
+// graphRuleTruncationColumn lets a rule's Cypher signal that it dropped matching
+// data internally (for example a per-account cap applied before the row limit)
+// even when the total row count stayed under the row limit. Without this a rule
+// that caps per-group results could return < RowLimit rows yet still be missing
+// offenders, and stale-finding auto-resolution would wrongly close the dropped
+// findings as no-longer-matching.
+const graphRuleTruncationColumn = "graph_rule_truncated"
+
+// cypherRowsSignalTruncated reports whether any row carries a truthy
+// graphRuleTruncationColumn, i.e. the rule's query itself signaled that it
+// dropped matching data.
+func cypherRowsSignalTruncated(rows []ports.CypherRow) bool {
+	for _, row := range rows {
+		if row.Values == nil {
+			continue
+		}
+		if value, ok := row.Values[graphRuleTruncationColumn]; ok && cypherValueTruthy(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func cypherValueTruthy(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "true", "1", "t", "yes":
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string, excludeRuleIDs []string) ([]GraphRule, error) {
