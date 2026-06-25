@@ -128,20 +128,26 @@ WHERE user.entity_type IN ['okta.user','google_workspace.user','gcp.service_acco
     ) > $acted_on_since
   )
   AND (
-    user_attrs CONTAINS '"is_admin":"true"'
-    OR user_attrs CONTAINS '"is_admin":true'
-    OR user_attrs CONTAINS '"is_delegated_admin":"true"'
-    OR user_attrs CONTAINS '"is_delegated_admin":true'
+    user.is_privileged_identity = true
+    OR (user.is_privileged_identity IS NULL AND (
+      user_attrs CONTAINS '"is_admin":"true"'
+      OR user_attrs CONTAINS '"is_admin":true'
+      OR user_attrs CONTAINS '"is_delegated_admin":"true"'
+      OR user_attrs CONTAINS '"is_delegated_admin":true'
+    ))
   )
   AND (
-    user_attrs CONTAINS '"mfa_enrolled":"false"'
-    OR user_attrs CONTAINS '"mfa_enrolled":false'
-    OR user_attrs CONTAINS '"mfa_enforced":"false"'
-    OR user_attrs CONTAINS '"mfa_enforced":false'
-    OR user_attrs CONTAINS '"is_enrolled_in_2sv":"false"'
-    OR user_attrs CONTAINS '"is_enrolled_in_2sv":false'
-    OR user_attrs CONTAINS '"is_enforced_in_2sv":"false"'
-    OR user_attrs CONTAINS '"is_enforced_in_2sv":false'
+    user.mfa_disabled = true
+    OR (user.mfa_disabled IS NULL AND (
+      user_attrs CONTAINS '"mfa_enrolled":"false"'
+      OR user_attrs CONTAINS '"mfa_enrolled":false'
+      OR user_attrs CONTAINS '"mfa_enforced":"false"'
+      OR user_attrs CONTAINS '"mfa_enforced":false'
+      OR user_attrs CONTAINS '"is_enrolled_in_2sv":"false"'
+      OR user_attrs CONTAINS '"is_enrolled_in_2sv":false'
+      OR user_attrs CONTAINS '"is_enforced_in_2sv":"false"'
+      OR user_attrs CONTAINS '"is_enforced_in_2sv":false'
+    ))
   )
   AND (
     (sensitivity.relation = 'tagged_as' AND marker.entity_type = 'asset.tag' AND toLower(marker.label) = 'crown_jewel')
