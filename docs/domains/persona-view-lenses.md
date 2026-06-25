@@ -7,6 +7,12 @@ evidence, report, inventory, and graph contracts.
 This is a product-facing composition pattern. It is not a storage split, a graph
 schema fork, a tenant boundary, or an authorization model.
 
+The UI should not make people learn Cerebro's persona model before it shows
+value. Persona selection is a prioritization preference. The first screen for a
+security operator should answer what is risky, what changed, who owns it, what
+evidence is missing, and what to fix first. The first screen for an auditor
+should answer which controls are provable, stale, blocked, or export-ready.
+
 ## Core Boundary
 
 The shared substrate stays the same:
@@ -23,6 +29,8 @@ A persona lens may change:
 - default entry points,
 - page copy,
 - default filters,
+- prioritized work queues,
+- suggested questions,
 - saved dashboard layouts,
 - report profile selection,
 - which graph-backed summaries appear first.
@@ -39,11 +47,11 @@ A persona lens must not change:
 
 ## Initial Lens Set
 
-| Lens | Primary question | First contracts to compose |
+| Audience | First question the product should answer | First contracts to compose |
 | --- | --- | --- |
-| Security Ops | What active risk needs action first, and what graph path explains it? | `/grc/findings`, `/platform/graph/*`, `/grc/inventory`, `/grc/trends` |
-| Compliance & Audit | Are controls provable, fresh, and exportable? | `/grc/controls`, `/grc/evidence`, `/grc/control-packs*`, `/grc/reports*` |
-| Platform Owners | Are sources, runtimes, and graph projection healthy enough to trust? | `/sources`, `/source-runtimes/*`, `/platform/graph/ingest-*`, `/grc/inventory` |
+| Security | What active risk needs action first, who owns it, and what assets or evidence make it urgent? | `/grc/findings`, `/platform/graph/*`, `/grc/inventory`, `/grc/trends` |
+| Audit | Which controls are provable, stale, blocked, or export-ready? | `/grc/controls`, `/grc/evidence`, `/grc/control-packs*`, `/grc/reports*` |
+| Platform | Are sources, runtimes, owners, and graph projection healthy enough to trust? | `/sources`, `/source-runtimes/*`, `/platform/graph/ingest-*`, `/grc/inventory` |
 | Leadership | What is the program posture, trend direction, and material exposure? | `/grc/dashboard`, `/grc/trends`, `/grc/report-runs`, `/platform/graph/impact/*` |
 
 Clients can add more lenses when a new audience has a distinct first question
@@ -51,17 +59,23 @@ and can be served by composing existing contracts.
 
 ## Design Rules
 
-1. Keep the graph shared. Prefer route composition, report profiles, saved
+1. Lead with work, not navigation. Home surfaces should show active risk,
+   changed signals, missing owners, stale or missing evidence, affected assets,
+   and useful questions before they show routes or product taxonomy.
+2. Keep the graph shared. Prefer route composition, report profiles, saved
    dashboards, and product copy before adding backend fields.
-2. Keep RBAC separate. A lens is a wayfinding and prioritization layer; it does
+3. Keep RBAC separate. A lens is a wayfinding and prioritization layer; it does
    not grant or deny permissions.
-3. Keep personas additive. Every graph-backed fact should be addressable from a
+4. Keep personas additive. Every graph-backed fact should be addressable from a
    general route even when a lens hides it from primary navigation.
-4. Keep labels audience-specific, not platform-specific. Security can say
-   "risk" or "finding"; compliance can say "control" or "evidence"; platform
-   contracts should still expose graph, source runtime, report, claim, workflow,
-   and GRC route families.
-5. Keep examples public-safe. Do not document tenant names, hostnames, account
+5. Keep labels audience-specific, not platform-specific. Security can say
+   "risk", "owner", "affected asset", or "fix first"; audit can say "control",
+   "evidence", or "export"; platform contracts should still expose graph,
+   source runtime, report, claim, workflow, and GRC route families.
+6. Keep the persona control quiet. Clients may expose a "prioritize for"
+   selector, but that control should not dominate the page or repeat the same
+   audience label in headers, cards, and explanatory copy.
+7. Keep examples public-safe. Do not document tenant names, hostnames, account
    IDs, resource labels, URNs, graph counts, or environment-specific rollout
    details in this repository.
 
