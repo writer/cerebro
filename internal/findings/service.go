@@ -73,10 +73,18 @@ type Service struct {
 	closeoutStore             ports.CloseoutRunStore
 	tombstoneEventStore       ports.FindingTombstoneEventStore
 	closeoutHeartbeatInterval time.Duration
+	graphRuleQueryTimeout     time.Duration
 	rules                     *Registry
 	ttlClock                  ttlClock
 	ttlLogSink                ttlLogSink
 }
+
+// defaultGraphRuleQueryTimeout bounds a single graph rule's Cypher read so one
+// pathological rule cannot consume the entire orchestrator phase budget. It is
+// set just under the orchestrator graph-rule phase timeout so a stuck rule
+// fails with a clean, attributable per-rule deadline rather than a connectivity
+// error when the phase context is cancelled out from under an in-flight query.
+const defaultGraphRuleQueryTimeout = 14 * time.Minute
 
 // EvaluateRequest scopes one replay-backed finding evaluation.
 type EvaluateRequest struct {
@@ -216,6 +224,24 @@ func (s *Service) WithGraphQueryStore(graphQuery ports.GraphQueryStore) *Service
 	}
 	s.graphQuery = graphQuery
 	return s
+}
+
+// WithGraphRuleQueryTimeout overrides the per-graph-rule Cypher read budget. A
+// non-positive value falls back to defaultGraphRuleQueryTimeout.
+func (s *Service) WithGraphRuleQueryTimeout(timeout time.Duration) *Service {
+	if s == nil {
+		return nil
+	}
+	s.graphRuleQueryTimeout = timeout
+	return s
+}
+
+// graphRuleQueryBudget returns the effective per-graph-rule Cypher read budget.
+func (s *Service) graphRuleQueryBudget() time.Duration {
+	if s != nil && s.graphRuleQueryTimeout > 0 {
+		return s.graphRuleQueryTimeout
+	}
+	return defaultGraphRuleQueryTimeout
 }
 
 // WithAppendLog wires one optional durable append log used for workflow metadata events.

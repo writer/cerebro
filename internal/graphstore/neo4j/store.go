@@ -13,6 +13,7 @@ import (
 	"time"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	neo4jconfig "github.com/neo4j/neo4j-go-driver/v5/neo4j/config"
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
@@ -25,6 +26,18 @@ import (
 const defaultIngestRunListLimit = 25
 const maxAttributeMergeRetries = 5
 const defaultProjectionCleanupLimit = 1000
+
+// Neo4j driver pool tuning. Aura reaps idle server-side connections, so a
+// connection that has been parked in the pool past Aura's idle window fails
+// the next borrow with a connectivity error. Recycling connections well under
+// that window (rather than the driver default of one hour) keeps the pool warm
+// with live sockets. The acquisition timeout fails fast if the pool is ever
+// saturated instead of letting a borrow hang for the full caller deadline.
+const (
+	neo4jMaxConnectionLifetime        = 30 * time.Minute
+	neo4jConnectionAcquisitionTimeout = 60 * time.Second
+	neo4jMaxConnectionPoolSize        = 100
+)
 const mergeEntityAndLoadAttributesQuery = `MERGE (e:Entity {urn: $urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
 SET e.tenant_id = $tenant_id,
@@ -78,7 +91,11 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 		return nil, errors.New("neo4j password is required")
 	}
 	database := strings.TrimSpace(cfg.Neo4jDatabase)
-	driver, err := neo4jdriver.NewDriverWithContext(uri, neo4jdriver.BasicAuth(username, cfg.Neo4jPassword, ""))
+	driver, err := neo4jdriver.NewDriverWithContext(uri, neo4jdriver.BasicAuth(username, cfg.Neo4jPassword, ""), func(c *neo4jconfig.Config) {
+		c.MaxConnectionLifetime = neo4jMaxConnectionLifetime
+		c.ConnectionAcquisitionTimeout = neo4jConnectionAcquisitionTimeout
+		c.MaxConnectionPoolSize = neo4jMaxConnectionPoolSize
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
 	}

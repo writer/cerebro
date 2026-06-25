@@ -81,7 +81,27 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 
 func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (evaluation *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
+	ctx, span := telemetry.Start(ctx, "graph_rule.evaluate", telemetry.Attrs(
+		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(spec.GetId())},
+		telemetry.Field{Key: "source_id", Value: strings.TrimSpace(runtime.GetSourceId())},
+		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(runtime.GetTenantId())},
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(runtime.GetId())},
+	))
 	metricsStartedAt := time.Now()
+	defer func() {
+		spanStatus := "completed"
+		spanAttrs := telemetry.Attrs()
+		if evaluation != nil {
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "rows_read", Value: int64(evaluation.RowsRead)})
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "findings_emitted", Value: int64(len(evaluation.Findings))})
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "truncated", Value: evaluation.Truncated})
+		}
+		if err != nil {
+			spanStatus = "failed"
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+		}
+		telemetry.End(span, spanStatus, spanAttrs)
+	}()
 	defer func() {
 		status := "completed"
 		errorKind := ""
@@ -124,7 +144,13 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		}
 		return result, nil
 	}
-	rows, err := s.graphQuery.ExecuteReadCypher(ctx, queryRequest)
+	queryCtx := ctx
+	if budget := s.graphRuleQueryBudget(); budget > 0 {
+		var cancelQuery context.CancelFunc
+		queryCtx, cancelQuery = context.WithTimeout(ctx, budget)
+		defer cancelQuery()
+	}
+	rows, err := s.graphQuery.ExecuteReadCypher(queryCtx, queryRequest)
 	if err != nil {
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
