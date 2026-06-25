@@ -944,6 +944,48 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	}
 }
 
+func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
+	legacyURN := "urn:cerebro:writer:github_repo:sohalloran-writer"
+	canonicalURN := "urn:cerebro:writer:github_user:sohalloran-writer"
+	graphStore := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			canonicalURN: {
+				URN:        canonicalURN,
+				TenantID:   "writer",
+				SourceID:   "github",
+				EntityType: "github.user",
+				Label:      "sohalloran-writer",
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}, GraphStore: graphStore}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/entities/" + url.PathEscape(legacyURN) + "/impact?tenant_id=writer")
+	if err != nil {
+		t.Fatalf("GET /grc/entities legacy github repo impact error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /grc/entities legacy github repo impact status = %d, want %d: %s", resp.StatusCode, http.StatusOK, body)
+	}
+	var impact grcEntityImpactResponse
+	if err := json.NewDecoder(resp.Body).Decode(&impact); err != nil {
+		t.Fatalf("decode impact: %v", err)
+	}
+	if impact.EntityURN != canonicalURN {
+		t.Fatalf("impact entity urn = %q, want %q", impact.EntityURN, canonicalURN)
+	}
+	if impact.Graph == nil || impact.Graph.Root == nil || impact.Graph.Root.URN != canonicalURN {
+		t.Fatalf("impact graph root = %#v, want %q", impact.Graph, canonicalURN)
+	}
+	if graphStore.neighborhoodRootURN != canonicalURN {
+		t.Fatalf("queried root urn = %q, want %q", graphStore.neighborhoodRootURN, canonicalURN)
+	}
+}
+
 func TestGRCAuditPacketNormalizesForeignFindingLookup(t *testing.T) {
 	store := &stubRuntimeStore{
 		findings: map[string]*ports.FindingRecord{

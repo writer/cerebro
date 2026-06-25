@@ -604,6 +604,18 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	graph, err := graphStore.GetEntityNeighborhood(r.Context(), entityURN, int(limit))
+	if errors.Is(err, ports.ErrGraphEntityNotFound) {
+		for _, candidateURN := range graphquery.LegacyEntityImpactFallbackURNs(entityURN) {
+			graph, err = graphStore.GetEntityNeighborhood(r.Context(), candidateURN, int(limit))
+			if err == nil {
+				entityURN = candidateURN
+				break
+			}
+			if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+				break
+			}
+		}
+	}
 	if err != nil {
 		writeGRCError(w, err)
 		return
