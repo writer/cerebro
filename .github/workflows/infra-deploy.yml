@@ -966,6 +966,21 @@ jobs:
           organization: writer-ai
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
+      - name: Clear interrupted WIF pool operation (gcp-prod)
+        shell: bash
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          state_before="${RUNNER_TEMP}/gcp-prod-stack.json"
+          state_after="${RUNNER_TEMP}/gcp-prod-stack.repaired.json"
+          urn="urn:pulumi:gcp-prod::cerebro-gcp::gcp:iam/workloadIdentityPool:WorkloadIdentityPool::cerebro-wif-pool"
+          uv run pulumi stack export --cwd gcp --stack gcp-prod --file "${state_before}"
+          result="$(uv run python scripts/clear_pending_pulumi_operation.py --input "${state_before}" --output "${state_after}" --urn "${urn}")"
+          echo "${result}"
+          if [ "${result}" = "changed=true" ]; then
+            uv run pulumi stack import --cwd gcp --stack gcp-prod --file "${state_after}"
+          fi
+
       - name: Pulumi Up (gcp-prod)
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
         with:
