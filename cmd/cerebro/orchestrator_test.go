@@ -1466,3 +1466,30 @@ type failingProjectionGraphStore struct {
 func (s *failingProjectionGraphStore) UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error {
 	return s.err
 }
+
+func TestGraphRuleQueryBudgetForPhase(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		phase time.Duration
+		want  time.Duration
+	}{
+		{name: "default phase keeps the conventional 14m budget", phase: defaultOrchestratorPhaseTimeout, want: 14 * time.Minute},
+		{name: "smaller phase shrinks the budget below it", phase: 10 * time.Minute, want: 9 * time.Minute},
+		{name: "phase at the margin keeps headroom", phase: graphRulePhaseTimeoutMargin, want: graphRulePhaseTimeoutMargin - graphRulePhaseTimeoutMargin/10},
+		{name: "tiny phase keeps headroom", phase: 30 * time.Second, want: 27 * time.Second},
+		{name: "zero phase defers to the service default", phase: 0, want: 0},
+		{name: "negative phase defers to the service default", phase: -time.Minute, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := graphRuleQueryBudgetForPhase(tc.phase)
+			if got != tc.want {
+				t.Fatalf("graphRuleQueryBudgetForPhase(%v) = %v, want %v", tc.phase, got, tc.want)
+			}
+			// A positive phase must always yield a budget strictly under it so the
+			// per-rule deadline trips before the phase context is cancelled.
+			if tc.phase > 0 && got >= tc.phase {
+				t.Fatalf("budget %v must be strictly under phase %v", got, tc.phase)
+			}
+		})
+	}
+}

@@ -80,10 +80,13 @@ type Service struct {
 }
 
 // defaultGraphRuleQueryTimeout bounds a single graph rule's Cypher read so one
-// pathological rule cannot consume the entire orchestrator phase budget. It is
-// set just under the orchestrator graph-rule phase timeout so a stuck rule
-// fails with a clean, attributable per-rule deadline rather than a connectivity
-// error when the phase context is cancelled out from under an in-flight query.
+// pathological rule cannot consume the entire orchestrator phase budget. A stuck
+// rule then fails with a clean, attributable per-rule deadline rather than a
+// connectivity error from the phase context being cancelled out from under an
+// in-flight query. The production orchestrator derives the budget from its
+// configured graph-rule phase timeout (keeping it strictly under that deadline)
+// via WithGraphRuleQueryTimeout; this default applies only when no budget is
+// wired (e.g. tests) and matches the default 15m phase timeout less its margin.
 const defaultGraphRuleQueryTimeout = 14 * time.Minute
 
 // EvaluateRequest scopes one replay-backed finding evaluation.

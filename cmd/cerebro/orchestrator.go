@@ -35,6 +35,11 @@ const sourceRuntimeLeaseOverscanLimit = 100
 const (
 	defaultOrchestratorPhaseTimeout       = 15 * time.Minute
 	defaultOrchestratorGraphIngestTimeout = 45 * time.Minute
+	// graphRulePhaseTimeoutMargin keeps the derived per-graph-rule Cypher budget
+	// strictly under the graph-rule phase timeout so a stuck rule trips an
+	// attributable per-rule deadline before the phase context is cancelled out
+	// from under the in-flight query (which surfaces as a connectivity error).
+	graphRulePhaseTimeoutMargin = time.Minute
 )
 
 type orchestratorOptions struct {
@@ -348,7 +353,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		findingEvaluationRunStore(deps.StateStore),
 		findingEvidenceStore(deps.StateStore),
 		claimStore(deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithAppendLog(deps.AppendLog)
+	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithAppendLog(deps.AppendLog).WithGraphRuleQueryTimeout(graphRuleQueryBudgetForPhase(options.PhaseTimeout))
 	graphService := graphingest.New(
 		registry,
 		lister,
@@ -755,6 +760,23 @@ func runOrchestratorIteration(
 // context.DeadlineExceeded, which the caller treats like any other
 // failure (lease releases, next iteration retries).
 //
+// graphRuleQueryBudgetForPhase derives a per-graph-rule Cypher read budget that
+// always trips before the graph-rule phase deadline, so a stuck rule surfaces an
+// attributable per-rule timeout instead of a phase-cancellation connectivity
+// error. A non-positive phase timeout returns 0 so the finding service keeps its
+// own conservative default.
+func graphRuleQueryBudgetForPhase(phaseTimeout time.Duration) time.Duration {
+	if phaseTimeout <= 0 {
+		return 0
+	}
+	if phaseTimeout > graphRulePhaseTimeoutMargin {
+		return phaseTimeout - graphRulePhaseTimeoutMargin
+	}
+	// Phase budget is at or below the standard margin: keep a 10% headroom so the
+	// per-rule deadline still fires first.
+	return phaseTimeout - phaseTimeout/10
+}
+
 // The phase context is derived from runtimeCtx so it still receives
 // lease-renewal cancellation. The generic R parameter lets each phase
 // return its own result type without an interface boxing dance.
