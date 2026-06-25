@@ -695,6 +695,7 @@ func matchesReplayAttributes(event *cerebrov1.EventEnvelope, expected map[string
 }
 
 type stubRuntimeStore struct {
+	mu                              sync.Mutex
 	err                             error
 	runtimes                        map[string]*cerebrov1.SourceRuntime
 	sourceRuntimeListFilter         ports.SourceRuntimeFilter
@@ -1435,6 +1436,8 @@ func (s *stubRuntimeStore) GetFindingEvaluationRun(_ context.Context, id string)
 }
 
 func (s *stubRuntimeStore) ListFindingEvaluationRuns(_ context.Context, request ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -1488,6 +1491,7 @@ func (s *stubRuntimeStore) GetReportRun(_ context.Context, id string) (*cerebrov
 }
 
 type stubGraphStore struct {
+	mu                  sync.Mutex
 	err                 error
 	entities            map[string]*ports.ProjectedEntity
 	links               map[string]*ports.ProjectedLink
@@ -1625,6 +1629,8 @@ func (s *stubGraphStore) GetIngestRun(_ context.Context, id string) (graphstore.
 }
 
 func (s *stubGraphStore) ListIngestRuns(_ context.Context, filter graphstore.IngestRunFilter) ([]graphstore.IngestRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return nil, s.err
 	}

@@ -316,16 +316,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) grcSourceRuntimeHealthSummaries(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, generatedAt time.Time) ([]sourceRuntimeHealthSummary, error) {
-	records := make([]sourceRuntimeHealthRecord, 0, len(runtimes))
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
-		record, err := a.sourceRuntimeHealthRecord(ctx, runtime, generatedAt)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
+	records, err := a.sourceRuntimeHealthRecords(ctx, runtimes, generatedAt)
+	if err != nil {
+		return nil, err
 	}
 	return sourceRuntimeHealthSummaries(records), nil
 }

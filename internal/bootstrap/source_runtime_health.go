@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehealthview"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -142,6 +143,8 @@ const (
 	runtimeLastInvalidOccurredAtConfigKey = "__cerebro_runtime_last_invalid_occurred_at"
 	runtimeLastInvalidDiagnosticConfigKey = "__cerebro_runtime_last_invalid_diagnostic"
 	runtimeLastInvalidRetryableConfigKey  = "__cerebro_runtime_last_invalid_retryable"
+
+	sourceRuntimeHealthRecordConcurrency = 8
 )
 
 func (a *App) handleListSourceRuntimeHealth(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +233,6 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 		return sourceRuntimeHealthResponse{}, err
 	}
 	generatedAt := time.Now().UTC()
-	records := make([]sourceRuntimeHealthRecord, 0, len(runtimes))
 	visibleRuntimes := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
 	for _, runtime := range runtimes {
 		if runtime == nil {
@@ -240,11 +242,10 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 			continue
 		}
 		visibleRuntimes = append(visibleRuntimes, runtime)
-		record, err := a.sourceRuntimeHealthRecord(r.Context(), runtime, generatedAt)
-		if err != nil {
-			return sourceRuntimeHealthResponse{}, err
-		}
-		records = append(records, record)
+	}
+	records, err := a.sourceRuntimeHealthRecords(r.Context(), visibleRuntimes, generatedAt)
+	if err != nil {
+		return sourceRuntimeHealthResponse{}, err
 	}
 	coverage := a.sourceCoverageRecords(visibleRuntimes, filter, generatedAt)
 	return sourceRuntimeHealthResponse{
@@ -530,6 +531,33 @@ func sourceRuntimeGraphState(record sourceRuntimeHealthRecord) string {
 	return sourcehealth.GraphIngestState(sourceHealthRecord(record))
 }
 
+func (a *App) sourceRuntimeHealthRecords(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, generatedAt time.Time) ([]sourceRuntimeHealthRecord, error) {
+	visibleRuntimes := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime != nil {
+			visibleRuntimes = append(visibleRuntimes, runtime)
+		}
+	}
+	records := make([]sourceRuntimeHealthRecord, len(visibleRuntimes))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(sourceRuntimeHealthRecordConcurrency)
+	for index, runtime := range visibleRuntimes {
+		index, runtime := index, runtime
+		group.Go(func() error {
+			record, err := a.sourceRuntimeHealthRecord(groupCtx, runtime, generatedAt)
+			if err != nil {
+				return err
+			}
+			records[index] = record
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.SourceRuntime, generatedAt time.Time) (sourceRuntimeHealthRecord, error) {
 	record := sourceRuntimeHealthRecord{
 		RuntimeID:    strings.TrimSpace(runtime.GetId()),
@@ -566,17 +594,25 @@ func (a *App) sourceRuntimeHealthRecord(ctx context.Context, runtime *cerebrov1.
 		record.CheckpointWatermark = watermark.Format(time.RFC3339Nano)
 		record.WatermarkLagSeconds = secondsSince(generatedAt, watermark)
 	}
-	graphRun, err := a.latestGraphIngestRun(ctx, record.RuntimeID)
-	if err != nil {
+	var graphRun *graphstore.IngestRun
+	var findingRun *cerebrov1.FindingEvaluationRun
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		var err error
+		graphRun, err = a.latestGraphIngestRun(groupCtx, record.RuntimeID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		findingRun, err = a.latestFindingEvaluationRun(groupCtx, record.RuntimeID)
+		return err
+	})
+	if err := group.Wait(); err != nil {
 		return record, err
 	}
 	if graphRun != nil {
 		record.LatestGraphRun = sourceRuntimeGraphRunHealth(*graphRun)
 		record.GraphLagSeconds = graphRunLagSeconds(generatedAt, *graphRun)
-	}
-	findingRun, err := a.latestFindingEvaluationRun(ctx, record.RuntimeID)
-	if err != nil {
-		return record, err
 	}
 	if findingRun != nil {
 		record.LatestFindingEvaluation = sourceRuntimeFindingEvaluationHealth(findingRun)
