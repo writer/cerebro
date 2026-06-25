@@ -214,12 +214,14 @@ git diff --check README.md
 
 - Pull requests run static infra validation for infra-relevant changes and Pulumi previews for affected stacks.
 - Pull requests mirror the `sec-dev` runtime and web images to ECR when the referenced GHCR artifacts exist and verify successfully.
+- CI promotion jobs upload `promotion-receipt-<stack>` artifacts after verifying the reviewed stack image tags exist in the target ECR repository.
 - Merges to `main` deploy affected AWS/GCP stacks through `Infrastructure Deploy`; `go-prod` uses the production environment gate.
+- AWS deploys run `infra/scripts/ensure_ecr_promotion.py` before Pulumi. If a reviewed stack tag is missing from ECR, the deploy dispatches `ci.yml` on `main`, waits for promotion to finish, and verifies the exact tag again before continuing.
 - Deploy verification can check source runtime ECS runs, source role trust drift, graph health, and graph health regressions depending on the changed paths.
 - Scheduled/manual workflows maintain source runtime drift reports, graph health insight, and runtime/web image tag proposals.
-- `workflow_dispatch` supports manual deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`.
+- `workflow_dispatch` supports manual deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`; manual deploys create the same GitHub Deployment records as main deploys.
 - Release promotion workflows use a short-lived, preflighted GitHub App installation token for automation branches and PRs. Trusted `sec-dev` release dispatches auto-merge their PRs only after required checks pass; the resulting normal `main` push runs deploys without direct branch writes or explicit deploy dispatches. Configure `CEREBRO_DEPLOY_APP_CLIENT_ID` as a repository variable and `CEREBRO_DEPLOY_APP_PRIVATE_KEY` as a repository secret; the App installation needs Contents write, Pull requests write, Issues write, Commit statuses read, and the implicit Metadata read permission for this repository.
-- AWS `sec-dev` and `go-prod` deploy jobs create GitHub Deployment records and update them to `in_progress`, `success`, or `failure` around Pulumi and post-deploy verification.
+- AWS `sec-dev` and `go-prod` deploy jobs create GitHub Deployment records and update them to `in_progress`, `success`, or `failure` around Pulumi and post-deploy verification. A `success` status can include degraded graph/source health in the description when the rollout completed but follow-up health work remains.
 
 Common CI failure triage:
 

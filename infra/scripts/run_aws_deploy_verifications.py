@@ -789,6 +789,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if source_status != 0:
         _report_source_degradation(stack)
+    _write_github_output(args.github_output, source_runtime_degraded=str(source_status != 0).lower())
     graph_status = _graph_health_status(graph_result)
     graph_diagnostics = _graph_health_diagnostics(graph_result)
     if graph_status != 0:

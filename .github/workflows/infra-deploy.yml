@@ -194,6 +194,8 @@ jobs:
       - name: Run static checks
         shell: bash
         working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           uv run python -m compileall aws gcp scripts tests
           uv run python scripts/validate_readme.py
@@ -349,7 +351,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read
+      actions: write
       deployments: write
       issues: write
     steps:
@@ -411,10 +413,22 @@ jobs:
         working-directory: infra/aws
         run: uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
-      - name: Wait for ECR image (sec-dev)
+      - name: Ensure ECR promotion (sec-dev)
+        id: ecr_promotion
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
-        run: bash .github/scripts/wait-for-ecr-image.sh sec-dev
+        working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run python scripts/ensure_ecr_promotion.py --stack-file aws/Pulumi.sec-dev.yaml --receipt-output promotion-receipt-sec-dev.json --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
+
+      - name: Upload promotion receipt (sec-dev)
+        if: always() && needs.changes.outputs.aws_sec_dev_deploy == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: promotion-receipt-sec-dev
+          path: infra/promotion-receipt-sec-dev.json
+          if-no-files-found: ignore
 
       - name: Detect AWS public-endpoint refresh need (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
@@ -539,12 +553,22 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.github_deployment.outputs.deployment_id }}
           JOB_STATUS: ${{ job.status }}
+          GRAPH_HEALTH_DEGRADED: ${{ steps.deployment_health_sec_dev.outputs.graph_health_degraded }}
+          GRAPH_HEALTH_DEGRADATION_CATEGORY: ${{ steps.deployment_health_sec_dev.outputs.graph_health_degradation_category }}
+          SOURCE_RUNTIME_DEGRADED: ${{ steps.deployment_health_sec_dev.outputs.source_runtime_degraded }}
         run: |
           state=success
           description="sec-dev deploy succeeded"
           if [ "${JOB_STATUS}" != "success" ]; then
             state=failure
             description="sec-dev deploy ${JOB_STATUS}"
+          else
+            if [ "${GRAPH_HEALTH_DEGRADED}" = "true" ]; then
+              description="${description}; graph health degraded (${GRAPH_HEALTH_DEGRADATION_CATEGORY:-unknown})"
+            fi
+            if [ "${SOURCE_RUNTIME_DEGRADED}" = "true" ]; then
+              description="${description}; source runtime degraded"
+            fi
           fi
           .github/scripts/github-deployment-status.sh status "${DEPLOYMENT_ID}" sec-dev "${state}" "${description}"
 
@@ -562,7 +586,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read
+      actions: write
       deployments: write
       issues: write
     steps:
@@ -624,10 +648,22 @@ jobs:
         working-directory: infra/aws
         run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
-      - name: Wait for ECR image (go-prod)
+      - name: Ensure ECR promotion (go-prod)
+        id: ecr_promotion
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         shell: bash
-        run: bash .github/scripts/wait-for-ecr-image.sh go-prod
+        working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run python scripts/ensure_ecr_promotion.py --stack-file aws/Pulumi.go-prod.yaml --receipt-output promotion-receipt-go-prod.json --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
+
+      - name: Upload promotion receipt (go-prod)
+        if: always() && needs.changes.outputs.aws_go_prod_deploy == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: promotion-receipt-go-prod
+          path: infra/promotion-receipt-go-prod.json
+          if-no-files-found: ignore
 
       - name: Detect AWS public-endpoint refresh need (go-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true'
@@ -752,12 +788,22 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.github_deployment.outputs.deployment_id }}
           JOB_STATUS: ${{ job.status }}
+          GRAPH_HEALTH_DEGRADED: ${{ steps.deployment_health_go_prod.outputs.graph_health_degraded }}
+          GRAPH_HEALTH_DEGRADATION_CATEGORY: ${{ steps.deployment_health_go_prod.outputs.graph_health_degradation_category }}
+          SOURCE_RUNTIME_DEGRADED: ${{ steps.deployment_health_go_prod.outputs.source_runtime_degraded }}
         run: |
           state=success
           description="go-prod deploy succeeded"
           if [ "${JOB_STATUS}" != "success" ]; then
             state=failure
             description="go-prod deploy ${JOB_STATUS}"
+          else
+            if [ "${GRAPH_HEALTH_DEGRADED}" = "true" ]; then
+              description="${description}; graph health degraded (${GRAPH_HEALTH_DEGRADATION_CATEGORY:-unknown})"
+            fi
+            if [ "${SOURCE_RUNTIME_DEGRADED}" = "true" ]; then
+              description="${description}; source runtime degraded"
+            fi
           fi
           .github/scripts/github-deployment-status.sh status "${DEPLOYMENT_ID}" go-prod "${state}" "${description}"
 
@@ -944,11 +990,41 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: write
+      deployments: write
       issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Create GitHub deployment record (manual)
+        id: github_deployment
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          image_tag=""
+          web_image_tag=""
+          if [[ "${STACK_NAME}" != gcp-* ]]; then
+            image_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+            web_image_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml" || true)"
+          fi
+          production_environment=false
+          if [[ "${STACK_NAME}" == *prod ]]; then
+            production_environment=true
+          fi
+          .github/scripts/github-deployment-status.sh create "${STACK_NAME}" "${image_tag}" "${web_image_tag}" "${production_environment}"
+
+      - name: Mark GitHub deployment in progress (manual)
+        if: steps.github_deployment.outputs.deployment_id != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.github_deployment.outputs.deployment_id }}
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: .github/scripts/github-deployment-status.sh status "${DEPLOYMENT_ID}" "${STACK_NAME}" in_progress "Deploying ${STACK_NAME}"
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -996,12 +1072,23 @@ jobs:
         working-directory: infra/aws
         run: uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
-      - name: Wait for ECR image (AWS)
+      - name: Ensure ECR promotion (AWS)
+        id: ecr_promotion
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         shell: bash
+        working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: bash .github/scripts/wait-for-ecr-image.sh "${STACK_NAME}"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run python scripts/ensure_ecr_promotion.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --receipt-output "promotion-receipt-${STACK_NAME}.json" --github-output "$GITHUB_OUTPUT" --dispatch-if-missing --github-repository "$GITHUB_REPOSITORY" --workflow ci.yml --workflow-ref main
+
+      - name: Upload promotion receipt (AWS)
+        if: always() && !startsWith(github.event.inputs.environment, 'gcp-')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: promotion-receipt-${{ github.event.inputs.environment }}
+          path: infra/promotion-receipt-${{ github.event.inputs.environment }}.json
+          if-no-files-found: ignore
 
       - name: Detect AWS public-endpoint refresh need
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
@@ -1135,3 +1222,30 @@ jobs:
           stack-name: ${{ github.event.inputs.environment }}
           work-dir: infra/gcp
           diff: true
+
+      - name: Complete GitHub deployment record (manual)
+        if: always() && steps.github_deployment.outputs.deployment_id != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.github_deployment.outputs.deployment_id }}
+          STACK_NAME: ${{ github.event.inputs.environment }}
+          JOB_STATUS: ${{ job.status }}
+          GRAPH_HEALTH_DEGRADED: ${{ steps.deployment_health_manual_aws.outputs.graph_health_degraded }}
+          GRAPH_HEALTH_DEGRADATION_CATEGORY: ${{ steps.deployment_health_manual_aws.outputs.graph_health_degradation_category }}
+          SOURCE_RUNTIME_DEGRADED: ${{ steps.deployment_health_manual_aws.outputs.source_runtime_degraded }}
+        run: |
+          state=success
+          description="${STACK_NAME} deploy succeeded"
+          if [ "${JOB_STATUS}" != "success" ]; then
+            state=failure
+            description="${STACK_NAME} deploy ${JOB_STATUS}"
+          else
+            if [ "${GRAPH_HEALTH_DEGRADED}" = "true" ]; then
+              description="${description}; graph health degraded (${GRAPH_HEALTH_DEGRADATION_CATEGORY:-unknown})"
+            fi
+            if [ "${SOURCE_RUNTIME_DEGRADED}" = "true" ]; then
+              description="${description}; source runtime degraded"
+            fi
+          fi
+          .github/scripts/github-deployment-status.sh status "${DEPLOYMENT_ID}" "${STACK_NAME}" "${state}" "${description}"
