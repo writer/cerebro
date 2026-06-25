@@ -3035,6 +3035,32 @@ paths:
       responses:
         '200':
           description: Generated YAML preview plus live evidence packet for the generated profile.
+  /grc/evidence-packets:
+    get:
+      summary: Packaged evidence workflow records for a compliance profile
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: profile
+          in: query
+          schema:
+            type: string
+          description: Built-in compliance profile ID. Defaults to soc2-security-core.
+        - name: framework
+          in: query
+          schema:
+            type: string
+          description: Optional framework name or ID filter.
+        - name: control
+          in: query
+          schema:
+            type: string
+          description: Optional control ID filter.
+      responses:
+        '200':
+          description: Audit-ready program, framework, control, request, packet, review, activity, export, and snapshot records assembled from live evidence.
   /grc/control-packets/detail:
     get:
       summary: GRC control evidence detail for one control

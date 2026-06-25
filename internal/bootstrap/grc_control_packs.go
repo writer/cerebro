@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/evidencepackets"
 	"github.com/writer/cerebro/internal/grccontrol"
 )
 
@@ -57,6 +58,15 @@ func (a *App) handleGRCControlEvidencePacket(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeGRCControlPacketJSON(w, result)
+}
+
+func (a *App) handleGRCEvidencePackets(w http.ResponseWriter, r *http.Request) {
+	result, err := a.buildGRCControlEvidencePacket(r)
+	if err != nil {
+		writeGRCControlPacketError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, evidencepackets.Build(result))
 }
 
 func (a *App) handleGRCControlEvidencePacketDetail(w http.ResponseWriter, r *http.Request) {
