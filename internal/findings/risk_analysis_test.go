@@ -493,6 +493,52 @@ func TestBuildFindingActionCandidatesUsesIndependentLimitAndRankOrder(t *testing
 	}
 }
 
+func TestAnalyzeFindingExposureUsesIndependentCorrelationAndAttackPathLimits(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	resourceURN := "urn:cerebro:writer:aws_secret_store:prod-secrets"
+	publicExposure := compoundRiskFinding("cloud-public", cloudPublicResourceExposureRuleID, "HIGH", "admin@example.com", "writer/cerebro", resourceURN, "public_network_ingress")
+	publicExposure.RuntimeID = "writer-cloud"
+	publicExposure.FirstObservedAt = base
+	publicExposure.LastObservedAt = base
+	publicExposure.EventIDs = []string{"event-public"}
+	publicExposure.Attributes["rule_source_id"] = "cloud"
+	publicExposure.Attributes["internet_exposed"] = "true"
+
+	privilegePath := compoundRiskFinding("cloud-privilege", cloudPrivilegePathGrantedRuleID, "HIGH", "admin@example.com", "writer/cerebro", resourceURN, "privilege_path_granted")
+	privilegePath.RuntimeID = "writer-cloud"
+	privilegePath.FirstObservedAt = base.Add(15 * time.Minute)
+	privilegePath.LastObservedAt = privilegePath.FirstObservedAt
+	privilegePath.EventIDs = []string{"event-privilege"}
+	privilegePath.Attributes["rule_source_id"] = "cloud"
+	privilegePath.Attributes["privileged"] = "true"
+
+	report := AnalyzeFindingExposure([]*ports.FindingRecord{publicExposure, privilegePath}, FindingExposureAnalysisOptions{
+		Limit:             1,
+		CorrelationLimit:  2,
+		AttackPathLimit:   2,
+		CorrelationWindow: time.Hour,
+		GraphNeighborhoods: map[string]*ports.EntityNeighborhood{
+			"cloud": {
+				Root: &ports.NeighborhoodNode{URN: resourceURN, EntityType: "aws.secret_store", Label: "prod-secrets"},
+				Neighbors: []*ports.NeighborhoodNode{
+					{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+					{URN: "urn:cerebro:writer:aws_role:admin", EntityType: "aws.role", Label: "admin"},
+				},
+				Relations: []*ports.NeighborhoodRelation{
+					{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: resourceURN},
+					{FromURN: "urn:cerebro:writer:aws_role:admin", Relation: "can_admin", ToURN: resourceURN},
+				},
+			},
+		},
+	})
+	if got := len(report.Correlations); got != 2 {
+		t.Fatalf("len(Correlations) = %d, want correlation limit to override global limit", got)
+	}
+	if got := len(report.AttackPaths); got != 2 {
+		t.Fatalf("len(AttackPaths) = %d, want attack path limit to override global limit", got)
+	}
+}
+
 func TestAnalyzeFindingExposureBuildsActionCandidatesBeforeApplyingOutputLimit(t *testing.T) {
 	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	noTargetFindings := []*ports.FindingRecord{
