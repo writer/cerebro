@@ -8,6 +8,10 @@ emitted_kinds:
   - grc.policy
   - grc.document
   - grc.contract
+  - grc.security_review
+  - grc.security_questionnaire
+  - grc.penetration_test
+  - grc.assurance_document
   - grc.regulatory_notification
   - grc.recovery_objective
   - grc.authorization_package
@@ -48,6 +52,22 @@ event_contracts:
       - family
   - kind: grc.contract
     schema_ref: grc/contract/v1
+    required_attributes:
+      - family
+  - kind: grc.security_review
+    schema_ref: grc/security_review/v1
+    required_attributes:
+      - family
+  - kind: grc.security_questionnaire
+    schema_ref: grc/security_questionnaire/v1
+    required_attributes:
+      - family
+  - kind: grc.penetration_test
+    schema_ref: grc/penetration_test/v1
+    required_attributes:
+      - family
+  - kind: grc.assurance_document
+    schema_ref: grc/assurance_document/v1
     required_attributes:
       - family
   - kind: grc.regulatory_notification
@@ -162,6 +182,38 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+    - id: security_reviews
+      type: lifecycle_state
+      title: Security review status
+      families: [security_review]
+      support: supported
+      high_value: true
+      evidence_types: [third_party_risk, security_review]
+      control_domains: [vendor_risk]
+    - id: security_questionnaires
+      type: lifecycle_state
+      title: Security questionnaire status
+      families: [security_questionnaire]
+      support: supported
+      high_value: true
+      evidence_types: [questionnaire_response, assurance_package]
+      control_domains: [customer_assurance, compliance_operations]
+    - id: penetration_tests
+      type: lifecycle_state
+      title: Penetration test status
+      families: [penetration_test]
+      support: supported
+      high_value: true
+      evidence_types: [penetration_test, vulnerability_management]
+      control_domains: [vulnerability_management, security_operations]
+    - id: assurance_documents
+      type: entity_family
+      title: Uploaded assurance documents
+      families: [assurance_document]
+      support: supported
+      high_value: true
+      evidence_types: [assurance_package, policy_document, source_snapshot]
+      control_domains: [customer_assurance, compliance_operations]
     - id: regulatory_notifications
       type: lifecycle_state
       title: Regulatory notification status

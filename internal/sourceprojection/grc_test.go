@@ -28,6 +28,188 @@ func (r *endpointCheckingGraphRecorder) UpsertProjectedLink(ctx context.Context,
 	return r.projectionRecorder.UpsertProjectedLink(ctx, link)
 }
 
+func TestProjectGRCSecurityReviewLinksVendorAccountOwnerControlsEvidenceAndQuestionnaire(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-security-review-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.security_review",
+		Attributes: map[string]string{
+			"provider":                  "grc",
+			"security_review_id":        "review-1",
+			"title":                     "Acme annual review",
+			"vendor_id":                 "vendor-1",
+			"customer_trust_account_id": "account-1",
+			"owner_id":                  "user-1",
+			"control_ids":               "control-1",
+			"evidence_id":               "evidence-1",
+			"evidence_type":             "security_review",
+			"security_questionnaire_id": "questionnaire-1",
+			"review_type":               "annual",
+			"risk_level":                "HIGH",
+			"status":                    "complete",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	reviewURN := "urn:cerebro:writer:security_review:grc:review-1"
+	vendorURN := "urn:cerebro:writer:vendor:grc:vendor-1"
+	accountURN := "urn:cerebro:writer:customer_trust_account:grc:account-1"
+	ownerURN := "urn:cerebro:writer:user:grc:user-1"
+	controlURN := "urn:cerebro:writer:policy:grc:control:control-1"
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:evidence-1"
+	questionnaireURN := "urn:cerebro:writer:security_questionnaire:grc:questionnaire-1"
+	riskTagURN := "urn:cerebro:writer:asset_tag:security_review:high"
+	if entity := state.entities[reviewURN]; entity == nil || entity.EntityType != "security.review" {
+		t.Fatalf("security review entity missing: %#v", entity)
+	}
+	assertProjectedLink(t, state, reviewURN, relationAssociatedWith, vendorURN)
+	assertProjectedLink(t, state, reviewURN, relationAssociatedWith, accountURN)
+	assertProjectedLink(t, state, reviewURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, reviewURN, relationSupports, controlURN)
+	assertProjectedLink(t, state, reviewURN, relationHasEvidence, evidenceURN)
+	assertProjectedLink(t, state, reviewURN, relationAssociatedWith, questionnaireURN)
+	assertProjectedLink(t, state, reviewURN, relationTaggedAs, riskTagURN)
+}
+
+func TestProjectGRCSecurityQuestionnaireLinksAccountControlsEvidenceAndDocument(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-security-questionnaire-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.security_questionnaire",
+		Attributes: map[string]string{
+			"provider":                  "grc",
+			"security_questionnaire_id": "questionnaire-1",
+			"customer_trust_account_id": "account-1",
+			"owner_id":                  "user-1",
+			"control_ids":               "control-1,control-2",
+			"evidence_cas_uri":          "evidencecas://questionnaires/questionnaire-1",
+			"document_id":               "document-1",
+			"questionnaire_type":        "customer_assurance",
+			"status":                    "submitted",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	questionnaireURN := "urn:cerebro:writer:security_questionnaire:grc:questionnaire-1"
+	accountURN := "urn:cerebro:writer:customer_trust_account:grc:account-1"
+	ownerURN := "urn:cerebro:writer:user:grc:user-1"
+	firstControlURN := "urn:cerebro:writer:policy:grc:control:control-1"
+	secondControlURN := "urn:cerebro:writer:policy:grc:control:control-2"
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:evidencecas_questionnaires_questionnaire_1"
+	documentURN := "urn:cerebro:writer:assurance_document:grc:document-1"
+	assertProjectedLink(t, state, questionnaireURN, relationAssociatedWith, accountURN)
+	assertProjectedLink(t, state, questionnaireURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, questionnaireURN, relationSupports, firstControlURN)
+	assertProjectedLink(t, state, questionnaireURN, relationSupports, secondControlURN)
+	assertProjectedLink(t, state, questionnaireURN, relationHasEvidence, evidenceURN)
+	assertProjectedLink(t, state, questionnaireURN, relationAssociatedWith, documentURN)
+}
+
+func TestProjectGRCPenetrationTestLinksTargetControlsFindingsAndVulnerabilities(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-penetration-test-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.penetration_test",
+		Attributes: map[string]string{
+			"provider":            "grc",
+			"penetration_test_id": "pentest-1",
+			"title":               "External network assessment",
+			"target_id":           "edge-api",
+			"target_type":         "service",
+			"control_ids":         "control-1",
+			"finding_ids":         "finding-1,finding-2",
+			"vulnerability_ids":   "vuln-1",
+			"evidence_id":         "pentest-evidence-1",
+			"test_type":           "external",
+			"status":              "complete",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	testURN := "urn:cerebro:writer:penetration_test:grc:pentest-1"
+	targetURN := "urn:cerebro:writer:grc_target:grc:edge-api"
+	controlURN := "urn:cerebro:writer:policy:grc:control:control-1"
+	firstFindingURN := "urn:cerebro:writer:finding:finding-1"
+	secondFindingURN := "urn:cerebro:writer:finding:finding-2"
+	vulnerabilityURN := "urn:cerebro:writer:grc_vulnerability:grc:vuln-1"
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:pentest-evidence-1"
+	if entity := state.entities[testURN]; entity == nil || entity.EntityType != "penetration.test" {
+		t.Fatalf("penetration test entity missing: %#v", entity)
+	}
+	assertProjectedLink(t, state, testURN, relationTargeted, targetURN)
+	assertProjectedLink(t, state, testURN, relationSupports, controlURN)
+	assertProjectedLink(t, state, testURN, relationAssociatedWith, firstFindingURN)
+	assertProjectedLink(t, state, testURN, relationAssociatedWith, secondFindingURN)
+	assertProjectedLink(t, state, testURN, relationAssociatedWith, vulnerabilityURN)
+	assertProjectedLink(t, state, testURN, relationHasEvidence, evidenceURN)
+}
+
+func TestProjectGRCAssuranceDocumentLinksUploadHostVendorControlsAndReview(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-assurance-document-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.assurance_document",
+		Attributes: map[string]string{
+			"provider":              "grc",
+			"assurance_document_id": "document-1",
+			"title":                 "SOC 2 report",
+			"document_type":         "SOC 2",
+			"vendor_id":             "vendor-1",
+			"uploaded_by_user_id":   "user-1",
+			"control_ids":           "control-1",
+			"security_review_id":    "review-1",
+			"evidence_id":           "document-evidence-1",
+			"url":                   "https://trust.writer.com/reports/soc-2",
+			"status":                "approved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	documentURN := "urn:cerebro:writer:assurance_document:grc:document-1"
+	hostURN := "urn:cerebro:writer:internet_host:trust.writer.com"
+	vendorURN := "urn:cerebro:writer:vendor:grc:vendor-1"
+	userURN := "urn:cerebro:writer:user:grc:user-1"
+	controlURN := "urn:cerebro:writer:policy:grc:control:control-1"
+	reviewURN := "urn:cerebro:writer:security_review:grc:review-1"
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:document-evidence-1"
+	typeTagURN := "urn:cerebro:writer:asset_tag:assurance_document:soc_2"
+	if entity := state.entities[documentURN]; entity == nil || entity.EntityType != "assurance.document" {
+		t.Fatalf("assurance document entity missing: %#v", entity)
+	}
+	assertProjectedLink(t, state, documentURN, relationHasIdentifier, hostURN)
+	assertProjectedLink(t, state, documentURN, relationAssociatedWith, vendorURN)
+	assertProjectedLink(t, state, documentURN, relationOwnedBy, userURN)
+	assertProjectedLink(t, state, userURN, relationActedOn, documentURN)
+	assertProjectedLink(t, state, documentURN, relationSupports, controlURN)
+	assertProjectedLink(t, state, documentURN, relationAssociatedWith, reviewURN)
+	assertProjectedLink(t, state, documentURN, relationHasEvidence, evidenceURN)
+	assertProjectedLink(t, state, documentURN, relationTaggedAs, typeTagURN)
+}
+
 func TestProjectGRCVendorWithOwner(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
