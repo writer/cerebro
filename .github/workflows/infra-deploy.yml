@@ -109,7 +109,7 @@ jobs:
             aws_go_prod_deploy=true
             gcp=true
           fi
-          if grep -Ev '^infra/scripts/(verify_(graph_health|source_runtime)_ecs|run_aws_deploy_verifications|download_graph_health_artifact|plan_aws_deploy_verifications|validate_stack_config|validate_otel_collector_config_runtime)\.py$|^infra/tests/test_(verify_(graph_health|source_runtime)_ecs|run_aws_deploy_verifications|download_graph_health_artifact|plan_aws_deploy_verifications|validate_stack_config|validate_otel_collector_config_runtime|propose_(image_tag|web_image_tag)_workflow)\.py$' changed.txt | grep -Eq '^infra/scripts/|^infra/tests/'; then
+          if grep -Ev '^infra/scripts/(verify_(graph_health|source_runtime)_ecs|run_aws_deploy_verifications|download_graph_health_artifact|plan_aws_deploy_verifications|validate_stack_config|validate_otel_collector_config_runtime)\.py$|^infra/tests/test_(verify_(graph_health|source_runtime)_ecs|run_aws_deploy_verifications|download_graph_health_artifact|plan_aws_deploy_verifications|validate_stack_config|validate_otel_collector_config_runtime|propose_(image_tag|web_image_tag)_workflow|ci_workflow)\.py$' changed.txt | grep -Eq '^infra/scripts/|^infra/tests/'; then
             aws_sec_dev_deploy=true
             aws_go_prod_deploy=true
             gcp=true
