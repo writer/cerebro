@@ -117,6 +117,34 @@ func TestProjectGRCSecurityQuestionnaireLinksAccountControlsEvidenceAndDocument(
 	assertProjectedLink(t, state, questionnaireURN, relationAssociatedWith, documentURN)
 }
 
+func TestProjectGRCSecurityReviewDocumentIDDoesNotCreateAssuranceDocumentLink(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-security-review-ambiguous-document",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.security_review",
+		Attributes: map[string]string{
+			"provider":           "grc",
+			"security_review_id": "review-1",
+			"document_id":        "document-1",
+			"status":             "complete",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	reviewURN := "urn:cerebro:writer:security_review:grc:review-1"
+	documentURN := "urn:cerebro:writer:assurance_document:grc:document-1"
+	assertProjectedLinkMissing(t, state, reviewURN, relationAssociatedWith, documentURN)
+	if entity := state.entities[documentURN]; entity != nil {
+		t.Fatalf("assurance document entity was created from ambiguous document_id: %#v", entity)
+	}
+}
+
 func TestProjectGRCPenetrationTestLinksTargetControlsFindingsAndVulnerabilities(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

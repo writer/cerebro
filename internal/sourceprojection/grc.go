@@ -1981,6 +1981,22 @@ type grcRelatedAssuranceArtifactRef struct {
 	matchType  string
 }
 
+func (ref grcRelatedAssuranceArtifactRef) candidateIDAttrs(currentURNType string) []string {
+	if ref.urnType == "assurance_document" && currentURNType == "security_questionnaire" {
+		return append(ref.idAttrs, "document_id", "upload_id")
+	}
+	return ref.idAttrs
+}
+
+func firstGRCAttributeMatch(attrs map[string]string, keys ...string) (string, string) {
+	for _, key := range keys {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			return key, value
+		}
+	}
+	return "", ""
+}
+
 func addGRCRelatedAssuranceArtifactLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, attrs map[string]string, currentURNType string) {
 	if strings.TrimSpace(fromURN) == "" {
 		return
@@ -2011,7 +2027,7 @@ func addGRCRelatedAssuranceArtifactLinks(entities map[string]*ports.ProjectedEnt
 			urnType:    "assurance_document",
 			entityType: "assurance.document",
 			idAttr:     "assurance_document_id",
-			idAttrs:    []string{"related_assurance_document_id", "assurance_document_id", "document_id", "upload_id"},
+			idAttrs:    []string{"related_assurance_document_id", "assurance_document_id"},
 			matchType:  "grc_related_assurance_document",
 		},
 	}
@@ -2019,7 +2035,7 @@ func addGRCRelatedAssuranceArtifactLinks(entities map[string]*ports.ProjectedEnt
 		if ref.urnType == currentURNType {
 			continue
 		}
-		relatedID := firstAttribute(attrs, ref.idAttrs...)
+		sourceReference, relatedID := firstGRCAttributeMatch(attrs, ref.candidateIDAttrs(currentURNType)...)
 		if relatedID == "" {
 			continue
 		}
@@ -2040,7 +2056,7 @@ func addGRCRelatedAssuranceArtifactLinks(entities map[string]*ports.ProjectedEnt
 			"match_type":       ref.matchType,
 			"related_id":       relatedID,
 			"related_family":   ref.urnType,
-			"source_reference": ref.idAttr,
+			"source_reference": sourceReference,
 		}))
 	}
 }
