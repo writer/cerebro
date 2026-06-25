@@ -131,6 +131,20 @@ func TestProjectEventRejectsSensitiveURNWithBenignDeclaredType(t *testing.T) {
 	}
 }
 
+func TestProjectEventRejectsAttestedURNDeclaredTypeMismatchForNonSensitiveType(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:attested:okta.user:tok_abc",
+			EntityType: "data.classification",
+			Label:      "tok_abc",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want attested URN declared type mismatch rejection")
+	}
+}
+
 func TestProjectEventRejectsUnknownEntityTypeRawURN(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

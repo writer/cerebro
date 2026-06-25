@@ -86,6 +86,9 @@ func projectEntity(tenantID string, sourceID string, entity Entity) (*ports.Proj
 	if !tenantScopedURN(tenantID, urn) {
 		return nil, fmt.Errorf("attested compute entity urn %q is outside tenant scope", urn)
 	}
+	if attestedURN(tenantID, urn) && !attestedURNForEntity(tenantID, urn, entityType) {
+		return nil, fmt.Errorf("attested compute entity urn %q must match declared entity type %q", urn, entityType)
+	}
 	if sensitiveEntityType(entityType) && !attestedURNForEntity(tenantID, urn, entityType) {
 		return nil, fmt.Errorf("attested compute sensitive entity %q must use an attested token urn", entityType)
 	}
