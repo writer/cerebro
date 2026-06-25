@@ -10,6 +10,10 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
+from tests.pulumi_test_runtime import ensure_event_loop
+
+
+ensure_event_loop()
 
 spec = importlib.util.spec_from_file_location("resilience", Path(__file__).resolve().parents[1] / "aws" / "resilience.py")
 resilience = importlib.util.module_from_spec(spec)
