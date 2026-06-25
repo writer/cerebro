@@ -33,18 +33,24 @@ coverage_contract:
       families: [fact]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: messages
       type: audit_event
       title: Message exports
       families: [message]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: sessions
       type: entity_family
       title: Memory sessions
       families: [session]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: survey_feedback
       type: entity_family
       title: Survey feedback

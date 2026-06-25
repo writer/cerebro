@@ -38,36 +38,48 @@ coverage_contract:
       families: [site]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: scans
       type: lifecycle_state
       title: Scan lifecycle state
       families: [scan]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: vulnerabilities
       type: entity_family
       title: Vulnerabilities
       families: [vulnerability]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: assets
       type: entity_family
       title: Attack-surface assets
       families: [asset]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dns_alerts
       type: entity_family
       title: DNS alerts
       families: [dns_alert]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: remediation_state
       type: remediation_state
       title: Vulnerability remediation lifecycle state
       families: [vulnerability, dns_alert]
       support: partial
       high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:

@@ -92,6 +92,8 @@ coverage_contract:
       title: Incremental cursor sync
       support: partial
       high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
       known_unsupported_fields:
         - org inventory snapshot deltas
     - id: organization_members
@@ -100,6 +102,8 @@ coverage_contract:
       families: [org_inventory]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: pull_requests
       type: lifecycle_state
       title: Pull request lifecycle

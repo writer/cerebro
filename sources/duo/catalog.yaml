@@ -18,24 +18,32 @@ coverage_contract:
       families: [endpoint]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: groups
       type: entity_family
       title: Groups
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: mfa_devices
       type: entity_family
       title: MFA phones, hardware tokens, and WebAuthn credentials
       families: [phone, token, web_authn_credential]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users
       type: entity_family
       title: Users
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: duo.user
     schema_ref: duo/user/v1

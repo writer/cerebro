@@ -19,42 +19,56 @@ coverage_contract:
       families: [grant]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: devices
       type: entity_family
       title: Devices
       families: [device]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: groups
       type: relationship
       title: ACL groups
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: services
       type: entity_family
       title: Services
       families: [service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: tag_owners
       type: app_entitlement
       title: Tag owners
       families: [tag]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: tailnet
       type: entity_family
       title: Tailnet settings
       families: [tailnet]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users
       type: entity_family
       title: Users
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: tailscale.tailnet
     schema_ref: tailscale/tailnet/v1

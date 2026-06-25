@@ -414,23 +414,24 @@ func checkSourceCatalogsWithControlCatalog(root string, controlCatalog *complian
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}
+		var runtimeCatalog struct {
+			RuntimeFamilies  []string                    `yaml:"runtime_families"`
+			CoverageContract *sourcecdk.CoverageContract `yaml:"coverage_contract"`
+		}
+		if err := yaml.Unmarshal(content, &runtimeCatalog); err != nil {
+			issues = append(issues, issue{path: rel, message: "unmarshal source catalog fields: " + err.Error()})
+			return nil
+		}
 		catalog, err := sourcecdk.LoadSourceCatalog(content)
 		if err != nil {
 			issues = append(issues, issue{path: rel, message: err.Error()})
-			return nil
-		}
-		var runtimeCatalog struct {
-			RuntimeFamilies []string `yaml:"runtime_families"`
-		}
-		if err := yaml.Unmarshal(content, &runtimeCatalog); err != nil {
-			issues = append(issues, issue{path: rel, message: "unmarshal runtime families: " + err.Error()})
 			return nil
 		}
 		spec := catalog.Spec
 		if catalog.CoverageContract == nil {
 			issues = append(issues, issue{path: rel, message: "coverage_contract is required for built-in sources"})
 		} else {
-			issues = append(issues, validateSourceCoverageDeepContract(rel, catalog.CoverageContract, controlCatalog)...)
+			issues = append(issues, validateSourceCoverageDeepContract(rel, runtimeCatalog.CoverageContract, controlCatalog)...)
 		}
 		if spec.GetId() != "sdk" && len(spec.GetEmittedKinds()) == 0 {
 			issues = append(issues, issue{path: rel, message: "emitted_kinds is required for built-in pull sources"})
@@ -470,7 +471,7 @@ func validateSourceCoverageDeepContract(path string, contract *sourcecdk.Coverag
 			continue
 		}
 		prefix := fmt.Sprintf("coverage_contract dimension %q", dimension.ID)
-		switch dimension.Support {
+		switch strings.ToLower(strings.TrimSpace(dimension.Support)) {
 		case sourcecdk.CoverageSupportSupported, sourcecdk.CoverageSupportPartial:
 			if len(dimension.EvidenceTypes) == 0 {
 				issues = append(issues, issue{path: path, message: prefix + " must declare evidence_types"})

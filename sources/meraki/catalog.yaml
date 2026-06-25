@@ -25,6 +25,8 @@ coverage_contract:
       families: [eventtype]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: organization
@@ -33,6 +35,8 @@ coverage_contract:
       families: [organization]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: merakiauthuser
@@ -41,6 +45,8 @@ coverage_contract:
       families: [merakiauthuser]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: accesspolicy
@@ -49,6 +55,8 @@ coverage_contract:
       families: [accesspolicy]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

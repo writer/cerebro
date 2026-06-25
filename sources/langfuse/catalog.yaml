@@ -22,18 +22,24 @@ coverage_contract:
       families: [project]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users_and_access
       type: app_entitlement
       title: Project memberships and project API keys
       families: [project_member, api_key]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: observability_activity
       type: audit_event
       title: Traces, observations, scores, sessions, metrics, prompts, and annotation queues
       families: [trace, observation, score, prompt, session, metric, annotation_queue]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
 event_contracts:
   - kind: langfuse.project
     schema_ref: langfuse/project/v1

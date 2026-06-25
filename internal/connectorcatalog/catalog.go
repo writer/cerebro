@@ -222,6 +222,7 @@ func analyzeEntries(raw []loadedEntry, options Options) Analysis {
 		if declared == "" {
 			analysis.Issues = append(analysis.Issues, Issue{Path: path, Message: "classifier_output is required"})
 		}
+		analysis.Issues = append(analysis.Issues, proofGateIssues(path, loaded.entry.Definition)...)
 		definition, err := connectordefinitions.Normalize(loaded.entry.Definition)
 		if err != nil {
 			analysis.Issues = append(analysis.Issues, Issue{Path: path, Message: "normalize definition: " + err.Error()})
@@ -256,7 +257,6 @@ func analyzeEntries(raw []loadedEntry, options Options) Analysis {
 		if overlap := intersect(report.SupportedFeatures, report.MissingFeatures); len(overlap) != 0 {
 			analysis.Issues = append(analysis.Issues, Issue{Path: path, Message: "classifier report has contradictory supported and missing features: " + strings.Join(overlap, ", ")})
 		}
-		analysis.Issues = append(analysis.Issues, proofGateIssues(path, definition)...)
 		if options.DryRunSourcegen && report.Verdict == connectordefinitions.SupportVerdictSupported {
 			entry.SourcegenDryRun = true
 			if _, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{Definition: definition, OutputDir: ".", DryRun: true}); err != nil {
@@ -418,19 +418,20 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 			continue
 		}
 		for _, dimension := range family.Coverage {
+			dimensionID := proofGateDimensionID(family.ID, dimension)
 			if dimension.HighValue {
 				highValue = true
 			}
 			if !dimension.HighValue {
 				continue
 			}
-			switch dimension.Support {
+			switch strings.ToLower(strings.TrimSpace(dimension.Support)) {
 			case "supported", "partial":
 				if len(dimension.EvidenceTypes) == 0 {
-					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare evidence types", family.ID, dimension.ID)})
+					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare evidence types", family.ID, dimensionID)})
 				}
 				if len(dimension.ControlDomains) == 0 {
-					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare control domains", family.ID, dimension.ID)})
+					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare control domains", family.ID, dimensionID)})
 				}
 			}
 		}
@@ -439,6 +440,17 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 		issues = append(issues, Issue{Path: path, Message: "at least one high-value coverage dimension is required"})
 	}
 	return issues
+}
+
+func proofGateDimensionID(familyID string, dimension connectordefinitions.CoverageDimensionSpec) string {
+	if id := strings.TrimSpace(dimension.ID); id != "" {
+		return id
+	}
+	dimensionType := strings.TrimSpace(dimension.Type)
+	if familyID == "" || dimensionType == "" {
+		return ""
+	}
+	return strings.Trim(familyID+"_"+dimensionType, "_")
 }
 
 func verificationPath(definition connectordefinitions.Definition) string {

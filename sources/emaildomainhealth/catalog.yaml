@@ -13,12 +13,16 @@ coverage_contract:
       families: [health]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dns_record_checks
       type: entity_family
       title: SPF, DKIM, DMARC, MX, and related DNS checks
       families: [health]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: remediation_state
       type: remediation_state
       title: Domain remediation lifecycle state

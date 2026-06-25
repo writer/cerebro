@@ -13,12 +13,16 @@ coverage_contract:
       families: [component]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ownership_relationships
       type: relationship
       title: Component ownership relationships
       families: [component]
       support: partial
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
       known_unsupported_fields:
         - non-component catalog ownership entities
         - transitive group membership expansion
@@ -28,6 +32,8 @@ coverage_contract:
       families: [component]
       support: partial
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
       known_unsupported_fields:
         - provider-specific runtime inventory expansion
 event_contracts:

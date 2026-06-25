@@ -16,24 +16,32 @@ coverage_contract:
       families: [channel]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: teams
       type: entity_family
       title: Teams
       families: [team]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: user_groups
       type: relationship
       title: User groups
       families: [user_group]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: users
       type: entity_family
       title: Users
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: slack.team
     schema_ref: slack/team/v1

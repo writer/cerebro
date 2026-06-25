@@ -13,6 +13,8 @@ coverage_contract:
       families: [definition]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: catalogruntime.definition
     schema_ref: catalogruntime/definition/v1

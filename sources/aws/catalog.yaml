@@ -987,156 +987,208 @@ coverage_contract:
       families: [access_analyzer]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: access_key
       type: entity_family
       title: AWS IAM access keys
       families: [access_key]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: acm_certificate
       type: entity_family
       title: AWS ACM certificates
       families: [acm_certificate]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: asset_metadata
       type: entity_family
       title: AWS asset metadata and data sensitivity
       families: [asset_metadata]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: apigateway_integration
       type: entity_family
       title: AWS API Gateway integrations
       families: [apigateway_integration]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: apigateway_route
       type: entity_family
       title: AWS API Gateway routes
       families: [apigateway_route]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: apigateway_stage
       type: entity_family
       title: AWS API Gateway stages
       families: [apigateway_stage]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: apprunner_service
       type: entity_family
       title: AWS App Runner services
       families: [apprunner_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: athena_data_catalog
       type: entity_family
       title: AWS Athena data catalogs
       families: [athena_data_catalog]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: athena_workgroup
       type: entity_family
       title: AWS Athena workgroups
       families: [athena_workgroup]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: apigateway_method
       type: entity_family
       title: AWS API Gateway methods
       families: [apigateway_method]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: apigateway_rest_api
       type: entity_family
       title: AWS API Gateway REST APIs
       families: [apigateway_rest_api]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: appsync_graphql_api
       type: entity_family
       title: AWS AppSync GraphQL APIs
       families: [appsync_graphql_api]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: backup_vault
       type: entity_family
       title: AWS Backup vaults
       families: [backup_vault]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: backup_plan
       type: entity_family
       title: AWS Backup plans
       families: [backup_plan]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: backup_protected_resource
       type: entity_family
       title: AWS Backup protected resources
       families: [backup_protected_resource]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: backup_recovery_point
       type: entity_family
       title: AWS Backup recovery points
       families: [backup_recovery_point]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: batch_compute_environment
       type: entity_family
       title: AWS Batch compute environments
       families: [batch_compute_environment]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: batch_job_queue
       type: entity_family
       title: AWS Batch job queues
       families: [batch_job_queue]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: bedrock_custom_model
       type: entity_family
       title: Amazon Bedrock custom models
       families: [bedrock_custom_model]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: bedrock_provisioned_model_throughput
       type: entity_family
       title: Amazon Bedrock provisioned model throughput
       families: [bedrock_provisioned_model_throughput]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudfront_distribution
       type: entity_family
       title: AWS CloudFront distributions
       families: [cloudfront_distribution]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudfront_key_group
       type: entity_family
       title: AWS CloudFront key groups
       families: [cloudfront_key_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudfront_origin_access_control
       type: entity_family
       title: AWS CloudFront origin access controls
       families: [cloudfront_origin_access_control]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudfront_public_key
       type: entity_family
       title: AWS CloudFront public keys
       families: [cloudfront_public_key]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudfront_response_headers_policy
       type: entity_family
       title: AWS CloudFront response headers policies
       families: [cloudfront_response_headers_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudtrail
       type: audit_event
       title: AWS CloudTrail trails and events
@@ -1158,24 +1210,32 @@ coverage_contract:
       families: [cloudwatch_alarm]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloudwatch_log_group
       type: entity_family
       title: AWS CloudWatch log groups
       families: [cloudwatch_log_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: codebuild_project
       type: entity_family
       title: AWS CodeBuild projects
       families: [codebuild_project]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: codebuild_source_credential
       type: entity_family
       title: AWS CodeBuild source credentials
       families: [codebuild_source_credential]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: config_recorder
       type: entity_family
       title: AWS Config recorders
@@ -1210,198 +1270,264 @@ coverage_contract:
       families: [datasync_location]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: datasync_task
       type: entity_family
       title: AWS DataSync tasks
       families: [datasync_task]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: docdb_cluster
       type: entity_family
       title: AWS DocumentDB clusters
       families: [docdb_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: docdb_instance
       type: entity_family
       title: AWS DocumentDB instances
       families: [docdb_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dynamodb_backup
       type: entity_family
       title: AWS DynamoDB backups
       families: [dynamodb_backup]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dynamodb_stream
       type: entity_family
       title: AWS DynamoDB streams
       families: [dynamodb_stream]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dynamodb_table
       type: entity_family
       title: AWS DynamoDB tables
       families: [dynamodb_table]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ebs_snapshot
       type: entity_family
       title: AWS EBS snapshots
       families: [ebs_snapshot]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ebs_volume
       type: entity_family
       title: AWS EBS volumes
       families: [ebs_volume]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ec2_ami
       type: entity_family
       title: AWS EC2 AMIs
       families: [ec2_ami]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ec2_ebs_encryption_by_default
       type: entity_family
       title: AWS EC2 EBS encryption by default
       families: [ec2_ebs_encryption_by_default]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ec2_instance
       type: entity_family
       title: AWS EC2 instances
       families: [ec2_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ecr_public_repository
       type: entity_family
       title: AWS ECR public repositories
       families: [ecr_public_repository]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ecr_repository
       type: entity_family
       title: AWS ECR repositories
       families: [ecr_repository]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ecs_service
       type: entity_family
       title: AWS ECS services
       families: [ecs_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ecs_task
       type: entity_family
       title: AWS ECS tasks
       families: [ecs_task]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ecs_task_definition
       type: entity_family
       title: AWS ECS task definitions
       families: [ecs_task_definition]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: efs_file_system
       type: entity_family
       title: AWS EFS file systems
       families: [efs_file_system]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: efs_access_point
       type: entity_family
       title: AWS EFS access points
       families: [efs_access_point]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: efs_mount_target
       type: entity_family
       title: AWS EFS mount targets
       families: [efs_mount_target]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eks_cluster
       type: entity_family
       title: AWS EKS clusters
       families: [eks_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eks_fargate_profile
       type: entity_family
       title: AWS EKS Fargate profiles
       families: [eks_fargate_profile]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eks_node
       type: entity_family
       title: AWS EKS nodes
       families: [ec2_instance, eks_nodegroup]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eks_nodegroup
       type: entity_family
       title: AWS EKS node groups
       families: [eks_nodegroup]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eks_pod_identity_association
       type: relationship
       title: AWS EKS pod identity associations
       families: [eks_pod_identity_association]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: elasticache_cluster
       type: entity_family
       title: AWS ElastiCache clusters
       families: [elasticache_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: elasticache_replication_group
       type: entity_family
       title: AWS ElastiCache replication groups
       families: [elasticache_replication_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: elasticache_subnet_group
       type: entity_family
       title: AWS ElastiCache subnet groups
       families: [elasticache_subnet_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: elbv2_listener
       type: entity_family
       title: AWS ELBv2 listeners
       families: [elbv2_listener]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: elbv2_load_balancer
       type: entity_family
       title: AWS ELBv2 load balancers
       families: [elbv2_load_balancer]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: elbv2_target_group
       type: entity_family
       title: AWS ELBv2 target groups
       families: [elbv2_target_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: fargate_service
       type: entity_family
       title: AWS Fargate services and tasks
       families: [ecs_service, ecs_task, ecs_task_definition]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: guardduty_detector
       type: entity_family
       title: AWS GuardDuty detectors
       families: [guardduty_detector]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: guardduty_finding
       type: entity_family
       title: AWS GuardDuty findings
@@ -1423,24 +1549,32 @@ coverage_contract:
       families: [eventbridge_archive]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eventbridge_event_bus
       type: entity_family
       title: AWS EventBridge event buses
       families: [eventbridge_event_bus]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eventbridge_pipe
       type: entity_family
       title: AWS EventBridge pipes
       families: [eventbridge_pipe]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: eventbridge_rule
       type: entity_family
       title: AWS EventBridge rules
       families: [eventbridge_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: effective_permission
       type: app_entitlement
       title: AWS effective IAM permissions
@@ -1462,66 +1596,88 @@ coverage_contract:
       families: [firehose_delivery_stream]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: fsx_file_system
       type: entity_family
       title: AWS FSx file systems
       families: [fsx_file_system]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: globalaccelerator_accelerator
       type: entity_family
       title: AWS Global Accelerator accelerators
       families: [globalaccelerator_accelerator]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: globalaccelerator_endpoint_group
       type: entity_family
       title: AWS Global Accelerator endpoint groups
       families: [globalaccelerator_endpoint_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: globalaccelerator_listener
       type: entity_family
       title: AWS Global Accelerator listeners
       families: [globalaccelerator_listener]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: glue_crawler
       type: entity_family
       title: AWS Glue crawlers
       families: [glue_crawler]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: glue_database
       type: entity_family
       title: AWS Glue databases
       families: [glue_database]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: glue_job
       type: entity_family
       title: AWS Glue jobs
       families: [glue_job]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: glue_table
       type: entity_family
       title: AWS Glue tables
       families: [glue_table]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: iam_account_password_policy
       type: entity_family
       title: AWS IAM account password policy
       families: [iam_account_password_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: iam_account_summary
       type: entity_family
       title: AWS IAM account summary
       families: [iam_account_summary]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: iam_credential_report
       type: entity_family
       title: AWS IAM credential reports
@@ -1541,12 +1697,16 @@ coverage_contract:
       families: [iam_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: iam_group_membership
       type: relationship
       title: AWS IAM group memberships
       families: [iam_group_membership]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: iam_policy
       type: app_entitlement
       title: AWS IAM policies
@@ -1566,6 +1726,8 @@ coverage_contract:
       families: [iam_role]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: iam_role_assignment
       type: app_entitlement
       title: AWS IAM role assignments
@@ -1598,42 +1760,56 @@ coverage_contract:
       families: [iam_saml_provider]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: iam_user
       type: entity_family
       title: AWS IAM users
       families: [iam_user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: identity_center_account_assignment
       type: app_entitlement
       title: AWS IAM Identity Center account assignments
       families: [identity_center_account_assignment, sso_account_assignment]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: identity_center_permission_set
       type: app_entitlement
       title: AWS IAM Identity Center permission sets
       families: [identity_center_permission_set, sso_permission_set]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: identitystore_user
       type: entity_family
       title: AWS Identity Store users
       families: [identitystore_user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: identitystore_group
       type: entity_family
       title: AWS Identity Store groups
       families: [identitystore_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: identitystore_group_membership
       type: relationship
       title: AWS Identity Store group memberships
       families: [identitystore_group_membership]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: inspector2_finding
       type: entity_family
       title: AWS Inspector findings
@@ -1655,12 +1831,16 @@ coverage_contract:
       families: [internet_gateway]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: kinesis_stream
       type: entity_family
       title: AWS Kinesis streams
       families: [kinesis_stream]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: kms_key
       type: entity_family
       title: AWS KMS keys
@@ -1680,108 +1860,144 @@ coverage_contract:
       families: [lakeformation_lf_tag]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: lakeformation_permission
       type: app_entitlement
       title: AWS Lake Formation permissions
       families: [lakeformation_permission]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: lakeformation_resource
       type: entity_family
       title: AWS Lake Formation resources
       families: [lakeformation_resource]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: lambda_function
       type: entity_family
       title: AWS Lambda functions
       families: [lambda_function]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: macie2_finding
       type: entity_family
       title: AWS Macie findings
       families: [macie2_finding]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: msk_cluster
       type: entity_family
       title: AWS MSK clusters
       families: [msk_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: nat_gateway
       type: entity_family
       title: AWS NAT gateways
       families: [nat_gateway]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: neptune_cluster
       type: entity_family
       title: AWS Neptune clusters
       families: [neptune_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: neptune_instance
       type: entity_family
       title: AWS Neptune instances
       families: [neptune_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: network_firewall
       type: entity_family
       title: AWS Network Firewall firewalls
       families: [network_firewall]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: network_acl
       type: entity_family
       title: AWS network ACLs
       families: [network_acl]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: opensearch_domain
       type: entity_family
       title: AWS OpenSearch domains
       families: [opensearch_domain]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: opensearch_serverless_collection
       type: entity_family
       title: AWS OpenSearch Serverless collections
       families: [opensearch_serverless_collection]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: opensearch_serverless_security_policy
       type: entity_family
       title: AWS OpenSearch Serverless security policies
       families: [opensearch_serverless_security_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: organizations_account
       type: entity_family
       title: AWS Organizations accounts
       families: [organizations_account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: organizations_organizational_unit
       type: entity_family
       title: AWS Organizations organizational units
       families: [organizations_organizational_unit]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: organizations_policy
       type: entity_family
       title: AWS Organizations policies
       families: [organizations_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: organizations_root
       type: entity_family
       title: AWS Organizations roots
       families: [organizations_root]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: public_endpoint
       type: entity_family
       title: AWS public endpoints
@@ -1801,18 +2017,24 @@ coverage_contract:
       families: [rds_db_snapshot]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: rds_instance
       type: entity_family
       title: AWS RDS instances
       families: [rds_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: redshift_cluster
       type: entity_family
       title: AWS Redshift clusters
       families: [redshift_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: resource_exposure
       type: relationship
       title: AWS public resource exposure
@@ -1832,18 +2054,24 @@ coverage_contract:
       families: [route53_resolver_endpoint]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: route53_resolver_rule
       type: entity_family
       title: AWS Route 53 Resolver rules
       families: [route53_resolver_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: route_table
       type: entity_family
       title: AWS route tables
       families: [route_table]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: s3_bucket
       type: entity_family
       title: AWS S3 buckets
@@ -1865,18 +2093,24 @@ coverage_contract:
       families: [s3_access_point]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: s3_multi_region_access_point
       type: entity_family
       title: AWS S3 Multi-Region Access Points
       families: [s3_multi_region_access_point]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: s3_object
       type: entity_family
       title: AWS S3 objects
       families: [asset_metadata]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       known_unsupported_fields: [object-level ACLs and content inspection]
     - id: sagemaker_endpoint_configuration
       type: entity_family
@@ -1884,30 +2118,40 @@ coverage_contract:
       families: [sagemaker_endpoint_configuration]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sagemaker_model
       type: entity_family
       title: AWS SageMaker models
       families: [sagemaker_model]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sagemaker_model_package_group
       type: entity_family
       title: AWS SageMaker model package groups
       families: [sagemaker_model_package_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sagemaker_notebook_instance
       type: entity_family
       title: AWS SageMaker notebook instances
       families: [sagemaker_notebook_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sagemaker_training_job
       type: entity_family
       title: AWS SageMaker training jobs
       families: [sagemaker_training_job]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: secret
       type: entity_family
       title: AWS Secrets Manager secrets
@@ -1955,118 +2199,158 @@ coverage_contract:
       families: [scheduler_schedule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: scheduler_schedule_group
       type: entity_family
       title: AWS Scheduler schedule groups
       families: [scheduler_schedule_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sns_topic
       type: entity_family
       title: AWS SNS topics
       families: [sns_topic]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sqs_queue
       type: entity_family
       title: AWS SQS queues
       families: [sqs_queue]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ssm_association
       type: entity_family
       title: AWS Systems Manager associations
       families: [ssm_association]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ssm_document
       type: entity_family
       title: AWS Systems Manager documents
       families: [ssm_document]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ssm_managed_instance
       type: entity_family
       title: AWS Systems Manager managed instances
       families: [ssm_managed_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ssm_parameter
       type: entity_family
       title: AWS Systems Manager parameters
       families: [ssm_parameter]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sso_instance
       type: entity_family
       title: AWS IAM Identity Center instances
       families: [sso_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: stepfunctions_activity
       type: entity_family
       title: AWS Step Functions activities
       families: [stepfunctions_activity]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: stepfunctions_state_machine
       type: entity_family
       title: AWS Step Functions state machines
       families: [stepfunctions_state_machine]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: subnet
       type: entity_family
       title: AWS subnets
       families: [subnet]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: support_role
       type: entity_family
       title: AWS Support incident management role
       families: [iam_role]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpc
       type: entity_family
       title: AWS VPCs
       families: [vpc]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpc_endpoint
       type: entity_family
       title: AWS VPC endpoints
       families: [vpc_endpoint]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpc_flow_log
       type: entity_family
       title: AWS VPC Flow Logs
       families: [vpc_flow_log]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpclattice_listener
       type: entity_family
       title: AWS VPC Lattice listeners
       families: [vpclattice_listener]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpclattice_service
       type: entity_family
       title: AWS VPC Lattice services
       families: [vpclattice_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpclattice_target_group
       type: entity_family
       title: AWS VPC Lattice target groups
       families: [vpclattice_target_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: wafv2_web_acl
       type: entity_family
       title: AWS WAFv2 web ACLs
       families: [wafv2_web_acl]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     # awscollectorgen:coverage-dimensions (insert new dimensions above this line)

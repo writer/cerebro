@@ -28,42 +28,56 @@ coverage_contract:
       families: [access_application, zone_access_application]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: access_groups
       type: app_entitlement
       title: Zero Trust Access groups
       families: [access_group, zone_access_group]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: accounts
       type: entity_family
       title: Accounts
       families: [account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: account_rulesets
       type: entity_family
       title: Account rulesets
       families: [account_ruleset]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: audit_logs
       type: audit_event
       title: Account audit logs
       families: [audit_log]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: dns_records
       type: entity_family
       title: DNS records
       families: [dns_record]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: gateway_rules
       type: entity_family
       title: Zero Trust Gateway rules
       families: [gateway_rule]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       known_unsupported_fields: [inherited parent account rules]
       notes:
         - Configured account Gateway rule metadata, filters, actions, precedence, enabled state, and traffic settings are surfaced.
@@ -73,30 +87,40 @@ coverage_contract:
       families: [load_balancer_pool]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: load_balancers
       type: entity_family
       title: Load balancers
       families: [load_balancer]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: members
       type: app_entitlement
       title: Account members
       families: [member]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: roles
       type: app_entitlement
       title: Account roles
       families: [role]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: worker_scripts
       type: entity_family
       title: Workers scripts
       families: [worker_script]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       known_unsupported_fields: [script content and secret binding values]
       notes:
         - Worker script metadata and binding names/types are surfaced; source code and secret values remain intentionally out of scope.
@@ -106,12 +130,16 @@ coverage_contract:
       families: [zone]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: zone_rulesets
       type: entity_family
       title: Zone rulesets
       families: [zone_ruleset]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: cloudflare.access_application
     schema_ref: cloudflare/access_application/v1

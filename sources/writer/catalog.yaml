@@ -18,36 +18,48 @@ coverage_contract:
       families: [application]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: application_graphs
       type: app_entitlement
       title: Application Knowledge Graph associations
       families: [application_graph]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: application_jobs
       type: lifecycle_state
       title: Async application jobs
       families: [application_job]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: files
       type: entity_family
       title: Uploaded files
       families: [file]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: graphs
       type: entity_family
       title: Knowledge Graphs
       families: [graph]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: models
       type: entity_family
       title: Available models
       families: [model]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: writer.model
     schema_ref: writer/model/v1

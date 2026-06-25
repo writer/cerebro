@@ -25,36 +25,48 @@ coverage_contract:
       families: [organization]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: workspaces
       type: entity_family
       title: LangSmith workspaces
       families: [workspace]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users_and_access
       type: app_entitlement
       title: Organization and workspace membership
       families: [organization_member, workspace_member, role]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: workload_identity
       type: app_entitlement
       title: Service keys and service accounts
       families: [api_key, service_account]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: tracing_projects
       type: entity_family
       title: LangSmith tracing projects
       families: [project]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: observability_activity
       type: audit_event
       title: Runs, feedback, datasets, usage limits, and audit logs
       families: [run, feedback, dataset, usage_limit, audit_log]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
 event_contracts:
   - kind: langchain.organization
     schema_ref: langchain/organization/v1

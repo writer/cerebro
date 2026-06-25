@@ -19,36 +19,48 @@ coverage_contract:
       families: [escalation_policy]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: integrations
       type: entity_family
       title: Service integrations
       families: [integration]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: schedules
       type: entity_family
       title: Schedules
       families: [schedule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: services
       type: entity_family
       title: Services
       families: [service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: teams
       type: entity_family
       title: Teams
       families: [team]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users
       type: entity_family
       title: Users
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vendors
       type: entity_family
       title: Vendors

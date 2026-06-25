@@ -17,30 +17,40 @@ coverage_contract:
       families: [catalog_promotion]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: findings
       type: entity_family
       title: Findings
       families: [finding]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: image_scans
       type: entity_family
       title: Image scans
       families: [image_scan]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: policy_exceptions
       type: app_entitlement
       title: Policy exceptions
       families: [policy_exception]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: verdicts
       type: lifecycle_state
       title: Image policy verdicts
       families: [verdict]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
 event_contracts:
   - kind: aurelius.verdict
     schema_ref: aurelius/verdict/v1

@@ -28,24 +28,32 @@ coverage_contract:
       families: [device]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: applications
       type: entity_family
       title: Installed applications
       families: [application]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vulnerabilities
       type: entity_family
       title: Endpoint application vulnerabilities
       families: [vulnerability]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: remediation_state
       type: remediation_state
       title: Vulnerability remediation lifecycle state
       families: [vulnerability]
       support: partial
       high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:

@@ -560,543 +560,725 @@ coverage_contract:
       families: [aiplatform_dataset]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: aiplatform_endpoint
       type: entity_family
       title: Vertex AI endpoints
       families: [aiplatform_endpoint]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: artifact_registry_repository
       type: entity_family
       title: Artifact Registry repositories
       families: [artifact_registry_repository]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: artifact_registry_image
       type: entity_family
       title: Artifact Registry images
       families: [artifact_registry_image]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: audit
       type: audit_event
       title: GCP audit logs
       families: [audit]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: binary_authorization_attestor
       type: entity_family
       title: Binary Authorization attestors
       families: [binary_authorization_attestor]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: binary_authorization_policy
       type: entity_family
       title: Binary Authorization policy
       families: [binary_authorization_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: bigquery_dataset
       type: entity_family
       title: BigQuery datasets
       families: [bigquery_dataset]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: bigquery_table
       type: entity_family
       title: BigQuery tables
       families: [bigquery_table]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: bigtable_instance
       type: entity_family
       title: Bigtable instances
       families: [bigtable_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: bigtable_table
       type: entity_family
       title: Bigtable tables
       families: [bigtable_table]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: certificate_manager_certificate
       type: entity_family
       title: Certificate Manager certificates
       families: [certificate_manager_certificate]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: certificate_manager_certificate_map
       type: entity_family
       title: Certificate Manager certificate maps
       families: [certificate_manager_certificate_map]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: certificate_manager_certificate_map_entry
       type: entity_family
       title: Certificate Manager certificate map entries
       families: [certificate_manager_certificate_map_entry]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: certificate_manager_dns_authorization
       type: entity_family
       title: Certificate Manager DNS authorizations
       families: [certificate_manager_dns_authorization]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_function
       type: entity_family
       title: Cloud Functions
       families: [cloud_function]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_ids_endpoint
       type: entity_family
       title: Cloud IDS endpoints
       families: [cloud_ids_endpoint]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_scheduler_job
       type: entity_family
       title: Cloud Scheduler jobs
       families: [cloud_scheduler_job]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_run_revision
       type: entity_family
       title: Cloud Run revisions
       families: [cloud_run_revision]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_run_service
       type: entity_family
       title: Cloud Run services
       families: [cloud_run_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_sql_instance
       type: entity_family
       title: Cloud SQL instances
       families: [cloud_sql_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_sql_database
       type: entity_family
       title: Cloud SQL databases
       families: [cloud_sql_database]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cloud_sql_user
       type: entity_family
       title: Cloud SQL users
       families: [cloud_sql_user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_address
       type: entity_family
       title: Compute addresses
       families: [compute_address]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_backend_bucket
       type: entity_family
       title: Compute backend buckets
       families: [compute_backend_bucket]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_backend_service
       type: entity_family
       title: Compute backend services
       families: [compute_backend_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_disk
       type: entity_family
       title: Compute disks
       families: [compute_disk]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_external_vpn_gateway
       type: entity_family
       title: Compute external VPN gateways
       families: [compute_external_vpn_gateway]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_firewall
       type: entity_family
       title: Compute firewall rules
       families: [compute_firewall]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_forwarding_rule
       type: entity_family
       title: Compute forwarding rules
       families: [compute_forwarding_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_health_check
       type: entity_family
       title: Compute health checks
       families: [compute_health_check]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_instance
       type: entity_family
       title: Compute instances
       families: [compute_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_instance_group
       type: entity_family
       title: Compute instance groups
       families: [compute_instance_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_instance_group_manager
       type: entity_family
       title: Compute instance group managers
       families: [compute_instance_group_manager]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_instance_template
       type: entity_family
       title: Compute instance templates
       families: [compute_instance_template]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_interconnect
       type: entity_family
       title: Compute interconnects
       families: [compute_interconnect]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_interconnect_attachment
       type: entity_family
       title: Compute interconnect attachments
       families: [compute_interconnect_attachment]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_network_endpoint_group
       type: entity_family
       title: Compute network endpoint groups
       families: [compute_network_endpoint_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_network
       type: entity_family
       title: Compute networks
       families: [compute_network]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_network_firewall_policy
       type: entity_family
       title: Compute network firewall policies
       families: [compute_network_firewall_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_packet_mirroring
       type: entity_family
       title: Compute packet mirrorings
       families: [compute_packet_mirroring]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_route
       type: entity_family
       title: Compute routes
       families: [compute_route]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_router
       type: entity_family
       title: Compute routers
       families: [compute_router]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_security_policy
       type: entity_family
       title: Compute security policies
       families: [compute_security_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_ssl_certificate
       type: entity_family
       title: Compute SSL certificates
       families: [compute_ssl_certificate]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_ssl_policy
       type: entity_family
       title: Compute SSL policies
       families: [compute_ssl_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_subnetwork
       type: entity_family
       title: Compute subnetworks
       families: [compute_subnetwork]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_target_grpc_proxy
       type: entity_family
       title: Compute target gRPC proxies
       families: [compute_target_grpc_proxy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_target_http_proxy
       type: entity_family
       title: Compute target HTTP proxies
       families: [compute_target_http_proxy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_target_https_proxy
       type: entity_family
       title: Compute target HTTPS proxies
       families: [compute_target_https_proxy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_target_ssl_proxy
       type: entity_family
       title: Compute target SSL proxies
       families: [compute_target_ssl_proxy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_target_tcp_proxy
       type: entity_family
       title: Compute target TCP proxies
       families: [compute_target_tcp_proxy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_target_vpn_gateway
       type: entity_family
       title: Compute target VPN gateways
       families: [compute_target_vpn_gateway]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_url_map
       type: entity_family
       title: Compute URL maps
       families: [compute_url_map]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_vpn_gateway
       type: entity_family
       title: Compute VPN gateways
       families: [compute_vpn_gateway]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: compute_vpn_tunnel
       type: entity_family
       title: Compute VPN tunnels
       families: [compute_vpn_tunnel]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: container_vulnerability
       type: entity_family
       title: Container image vulnerabilities
       families: [container_vulnerability]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: container_registry
       type: entity_family
       title: Container Registry registries
       families: [container_registry]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
       families: [dns_managed_zone]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: dns_record_set
       type: entity_family
       title: Cloud DNS record sets
       families: [dns_record_set]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: gcs_bucket
       type: entity_family
       title: Cloud Storage buckets
       families: [gcs_bucket]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: gcs_object
       type: entity_family
       title: Cloud Storage objects
       families: [gcs_object]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: gke_cluster
       type: entity_family
       title: GKE clusters
       families: [gke_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: gke_node_pool
       type: entity_family
       title: GKE node pools
       families: [gke_node_pool]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: group
       type: entity_family
       title: Cloud Identity groups
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: group_membership
       type: relationship
       title: Cloud Identity group memberships
       families: [group_membership]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: iam_role_assignment
       type: app_entitlement
       title: IAM policy bindings
       families: [iam_role_assignment]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: effective_permission
       type: app_entitlement
       title: Effective IAM permissions
       families: [effective_permission]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: asset_metadata
       type: entity_family
       title: Cloud Asset metadata and data sensitivity
       families: [asset_metadata]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: kms_key
       type: entity_family
       title: Cloud KMS keys
       families: [kms_key]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: logging_project_sink
       type: entity_family
       title: Cloud Logging project sinks
       families: [logging_project_sink]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: logging_metric
       type: entity_family
       title: Cloud Logging log-based metrics
       families: [logging_metric]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: monitoring_alert_policy
       type: entity_family
       title: Cloud Monitoring alert policies
       families: [monitoring_alert_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: monitoring_notification_channel
       type: entity_family
       title: Cloud Monitoring notification channels
       families: [monitoring_notification_channel]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: org_policy
       type: entity_family
       title: Organization Policy constraints
       families: [org_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: pubsub_subscription
       type: entity_family
       title: Pub/Sub subscriptions
       families: [pubsub_subscription]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: pubsub_topic
       type: entity_family
       title: Pub/Sub topics
       families: [pubsub_topic]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: resourcemanager_project
       type: entity_family
       title: Resource Manager projects
       families: [resourcemanager_project]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: resource_exposure
       type: relationship
       title: GCP public resource exposure
       families: [resource_exposure]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: secret_manager_secret
       type: entity_family
       title: Secret Manager secrets
       families: [secret_manager_secret]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: secret_manager_version
       type: entity_family
       title: Secret Manager versions
       families: [secret_manager_version]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: security_center_finding
       type: entity_family
       title: Security Command Center findings
       families: [security_center_finding]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: service_account
       type: entity_family
       title: Service accounts
       families: [service_account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: service_account_impersonation
       type: relationship
       title: Service account impersonation bindings
       families: [service_account_impersonation]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: service_account_key
       type: entity_family
       title: Service account keys
       families: [service_account_key]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: service_usage_service
       type: entity_family
       title: Enabled Service Usage APIs
       families: [service_usage_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: spanner_database
       type: entity_family
       title: Spanner databases
       families: [spanner_database]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: spanner_instance
       type: entity_family
       title: Spanner instances
       families: [spanner_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: vpc_access_connector
       type: entity_family
       title: Serverless VPC Access connectors
       families: [vpc_access_connector]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: workload_identity_pool
       type: entity_family
       title: Workload Identity pools
       families: [workload_identity_pool]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: workload_identity_provider
       type: entity_family
       title: Workload Identity providers
       families: [workload_identity_provider]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]

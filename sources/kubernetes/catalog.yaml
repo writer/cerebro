@@ -144,63 +144,85 @@ coverage_contract:
       families: [cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: namespaces
       type: entity_family
       title: Kubernetes namespaces
       families: [namespace]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ingresses
       type: entity_family
       title: Kubernetes ingresses
       families: [ingress]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: nodes
       type: entity_family
       title: Kubernetes nodes
       families: [node]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: pods
       type: entity_family
       title: Kubernetes pods
       families: [pod, container]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: service_accounts
       type: entity_family
       title: Kubernetes service accounts
       families: [service_account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: services
       type: entity_family
       title: Kubernetes services
       families: [service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: workloads
       type: entity_family
       title: Kubernetes workloads
       families: [workload]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: workload_identity_bindings
       type: relationship
       title: Kubernetes workload identity bindings
       families: [workload_identity_binding]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: rbac_roles
       type: app_entitlement
       title: Kubernetes RBAC roles
       families: [rbac_role]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: rbac_bindings
       type: relationship
       title: Kubernetes RBAC bindings
       families: [rbac_binding]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]

@@ -14,12 +14,16 @@ coverage_contract:
       families: [tool]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: control_mappings
       type: relationship
       title: Tool to control mappings
       families: [control_mapping]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: security_tooling_map.tool
     schema_ref: security_tooling_map/tool/v1

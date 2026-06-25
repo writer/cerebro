@@ -14,12 +14,16 @@ coverage_contract:
       families: [scan]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: vulnerabilities
       type: entity_family
       title: Archetype code vulnerabilities
       families: [vulnerability]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: archetype.scan
     schema_ref: archetype/scan/v1

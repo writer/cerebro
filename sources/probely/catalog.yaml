@@ -25,6 +25,8 @@ coverage_contract:
       families: [needs_attention_top]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: event
@@ -33,6 +35,8 @@ coverage_contract:
       families: [event]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: user
@@ -41,6 +45,8 @@ coverage_contract:
       families: [user]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: framework
@@ -49,6 +55,8 @@ coverage_contract:
       families: [framework]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

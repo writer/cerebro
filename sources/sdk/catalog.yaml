@@ -18,6 +18,8 @@ coverage_contract:
       families: [inventory]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       known_unsupported_fields:
         - SDK source does not pull third-party provider APIs.
       notes:
@@ -28,5 +30,7 @@ coverage_contract:
       title: SDK push ingestion surface
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - SDK source validates push runtime configuration and accepts application-owned claim writes through source runtime routes.
