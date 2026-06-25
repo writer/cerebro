@@ -116,3 +116,63 @@ func TestBuildUsesStableFrameworkIDAndRuleScopedTestResults(t *testing.T) {
 		t.Fatalf("packet review reason = %q, want evidence item reason", reviewReasons[response.Packets[0].ID])
 	}
 }
+
+func TestBuildKeepsNotApplicableFrameworkReadyAndTrimsEvidenceKeys(t *testing.T) {
+	response := Build(grccontrol.PacketResult{
+		Packet: compliance.ControlEvidencePacket{
+			GeneratedAt: time.Unix(200, 0).UTC(),
+			Controls: []compliance.ControlEvidencePacketControl{{
+				Control: compliance.ControlPostureControl{FrameworkName: "SOC 2", ControlID: "CC1.1"},
+				Evidence: compliance.ControlEvidencePacketEvidence{
+					Expectations: []compliance.ControlEvidenceExpectationPosture{{
+						ID:          "automated-proof",
+						Status:      compliance.ControlEvidenceExpectationSatisfied,
+						EvidenceIDs: []string{"ev-space"},
+					}},
+					Items: []compliance.ControlEvidencePacketEvidenceItem{{
+						ID:     "ev-space",
+						RuleID: "rule.space",
+					}},
+				},
+			}},
+		},
+		Controls: []grccontrol.ControlItem{{
+			FrameworkName:   "SOC 2",
+			FrameworkID:     "soc2",
+			ControlID:       "CC1.1",
+			Status:          "not_applicable",
+			EvidenceScore:   100,
+			MissingEvidence: 2,
+			StaleEvidence:   1,
+		}},
+		Evidence: []*cerebrov1.FindingEvidence{{
+			Id:        " ev-space ",
+			RuntimeId: " runtime-1 ",
+			RuleId:    "rule.space",
+			ClaimIds:  []string{"claim-space"},
+			EventIds:  []string{"event-space"},
+			RunId:     "run-space",
+		}},
+		SourceIDs: map[string]string{"runtime-1": "source-1"},
+	})
+
+	if len(response.Frameworks) != 1 {
+		t.Fatalf("frameworks = %d, want 1", len(response.Frameworks))
+	}
+	framework := response.Frameworks[0]
+	if framework.Status != "ready" || framework.PassingControls != 1 || framework.NeedsAttentionControls != 0 {
+		t.Fatalf("framework = %#v, want not_applicable counted as ready", framework)
+	}
+	if framework.MissingEvidence != 0 || framework.StaleEvidence != 0 {
+		t.Fatalf("framework evidence blockers = missing %d stale %d, want ignored for not_applicable", framework.MissingEvidence, framework.StaleEvidence)
+	}
+	if got := response.Items[0].ID; got != "ev-space" {
+		t.Fatalf("evidence item id = %q, want trimmed id", got)
+	}
+	if len(response.Items[0].PacketIDs) != 1 {
+		t.Fatalf("evidence item packet links = %#v, want trimmed key cross-reference", response.Items[0].PacketIDs)
+	}
+	if got := response.Packets[0].Citations.ClaimIDs; len(got) != 1 || got[0] != "claim-space" {
+		t.Fatalf("packet claim citations = %#v, want raw evidence citation via trimmed lookup", got)
+	}
+}

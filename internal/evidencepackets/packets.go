@@ -672,14 +672,19 @@ func collectionSources(runtimes []*cerebrov1.SourceRuntime, controls []grccontro
 func evidenceItemsFromRaw(evidence []*cerebrov1.FindingEvidence, sourceIDs map[string]string, links map[string]*recordLinks) []EvidenceItemRecord {
 	items := make([]EvidenceItemRecord, 0, len(evidence))
 	for _, item := range evidence {
-		if item == nil || strings.TrimSpace(item.GetId()) == "" {
+		if item == nil {
 			continue
 		}
-		link := links[item.GetId()]
+		evidenceID := strings.TrimSpace(item.GetId())
+		if evidenceID == "" {
+			continue
+		}
+		runtimeID := strings.TrimSpace(item.GetRuntimeId())
+		link := links[evidenceID]
 		items = append(items, EvidenceItemRecord{
-			ID:               item.GetId(),
-			RuntimeID:        item.GetRuntimeId(),
-			SourceID:         sourceIDs[item.GetRuntimeId()],
+			ID:               evidenceID,
+			RuntimeID:        runtimeID,
+			SourceID:         sourceIDs[runtimeID],
 			FindingID:        item.GetFindingId(),
 			RuleID:           item.GetRuleId(),
 			RunID:            item.GetRunId(),
@@ -704,7 +709,7 @@ func evidenceByID(evidence []*cerebrov1.FindingEvidence) map[string]*cerebrov1.F
 	byID := map[string]*cerebrov1.FindingEvidence{}
 	for _, item := range evidence {
 		if item != nil && strings.TrimSpace(item.GetId()) != "" {
-			byID[item.GetId()] = item
+			byID[strings.TrimSpace(item.GetId())] = item
 		}
 	}
 	return byID
@@ -1148,10 +1153,12 @@ func frameworksFromControls(controls []ControlPosture) []FrameworkPosture {
 			byID[id] = framework
 		}
 		framework.ControlCount++
-		framework.MissingEvidence += control.MissingEvidence
-		framework.StaleEvidence += control.StaleEvidence
+		if !frameworkControlNotApplicable(control.Status) {
+			framework.MissingEvidence += control.MissingEvidence
+			framework.StaleEvidence += control.StaleEvidence
+		}
 		framework.EvidenceScore += control.EvidenceScore
-		if strings.EqualFold(control.Status, "passing") || strings.EqualFold(control.Status, "ready") {
+		if frameworkControlPassing(control.Status) || frameworkControlNotApplicable(control.Status) {
 			framework.PassingControls++
 		} else {
 			framework.NeedsAttentionControls++
@@ -1170,6 +1177,19 @@ func frameworksFromControls(controls []ControlPosture) []FrameworkPosture {
 	}
 	sort.Slice(frameworks, func(i, j int) bool { return frameworks[i].ID < frameworks[j].ID })
 	return frameworks
+}
+
+func frameworkControlPassing(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "passing", "ready", "satisfied", "ok":
+		return true
+	default:
+		return false
+	}
+}
+
+func frameworkControlNotApplicable(status string) bool {
+	return strings.EqualFold(strings.TrimSpace(status), "not_applicable")
 }
 
 func reviewStatusForExpectation(expectation compliance.ControlEvidenceExpectationPosture) string {
