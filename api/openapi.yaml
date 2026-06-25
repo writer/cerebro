@@ -7410,7 +7410,7 @@ components:
           type: string
         dimension_type:
           type: string
-          enum: [app_entitlement, audit_event, entity_family, incremental_sync, lifecycle_state, relationship, remediation_state]
+          enum: [alert_state, app_entitlement, audit_event, deployment_state, entity_family, incremental_sync, lifecycle_state, relationship, remediation_state]
         title:
           type: string
         state:
