@@ -12,7 +12,7 @@ import (
 type settings struct {
 	provider     string
 	tenantID     string
-	family       string
+	family       grcFamily
 	baseURL      string
 	tokenURL     string
 	clientID     string
@@ -29,7 +29,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 	resolved := settings{
 		provider:     sourcecdk.ConfigValue(cfg, "provider"),
 		tenantID:     firstNonEmptyString(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, "__cerebro_runtime_tenant_id")),
-		family:       sourcecdk.ConfigValue(cfg, "family"),
+		family:       grcFamily(strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))),
 		baseURL:      sourcecdk.ConfigValue(cfg, "base_url"),
 		tokenURL:     sourcecdk.ConfigValue(cfg, "token_url"),
 		clientID:     sourcecdk.ConfigValue(cfg, "client_id"),
@@ -100,14 +100,14 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 func supportedFamilies() []string {
 	families := make([]string, 0, len(familyEndpoints))
 	for _, endpoint := range familyEndpoints {
-		families = append(families, endpoint.name)
+		families = append(families, string(endpoint.name))
 	}
 	return families
 }
 
-func isSupportedFamily(family string) bool {
+func isSupportedFamily(family grcFamily) bool {
 	for _, candidate := range supportedFamilies() {
-		if family == candidate {
+		if string(family) == candidate {
 			return true
 		}
 	}

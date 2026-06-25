@@ -165,6 +165,16 @@ func grcAttributeSequence(value string) []string {
 	return result
 }
 
+func grcJoinedAttributeValues(attrs map[string]string, keys ...string) string {
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			values = append(values, value)
+		}
+	}
+	return strings.Join(values, ",")
+}
+
 func stringAt(values []string, index int) string {
 	if index < 0 || index >= len(values) {
 		return ""
@@ -189,6 +199,85 @@ func maxInt(values ...int) int {
 		}
 	}
 	return max
+}
+
+type grcAssuranceArtifactKind string
+
+const (
+	grcAssuranceArtifactSecurityReview        grcAssuranceArtifactKind = "security_review"
+	grcAssuranceArtifactSecurityQuestionnaire grcAssuranceArtifactKind = "security_questionnaire"
+	grcAssuranceArtifactPenetrationTest       grcAssuranceArtifactKind = "penetration_test"
+	grcAssuranceArtifactDocument              grcAssuranceArtifactKind = "assurance_document"
+)
+
+var grcAssuranceArtifactKinds = []grcAssuranceArtifactKind{
+	grcAssuranceArtifactSecurityReview,
+	grcAssuranceArtifactSecurityQuestionnaire,
+	grcAssuranceArtifactPenetrationTest,
+	grcAssuranceArtifactDocument,
+}
+
+func (kind grcAssuranceArtifactKind) String() string {
+	return string(kind)
+}
+
+func (kind grcAssuranceArtifactKind) entityType() string {
+	switch kind {
+	case grcAssuranceArtifactSecurityReview:
+		return "security.review"
+	case grcAssuranceArtifactSecurityQuestionnaire:
+		return "security.questionnaire"
+	case grcAssuranceArtifactPenetrationTest:
+		return "penetration.test"
+	case grcAssuranceArtifactDocument:
+		return "assurance.document"
+	default:
+		return ""
+	}
+}
+
+func (kind grcAssuranceArtifactKind) idAttribute() string {
+	switch kind {
+	case grcAssuranceArtifactSecurityReview:
+		return "security_review_id"
+	case grcAssuranceArtifactSecurityQuestionnaire:
+		return "security_questionnaire_id"
+	case grcAssuranceArtifactPenetrationTest:
+		return "penetration_test_id"
+	case grcAssuranceArtifactDocument:
+		return "assurance_document_id"
+	default:
+		return ""
+	}
+}
+
+func (kind grcAssuranceArtifactKind) relatedIDAttributes() []string {
+	switch kind {
+	case grcAssuranceArtifactSecurityReview:
+		return []string{"related_security_review_id", "security_review_id", "review_id"}
+	case grcAssuranceArtifactSecurityQuestionnaire:
+		return []string{"related_security_questionnaire_id", "security_questionnaire_id", "questionnaire_id"}
+	case grcAssuranceArtifactPenetrationTest:
+		return []string{"related_penetration_test_id", "penetration_test_id", "pentest_id"}
+	case grcAssuranceArtifactDocument:
+		return []string{"related_assurance_document_id", "assurance_document_id"}
+	default:
+		return nil
+	}
+}
+
+func (kind grcAssuranceArtifactKind) candidateIDAttributes(currentKind grcAssuranceArtifactKind) []string {
+	if kind == grcAssuranceArtifactDocument && currentKind == grcAssuranceArtifactSecurityQuestionnaire {
+		return append(kind.relatedIDAttributes(), "document_id", "upload_id")
+	}
+	return kind.relatedIDAttributes()
+}
+
+func (kind grcAssuranceArtifactKind) relatedMatchType() string {
+	if kind == "" {
+		return ""
+	}
+	return "grc_related_" + kind.String()
 }
 
 func grcDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -256,6 +345,161 @@ func grcContractProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	addGRCEvidenceLink(entities, links, tenantID, event.GetSourceId(), event, contractURN, provider, attrs)
 	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, contractURN, "grc_contract_category", firstAttribute(attrs, "category"))
 	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, contractURN, "grc_contract_tag", strings.Join([]string{attrs["tags"], attrs["data_types"], attrs["jurisdictions"]}, ","))
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcSecurityReviewProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	reviewID := firstAttribute(attrs, "security_review_id", "review_id", "assessment_id", "external_id")
+	if reviewID == "" {
+		reviewID = grcDerivedID(firstAttribute(attrs, "vendor_id", "third_party_id"), firstAttribute(attrs, "review_type", "assessment_type"), firstAttribute(attrs, "started_at", "completed_at", "created_at"))
+	}
+	if reviewID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	reviewKind := grcAssuranceArtifactSecurityReview
+	reviewURN := projectionURN(tenantID, reviewKind.String(), provider, reviewID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        reviewURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: reviewKind.entityType(),
+		Label:      firstAttribute(attrs, "name", "title", "review_type", "assessment_type", "security_review_id", "review_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"review_type":        firstAttribute(attrs, "review_type", "assessment_type"),
+			"risk_level":         firstAttribute(attrs, "risk_level", "inherent_risk_level", "residual_risk_level"),
+			"security_review_id": reviewID,
+			"source_system":      provider,
+			"status":             firstAttribute(attrs, "status", "review_status", "assessment_status"),
+		}),
+	})
+	addGRCAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, reviewURN, provider, attrs, relationAssociatedWith, "grc_security_review", "grc_security_review_url_host", reviewKind,
+		grcJoinedAttributeValues(attrs, "review_type", "assessment_type", "status", "review_status", "risk_level", "inherent_risk_level", "residual_risk_level"))
+	addGRCRelatedAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, reviewURN, provider, attrs, reviewKind)
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcSecurityQuestionnaireProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	questionnaireID := firstAttribute(attrs, "security_questionnaire_id", "questionnaire_id", "external_id")
+	if questionnaireID == "" {
+		questionnaireID = grcDerivedID(firstAttribute(attrs, "customer_trust_account_id", "account_id", "vendor_id"), firstAttribute(attrs, "questionnaire_type"), firstAttribute(attrs, "submitted_at", "created_at"))
+	}
+	if questionnaireID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	questionnaireKind := grcAssuranceArtifactSecurityQuestionnaire
+	questionnaireURN := projectionURN(tenantID, questionnaireKind.String(), provider, questionnaireID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        questionnaireURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: questionnaireKind.entityType(),
+		Label:      firstAttribute(attrs, "name", "title", "questionnaire_type", "security_questionnaire_id", "questionnaire_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"questionnaire_type":        firstAttribute(attrs, "questionnaire_type", "assessment_type"),
+			"security_questionnaire_id": questionnaireID,
+			"source_system":             provider,
+			"status":                    firstAttribute(attrs, "status", "questionnaire_status", "response_status"),
+		}),
+	})
+	addGRCAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, questionnaireURN, provider, attrs, relationAssociatedWith, "grc_security_questionnaire", "grc_security_questionnaire_url_host", questionnaireKind,
+		grcJoinedAttributeValues(attrs, "questionnaire_type", "assessment_type", "status", "questionnaire_status", "response_status"))
+	addGRCRelatedAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, questionnaireURN, provider, attrs, questionnaireKind)
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcPenetrationTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	testID := firstAttribute(attrs, "penetration_test_id", "pentest_id", "test_id", "external_id")
+	if testID == "" {
+		testID = grcDerivedID(firstAttribute(attrs, "target_id", "resource_id", "asset_id", "system_id"), firstAttribute(attrs, "test_type", "assessment_type"), firstAttribute(attrs, "started_at", "completed_at"))
+	}
+	if testID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	testKind := grcAssuranceArtifactPenetrationTest
+	testURN := projectionURN(tenantID, testKind.String(), provider, testID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        testURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: testKind.entityType(),
+		Label:      firstAttribute(attrs, "name", "title", "test_type", "penetration_test_id", "pentest_id", "test_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"penetration_test_id": testID,
+			"source_system":       provider,
+			"status":              firstAttribute(attrs, "status", "test_status", "assessment_status"),
+			"test_type":           firstAttribute(attrs, "test_type", "assessment_type"),
+		}),
+	})
+	addGRCAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, testURN, provider, attrs, relationTargeted, "grc_penetration_test", "grc_penetration_test_url_host", testKind,
+		grcJoinedAttributeValues(attrs, "test_type", "assessment_type", "status", "test_status", "scope", "severity"))
+	addGRCPenetrationTestFindingLinks(entities, links, tenantID, event.GetSourceId(), event, testURN, provider, attrs)
+	addGRCRelatedAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, testURN, provider, attrs, testKind)
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcAssuranceDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	documentID := firstAttribute(attrs, "assurance_document_id", "document_id", "upload_id", "external_id")
+	if documentID == "" {
+		documentID = grcDerivedID(firstAttribute(attrs, "url", "document_url", "download_url"), firstAttribute(attrs, "title", "name"))
+	}
+	if documentID == "" {
+		return nil, nil, nil
+	}
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	documentKind := grcAssuranceArtifactDocument
+	documentURN := projectionURN(tenantID, documentKind.String(), provider, documentID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        documentURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: documentKind.entityType(),
+		Label:      firstAttribute(attrs, "title", "name", "document_type", "assurance_document_id", "document_id", "upload_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"assurance_document_id": documentID,
+			"document_type":         firstAttribute(attrs, "document_type", "artifact_type", "evidence_type"),
+			"source_system":         provider,
+			"status":                firstAttribute(attrs, "status", "upload_status", "review_status"),
+		}),
+	})
+	addGRCAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, documentURN, provider, attrs, relationAssociatedWith, "grc_assurance_document", "grc_assurance_document_url_host", documentKind,
+		grcJoinedAttributeValues(attrs, "document_type", "artifact_type", "evidence_type", "category", "status", "upload_status", "tags"))
+	addGRCUserActionLink(entities, links, tenantID, event.GetSourceId(), event, provider, firstAttribute(attrs, "uploaded_by_user_id", "uploader_user_id"), documentURN, "uploaded")
+	addGRCRelatedAssuranceArtifactLinks(entities, links, tenantID, event.GetSourceId(), event, documentURN, provider, attrs, documentKind)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -1768,6 +2012,131 @@ func addSecurityContactEmailLink(entities map[string]*ports.ProjectedEntity, lin
 	}
 	addProjectedAttribute(linkAttrs, "at", eventObservedAt(event))
 	addLink(links, projectedLink(tenantID, sourceID, fromURN, identityURN, relationAssociatedWith, linkAttrs))
+}
+
+func addGRCAssuranceArtifactLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, artifactURN string, provider string, attrs map[string]string, targetRelation string, targetRelationshipBy string, urlMatchType string, artifactKind grcAssuranceArtifactKind, tagValues string) {
+	if strings.TrimSpace(artifactURN) == "" {
+		return
+	}
+	addGRCUserOwnerLink(entities, links, tenantID, sourceID, event, artifactURN, provider, firstAttribute(attrs, "owner_id", "reviewer_user_id", "assignee_user_id", "business_owner_user_id", "security_owner_user_id", "uploaded_by_user_id"))
+	addGRCVendorAssociationLink(entities, links, tenantID, sourceID, event, artifactURN, provider, attrs)
+	addGRCCustomerTrustAccountLink(entities, links, tenantID, sourceID, event, artifactURN, provider, attrs)
+	if strings.TrimSpace(targetRelation) != "" {
+		addGRCTargetReferenceLink(entities, links, tenantID, sourceID, event, artifactURN, provider, attrs, targetRelation, targetRelationshipBy)
+	}
+	addGRCControlSupportLinks(entities, links, tenantID, sourceID, event, artifactURN, provider)
+	addGRCEvidenceLink(entities, links, tenantID, sourceID, event, artifactURN, provider, attrs)
+	addInternetHostLink(entities, links, tenantID, sourceID, event, artifactURN, relationHasIdentifier, firstAttribute(attrs, "url", "document_url", "report_url", "artifact_url", "download_url", "external_url"), urlMatchType, "0.90")
+	addGRCAssetTagLinks(entities, links, tenantID, sourceID, event, artifactURN, artifactKind.String(), tagValues)
+}
+
+func addGRCCustomerTrustAccountLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, attrs map[string]string) {
+	accountID := firstAttribute(attrs, "customer_trust_account_id", "customer_account_id", "account_id")
+	if strings.TrimSpace(fromURN) == "" || accountID == "" {
+		return
+	}
+	accountURN := projectionURN(tenantID, "customer_trust_account", provider, accountID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        accountURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "customer_trust.account",
+		Label:      firstAttribute(attrs, "customer_trust_account_name", "customer_account_name", "account_name", "customer_name", "customer_trust_account_id", "customer_account_id", "account_id"),
+		Attributes: grcAttributes(nil, map[string]string{
+			"account_id":                accountID,
+			"customer_trust_account_id": accountID,
+			"source_system":             provider,
+		}),
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, accountURN, relationAssociatedWith, map[string]string{
+		"account_id":  accountID,
+		"event_id":    event.GetId(),
+		"match_type":  "grc_customer_trust_account_reference",
+		"source_type": "customer_trust_account",
+	}))
+}
+
+func firstGRCAttributeMatch(attrs map[string]string, keys ...string) (string, string) {
+	for _, key := range keys {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			return key, value
+		}
+	}
+	return "", ""
+}
+
+func addGRCRelatedAssuranceArtifactLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, attrs map[string]string, currentKind grcAssuranceArtifactKind) {
+	if strings.TrimSpace(fromURN) == "" {
+		return
+	}
+	for _, kind := range grcAssuranceArtifactKinds {
+		if kind == currentKind {
+			continue
+		}
+		sourceReference, relatedID := firstGRCAttributeMatch(attrs, kind.candidateIDAttributes(currentKind)...)
+		if relatedID == "" {
+			continue
+		}
+		relatedURN := projectionURN(tenantID, kind.String(), provider, relatedID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        relatedURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: kind.entityType(),
+			Label:      relatedID,
+			Attributes: grcAttributes(nil, map[string]string{
+				kind.idAttribute(): relatedID,
+				"source_system":    provider,
+			}),
+		})
+		addLink(links, projectedLink(tenantID, sourceID, fromURN, relatedURN, relationAssociatedWith, map[string]string{
+			"event_id":         event.GetId(),
+			"match_type":       kind.relatedMatchType(),
+			"related_id":       relatedID,
+			"related_family":   kind.String(),
+			"source_reference": sourceReference,
+		}))
+	}
+}
+
+func addGRCPenetrationTestFindingLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, testURN string, provider string, attrs map[string]string) {
+	if strings.TrimSpace(testURN) == "" {
+		return
+	}
+	for _, findingID := range grcAttributeSequence(strings.Join([]string{attrs["finding_id"], attrs["finding_ids"]}, ",")) {
+		findingURN := projectionURN(tenantID, "finding", findingID)
+		if findingURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        findingURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: "finding",
+			Label:      firstNonEmpty(firstAttribute(attrs, "finding_name"), findingID),
+			Attributes: grcAttributes(nil, map[string]string{"finding_id": findingID, "source_system": provider}),
+		})
+		addLink(links, projectedLink(tenantID, sourceID, testURN, findingURN, relationAssociatedWith, map[string]string{
+			"event_id":   event.GetId(),
+			"finding_id": findingID,
+			"match_type": "grc_penetration_test_finding",
+		}))
+	}
+	for _, vulnerabilityID := range grcAttributeSequence(strings.Join([]string{attrs["vulnerability_id"], attrs["vulnerability_ids"]}, ",")) {
+		referenceAttrs := grcProjectionAttrsWith(attrs, "vulnerability_id", vulnerabilityID)
+		delete(referenceAttrs, "name")
+		delete(referenceAttrs, "title")
+		vulnerabilityURN := grcProviderVulnerabilityURN(tenantID, provider, vulnerabilityID)
+		if vulnerabilityURN == "" {
+			continue
+		}
+		addEntity(entities, grcProviderVulnerabilityEntity(tenantID, sourceID, vulnerabilityURN, provider, referenceAttrs))
+		addLink(links, projectedLink(tenantID, sourceID, testURN, vulnerabilityURN, relationAssociatedWith, map[string]string{
+			"event_id":         event.GetId(),
+			"match_type":       "grc_penetration_test_vulnerability",
+			"vulnerability_id": vulnerabilityID,
+		}))
+	}
 }
 
 func addGRCVendorAssociationLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, attrs map[string]string) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var attributeFieldMappings = map[string][]string{
+var attributeFieldMappings = map[grcFamily][]string{
 	familyFramework:                {"framework_id", "id", "display_name", "displayName", "name", "shorthandName", "description", "description", "num_controls_completed", "numControlsCompleted", "num_controls_total", "numControlsTotal", "num_documents_passing", "numDocumentsPassing", "num_documents_total", "numDocumentsTotal", "num_tests_passing", "numTestsPassing", "num_tests_total", "numTestsTotal"},
 	familyControl:                  {"control_id", "id", "control_external_id", "externalId", "name", "name", "description", "description", "source", "source", "domains", "domains", "owner_id", "owner.id", "role", "role", "created_at", "creationDate", "modified_at", "modificationDate"},
 	familyControlTest:              {"test_id", "id", "name", "name", "description", "description", "control_id", "controlId", "control_ids", "controlIds", "control_external_id", "controlExternalId", "control_external_ids", "controlExternalIds", "last_run_at", "lastTestRunDate", "latest_flip_at", "latestFlipDate", "failure_description", "failureDescription", "remediation_description", "remediationDescription", "version", "version", "category", "category", "integrations", "integrations", "status", "status", "owner_id", "owner.id"},
@@ -31,7 +31,7 @@ var attributeFieldMappings = map[string][]string{
 	familyIntegration:              {"integration_id", "integrationId", "display_name", "displayName", "resource_kinds", "resourceKinds"},
 }
 
-func attributesFor(settings settings, family string, record grcRecord) map[string]string {
+func attributesFor(settings settings, family grcFamily, record grcRecord) map[string]string {
 	values := record.Values
 	attrs := map[string]string{
 		"provider":        settings.provider,
