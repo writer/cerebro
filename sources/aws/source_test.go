@@ -1324,6 +1324,43 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 	}
 }
 
+func TestReadAWSEC2InstanceProfilePathUsesProfileName(t *testing.T) {
+	profileName := "prod-pole_17749265829700710413"
+	profileARN := "arn:aws:iam::123456789012:instance-profile/karpenter/us-east-1/prod-pole/e1eff13c-079b-4db2-a4c6-1e46aab5d238/" + profileName
+	roleARN := "arn:aws:iam::123456789012:role/KarpenterNodeRole"
+	source := newTestSource(t, fakeAWS{compute: fakeAWSCompute{
+		instances: []ec2types.Instance{{
+			InstanceId: awssdk.String("i-karpenter"),
+			IamInstanceProfile: &ec2types.IamInstanceProfile{
+				Arn: awssdk.String(profileARN),
+				Id:  awssdk.String("AIPATH"),
+			},
+		}},
+		instanceProfiles: map[string]iamtypes.InstanceProfile{
+			profileName: {
+				Roles: []iamtypes.Role{{
+					Arn:      awssdk.String(roleARN),
+					RoleName: awssdk.String("KarpenterNodeRole"),
+				}},
+			},
+		},
+	}})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyEC2Instance}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyEC2Instance, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["instance_profile_arn"]; got != profileARN {
+		t.Fatalf("instance_profile_arn = %q, want %q", got, profileARN)
+	}
+	if got := pull.Events[0].Attributes["role_arn"]; got != roleARN {
+		t.Fatalf("role_arn = %q, want %q", got, roleARN)
+	}
+}
+
 func TestReadAWSBatchRuntimeEvents(t *testing.T) {
 	computeEnvironmentARN := "arn:aws:batch:us-east-1:123456789012:compute-environment/prod-batch"
 	jobQueueARN := "arn:aws:batch:us-east-1:123456789012:job-queue/prod-jobs"

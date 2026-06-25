@@ -985,7 +985,7 @@ func instanceProfileName(arn string) string {
 	if !ok {
 		return ""
 	}
-	return strings.Trim(resource, "/")
+	return strings.TrimPrefix(path.Base("/"+strings.Trim(resource, "/")), "/")
 }
 
 func roleNameFromARN(arn string) string {
