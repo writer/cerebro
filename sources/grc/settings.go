@@ -98,26 +98,11 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 }
 
 func supportedFamilies() []string {
-	return []string{
-		familyFramework,
-		familyControl,
-		familyControlTest,
-		familyPolicy,
-		familyDocument,
-		familyContract,
-		familyDiscoveredVendor,
-		familyEventLog,
-		familyGroup,
-		familyVendorRiskAttribute,
-		familyVendor,
-		familyVulnerability,
-		familyVulnerabilityRemediation,
-		familyVulnerableAsset,
-		familyRiskScenario,
-		familyPerson,
-		familyUser,
-		familyIntegration,
+	families := make([]string, 0, len(familyEndpoints))
+	for _, endpoint := range familyEndpoints {
+		families = append(families, endpoint.name)
 	}
+	return families
 }
 
 func isSupportedFamily(family string) bool {
