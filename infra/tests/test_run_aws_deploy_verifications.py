@@ -664,6 +664,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         args = argparse.Namespace(
             stack_file=Path("aws/Pulumi.go-prod.yaml"),
             graph_health_heal_concurrency=2,
+            graph_health_heal_failed_run_retry_seconds=600,
         )
         diagnostics = (
             "ERROR: latest graph ingest run failed for 2 runtime(s): "
@@ -681,6 +682,9 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertTrue(healed)
         self.assertEqual(run.call_count, 2)
+        for call in run.call_args_list:
+            command = call.args[0]
+            self.assertEqual(command[command.index("--failed-run-retry-seconds") + 1], "600")
 
     def test_graph_degradation_can_create_followup_issue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

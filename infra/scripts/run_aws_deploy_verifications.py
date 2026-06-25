@@ -36,6 +36,7 @@ class GraphHealthResult:
 
 DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS = 300
 DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS = 0
+DEFAULT_GRAPH_HEALTH_HEAL_FAILED_RUN_RETRY_SECONDS = 600
 DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS = 3600
 DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS = 900
 DEFAULT_GRAPH_HEALTH_PROCESS_TIMEOUT_SECONDS = 960
@@ -432,7 +433,7 @@ def _graph_health_heal_command(args: argparse.Namespace, runtime_id: str, source
         "--succeed-after-graph-ingest",
         "--allow-lease-contention-skip",
         "--failed-run-retry-seconds",
-        "0",
+        str(args.graph_health_heal_failed_run_retry_seconds),
         "--run-attempt-timeout-seconds",
         "300",
         "--max-age-minutes",
@@ -725,6 +726,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--graph-health-heal", action="store_true", help="Try to re-run failed source runtimes before degrading graph health.")
     parser.add_argument("--graph-health-heal-concurrency", type=_positive_int, default=4)
+    parser.add_argument(
+        "--graph-health-heal-failed-run-retry-seconds",
+        type=_non_negative_int,
+        default=DEFAULT_GRAPH_HEALTH_HEAL_FAILED_RUN_RETRY_SECONDS,
+        help="Retry failed graph-health source-runtime heal attempts for this many seconds before degrading graph health.",
+    )
     parser.add_argument("--graph-health-issue", action="store_true", help="Create a GitHub issue when graph health is degraded.")
     parser.add_argument("--graph-health-artifact-name", default="graph-health", help="Artifact name to include in graph-health follow-up issues.")
     parser.add_argument("--allow-graph-health-cache", action="store_true", help="Reuse a recent passing graph-health TSV for deploy gating when available.")

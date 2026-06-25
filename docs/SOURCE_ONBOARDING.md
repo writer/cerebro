@@ -170,6 +170,11 @@ and run bounded recovery:
    failures include structured context plus recent raw task logs; bootstrap
    failures include both bootstrap structured logs and raw logs when available.
 
+Deploy graph-health healing retries failed source-runtime attempts for 600
+seconds by default. Use the manual backfill workflow when a follow-up issue
+needs a narrower runtime list, a longer retry window, or a plan hash review
+before running the recovery.
+
 Do not quarantine a runtime only to make graph health pass. Quarantine is for a
 known bad or intentionally paused runtime, and the same PR must remove the
 active `cerebro:sourceRuntimes` and `cerebro:orchestratorSchedules` references
