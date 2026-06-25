@@ -44,6 +44,7 @@ type PacketResult struct {
 	Packet    compliance.ControlEvidencePacket
 	Controls  []ControlItem
 	Metadata  ReportMetadata
+	Findings  []*ports.FindingRecord
 	Evidence  []*cerebrov1.FindingEvidence
 	Runtimes  []*cerebrov1.SourceRuntime
 	SourceIDs map[string]string
@@ -217,6 +218,7 @@ func BuildBuiltinEvidencePacket(input BuildInput) (PacketResult, error) {
 		Profile:   profile,
 		Packet:    packet,
 		Controls:  controls,
+		Findings:  input.Findings,
 		Evidence:  input.Evidence,
 		Runtimes:  input.Runtimes,
 		SourceIDs: input.SourceIDs,

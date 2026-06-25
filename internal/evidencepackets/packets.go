@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/grccontrol"
+	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -33,6 +35,10 @@ type Response struct {
 	Findings    []FindingWorkflow         `json:"finding_workflow"`
 	Resources   []ResourceSubject         `json:"resource_subjects"`
 	Lineage     []EvidenceLineage         `json:"evidence_lineage"`
+	Claims      []ClaimRecord             `json:"claim_records"`
+	Runs        []EvaluationRun           `json:"evaluation_runs"`
+	GraphRows   []GraphEvidenceRecord     `json:"graph_evidence_rows"`
+	GraphPaths  []GraphPathRecord         `json:"graph_path_records"`
 	Exceptions  []ExceptionAcceptance     `json:"exceptions_acceptances"`
 	Artifacts   []EvidenceExportArtifact  `json:"export_artifacts"`
 	Export      EvidenceExport            `json:"export"`
@@ -54,6 +60,9 @@ type AuditProgram struct {
 	EvidenceItemCount int    `json:"evidence_item_count"`
 	ResourceCount     int    `json:"resource_subject_count"`
 	LineageCount      int    `json:"lineage_count"`
+	ClaimCount        int    `json:"claim_record_count"`
+	RunCount          int    `json:"evaluation_run_count"`
+	GraphPathCount    int    `json:"graph_path_count"`
 	OpenReviewCount   int    `json:"open_review_count"`
 }
 
@@ -275,6 +284,14 @@ type FindingWorkflow struct {
 	RuntimeID      string   `json:"runtime_id,omitempty"`
 	SourceID       string   `json:"source_id,omitempty"`
 	RuleID         string   `json:"rule_id,omitempty"`
+	PolicyID       string   `json:"policy_id,omitempty"`
+	PolicyName     string   `json:"policy_name,omitempty"`
+	CheckID        string   `json:"check_id,omitempty"`
+	CheckName      string   `json:"check_name,omitempty"`
+	RiskScore      int      `json:"risk_score,omitempty"`
+	RiskReasons    []string `json:"risk_reasons,omitempty"`
+	DueAt          string   `json:"due_at,omitempty"`
+	StatusReason   string   `json:"status_reason,omitempty"`
 	ControlIDs     []string `json:"control_ids,omitempty"`
 	EvidenceIDs    []string `json:"evidence_ids,omitempty"`
 	PacketIDs      []string `json:"evidence_packet_ids,omitempty"`
@@ -307,6 +324,47 @@ type EvidenceLineage struct {
 	RequestIDs []string `json:"evidence_request_ids,omitempty"`
 	PacketIDs  []string `json:"evidence_packet_ids,omitempty"`
 	ControlIDs []string `json:"control_ids,omitempty"`
+}
+
+type ClaimRecord struct {
+	ID          string   `json:"id"`
+	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+	FindingIDs  []string `json:"finding_ids,omitempty"`
+	ControlIDs  []string `json:"control_ids,omitempty"`
+	PacketIDs   []string `json:"evidence_packet_ids,omitempty"`
+}
+
+type EvaluationRun struct {
+	ID          string   `json:"id"`
+	RuntimeID   string   `json:"runtime_id,omitempty"`
+	SourceID    string   `json:"source_id,omitempty"`
+	RuleIDs     []string `json:"rule_ids,omitempty"`
+	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+	FindingIDs  []string `json:"finding_ids,omitempty"`
+	ControlIDs  []string `json:"control_ids,omitempty"`
+	PacketIDs   []string `json:"evidence_packet_ids,omitempty"`
+}
+
+type GraphEvidenceRecord struct {
+	ID         string            `json:"id"`
+	EvidenceID string            `json:"evidence_id,omitempty"`
+	FindingID  string            `json:"finding_id,omitempty"`
+	Label      string            `json:"label,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+	PathIDs    []string          `json:"graph_path_ids,omitempty"`
+}
+
+type GraphPathRecord struct {
+	ID         string            `json:"id"`
+	EvidenceID string            `json:"evidence_id,omitempty"`
+	FindingID  string            `json:"finding_id,omitempty"`
+	FromURN    string            `json:"from_urn,omitempty"`
+	FromType   string            `json:"from_type,omitempty"`
+	Relation   string            `json:"relation,omitempty"`
+	ToURN      string            `json:"to_urn,omitempty"`
+	ToType     string            `json:"to_type,omitempty"`
+	ObservedAt string            `json:"observed_at,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 type ExceptionAcceptance struct {
@@ -344,6 +402,9 @@ type AuditSnapshot struct {
 	EvidenceItemCount int       `json:"evidence_item_count"`
 	ResourceCount     int       `json:"resource_subject_count"`
 	LineageCount      int       `json:"lineage_count"`
+	ClaimCount        int       `json:"claim_record_count"`
+	RunCount          int       `json:"evaluation_run_count"`
+	GraphPathCount    int       `json:"graph_path_count"`
 	ReviewOpenCount   int       `json:"open_review_count"`
 }
 
@@ -359,6 +420,7 @@ func Build(result grccontrol.PacketResult) Response {
 	activity := []EvidenceActivity{}
 	exceptions := []ExceptionAcceptance{}
 	evidenceLinks := map[string]*recordLinks{}
+	evidenceByID := evidenceByID(result.Evidence)
 
 	packetControlsByKey := map[string]compliance.ControlEvidencePacketControl{}
 	for _, control := range result.Packet.Controls {
@@ -368,6 +430,7 @@ func Build(result grccontrol.PacketResult) Response {
 		packetControl := packetControlsByKey[controlKey(item.FrameworkName, item.ControlID)]
 		frameworkID := stableFrameworkID(item)
 		controlID := stableControlID(frameworkID, item.ControlID)
+		ruleEvidenceIDs := evidenceIDsByRule(packetControl.Evidence.Items)
 		control := ControlPosture{
 			ControlPostureIdentity: ControlPostureIdentity{
 				ID:                 controlID,
@@ -398,7 +461,7 @@ func Build(result grccontrol.PacketResult) Response {
 				StaleEvidence:    item.StaleEvidence,
 			},
 			ControlPostureLinks: ControlPostureLinks{
-				TestResults:        testResults(controlID, item),
+				TestResults:        testResults(controlID, item, ruleEvidenceIDs),
 				EvidenceRequestIDs: []string{},
 				EvidencePacketIDs:  []string{},
 				FindingIDs:         findingIDs(item.Findings),
@@ -438,7 +501,7 @@ func Build(result grccontrol.PacketResult) Response {
 			requests = append(requests, request)
 			reviews = append(reviews, reviewFor(request.ID, request.ReviewStatus, request.Quality, generatedAt))
 			activity = append(activity, activityFor(request.ID, "evidence_request.generated", generatedAt))
-			for _, packet := range packetsForExpectation(control, request, packetControl.Evidence.Items, expectation, generatedAt) {
+			for _, packet := range packetsForExpectation(control, request, packetControl.Evidence.Items, evidenceByID, expectation, generatedAt) {
 				packets = append(packets, packet)
 				reviews = append(reviews, packet.Review)
 				activity = append(activity, activityFor(packet.ID, "evidence_packet.generated", generatedAt))
@@ -448,9 +511,12 @@ func Build(result grccontrol.PacketResult) Response {
 	}
 	frameworks := frameworksFromControls(controls)
 	items := evidenceItemsFromRaw(result.Evidence, result.SourceIDs, evidenceLinks)
-	findings := findingWorkflowFromControls(result.Controls, items)
-	resources := resourceSubjectsFromEvidence(items)
+	findings := findingWorkflowFromControls(result.Controls, result.Findings, items)
+	resources := resourceSubjects(result.Findings, items)
 	lineage := evidenceLineageFromItems(items)
+	claims := claimRecordsFromItems(items)
+	runs := evaluationRunsFromItems(items)
+	graphRows, graphPaths := graphRecordsFromEvidence(result.Evidence)
 	sources := collectionSources(result.Runtimes, result.Controls, items)
 	sort.Slice(controls, func(i, j int) bool { return controls[i].ID < controls[j].ID })
 	sort.Slice(requests, func(i, j int) bool { return requests[i].ID < requests[j].ID })
@@ -473,6 +539,9 @@ func Build(result grccontrol.PacketResult) Response {
 		EvidenceItemCount: len(items),
 		ResourceCount:     len(resources),
 		LineageCount:      len(lineage),
+		ClaimCount:        len(claims),
+		RunCount:          len(runs),
+		GraphPathCount:    len(graphPaths),
 		OpenReviewCount:   openReviews,
 	}
 	snapshot := AuditSnapshot{
@@ -485,9 +554,12 @@ func Build(result grccontrol.PacketResult) Response {
 		EvidenceItemCount: len(items),
 		ResourceCount:     len(resources),
 		LineageCount:      len(lineage),
+		ClaimCount:        len(claims),
+		RunCount:          len(runs),
+		GraphPathCount:    len(graphPaths),
 		ReviewOpenCount:   openReviews,
 	}
-	snapshot.Hash = snapshotHash(program, frameworks, controls, requests, packets, items, findings, resources, lineage, exceptions)
+	snapshot.Hash = snapshotHash(program, frameworks, controls, requests, packets, items, findings, resources, lineage, claims, runs, graphRows, graphPaths, exceptions)
 	export := EvidenceExport{
 		ID:        stableID("evidence-export", result.Profile.ID),
 		Formats:   []string{"json"},
@@ -511,6 +583,10 @@ func Build(result grccontrol.PacketResult) Response {
 		Findings:    findings,
 		Resources:   resources,
 		Lineage:     lineage,
+		Claims:      claims,
+		Runs:        runs,
+		GraphRows:   graphRows,
+		GraphPaths:  graphPaths,
 		Exceptions:  exceptions,
 		Artifacts:   artifacts,
 		Export:      export,
@@ -564,16 +640,25 @@ func collectionSources(runtimes []*cerebrov1.SourceRuntime, controls []grccontro
 			source.EvidenceItemCount++
 		}
 	}
+	findingsByRuntime := map[string]map[string]bool{}
 	for _, control := range controls {
 		seen := map[string]bool{}
 		for _, finding := range control.Findings {
 			if source := sourcesByRuntime[finding.RuntimeID]; source != nil {
-				source.FindingCount++
+				if findingsByRuntime[source.RuntimeID] == nil {
+					findingsByRuntime[source.RuntimeID] = map[string]bool{}
+				}
+				findingsByRuntime[source.RuntimeID][finding.ID] = true
 				if !seen[source.RuntimeID] {
 					source.ControlCount++
 					seen[source.RuntimeID] = true
 				}
 			}
+		}
+	}
+	for runtimeID, findingIDs := range findingsByRuntime {
+		if source := sourcesByRuntime[runtimeID]; source != nil {
+			source.FindingCount = len(findingIDs)
 		}
 	}
 	sources := make([]CollectionSource, 0, len(sourcesByRuntime))
@@ -615,8 +700,47 @@ func evidenceItemsFromRaw(evidence []*cerebrov1.FindingEvidence, sourceIDs map[s
 	return items
 }
 
-func findingWorkflowFromControls(controls []grccontrol.ControlItem, items []EvidenceItemRecord) []FindingWorkflow {
+func evidenceByID(evidence []*cerebrov1.FindingEvidence) map[string]*cerebrov1.FindingEvidence {
+	byID := map[string]*cerebrov1.FindingEvidence{}
+	for _, item := range evidence {
+		if item != nil && strings.TrimSpace(item.GetId()) != "" {
+			byID[item.GetId()] = item
+		}
+	}
+	return byID
+}
+
+func evidenceClaimIDs(evidence *cerebrov1.FindingEvidence) []string {
+	if evidence == nil {
+		return nil
+	}
+	return uniqueSortedStrings(evidence.GetClaimIds())
+}
+
+func evidenceEventIDs(evidence *cerebrov1.FindingEvidence) []string {
+	if evidence == nil {
+		return nil
+	}
+	return uniqueSortedStrings(evidence.GetEventIds())
+}
+
+func evidenceGraphRoots(evidence *cerebrov1.FindingEvidence) []string {
+	if evidence == nil {
+		return nil
+	}
+	return uniqueSortedStrings(evidence.GetGraphRootUrns())
+}
+
+func evidenceRunIDs(evidence *cerebrov1.FindingEvidence) []string {
+	if evidence == nil {
+		return nil
+	}
+	return uniqueSortedStrings(append(append([]string{}, evidence.GetRunIds()...), evidence.GetRunId()))
+}
+
+func findingWorkflowFromControls(controls []grccontrol.ControlItem, rawFindings []*ports.FindingRecord, items []EvidenceItemRecord) []FindingWorkflow {
 	byID := map[string]*FindingWorkflow{}
+	rawByID := rawFindingsByID(rawFindings)
 	for _, control := range controls {
 		controlID := stableControlID(stableFrameworkID(control), control.ControlID)
 		for _, finding := range control.Findings {
@@ -638,6 +762,16 @@ func findingWorkflowFromControls(controls []grccontrol.ControlItem, items []Evid
 					RuleID:         finding.RuleID,
 					LastObservedAt: formatTimePtr(finding.LastObservedAt),
 					ReviewStatus:   reviewStatusForFinding(finding),
+				}
+				if raw := rawByID[id]; raw != nil {
+					workflow.PolicyID = raw.PolicyID
+					workflow.PolicyName = raw.PolicyName
+					workflow.CheckID = raw.CheckID
+					workflow.CheckName = raw.CheckName
+					workflow.RiskScore = raw.RiskScore
+					workflow.RiskReasons = append([]string(nil), raw.RiskReasons...)
+					workflow.DueAt = formatTime(raw.DueAt)
+					workflow.StatusReason = raw.StatusReason
 				}
 				byID[id] = workflow
 			}
@@ -661,7 +795,7 @@ func findingWorkflowFromControls(controls []grccontrol.ControlItem, items []Evid
 	return workflows
 }
 
-func resourceSubjectsFromEvidence(items []EvidenceItemRecord) []ResourceSubject {
+func resourceSubjects(rawFindings []*ports.FindingRecord, items []EvidenceItemRecord) []ResourceSubject {
 	byURN := map[string]*ResourceSubject{}
 	for _, item := range items {
 		for _, urn := range append(append([]string{}, item.GraphRoots...), item.GraphPaths...) {
@@ -679,6 +813,24 @@ func resourceSubjectsFromEvidence(items []EvidenceItemRecord) []ResourceSubject 
 			subject.EvidenceIDs = append(subject.EvidenceIDs, item.ID)
 			subject.PacketIDs = append(subject.PacketIDs, item.PacketIDs...)
 			subject.LastObservedAt = maxTimeString(subject.LastObservedAt, item.LastObservedAt)
+		}
+	}
+	for _, finding := range rawFindings {
+		if finding == nil {
+			continue
+		}
+		for _, urn := range finding.ResourceURNs {
+			urn = strings.TrimSpace(urn)
+			if urn == "" {
+				continue
+			}
+			subject := byURN[urn]
+			if subject == nil {
+				subject = &ResourceSubject{ID: stableID("resource-subject", urn), URN: urn, Kind: resourceKind(urn)}
+				byURN[urn] = subject
+			}
+			subject.FindingIDs = append(subject.FindingIDs, finding.ID)
+			subject.LastObservedAt = maxTimeString(subject.LastObservedAt, formatTime(finding.LastObservedAt))
 		}
 	}
 	resources := make([]ResourceSubject, 0, len(byURN))
@@ -716,6 +868,109 @@ func evidenceLineageFromItems(items []EvidenceItemRecord) []EvidenceLineage {
 	return lineage
 }
 
+func claimRecordsFromItems(items []EvidenceItemRecord) []ClaimRecord {
+	byID := map[string]*ClaimRecord{}
+	for _, item := range items {
+		for _, claimID := range item.ClaimIDs {
+			record := byID[claimID]
+			if record == nil {
+				record = &ClaimRecord{ID: claimID}
+				byID[claimID] = record
+			}
+			record.EvidenceIDs = append(record.EvidenceIDs, item.ID)
+			record.FindingIDs = append(record.FindingIDs, item.FindingID)
+			record.ControlIDs = append(record.ControlIDs, item.ControlIDs...)
+			record.PacketIDs = append(record.PacketIDs, item.PacketIDs...)
+		}
+	}
+	claims := make([]ClaimRecord, 0, len(byID))
+	for _, record := range byID {
+		record.EvidenceIDs = uniqueSortedStrings(record.EvidenceIDs)
+		record.FindingIDs = uniqueSortedStrings(record.FindingIDs)
+		record.ControlIDs = uniqueSortedStrings(record.ControlIDs)
+		record.PacketIDs = uniqueSortedStrings(record.PacketIDs)
+		claims = append(claims, *record)
+	}
+	sort.Slice(claims, func(i, j int) bool { return claims[i].ID < claims[j].ID })
+	return claims
+}
+
+func evaluationRunsFromItems(items []EvidenceItemRecord) []EvaluationRun {
+	byID := map[string]*EvaluationRun{}
+	for _, item := range items {
+		for _, runID := range item.RunIDs {
+			record := byID[runID]
+			if record == nil {
+				record = &EvaluationRun{ID: runID, RuntimeID: item.RuntimeID, SourceID: item.SourceID}
+				byID[runID] = record
+			}
+			record.RuleIDs = append(record.RuleIDs, item.RuleID)
+			record.EvidenceIDs = append(record.EvidenceIDs, item.ID)
+			record.FindingIDs = append(record.FindingIDs, item.FindingID)
+			record.ControlIDs = append(record.ControlIDs, item.ControlIDs...)
+			record.PacketIDs = append(record.PacketIDs, item.PacketIDs...)
+		}
+	}
+	runs := make([]EvaluationRun, 0, len(byID))
+	for _, record := range byID {
+		record.RuleIDs = uniqueSortedStrings(record.RuleIDs)
+		record.EvidenceIDs = uniqueSortedStrings(record.EvidenceIDs)
+		record.FindingIDs = uniqueSortedStrings(record.FindingIDs)
+		record.ControlIDs = uniqueSortedStrings(record.ControlIDs)
+		record.PacketIDs = uniqueSortedStrings(record.PacketIDs)
+		runs = append(runs, *record)
+	}
+	sort.Slice(runs, func(i, j int) bool { return runs[i].ID < runs[j].ID })
+	return runs
+}
+
+func graphRecordsFromEvidence(evidence []*cerebrov1.FindingEvidence) ([]GraphEvidenceRecord, []GraphPathRecord) {
+	rows := []GraphEvidenceRecord{}
+	paths := []GraphPathRecord{}
+	for _, item := range evidence {
+		if item == nil {
+			continue
+		}
+		for rowIndex, row := range item.GetGraphRows() {
+			if row == nil {
+				continue
+			}
+			rowID := stableID("graph-row", item.GetId(), fmt.Sprint(rowIndex), row.GetLabel())
+			pathIDs := []string{}
+			for pathIndex, path := range row.GetPaths() {
+				if path == nil {
+					continue
+				}
+				pathID := stableID("graph-path", item.GetId(), fmt.Sprint(rowIndex), fmt.Sprint(pathIndex), path.GetFromUrn(), path.GetRelation(), path.GetToUrn())
+				pathIDs = append(pathIDs, pathID)
+				paths = append(paths, GraphPathRecord{
+					ID:         pathID,
+					EvidenceID: item.GetId(),
+					FindingID:  item.GetFindingId(),
+					FromURN:    path.GetFromUrn(),
+					FromType:   path.GetFromType(),
+					Relation:   path.GetRelation(),
+					ToURN:      path.GetToUrn(),
+					ToType:     path.GetToType(),
+					ObservedAt: path.GetObservedAt(),
+					Attributes: path.GetAttributes(),
+				})
+			}
+			rows = append(rows, GraphEvidenceRecord{
+				ID:         rowID,
+				EvidenceID: item.GetId(),
+				FindingID:  item.GetFindingId(),
+				Label:      row.GetLabel(),
+				Attributes: row.GetAttributes(),
+				PathIDs:    uniqueSortedStrings(pathIDs),
+			})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+	sort.Slice(paths, func(i, j int) bool { return paths[i].ID < paths[j].ID })
+	return rows, paths
+}
+
 func exceptionsForControl(control ControlPosture, packetControl compliance.ControlEvidencePacketControl) []ExceptionAcceptance {
 	exceptions := []ExceptionAcceptance{}
 	for _, id := range packetControl.Overrides.ExceptionIDs {
@@ -743,7 +998,7 @@ func exportArtifacts(export EvidenceExport, snapshot AuditSnapshot) []EvidenceEx
 	return artifacts
 }
 
-func packetsForExpectation(control ControlPosture, request EvidenceRequest, items []compliance.ControlEvidencePacketEvidenceItem, expectation compliance.ControlEvidenceExpectationPosture, generatedAt time.Time) []EvidencePacket {
+func packetsForExpectation(control ControlPosture, request EvidenceRequest, items []compliance.ControlEvidencePacketEvidenceItem, rawEvidence map[string]*cerebrov1.FindingEvidence, expectation compliance.ControlEvidenceExpectationPosture, generatedAt time.Time) []EvidencePacket {
 	itemByID := map[string]compliance.ControlEvidencePacketEvidenceItem{}
 	for _, item := range items {
 		itemByID[strings.TrimSpace(item.ID)] = item
@@ -756,6 +1011,7 @@ func packetsForExpectation(control ControlPosture, request EvidenceRequest, item
 		expiresAt := timePtr(item.ExpiresAt)
 		freshness := freshnessFor(item, expectation)
 		reviewStatus := reviewStatusForPacket(item, expectation)
+		raw := rawEvidence[evidenceID]
 		packets = append(packets, EvidencePacket{
 			ID:           packetID,
 			RequestID:    request.ID,
@@ -772,6 +1028,10 @@ func packetsForExpectation(control ControlPosture, request EvidenceRequest, item
 			Citations: EvidenceCitations{
 				EvidenceIDs: nonEmptyStrings(evidenceID),
 				RuleIDs:     nonEmptyStrings(item.RuleID),
+				EventIDs:    evidenceEventIDs(raw),
+				ClaimIDs:    evidenceClaimIDs(raw),
+				GraphRoots:  evidenceGraphRoots(raw),
+				RunIDs:      evidenceRunIDs(raw),
 			},
 			Freshness: freshness,
 			Review:    reviewFor(packetID, reviewStatus, string(item.Quality), generatedAt),
@@ -783,7 +1043,7 @@ func packetsForExpectation(control ControlPosture, request EvidenceRequest, item
 	return packets
 }
 
-func testResults(controlID string, item grccontrol.ControlItem) []ControlTestResult {
+func testResults(controlID string, item grccontrol.ControlItem, evidenceIDs map[string][]string) []ControlTestResult {
 	results := make([]ControlTestResult, 0, len(item.MappedRules))
 	failingRules := failingRulesByID(item.Findings)
 	for _, ruleID := range item.MappedRules {
@@ -803,10 +1063,22 @@ func testResults(controlID string, item grccontrol.ControlItem) []ControlTestRes
 			Result:          result,
 			EvidenceQuality: strings.TrimSpace(item.EvidenceQuality),
 			FindingIDs:      findingIDsForRule(item.Findings, ruleID),
+			EvidenceIDs:     uniqueSortedStrings(evidenceIDs[ruleID]),
 			LastObservedAt:  lastObservedForRule(item.Findings, ruleID),
 		})
 	}
 	return results
+}
+
+func evidenceIDsByRule(items []compliance.ControlEvidencePacketEvidenceItem) map[string][]string {
+	byRule := map[string][]string{}
+	for _, item := range items {
+		ruleID := strings.TrimSpace(item.RuleID)
+		if ruleID != "" {
+			byRule[ruleID] = append(byRule[ruleID], item.ID)
+		}
+	}
+	return byRule
 }
 
 func findingIDsForRule(findings []grccontrol.FindingItem, ruleID string) []string {
@@ -855,7 +1127,13 @@ func frameworksFromControls(controls []ControlPosture) []FrameworkPosture {
 		id := firstNonEmpty(control.FrameworkID, "default")
 		framework := byID[id]
 		if framework == nil {
-			framework = &FrameworkPosture{ID: id, Name: firstNonEmpty(control.FrameworkName, id), Status: "ready"}
+			framework = &FrameworkPosture{
+				ID:        id,
+				Name:      firstNonEmpty(control.FrameworkName, id),
+				Version:   control.FrameworkVersion,
+				Lifecycle: control.FrameworkLifecycle,
+				Status:    "ready",
+			}
 			byID[id] = framework
 		}
 		framework.ControlCount++
@@ -990,6 +1268,16 @@ func findingIDs(findings []grccontrol.FindingItem) []string {
 	return uniqueSortedStrings(ids)
 }
 
+func rawFindingsByID(findings []*ports.FindingRecord) map[string]*ports.FindingRecord {
+	byID := map[string]*ports.FindingRecord{}
+	for _, finding := range findings {
+		if finding != nil && strings.TrimSpace(finding.ID) != "" {
+			byID[finding.ID] = finding
+		}
+	}
+	return byID
+}
+
 func reviewStatusForFinding(finding grccontrol.FindingItem) string {
 	if findingClosed(finding.Status) {
 		return "ready"
@@ -1058,26 +1346,28 @@ func snapshotHash(values ...any) string {
 func stableID(parts ...string) string {
 	clean := make([]string, 0, len(parts))
 	for _, part := range parts {
-		normalized := strings.ToLower(strings.TrimSpace(part))
-		normalized = strings.Map(func(r rune) rune {
-			switch {
-			case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-				return r
-			case r == '-', r == '_', r == ':', r == '.':
-				return r
-			default:
-				return '-'
-			}
-		}, normalized)
-		normalized = strings.Trim(normalized, "-")
-		if normalized != "" {
-			clean = append(clean, normalized)
+		if encoded := stableIDPart(part); encoded != "" {
+			clean = append(clean, encoded)
 		}
 	}
 	if len(clean) == 0 {
 		return "evidence-record"
 	}
 	return strings.Join(clean, ":")
+}
+
+func stableIDPart(part string) string {
+	part = strings.TrimSpace(part)
+	if part == "" {
+		return ""
+	}
+	for _, r := range part {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == ':' || r == '.' {
+			continue
+		}
+		return "h_" + hex.EncodeToString([]byte(part))
+	}
+	return part
 }
 
 func stableControlID(framework string, control string) string {
@@ -1110,7 +1400,7 @@ func countOpenReviews(reviews []EvidenceReview) int {
 func exportPath(profileID string) string {
 	path := "/grc/evidence-packets"
 	if strings.TrimSpace(profileID) != "" {
-		path += "?profile=" + strings.TrimSpace(profileID)
+		path += "?profile=" + url.QueryEscape(strings.TrimSpace(profileID))
 	}
 	return path
 }
