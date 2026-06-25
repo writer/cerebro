@@ -394,10 +394,7 @@ func (s *Store) BackfillEntityTypedProperties(ctx context.Context, request graph
 	if batchSize <= 0 {
 		batchSize = defaultEntityTypedPropertyBackfillBatchSize
 	}
-	nullPredicate := fmt.Sprintf("e.%s IS NULL OR e.%s IS NULL OR e.%s IS NULL",
-		projectionmeta.PropertyInternetExposed,
-		projectionmeta.PropertyPrivilegedIdentity,
-		projectionmeta.PropertyMFADisabled)
+	nullPredicate := entityMissingTypedPropertiesPredicate()
 	result := graphstore.BackfillEntityTypedPropertiesResult{DryRun: request.DryRun}
 
 	if request.DryRun {
@@ -464,6 +461,16 @@ RETURN count(e)`
 	return result, nil
 }
 
+// entityMissingTypedPropertiesPredicate matches Entity nodes left with NULL typed properties from
+// before the typed-property promotion. It is shared by the backfill candidate scan and the
+// integrity check so the "must be zero once backfilled" invariant cannot drift. Bound to `e`.
+func entityMissingTypedPropertiesPredicate() string {
+	return fmt.Sprintf("e.%s IS NULL OR e.%s IS NULL OR e.%s IS NULL",
+		projectionmeta.PropertyInternetExposed,
+		projectionmeta.PropertyPrivilegedIdentity,
+		projectionmeta.PropertyMFADisabled)
+}
+
 func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 	checks := []IntegrityCheck{
 		{Name: "tenant_mismatched_relations", Expected: 0},
@@ -477,6 +484,7 @@ func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 		{Name: "github_workflow_job_runners_projected_as_assets", Expected: 0},
 		{Name: "sentinelone_activity_events_projected_as_assets", Expected: 0},
 		{Name: "ephemeral_event_entities_projected_as_inventory", Expected: 0},
+		{Name: "entities_missing_typed_properties", Expected: 0},
 	}
 	queries := []string{
 		"MATCH (src:Entity)-[r:RELATION]->(dst:Entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN count(r)",
@@ -490,6 +498,7 @@ func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 		"MATCH (e:Entity {entity_type: 'github.runner'}) WHERE coalesce(e.attributes_json, '') CONTAINS '\"action\":\"workflows.' RETURN count(e)",
 		"MATCH (e:Entity {entity_type: 'sentinelone.activity'}) RETURN count(e)",
 		"MATCH (e:Entity) WHERE coalesce(e.attributes_json, '') CONTAINS '\"projection_class\":\"ephemeral_event\"' RETURN count(e)",
+		fmt.Sprintf("MATCH (e:Entity) WHERE %s RETURN count(e)", entityMissingTypedPropertiesPredicate()),
 	}
 	return checks, queries
 }

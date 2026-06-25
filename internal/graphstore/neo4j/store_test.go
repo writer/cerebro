@@ -215,6 +215,30 @@ func TestIntegrityChecksIncludeGenericEphemeralEventInvariant(t *testing.T) {
 	t.Fatalf("integrity checks missing generic ephemeral event invariant: %#v", checks)
 }
 
+func TestIntegrityChecksIncludeMissingTypedPropertiesInvariant(t *testing.T) {
+	checks, queries := integrityCheckDefinitions()
+	if len(checks) != len(queries) {
+		t.Fatalf("integrity check definitions have %d checks and %d queries", len(checks), len(queries))
+	}
+	for i, check := range checks {
+		if check.Name != "entities_missing_typed_properties" {
+			continue
+		}
+		query := queries[i]
+		for _, expected := range []string{
+			projectionmeta.PropertyInternetExposed + " IS NULL",
+			projectionmeta.PropertyPrivilegedIdentity + " IS NULL",
+			projectionmeta.PropertyMFADisabled + " IS NULL",
+		} {
+			if !strings.Contains(query, expected) {
+				t.Fatalf("missing typed properties integrity query missing %q:\n%s", expected, query)
+			}
+		}
+		return
+	}
+	t.Fatalf("integrity checks missing typed property backfill invariant: %#v", checks)
+}
+
 func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
 		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
