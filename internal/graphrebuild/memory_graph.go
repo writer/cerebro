@@ -12,7 +12,7 @@ import (
 )
 
 type memoryGraphStore struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	entities map[string]memoryEntity
 	links    map[string]memoryLink
 }
@@ -134,14 +134,14 @@ func (s *memoryGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Pr
 }
 
 func (s *memoryGraphStore) Counts(context.Context) (graphstore.Counts, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return graphstore.Counts{Nodes: int64(len(s.entities)), Relations: int64(len(s.links))}, nil
 }
 
 func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	checks := []graphstore.IntegrityCheck{
 		{Name: "tenant_mismatched_relations", Expected: 0},
 		{Name: "blank_entity_labels", Expected: 0},
@@ -302,8 +302,8 @@ func (s *memoryGraphStore) memoryEntityHasOutgoingLinkTo(urn string, relation st
 }
 
 func (s *memoryGraphStore) PathPatterns(_ context.Context, limit int) ([]graphstore.PathPattern, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	counts := make(map[string]graphstore.PathPattern)
 	for _, first := range s.links {
 		for _, second := range s.links {
@@ -345,8 +345,8 @@ func (s *memoryGraphStore) PathPatterns(_ context.Context, limit int) ([]graphst
 }
 
 func (s *memoryGraphStore) Topology(context.Context) (graphstore.Topology, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	inDegree := make(map[string]int)
 	outDegree := make(map[string]int)
 	for _, link := range s.links {
@@ -372,8 +372,8 @@ func (s *memoryGraphStore) Topology(context.Context) (graphstore.Topology, error
 }
 
 func (s *memoryGraphStore) SampleTraversals(_ context.Context, limit int) ([]graphstore.Traversal, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	traversals := []graphstore.Traversal{}
 	for _, first := range s.links {
 		for _, second := range s.links {
