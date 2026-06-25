@@ -226,7 +226,7 @@ func blindedValue(tenantID string, value string) bool {
 func sensitiveEntityType(entityType string) bool {
 	entityType = strings.ToLower(strings.TrimSpace(entityType))
 	if entityType == "" {
-		return false
+		return true
 	}
 	if entityType == "asset.tag" || entityType == "data.classification" {
 		return false
