@@ -1,6 +1,7 @@
 package findings
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -325,6 +326,61 @@ func TestAnalyzeFindingExposureReturnsActionCandidatesForCorrelatedFindings(t *t
 		if !stringSliceContains(candidate.RuleIDs, ruleID) {
 			t.Fatalf("RuleIDs = %#v, want %q", candidate.RuleIDs, ruleID)
 		}
+	}
+}
+
+func TestAnalyzeFindingExposureBuildsActionCandidatesBeforeApplyingOutputLimit(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	noTargetFindings := []*ports.FindingRecord{
+		compoundRiskFinding("high-1", "high-risk-actor-rule-1", "CRITICAL", "admin@example.com", "", "", "disable_control"),
+		compoundRiskFinding("high-2", "high-risk-actor-rule-2", "CRITICAL", "admin@example.com", "", "", "credential_use"),
+		compoundRiskFinding("high-3", "high-risk-actor-rule-3", "CRITICAL", "admin@example.com", "", "", "public_expose"),
+	}
+	for idx, finding := range noTargetFindings {
+		finding.RuntimeID = "runtime-no-target"
+		finding.FirstObservedAt = base.Add(time.Duration(idx) * time.Minute)
+		finding.LastObservedAt = finding.FirstObservedAt
+		finding.EventIDs = []string{fmt.Sprintf("event-high-%d", idx)}
+		finding.ResourceURNs = nil
+		delete(finding.Attributes, "primary_resource_urn")
+		finding.Attributes["asset_criticality"] = "critical"
+		finding.Attributes["crown_jewel"] = "true"
+		finding.Attributes["privileged"] = "true"
+	}
+	trivy := compoundRiskFinding("trivy-1", trivyImageVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:trivy_vulnerability:sha256:abc:CVE-2026-1:openssl", "scan.detected")
+	trivy.FirstObservedAt = base.Add(time.Hour)
+	trivy.LastObservedAt = trivy.FirstObservedAt
+	trivy.EventIDs = []string{"event-trivy"}
+	trivy.Attributes["image_digest"] = "sha256:abc"
+	trivy.ResourceURNs = []string{"urn:cerebro:writer:container_image_digest:sha256:abc"}
+	trivy.Attributes["primary_resource_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+
+	aurelius := compoundRiskFinding("aurelius-1", aureliusPromotedVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:aurelius_vulnerability:vuln-1", "promoted")
+	aurelius.FirstObservedAt = base.Add(time.Hour + 20*time.Minute)
+	aurelius.LastObservedAt = aurelius.FirstObservedAt
+	aurelius.EventIDs = []string{"event-aurelius"}
+	aurelius.Attributes["container_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+	aurelius.Attributes["image_digest"] = "sha256:abc"
+	aurelius.ResourceURNs = []string{"urn:cerebro:writer:container_image_digest:sha256:abc"}
+	aurelius.Attributes["primary_resource_urn"] = "urn:cerebro:writer:container_image_digest:sha256:abc"
+
+	records := append(noTargetFindings, trivy, aurelius)
+	report := AnalyzeFindingExposure(records, FindingExposureAnalysisOptions{
+		Limit:             1,
+		CorrelationWindow: 24 * time.Hour,
+	})
+	if got := len(report.Correlations); got != 1 {
+		t.Fatalf("len(Correlations) = %d, want output limit applied", got)
+	}
+	if len(report.ActionCandidates) == 0 {
+		t.Fatalf("ActionCandidates = 0, want candidate built from unbounded correlations; report=%#v", report)
+	}
+	candidate := report.ActionCandidates[0]
+	if candidate.TargetURN != "urn:cerebro:writer:container_image_digest:sha256:abc" {
+		t.Fatalf("TargetURN = %q, want normalized container image urn", candidate.TargetURN)
+	}
+	if candidate.ActionType != "remediate_promoted_container_vulnerability" {
+		t.Fatalf("ActionType = %q, want remediate_promoted_container_vulnerability", candidate.ActionType)
 	}
 }
 

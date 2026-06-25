@@ -138,13 +138,15 @@ type FindingAttackPathStep struct {
 // AnalyzeFindingExposure summarizes source-agnostic compound risk, temporal correlations, and graph paths.
 func AnalyzeFindingExposure(records []*ports.FindingRecord, options FindingExposureAnalysisOptions) FindingExposureAnalysisReport {
 	compoundOptions := CompoundRiskOptions{Limit: options.Limit, SampleLimit: options.SampleLimit}
+	candidateOptions := options
+	candidateOptions.Limit = 0
 	compoundRisks := AnalyzeCompoundRisks(records, compoundOptions)
-	correlations := AnalyzeFindingCorrelations(records, options)
-	attackPaths := AnalyzeFindingAttackPaths(records, options.GraphNeighborhoods, options)
+	correlations := AnalyzeFindingCorrelations(records, candidateOptions)
+	attackPaths := AnalyzeFindingAttackPaths(records, options.GraphNeighborhoods, candidateOptions)
 	return FindingExposureAnalysisReport{
 		CompoundRisks:    compoundRisks,
-		Correlations:     correlations,
-		AttackPaths:      attackPaths,
+		Correlations:     limitFindingCorrelations(correlations, options.Limit),
+		AttackPaths:      limitFindingAttackPaths(attackPaths, options.Limit),
 		ActionCandidates: buildFindingActionCandidates(records, correlations, attackPaths, options),
 	}
 }
@@ -187,8 +189,12 @@ func AnalyzeFindingCorrelations(records []*ports.FindingRecord, options FindingE
 			return left.Key < right.Key
 		}
 	})
-	if options.Limit > 0 && len(correlations) > options.Limit {
-		correlations = correlations[:options.Limit]
+	return limitFindingCorrelations(correlations, options.Limit)
+}
+
+func limitFindingCorrelations(correlations []FindingCorrelation, limit int) []FindingCorrelation {
+	if limit > 0 && len(correlations) > limit {
+		return correlations[:limit]
 	}
 	return correlations
 }
@@ -616,8 +622,12 @@ func AnalyzeFindingAttackPaths(records []*ports.FindingRecord, neighborhoods map
 			return left.FindingURN < right.FindingURN
 		}
 	})
-	if options.Limit > 0 && len(paths) > options.Limit {
-		paths = paths[:options.Limit]
+	return limitFindingAttackPaths(paths, options.Limit)
+}
+
+func limitFindingAttackPaths(paths []FindingAttackPath, limit int) []FindingAttackPath {
+	if limit > 0 && len(paths) > limit {
+		return paths[:limit]
 	}
 	return paths
 }
