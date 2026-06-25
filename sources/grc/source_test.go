@@ -857,6 +857,95 @@ func TestEventLogRecordIDFallsBackToPayloadHash(t *testing.T) {
 	}
 }
 
+func TestReadAssuranceResourceFamiliesAsCanonicalGRCEvents(t *testing.T) {
+	server := httptest.NewServer(newTestAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+
+	cases := []struct {
+		family string
+		kind   string
+		attrs  map[string]string
+	}{
+		{
+			family: familyRegulatoryNotification,
+			kind:   "grc.regulatory_notification",
+			attrs: map[string]string{
+				"notification_id":   "notification-1",
+				"incident_id":       "incident-1",
+				"notification_type": "initial",
+				"control_ids":       "dora-art-19",
+			},
+		},
+		{
+			family: familyRecoveryObjective,
+			kind:   "grc.recovery_objective",
+			attrs: map[string]string{
+				"recovery_objective_id": "objective-1",
+				"service_id":            "payments-api",
+				"business_process":      "Payment Processing",
+				"rto_minutes":           "60",
+			},
+		},
+		{
+			family: familyAuthorizationPackage,
+			kind:   "grc.authorization_package",
+			attrs: map[string]string{
+				"authorization_package_id": "ato-1",
+				"framework":                "FedRAMP Rev. 5",
+				"impact_level":             "Moderate",
+				"system_id":                "writer-cloud",
+			},
+		},
+		{
+			family: familyPOAMItem,
+			kind:   "grc.poam_item",
+			attrs: map[string]string{
+				"poam_item_id": "poam-1",
+				"finding_id":   "finding-1",
+				"risk_rating":  "high",
+				"target_id":    "aws-prod",
+			},
+		},
+		{
+			family: familyTrainingAttestation,
+			kind:   "grc.training_attestation",
+			attrs: map[string]string{
+				"attestation_id": "attestation-1",
+				"person_id":      "person-1",
+				"user_id":        "user-1",
+				"completed_at":   "2026-06-01T00:00:00Z",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), testConfig(server.URL, tc.family), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tc.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tc.family, len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tc.kind {
+				t.Fatalf("event.Kind = %q, want %s", event.Kind, tc.kind)
+			}
+			for key, want := range tc.attrs {
+				if got := event.Attributes[key]; got != want {
+					t.Fatalf("event.Attributes[%q] = %q, want %q", key, got, want)
+				}
+			}
+		})
+	}
+}
+
 func testConfig(baseURL string, family string) sourcecdk.Config {
 	return sourcecdk.NewConfig(map[string]string{
 		"base_url":      baseURL,
@@ -944,6 +1033,79 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"jurisdictions":          []string{"US"},
 				"executedDate":           "2026-04-01T00:00:00Z",
 				"creationDate":           "2026-03-01T00:00:00Z",
+			}})
+		case "/v1/regulatory-notifications":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":               "notification-1",
+				"title":            "DORA incident notification",
+				"framework":        "DORA",
+				"regulator":        "EU",
+				"incidentId":       "incident-1",
+				"incidentTitle":    "Payments outage",
+				"notificationType": "initial",
+				"controlIds":       []string{"dora-art-19"},
+				"status":           "sent",
+				"sentAt":           "2026-06-01T00:00:00Z",
+			}})
+		case "/v1/recovery-objectives":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":              "objective-1",
+				"name":            "Payments recovery objective",
+				"serviceId":       "payments-api",
+				"targetType":      "service",
+				"businessProcess": "Payment Processing",
+				"rtoMinutes":      60,
+				"rpoMinutes":      15,
+				"controlIds":      []string{"cp-10"},
+				"impactTier":      "critical",
+				"status":          "approved",
+				"reviewedAt":      "2026-05-01T00:00:00Z",
+			}})
+		case "/v1/authorization-packages":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":           "ato-1",
+				"name":         "Writer Cloud authorization package",
+				"framework":    "FedRAMP Rev. 5",
+				"impactLevel":  "Moderate",
+				"systemId":     "writer-cloud",
+				"systemName":   "Writer Cloud",
+				"targetType":   "cloud_service_offering",
+				"controlIds":   []string{"fedramp-ca-7"},
+				"evidenceId":   "ssp-evidence-1",
+				"status":       "authorized",
+				"authorizedAt": "2026-04-15T00:00:00Z",
+			}})
+		case "/v1/poam-items":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":           "poam-1",
+				"findingId":    "finding-1",
+				"title":        "GuardDuty not enabled",
+				"riskRating":   "high",
+				"status":       "open",
+				"targetId":     "aws-prod",
+				"targetType":   "account",
+				"controlIds":   []string{"si-4"},
+				"evidenceType": "poam_record",
+				"evidenceId":   "poam-evidence-1",
+				"openedAt":     "2026-05-15T00:00:00Z",
+			}})
+		case "/v1/training-attestations":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":           "attestation-1",
+				"personId":     "person-1",
+				"userId":       "user-1",
+				"courseId":     "security-101",
+				"courseName":   "Security Awareness",
+				"trainingType": "security_awareness",
+				"completedAt":  "2026-06-01T00:00:00Z",
+				"controlIds":   []string{"training-control"},
+				"evidenceId":   "training-evidence-1",
+				"status":       "complete",
 			}})
 		case "/v1/discovered-vendors":
 			requireBearer(t, r)

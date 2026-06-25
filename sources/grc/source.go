@@ -53,12 +53,33 @@ const (
 
 const (
 	familyContract                 = "contract"
+	familyRegulatoryNotification   = "regulatory_notification"
+	familyRecoveryObjective        = "recovery_objective"
+	familyAuthorizationPackage     = "authorization_package"
+	familyPOAMItem                 = "poam_item"
+	familyTrainingAttestation      = "training_attestation"
 	familyDiscoveredVendor         = "discovered_vendor"
 	familyEventLog                 = "event_log"
 	familyGroup                    = "group"
 	familyVendorRiskAttribute      = "vendor_risk_attribute"
 	familyVulnerabilityRemediation = "vulnerability_remediation"
 )
+
+var familyEndpoints = []struct {
+	name string
+	path string
+}{
+	{familyFramework, "/v1/frameworks"}, {familyControl, "/v1/controls"}, {familyControlTest, "/v1/tests"},
+	{familyPolicy, "/v1/policies"}, {familyDocument, "/v1/documents"}, {familyContract, "/v1/contracts"},
+	{familyRegulatoryNotification, "/v1/regulatory-notifications"}, {familyRecoveryObjective, "/v1/recovery-objectives"},
+	{familyAuthorizationPackage, "/v1/authorization-packages"}, {familyPOAMItem, "/v1/poam-items"},
+	{familyTrainingAttestation, "/v1/training-attestations"}, {familyDiscoveredVendor, "/v1/discovered-vendors"},
+	{familyEventLog, "/v1/event-logs"}, {familyGroup, "/v1/groups"}, {familyVendorRiskAttribute, "/v1/vendor-risk-attributes"},
+	{familyVendor, "/v1/vendors"}, {familyVulnerability, "/v1/vulnerabilities"},
+	{familyVulnerabilityRemediation, "/v1/vulnerability-remediations"}, {familyVulnerableAsset, "/v1/vulnerable-assets"},
+	{familyRiskScenario, "/v1/risk-scenarios"}, {familyPerson, "/v1/people"}, {familyUser, "/v1/users"},
+	{familyIntegration, "/v1/integrations"},
+}
 
 // Source is the provider-neutral GRC source. Provider-specific APIs are kept
 // behind drivers; emitted event kinds stay canonical grc.*.
@@ -135,28 +156,11 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
-	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string {
-		return settings.family
-	},
-		s.family(familyFramework, "/v1/frameworks"),
-		s.family(familyControl, "/v1/controls"),
-		s.family(familyControlTest, "/v1/tests"),
-		s.family(familyPolicy, "/v1/policies"),
-		s.family(familyDocument, "/v1/documents"),
-		s.family(familyContract, "/v1/contracts"),
-		s.family(familyDiscoveredVendor, "/v1/discovered-vendors"),
-		s.family(familyEventLog, "/v1/event-logs"),
-		s.family(familyGroup, "/v1/groups"),
-		s.family(familyVendorRiskAttribute, "/v1/vendor-risk-attributes"),
-		s.family(familyVendor, "/v1/vendors"),
-		s.family(familyVulnerability, "/v1/vulnerabilities"),
-		s.family(familyVulnerabilityRemediation, "/v1/vulnerability-remediations"),
-		s.family(familyVulnerableAsset, "/v1/vulnerable-assets"),
-		s.family(familyRiskScenario, "/v1/risk-scenarios"),
-		s.family(familyPerson, "/v1/people"),
-		s.family(familyUser, "/v1/users"),
-		s.family(familyIntegration, "/v1/integrations"),
-	)
+	families := make([]sourcecdk.Family[settings], 0, len(familyEndpoints))
+	for _, endpoint := range familyEndpoints {
+		families = append(families, s.family(endpoint.name, endpoint.path))
+	}
+	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
 func (s *Source) family(name string, path string) sourcecdk.Family[settings] {
@@ -375,6 +379,16 @@ func recordIDKeys(family string) []string {
 		return []string{"id", "email"}
 	case familyVulnerableAsset:
 		return []string{"id", "assetId", "targetId", "externalId", "name"}
+	case familyRegulatoryNotification:
+		return []string{"id", "notificationId", "externalId"}
+	case familyRecoveryObjective:
+		return []string{"id", "objectiveId", "biaId", "externalId", "name"}
+	case familyAuthorizationPackage:
+		return []string{"id", "packageId", "atoId", "sspId", "externalId", "name"}
+	case familyPOAMItem:
+		return []string{"id", "poamItemId", "weaknessId", "findingId", "externalId", "title"}
+	case familyTrainingAttestation:
+		return []string{"id", "attestationId", "trainingAttestationId", "externalId"}
 	default:
 		return []string{"id", "externalId", "name"}
 	}
@@ -400,39 +414,21 @@ func occurredAtFor(family string, values map[string]any) time.Time {
 	return time.Now().UTC()
 }
 
+var timestampKeySets = map[string][]string{
+	familyControl: {"modificationDate", "creationDate"}, familyControlTest: {"lastTestRunDate", "latestFlipDate"},
+	familyPolicy: {"approvedAtDate"}, familyDocument: {"uploadStatusDate"}, familyContract: {"executedDate", "creationDate"},
+	familyRegulatoryNotification: {"sentAt", "submittedAt", "notificationDate", "createdAt", "updatedAt"},
+	familyRecoveryObjective:      {"reviewedAt", "updatedAt", "createdAt"}, familyAuthorizationPackage: {"authorizedAt", "authorizationDate", "updatedAt", "createdAt"},
+	familyPOAMItem: {"closedAt", "openedAt", "identifiedAt", "updatedAt", "createdAt"}, familyTrainingAttestation: {"completedAt", "completionDate", "updatedAt", "createdAt"},
+	familyDiscoveredVendor: {"discoveredDate", "ignored.ignoredAtDate", "rejected.rejectedAtDate"}, familyEventLog: {"date"},
+	familyGroup: {"creationDate"}, familyVendor: {"lastSecurityReviewCompletionDate"},
+	familyVulnerability: {"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}, familyVulnerabilityRemediation: {"remediationDate", "detectedDate"},
+	familyVulnerableAsset: {"lastDetectedDate", "lastSeenDate", "updatedAt"}, familyRiskScenario: {"identificationDate"},
+	familyPerson: {"employment.startDate", "employment.endDate"},
+}
+
 func timestampKeys(family string) []string {
-	switch family {
-	case familyControl:
-		return []string{"modificationDate", "creationDate"}
-	case familyControlTest:
-		return []string{"lastTestRunDate", "latestFlipDate"}
-	case familyPolicy:
-		return []string{"approvedAtDate"}
-	case familyDocument:
-		return []string{"uploadStatusDate"}
-	case familyContract:
-		return []string{"executedDate", "creationDate"}
-	case familyDiscoveredVendor:
-		return []string{"discoveredDate", "ignored.ignoredAtDate", "rejected.rejectedAtDate"}
-	case familyEventLog:
-		return []string{"date"}
-	case familyGroup:
-		return []string{"creationDate"}
-	case familyVendor:
-		return []string{"lastSecurityReviewCompletionDate"}
-	case familyVulnerability:
-		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
-	case familyVulnerabilityRemediation:
-		return []string{"remediationDate", "detectedDate"}
-	case familyVulnerableAsset:
-		return []string{"lastDetectedDate", "lastSeenDate", "updatedAt"}
-	case familyRiskScenario:
-		return []string{"identificationDate"}
-	case familyPerson:
-		return []string{"employment.startDate", "employment.endDate"}
-	default:
-		return nil
-	}
+	return timestampKeySets[family]
 }
 
 func fieldString(values map[string]any, path string) string {
