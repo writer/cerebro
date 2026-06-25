@@ -935,6 +935,42 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeVerificationFailedError, "describe kms key: AccessDeniedException"):
             _verification_result_from_logs(target, "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1", 0, messages, True)
 
+    def test_source_sync_failure_includes_nearby_context_and_raw_logs(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-ec2",
+            schedule_name="aws-ec2",
+            rule_name="cerebro-sec-dev-orchestrator-aws-ec2",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {"kind": "span_start", "name": "source_runtime.sync", "runtime_id": target.runtime_id},
+            {"kind": "event", "name": "source_runtime.page_read", "message": "describing ec2 instances"},
+            {"kind": "event", "name": "source_runtime.request", "message": "AccessDenied while describing instances"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "failed"},
+        ]
+        raw_messages = [
+            json.dumps(message)
+            for message in messages
+        ] + ["plain text provider failure: UnauthorizedOperation request_id=abc123"]
+
+        with self.assertRaises(RuntimeVerificationFailedError) as context:
+            _verification_result_from_logs(
+                target,
+                "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-1",
+                0,
+                messages,
+                True,
+                raw_messages=raw_messages,
+            )
+
+        message = str(context.exception)
+        self.assertIn("Structured task log context", message)
+        self.assertIn("AccessDenied while describing instances", message)
+        self.assertIn("Recent raw task logs", message)
+        self.assertIn("UnauthorizedOperation", message)
+        self.assertNotIn("123456789012", message)
+        self.assertNotIn("abc123", message)
+
     def test_graph_ingest_failure_includes_span_diagnostics(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-gcp-audit",

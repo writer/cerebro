@@ -550,9 +550,9 @@ def _find_open_graph_health_issue(repository: str, token: str, title: str) -> di
 def _graph_health_missing_runtime_ids(diagnostics: str) -> list[str]:
     runtime_ids: list[str] = []
     for match in re.finditer(
-        r"missing graph ingest run history for \d+ declared runtime\(s\): (.*?)(?:; latest graph ingest run failed|$)",
+        r"missing graph ingest run history for \d+ declared runtime\(s\): ([^\n;]+)",
         diagnostics,
-        flags=re.IGNORECASE | re.DOTALL,
+        flags=re.IGNORECASE,
     ):
         runtime_ids.extend(value.strip() for value in re.split(r"[\s,]+", match.group(1)) if value.strip())
     return sorted(set(runtime_ids))

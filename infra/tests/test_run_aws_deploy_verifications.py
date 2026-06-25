@@ -966,6 +966,14 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(run_aws_deploy_verifications._graph_health_runtime_ids(diagnostics), ["writer-vulnview-asset"])
 
+    def test_graph_health_missing_runtime_ids_ignore_following_integrity_failure(self) -> None:
+        diagnostics = (
+            "ERROR: missing graph ingest run history for 1 declared runtime(s): writer-runtime-a; "
+            "graph integrity failed 1 checks: entities_missing_typed_properties=620650"
+        )
+
+        self.assertEqual(run_aws_deploy_verifications._graph_health_missing_runtime_ids(diagnostics), ["writer-runtime-a"])
+
 
 if __name__ == "__main__":
     unittest.main()
