@@ -59,13 +59,16 @@ func newCloudPublicResourceExposureGraphRule() Rule {
 			"secret_manager_secret",
 		},
 	}, `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(resource:Entity {tenant_id: $tenant_id})
-WHERE public.entity_type ENDS WITH '.public_principal'
+WHERE public.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
   AND resource.entity_type <> 'cloud.account'
-  AND NOT resource.entity_type ENDS WITH '.public_principal'
+  AND NOT resource.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
   AND (
-    coalesce(resource.attributes_json, '') CONTAINS '"internet_exposed":"true"'
-    OR coalesce(resource.attributes_json, '') CONTAINS '"external_exposure":"true"'
-    OR coalesce(resource.attributes_json, '') CONTAINS '"public":"true"'
+    resource.internet_exposed = true
+    OR (resource.internet_exposed IS NULL AND (
+      coalesce(resource.attributes_json, '') CONTAINS '"internet_exposed":"true"'
+      OR coalesce(resource.attributes_json, '') CONTAINS '"external_exposure":"true"'
+      OR coalesce(resource.attributes_json, '') CONTAINS '"public":"true"'
+    ))
   )
   AND coalesce(reach.attributes_json, '') CONTAINS '"at":"'
   AND datetime(split(split(coalesce(reach.attributes_json, ''), '"at":"')[1], '"')[0]) >= datetime() - duration('P30D')

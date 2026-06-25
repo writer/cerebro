@@ -13,6 +13,7 @@ import (
 	"time"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	neo4jconfig "github.com/neo4j/neo4j-go-driver/v5/neo4j/config"
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
@@ -25,6 +26,18 @@ import (
 const defaultIngestRunListLimit = 25
 const maxAttributeMergeRetries = 5
 const defaultProjectionCleanupLimit = 1000
+
+// Neo4j driver pool tuning. Aura reaps idle server-side connections, so a
+// connection that has been parked in the pool past Aura's idle window fails
+// the next borrow with a connectivity error. Recycling connections well under
+// that window (rather than the driver default of one hour) keeps the pool warm
+// with live sockets. The acquisition timeout fails fast if the pool is ever
+// saturated instead of letting a borrow hang for the full caller deadline.
+const (
+	neo4jMaxConnectionLifetime        = 30 * time.Minute
+	neo4jConnectionAcquisitionTimeout = 60 * time.Second
+	neo4jMaxConnectionPoolSize        = 100
+)
 const mergeEntityAndLoadAttributesQuery = `MERGE (e:Entity {urn: $urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
 SET e.tenant_id = $tenant_id,
@@ -78,7 +91,11 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 		return nil, errors.New("neo4j password is required")
 	}
 	database := strings.TrimSpace(cfg.Neo4jDatabase)
-	driver, err := neo4jdriver.NewDriverWithContext(uri, neo4jdriver.BasicAuth(username, cfg.Neo4jPassword, ""))
+	driver, err := neo4jdriver.NewDriverWithContext(uri, neo4jdriver.BasicAuth(username, cfg.Neo4jPassword, ""), func(c *neo4jconfig.Config) {
+		c.MaxConnectionLifetime = neo4jMaxConnectionLifetime
+		c.ConnectionAcquisitionTimeout = neo4jConnectionAcquisitionTimeout
+		c.MaxConnectionPoolSize = neo4jMaxConnectionPoolSize
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
 	}
@@ -441,11 +458,13 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 			if err != nil {
 				return nil, fmt.Errorf("decode projected entity attributes: %w", err)
 			}
-			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, incomingAttributes))
+			mergedAttributes := mergeGraphAttributes(existing, incomingAttributes)
+			mergedJSON, err := graphAttributesJSON(mergedAttributes)
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected entity attributes: %w", err)
 			}
-			updated, err := updateEntityAttributes(ctx, tx, urn, version, mergedJSON)
+			typedProperties := entityTypedPropertyParams(projectionmeta.DerivedEntityProperties(mergedAttributes))
+			updated, err := updateEntityAttributes(ctx, tx, urn, version, mergedJSON, typedProperties)
 			if err != nil {
 				return nil, err
 			}
@@ -1270,6 +1289,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"CREATE INDEX cerebro_entity_tenant_source IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id)",
 		"CREATE INDEX cerebro_entity_tenant_source_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id, e.entity_type)",
 		"CREATE INDEX cerebro_entity_tenant_label IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.label)",
+		"CREATE INDEX cerebro_entity_tenant_internet_exposed IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.internet_exposed)",
+		"CREATE INDEX cerebro_entity_tenant_privileged_identity IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.is_privileged_identity)",
+		"CREATE INDEX cerebro_entity_tenant_mfa_disabled IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.mfa_disabled)",
 		"CREATE INDEX cerebro_relation_tenant_runtime IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.runtime_id)",
 		"CREATE INDEX cerebro_relation_tenant_relation IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.relation)",
 		"CREATE FULLTEXT INDEX cerebro_entity_inventory_fulltext IF NOT EXISTS FOR (e:Entity) ON EACH [e.urn, e.label, e.entity_type, e.attributes_json]",
@@ -1580,16 +1602,30 @@ func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTra
 	return stringValue(values[0]), toInt64(values[1]), result.Err()
 }
 
-func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, version int64, attributesJSON string) (bool, error) {
+// entityTypedPropertyParams maps the derived typed properties onto the node
+// property names backing the range indexes and the rule predicates. Building the
+// map here (rather than in projectionmeta) keeps the exported derivation API
+// strongly typed.
+func entityTypedPropertyParams(properties projectionmeta.EntityTypedProperties) map[string]any {
+	return map[string]any{
+		projectionmeta.PropertyInternetExposed:    properties.InternetExposed,
+		projectionmeta.PropertyPrivilegedIdentity: properties.PrivilegedIdentity,
+		projectionmeta.PropertyMFADisabled:        properties.MFADisabled,
+	}
+}
+
+func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, version int64, attributesJSON string, typedProperties map[string]any) (bool, error) {
 	updated, err := countQuery(ctx, tx, `MATCH (e:Entity {urn: $urn})
 WHERE coalesce(e.attributes_version, 0) = $attributes_version
 SET e.attributes_json = $attributes_json,
-    e.attributes_version = $next_attributes_version
+    e.attributes_version = $next_attributes_version,
+    e += $typed_properties
 RETURN count(e)`, map[string]any{
 		"urn":                     urn,
 		"attributes_version":      version,
 		"next_attributes_version": version + 1,
 		"attributes_json":         attributesJSON,
+		"typed_properties":        typedProperties,
 	})
 	if err != nil {
 		return false, err

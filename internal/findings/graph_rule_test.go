@@ -55,6 +55,41 @@ func (r *stubGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRunti
 	return r.emit, nil
 }
 
+func TestEvaluateSourceRuntimeGraphRulesExcludesNamedRules(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{}
+	ruleA := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "rule-a"}, sourceID: "okta", query: ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"}}
+	ruleB := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "rule-b"}, sourceID: "okta", query: ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"}}
+	registry, err := NewRegistry(ruleA, ruleB)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+
+	// Excluding rule-a leaves only rule-b (coverage for the other rule is kept).
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", ExcludeRuleIDs: []string{"rule-a"}})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	if got := result.Evaluations[0].Rule.GetId(); got != "rule-b" {
+		t.Fatalf("evaluated rule = %q, want rule-b", got)
+	}
+
+	// Excluding every supported rule evaluates nothing, without error: the
+	// tenant already ran them this cycle.
+	empty, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", ExcludeRuleIDs: []string{"rule-a", "rule-b"}})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(empty.Evaluations); got != 0 {
+		t.Fatalf("len(Evaluations) = %d, want 0 when all rules excluded", got)
+	}
+}
+
 func TestAsGraphRuleNarrows(t *testing.T) {
 	if _, ok := asGraphRule(nil); ok {
 		t.Fatalf("asGraphRule(nil) should be false")
@@ -221,6 +256,78 @@ func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing
 	}
 	if got := persisted.Status; got != findingStatusOpen {
 		t.Fatalf("stale finding status = %q, want still %q (truncated cypher view must not auto-resolve)", got, findingStatusOpen)
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesCapSignalSkipsStaleResolution(t *testing.T) {
+	// A rule can drop matching data internally (e.g. a per-account cap) while the
+	// total row count stays under the row limit. When that happens the query sets
+	// graph_rule_truncated=true so the evaluation is treated as truncated and
+	// stale-finding auto-resolution is skipped; otherwise still-active findings for
+	// the dropped rows would be wrongly closed as no-longer-matching.
+	for _, tc := range []struct {
+		name          string
+		signal        any
+		wantTruncated bool
+	}{
+		{name: "capped signals truncation", signal: true, wantTruncated: true},
+		{name: "capped string signals truncation", signal: "true", wantTruncated: true},
+		{name: "not capped allows resolution", signal: false, wantTruncated: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+			staleFinding := &ports.FindingRecord{
+				ID:          "finding-stale",
+				Fingerprint: "fp-stale",
+				TenantID:    "writer",
+				RuntimeID:   "runtime-okta",
+				RuleID:      "capping-rule",
+				Status:      findingStatusOpen,
+			}
+			store := &stubFindingStore{findings: map[string]*ports.FindingRecord{staleFinding.ID: cloneFinding(staleFinding)}}
+			graphStore := &stubGraphStore{
+				cypherRows: []ports.CypherRow{
+					{Values: map[string]any{"label": "row-1", graphRuleTruncationColumn: tc.signal}},
+				},
+			}
+			rule := &stubGraphRule{
+				spec:     &cerebrov1.RuleSpec{Id: "capping-rule"},
+				sourceID: "okta",
+				query: ports.CypherQueryRequest{
+					Query:    "MATCH (n) RETURN n LIMIT $row_limit",
+					Params:   map[string]any{"row_limit": int64(250)},
+					RowLimit: 250,
+				},
+			}
+			registry, err := NewRegistry(rule)
+			if err != nil {
+				t.Fatalf("NewRegistry() error = %v", err)
+			}
+			service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+			result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
+			if err != nil {
+				t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+			}
+			if got := len(result.Evaluations); got != 1 {
+				t.Fatalf("len(Evaluations) = %d, want 1", got)
+			}
+			if got := result.Evaluations[0].Truncated; got != tc.wantTruncated {
+				t.Fatalf("Truncated = %v, want %v (1 row below the row limit, signal=%v)", got, tc.wantTruncated, tc.signal)
+			}
+			persisted, ok := store.findings[staleFinding.ID]
+			if !ok {
+				t.Fatalf("stale finding %q missing after evaluation", staleFinding.ID)
+			}
+			if tc.wantTruncated {
+				if got := persisted.Status; got != findingStatusOpen {
+					t.Fatalf("stale finding status = %q, want still %q (cap signal must skip stale resolution)", got, findingStatusOpen)
+				}
+				return
+			}
+			if got := persisted.StatusReason; got != "graph_rule_no_longer_matches" {
+				t.Fatalf("stale finding StatusReason = %q, want graph_rule_no_longer_matches (no cap signal must auto-resolve)", got)
+			}
+		})
 	}
 }
 

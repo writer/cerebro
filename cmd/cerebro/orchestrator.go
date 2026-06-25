@@ -35,6 +35,11 @@ const sourceRuntimeLeaseOverscanLimit = 100
 const (
 	defaultOrchestratorPhaseTimeout       = 15 * time.Minute
 	defaultOrchestratorGraphIngestTimeout = 45 * time.Minute
+	// graphRulePhaseTimeoutMargin keeps the derived per-graph-rule Cypher budget
+	// strictly under the graph-rule phase timeout so a stuck rule trips an
+	// attributable per-rule deadline before the phase context is cancelled out
+	// from under the in-flight query (which surfaces as a connectivity error).
+	graphRulePhaseTimeoutMargin = time.Minute
 )
 
 type orchestratorOptions struct {
@@ -348,7 +353,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		findingEvaluationRunStore(deps.StateStore),
 		findingEvidenceStore(deps.StateStore),
 		claimStore(deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithAppendLog(deps.AppendLog)
+	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithAppendLog(deps.AppendLog).WithGraphRuleQueryTimeout(graphRuleQueryBudgetForPhase(options.PhaseTimeout))
 	graphService := graphingest.New(
 		registry,
 		lister,
@@ -514,6 +519,14 @@ func runOrchestratorIteration(
 	))
 	var runErr error
 	var acquiredCount uint32
+	// Graph rules are tenant-scoped: each one queries the whole tenant graph,
+	// not just the triggering runtime's slice. Running them once per runtime
+	// re-evaluates the identical tenant-wide rule for every runtime in the
+	// tenant (hundreds, for large multi-account tenants), which is the dominant
+	// load on the graph-rule phase. Track which rules already ran for a tenant
+	// this iteration and exclude them so each rule runs at most once per tenant
+	// per cycle while still covering rules contributed by other sources.
+	graphRulesEvaluatedByTenant := map[string]map[string]struct{}{}
 	for _, runtime := range runtimes {
 		if targetLimit > 0 && acquiredCount >= targetLimit {
 			break
@@ -670,10 +683,16 @@ func runOrchestratorIteration(
 		// reached by source sync, even if a trailing PutIngestRun(completed) write
 		// failed. The graph is fresh enough for read-only rules at that point.
 		if graphIngestReadyForGraphRules(graphResult, syncResult.GetRuntime().GetNextCursor()) {
+			excludedGraphRuleIDs := orchestratorEvaluatedGraphRuleIDs(graphRulesEvaluatedByTenant[runtimeResult.TenantID])
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_deduped_count", len(excludedGraphRuleIDs))
 			graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
-				return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+				return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId(), ExcludeRuleIDs: excludedGraphRuleIDs})
 			})
 			runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
+			// Mark every rule that was attempted (success or failure) so a slow
+			// or failing rule is retried at most once per tenant per cycle
+			// rather than re-running for every remaining runtime in the tenant.
+			markOrchestratorTenantGraphRulesEvaluated(graphRulesEvaluatedByTenant, runtimeResult.TenantID, graphRulesResult)
 			if err != nil {
 				if errors.Is(err, findings.ErrGraphRuntimeUnavailable) || errors.Is(err, findings.ErrRuntimeUnavailable) {
 					runtimeResult.GraphRules = "skipped"
@@ -741,6 +760,23 @@ func runOrchestratorIteration(
 // context.DeadlineExceeded, which the caller treats like any other
 // failure (lease releases, next iteration retries).
 //
+// graphRuleQueryBudgetForPhase derives a per-graph-rule Cypher read budget that
+// always trips before the graph-rule phase deadline, so a stuck rule surfaces an
+// attributable per-rule timeout instead of a phase-cancellation connectivity
+// error. A non-positive phase timeout returns 0 so the finding service keeps its
+// own conservative default.
+func graphRuleQueryBudgetForPhase(phaseTimeout time.Duration) time.Duration {
+	if phaseTimeout <= 0 {
+		return 0
+	}
+	if phaseTimeout > graphRulePhaseTimeoutMargin {
+		return phaseTimeout - graphRulePhaseTimeoutMargin
+	}
+	// Phase budget is at or below the standard margin: keep a 10% headroom so the
+	// per-rule deadline still fires first.
+	return phaseTimeout - phaseTimeout/10
+}
+
 // The phase context is derived from runtimeCtx so it still receives
 // lease-renewal cancellation. The generic R parameter lets each phase
 // return its own result type without an interface boxing dance.
@@ -1098,6 +1134,41 @@ func applyGraphRuleCounters(runtimeResult *orchestratorRuntimeResult, graphRules
 	attrs = withTelemetryField(attrs, "graph_rule_findings", runtimeResult.GraphRuleFindings)
 	attrs = withTelemetryField(attrs, "graph_rule_rows_read", runtimeResult.GraphRuleRowsRead)
 	return attrs
+}
+
+// orchestratorEvaluatedGraphRuleIDs returns the graph-rule IDs already evaluated
+// for a tenant this iteration, to be excluded from the next runtime's pass.
+func orchestratorEvaluatedGraphRuleIDs(evaluated map[string]struct{}) []string {
+	if len(evaluated) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(evaluated))
+	for id := range evaluated {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// markOrchestratorTenantGraphRulesEvaluated records every graph rule attempted
+// in a pass against the tenant so subsequent runtimes in the same iteration
+// exclude it.
+func markOrchestratorTenantGraphRulesEvaluated(evaluatedByTenant map[string]map[string]struct{}, tenantID string, result *findings.EvaluateGraphRulesResult) {
+	if evaluatedByTenant == nil || result == nil {
+		return
+	}
+	evaluated := evaluatedByTenant[tenantID]
+	if evaluated == nil {
+		evaluated = map[string]struct{}{}
+		evaluatedByTenant[tenantID] = evaluated
+	}
+	for _, evaluation := range result.Evaluations {
+		if evaluation == nil || evaluation.Rule == nil {
+			continue
+		}
+		if id := strings.TrimSpace(evaluation.Rule.GetId()); id != "" {
+			evaluated[id] = struct{}{}
+		}
+	}
 }
 
 func orchestratorListFilter(filter ports.SourceRuntimeFilter) ports.SourceRuntimeFilter {

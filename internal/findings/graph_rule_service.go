@@ -16,6 +16,12 @@ import (
 type EvaluateGraphRulesRequest struct {
 	RuntimeID string
 	RuleIDs   []string
+	// ExcludeRuleIDs drops the named graph rules from the default
+	// (ForRuntime) selection. The orchestrator uses this to run each
+	// tenant-scoped graph rule at most once per cycle even when many runtimes
+	// in the tenant would otherwise each trigger the same rule. It is ignored
+	// when RuleIDs is set explicitly.
+	ExcludeRuleIDs []string
 }
 
 // GraphRuleEvaluationResult reports one graph rule's outputs inside a multi-rule pass.
@@ -57,7 +63,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if err != nil {
 		return nil, err
 	}
-	candidates, err := s.selectGraphRules(runtime, request.RuleIDs)
+	candidates, err := s.selectGraphRules(runtime, request.RuleIDs, request.ExcludeRuleIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +87,27 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 
 func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (evaluation *GraphRuleEvaluationResult, err error) {
 	spec := rule.Spec()
+	ctx, span := telemetry.Start(ctx, "graph_rule.evaluate", telemetry.Attrs(
+		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(spec.GetId())},
+		telemetry.Field{Key: "source_id", Value: strings.TrimSpace(runtime.GetSourceId())},
+		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(runtime.GetTenantId())},
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(runtime.GetId())},
+	))
 	metricsStartedAt := time.Now()
+	defer func() {
+		spanStatus := "completed"
+		spanAttrs := telemetry.Attrs()
+		if evaluation != nil {
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "rows_read", Value: int64(evaluation.RowsRead)})
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "findings_emitted", Value: int64(len(evaluation.Findings))})
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "truncated", Value: evaluation.Truncated})
+		}
+		if err != nil {
+			spanStatus = "failed"
+			spanAttrs = spanAttrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(err)})
+		}
+		telemetry.End(span, spanStatus, spanAttrs)
+	}()
 	defer func() {
 		status := "completed"
 		errorKind := ""
@@ -124,13 +150,19 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		}
 		return result, nil
 	}
-	rows, err := s.graphQuery.ExecuteReadCypher(ctx, queryRequest)
+	queryCtx := ctx
+	if budget := s.graphRuleQueryBudget(); budget > 0 {
+		var cancelQuery context.CancelFunc
+		queryCtx, cancelQuery = context.WithTimeout(ctx, budget)
+		defer cancelQuery()
+	}
+	rows, err := s.graphQuery.ExecuteReadCypher(queryCtx, queryRequest)
 	if err != nil {
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result.RowsRead = boundedUint32(len(rows))
-	result.Truncated = cypherRowsTruncated(queryRequest, len(rows))
+	result.Truncated = cypherRowsTruncated(queryRequest, len(rows)) || cypherRowsSignalTruncated(rows)
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {
 		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
@@ -216,13 +248,60 @@ func cypherRowsTruncated(request ports.CypherQueryRequest, rowsReturned int) boo
 	return rowsReturned >= cap
 }
 
-func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]GraphRule, error) {
+// graphRuleTruncationColumn lets a rule's Cypher signal that it dropped matching
+// data internally (for example a per-account cap applied before the row limit)
+// even when the total row count stayed under the row limit. Without this a rule
+// that caps per-group results could return < RowLimit rows yet still be missing
+// offenders, and stale-finding auto-resolution would wrongly close the dropped
+// findings as no-longer-matching.
+const graphRuleTruncationColumn = "graph_rule_truncated"
+
+// cypherRowsSignalTruncated reports whether any row carries a truthy
+// graphRuleTruncationColumn, i.e. the rule's query itself signaled that it
+// dropped matching data.
+func cypherRowsSignalTruncated(rows []ports.CypherRow) bool {
+	for _, row := range rows {
+		if row.Values == nil {
+			continue
+		}
+		if value, ok := row.Values[graphRuleTruncationColumn]; ok && cypherValueTruthy(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func cypherValueTruthy(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "true", "1", "t", "yes":
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string, excludeRuleIDs []string) ([]GraphRule, error) {
 	if len(ruleIDs) == 0 {
+		excluded := make(map[string]struct{}, len(excludeRuleIDs))
+		for _, id := range excludeRuleIDs {
+			if trimmed := strings.TrimSpace(id); trimmed != "" {
+				excluded[trimmed] = struct{}{}
+			}
+		}
 		var graphRules []GraphRule
 		for _, rule := range s.rules.ForRuntime(runtime) {
-			if graphRule, ok := asGraphRule(rule); ok {
-				graphRules = append(graphRules, graphRule)
+			graphRule, ok := asGraphRule(rule)
+			if !ok {
+				continue
 			}
+			if _, skip := excluded[strings.TrimSpace(graphRule.Spec().GetId())]; skip {
+				continue
+			}
+			graphRules = append(graphRules, graphRule)
 		}
 		return graphRules, nil
 	}
