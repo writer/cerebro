@@ -7,6 +7,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/grccontrol"
+	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -144,14 +145,33 @@ func TestBuildKeepsNotApplicableFrameworkReadyAndTrimsEvidenceKeys(t *testing.T)
 			EvidenceScore:   100,
 			MissingEvidence: 2,
 			StaleEvidence:   1,
+			Findings:        []grccontrol.FindingItem{{ID: "finding-space", RuntimeID: "runtime-1", Status: "open"}},
+		}},
+		Findings: []*ports.FindingRecord{{
+			ID:           " finding-space ",
+			PolicyID:     "policy-space",
+			PolicyName:   "Policy Space",
+			CheckID:      "check-space",
+			CheckName:    "Check Space",
+			FindingRisk:  ports.FindingRisk{RiskScore: 42, RiskReasons: []string{"trimmed finding"}},
+			ResourceURNs: []string{"urn:cerebro:test:service:svc-space"},
 		}},
 		Evidence: []*cerebrov1.FindingEvidence{{
 			Id:        " ev-space ",
 			RuntimeId: " runtime-1 ",
+			FindingId: " finding-space ",
 			RuleId:    "rule.space",
 			ClaimIds:  []string{"claim-space"},
 			EventIds:  []string{"event-space"},
 			RunId:     "run-space",
+			GraphRows: []*cerebrov1.GraphEvidenceRow{{
+				Label: "supporting_path",
+				Paths: []*cerebrov1.GraphEvidencePath{{
+					FromUrn:  "urn:cerebro:test:identity:user",
+					Relation: "has_access",
+					ToUrn:    "urn:cerebro:test:service:svc-space",
+				}},
+			}},
 		}},
 		SourceIDs: map[string]string{"runtime-1": "source-1"},
 	})
@@ -174,5 +194,28 @@ func TestBuildKeepsNotApplicableFrameworkReadyAndTrimsEvidenceKeys(t *testing.T)
 	}
 	if got := response.Packets[0].Citations.ClaimIDs; len(got) != 1 || got[0] != "claim-space" {
 		t.Fatalf("packet claim citations = %#v, want raw evidence citation via trimmed lookup", got)
+	}
+	if len(response.Sources) != 1 || response.Sources[0].Status != "observed" || response.Sources[0].EvidenceItemCount != 1 {
+		t.Fatalf("sources = %#v, want observed source from evidence runtime outside configured scope", response.Sources)
+	}
+	if len(response.Findings) != 1 || response.Findings[0].PolicyID != "policy-space" || response.Findings[0].RiskScore != 42 {
+		t.Fatalf("finding workflow = %#v, want raw finding enrichment via trimmed ID", response.Findings)
+	}
+	if len(response.GraphRows) != 1 || response.GraphRows[0].EvidenceID != "ev-space" || response.GraphRows[0].FindingID != "finding-space" {
+		t.Fatalf("graph rows = %#v, want trimmed evidence and finding IDs", response.GraphRows)
+	}
+	if len(response.GraphPaths) != 1 || response.GraphPaths[0].EvidenceID != "ev-space" || response.GraphPaths[0].FindingID != "finding-space" {
+		t.Fatalf("graph paths = %#v, want trimmed evidence and finding IDs", response.GraphPaths)
+	}
+}
+
+func TestStableIDEncodesUnsafePartsWithoutLossyCollisions(t *testing.T) {
+	withSlash := stableID("control", "soc2", "CC6/1")
+	withDash := stableID("control", "soc2", "CC6-1")
+	if withSlash == withDash {
+		t.Fatalf("stable IDs collided: slash=%q dash=%q", withSlash, withDash)
+	}
+	if want := "control:soc2:h_4343362f31"; withSlash != want {
+		t.Fatalf("stable ID with slash = %q, want hex encoded unsafe part %q", withSlash, want)
 	}
 }

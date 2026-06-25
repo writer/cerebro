@@ -517,7 +517,7 @@ func Build(result grccontrol.PacketResult) Response {
 	claims := claimRecordsFromItems(items)
 	runs := evaluationRunsFromItems(items)
 	graphRows, graphPaths := graphRecordsFromEvidence(result.Evidence)
-	sources := collectionSources(result.Runtimes, result.Controls, items)
+	sources := collectionSources(result.Runtimes, result.SourceIDs, result.Controls, items)
 	sort.Slice(controls, func(i, j int) bool { return controls[i].ID < controls[j].ID })
 	sort.Slice(requests, func(i, j int) bool { return requests[i].ID < requests[j].ID })
 	sort.Slice(packets, func(i, j int) bool { return packets[i].ID < packets[j].ID })
@@ -616,15 +616,19 @@ func assessmentScope(result grccontrol.PacketResult, generatedAt time.Time) Asse
 	}
 }
 
-func collectionSources(runtimes []*cerebrov1.SourceRuntime, controls []grccontrol.ControlItem, items []EvidenceItemRecord) []CollectionSource {
+func collectionSources(runtimes []*cerebrov1.SourceRuntime, sourceIDs map[string]string, controls []grccontrol.ControlItem, items []EvidenceItemRecord) []CollectionSource {
 	sourcesByRuntime := map[string]*CollectionSource{}
 	for _, runtime := range runtimes {
-		if runtime == nil || strings.TrimSpace(runtime.GetId()) == "" {
+		if runtime == nil {
+			continue
+		}
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		if runtimeID == "" {
 			continue
 		}
 		source := &CollectionSource{
-			ID:           stableID("collection-source", runtime.GetId()),
-			RuntimeID:    runtime.GetId(),
+			ID:           stableID("collection-source", runtimeID),
+			RuntimeID:    runtimeID,
 			SourceID:     runtime.GetSourceId(),
 			TenantID:     runtime.GetTenantId(),
 			Status:       "configured",
@@ -633,9 +637,10 @@ func collectionSources(runtimes []*cerebrov1.SourceRuntime, controls []grccontro
 		if source.LastSyncedAt != "" {
 			source.Status = "collected"
 		}
-		sourcesByRuntime[source.RuntimeID] = source
+		sourcesByRuntime[runtimeID] = source
 	}
 	for _, item := range items {
+		ensureCollectionSource(sourcesByRuntime, sourceIDs, item.RuntimeID)
 		if source := sourcesByRuntime[item.RuntimeID]; source != nil {
 			source.EvidenceItemCount++
 		}
@@ -644,14 +649,16 @@ func collectionSources(runtimes []*cerebrov1.SourceRuntime, controls []grccontro
 	for _, control := range controls {
 		seen := map[string]bool{}
 		for _, finding := range control.Findings {
-			if source := sourcesByRuntime[finding.RuntimeID]; source != nil {
-				if findingsByRuntime[source.RuntimeID] == nil {
-					findingsByRuntime[source.RuntimeID] = map[string]bool{}
+			runtimeID := strings.TrimSpace(finding.RuntimeID)
+			ensureCollectionSource(sourcesByRuntime, sourceIDs, runtimeID)
+			if source := sourcesByRuntime[runtimeID]; source != nil {
+				if findingsByRuntime[runtimeID] == nil {
+					findingsByRuntime[runtimeID] = map[string]bool{}
 				}
-				findingsByRuntime[source.RuntimeID][finding.ID] = true
-				if !seen[source.RuntimeID] {
+				findingsByRuntime[runtimeID][strings.TrimSpace(finding.ID)] = true
+				if !seen[runtimeID] {
 					source.ControlCount++
-					seen[source.RuntimeID] = true
+					seen[runtimeID] = true
 				}
 			}
 		}
@@ -669,6 +676,32 @@ func collectionSources(runtimes []*cerebrov1.SourceRuntime, controls []grccontro
 	return sources
 }
 
+func ensureCollectionSource(sources map[string]*CollectionSource, sourceIDs map[string]string, runtimeID string) {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if runtimeID == "" || sources[runtimeID] != nil {
+		return
+	}
+	sources[runtimeID] = &CollectionSource{
+		ID:        stableID("collection-source", runtimeID),
+		RuntimeID: runtimeID,
+		SourceID:  sourceIDForRuntime(sourceIDs, runtimeID),
+		Status:    "observed",
+	}
+}
+
+func sourceIDForRuntime(sourceIDs map[string]string, runtimeID string) string {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if sourceID := strings.TrimSpace(sourceIDs[runtimeID]); sourceID != "" {
+		return sourceID
+	}
+	for key, sourceID := range sourceIDs {
+		if strings.TrimSpace(key) == runtimeID {
+			return strings.TrimSpace(sourceID)
+		}
+	}
+	return ""
+}
+
 func evidenceItemsFromRaw(evidence []*cerebrov1.FindingEvidence, sourceIDs map[string]string, links map[string]*recordLinks) []EvidenceItemRecord {
 	items := make([]EvidenceItemRecord, 0, len(evidence))
 	for _, item := range evidence {
@@ -684,10 +717,10 @@ func evidenceItemsFromRaw(evidence []*cerebrov1.FindingEvidence, sourceIDs map[s
 		items = append(items, EvidenceItemRecord{
 			ID:               evidenceID,
 			RuntimeID:        runtimeID,
-			SourceID:         sourceIDs[runtimeID],
-			FindingID:        item.GetFindingId(),
-			RuleID:           item.GetRuleId(),
-			RunID:            item.GetRunId(),
+			SourceID:         sourceIDForRuntime(sourceIDs, runtimeID),
+			FindingID:        strings.TrimSpace(item.GetFindingId()),
+			RuleID:           strings.TrimSpace(item.GetRuleId()),
+			RunID:            strings.TrimSpace(item.GetRunId()),
 			RunIDs:           uniqueSortedStrings(append(append([]string{}, item.GetRunIds()...), item.GetRunId())),
 			ClaimIDs:         uniqueSortedStrings(item.GetClaimIds()),
 			EventIDs:         uniqueSortedStrings(item.GetEventIds()),
@@ -936,22 +969,24 @@ func graphRecordsFromEvidence(evidence []*cerebrov1.FindingEvidence) ([]GraphEvi
 		if item == nil {
 			continue
 		}
+		evidenceID := strings.TrimSpace(item.GetId())
+		findingID := strings.TrimSpace(item.GetFindingId())
 		for rowIndex, row := range item.GetGraphRows() {
 			if row == nil {
 				continue
 			}
-			rowID := stableID("graph-row", item.GetId(), fmt.Sprint(rowIndex), row.GetLabel())
+			rowID := stableID("graph-row", evidenceID, fmt.Sprint(rowIndex), row.GetLabel())
 			pathIDs := []string{}
 			for pathIndex, path := range row.GetPaths() {
 				if path == nil {
 					continue
 				}
-				pathID := stableID("graph-path", item.GetId(), fmt.Sprint(rowIndex), fmt.Sprint(pathIndex), path.GetFromUrn(), path.GetRelation(), path.GetToUrn())
+				pathID := stableID("graph-path", evidenceID, fmt.Sprint(rowIndex), fmt.Sprint(pathIndex), path.GetFromUrn(), path.GetRelation(), path.GetToUrn())
 				pathIDs = append(pathIDs, pathID)
 				paths = append(paths, GraphPathRecord{
 					ID:         pathID,
-					EvidenceID: item.GetId(),
-					FindingID:  item.GetFindingId(),
+					EvidenceID: evidenceID,
+					FindingID:  findingID,
 					FromURN:    path.GetFromUrn(),
 					FromType:   path.GetFromType(),
 					Relation:   path.GetRelation(),
@@ -963,8 +998,8 @@ func graphRecordsFromEvidence(evidence []*cerebrov1.FindingEvidence) ([]GraphEvi
 			}
 			rows = append(rows, GraphEvidenceRecord{
 				ID:         rowID,
-				EvidenceID: item.GetId(),
-				FindingID:  item.GetFindingId(),
+				EvidenceID: evidenceID,
+				FindingID:  findingID,
 				Label:      row.GetLabel(),
 				Attributes: row.GetAttributes(),
 				PathIDs:    uniqueSortedStrings(pathIDs),
@@ -1091,7 +1126,7 @@ func evidenceIDsByRule(items []compliance.ControlEvidencePacketEvidenceItem) map
 	for _, item := range items {
 		ruleID := strings.TrimSpace(item.RuleID)
 		if ruleID != "" {
-			byRule[ruleID] = append(byRule[ruleID], item.ID)
+			byRule[ruleID] = append(byRule[ruleID], strings.TrimSpace(item.ID))
 		}
 	}
 	return byRule
@@ -1153,12 +1188,14 @@ func frameworksFromControls(controls []ControlPosture) []FrameworkPosture {
 			byID[id] = framework
 		}
 		framework.ControlCount++
-		if !frameworkControlNotApplicable(control.Status) {
+		notApplicable := frameworkControlNotApplicable(control.Status)
+		hasEvidenceBlockers := !notApplicable && (control.MissingEvidence > 0 || control.StaleEvidence > 0)
+		if !notApplicable {
 			framework.MissingEvidence += control.MissingEvidence
 			framework.StaleEvidence += control.StaleEvidence
 		}
 		framework.EvidenceScore += control.EvidenceScore
-		if frameworkControlPassing(control.Status) || frameworkControlNotApplicable(control.Status) {
+		if !hasEvidenceBlockers && (frameworkControlPassing(control.Status) || notApplicable) {
 			framework.PassingControls++
 		} else {
 			framework.NeedsAttentionControls++
@@ -1303,7 +1340,7 @@ func rawFindingsByID(findings []*ports.FindingRecord) map[string]*ports.FindingR
 	byID := map[string]*ports.FindingRecord{}
 	for _, finding := range findings {
 		if finding != nil && strings.TrimSpace(finding.ID) != "" {
-			byID[finding.ID] = finding
+			byID[strings.TrimSpace(finding.ID)] = finding
 		}
 	}
 	return byID
