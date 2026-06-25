@@ -14,6 +14,7 @@ import (
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/projectionmeta"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -492,6 +493,109 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	}
 }
 
+func TestNeo4jDockerBackfillEntityTypedProperties(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
+		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker is not installed")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	port := freePort(t)
+	name := fmt.Sprintf("cerebro-neo4j-backfill-%d", time.Now().UnixNano())
+	password := "test-password"
+	image := os.Getenv("CEREBRO_NEO4J_DOCKER_IMAGE")
+	if image == "" {
+		image = "neo4j:5"
+	}
+	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name, // #nosec G204 G702 -- integration test invokes fixed docker binary with generated container arguments.
+		"-e", "NEO4J_AUTH=neo4j/"+password,
+		"-p", fmt.Sprintf("127.0.0.1:%d:7687", port),
+		image)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker run neo4j: %v\n%s", err, string(output))
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", name).Run() // #nosec G204 -- integration test cleanup invokes fixed docker binary with generated container name.
+	})
+
+	store := waitForStore(t, ctx, config.GraphStoreConfig{
+		Neo4jURI:      fmt.Sprintf("bolt://127.0.0.1:%d", port),
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: password,
+	})
+	defer func() { _ = store.CloseContext(context.Background()) }()
+
+	seeds := []struct {
+		urn        string
+		entityType string
+		attributes map[string]string
+		want       projectionmeta.EntityTypedProperties
+	}{
+		{"urn:cerebro:writer:aws_network_interface:eni", "aws.network.interface", map[string]string{"internet_exposed": "true"}, projectionmeta.EntityTypedProperties{InternetExposed: true}},
+		{"urn:cerebro:writer:aws_user:admin", "aws.user", map[string]string{"is_admin": "true"}, projectionmeta.EntityTypedProperties{PrivilegedIdentity: true}},
+		{"urn:cerebro:writer:okta_user:nomfa", "okta.user", map[string]string{"mfa_enrolled": "false"}, projectionmeta.EntityTypedProperties{MFADisabled: true}},
+		{"urn:cerebro:writer:aws_s3_bucket:plain", "aws.s3.bucket", map[string]string{"team": "security"}, projectionmeta.EntityTypedProperties{}},
+	}
+	for _, seed := range seeds {
+		if err := store.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
+			URN:        seed.urn,
+			TenantID:   "writer",
+			SourceID:   "aws",
+			EntityType: seed.entityType,
+			Label:      seed.urn,
+			Attributes: seed.attributes,
+		}); err != nil {
+			t.Fatalf("UpsertProjectedEntity(%q) error = %v", seed.urn, err)
+		}
+	}
+
+	// Simulate pre-promotion nodes by clearing the typed properties the write path set.
+	if _, err := store.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return consume(ctx, tx, fmt.Sprintf("MATCH (e:Entity) REMOVE e.%s, e.%s, e.%s",
+			projectionmeta.PropertyInternetExposed,
+			projectionmeta.PropertyPrivilegedIdentity,
+			projectionmeta.PropertyMFADisabled), nil)
+	}); err != nil {
+		t.Fatalf("clear typed properties: %v", err)
+	}
+
+	wantSeeds := uint32(len(seeds)) // #nosec G115 -- test fixture slice is statically bounded.
+	dryRun, err := store.BackfillEntityTypedProperties(ctx, graphstore.BackfillEntityTypedPropertiesRequest{DryRun: true})
+	if err != nil {
+		t.Fatalf("BackfillEntityTypedProperties(dry-run) error = %v", err)
+	}
+	if dryRun.EntitiesMatched != wantSeeds || dryRun.EntitiesUpdated != 0 || !dryRun.DryRun {
+		t.Fatalf("dry-run result = %#v, want %d matched and no updates", dryRun, wantSeeds)
+	}
+
+	applied, err := store.BackfillEntityTypedProperties(ctx, graphstore.BackfillEntityTypedPropertiesRequest{BatchSize: 2, DryRun: false})
+	if err != nil {
+		t.Fatalf("BackfillEntityTypedProperties(apply) error = %v", err)
+	}
+	if applied.EntitiesUpdated != wantSeeds || applied.Batches < 2 || applied.DryRun {
+		t.Fatalf("apply result = %#v, want %d updated across at least two batches", applied, wantSeeds)
+	}
+
+	for _, seed := range seeds {
+		got := projectedEntityTypedProperties(t, ctx, store, seed.urn)
+		if got != seed.want {
+			t.Fatalf("typed properties for %q = %#v, want %#v", seed.urn, got, seed.want)
+		}
+	}
+
+	after, err := store.BackfillEntityTypedProperties(ctx, graphstore.BackfillEntityTypedPropertiesRequest{DryRun: true})
+	if err != nil {
+		t.Fatalf("BackfillEntityTypedProperties(dry-run after) error = %v", err)
+	}
+	if after.EntitiesMatched != 0 {
+		t.Fatalf("dry-run after backfill matched %d entities, want 0", after.EntitiesMatched)
+	}
+}
+
 func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, urn string) map[string]string {
 	t.Helper()
 	value, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -505,6 +609,39 @@ func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, 
 		t.Fatalf("decode projected entity attributes: %v", err)
 	}
 	return attributes
+}
+
+func projectedEntityTypedProperties(t *testing.T, ctx context.Context, store *Store, urn string) projectionmeta.EntityTypedProperties {
+	t.Helper()
+	values, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, fmt.Sprintf("MATCH (e:Entity {urn: $urn}) RETURN e.%s, e.%s, e.%s",
+			projectionmeta.PropertyInternetExposed,
+			projectionmeta.PropertyPrivilegedIdentity,
+			projectionmeta.PropertyMFADisabled), map[string]any{"urn": urn})
+		if err != nil {
+			return nil, err
+		}
+		if !result.Next(ctx) {
+			return nil, result.Err()
+		}
+		return result.Record().Values, result.Err()
+	})
+	if err != nil {
+		t.Fatalf("query projected entity typed properties: %v", err)
+	}
+	row, ok := values.([]any)
+	if !ok || len(row) != 3 {
+		t.Fatalf("typed property query returned %#v, want three columns", values)
+	}
+	boolValue := func(v any) bool {
+		b, _ := v.(bool)
+		return b
+	}
+	return projectionmeta.EntityTypedProperties{
+		InternetExposed:    boolValue(row[0]),
+		PrivilegedIdentity: boolValue(row[1]),
+		MFADisabled:        boolValue(row[2]),
+	}
 }
 
 func projectedLinkAttributes(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) map[string]string {
