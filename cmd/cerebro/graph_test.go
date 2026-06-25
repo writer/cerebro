@@ -400,6 +400,66 @@ func TestRepairOpenFindingPrimaryLinksCreatesMissingEdge(t *testing.T) {
 	}
 }
 
+func TestParseGraphBackfillEntityTypedPropertiesArgsDefaultsDryRun(t *testing.T) {
+	options, err := parseGraphBackfillEntityTypedPropertiesArgs([]string{"batch_size=100"})
+	if err != nil {
+		t.Fatalf("parseGraphBackfillEntityTypedPropertiesArgs() error = %v", err)
+	}
+	if !options.DryRun || options.BatchSize != 100 {
+		t.Fatalf("options = %#v, want dry-run batch_size 100", options)
+	}
+}
+
+func TestParseGraphBackfillEntityTypedPropertiesArgsRequiresApply(t *testing.T) {
+	if _, err := parseGraphBackfillEntityTypedPropertiesArgs([]string{"dry_run=false"}); err == nil {
+		t.Fatal("parseGraphBackfillEntityTypedPropertiesArgs() error = nil, want apply requirement")
+	}
+	if _, err := parseGraphBackfillEntityTypedPropertiesArgs([]string{"apply=true", "dry_run=true"}); err == nil {
+		t.Fatal("parseGraphBackfillEntityTypedPropertiesArgs(apply+dry_run) error = nil, want conflict")
+	}
+	options, err := parseGraphBackfillEntityTypedPropertiesArgs([]string{"apply=true"})
+	if err != nil {
+		t.Fatalf("parseGraphBackfillEntityTypedPropertiesArgs(apply) error = %v", err)
+	}
+	if options.DryRun {
+		t.Fatalf("DryRun = true, want apply mode")
+	}
+}
+
+func TestBackfillEntityTypedPropertiesForwardsOptions(t *testing.T) {
+	store := newGraphTestStore()
+	if err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:aws_user:admin",
+		TenantID:   "writer",
+		SourceID:   "aws",
+		EntityType: "aws.user",
+		Attributes: map[string]string{"is_admin": "true"},
+	}); err != nil {
+		t.Fatalf("UpsertProjectedEntity() error = %v", err)
+	}
+
+	dryRun, err := backfillEntityTypedProperties(context.Background(), bootstrap.Dependencies{GraphStore: store}, graphBackfillEntityTypedPropertiesOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("backfillEntityTypedProperties(dry-run) error = %v", err)
+	}
+	if dryRun.EntitiesMatched != 1 || dryRun.EntitiesUpdated != 0 || !dryRun.DryRun {
+		t.Fatalf("dryRun result = %#v, want one matched and no updates", dryRun)
+	}
+	applied, err := backfillEntityTypedProperties(context.Background(), bootstrap.Dependencies{GraphStore: store}, graphBackfillEntityTypedPropertiesOptions{DryRun: false})
+	if err != nil {
+		t.Fatalf("backfillEntityTypedProperties(apply) error = %v", err)
+	}
+	if applied.EntitiesUpdated != 1 || applied.Batches != 1 || applied.DryRun {
+		t.Fatalf("applied result = %#v, want one updated in one batch", applied)
+	}
+}
+
+func TestBackfillEntityTypedPropertiesUnsupportedStore(t *testing.T) {
+	if _, err := backfillEntityTypedProperties(context.Background(), bootstrap.Dependencies{}, graphBackfillEntityTypedPropertiesOptions{DryRun: true}); err == nil {
+		t.Fatal("backfillEntityTypedProperties() error = nil, want unsupported store error")
+	}
+}
+
 func TestGraphIngestCheckpointIDScrubsSensitiveConfig(t *testing.T) {
 	options := graphIngestOptions{
 		SourceID: "github",

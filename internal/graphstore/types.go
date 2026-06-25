@@ -42,6 +42,23 @@ type OpenFindingPrimaryLinkRepairResult struct {
 	DryRun       bool   `json:"dry_run"`
 }
 
+// BackfillEntityTypedPropertiesRequest scopes an idempotent pass that promotes the
+// typed boolean properties onto entities that predate the promotion and still hold
+// NULL values for them.
+type BackfillEntityTypedPropertiesRequest struct {
+	BatchSize uint32
+	DryRun    bool
+}
+
+// BackfillEntityTypedPropertiesResult reports how many entities still needed the
+// typed-property backfill and how many were updated.
+type BackfillEntityTypedPropertiesResult struct {
+	EntitiesMatched uint32 `json:"entities_matched"`
+	EntitiesUpdated uint32 `json:"entities_updated"`
+	Batches         uint32 `json:"batches"`
+	DryRun          bool   `json:"dry_run"`
+}
+
 // PathPattern captures one grouped two-hop graph pattern.
 type PathPattern struct {
 	FromType       string `json:"from_type"`

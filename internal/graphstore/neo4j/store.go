@@ -373,6 +373,97 @@ RETURN count(r)`, params)
 	return result, nil
 }
 
+const defaultEntityTypedPropertyBackfillBatchSize = 500
+
+// BackfillEntityTypedProperties promotes the typed boolean properties onto Entity
+// nodes that predate the promotion and still carry NULL values for them, deriving
+// each from the node's stored attributes_json with the exact same code the projection
+// write path uses (graphAttributesFromJSON + projectionmeta.DerivedEntityProperties),
+// so the backfilled values can never drift from a re-projection. It is idempotent: a
+// node is only revisited until its typed properties are concrete booleans, so each
+// batch shrinks the candidate set and the loop terminates. With DryRun it only counts
+// the entities that still need the backfill.
+func (s *Store) BackfillEntityTypedProperties(ctx context.Context, request graphstore.BackfillEntityTypedPropertiesRequest) (graphstore.BackfillEntityTypedPropertiesResult, error) {
+	if err := s.requireConfigured(); err != nil {
+		return graphstore.BackfillEntityTypedPropertiesResult{}, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return graphstore.BackfillEntityTypedPropertiesResult{}, err
+	}
+	batchSize := int64(request.BatchSize)
+	if batchSize <= 0 {
+		batchSize = defaultEntityTypedPropertyBackfillBatchSize
+	}
+	nullPredicate := fmt.Sprintf("e.%s IS NULL OR e.%s IS NULL OR e.%s IS NULL",
+		projectionmeta.PropertyInternetExposed,
+		projectionmeta.PropertyPrivilegedIdentity,
+		projectionmeta.PropertyMFADisabled)
+	result := graphstore.BackfillEntityTypedPropertiesResult{DryRun: request.DryRun}
+
+	if request.DryRun {
+		value, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+			return queryOneValue(ctx, tx, fmt.Sprintf("MATCH (e:Entity) WHERE %s RETURN count(e)", nullPredicate), nil)
+		})
+		if err != nil {
+			return graphstore.BackfillEntityTypedPropertiesResult{}, fmt.Errorf("count entity typed-property backfill candidates: %w", err)
+		}
+		result.EntitiesMatched = uint32FromInt64(toInt64(value))
+		return result, nil
+	}
+
+	readCypher := fmt.Sprintf("MATCH (e:Entity) WHERE %s RETURN e.urn, coalesce(e.attributes_json, '') LIMIT $limit", nullPredicate)
+	const writeCypher = `UNWIND $rows AS row
+MATCH (e:Entity {urn: row.urn})
+SET e += row.typed_properties
+RETURN count(e)`
+	for {
+		processed, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+			readResult, err := tx.Run(ctx, readCypher, map[string]any{"limit": batchSize})
+			if err != nil {
+				return int64(0), err
+			}
+			type candidate struct {
+				urn   string
+				attrs string
+			}
+			var candidates []candidate
+			for readResult.Next(ctx) {
+				values := readResult.Record().Values
+				candidates = append(candidates, candidate{urn: stringValue(values[0]), attrs: stringValue(values[1])})
+			}
+			if err := readResult.Err(); err != nil {
+				return int64(0), err
+			}
+			if len(candidates) == 0 {
+				return int64(0), nil
+			}
+			rows := make([]map[string]any, 0, len(candidates))
+			for _, c := range candidates {
+				attributes, err := graphAttributesFromJSON(c.attrs)
+				if err != nil {
+					return int64(0), fmt.Errorf("decode attributes_json for %q: %w", c.urn, err)
+				}
+				rows = append(rows, map[string]any{
+					"urn":              c.urn,
+					"typed_properties": entityTypedPropertyParams(projectionmeta.DerivedEntityProperties(attributes)),
+				})
+			}
+			return countQuery(ctx, tx, writeCypher, map[string]any{"rows": rows})
+		})
+		if err != nil {
+			return graphstore.BackfillEntityTypedPropertiesResult{}, fmt.Errorf("backfill entity typed properties: %w", err)
+		}
+		written := toInt64(processed)
+		if written == 0 {
+			break
+		}
+		result.Batches++
+		result.EntitiesUpdated += uint32FromInt64(written)
+	}
+	result.EntitiesMatched = result.EntitiesUpdated
+	return result, nil
+}
+
 func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 	checks := []IntegrityCheck{
 		{Name: "tenant_mismatched_relations", Expected: 0},

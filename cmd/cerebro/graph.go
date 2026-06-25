@@ -76,6 +76,10 @@ type graphOpenFindingPrimaryLinkRepairStore interface {
 	RepairOpenFindingPrimaryLinks(context.Context, graphstore.OpenFindingPrimaryLinkRepairRequest) (graphstore.OpenFindingPrimaryLinkRepairResult, error)
 }
 
+type graphBackfillEntityTypedPropertiesStore interface {
+	BackfillEntityTypedProperties(context.Context, graphstore.BackfillEntityTypedPropertiesRequest) (graphstore.BackfillEntityTypedPropertiesResult, error)
+}
+
 type graphIngestRunStore interface {
 	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
 }
@@ -208,6 +212,11 @@ type graphProjectedEntityCleanupOptions struct {
 type graphOpenFindingPrimaryLinkRepairOptions struct {
 	Limit  uint32
 	DryRun bool
+}
+
+type graphBackfillEntityTypedPropertiesOptions struct {
+	BatchSize uint32
+	DryRun    bool
 }
 
 type graphProjectedEntityCleanupResult struct {
@@ -347,6 +356,22 @@ func runGraph(args []string) error {
 			return printErr
 		}
 		return err
+	case "backfill-entity-typed-properties":
+		options, err := parseGraphBackfillEntityTypedPropertiesArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		ctx := context.Background()
+		deps, closeDeps, err := openGraphCleanupDependencies(ctx)
+		if err != nil {
+			return err
+		}
+		defer logClose(closeDeps)
+		result, err := backfillEntityTypedProperties(ctx, deps, options)
+		if printErr := printJSON(result); printErr != nil {
+			return printErr
+		}
+		return err
 	case "health":
 		return runGraphHealth(args[1:])
 	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
@@ -409,7 +434,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|backfill-entity-typed-properties|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -964,6 +989,17 @@ func repairOpenFindingPrimaryLinks(ctx context.Context, deps bootstrap.Dependenc
 	return repairer.RepairOpenFindingPrimaryLinks(ctx, graphstore.OpenFindingPrimaryLinkRepairRequest{
 		Limit:  options.Limit,
 		DryRun: options.DryRun,
+	})
+}
+
+func backfillEntityTypedProperties(ctx context.Context, deps bootstrap.Dependencies, options graphBackfillEntityTypedPropertiesOptions) (graphstore.BackfillEntityTypedPropertiesResult, error) {
+	backfiller, ok := deps.GraphStore.(graphBackfillEntityTypedPropertiesStore)
+	if !ok {
+		return graphstore.BackfillEntityTypedPropertiesResult{DryRun: options.DryRun}, fmt.Errorf("entity typed-property backfill is unsupported by configured graph store")
+	}
+	return backfiller.BackfillEntityTypedProperties(ctx, graphstore.BackfillEntityTypedPropertiesRequest{
+		BatchSize: options.BatchSize,
+		DryRun:    options.DryRun,
 	})
 }
 
@@ -1574,6 +1610,54 @@ func parseGraphOpenFindingPrimaryLinkRepairArgs(args []string) (graphOpenFinding
 	}
 	if !options.DryRun && !apply {
 		return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("apply=true is required before repairing open finding primary links")
+	}
+	return options, nil
+}
+
+func parseGraphBackfillEntityTypedPropertiesArgs(args []string) (graphBackfillEntityTypedPropertiesOptions, error) {
+	options := graphBackfillEntityTypedPropertiesOptions{DryRun: true}
+	apply := false
+	dryRunSet := false
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphBackfillEntityTypedPropertiesOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "batch_size":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphBackfillEntityTypedPropertiesOptions{}, fmt.Errorf("parse batch_size: %w", err)
+			}
+			if parsed == 0 {
+				return graphBackfillEntityTypedPropertiesOptions{}, fmt.Errorf("batch_size must be positive")
+			}
+			options.BatchSize = uint32(parsed)
+		case "dry_run":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphBackfillEntityTypedPropertiesOptions{}, fmt.Errorf("parse dry_run: %w", err)
+			}
+			options.DryRun = parsed
+			dryRunSet = true
+		case "apply":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphBackfillEntityTypedPropertiesOptions{}, fmt.Errorf("parse apply: %w", err)
+			}
+			apply = parsed
+		default:
+			return graphBackfillEntityTypedPropertiesOptions{}, usageError(fmt.Sprintf("unsupported graph backfill-entity-typed-properties argument %q", key))
+		}
+	}
+	if apply {
+		if dryRunSet && options.DryRun {
+			return graphBackfillEntityTypedPropertiesOptions{}, fmt.Errorf("apply=true conflicts with dry_run=true")
+		}
+		options.DryRun = false
+	}
+	if !options.DryRun && !apply {
+		return graphBackfillEntityTypedPropertiesOptions{}, fmt.Errorf("apply=true is required before backfilling entity typed properties")
 	}
 	return options, nil
 }

@@ -216,6 +216,23 @@ func (s *graphTestStore) RepairOpenFindingPrimaryLinks(_ context.Context, reques
 	return result, nil
 }
 
+func (s *graphTestStore) BackfillEntityTypedProperties(_ context.Context, request graphstore.BackfillEntityTypedPropertiesRequest) (graphstore.BackfillEntityTypedPropertiesResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := graphstore.BackfillEntityTypedPropertiesResult{DryRun: request.DryRun}
+	matched := uint32(len(s.entities)) // #nosec G115 -- test store entity count is statically bounded.
+	if request.DryRun {
+		result.EntitiesMatched = matched
+		return result, nil
+	}
+	if matched > 0 {
+		result.EntitiesMatched = matched
+		result.EntitiesUpdated = matched
+		result.Batches = 1
+	}
+	return result, nil
+}
+
 func (s *graphTestStore) PathPatterns(_ context.Context, limit int) ([]graphstore.PathPattern, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
