@@ -25,6 +25,7 @@ emitted_kinds:
   - grc.vulnerability
   - grc.vulnerability_remediation
   - grc.vulnerable_asset
+  - grc.monitored_computer
   - grc.risk_scenario
   - grc.person
   - grc.user
@@ -120,6 +121,10 @@ event_contracts:
       - family
   - kind: grc.vulnerable_asset
     schema_ref: grc/vulnerable_asset/v1
+    required_attributes:
+      - family
+  - kind: grc.monitored_computer
+    schema_ref: grc/monitored_computer/v1
     required_attributes:
       - family
   - kind: grc.risk_scenario
@@ -318,6 +323,14 @@ coverage_contract:
       high_value: true
       evidence_types: [relationship_evidence, vulnerability_management]
       control_domains: [vulnerability_management]
+    - id: monitored_computers
+      type: entity_family
+      title: Monitored endpoint computers
+      families: [monitored_computer]
+      support: supported
+      high_value: true
+      evidence_types: [device_posture, configuration_state]
+      control_domains: [endpoint_security, device_management]
     - id: risk_scenarios
       type: entity_family
       title: Risk scenarios

@@ -157,10 +157,14 @@ func addEndpointEntity(entities map[string]*ports.ProjectedEntity, tenantID stri
 	if endpointURN == "" {
 		return ""
 	}
-	endpointAttrs := map[string]string{
-		"device_id":      endpointID,
-		"source_product": profile.Provider,
+	sourceProduct := strings.TrimSpace(profile.Provider)
+	if sourceProduct == "" {
+		sourceProduct = firstAttribute(attrs, "source_product", "provider", "source_provider")
 	}
+	endpointAttrs := map[string]string{
+		"device_id": endpointID,
+	}
+	addEndpointAttribute(endpointAttrs, "source_product", sourceProduct)
 	addEndpointAttribute(endpointAttrs, "device_uuid", attrs["device_uuid"])
 	addEndpointAttribute(endpointAttrs, "hostname", attrs["hostname"])
 	addEndpointAttribute(endpointAttrs, "serial_number", attrs["serial_number"])
@@ -297,6 +301,8 @@ func endpointOwnerIDRetractionProfile(kind string) (endpointProjectionProfile, b
 		return kandjiEndpointProfile, false, true
 	case "kandji.application":
 		return kandjiEndpointProfile, true, true
+	case "grc.monitored_computer":
+		return grcMonitoredComputerEndpointProfile, false, true
 	default:
 		return endpointProjectionProfile{}, false, false
 	}
