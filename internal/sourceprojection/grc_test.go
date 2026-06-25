@@ -115,6 +115,9 @@ func TestProjectGRCSecurityQuestionnaireLinksAccountControlsEvidenceAndDocument(
 	assertProjectedLink(t, state, questionnaireURN, relationSupports, secondControlURN)
 	assertProjectedLink(t, state, questionnaireURN, relationHasEvidence, evidenceURN)
 	assertProjectedLink(t, state, questionnaireURN, relationAssociatedWith, documentURN)
+	if got := state.entities[accountURN].Label; got != "account-1" {
+		t.Fatalf("customer trust account label = %q, want account-1", got)
+	}
 }
 
 func TestProjectGRCSecurityReviewDocumentIDDoesNotCreateAssuranceDocumentLink(t *testing.T) {
@@ -181,6 +184,15 @@ func TestProjectGRCPenetrationTestLinksTargetControlsFindingsAndVulnerabilities(
 	evidenceURN := "urn:cerebro:writer:runtime_evidence:pentest-evidence-1"
 	if entity := state.entities[testURN]; entity == nil || entity.EntityType != "penetration.test" {
 		t.Fatalf("penetration test entity missing: %#v", entity)
+	}
+	if got := state.entities[firstFindingURN].Label; got != "finding-1" {
+		t.Fatalf("first finding label = %q, want finding-1", got)
+	}
+	if got := state.entities[secondFindingURN].Label; got != "finding-2" {
+		t.Fatalf("second finding label = %q, want finding-2", got)
+	}
+	if got := state.entities[vulnerabilityURN].Label; got != "vuln-1" {
+		t.Fatalf("vulnerability label = %q, want vuln-1", got)
 	}
 	assertProjectedLink(t, state, testURN, relationTargeted, targetURN)
 	assertProjectedLink(t, state, testURN, relationSupports, controlURN)

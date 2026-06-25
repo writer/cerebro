@@ -2041,7 +2041,7 @@ func addGRCCustomerTrustAccountLink(entities map[string]*ports.ProjectedEntity, 
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: "customer_trust.account",
-		Label:      firstAttribute(attrs, "customer_trust_account_name", "customer_account_name", "account_name", "customer_name", "account_id"),
+		Label:      firstAttribute(attrs, "customer_trust_account_name", "customer_account_name", "account_name", "customer_name", "customer_trust_account_id", "customer_account_id", "account_id"),
 		Attributes: grcAttributes(nil, map[string]string{
 			"account_id":                accountID,
 			"customer_trust_account_id": accountID,
@@ -2113,7 +2113,7 @@ func addGRCPenetrationTestFindingLinks(entities map[string]*ports.ProjectedEntit
 			TenantID:   tenantID,
 			SourceID:   sourceID,
 			EntityType: "finding",
-			Label:      firstAttribute(attrs, "finding_name", "title", "name", "finding_id"),
+			Label:      firstNonEmpty(firstAttribute(attrs, "finding_name"), findingID),
 			Attributes: grcAttributes(nil, map[string]string{"finding_id": findingID, "source_system": provider}),
 		})
 		addLink(links, projectedLink(tenantID, sourceID, testURN, findingURN, relationAssociatedWith, map[string]string{
@@ -2124,6 +2124,8 @@ func addGRCPenetrationTestFindingLinks(entities map[string]*ports.ProjectedEntit
 	}
 	for _, vulnerabilityID := range grcAttributeSequence(strings.Join([]string{attrs["vulnerability_id"], attrs["vulnerability_ids"]}, ",")) {
 		referenceAttrs := grcProjectionAttrsWith(attrs, "vulnerability_id", vulnerabilityID)
+		delete(referenceAttrs, "name")
+		delete(referenceAttrs, "title")
 		vulnerabilityURN := grcProviderVulnerabilityURN(tenantID, provider, vulnerabilityID)
 		if vulnerabilityURN == "" {
 			continue
