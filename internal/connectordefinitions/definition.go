@@ -252,14 +252,25 @@ type ProjectionRelationshipSpec struct {
 // CoverageDimensionSpec mirrors sourcecdk coverage dimensions without coupling
 // dynamic connector definitions to source package loading.
 type CoverageDimensionSpec struct {
-	ID                     string   `json:"id,omitempty"`
-	Type                   string   `json:"type"`
-	Title                  string   `json:"title,omitempty"`
-	Families               []string `json:"families,omitempty"`
-	Support                string   `json:"support"`
-	HighValue              bool     `json:"high_value,omitempty"`
-	KnownUnsupportedFields []string `json:"known_unsupported_fields,omitempty"`
-	Notes                  []string `json:"notes,omitempty"`
+	ID                     string                   `json:"id,omitempty"`
+	Type                   string                   `json:"type"`
+	Title                  string                   `json:"title,omitempty"`
+	Families               []string                 `json:"families,omitempty"`
+	Support                string                   `json:"support"`
+	HighValue              bool                     `json:"high_value,omitempty"`
+	KnownUnsupportedFields []string                 `json:"known_unsupported_fields,omitempty"`
+	Notes                  []string                 `json:"notes,omitempty"`
+	EvidenceTypes          []string                 `json:"evidence_types,omitempty"`
+	ControlDomains         []string                 `json:"control_domains,omitempty"`
+	ControlRefs            []CoverageControlRefSpec `json:"control_refs,omitempty"`
+}
+
+// CoverageControlRefSpec connects declarative connector coverage to compliance
+// controls while keeping connector definitions independent from compliance.
+type CoverageControlRefSpec struct {
+	FrameworkID   string `json:"framework_id,omitempty"`
+	FrameworkName string `json:"framework_name,omitempty"`
+	ControlID     string `json:"control_id"`
 }
 
 // ResourceFamily describes one read-only resource collection exposed by the connector runtime.
@@ -790,6 +801,11 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 		if strings.TrimSpace(dimension.Type) == "" || strings.TrimSpace(dimension.Support) == "" {
 			add(blocking("coverage_"+family.ID, "Coverage", "Coverage dimensions need type and support."))
 		}
+		for _, ref := range dimension.ControlRefs {
+			if strings.TrimSpace(ref.ControlID) == "" || (strings.TrimSpace(ref.FrameworkID) == "" && strings.TrimSpace(ref.FrameworkName) == "") {
+				add(blocking("coverage_control_refs_"+family.ID, "Coverage control refs", "Coverage control refs require framework_name or framework_id and control_id."))
+			}
+		}
 	}
 }
 
@@ -1195,7 +1211,101 @@ func normalizeCoverageDimensionSpec(familyID string, dimension CoverageDimension
 	dimension.Support = strings.TrimSpace(dimension.Support)
 	dimension.KnownUnsupportedFields = normalizeStringList(dimension.KnownUnsupportedFields)
 	dimension.Notes = normalizeStringList(dimension.Notes)
+	dimension.EvidenceTypes = normalizeStringList(dimension.EvidenceTypes)
+	if len(dimension.EvidenceTypes) == 0 {
+		dimension.EvidenceTypes = defaultCoverageEvidenceTypes(dimension.Type)
+	}
+	dimension.ControlDomains = normalizeStringList(dimension.ControlDomains)
+	if len(dimension.ControlDomains) == 0 {
+		dimension.ControlDomains = defaultCoverageControlDomains(dimension.Type)
+	}
+	dimension.ControlRefs = normalizeCoverageControlRefSpecs(dimension.ControlRefs)
 	return dimension
+}
+
+func defaultCoverageEvidenceTypes(dimensionType string) []string {
+	switch strings.TrimSpace(dimensionType) {
+	case "alert_state":
+		return []string{"security_monitoring"}
+	case "app_entitlement":
+		return []string{"identity_configuration"}
+	case "audit_event":
+		return []string{"logging_configuration"}
+	case "deployment_state":
+		return []string{"change_management"}
+	case "entity_family":
+		return []string{"source_snapshot"}
+	case "incremental_sync":
+		return []string{"source_sync_status"}
+	case "lifecycle_state":
+		return []string{"configuration_state"}
+	case "relationship":
+		return []string{"relationship_evidence"}
+	case "remediation_state":
+		return []string{"remediation_state"}
+	default:
+		return nil
+	}
+}
+
+func defaultCoverageControlDomains(dimensionType string) []string {
+	switch strings.TrimSpace(dimensionType) {
+	case "alert_state":
+		return []string{"logging_monitoring", "security_operations"}
+	case "app_entitlement":
+		return []string{"identity_access"}
+	case "audit_event":
+		return []string{"logging_monitoring"}
+	case "deployment_state":
+		return []string{"secure_delivery"}
+	case "entity_family":
+		return []string{"asset_inventory"}
+	case "incremental_sync":
+		return []string{"source_operations"}
+	case "lifecycle_state":
+		return []string{"security_operations"}
+	case "relationship":
+		return []string{"asset_inventory"}
+	case "remediation_state":
+		return []string{"remediation"}
+	default:
+		return nil
+	}
+}
+
+func normalizeCoverageControlRefSpecs(refs []CoverageControlRefSpec) []CoverageControlRefSpec {
+	if len(refs) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	normalized := make([]CoverageControlRefSpec, 0, len(refs))
+	for _, ref := range refs {
+		next := CoverageControlRefSpec{
+			FrameworkID:   strings.TrimSpace(ref.FrameworkID),
+			FrameworkName: strings.TrimSpace(ref.FrameworkName),
+			ControlID:     strings.TrimSpace(ref.ControlID),
+		}
+		if next.ControlID == "" || (next.FrameworkID == "" && next.FrameworkName == "") {
+			normalized = append(normalized, next)
+			continue
+		}
+		key := next.FrameworkID + "\x00" + next.FrameworkName + "\x00" + next.ControlID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, next)
+	}
+	sort.Slice(normalized, func(i int, j int) bool {
+		if normalized[i].FrameworkName != normalized[j].FrameworkName {
+			return normalized[i].FrameworkName < normalized[j].FrameworkName
+		}
+		if normalized[i].FrameworkID != normalized[j].FrameworkID {
+			return normalized[i].FrameworkID < normalized[j].FrameworkID
+		}
+		return normalized[i].ControlID < normalized[j].ControlID
+	})
+	return normalized
 }
 
 func normalizeScopeOptions(options []ScopeOption, families []ResourceFamily) []ScopeOption {

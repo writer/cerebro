@@ -71,7 +71,7 @@ func checkRepositoryWithOptions(root string, options repositoryCheckOptions) ([]
 		return nil, err
 	}
 	issues = append(issues, policyIssues...)
-	sourceIssues, err := checkSourceCatalogs(root)
+	sourceIssues, err := checkSourceCatalogsWithControlCatalog(root, controlCatalog)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +366,10 @@ func validateControlMapping(path string, raw map[string]json.RawMessage) []issue
 }
 
 func checkSourceCatalogs(root string) ([]issue, error) {
+	return checkSourceCatalogsWithControlCatalog(root, nil)
+}
+
+func checkSourceCatalogsWithControlCatalog(root string, controlCatalog *compliance.CatalogIndex) ([]issue, error) {
 	sourcesRoot := filepath.Join(root, "sources")
 	projectedKinds := map[string]struct{}{}
 	for _, kind := range sourceprojection.BuiltinRegistry().Kinds() {
@@ -406,6 +410,8 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 		spec := catalog.Spec
 		if catalog.CoverageContract == nil {
 			issues = append(issues, issue{path: rel, message: "coverage_contract is required for built-in sources"})
+		} else {
+			issues = append(issues, validateSourceCoverageDeepContract(rel, catalog.CoverageContract, controlCatalog)...)
 		}
 		if spec.GetId() != "sdk" && len(spec.GetEmittedKinds()) == 0 {
 			issues = append(issues, issue{path: rel, message: "emitted_kinds is required for built-in pull sources"})
@@ -433,6 +439,45 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 		return nil, err
 	}
 	return issues, nil
+}
+
+func validateSourceCoverageDeepContract(path string, contract *sourcecdk.CoverageContract, controlCatalog *compliance.CatalogIndex) []issue {
+	if contract == nil {
+		return nil
+	}
+	var issues []issue
+	for _, dimension := range contract.Dimensions {
+		if !dimension.HighValue {
+			continue
+		}
+		prefix := fmt.Sprintf("coverage_contract dimension %q", dimension.ID)
+		switch dimension.Support {
+		case sourcecdk.CoverageSupportSupported, sourcecdk.CoverageSupportPartial:
+			if len(dimension.EvidenceTypes) == 0 {
+				issues = append(issues, issue{path: path, message: prefix + " must declare evidence_types"})
+			}
+			if len(dimension.ControlDomains) == 0 {
+				issues = append(issues, issue{path: path, message: prefix + " must declare control_domains"})
+			}
+		}
+		if controlCatalog == nil {
+			continue
+		}
+		for _, ref := range dimension.ControlRefs {
+			framework := strings.TrimSpace(ref.FrameworkName)
+			if framework == "" {
+				framework = strings.TrimSpace(ref.FrameworkID)
+			}
+			if framework == "" {
+				continue
+			}
+			_, ok := controlCatalog.Control(compliance.ControlRef{FrameworkID: ref.FrameworkID, FrameworkName: ref.FrameworkName, ControlID: ref.ControlID})
+			if !ok {
+				issues = append(issues, issue{path: path, message: fmt.Sprintf("%s control ref %s %s is not declared in internal/compliance/control_families.yaml", prefix, framework, ref.ControlID)})
+			}
+		}
+	}
+	return issues
 }
 
 func validateRuntimeFamilyFixtures(root string, sourceDir string, runtimeFamilies []string) []issue {

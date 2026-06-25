@@ -6673,6 +6673,18 @@ components:
           type: array
           items:
             type: string
+        evidence_types:
+          type: array
+          items:
+            type: string
+        control_domains:
+          type: array
+          items:
+            type: string
+        control_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoverageControlRef'
     ConnectorDefinitionValidation:
       type: object
       properties:
@@ -7432,10 +7444,31 @@ components:
           type: array
           items:
             type: string
+        evidence_types:
+          type: array
+          items:
+            type: string
+        control_domains:
+          type: array
+          items:
+            type: string
+        control_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoverageControlRef'
         supported_runtime_families:
           type: array
           items:
             type: string
+    CoverageControlRef:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        control_id:
+          type: string
     RuntimeFreshnessSummary:
       type: object
       properties:

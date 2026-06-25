@@ -95,6 +95,11 @@ type PublicDetection struct {
 	References               []string                  `json:"references,omitempty"`
 	FalsePositives           []string                  `json:"false_positives,omitempty"`
 	Runbook                  string                    `json:"runbook"`
+	EvidenceType             string                    `json:"evidence_type,omitempty"`
+	AssessmentMethods        []string                  `json:"assessment_methods,omitempty"`
+	AuditorGuidance          string                    `json:"auditor_guidance,omitempty"`
+	RiskStatement            string                    `json:"risk_statement,omitempty"`
+	RemediationIntent        string                    `json:"remediation_intent,omitempty"`
 	RequiredAttributes       []string                  `json:"required_attributes,omitempty"`
 	RequiredAttributesByKind map[string][]string       `json:"required_attributes_by_kind,omitempty"`
 	FingerprintFields        []string                  `json:"fingerprint_fields,omitempty"`
@@ -385,6 +390,11 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 		References:               uniqueSortedStrings(metadata.References),
 		FalsePositives:           uniqueSortedStrings(metadata.FalsePositives),
 		Runbook:                  strings.TrimSpace(metadata.Runbook),
+		EvidenceType:             strings.TrimSpace(metadata.EvidenceType),
+		AssessmentMethods:        uniqueSortedStrings(metadata.AssessmentMethods),
+		AuditorGuidance:          strings.TrimSpace(metadata.AuditorGuidance),
+		RiskStatement:            strings.TrimSpace(metadata.RiskStatement),
+		RemediationIntent:        strings.TrimSpace(metadata.RemediationIntent),
 		RequiredAttributes:       uniqueSortedStrings(metadata.RequiredAttributes),
 		RequiredAttributesByKind: normalizedStringSliceMap(metadata.RequiredAttributesByKind),
 		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
@@ -407,6 +417,11 @@ func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 		References:               cloneStringSlice(definition.References),
 		FalsePositives:           cloneStringSlice(definition.FalsePositives),
 		Runbook:                  strings.TrimSpace(definition.Runbook),
+		EvidenceType:             strings.TrimSpace(definition.EvidenceType),
+		AssessmentMethods:        cloneStringSlice(definition.AssessmentMethods),
+		AuditorGuidance:          strings.TrimSpace(definition.AuditorGuidance),
+		RiskStatement:            strings.TrimSpace(definition.RiskStatement),
+		RemediationIntent:        strings.TrimSpace(definition.RemediationIntent),
 		RequiredAttributes:       cloneStringSlice(definition.RequiredAttributes),
 		RequiredAttributesByKind: cloneStringSliceMap(definition.RequiredAttributesByKind),
 		FingerprintFields:        cloneStringSlice(definition.FingerprintFields),

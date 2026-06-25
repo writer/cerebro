@@ -22,7 +22,7 @@ Every entry must include a committed `classifier_output` and a normalized
 - verification endpoint
 - 2-4 high-value resource families
 - projection templates
-- coverage dimensions
+- coverage dimensions with evidence types and control domains for supported or partial high-value dimensions
 
 `make catalog-check` is the broad catalog proof gate. It normalizes and
 classifies every definition, rejects contradictory supported/missing feature

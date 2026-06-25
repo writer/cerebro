@@ -421,6 +421,18 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 			if dimension.HighValue {
 				highValue = true
 			}
+			if !dimension.HighValue {
+				continue
+			}
+			switch dimension.Support {
+			case "supported", "partial":
+				if len(dimension.EvidenceTypes) == 0 {
+					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare evidence types", family.ID, dimension.ID)})
+				}
+				if len(dimension.ControlDomains) == 0 {
+					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare control domains", family.ID, dimension.ID)})
+				}
+			}
 		}
 	}
 	if !highValue {

@@ -1143,6 +1143,15 @@ coverage_contract:
       families: [cloudtrail]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
     - id: cloudwatch_alarm
       type: entity_family
       title: AWS CloudWatch alarms
@@ -1173,12 +1182,28 @@ coverage_contract:
       families: [config_recorder]
       support: supported
       high_value: true
+      evidence_types: [configuration_state, logging_configuration]
+      control_domains: [cloud_security, logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
     - id: container_vulnerability
       type: entity_family
       title: AWS container vulnerabilities
       families: [inspector2_finding]
       support: supported
       high_value: true
+      evidence_types: [vulnerability_management]
+      control_domains: [vulnerability_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
     - id: datasync_location
       type: entity_family
       title: AWS DataSync locations
@@ -1383,6 +1408,15 @@ coverage_contract:
       families: [guardduty_finding]
       support: supported
       high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
     - id: eventbridge_archive
       type: entity_family
       title: AWS EventBridge archives
@@ -1413,6 +1447,15 @@ coverage_contract:
       families: [effective_permission]
       support: supported
       high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: firehose_delivery_stream
       type: entity_family
       title: AWS Firehose delivery streams
@@ -1485,6 +1528,13 @@ coverage_contract:
       families: [iam_credential_report]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.5
     - id: iam_group
       type: entity_family
       title: AWS IAM groups
@@ -1503,6 +1553,13 @@ coverage_contract:
       families: [iam_policy]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
     - id: iam_role
       type: entity_family
       title: AWS IAM roles
@@ -1515,12 +1572,26 @@ coverage_contract:
       families: [iam_role_assignment]
       support: supported
       high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: iam_role_trust
       type: relationship
       title: AWS IAM role trust relationships
       families: [iam_role_trust]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration, relationship_evidence]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.6
     - id: iam_saml_provider
       type: entity_family
       title: AWS IAM SAML providers
@@ -1569,6 +1640,15 @@ coverage_contract:
       families: [inspector2_finding]
       support: supported
       high_value: true
+      evidence_types: [vulnerability_management]
+      control_domains: [vulnerability_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
     - id: internet_gateway
       type: entity_family
       title: AWS internet gateways
@@ -1587,6 +1667,13 @@ coverage_contract:
       families: [kms_key]
       support: supported
       high_value: true
+      evidence_types: [encryption_configuration]
+      control_domains: [data_protection]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: C1.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.24
     - id: lakeformation_lf_tag
       type: entity_family
       title: AWS Lake Formation LF-tags
@@ -1701,6 +1788,13 @@ coverage_contract:
       families: [public_endpoint]
       support: supported
       high_value: true
+      evidence_types: [network_exposure]
+      control_domains: [network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.20
     - id: rds_db_snapshot
       type: entity_family
       title: AWS RDS DB snapshots
@@ -1725,6 +1819,13 @@ coverage_contract:
       families: [resource_exposure]
       support: supported
       high_value: true
+      evidence_types: [network_exposure, relationship_evidence]
+      control_domains: [network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.20
     - id: route53_resolver_endpoint
       type: entity_family
       title: AWS Route 53 Resolver endpoints
@@ -1749,6 +1850,15 @@ coverage_contract:
       families: [s3_bucket]
       support: supported
       high_value: true
+      evidence_types: [encryption_configuration, network_exposure]
+      control_domains: [data_protection, network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: C1.1
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.24
     - id: s3_access_point
       type: entity_family
       title: AWS S3 access points
@@ -1804,18 +1914,41 @@ coverage_contract:
       families: [secret]
       support: supported
       high_value: true
+      evidence_types: [secrets_management]
+      control_domains: [data_protection, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.24
     - id: security_group
       type: entity_family
       title: AWS security groups
       families: [security_group]
       support: supported
       high_value: true
+      evidence_types: [network_exposure]
+      control_domains: [network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.20
     - id: securityhub_finding
       type: entity_family
       title: AWS Security Hub findings
       families: [securityhub_finding]
       support: supported
       high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: SOC 2
+          control_id: CC7.5
     - id: scheduler_schedule
       type: entity_family
       title: AWS Scheduler schedules

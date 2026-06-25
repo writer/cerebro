@@ -54,6 +54,11 @@ type RuleDefinition struct {
 	References         []string
 	FalsePositives     []string
 	Runbook            string
+	EvidenceType       string
+	AssessmentMethods  []string
+	AuditorGuidance    string
+	RiskStatement      string
+	RemediationIntent  string
 	RequiredAttributes []string
 	// RequiredAttributesByKind narrows required attribute contracts for rules
 	// that intentionally accept multiple event kinds with different schemas.
@@ -158,6 +163,19 @@ func (d RuleDefinition) AttributeMap() map[string]string {
 	joinAttribute(attributes, "event_kinds", d.EventKinds)
 	joinAttribute(attributes, "fingerprint_fields", d.FingerprintFields)
 	joinAttribute(attributes, "false_positives", d.FalsePositives)
+	if strings.TrimSpace(d.EvidenceType) != "" {
+		attributes["evidence_type"] = strings.TrimSpace(d.EvidenceType)
+	}
+	joinAttribute(attributes, "assessment_methods", d.AssessmentMethods)
+	if strings.TrimSpace(d.AuditorGuidance) != "" {
+		attributes["auditor_guidance"] = strings.TrimSpace(d.AuditorGuidance)
+	}
+	if strings.TrimSpace(d.RiskStatement) != "" {
+		attributes["risk_statement"] = strings.TrimSpace(d.RiskStatement)
+	}
+	if strings.TrimSpace(d.RemediationIntent) != "" {
+		attributes["remediation_intent"] = strings.TrimSpace(d.RemediationIntent)
+	}
 	joinAttribute(attributes, "references", d.References)
 	joinAttribute(attributes, "required_attributes", d.RequiredAttributes)
 	if byKind := keyedAttributesAttribute(d.RequiredAttributesByKind); byKind != "" {

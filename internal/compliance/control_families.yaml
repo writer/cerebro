@@ -6,76 +6,1587 @@ frameworks:
         name: Availability
         controls:
           - id: A1.1
+            title: Availability commitments are defined and monitored
+            objective: Availability commitments, service targets, and operating responsibilities are documented, monitored, and reviewed for production services.
+            intent: Make uptime and service-resilience obligations testable instead of implicit.
+            applicability: [production, availability, service_operations]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Define availability objectives, ownership, measurement windows, alert thresholds, and reporting cadence for production services.
+              - Review service health, error-budget, uptime, and incident trends against stated availability commitments.
+            audit_procedure:
+              - Inspect service commitments, monitoring dashboards, alert routing, and recent availability reviews.
+              - Sample production services and verify availability evidence is current, complete, and owner-reviewed.
+            failure_modes:
+              - Availability objective or owner is missing for an in-scope production service.
+              - Monitoring evidence does not cover the committed service boundary or reporting period.
+            remediation_guidance:
+              - Define the missing commitment or monitoring coverage, assign an owner, and refresh availability evidence.
+            exception_guidance: Availability exceptions require owner approval, customer-impact analysis, compensating monitoring, and expiration.
+            evidence_expectations:
+              - id: availability-commitment-monitoring
+                title: Availability commitments and monitoring posture
+                type: availability_monitoring
+                description: Availability commitments, service targets, and operating responsibilities are documented, monitored, and reviewed for production services.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 30d
+                accepted_from: [monitoring_system, incident_management, service_catalog, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: service_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [availability, monitoring, service_commitment]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.16
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
           - id: A1.2
+            title: Capacity and performance are planned and reviewed
+            objective: Production capacity, performance, and scaling risks are measured and reviewed before they affect availability commitments.
+            intent: Reduce outage risk from avoidable resource exhaustion, saturation, or unplanned growth.
+            applicability: [production, availability, capacity_management]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Track capacity, saturation, latency, queue depth, and scaling headroom for production services.
+              - Review forecast, threshold, and scaling evidence on a defined cadence.
+            audit_procedure:
+              - Inspect capacity dashboards, forecast assumptions, and owner review evidence.
+              - Sample high-traffic services and verify capacity signals are within approved thresholds or have remediation plans.
+            failure_modes:
+              - Production service has no capacity owner, threshold, or current capacity evidence.
+              - Capacity risk is known but not tracked to remediation or risk acceptance.
+            remediation_guidance:
+              - Add capacity monitoring, tune scaling limits, document owner review, and refresh evidence after changes.
+            exception_guidance: Capacity exceptions require documented impact analysis, owner approval, and an expiration or review date.
+            evidence_expectations:
+              - id: capacity-performance-review
+                title: Capacity and performance review evidence
+                type: capacity_management
+                description: Production capacity, performance, and scaling risks are measured and reviewed before they affect availability commitments.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [monitoring_system, cloud_metrics, capacity_plan, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: service_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [availability, capacity, performance]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.6
+              - framework_name: NIST 800-53 r5
+                control_id: CP-2
           - id: A1.3
+            title: Recovery and continuity procedures are tested
+            objective: Backup, recovery, continuity, and failover procedures are documented, tested, and remediated when gaps are found.
+            intent: Prove the organization can restore critical services within defined recovery expectations.
+            applicability: [production, availability, resilience]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Define recovery objectives, backup coverage, restore procedures, and continuity roles for critical services.
+              - Run periodic restore, failover, or tabletop tests and track corrective actions to closure.
+            audit_procedure:
+              - Inspect the latest recovery test plan, participants, results, exceptions, and remediation outcomes.
+              - Sample critical services and verify backup coverage and recovery evidence are current.
+            failure_modes:
+              - Critical service lacks tested recovery evidence for the review period.
+              - Recovery test issues remain open without owner, due date, or risk acceptance.
+            remediation_guidance:
+              - Run or repeat the recovery test, remediate failed steps, and attach evidence of successful recovery.
+            exception_guidance: Recovery-test exceptions require executive or service-owner approval, compensating continuity procedures, and a retest date.
+            evidence_expectations:
+              - id: recovery-continuity-test
+                title: Recovery and continuity test evidence
+                type: recovery_test
+                description: Backup, recovery, continuity, and failover procedures are documented, tested, and remediated when gaps are found.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 180d
+                accepted_from: [backup_system, incident_management, disaster_recovery_test, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: service_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [availability, recovery, continuity]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.13
+              - framework_name: NIST 800-53 r5
+                control_id: CP-4
       - id: C1
         name: Confidentiality
         controls:
           - id: C1.1
+            title: Confidential data is protected by encryption and access controls
+            objective: Confidential data stores and secrets are protected with approved encryption, key management, and least-privilege access controls.
+            intent: Reduce exposure of customer and company confidential information if storage, compute, or identity boundaries fail.
+            applicability: [production, confidential_data, cloud]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Encrypt confidential storage, backups, queues, and secrets with approved provider or customer-managed keys.
+              - Limit administrative and data-plane access to confidential data stores and review access on a defined cadence.
+            audit_procedure:
+              - Inspect current encryption posture for confidential storage, key rotation, and secret management families.
+              - Sample confidential data stores and verify access restrictions, encryption state, and evidence freshness.
+            failure_modes:
+              - Confidential data store or secret is unencrypted, publicly reachable, or missing an accountable owner.
+              - Encryption evidence cannot be reconciled to the current confidential asset inventory.
+            remediation_guidance:
+              - Enable encryption, restrict access, rotate exposed secrets or keys, and refresh evidence after remediation.
+            exception_guidance: Exceptions require documented risk acceptance, compensating monitoring, owner approval, and expiration.
+            evidence_expectations:
+              - id: confidential-data-protection
+                title: Confidential data protection posture
+                type: encryption_configuration
+                description: Current encryption, key-management, and access posture for confidential data stores and secrets.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [aws, azure, gcp, source_snapshot, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [confidentiality, encryption, data_protection]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.24
           - id: C1.2
+            title: Confidential information handling is governed through its lifecycle
+            objective: Confidential information is classified, retained, transmitted, and disposed according to approved handling requirements.
+            intent: Keep confidential data protections consistent from creation through retention and disposal.
+            applicability: [production, confidential_data, data_lifecycle]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Maintain data classification, retention, transfer, and disposal procedures for confidential information.
+              - Monitor storage, sharing, and retention evidence for in-scope confidential data stores.
+            audit_procedure:
+              - Inspect classification, retention, disposal, and transfer evidence for confidential data families.
+              - Sample confidential data locations and verify handling requirements are enforced or exception-approved.
+            failure_modes:
+              - Confidential data lacks classification, retention, transfer, or disposal evidence.
+              - Data handling exception is missing owner approval or expiration.
+            remediation_guidance:
+              - Classify the data, apply retention or disposal controls, restrict transfer, and refresh lifecycle evidence.
+            exception_guidance: Lifecycle exceptions require data-owner approval, legal or compliance rationale when applicable, and expiration.
+            evidence_expectations:
+              - id: confidential-data-lifecycle
+                title: Confidential data lifecycle control evidence
+                type: data_lifecycle_control
+                description: Confidential information is classified, retained, transmitted, and disposed according to approved handling requirements.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 90d
+                accepted_from: [data_inventory, dlp_system, storage_policy, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: data_protection
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [confidentiality, data_lifecycle, retention]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.12
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.10
+              - framework_name: NIST 800-53 r5
+                control_id: MP-6
       - id: CC1
         name: Control Environment
         controls:
           - id: CC1.1
+            title: Integrity and ethical values are established and enforced
+            objective: Leadership expectations, acceptable behavior, and accountability mechanisms are documented and reinforced through policy and evidence.
+            intent: Create a control environment where security and compliance obligations are owned and enforceable.
+            applicability: [governance, workforce, compliance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Maintain code-of-conduct, security policy, and escalation mechanisms with accountable owners.
+              - Track acknowledgement, training, or exception evidence for in-scope workforce populations.
+            audit_procedure:
+              - Inspect policy approval, acknowledgement, training, and escalation evidence.
+              - Interview control owners to verify enforcement and issue escalation practices.
+            failure_modes:
+              - Required policy or acknowledgement evidence is missing for the assessment period.
+              - Policy exception or misconduct escalation lacks owner review or documented outcome.
+            remediation_guidance:
+              - Refresh policy approval, collect acknowledgements, resolve overdue training, and document escalation outcomes.
+            exception_guidance: Governance exceptions require accountable executive approval and a defined remediation date.
+            evidence_expectations:
+              - id: integrity-values-policy
+                title: Integrity and ethics governance evidence
+                type: governance_policy
+                description: Leadership expectations, acceptable behavior, and accountability mechanisms are documented and reinforced through policy and evidence.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 365d
+                accepted_from: [policy_repository, training_system, hr_system, manual_attestation]
+            freshness_sla: 365d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [governance, ethics, control_environment]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+              - framework_name: NIST 800-53 r5
+                control_id: PM-1
           - id: CC1.2
+            title: Board and oversight responsibilities are defined
+            objective: Governance bodies receive sufficient security, risk, and control information to oversee the system and management accountability.
+            intent: Ensure independent oversight can challenge, prioritize, and monitor security-control operation.
+            applicability: [governance, oversight, compliance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Define oversight roles, reporting cadence, risk topics, and escalation paths for security and compliance matters.
+              - Provide periodic control, incident, risk, and remediation reporting to the oversight body.
+            audit_procedure:
+              - Inspect oversight charters, meeting materials, risk reports, and action-item tracking.
+              - Sample reported risks and verify management actions are tracked to outcome.
+            failure_modes:
+              - Oversight body did not receive security or control reporting during the review period.
+              - Material risk or remediation item lacks documented oversight follow-up.
+            remediation_guidance:
+              - Prepare oversight reporting, assign action owners, and record review and follow-up decisions.
+            exception_guidance: Oversight exceptions require documented rationale, executive owner approval, and next review date.
+            evidence_expectations:
+              - id: board-oversight-review
+                title: Board or oversight review evidence
+                type: oversight_review
+                description: Governance bodies receive sufficient security, risk, and control information to oversee the system and management accountability.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [board_packet, risk_committee_minutes, grc, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [governance, oversight, risk_management]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.4
+              - framework_name: NIST 800-53 r5
+                control_id: PM-9
           - id: CC1.3
+            title: Organizational structure supports control ownership
+            objective: Security and compliance responsibilities are assigned to roles with authority, accountability, and clear escalation paths.
+            intent: Avoid control gaps caused by unclear ownership or fragmented responsibility.
+            applicability: [governance, workforce, compliance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Maintain role definitions, RACI matrices, and escalation paths for security-control families.
+              - Review ownership changes when organization, system, or provider scope changes.
+            audit_procedure:
+              - Inspect control owner assignments, organizational charts, and escalation evidence.
+              - Sample controls and verify each has an accountable owner with authority to remediate issues.
+            failure_modes:
+              - Control or source family has no accountable owner.
+              - Owner lacks authority or escalation path for overdue remediation.
+            remediation_guidance:
+              - Assign an accountable owner, document authority, and update control inventory evidence.
+            exception_guidance: Ownership exceptions require temporary delegated owner approval and expiration.
+            evidence_expectations:
+              - id: control-ownership-structure
+                title: Control ownership and authority evidence
+                type: role_responsibility_matrix
+                description: Security and compliance responsibilities are assigned to roles with authority, accountability, and clear escalation paths.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [org_chart, grc, policy_repository, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [governance, ownership, accountability]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.2
+              - framework_name: NIST 800-53 r5
+                control_id: PM-2
           - id: CC1.4
+            title: Competence is maintained for control responsibilities
+            objective: Personnel with security, engineering, and compliance responsibilities have appropriate competence, training, and support.
+            intent: Reduce control failure caused by insufficient skill, staffing, or awareness.
+            applicability: [workforce, governance, security_operations]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Define required training or competence expectations for control owners and privileged operators.
+              - Track completion, role changes, and remediation for overdue or missing training.
+            audit_procedure:
+              - Inspect training assignments, completion reports, and role-based training requirements.
+              - Sample control owners and privileged operators to verify required competence evidence.
+            failure_modes:
+              - Control owner or privileged operator lacks required training evidence.
+              - Training exceptions are stale, unapproved, or missing remediation owner.
+            remediation_guidance:
+              - Assign and complete training, update role requirements, and refresh competence evidence.
+            exception_guidance: Training exceptions require manager approval, compensating supervision, and due date.
+            evidence_expectations:
+              - id: control-competence-training
+                title: Competence and training evidence
+                type: training_competence
+                description: Personnel with security, engineering, and compliance responsibilities have appropriate competence, training, and support.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 365d
+                accepted_from: [training_system, hr_system, policy_repository, manual_attestation]
+            freshness_sla: 365d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [training, competence, workforce]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.3
+              - framework_name: NIST 800-53 r5
+                control_id: AT-2
           - id: CC1.5
+            title: Accountability is enforced for control operation
+            objective: Control owners are held accountable for operating controls, resolving deficiencies, and maintaining evidence.
+            intent: Make control ownership actionable through assignments, due dates, escalation, and performance follow-up.
+            applicability: [governance, compliance, remediation]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Track control deficiencies, owner assignments, due dates, and escalation outcomes.
+              - Review overdue control gaps and repeat deficiencies with accountable leaders.
+            audit_procedure:
+              - Inspect deficiency trackers, owner assignments, escalation records, and closure evidence.
+              - Sample overdue items and verify accountability actions or approved exceptions.
+            failure_modes:
+              - Control deficiency lacks owner, due date, or status.
+              - Overdue remediation has no escalation or accepted risk record.
+            remediation_guidance:
+              - Assign owners, define due dates, escalate overdue items, and refresh closure evidence.
+            exception_guidance: Accountability exceptions require executive owner approval and documented follow-up date.
+            evidence_expectations:
+              - id: control-owner-accountability
+                title: Control owner accountability evidence
+                type: accountability_tracking
+                description: Control owners are held accountable for operating controls, resolving deficiencies, and maintaining evidence.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 90d
+                accepted_from: [grc, ticketing_system, risk_register, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [governance, accountability, remediation]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.2
+              - framework_name: NIST 800-53 r5
+                control_id: CA-5
       - id: CC2
         name: Communication and Information
         controls:
           - id: CC2.1
+            title: Relevant information is identified and used for control operation
+            objective: Operational, security, and compliance information needed to operate controls is identified, captured, and routed to owners.
+            intent: Ensure control operators have the information needed to detect, assess, and correct control gaps.
+            applicability: [governance, security_operations, compliance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Identify source systems, evidence owners, and routing paths for control-relevant information.
+              - Review whether information feeds are complete, timely, and available to control owners.
+            audit_procedure:
+              - Inspect evidence-source inventories, routing rules, and owner review evidence.
+              - Sample control families and verify relevant information reaches the assigned owner.
+            failure_modes:
+              - Control-relevant source or evidence feed is missing, stale, or unrouted.
+              - Owner cannot demonstrate receipt or review of required control information.
+            remediation_guidance:
+              - Register missing sources, fix routing or sync, and refresh owner review evidence.
+            exception_guidance: Information-flow exceptions require owner approval, compensating review, and expiration.
+            evidence_expectations:
+              - id: control-information-flow
+                title: Control information flow evidence
+                type: control_information_flow
+                description: Operational, security, and compliance information needed to operate controls is identified, captured, and routed to owners.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 90d
+                accepted_from: [grc, siem, ticketing_system, policy_repository, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [information_flow, governance, control_operations]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.9
+              - framework_name: NIST 800-53 r5
+                control_id: PL-2
           - id: CC2.2
+            title: Control information is communicated internally
+            objective: Policies, responsibilities, incidents, deficiencies, and control changes are communicated to the internal audiences that need them.
+            intent: Keep control owners, operators, and stakeholders aligned on requirements and changes.
+            applicability: [governance, workforce, security_operations]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Communicate policy changes, control responsibilities, incident outcomes, and remediation expectations to affected teams.
+              - Track acknowledgement or receipt for high-impact control communications.
+            audit_procedure:
+              - Inspect internal communication records, acknowledgement evidence, and related policy or incident artifacts.
+              - Sample control changes and verify affected audiences were notified.
+            failure_modes:
+              - Material control change was not communicated to affected owners or operators.
+              - Communication evidence lacks date, audience, or owner.
+            remediation_guidance:
+              - Send the required communication, collect acknowledgement if needed, and attach evidence.
+            exception_guidance: Communication exceptions require owner approval and a planned communication date.
+            evidence_expectations:
+              - id: internal-control-communication
+                title: Internal control communication evidence
+                type: internal_communication
+                description: Policies, responsibilities, incidents, deficiencies, and control changes are communicated to the internal audiences that need them.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [policy_repository, training_system, ticketing_system, communication_archive, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [communication, governance, awareness]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.6.3
+              - framework_name: NIST 800-53 r5
+                control_id: AT-2
           - id: CC2.3
+            title: External communication supports security and compliance obligations
+            objective: External parties receive required security, privacy, incident, and responsibility communications through approved channels.
+            intent: Ensure customers, vendors, regulators, and partners receive timely and accurate control-relevant information.
+            applicability: [governance, vendor_risk, incident_response]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Define approved external communication channels for trust, incident, vendor, and compliance notices.
+              - Track external commitments, notifications, and customer or vendor evidence requests to outcome.
+            audit_procedure:
+              - Inspect external communication procedures, notification records, and trust or vendor evidence.
+              - Sample external obligations and verify communication timing and approval.
+            failure_modes:
+              - Required external notice or evidence response is missing or late.
+              - External communication lacks approval, recipient scope, or retained evidence.
+            remediation_guidance:
+              - Send or correct the communication, document approval, and retain evidence.
+            exception_guidance: External communication exceptions require legal or executive approval and documented rationale.
+            evidence_expectations:
+              - id: external-control-communication
+                title: External control communication evidence
+                type: external_communication
+                description: External parties receive required security, privacy, incident, and responsibility communications through approved channels.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [customer_trust_portal, vendor_management, incident_management, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: governance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [communication, third_party, governance]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.19
+              - framework_name: NIST 800-53 r5
+                control_id: IR-6
       - id: CC3
         name: Risk Assessment
         controls:
           - id: CC3.1
+            title: Objectives are specified for risk assessment
+            objective: Security, availability, confidentiality, and compliance objectives are defined clearly enough to assess related risks.
+            intent: Give risk assessment a concrete target for what the control system must achieve.
+            applicability: [governance, risk_management, compliance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Document security and compliance objectives with scope, owner, and assessment criteria.
+              - Review objectives when products, sources, infrastructure, or regulatory obligations change.
+            audit_procedure:
+              - Inspect risk objectives, scope definitions, and review evidence.
+              - Sample risk assessments and verify they trace to documented objectives.
+            failure_modes:
+              - Risk objective is missing, stale, or not tied to system scope.
+              - Assessment criteria do not support the claimed control objective.
+            remediation_guidance:
+              - Define or refresh objectives, attach owner approval, and update risk assessment scope.
+            exception_guidance: Objective exceptions require risk owner approval and next review date.
+            evidence_expectations:
+              - id: risk-assessment-objectives
+                title: Risk objective evidence
+                type: risk_objectives
+                description: Security, availability, confidentiality, and compliance objectives are defined clearly enough to assess related risks.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 365d
+                accepted_from: [risk_register, policy_repository, grc, manual_attestation]
+            freshness_sla: 365d
+            owner_domain: risk
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [risk_management, objectives, governance]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: 6.1.2
+              - framework_name: NIST 800-53 r5
+                control_id: RA-2
           - id: CC3.2
+            title: Risks are identified and analyzed
+            objective: Security and compliance risks are identified, assessed for likelihood and impact, prioritized, and assigned to owners.
+            intent: Make risk decisions evidence-backed and connected to remediation or accepted risk.
+            applicability: [governance, risk_management, security_operations]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Collect risk signals from vulnerabilities, incidents, source coverage, vendors, and architecture changes.
+              - Prioritize risks using severity, likelihood, exposure, asset criticality, and control impact.
+            audit_procedure:
+              - Inspect the risk register, scoring rationale, source inputs, owners, and treatment decisions.
+              - Sample high and critical risks and verify remediation, monitoring, or risk acceptance.
+            failure_modes:
+              - Material risk is unrecorded, unscored, or missing an owner.
+              - Risk treatment is overdue without documented acceptance or compensating control.
+            remediation_guidance:
+              - Record the risk, assign owner and treatment path, update priority, and refresh evidence.
+            exception_guidance: Risk exceptions require owner approval, treatment rationale, compensating controls, and expiration.
+            evidence_expectations:
+              - id: risk-identification-analysis
+                title: Risk identification and analysis evidence
+                type: risk_assessment
+                description: Security and compliance risks are identified, assessed for likelihood and impact, prioritized, and assigned to owners.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 90d
+                accepted_from: [risk_register, grc, vulnerability_scanner, cloud_security_posture, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: risk
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [risk_management, prioritization, assessment]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
           - id: CC3.3
+            title: Fraud and misuse risks are considered
+            objective: Risk assessments consider fraud, misuse, abuse, and unauthorized activity that could affect security or control objectives.
+            intent: Surface insider, abuse, and misuse scenarios that ordinary configuration checks may miss.
+            applicability: [risk_management, fraud_detection, security_operations]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Include insider misuse, abuse paths, privileged activity, and financial or data misuse in risk assessments.
+              - Connect misuse scenarios to logging, access, approval, and investigation controls.
+            audit_procedure:
+              - Inspect risk assessment criteria for misuse and fraud scenarios.
+              - Sample misuse risks and verify monitoring or approval controls are assigned.
+            failure_modes:
+              - Misuse or fraud scenario is omitted for high-risk processes or privileged workflows.
+              - No monitoring or control owner is assigned for identified misuse risk.
+            remediation_guidance:
+              - Add misuse risk scenario, assign treatment controls, and refresh risk evidence.
+            exception_guidance: Misuse-risk exceptions require risk owner approval and compensating detective controls.
+            evidence_expectations:
+              - id: fraud-misuse-risk-assessment
+                title: Fraud and misuse risk evidence
+                type: misuse_risk_assessment
+                description: Risk assessments consider fraud, misuse, abuse, and unauthorized activity that could affect security or control objectives.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [risk_register, siem, case_management, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: risk
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [risk_management, misuse, fraud]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.7
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
           - id: CC3.4
+            title: Significant changes trigger risk reassessment
+            objective: Material changes to systems, vendors, data, architecture, or operations are assessed for new or changed risks.
+            intent: Keep risk posture current as the system changes.
+            applicability: [change_management, risk_management, production]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Define change categories that require security or compliance risk reassessment.
+              - Track reassessment outcomes for high-impact architecture, source, vendor, and data changes.
+            audit_procedure:
+              - Inspect change records, architecture reviews, and linked risk assessments.
+              - Sample material changes and verify risk review occurred before or soon after implementation.
+            failure_modes:
+              - Material change lacks risk assessment or owner approval.
+              - New risk from change is not tracked to treatment or acceptance.
+            remediation_guidance:
+              - Perform the risk assessment, attach treatment decisions, and update change evidence.
+            exception_guidance: Change-risk exceptions require emergency-change rationale, owner approval, and retrospective review date.
+            evidence_expectations:
+              - id: change-risk-assessment
+                title: Change-triggered risk assessment evidence
+                type: change_risk_assessment
+                description: Material changes to systems, vendors, data, architecture, or operations are assessed for new or changed risks.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 90d
+                accepted_from: [change_management, risk_register, architecture_review, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: risk
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [risk_management, change_management, assessment]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.32
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
       - id: CC4
         name: Monitoring Activities
         controls:
           - id: CC4
+            title: Control monitoring identifies and escalates deficiencies
+            objective: Control operation is monitored through evidence, testing, findings, and management review, with deficiencies escalated to closure.
+            intent: Provide an operating feedback loop for the control system.
+            applicability: [governance, monitoring, compliance]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Monitor control evidence, test results, source coverage, findings, and exceptions on a defined cadence.
+              - Escalate deficiencies with owner, severity, due date, and closure evidence.
+            audit_procedure:
+              - Inspect monitoring dashboards, control tests, open deficiencies, and closure evidence.
+              - Sample deficiencies and verify escalation, owner action, and evidence refresh.
+            failure_modes:
+              - Control deficiency is not recorded, assigned, or reviewed.
+              - Monitoring evidence is stale or disconnected from current control scope.
+            remediation_guidance:
+              - Record the deficiency, assign owner and due date, remediate or accept risk, and refresh evidence.
+            exception_guidance: Monitoring exceptions require compensating review, owner approval, and expiration.
+            evidence_expectations:
+              - id: control-monitoring-deficiencies
+                title: Control monitoring and deficiency evidence
+                type: control_monitoring
+                description: Control operation is monitored through evidence, testing, findings, and management review, with deficiencies escalated to closure.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 90d
+                accepted_from: [grc, ticketing_system, control_testing, source_coverage, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: compliance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [monitoring, control_testing, deficiency_management]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.36
+              - framework_name: NIST 800-53 r5
+                control_id: CA-7
           - id: CC4.1
+            title: Ongoing and separate evaluations are performed
+            objective: Controls are evaluated through continuous monitoring, periodic testing, or independent review at a cadence aligned to risk.
+            intent: Detect control drift and evidence gaps before they become audit failures.
+            applicability: [monitoring, compliance, control_testing]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Define control evaluation cadence, owner, evidence source, and pass/fail criteria.
+              - Review automated and manual test results and track failures to closure.
+            audit_procedure:
+              - Inspect control test results, evaluator evidence, and management review.
+              - Sample failed tests and verify remediation or accepted risk.
+            failure_modes:
+              - Required control evaluation did not run or lacks retained evidence.
+              - Failed evaluation lacks remediation owner or closure evidence.
+            remediation_guidance:
+              - Run the missing evaluation, remediate failed controls, and attach updated test evidence.
+            exception_guidance: Evaluation exceptions require compensating test evidence, owner approval, and next test date.
+            evidence_expectations:
+              - id: control-evaluation-results
+                title: Control evaluation result evidence
+                type: control_test_result
+                description: Controls are evaluated through continuous monitoring, periodic testing, or independent review at a cadence aligned to risk.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 90d
+                accepted_from: [grc, control_testing, source_coverage, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: compliance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [control_testing, monitoring, compliance]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.36
+              - framework_name: NIST 800-53 r5
+                control_id: CA-2
           - id: CC4.2
+            title: Control deficiencies are communicated and corrected
+            objective: Control deficiencies are communicated to responsible parties and corrected according to severity and risk.
+            intent: Ensure monitoring results lead to accountable remediation.
+            applicability: [monitoring, remediation, compliance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Communicate deficiencies to owners with severity, due date, and required evidence.
+              - Review overdue or repeat deficiencies and escalate when remediation is delayed.
+            audit_procedure:
+              - Inspect deficiency communication, owner assignment, due dates, and closure evidence.
+              - Sample overdue deficiencies and verify escalation or approved exception.
+            failure_modes:
+              - Deficiency communication or owner assignment is missing.
+              - Deficiency closure lacks evidence or management approval.
+            remediation_guidance:
+              - Notify owner, complete remediation, attach evidence, and update deficiency status.
+            exception_guidance: Deficiency exceptions require risk acceptance, compensating controls, and expiration.
+            evidence_expectations:
+              - id: control-deficiency-remediation
+                title: Control deficiency remediation evidence
+                type: deficiency_remediation
+                description: Control deficiencies are communicated to responsible parties and corrected according to severity and risk.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 90d
+                accepted_from: [grc, ticketing_system, risk_register, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: compliance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [deficiency_management, remediation, monitoring]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.36
+              - framework_name: NIST 800-53 r5
+                control_id: CA-5
       - id: CC5
         name: Control Activities
         controls:
           - id: CC5.1
+            title: Control activities are selected and developed
+            objective: Control activities are designed to address identified risks and are documented with owner, frequency, and evidence expectations.
+            intent: Translate risk decisions into concrete control activities that can be tested.
+            applicability: [governance, control_design, risk_management]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Define control objective, owner, population, frequency, evidence, and test method for each control activity.
+              - Review control design when risk, system, or regulatory scope changes.
+            audit_procedure:
+              - Inspect control design documentation and trace controls to risks and evidence expectations.
+              - Sample controls and verify design includes owner, cadence, and testable criteria.
+            failure_modes:
+              - Control activity lacks owner, frequency, evidence source, or risk linkage.
+              - Control design no longer matches current system scope.
+            remediation_guidance:
+              - Update control design, assign owner, and refresh risk and evidence mappings.
+            exception_guidance: Control design exceptions require control owner approval and compensating control rationale.
+            evidence_expectations:
+              - id: control-activity-design
+                title: Control activity design evidence
+                type: control_design
+                description: Control activities are designed to address identified risks and are documented with owner, frequency, and evidence expectations.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 365d
+                accepted_from: [grc, policy_repository, risk_register, manual_attestation]
+            freshness_sla: 365d
+            owner_domain: compliance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [control_design, governance, risk_management]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+              - framework_name: NIST 800-53 r5
+                control_id: CA-2
           - id: CC5.2
+            title: Technology controls support control objectives
+            objective: Technology controls are configured and monitored to enforce control objectives across production systems and sources.
+            intent: Ensure automated and technical safeguards reliably support manual control procedures.
+            applicability: [production, technology_controls, security_operations]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Define expected technical control states and monitor configuration drift for high-value systems.
+              - Connect technical controls to source coverage, policy rules, and remediation workflows.
+            audit_procedure:
+              - Inspect configuration evidence for selected technology controls.
+              - Sample technical control failures and verify alerting, owner, and remediation path.
+            failure_modes:
+              - Technology control is disabled, misconfigured, or missing evidence.
+              - Control failure is not detected or routed to an accountable owner.
+            remediation_guidance:
+              - Restore expected configuration, update monitoring, and refresh evidence.
+            exception_guidance: Technology-control exceptions require risk acceptance, compensating control, and expiration.
+            evidence_expectations:
+              - id: technology-control-configuration
+                title: Technology control configuration evidence
+                type: technology_control_configuration
+                description: Technology controls are configured and monitored to enforce control objectives across production systems and sources.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [aws, okta, github, monitoring_system, source_snapshot, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [technology_controls, configuration, monitoring]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.9
+              - framework_name: NIST 800-53 r5
+                control_id: CM-6
           - id: CC5.3
+            title: Policies and procedures deploy control activities
+            objective: Policies, procedures, and operating workflows are maintained so control activities are performed consistently.
+            intent: Make control execution repeatable and reviewable across teams.
+            applicability: [governance, policy, control_operations]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Document operating procedures for required control activities and evidence retention.
+              - Review procedure currency and communicate updates to responsible teams.
+            audit_procedure:
+              - Inspect policies, procedures, approval history, and communication evidence.
+              - Sample control activities and verify procedure evidence matches actual operation.
+            failure_modes:
+              - Required control procedure is missing, stale, or unapproved.
+              - Procedure does not match current control execution or evidence source.
+            remediation_guidance:
+              - Update and approve procedure, communicate changes, and attach evidence.
+            exception_guidance: Procedure exceptions require owner approval and defined update date.
+            evidence_expectations:
+              - id: policy-procedure-control-activities
+                title: Policy and procedure evidence for control activities
+                type: policy_procedure
+                description: Policies, procedures, and operating workflows are maintained so control activities are performed consistently.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 365d
+                accepted_from: [policy_repository, grc, training_system, manual_attestation]
+            freshness_sla: 365d
+            owner_domain: compliance
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [policy, procedure, control_operations]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.1
+              - framework_name: NIST 800-53 r5
+                control_id: PL-2
       - id: CC6
         name: Logical and Physical Access
         controls:
           - id: CC6
+            title: Logical access controls restrict systems and data
+            objective: Logical access to production systems, data, and administrative functions is authorized, authenticated, least-privileged, monitored, and removed when inappropriate.
+            intent: Provide an umbrella access-control objective for identity, entitlement, network, and data-access findings.
+            applicability: [production, identity_access, privileged_access, cloud]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Maintain inventories for users, groups, roles, service accounts, public endpoints, and sensitive data access paths.
+              - Monitor access-control failures and route findings to accountable owners.
+            audit_procedure:
+              - Inspect identity, entitlement, MFA, network, and access-review evidence for production systems.
+              - Sample high-risk access findings and verify owner, remediation, or approved exception.
+            failure_modes:
+              - Production access path is unauthorized, over-privileged, unauthenticated, or publicly exposed.
+              - Access evidence is stale, incomplete, or disconnected from the current asset inventory.
+            remediation_guidance:
+              - Remove inappropriate access, enforce authentication, restrict exposure, and refresh access evidence.
+            exception_guidance: Access exceptions require business justification, compensating monitoring, owner approval, and expiration.
+            evidence_expectations:
+              - id: logical-access-control-posture
+                title: Logical access control posture
+                type: identity_access_control
+                description: Logical access to production systems, data, and administrative functions is authorized, authenticated, least-privileged, monitored, and removed when inappropriate.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 30d
+                accepted_from: [okta, github, aws, access_review_system, source_snapshot, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: identity
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [identity, access_control, privileged_access]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.15
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.17
+              - framework_name: NIST 800-53 r5
+                control_id: AC-3
+              - framework_name: NIST 800-53 r5
+                control_id: AC-6
+              - framework_name: CIS Controls v8
+                control_id: 5
+              - framework_name: CIS Controls v8
+                control_id: 6
+              - framework_name: PCI DSS v4.0.1
+                control_id: 7.2
           - id: CC6.1
+            title: Privileged access requires strong authentication
+            objective: Privileged users and service identities authenticate with approved MFA or equivalent strong authentication before accessing production systems.
+            intent: Reduce account takeover and unauthorized administrative access risk across identity, cloud, and source-control planes.
+            applicability: [production, privileged_access, workforce, cloud]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Require privileged users to enroll phishing-resistant or approved MFA before production access is granted.
+              - Monitor privileged roles, credentials, and access paths continuously for missing authentication safeguards.
+            audit_procedure:
+              - Compare privileged identity inventory with current MFA, credential, and role-assignment evidence.
+              - Sample administrative users and cloud roles to verify authentication method, entitlement path, and evidence freshness.
+            failure_modes:
+              - Privileged user, role, token, or service account can access production without approved authentication controls.
+              - MFA or credential posture cannot be reconciled to the privileged access inventory.
+            remediation_guidance:
+              - Remove or suspend privileged access until strong authentication is enrolled and verified.
+              - Rotate exposed credentials and refresh identity evidence after remediation.
+            exception_guidance: Time-bound exceptions require compensating monitoring, named owner approval, and expiration.
+            evidence_expectations:
+              - id: privileged-authentication-state
+                title: Privileged authentication posture
+                type: identity_configuration
+                description: MFA, credential, token, and privileged-role evidence for production administrative access.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [okta, github, aws, source_snapshot, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: identity
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [identity, mfa, privileged_access]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.5
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
           - id: CC6.2
+            title: Access is authorized, reviewed, and removed when inappropriate
+            objective: Production and administrative access is approved, reviewed on cadence, and removed when no longer needed.
+            intent: Keep access aligned to job function, least privilege, employment state, and business need.
+            applicability: [production, privileged_access, workforce, cloud]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Maintain owner-approved inventories for users, groups, roles, service accounts, and external collaborators.
+              - Review privileged and production access at least quarterly and track removals or exceptions to closure.
+            audit_procedure:
+              - Inspect the most recent access review population, reviewer sign-off, removals, and overdue exceptions.
+              - Sample terminated, transferred, inactive, and privileged users to verify access was removed or reapproved.
+            failure_modes:
+              - Active access remains for a terminated, transferred, inactive, or no-longer-authorized user.
+              - Review evidence does not show population completeness, reviewer approval, or remediation outcome.
+            remediation_guidance:
+              - Remove inappropriate access, document reviewer decisions, and rerun access evidence collection.
+            exception_guidance: Exceptions require business justification, named owner, compensating monitoring, and renewal date.
+            evidence_expectations:
+              - id: access-review-results
+                title: Access review results
+                type: access_review
+                description: Review population, reviewer approval, removals, reapprovals, and approved access exceptions.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 90d
+                accepted_from: [okta, github, aws, access_review_system, ticketing_system, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: identity
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [identity, access_review, least_privilege]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.18
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
           - id: CC6.3
+            title: Access is removed or changed when employment or role changes
+            objective: Access for terminated, transferred, inactive, or role-changed users is removed or reapproved within defined expectations.
+            intent: Prevent stale workforce access from persisting after business need ends.
+            applicability: [workforce, identity_access, deprovisioning]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Reconcile HR, identity-provider, source-control, and cloud access for terminations and transfers.
+              - Track exceptions for retained access with owner approval and expiration.
+            audit_procedure:
+              - Sample terminated, transferred, inactive, and privileged users and verify access removal or reapproval.
+              - Inspect deprovisioning workflow evidence, timestamps, and exception approvals.
+            failure_modes:
+              - Terminated or transferred user retains production or privileged access without approval.
+              - Deprovisioning evidence lacks timestamp, population completeness, or owner review.
+            remediation_guidance:
+              - Remove stale access, rotate exposed credentials if needed, and refresh deprovisioning evidence.
+            exception_guidance: Deprovisioning exceptions require business justification, compensating monitoring, and expiration.
+            evidence_expectations:
+              - id: access-removal-role-change
+                title: Access removal and role-change evidence
+                type: deprovisioning_evidence
+                description: Access for terminated, transferred, inactive, or role-changed users is removed or reapproved within defined expectations.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 30d
+                accepted_from: [okta, hr_system, github, aws, access_review_system, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: identity
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [identity, deprovisioning, access_review]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.18
+              - framework_name: NIST 800-53 r5
+                control_id: AC-2
+              - framework_name: NIST 800-53 r5
+                control_id: PS-4
           - id: CC6.4
+            title: Physical access to facilities and assets is restricted
+            objective: Physical access to facilities, offices, devices, and infrastructure supporting the system is authorized and reviewed.
+            intent: Protect systems and information from unauthorized physical access or asset loss.
+            applicability: [physical_security, workforce, production]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Maintain badge, device, and facility access procedures for in-scope personnel and assets.
+              - Review physical access lists and asset custody on a defined cadence.
+            audit_procedure:
+              - Inspect badge access, visitor, device custody, and review evidence.
+              - Sample terminated or transferred users and verify physical access was removed.
+            failure_modes:
+              - Physical access remains active for unauthorized or inactive personnel.
+              - Physical access review evidence is missing or stale.
+            remediation_guidance:
+              - Remove physical access, recover or reassign assets, and refresh review evidence.
+            exception_guidance: Physical access exceptions require facility owner approval and expiration.
+            evidence_expectations:
+              - id: physical-access-control-review
+                title: Physical access control evidence
+                type: physical_access_review
+                description: Physical access to facilities, offices, devices, and infrastructure supporting the system is authorized and reviewed.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 90d
+                accepted_from: [badge_system, mdm, asset_inventory, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [physical_security, access_review, asset_protection]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.7.2
+              - framework_name: NIST 800-53 r5
+                control_id: PE-2
           - id: CC6.5
+            title: Physical access is monitored and exceptions are investigated
+            objective: Physical access activity and exceptions are monitored, logged, and investigated for in-scope facilities and assets.
+            intent: Detect unauthorized physical access or custody issues that could affect system security.
+            applicability: [physical_security, monitoring, incident_response]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Log facility access and investigate badge, visitor, or asset custody exceptions.
+              - Retain physical security review and incident evidence for the assessment period.
+            audit_procedure:
+              - Inspect physical access logs, exceptions, and investigation records.
+              - Sample exceptions and verify owner, disposition, and closure evidence.
+            failure_modes:
+              - Physical access exception lacks investigation or closure evidence.
+              - Access logs are unavailable for the assessment period.
+            remediation_guidance:
+              - Investigate exceptions, restore logging, and attach closure evidence.
+            exception_guidance: Physical monitoring exceptions require compensating monitoring and owner approval.
+            evidence_expectations:
+              - id: physical-access-monitoring
+                title: Physical access monitoring evidence
+                type: physical_access_monitoring
+                description: Physical access activity and exceptions are monitored, logged, and investigated for in-scope facilities and assets.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 90d
+                accepted_from: [badge_system, visitor_system, incident_management, manual_attestation]
+            freshness_sla: 90d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [physical_security, monitoring, investigation]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.7.4
+              - framework_name: NIST 800-53 r5
+                control_id: PE-6
           - id: CC6.6
+            title: Network access to production resources is restricted
+            objective: Production network access paths are restricted to approved sources, protocols, and services.
+            intent: Limit public and lateral exposure of systems that process, store, or transmit sensitive information.
+            applicability: [production, cloud, network_security]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Restrict public endpoints, security groups, firewall rules, and routing paths to approved business purposes.
+              - Monitor exposure relationships between public ingress, identities, workloads, and sensitive resources.
+            audit_procedure:
+              - Inspect public endpoint, firewall, security group, and resource exposure evidence for production assets.
+              - Sample exposed resources and verify owner approval, compensating controls, and remediation state.
+            failure_modes:
+              - Production resource is publicly exposed without approval or compensating controls.
+              - Network exposure evidence is stale, incomplete, or cannot be mapped to asset inventory.
+            remediation_guidance:
+              - Restrict ingress, remove unauthorized public exposure, attach owner approval, and refresh exposure evidence.
+            exception_guidance: Public exposure exceptions require owner approval, compensating monitoring, and expiration.
+            evidence_expectations:
+              - id: network-exposure-state
+                title: Network exposure posture
+                type: network_exposure
+                description: Current public endpoint, firewall, security group, and resource exposure state for production assets.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 14d
+                accepted_from: [aws, azure, gcp, cloudflare, source_snapshot, manual_attestation]
+            freshness_sla: 14d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [network_security, exposure_management, cloud]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.20
           - id: CC6.7
+            title: Data transmission and disposal are protected
+            objective: Data transmission, storage transfer, disposal, and media handling protect information from unauthorized disclosure.
+            intent: Reduce exposure while information moves between systems or leaves active use.
+            applicability: [data_protection, network_security, production]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Require encrypted transmission for sensitive data and approved disposal or retention controls for retired data.
+              - Monitor public transfer paths, weak TLS, unencrypted storage movement, and disposal evidence.
+            audit_procedure:
+              - Inspect encryption-in-transit, retention, disposal, and transfer evidence for sensitive data paths.
+              - Sample high-risk data paths and verify protection or approved exception.
+            failure_modes:
+              - Sensitive data is transferred without approved protection.
+              - Disposal or retention evidence is missing for in-scope data.
+            remediation_guidance:
+              - Enable protected transport, remediate weak transfer paths, complete disposal, and refresh evidence.
+            exception_guidance: Data-transfer exceptions require data owner approval, compensating controls, and expiration.
+            evidence_expectations:
+              - id: data-transmission-disposal-protection
+                title: Data transmission and disposal protection evidence
+                type: data_transfer_protection
+                description: Data transmission, storage transfer, disposal, and media handling protect information from unauthorized disclosure.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [aws, gcp, azure, dlp_system, storage_policy, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: data_protection
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [data_protection, encryption, disposal]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.20
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.24
+              - framework_name: NIST 800-53 r5
+                control_id: SC-8
+              - framework_name: NIST 800-53 r5
+                control_id: SC-13
+              - framework_name: PCI DSS v4.0.1
+                control_id: 4.2
           - id: CC6.8
+            title: Malware and endpoint protection controls are maintained
+            objective: Endpoint, workload, and malware protection controls are deployed, monitored, and restored when disabled or stale.
+            intent: Limit compromise risk from unmanaged endpoints, stale agents, or malicious activity.
+            applicability: [endpoint, security_operations, production]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Deploy endpoint protection or equivalent workload controls to in-scope devices and servers.
+              - Monitor inactive, infected, unmanaged, or stale agents and route findings to owners.
+            audit_procedure:
+              - Inspect endpoint protection coverage, policy state, stale-agent findings, and threat disposition.
+              - Sample unmanaged or infected endpoints and verify remediation or approved exception.
+            failure_modes:
+              - Endpoint protection is missing, disabled, stale, or not reporting for an in-scope asset.
+              - Threat or stale-agent finding lacks owner or closure evidence.
+            remediation_guidance:
+              - Restore protection, isolate or remediate affected assets, and refresh endpoint evidence.
+            exception_guidance: Endpoint protection exceptions require compensating controls, owner approval, and expiration.
+            evidence_expectations:
+              - id: endpoint-malware-protection
+                title: Endpoint and malware protection evidence
+                type: endpoint_protection
+                description: Endpoint, workload, and malware protection controls are deployed, monitored, and restored when disabled or stale.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 14d
+                accepted_from: [sentinelone, mdm, endpoint_detection_response, source_snapshot, manual_attestation]
+            freshness_sla: 14d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [endpoint, malware, protection]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.7
+              - framework_name: NIST 800-53 r5
+                control_id: SI-3
       - id: CC7
         name: System Operations
         controls:
           - id: CC7
+            title: System operations detect, evaluate, and respond to security events
+            objective: Operational controls identify vulnerabilities, collect security events, monitor alerts, investigate issues, and remediate findings.
+            intent: Provide an umbrella operations objective for detection, vulnerability, incident, and remediation findings.
+            applicability: [production, security_operations, vulnerability_management]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Operate vulnerability, logging, monitoring, investigation, incident, and remediation workflows for production systems.
+              - Review open findings, alert routing, source coverage, and exception state on a defined cadence.
+            audit_procedure:
+              - Inspect vulnerability, logging, monitoring, investigation, and remediation evidence for production systems.
+              - Sample high-severity findings and verify owner, timeline, and outcome.
+            failure_modes:
+              - Operational security source is missing, stale, or not routed to accountable owners.
+              - High-risk finding lacks triage, investigation, remediation, or risk acceptance.
+            remediation_guidance:
+              - Restore source coverage, triage findings, complete remediation or acceptance, and refresh evidence.
+            exception_guidance: Operations exceptions require owner approval, compensating detection, and expiration.
+            evidence_expectations:
+              - id: system-operations-security-posture
+                title: System operations security posture evidence
+                type: security_operations_posture
+                description: Operational controls identify vulnerabilities, collect security events, monitor alerts, investigate issues, and remediate findings.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 14d
+                accepted_from: [aws, github, okta, siem, vulnerability_scanner, grc, manual_attestation]
+            freshness_sla: 14d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [security_operations, monitoring, vulnerability, remediation]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.8
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.15
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.16
+              - framework_name: NIST 800-53 r5
+                control_id: AU-6
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
           - id: CC7.1
+            title: Security vulnerabilities are identified and prioritized
+            objective: Security vulnerabilities affecting production assets are identified, triaged, and prioritized using current scanner and provider evidence.
+            intent: Ensure exploitable weaknesses are visible quickly enough for risk-based remediation.
+            applicability: [production, vulnerability_management]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Run vulnerability and cloud security posture sources on a defined cadence for production assets.
+              - Prioritize vulnerabilities by severity, exploitability, affected asset criticality, and exposure.
+            audit_procedure:
+              - Review current vulnerability inventory, scanner/source coverage, severity distribution, and triage status.
+              - Sample critical and high vulnerabilities and verify source evidence, owner, and remediation path.
+            failure_modes:
+              - Production vulnerability evidence is stale, incomplete, or missing for high-value asset families.
+              - Critical or high vulnerabilities are not triaged to an accountable owner.
+            remediation_guidance:
+              - Restore scanner/source coverage, triage unowned findings, and refresh vulnerability evidence.
+            exception_guidance: Vulnerability triage exceptions require documented risk acceptance, owner approval, and expiration.
+            evidence_expectations:
+              - id: vulnerability-inventory-state
+                title: Vulnerability inventory and triage state
+                type: vulnerability_management
+                description: Current vulnerability findings, severity, affected assets, owner, and triage posture.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 14d
+                accepted_from: [github, aws, trivy, vulnerability_scanner, source_snapshot, manual_attestation]
+            freshness_sla: 14d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [vulnerability, triage, security_operations]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.8
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
           - id: CC7.2
+            title: Security events are logged and retained
+            objective: Security-significant identity, cloud, source-control, and workload events are collected, protected, and retained.
+            intent: Preserve reliable evidence for detection, investigation, control testing, and incident response.
+            applicability: [production, security_monitoring, logging]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Collect administrative, authentication, configuration, network, and workload events in protected logging destinations.
+              - Configure retention, integrity protection, alert routing, and accountable ownership for security logs.
+            audit_procedure:
+              - Verify configured log sources, retention settings, destinations, and recent ingestion health.
+              - Sample a security-significant event and trace it from source event to retained evidence.
+            failure_modes:
+              - Security logs are disabled, mutable, outside retention requirements, or missing for high-value source families.
+              - Logging evidence cannot be reconciled to current production source coverage.
+            remediation_guidance:
+              - Enable required log sources, restore retention, protect log storage, and document review ownership.
+            exception_guidance: Logging exceptions require documented compensating monitoring, approval, and restoration date.
+            evidence_expectations:
+              - id: security-log-retention
+                title: Security log retention and source coverage
+                type: logging_configuration
+                description: Current security log sources, retention settings, alert routing, and ingestion evidence.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [aws, okta, github, siem, cloud_logging, source_snapshot, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [logging, retention, detection]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.15
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
           - id: CC7.3
+            title: Security events are monitored and investigated
+            objective: Security events and alerts are reviewed, escalated, investigated, and tracked to outcome.
+            intent: Convert collected security telemetry into timely detection and accountable response.
+            applicability: [production, security_monitoring, security_operations]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Route high-value security events and provider findings to accountable detection and response workflows.
+              - Track alert investigation, disposition, owner, and closure evidence.
+            audit_procedure:
+              - Inspect recent security findings, alert routing, investigation records, and closure evidence.
+              - Sample high-severity events and verify triage owner, timeline, and outcome.
+            failure_modes:
+              - Security findings are collected but not reviewed, assigned, or investigated.
+              - Investigation evidence is missing, stale, or disconnected from source events.
+            remediation_guidance:
+              - Restore alert routing, assign owners, complete investigation records, and refresh evidence.
+            exception_guidance: Monitoring exceptions require compensating detective controls, owner approval, and expiration.
+            evidence_expectations:
+              - id: security-monitoring-state
+                title: Security monitoring and investigation state
+                type: security_monitoring
+                description: Current security events, findings, alert routing, investigation status, and closure evidence.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 30d
+                accepted_from: [aws, okta, github, siem, case_management, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [monitoring, investigation, detection]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.15
+              - framework_name: NIST 800-53 r5
+                control_id: SI-4
           - id: CC7.4
+            title: Incidents and anomalies are assessed and responded to
+            objective: Security incidents, anomalies, and confirmed events are assessed, escalated, contained, and documented through closure.
+            intent: Ensure detection signals become timely response and retained incident evidence.
+            applicability: [incident_response, security_operations, production]
+            assessment_methods: [examine, interview, test]
+            implementation_guidance:
+              - Define incident severity, escalation, containment, communication, and closure expectations.
+              - Track security incidents and anomalies from detection through disposition and lessons learned.
+            audit_procedure:
+              - Inspect recent incident records, alert evidence, escalation timeline, containment, and closure notes.
+              - Sample high-severity incidents and verify response followed procedure or exception approval.
+            failure_modes:
+              - Incident lacks severity, owner, timeline, containment, or closure evidence.
+              - Anomaly was detected but not assessed or escalated according to procedure.
+            remediation_guidance:
+              - Complete incident record, assign owner, document containment and closure, and update response evidence.
+            exception_guidance: Incident response exceptions require incident commander approval and post-incident review.
+            evidence_expectations:
+              - id: incident-response-assessment
+                title: Incident assessment and response evidence
+                type: incident_response
+                description: Security incidents, anomalies, and confirmed events are assessed, escalated, contained, and documented through closure.
+                required: true
+                assessment_methods: [examine, interview, test]
+                freshness_sla: 30d
+                accepted_from: [siem, case_management, incident_management, aws, github, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [incident_response, investigation, containment]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.24
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.25
+              - framework_name: NIST 800-53 r5
+                control_id: IR-4
+              - framework_name: NIST 800-53 r5
+                control_id: IR-6
           - id: CC7.5
+            title: Security findings are remediated or risk-accepted
+            objective: Security findings and vulnerabilities are remediated within defined expectations or covered by approved exceptions.
+            intent: Keep unresolved security issues visible, owned, prioritized, and bounded by risk acceptance.
+            applicability: [production, vulnerability_management, security_operations]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Track remediation owner, due date, status, severity, and exception state for security findings.
+              - Require risk acceptance and compensating controls when remediation misses the defined SLA.
+            audit_procedure:
+              - Review open finding age, remediation SLA status, overdue exceptions, and closure evidence.
+              - Sample critical or high findings and verify remediation or approved risk acceptance.
+            failure_modes:
+              - Critical or high finding remains open past SLA without approved exception or compensating control.
+              - Remediation evidence does not prove closure or cannot be tied to the source finding.
+            remediation_guidance:
+              - Patch, mitigate, isolate, or accept risk with approval, then refresh finding and evidence state.
+            exception_guidance: Exceptions require risk acceptance, compensating controls, owner approval, and expiration.
+            evidence_expectations:
+              - id: finding-remediation-state
+                title: Finding remediation and exception state
+                type: remediation_state
+                description: Open finding age, SLA status, remediation owner, closure evidence, and exception approvals.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 14d
+                accepted_from: [github, aws, grc, ticketing_system, source_snapshot, manual_attestation]
+            freshness_sla: 14d
+            owner_domain: security_operations
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [remediation, vulnerability, risk_acceptance]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.8
+              - framework_name: NIST 800-53 r5
+                control_id: RA-5
       - id: CC8
         name: Change Management
         controls:
           - id: CC8.1
+            title: Production changes are reviewed, tested, and traceable
+            objective: Production changes are approved, tested, reviewed, deployed through authorized paths, and traceable from request through release.
+            intent: Reduce production risk from unauthorized, untested, or unreviewed changes.
+            applicability: [production, software_delivery, change_management]
+            assessment_methods: [examine, test]
+            implementation_guidance:
+              - Require code review, automated checks, deployment traceability, and approval for production changes.
+              - Preserve change request, pull request, build, deployment, and rollback evidence.
+            audit_procedure:
+              - Sample deployed changes and verify approval, testing, reviewer, deployment, and rollback evidence.
+              - Reconcile pull request and deployment evidence against current production release history.
+            failure_modes:
+              - Production deployment has no approval, missing test results, or cannot be traced to a reviewed change.
+              - Emergency change evidence is missing retrospective review or owner approval.
+            remediation_guidance:
+              - Restore change evidence, remediate unauthorized changes, and update enforcement in the deployment path.
+            exception_guidance: Emergency changes require retrospective review, owner approval, and linked incident or risk rationale.
+            evidence_expectations:
+              - id: production-change-trace
+                title: Production change trace
+                type: change_management
+                description: Change request, reviewer approval, test result, deployment record, and rollback evidence.
+                required: true
+                assessment_methods: [examine, test]
+                freshness_sla: 30d
+                accepted_from: [github, source_control, ci_cd_system, ticketing_system, manual_attestation]
+            freshness_sla: 30d
+            owner_domain: engineering
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [change_management, secure_delivery]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.8.32
+              - framework_name: NIST 800-53 r5
+                control_id: CM-3
       - id: CC9
         name: Risk Mitigation
         controls:
           - id: CC9.1
+            title: Business disruptions and risk events are mitigated
+            objective: Risk mitigation activities reduce the likelihood or impact of business disruptions, security events, and operational failures.
+            intent: Tie risk treatment to resilience, continuity, and security operating evidence.
+            applicability: [risk_management, resilience, security_operations]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Document mitigation plans for material security, availability, vendor, and operational risks.
+              - Track mitigation owners, due dates, dependencies, and residual risk decisions.
+            audit_procedure:
+              - Inspect risk mitigation plans, action owners, due dates, and residual risk approvals.
+              - Sample material risks and verify mitigation progress or accepted risk.
+            failure_modes:
+              - Material risk lacks mitigation plan, owner, or residual risk decision.
+              - Mitigation is overdue without escalation or accepted risk.
+            remediation_guidance:
+              - Define mitigation plan, assign owner, update due date, and refresh risk evidence.
+            exception_guidance: Mitigation exceptions require risk owner approval and expiration.
+            evidence_expectations:
+              - id: risk-mitigation-plan
+                title: Risk mitigation plan evidence
+                type: risk_mitigation_plan
+                description: Risk mitigation activities reduce the likelihood or impact of business disruptions, security events, and operational failures.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [risk_register, incident_management, continuity_plan, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: risk
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [risk_management, resilience, mitigation]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: 6.1.2
+              - framework_name: NIST 800-53 r5
+                control_id: RA-3
           - id: CC9.2
+            title: Vendor and business partner risks are managed
+            objective: Third-party and business partner risks are assessed, monitored, and mitigated throughout the vendor lifecycle.
+            intent: Keep outsourced services and supplier dependencies within the organization's control and risk expectations.
+            applicability: [vendor_risk, third_party_risk, governance]
+            assessment_methods: [examine, interview]
+            implementation_guidance:
+              - Assess vendors before onboarding and review critical vendors on a defined cadence.
+              - Track vendor owners, inherent risk, due diligence, findings, exceptions, and contract obligations.
+            audit_procedure:
+              - Inspect vendor inventory, risk tiers, due diligence, reviews, and open vendor findings.
+              - Sample critical vendors and verify review currency, owner, and remediation evidence.
+            failure_modes:
+              - Critical vendor lacks current review, owner, or risk tier.
+              - Vendor finding is overdue without accepted risk or remediation plan.
+            remediation_guidance:
+              - Complete vendor review, assign owner, remediate findings, or document risk acceptance.
+            exception_guidance: Vendor-risk exceptions require business owner approval, compensating controls, and renewal date.
+            evidence_expectations:
+              - id: third-party-risk-management
+                title: Third-party risk management evidence
+                type: third_party_risk
+                description: Third-party and business partner risks are assessed, monitored, and mitigated throughout the vendor lifecycle.
+                required: true
+                assessment_methods: [examine, interview]
+                freshness_sla: 180d
+                accepted_from: [grc, vendor_management, risk_register, manual_attestation]
+            freshness_sla: 180d
+            owner_domain: vendor_risk
+            automatable: true
+            manual_evidence_allowed: true
+            tags: [vendor_risk, third_party, risk_management]
+            maps_to:
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.19
+              - framework_name: "ISO 27001:2022"
+                control_id: A.5.20
+              - framework_name: NIST 800-53 r5
+                control_id: SR-3
+              - framework_name: NIST 800-53 r5
+                control_id: SR-6
       - id: P1
         name: Notice and Communication
         controls:

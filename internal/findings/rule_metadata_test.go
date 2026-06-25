@@ -154,6 +154,26 @@ func TestBuiltinPublicDetectionCatalogPreservesFingerprintFieldOrder(t *testing.
 	t.Fatalf("BuiltinPublicDetectionCatalog() missing %s", githubAppIntegrationInstalledRuleID)
 }
 
+func TestBuiltinPublicDetectionCatalogPublishesPolicyAuditDepth(t *testing.T) {
+	catalog := BuiltinPublicDetectionCatalog()
+	for _, detection := range catalog.Detections {
+		if detection.ID != "aws-s3-bucket-no-public-access" {
+			continue
+		}
+		if detection.EvidenceType != "cloud_configuration" {
+			t.Fatalf("EvidenceType = %q, want cloud_configuration", detection.EvidenceType)
+		}
+		if !slices.Equal(detection.AssessmentMethods, []string{"examine", "test"}) {
+			t.Fatalf("AssessmentMethods = %#v, want examine/test", detection.AssessmentMethods)
+		}
+		if detection.AuditorGuidance == "" || detection.RiskStatement == "" || detection.RemediationIntent == "" {
+			t.Fatalf("policy audit depth missing: guidance=%q risk=%q remediation=%q", detection.AuditorGuidance, detection.RiskStatement, detection.RemediationIntent)
+		}
+		return
+	}
+	t.Fatal("BuiltinPublicDetectionCatalog() missing aws-s3-bucket-no-public-access")
+}
+
 func TestBuiltinPublicDetectionCatalogPublishesGRCFingerprintSalts(t *testing.T) {
 	wantByID := map[string][]string{
 		grcControlTestNeedsAttentionRuleID: {"tenant_id", "runtime_id", "provider", "test_id"},
