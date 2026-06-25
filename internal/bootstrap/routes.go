@@ -132,7 +132,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/control-profiles", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.profiles", 5*time.Minute), app.handleGRCControlProfiles))
 	registerHTTPRoute(mux, "GET /grc/control-coverage", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.coverage", 5*time.Minute), app.handleGRCControlCoverage))
 	registerHTTPRoute(mux, "GET /grc/control-packets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.packets", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControlEvidencePacket))
-	registerHTTPRoute(mux, "GET /grc/evidence-packets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("evidence.packets", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCEvidencePackets))
+	registerHTTPRoute(mux, "GET /grc/evidence-packets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("evidence.packets", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControlEvidencePacket))
 	registerHTTPRoute(mux, "POST /grc/control-packets", routeSurfacePlatformHTTP, app.handleGRCCustomControlEvidencePacket)
 	registerHTTPRoute(mux, "GET /grc/control-packets/detail", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.packet.detail", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControlEvidencePacketDetail))
 	registerHTTPRoute(mux, "GET /grc/control-packets/export", routeSurfacePlatformHTTP, app.handleGRCControlEvidencePacketExport)

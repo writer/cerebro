@@ -57,18 +57,12 @@ func (a *App) handleGRCControlEvidencePacket(w http.ResponseWriter, r *http.Requ
 		writeGRCControlPacketError(w, err)
 		return
 	}
-	writeGRCControlPacketJSON(w, result)
-}
-
-func (a *App) handleGRCEvidencePackets(w http.ResponseWriter, r *http.Request) {
-	result, err := a.buildGRCControlEvidencePacket(r)
-	if err != nil {
-		writeGRCControlPacketError(w, err)
+	if r.URL.Path == "/grc/evidence-packets" {
+		writeJSON(w, http.StatusOK, evidencepackets.Build(result))
 		return
 	}
-	writeJSON(w, http.StatusOK, evidencepackets.Build(result))
+	writeGRCControlPacketJSON(w, result)
 }
-
 func (a *App) handleGRCControlEvidencePacketDetail(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(r.URL.Query().Get("control")) == "" {
 		writeGRCError(w, fmt.Errorf("%w: control query parameter is required", errInvalidHTTPRequest))

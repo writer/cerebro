@@ -196,10 +196,11 @@ func Build(result grccontrol.PacketResult) Response {
 	}
 	for _, item := range result.Controls {
 		packetControl := packetControlsByKey[controlKey(item.FrameworkName, item.ControlID)]
-		controlID := stableControlID(item.FrameworkName, item.ControlID)
+		frameworkID := stableFrameworkID(item)
+		controlID := stableControlID(frameworkID, item.ControlID)
 		control := ControlPosture{
 			ID:                 controlID,
-			FrameworkID:        strings.TrimSpace(item.FrameworkName),
+			FrameworkID:        frameworkID,
 			FrameworkName:      strings.TrimSpace(item.FrameworkName),
 			Title:              strings.TrimSpace(item.Title),
 			OwnerDomain:        strings.TrimSpace(item.OwnerDomain),
@@ -344,13 +345,14 @@ func packetsForExpectation(control ControlPosture, request EvidenceRequest, item
 
 func testResults(controlID string, item grccontrol.ControlItem) []ControlTestResult {
 	results := make([]ControlTestResult, 0, len(item.MappedRules))
+	failingRules := failingRulesByID(item.Findings)
 	for _, ruleID := range item.MappedRules {
 		ruleID = strings.TrimSpace(ruleID)
 		if ruleID == "" {
 			continue
 		}
 		result := "pass"
-		if item.OpenFindings > 0 {
+		if failingRules[ruleID] {
 			result = "fail"
 		}
 		results = append(results, ControlTestResult{
@@ -365,13 +367,33 @@ func testResults(controlID string, item grccontrol.ControlItem) []ControlTestRes
 	return results
 }
 
+func failingRulesByID(findings []grccontrol.FindingItem) map[string]bool {
+	failing := map[string]bool{}
+	for _, finding := range findings {
+		ruleID := strings.TrimSpace(finding.RuleID)
+		if ruleID != "" && !findingClosed(finding.Status) {
+			failing[ruleID] = true
+		}
+	}
+	return failing
+}
+
+func findingClosed(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "closed", "fixed", "resolved", "accepted", "risk_accepted", "suppressed", "false_positive":
+		return true
+	default:
+		return false
+	}
+}
+
 func frameworksFromControls(controls []ControlPosture) []FrameworkPosture {
 	byID := map[string]*FrameworkPosture{}
 	for _, control := range controls {
 		id := firstNonEmpty(control.FrameworkID, "default")
 		framework := byID[id]
 		if framework == nil {
-			framework = &FrameworkPosture{ID: id, Name: id, Status: "ready"}
+			framework = &FrameworkPosture{ID: id, Name: firstNonEmpty(control.FrameworkName, id), Status: "ready"}
 			byID[id] = framework
 		}
 		framework.ControlCount++
@@ -492,6 +514,13 @@ func stableID(parts ...string) string {
 
 func stableControlID(framework string, control string) string {
 	return stableID("control", framework, control)
+}
+
+func stableFrameworkID(item grccontrol.ControlItem) string {
+	if frameworkID := strings.TrimSpace(item.FrameworkID); frameworkID != "" {
+		return frameworkID
+	}
+	return stableID("framework", item.FrameworkName)
 }
 
 func controlKey(framework string, control string) string {
