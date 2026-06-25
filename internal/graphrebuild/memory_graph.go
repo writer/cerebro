@@ -34,6 +34,11 @@ type memoryLink struct {
 	Relation string
 }
 
+type memoryURNPair struct {
+	first  string
+	second string
+}
+
 func newMemoryGraphStore() (graphStore, error) {
 	return &memoryGraphStore{
 		entities: make(map[string]memoryEntity),
@@ -142,6 +147,8 @@ func (s *memoryGraphStore) Counts(context.Context) (graphstore.Counts, error) {
 func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	outgoingLinks := s.memoryOutgoingLinksByFromURN()
+	linkedURNs := s.memoryLinkedURNPairs()
 	checks := []graphstore.IntegrityCheck{
 		{Name: "tenant_mismatched_relations", Expected: 0},
 		{Name: "blank_entity_labels", Expected: 0},
@@ -159,10 +166,10 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 		if entity.EntityType == "" {
 			checks[2].Actual++
 		}
-		if memoryEntityRequiresRepositoryOwnerLink(entity) && !s.memoryEntityHasOutgoingLinkTo(entity.URN, "belongs_to", "github.org") {
+		if memoryEntityRequiresRepositoryOwnerLink(entity) && !s.memoryEntityHasOutgoingLinkTo(outgoingLinks, entity.URN, "belongs_to", "github.org") {
 			checks[5].Actual++
 		}
-		if memoryEntityRequiresInstanceLink(entity) && !s.memoryEntityHasInstanceLink(entity.URN) {
+		if memoryEntityRequiresInstanceLink(entity) && !s.memoryEntityHasInstanceLink(outgoingLinks, entity.URN) {
 			checks[6].Actual++
 		}
 	}
@@ -179,7 +186,7 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 			checks[4].Actual++
 		}
 	}
-	checks[7].Actual = s.crossKindIdentityFragmentation()
+	checks[7].Actual = s.crossKindIdentityFragmentation(linkedURNs)
 	for index := range checks {
 		checks[index].Passed = checks[index].Actual == checks[index].Expected
 	}
@@ -192,7 +199,7 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 // same real object is projected under two kinds (e.g. a typed node and a runtime
 // stub) that never merge. Directly-linked twins (such as identifier/identity
 // nodes) are intentionally excluded because they are a deliberate paired model.
-func (s *memoryGraphStore) crossKindIdentityFragmentation() int64 {
+func (s *memoryGraphStore) crossKindIdentityFragmentation(linkedURNs map[memoryURNPair]struct{}) int64 {
 	type idKey struct {
 		tenant string
 		id     string
@@ -217,7 +224,7 @@ func (s *memoryGraphStore) crossKindIdentityFragmentation() int64 {
 				if group[i].kind == group[j].kind {
 					continue
 				}
-				if s.memoryEntitiesLinked(group[i].urn, group[j].urn) {
+				if memoryEntitiesLinked(linkedURNs, group[i].urn, group[j].urn) {
 					continue
 				}
 				fragmented++
@@ -225,15 +232,6 @@ func (s *memoryGraphStore) crossKindIdentityFragmentation() int64 {
 		}
 	}
 	return fragmented
-}
-
-func (s *memoryGraphStore) memoryEntitiesLinked(first string, second string) bool {
-	for _, link := range s.links {
-		if (link.FromURN == first && link.ToURN == second) || (link.FromURN == second && link.ToURN == first) {
-			return true
-		}
-	}
-	return false
 }
 
 // projectionURNKindAndID splits a cerebro projection URN of the form
@@ -284,14 +282,14 @@ func memoryEntityRequiresRepositoryOwnerLink(entity memoryEntity) bool {
 		strings.TrimSpace(entity.Attributes["owner_login"]) != ""
 }
 
-func (s *memoryGraphStore) memoryEntityHasInstanceLink(urn string) bool {
-	return s.memoryEntityHasOutgoingLinkTo(urn, "attached_to", "aws.ec2.instance") ||
-		s.memoryEntityHasOutgoingLinkTo(urn, "associated_with", "aws.ec2.instance")
+func (s *memoryGraphStore) memoryEntityHasInstanceLink(outgoingLinks map[string][]memoryLink, urn string) bool {
+	return s.memoryEntityHasOutgoingLinkTo(outgoingLinks, urn, "attached_to", "aws.ec2.instance") ||
+		s.memoryEntityHasOutgoingLinkTo(outgoingLinks, urn, "associated_with", "aws.ec2.instance")
 }
 
-func (s *memoryGraphStore) memoryEntityHasOutgoingLinkTo(urn string, relation string, targetType string) bool {
-	for _, link := range s.links {
-		if link.FromURN != urn || link.Relation != relation {
+func (s *memoryGraphStore) memoryEntityHasOutgoingLinkTo(outgoingLinks map[string][]memoryLink, urn string, relation string, targetType string) bool {
+	for _, link := range outgoingLinks[urn] {
+		if link.Relation != relation {
 			continue
 		}
 		if s.entities[link.ToURN].EntityType == targetType {
@@ -304,30 +302,23 @@ func (s *memoryGraphStore) memoryEntityHasOutgoingLinkTo(urn string, relation st
 func (s *memoryGraphStore) PathPatterns(_ context.Context, limit int) ([]graphstore.PathPattern, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	outgoingLinks := s.memoryOutgoingLinksByFromURN()
 	counts := make(map[string]graphstore.PathPattern)
-	for _, first := range s.links {
-		for _, second := range s.links {
-			if first.ToURN != second.FromURN {
-				continue
-			}
-			if graphstore.SuppressTwoHopPath(first.Relation, second.Relation) {
-				continue
-			}
-			from := s.entities[first.FromURN]
-			via := s.entities[first.ToURN]
-			to := s.entities[second.ToURN]
-			pattern := graphstore.PathPattern{
-				FromType:       from.EntityType,
-				FirstRelation:  first.Relation,
-				ViaType:        via.EntityType,
-				SecondRelation: second.Relation,
-				ToType:         to.EntityType,
-			}
-			key := strings.Join([]string{pattern.FromType, pattern.FirstRelation, pattern.ViaType, pattern.SecondRelation, pattern.ToType}, "|")
-			pattern.Count = counts[key].Count + 1
-			counts[key] = pattern
+	s.visitMemoryTwoHopLinks(outgoingLinks, func(first memoryLink, second memoryLink) {
+		from := s.entities[first.FromURN]
+		via := s.entities[first.ToURN]
+		to := s.entities[second.ToURN]
+		pattern := graphstore.PathPattern{
+			FromType:       from.EntityType,
+			FirstRelation:  first.Relation,
+			ViaType:        via.EntityType,
+			SecondRelation: second.Relation,
+			ToType:         to.EntityType,
 		}
-	}
+		key := strings.Join([]string{pattern.FromType, pattern.FirstRelation, pattern.ViaType, pattern.SecondRelation, pattern.ToType}, "|")
+		pattern.Count = counts[key].Count + 1
+		counts[key] = pattern
+	})
 	patterns := make([]graphstore.PathPattern, 0, len(counts))
 	for _, pattern := range counts {
 		patterns = append(patterns, pattern)
@@ -374,30 +365,23 @@ func (s *memoryGraphStore) Topology(context.Context) (graphstore.Topology, error
 func (s *memoryGraphStore) SampleTraversals(_ context.Context, limit int) ([]graphstore.Traversal, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	outgoingLinks := s.memoryOutgoingLinksByFromURN()
 	traversals := []graphstore.Traversal{}
-	for _, first := range s.links {
-		for _, second := range s.links {
-			if first.ToURN != second.FromURN {
-				continue
-			}
-			if graphstore.SuppressTwoHopPath(first.Relation, second.Relation) {
-				continue
-			}
-			from := s.entities[first.FromURN]
-			via := s.entities[first.ToURN]
-			to := s.entities[second.ToURN]
-			traversals = append(traversals, graphstore.Traversal{
-				FromURN:        from.URN,
-				FromLabel:      from.Label,
-				FirstRelation:  first.Relation,
-				ViaURN:         via.URN,
-				ViaLabel:       via.Label,
-				SecondRelation: second.Relation,
-				ToURN:          to.URN,
-				ToLabel:        to.Label,
-			})
-		}
-	}
+	s.visitMemoryTwoHopLinks(outgoingLinks, func(first memoryLink, second memoryLink) {
+		from := s.entities[first.FromURN]
+		via := s.entities[first.ToURN]
+		to := s.entities[second.ToURN]
+		traversals = append(traversals, graphstore.Traversal{
+			FromURN:        from.URN,
+			FromLabel:      from.Label,
+			FirstRelation:  first.Relation,
+			ViaURN:         via.URN,
+			ViaLabel:       via.Label,
+			SecondRelation: second.Relation,
+			ToURN:          to.URN,
+			ToLabel:        to.Label,
+		})
+	})
 	sort.Slice(traversals, func(i, j int) bool {
 		return traversalKey(traversals[i]) < traversalKey(traversals[j])
 	})
@@ -405,6 +389,45 @@ func (s *memoryGraphStore) SampleTraversals(_ context.Context, limit int) ([]gra
 		traversals = traversals[:limit]
 	}
 	return traversals, nil
+}
+
+func (s *memoryGraphStore) memoryOutgoingLinksByFromURN() map[string][]memoryLink {
+	outgoingLinks := make(map[string][]memoryLink, len(s.links))
+	for _, link := range s.links {
+		outgoingLinks[link.FromURN] = append(outgoingLinks[link.FromURN], link)
+	}
+	return outgoingLinks
+}
+
+func (s *memoryGraphStore) memoryLinkedURNPairs() map[memoryURNPair]struct{} {
+	linkedURNs := make(map[memoryURNPair]struct{}, len(s.links))
+	for _, link := range s.links {
+		linkedURNs[memoryLinkedURNPair(link.FromURN, link.ToURN)] = struct{}{}
+	}
+	return linkedURNs
+}
+
+func (s *memoryGraphStore) visitMemoryTwoHopLinks(outgoingLinks map[string][]memoryLink, visit func(memoryLink, memoryLink)) {
+	for _, first := range s.links {
+		for _, second := range outgoingLinks[first.ToURN] {
+			if graphstore.SuppressTwoHopPath(first.Relation, second.Relation) {
+				continue
+			}
+			visit(first, second)
+		}
+	}
+}
+
+func memoryEntitiesLinked(linkedURNs map[memoryURNPair]struct{}, first string, second string) bool {
+	_, ok := linkedURNs[memoryLinkedURNPair(first, second)]
+	return ok
+}
+
+func memoryLinkedURNPair(first string, second string) memoryURNPair {
+	if second < first {
+		first, second = second, first
+	}
+	return memoryURNPair{first: first, second: second}
 }
 
 func linkKey(fromURN string, relation string, toURN string) string {
