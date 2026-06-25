@@ -3,20 +3,42 @@ package graphquery
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
 
 type impactStubStore struct {
 	neighborhoods map[string]*ports.EntityNeighborhood
+	lookupDelay   time.Duration
+
+	mu            sync.Mutex
 	queries       []string
+	activeLookups int
+	maxLookups    int
 }
 
 func (s *impactStubStore) Ping(context.Context) error { return nil }
 
 func (s *impactStubStore) GetEntityNeighborhood(_ context.Context, rootURN string, _ int) (*ports.EntityNeighborhood, error) {
+	s.mu.Lock()
 	s.queries = append(s.queries, rootURN)
+	s.activeLookups++
+	if s.activeLookups > s.maxLookups {
+		s.maxLookups = s.activeLookups
+	}
+	s.mu.Unlock()
+
+	if s.lookupDelay > 0 {
+		time.Sleep(s.lookupDelay)
+	}
+
+	s.mu.Lock()
+	s.activeLookups--
+	s.mu.Unlock()
+
 	neighborhood, ok := s.neighborhoods[rootURN]
 	if !ok {
 		return nil, ports.ErrGraphEntityNotFound
@@ -26,6 +48,18 @@ func (s *impactStubStore) GetEntityNeighborhood(_ context.Context, rootURN strin
 
 func (s *impactStubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	return nil, nil
+}
+
+func (s *impactStubStore) queryURNs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.queries...)
+}
+
+func (s *impactStubStore) maxConcurrentLookups() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.maxLookups
 }
 
 func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testing.T) {
@@ -110,8 +144,9 @@ func TestGetImpactDepthDoesNotExpandPastRequestedHops(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetImpact() error = %v", err)
 	}
-	if len(store.queries) != 1 || store.queries[0] != rootURN {
-		t.Fatalf("queries = %#v, want only root lookup", store.queries)
+	queries := store.queryURNs()
+	if len(queries) != 1 || queries[0] != rootURN {
+		t.Fatalf("queries = %#v, want only root lookup", queries)
 	}
 	if len(result.Packages) != 1 || result.Packages[0].URN != directURN {
 		t.Fatalf("Packages = %#v, want direct package only", result.Packages)
@@ -215,8 +250,72 @@ func TestGetImpactPackageDoesNotFallbackToLegacyPURLIdentity(t *testing.T) {
 	if !errors.Is(err, ports.ErrGraphEntityNotFound) {
 		t.Fatalf("GetImpact() error = %v, want %v", err, ports.ErrGraphEntityNotFound)
 	}
-	if len(store.queries) != 1 {
-		t.Fatalf("queries = %#v, want no fallback lookup", store.queries)
+	if queries := store.queryURNs(); len(queries) != 1 {
+		t.Fatalf("queries = %#v, want no fallback lookup", queries)
+	}
+}
+
+func TestGetImpactExpandsFrontierConcurrently(t *testing.T) {
+	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	firstPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	secondPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/bar"
+	thirdPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/baz"
+	store := &impactStubStore{
+		lookupDelay: 10 * time.Millisecond,
+		neighborhoods: map[string]*ports.EntityNeighborhood{
+			rootURN: {
+				Root: node(rootURN, "vulnerability", "CVE-2026-4242"),
+				Neighbors: []*ports.NeighborhoodNode{
+					node(firstPackageURN, "package", "foo"),
+					node(secondPackageURN, "package", "bar"),
+					node(thirdPackageURN, "package", "baz"),
+				},
+			},
+			firstPackageURN:  emptyNeighborhood(firstPackageURN, "package"),
+			secondPackageURN: emptyNeighborhood(secondPackageURN, "package"),
+			thirdPackageURN:  emptyNeighborhood(thirdPackageURN, "package"),
+		},
+	}
+
+	if _, err := New(store).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindVulnerability,
+		TenantID:   "writer",
+		Identifier: "CVE-2026-4242",
+		Depth:      2,
+	}); err != nil {
+		t.Fatalf("GetImpact() error = %v", err)
+	}
+	if got := store.maxConcurrentLookups(); got < 2 {
+		t.Fatalf("max concurrent lookups = %d, want parallel frontier expansion", got)
+	}
+}
+
+func TestGetImpactReturnsParallelLookupErrors(t *testing.T) {
+	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	firstPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	secondPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/bar"
+	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+		rootURN: {
+			Root: node(rootURN, "vulnerability", "CVE-2026-4242"),
+			Neighbors: []*ports.NeighborhoodNode{
+				node(firstPackageURN, "package", "foo"),
+				node(secondPackageURN, "package", "bar"),
+			},
+		},
+		firstPackageURN: {
+			Root: node(firstPackageURN, "package", "foo"),
+		},
+	}}
+
+	_, err := New(store).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindVulnerability,
+		TenantID:   "writer",
+		Identifier: "CVE-2026-4242",
+		Depth:      2,
+		Limit:      4,
+	})
+	if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+		t.Fatalf("GetImpact() error = %v, want %v", err, ports.ErrGraphEntityNotFound)
 	}
 }
 

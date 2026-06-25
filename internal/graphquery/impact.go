@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	packageurl "github.com/package-url/packageurl-go"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -20,6 +21,8 @@ const (
 	defaultImpactLimit = 100
 	maxImpactDepth     = 6
 	maxImpactLimit     = 250
+
+	impactNeighborhoodConcurrency = 8
 )
 
 type ImpactRequest struct {
@@ -88,36 +91,78 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 	visited := map[string]bool{}
 	frontier := []string{rootURN}
 	for hop := 0; hop < depth && len(frontier) > 0 && len(nodes) < limit; hop++ {
-		next := []string{}
+		roots := make([]string, 0, len(frontier))
 		for _, urn := range frontier {
-			if visited[urn] || len(nodes) >= limit {
+			if visited[urn] {
 				continue
 			}
 			visited[urn] = true
-			neighborhood, err := s.store.GetEntityNeighborhood(ctx, urn, limit)
+			roots = append(roots, urn)
+		}
+		if len(roots) == 0 {
+			break
+		}
+		next := []string{}
+		for start := 0; start < len(roots) && len(nodes) < limit; start += impactNeighborhoodConcurrency {
+			end := min(start+impactNeighborhoodConcurrency, len(roots))
+			neighborhoods, err := s.collectImpactNeighborhoods(ctx, roots[start:end], limit)
 			if err != nil {
 				return nil, nil, err
 			}
-			if neighborhood == nil {
-				continue
-			}
-			addImpactNode(nodes, neighborhood.Root, limit)
-			for _, neighbor := range neighborhood.Neighbors {
-				if addImpactNode(nodes, neighbor, limit) && !visited[neighbor.URN] {
-					next = append(next, neighbor.URN)
+			for _, neighborhood := range neighborhoods {
+				if len(nodes) >= limit {
+					break
 				}
-			}
-			for _, relation := range neighborhood.Relations {
-				if relation == nil {
+				if neighborhood == nil {
 					continue
 				}
-				key := relation.FromURN + "|" + relation.Relation + "|" + relation.ToURN
-				relations[key] = relation
+				addImpactNode(nodes, neighborhood.Root, limit)
+				for _, neighbor := range neighborhood.Neighbors {
+					if addImpactNode(nodes, neighbor, limit) && !visited[neighbor.URN] {
+						next = append(next, neighbor.URN)
+					}
+				}
+				for _, relation := range neighborhood.Relations {
+					if relation == nil {
+						continue
+					}
+					key := relation.FromURN + "|" + relation.Relation + "|" + relation.ToURN
+					relations[key] = relation
+				}
 			}
 		}
 		frontier = next
 	}
 	return nodes, filterImpactRelations(nodes, relations), nil
+}
+
+func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string, limit int) ([]*ports.EntityNeighborhood, error) {
+	results := make([]*ports.EntityNeighborhood, len(roots))
+	if len(roots) == 1 {
+		neighborhood, err := s.store.GetEntityNeighborhood(ctx, roots[0], limit)
+		if err != nil {
+			return nil, err
+		}
+		results[0] = neighborhood
+		return results, nil
+	}
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(impactNeighborhoodConcurrency)
+	for index, urn := range roots {
+		index, urn := index, urn
+		group.Go(func() error {
+			neighborhood, err := s.store.GetEntityNeighborhood(groupCtx, urn, limit)
+			if err != nil {
+				return err
+			}
+			results[index] = neighborhood
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func filterImpactRelations(nodes map[string]*ports.NeighborhoodNode, relations map[string]*ports.NeighborhoodRelation) map[string]*ports.NeighborhoodRelation {
