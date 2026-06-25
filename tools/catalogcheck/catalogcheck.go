@@ -366,7 +366,26 @@ func validateControlMapping(path string, raw map[string]json.RawMessage) []issue
 }
 
 func checkSourceCatalogs(root string) ([]issue, error) {
-	return checkSourceCatalogsWithControlCatalog(root, nil)
+	controlCatalog, controlCatalogIssues, err := loadOptionalComplianceControlCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	sourceIssues, err := checkSourceCatalogsWithControlCatalog(root, controlCatalog)
+	if err != nil {
+		return nil, err
+	}
+	return append(controlCatalogIssues, sourceIssues...), nil
+}
+
+func loadOptionalComplianceControlCatalog(root string) (*compliance.CatalogIndex, []issue, error) {
+	path := filepath.Join(root, filepath.FromSlash(compliance.DefaultControlCatalogPath))
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("stat %s: %w", slashRel(root, path), err)
+	}
+	return loadComplianceControlCatalog(root)
 }
 
 func checkSourceCatalogsWithControlCatalog(root string, controlCatalog *compliance.CatalogIndex) ([]issue, error) {

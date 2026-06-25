@@ -242,6 +242,50 @@ coverage_contract:
 	}
 }
 
+func TestCheckSourceCatalogsRejectsUnknownCoverageControlRef(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/compliance/control_families.yaml", `
+version: "2026-06-16"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6
+`)
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Audit events
+      families: [audit]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC9.9
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "control ref SOC 2 CC9.9 is not declared") {
+		t.Fatalf("issues = %#v, want unknown control ref issue", issues)
+	}
+}
+
 func TestCheckSourceCatalogsSkipsCatalogRuntimeAdapter(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/catalogruntime/catalog.yaml", `
