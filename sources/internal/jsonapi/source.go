@@ -28,8 +28,7 @@ type Family struct {
 	TimestampKeys         []string
 	Attributes            map[string]string
 	StaticAttributes      map[string]string
-	StaticQuery           map[string]string
-	ConfigQuery           map[string]string
+	Config                FamilyConfig
 	PageSizeParams        []string
 	DisablePageSize       bool
 	ListKeys              []string
@@ -38,6 +37,30 @@ type Family struct {
 	RequireID             bool
 	IncrementalWatermark  bool
 	Method                string
+}
+
+// FamilyConfig groups request and event bindings that are derived from family
+// configuration rather than directly from provider records.
+type FamilyConfig struct {
+	StaticQuery      map[string]string
+	ConfigQuery      map[string]string
+	ConfigAttributes map[string]string
+}
+
+// MergeStaticAttributes adds provider-specific static event attributes while
+// preserving the source adapter's base static attributes.
+func MergeStaticAttributes(f *Family, extra map[string]string) {
+	if f == nil || len(extra) == 0 {
+		return
+	}
+	merged := make(map[string]string, len(f.StaticAttributes)+len(extra))
+	for key, value := range f.StaticAttributes {
+		merged[key] = value
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+	f.StaticAttributes = merged
 }
 
 // Options configures a JSON API-backed source adapter.
@@ -55,6 +78,7 @@ type Options struct {
 	OAuthTokenRequestAuthMethod       string
 	ConfigurableAuthModels            []string
 	StaticHeaders                     map[string]string
+	ConfigHeaders                     map[string]string
 	DiscoverURNScope                  string
 	PrivateEndpointAllowlistConfigKey string
 	Families                          []Family

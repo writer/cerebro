@@ -1,0 +1,100 @@
+id: langchain
+name: LangChain
+description: LangChain LangSmith governance and observability source covering organization metadata, workspaces, members, roles, service keys, service accounts, tracing projects, runs, feedback, datasets, usage limits, and audit logs.
+emitted_kinds:
+  - langchain.organization
+  - langchain.workspace
+  - langchain.organization_member
+  - langchain.workspace_member
+  - langchain.role
+  - langchain.api_key
+  - langchain.service_account
+  - langchain.project
+  - langchain.run
+  - langchain.feedback
+  - langchain.dataset
+  - langchain.usage_limit
+  - langchain.audit_log
+coverage_contract:
+  owner_domain: ai
+  authority_domain: langchain
+  dimensions:
+    - id: organization_profile
+      type: entity_family
+      title: Current LangSmith organization
+      families: [organization]
+      support: supported
+      high_value: true
+    - id: workspaces
+      type: entity_family
+      title: LangSmith workspaces
+      families: [workspace]
+      support: supported
+      high_value: true
+    - id: users_and_access
+      type: app_entitlement
+      title: Organization and workspace membership
+      families: [organization_member, workspace_member, role]
+      support: supported
+      high_value: true
+    - id: workload_identity
+      type: app_entitlement
+      title: Service keys and service accounts
+      families: [api_key, service_account]
+      support: supported
+      high_value: true
+    - id: tracing_projects
+      type: entity_family
+      title: LangSmith tracing projects
+      families: [project]
+      support: supported
+      high_value: true
+    - id: observability_activity
+      type: audit_event
+      title: Runs, feedback, datasets, usage limits, and audit logs
+      families: [run, feedback, dataset, usage_limit, audit_log]
+      support: supported
+      high_value: true
+event_contracts:
+  - kind: langchain.organization
+    schema_ref: langchain/organization/v1
+    required_attributes: [organization_id]
+    required_payload_fields: [id]
+  - kind: langchain.workspace
+    schema_ref: langchain/workspace/v1
+    required_attributes: [workspace_id]
+    required_payload_fields: [id]
+  - kind: langchain.organization_member
+    schema_ref: langchain/organization_member/v1
+    required_attributes: [user_id]
+  - kind: langchain.workspace_member
+    schema_ref: langchain/workspace_member/v1
+    required_attributes: [user_id, workspace_id]
+  - kind: langchain.role
+    schema_ref: langchain/role/v1
+    required_attributes: [role_id]
+  - kind: langchain.api_key
+    schema_ref: langchain/api_key/v1
+    required_attributes: [api_key_id]
+  - kind: langchain.service_account
+    schema_ref: langchain/service_account/v1
+    required_attributes: [service_account_id]
+  - kind: langchain.project
+    schema_ref: langchain/project/v1
+    required_attributes: [project_id]
+    required_payload_fields: [id]
+  - kind: langchain.run
+    schema_ref: langchain/run/v1
+    required_attributes: [run_id]
+  - kind: langchain.feedback
+    schema_ref: langchain/feedback/v1
+    required_attributes: [feedback_id]
+  - kind: langchain.dataset
+    schema_ref: langchain/dataset/v1
+    required_attributes: [dataset_id]
+  - kind: langchain.usage_limit
+    schema_ref: langchain/usage_limit/v1
+    required_attributes: [usage_limit_id]
+  - kind: langchain.audit_log
+    schema_ref: langchain/audit_log/v1
+    required_attributes: [audit_log_id]

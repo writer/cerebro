@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,20 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
+
+func TestStableIDPreservesLegacySHA256Digest(t *testing.T) {
+	value := "https://api.example.test\x00/api/v1/devices"
+	sum := sha256.Sum256([]byte(value))
+	wantStableID := hex.EncodeToString(sum[:])[:24]
+	if got := stableID(value); got != wantStableID {
+		t.Fatalf("stableID() = %q, want %q", got, wantStableID)
+	}
+
+	wantEventID := "jsonapi-tenant-a-b587ade5b643-device-dev-1"
+	if got := eventID("jsonapi", "tenant-a", "https://api.example.test", "/api/v1/devices", "device", "dev-1"); got != wantEventID {
+		t.Fatalf("eventID() = %q, want %q", got, wantEventID)
+	}
+}
 
 func TestReadPagesJSONAPIRecords(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
@@ -527,11 +542,11 @@ func TestReadSplitsBracketConfigQueryValues(t *testing.T) {
 	defer server.Close()
 
 	source := newCustomTestSource(t, server.URL, Family{
-		Name:        "item",
-		Path:        "/items",
-		URNKind:     "item",
-		IDKeys:      []string{"id"},
-		ConfigQuery: map[string]string{"tags[]": "tags"},
+		Name:    "item",
+		Path:    "/items",
+		URNKind: "item",
+		IDKeys:  []string{"id"},
+		Config:  FamilyConfig{ConfigQuery: map[string]string{"tags[]": "tags"}},
 	})
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
@@ -1014,6 +1029,66 @@ func TestConfigurableBearerAuthUsesAuthorizationHeader(t *testing.T) {
 		"token":      "admin-key",
 	})); err == nil {
 		t.Fatal("Check(unsupported auth_model) error = nil, want error")
+	}
+}
+
+func TestReadAppliesConfigHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Organization-Id"); got != "org_123" {
+			t.Fatalf("X-Organization-Id = %q, want org_123", got)
+		}
+		if got := r.Header.Get("X-Tenant-Id"); got != "workspace_123" {
+			t.Fatalf("X-Tenant-Id = %q, want workspace_123", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+	}))
+	defer server.Close()
+
+	source, err := New(&cerebrov1.SourceSpec{Id: "test", Name: "Test"}, Options{
+		SourceID:        "test",
+		DefaultBaseURL:  server.URL,
+		DefaultFamily:   "device",
+		RequireTenantID: true,
+		TokenHeader:     "x-api-key",
+		ConfigHeaders: map[string]string{
+			"X-Organization-Id": "organization_id",
+			"X-Tenant-Id":       "workspace_id",
+		},
+		Families: []Family{{
+			Name: "device",
+			Path: "/devices",
+			Config: FamilyConfig{
+				ConfigAttributes: map[string]string{
+					"organization_id": "organization_id",
+					"workspace_id":    "workspace_id",
+				},
+			},
+			IDKeys: []string{"id"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":         "fixture-key",
+		"organization_id": "org_123",
+		"tenant_id":       "writer",
+		"workspace_id":    "workspace_123",
+	}), nil); err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder key.
+		"api_key":         "fixture-key",
+		"organization_id": "org_123",
+		"tenant_id":       "writer",
+		"workspace_id":    "workspace_123",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if got := pull.Events[0].Attributes["workspace_id"]; got != "workspace_123" {
+		t.Fatalf("workspace_id attribute = %q, want workspace_123", got)
 	}
 }
 

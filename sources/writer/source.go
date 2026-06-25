@@ -142,7 +142,7 @@ func withListKeys(keys ...string) familyOption {
 
 func withQuery(query map[string]string) familyOption {
 	return func(f *jsonapi.Family) {
-		f.ConfigQuery = query
+		f.Config.ConfigQuery = query
 	}
 }
 

@@ -34,6 +34,8 @@ import (
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
+	langchainsource "github.com/writer/cerebro/sources/langchain"
+	langfusesource "github.com/writer/cerebro/sources/langfuse"
 	linodesource "github.com/writer/cerebro/sources/linode"
 	merakisource "github.com/writer/cerebro/sources/meraki"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -225,6 +227,18 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "kolide",
 		load: func() (sourcecdk.Source, error) {
 			return kolidesource.New()
+		},
+	},
+	{
+		name: "langchain",
+		load: func() (sourcecdk.Source, error) {
+			return langchainsource.New()
+		},
+	},
+	{
+		name: "langfuse",
+		load: func() (sourcecdk.Source, error) {
+			return langfusesource.New()
 		},
 	},
 	{
