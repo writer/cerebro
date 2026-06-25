@@ -16,6 +16,12 @@ import (
 type EvaluateGraphRulesRequest struct {
 	RuntimeID string
 	RuleIDs   []string
+	// ExcludeRuleIDs drops the named graph rules from the default
+	// (ForRuntime) selection. The orchestrator uses this to run each
+	// tenant-scoped graph rule at most once per cycle even when many runtimes
+	// in the tenant would otherwise each trigger the same rule. It is ignored
+	// when RuleIDs is set explicitly.
+	ExcludeRuleIDs []string
 }
 
 // GraphRuleEvaluationResult reports one graph rule's outputs inside a multi-rule pass.
@@ -57,7 +63,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if err != nil {
 		return nil, err
 	}
-	candidates, err := s.selectGraphRules(runtime, request.RuleIDs)
+	candidates, err := s.selectGraphRules(runtime, request.RuleIDs, request.ExcludeRuleIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -242,13 +248,24 @@ func cypherRowsTruncated(request ports.CypherQueryRequest, rowsReturned int) boo
 	return rowsReturned >= cap
 }
 
-func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]GraphRule, error) {
+func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string, excludeRuleIDs []string) ([]GraphRule, error) {
 	if len(ruleIDs) == 0 {
+		excluded := make(map[string]struct{}, len(excludeRuleIDs))
+		for _, id := range excludeRuleIDs {
+			if trimmed := strings.TrimSpace(id); trimmed != "" {
+				excluded[trimmed] = struct{}{}
+			}
+		}
 		var graphRules []GraphRule
 		for _, rule := range s.rules.ForRuntime(runtime) {
-			if graphRule, ok := asGraphRule(rule); ok {
-				graphRules = append(graphRules, graphRule)
+			graphRule, ok := asGraphRule(rule)
+			if !ok {
+				continue
 			}
+			if _, skip := excluded[strings.TrimSpace(graphRule.Spec().GetId())]; skip {
+				continue
+			}
+			graphRules = append(graphRules, graphRule)
 		}
 		return graphRules, nil
 	}

@@ -55,6 +55,41 @@ func (r *stubGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRunti
 	return r.emit, nil
 }
 
+func TestEvaluateSourceRuntimeGraphRulesExcludesNamedRules(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{}
+	ruleA := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "rule-a"}, sourceID: "okta", query: ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"}}
+	ruleB := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "rule-b"}, sourceID: "okta", query: ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"}}
+	registry, err := NewRegistry(ruleA, ruleB)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+
+	// Excluding rule-a leaves only rule-b (coverage for the other rule is kept).
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", ExcludeRuleIDs: []string{"rule-a"}})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	if got := result.Evaluations[0].Rule.GetId(); got != "rule-b" {
+		t.Fatalf("evaluated rule = %q, want rule-b", got)
+	}
+
+	// Excluding every supported rule evaluates nothing, without error: the
+	// tenant already ran them this cycle.
+	empty, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", ExcludeRuleIDs: []string{"rule-a", "rule-b"}})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(empty.Evaluations); got != 0 {
+		t.Fatalf("len(Evaluations) = %d, want 0 when all rules excluded", got)
+	}
+}
+
 func TestAsGraphRuleNarrows(t *testing.T) {
 	if _, ok := asGraphRule(nil); ok {
 		t.Fatalf("asGraphRule(nil) should be false")
