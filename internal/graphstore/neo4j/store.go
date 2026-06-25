@@ -458,11 +458,13 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 			if err != nil {
 				return nil, fmt.Errorf("decode projected entity attributes: %w", err)
 			}
-			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, incomingAttributes))
+			mergedAttributes := mergeGraphAttributes(existing, incomingAttributes)
+			mergedJSON, err := graphAttributesJSON(mergedAttributes)
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected entity attributes: %w", err)
 			}
-			updated, err := updateEntityAttributes(ctx, tx, urn, version, mergedJSON)
+			typedProperties := entityTypedPropertyParams(projectionmeta.DerivedEntityProperties(mergedAttributes))
+			updated, err := updateEntityAttributes(ctx, tx, urn, version, mergedJSON, typedProperties)
 			if err != nil {
 				return nil, err
 			}
@@ -1287,6 +1289,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"CREATE INDEX cerebro_entity_tenant_source IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id)",
 		"CREATE INDEX cerebro_entity_tenant_source_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id, e.entity_type)",
 		"CREATE INDEX cerebro_entity_tenant_label IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.label)",
+		"CREATE INDEX cerebro_entity_tenant_internet_exposed IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.internet_exposed)",
+		"CREATE INDEX cerebro_entity_tenant_privileged_identity IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.is_privileged_identity)",
+		"CREATE INDEX cerebro_entity_tenant_mfa_disabled IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.mfa_disabled)",
 		"CREATE INDEX cerebro_relation_tenant_runtime IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.runtime_id)",
 		"CREATE INDEX cerebro_relation_tenant_relation IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.relation)",
 		"CREATE FULLTEXT INDEX cerebro_entity_inventory_fulltext IF NOT EXISTS FOR (e:Entity) ON EACH [e.urn, e.label, e.entity_type, e.attributes_json]",
@@ -1597,16 +1602,30 @@ func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTra
 	return stringValue(values[0]), toInt64(values[1]), result.Err()
 }
 
-func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, version int64, attributesJSON string) (bool, error) {
+// entityTypedPropertyParams maps the derived typed properties onto the node
+// property names backing the range indexes and the rule predicates. Building the
+// map here (rather than in projectionmeta) keeps the exported derivation API
+// strongly typed.
+func entityTypedPropertyParams(properties projectionmeta.EntityTypedProperties) map[string]any {
+	return map[string]any{
+		projectionmeta.PropertyInternetExposed:    properties.InternetExposed,
+		projectionmeta.PropertyPrivilegedIdentity: properties.PrivilegedIdentity,
+		projectionmeta.PropertyMFADisabled:        properties.MFADisabled,
+	}
+}
+
+func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, version int64, attributesJSON string, typedProperties map[string]any) (bool, error) {
 	updated, err := countQuery(ctx, tx, `MATCH (e:Entity {urn: $urn})
 WHERE coalesce(e.attributes_version, 0) = $attributes_version
 SET e.attributes_json = $attributes_json,
-    e.attributes_version = $next_attributes_version
+    e.attributes_version = $next_attributes_version,
+    e += $typed_properties
 RETURN count(e)`, map[string]any{
 		"urn":                     urn,
 		"attributes_version":      version,
 		"next_attributes_version": version + 1,
 		"attributes_json":         attributesJSON,
+		"typed_properties":        typedProperties,
 	})
 	if err != nil {
 		return false, err
