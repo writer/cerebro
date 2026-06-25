@@ -34,6 +34,7 @@ nav:
   - Domains:
       - Source Runtime Guide: domains/source-runtime-guide.md
       - Graph Operations: domains/graph-operations.md
+      - Persona View Lenses: domains/persona-view-lenses.md
       - Compliance Controls: domains/compliance-controls.md
       - Policies: domains/policies.md
       - Policy Rule Extensions: domains/policy-rule-extensions.md

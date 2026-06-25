@@ -58,6 +58,7 @@ docker compose up --build
 | Built-in source integrations | [Source catalog](reference/sources.md) |
 | Source runtime sync | [Source runtime guide](domains/source-runtime-guide.md) |
 | Graph operations | [Graph operations](domains/graph-operations.md) |
+| Persona-specific graph views | [Persona view lenses](domains/persona-view-lenses.md) |
 | GRC architecture | [GRC architecture](domains/grc-architecture.md) |
 | Compliance control coverage | [Compliance controls](domains/compliance-controls.md) |
 | Policies | [Policies](domains/policies.md) |

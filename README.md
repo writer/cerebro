@@ -60,6 +60,7 @@ docker compose up --build
 | Use SDK helpers | [Python SDK](sdk/python/README.md), [TypeScript SDK](sdk/typescript/README.md), and `sources/sdk` |
 | Persist and sync source runtimes | [Source runtime guide](docs/domains/source-runtime-guide.md) |
 | Work on graph behavior | [Graph operations](docs/domains/graph-operations.md) |
+| Design persona-specific graph views | [Persona view lenses](docs/domains/persona-view-lenses.md) |
 | Integrate MCP clients | [MCP native Droid setup](docs/domains/mcp-droid-setup.md) |
 | Integrate endpoint telemetry | [Endpoint security platform integration](docs/domains/endpoint-security-platform-integration.md) |
 | Author policies, control mappings, or finding rules | [Policies](docs/domains/policies.md), [compliance controls](docs/domains/compliance-controls.md), `policies/`, `internal/findingdsl`, and `internal/findings` |
