@@ -323,6 +323,9 @@ func cloneRecords(records []Record) []Record {
 		cloned[i] = record
 		cloned[i].KnownUnsupportedFields = append([]string(nil), record.KnownUnsupportedFields...)
 		cloned[i].Notes = append([]string(nil), record.Notes...)
+		cloned[i].EvidenceTypes = append([]string(nil), record.EvidenceTypes...)
+		cloned[i].ControlDomains = append([]string(nil), record.ControlDomains...)
+		cloned[i].ControlRefs = append([]sourcecdk.CoverageControlRef(nil), record.ControlRefs...)
 		cloned[i].SupportedRuntimeFamilies = append([]string(nil), record.SupportedRuntimeFamilies...)
 	}
 	return cloned
