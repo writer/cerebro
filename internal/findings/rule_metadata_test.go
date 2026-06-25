@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestBuiltinRuleMetadataIsComplete(t *testing.T) {
@@ -172,6 +173,79 @@ func TestBuiltinPublicDetectionCatalogPublishesPolicyAuditDepth(t *testing.T) {
 		return
 	}
 	t.Fatal("BuiltinPublicDetectionCatalog() missing aws-s3-bucket-no-public-access")
+}
+
+func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testing.T) {
+	catalog := PublicDetectionCatalog{
+		Version: "test",
+		Detections: []PublicDetection{{
+			ID:           "aws-s3-bucket-no-public-access",
+			Name:         "S3 Bucket Allows Public Access",
+			SourceID:     policyRuleSourceID,
+			Tags:         []string{"aws", "policy", "s3"},
+			EvidenceType: "cloud_configuration",
+			ControlRefs:  []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
+		}},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "aws",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:             "s3_bucket",
+			Type:           "entity_family",
+			Families:       []string{"s3_bucket"},
+			Support:        sourcecdk.CoverageSupportSupported,
+			HighValue:      true,
+			EvidenceTypes:  []string{"network_exposure"},
+			ControlDomains: []string{"network_security"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.6",
+			}},
+		}},
+	}}
+
+	enriched := EnrichPublicDetectionCatalogWithSourceCoverage(catalog, contracts)
+	if got := len(enriched.Detections[0].SourceCoverageRefs); got != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want 1", got)
+	}
+	ref := enriched.Detections[0].SourceCoverageRefs[0]
+	if ref.SourceID != "aws" || ref.DimensionID != "s3_bucket" {
+		t.Fatalf("SourceCoverageRefs[0] = %#v, want aws/s3_bucket", ref)
+	}
+	if got, want := ref.MatchedControlRefs, []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}}; !slices.Equal(got, want) {
+		t.Fatalf("MatchedControlRefs = %#v, want %#v", got, want)
+	}
+}
+
+func TestEnrichPublicDetectionCatalogWithSourceCoverageAvoidsBroadCrossSourceParentMatches(t *testing.T) {
+	catalog := PublicDetectionCatalog{
+		Version: "test",
+		Detections: []PublicDetection{{
+			ID:          "okta-admin-without-mfa",
+			Name:        "Okta Admin Without MFA",
+			SourceID:    policyRuleSourceID,
+			Tags:        []string{"okta", "policy"},
+			ControlRefs: []ports.FindingControlRef{{FrameworkName: "SOC2", ControlID: "CC6"}},
+		}},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "aws",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:       "s3_bucket",
+			Type:     "entity_family",
+			Families: []string{"s3_bucket"},
+			Support:  sourcecdk.CoverageSupportSupported,
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.6",
+			}},
+		}},
+	}}
+
+	enriched := EnrichPublicDetectionCatalogWithSourceCoverage(catalog, contracts)
+	if got := enriched.Detections[0].SourceCoverageRefs; len(got) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no cross-source broad match", got)
+	}
 }
 
 func TestBuiltinPublicDetectionCatalogPublishesGRCFingerprintSalts(t *testing.T) {

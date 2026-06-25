@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	findinganalysis "github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/sourceregistry"
 )
 
 const defaultOutputPath = "internal/findings/public_detection_catalog.json"
@@ -77,6 +78,11 @@ func rejectSymlink(path string) error {
 
 func generateCatalog() ([]byte, error) {
 	catalog := findinganalysis.BuiltinPublicDetectionCatalog()
+	registry, err := sourceregistry.Builtin()
+	if err != nil {
+		return nil, fmt.Errorf("load source registry: %w", err)
+	}
+	catalog = findinganalysis.EnrichPublicDetectionCatalogWithSourceCoverage(catalog, registry.CoverageContracts())
 	if errs := findinganalysis.ValidateRuleMetadataCompleteness(findinganalysis.BuiltinRuleMetadata()); len(errs) != 0 {
 		return nil, errs[0]
 	}

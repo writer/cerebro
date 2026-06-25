@@ -17,6 +17,8 @@ It complements [Source Runtime Guide](source-runtime-guide.md), [Architecture](.
 
 Coverage dimensions also carry evidence semantics for compliance and agent evidence packets. Supported or partially supported high-value dimensions should declare `evidence_types`, `control_domains`, and, when the relationship is known, `control_refs` that point at real controls in the merged compliance catalog. Source CDK normalization supplies safe defaults for common dimension types, while `catalogcheck` validates explicit control references and rejects high-value dimensions that cannot explain what evidence lane they cover.
 
+Generated detections consume those same coverage contracts. The public detection catalog includes `source_coverage_refs` when a rule's controls and source/provider context match coverage dimensions, giving agents and auditors a direct bridge from finding rule to source evidence lane.
+
 ### Key Types
 
 - `Record` — per-dimension coverage record with state, support level, blind-spot flag, evidence types, control domains, and control refs

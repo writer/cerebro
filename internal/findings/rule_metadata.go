@@ -104,6 +104,7 @@ type PublicDetection struct {
 	RequiredAttributesByKind map[string][]string       `json:"required_attributes_by_kind,omitempty"`
 	FingerprintFields        []string                  `json:"fingerprint_fields,omitempty"`
 	ControlRefs              []ports.FindingControlRef `json:"control_refs,omitempty"`
+	SourceCoverageRefs       []SourceCoverageRef       `json:"source_coverage_refs,omitempty"`
 }
 
 const (

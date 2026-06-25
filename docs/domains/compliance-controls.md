@@ -57,6 +57,8 @@ Assessment methods are limited to `examine`, `interview`, and `test`. Evidence e
 
 Source coverage contracts can point back into this catalog with per-dimension `control_refs`. Use those refs when a source family directly supplies evidence for a control, and keep the dimension's `evidence_types` aligned with the control's `evidence_expectations.type` values. `catalogcheck` validates explicit source coverage refs against the built-in merged catalog so typos do not become silent compliance gaps.
 
+The generated public detection catalog loops those refs back into rule metadata as `source_coverage_refs`. Each linked detection records the source, coverage dimension, evidence lanes, control domains, and matched controls that explain which source catalog lanes can substantiate the rule.
+
 ## Custom Frameworks
 
 Custom frameworks should be separate YAML packs with stable framework IDs. Load and merge them with the built-in pack before building the catalog index:
