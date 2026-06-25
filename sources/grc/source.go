@@ -27,28 +27,29 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID              = "grc"
-	defaultProvider       = "vanta"
-	defaultBaseURL        = "https://api.vanta.com"
-	defaultReadScope      = "vanta-api.all:read"
-	defaultPageSize       = 10
-	maxPageSize           = 100
-	httpTimeout           = 30 * time.Second
-	maxBodyBytes          = 8 << 20
-	tokenRefreshLeeway    = time.Minute
-	defaultFamily         = familyControlTest
-	familyFramework       = "framework"
-	familyControl         = "control"
-	familyControlTest     = "control_test"
-	familyPolicy          = "policy"
-	familyDocument        = "document"
-	familyVendor          = "vendor"
-	familyVulnerability   = "vulnerability"
-	familyVulnerableAsset = "vulnerable_asset"
-	familyRiskScenario    = "risk_scenario"
-	familyPerson          = "person"
-	familyUser            = "user"
-	familyIntegration     = "integration"
+	sourceID                = "grc"
+	defaultProvider         = "vanta"
+	defaultBaseURL          = "https://api.vanta.com"
+	defaultReadScope        = "vanta-api.all:read"
+	defaultPageSize         = 10
+	maxPageSize             = 100
+	httpTimeout             = 30 * time.Second
+	maxBodyBytes            = 8 << 20
+	tokenRefreshLeeway      = time.Minute
+	defaultFamily           = familyControlTest
+	familyFramework         = "framework"
+	familyControl           = "control"
+	familyControlTest       = "control_test"
+	familyPolicy            = "policy"
+	familyDocument          = "document"
+	familyVendor            = "vendor"
+	familyVulnerability     = "vulnerability"
+	familyVulnerableAsset   = "vulnerable_asset"
+	familyMonitoredComputer = "monitored_computer"
+	familyRiskScenario      = "risk_scenario"
+	familyPerson            = "person"
+	familyUser              = "user"
+	familyIntegration       = "integration"
 )
 
 // Source is the provider-neutral GRC source. Provider-specific APIs are kept
@@ -137,6 +138,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		s.family(familyVendor, "/v1/vendors"),
 		s.family(familyVulnerability, "/v1/vulnerabilities"),
 		s.family(familyVulnerableAsset, "/v1/vulnerable-assets"),
+		s.family(familyMonitoredComputer, "/v1/monitored-computers"),
 		s.family(familyRiskScenario, "/v1/risk-scenarios"),
 		s.family(familyPerson, "/v1/people"),
 		s.family(familyUser, "/v1/users"),
@@ -360,6 +362,8 @@ func recordIDKeys(family string) []string {
 		return []string{"id", "email"}
 	case familyVulnerableAsset:
 		return []string{"id", "assetId", "targetId", "externalId", "name"}
+	case familyMonitoredComputer:
+		return []string{"id", "serialNumber", "udid"}
 	default:
 		return []string{"id", "externalId", "name"}
 	}
@@ -401,6 +405,8 @@ func timestampKeys(family string) []string {
 		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
 	case familyVulnerableAsset:
 		return []string{"lastDetectedDate", "lastSeenDate", "updatedAt"}
+	case familyMonitoredComputer:
+		return []string{"lastCheckDate"}
 	case familyRiskScenario:
 		return []string{"identificationDate"}
 	case familyPerson:

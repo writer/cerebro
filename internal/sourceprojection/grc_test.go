@@ -1326,3 +1326,53 @@ func TestProjectGRCVulnerabilityDoesNotRegressIntegrationLabel(t *testing.T) {
 	}
 	t.Fatalf("target belongs_to integration link missing: %#v", links)
 }
+
+func TestProjectGRCMonitoredComputerLinksPostureEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-monitored-computer-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.monitored_computer",
+		Attributes: map[string]string{
+			"provider":                "vanta",
+			"computer_id":             "computer-1",
+			"device_id":               "computer-1",
+			"device_uuid":             "udid-1",
+			"serial_number":           "serial-1",
+			"integration_id":          "kandji",
+			"owner_email":             "designer@example.com",
+			"owner_id":                "person-1",
+			"screenlock_status":       "OK",
+			"disk_encryption_status":  "OK",
+			"password_manager_status": "NEEDS_ATTENTION",
+			"antivirus_status":        "OK",
+			"compliance_status":       "needs_attention",
+			"os":                      "MACOS",
+			"os_version":              "15.5",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	endpointURN := "urn:cerebro:writer:grc_monitored_computer:computer-1"
+	identityURN := "urn:cerebro:writer:identity:email:designer@example.com"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:kandji"
+	evidenceURN := "urn:cerebro:writer:evidence:vanta:monitored_computer:computer-1:password_manager"
+	if entity := state.entities[endpointURN]; entity == nil || entity.EntityType != "grc.monitored_computer" {
+		t.Fatalf("endpoint entity missing: %#v", entity)
+	}
+	if got := state.entities[endpointURN].Attributes["compliance_status"]; got != "needs_attention" {
+		t.Fatalf("endpoint compliance_status = %q, want needs_attention", got)
+	}
+	if entity := state.entities[evidenceURN]; entity == nil || entity.Attributes["posture_check"] != "password_manager" || entity.Attributes["status"] != "NEEDS_ATTENTION" {
+		t.Fatalf("password manager evidence missing or incomplete: %#v", entity)
+	}
+	assertProjectedLink(t, state, endpointURN, relationOwnedBy, identityURN)
+	assertProjectedLink(t, state, endpointURN, relationBelongsTo, integrationURN)
+	assertProjectedLink(t, state, endpointURN, relationHasEvidence, evidenceURN)
+	assertProjectedLink(t, state, evidenceURN, relationObservedOn, endpointURN)
+}

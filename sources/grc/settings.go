@@ -107,6 +107,7 @@ func supportedFamilies() []string {
 		familyVendor,
 		familyVulnerability,
 		familyVulnerableAsset,
+		familyMonitoredComputer,
 		familyRiskScenario,
 		familyPerson,
 		familyUser,

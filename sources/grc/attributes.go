@@ -139,6 +139,27 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 		copyFirstField(attrs, values, "last_detected_at", "lastDetectedDate", "lastSeenDate", "updatedAt")
 		copyVulnerableAssetPlatformReferences(attrs, values)
 		copyVulnerableAssetReferences(attrs, values)
+	case familyMonitoredComputer:
+		copyFields(attrs, values, map[string]string{
+			"computer_id":             "id",
+			"device_id":               "id",
+			"device_uuid":             "udid",
+			"serial_number":           "serialNumber",
+			"integration_id":          "integrationId",
+			"last_check_at":           "lastCheckDate",
+			"screenlock_status":       "screenlock.outcome",
+			"disk_encryption_status":  "diskEncryption.outcome",
+			"password_manager_status": "passwordManager.outcome",
+			"antivirus_status":        "antivirusInstallation.outcome",
+			"os":                      "operatingSystem.type",
+			"os_name":                 "operatingSystem.type",
+			"os_version":              "operatingSystem.version",
+			"owner_id":                "owner.id",
+			"owner_email":             "owner.emailAddress",
+			"owner_display_name":      "owner.displayName",
+		})
+		attrs["source_product"] = "vanta"
+		attrs["compliance_status"] = monitoredComputerComplianceStatus(attrs)
 	case familyRiskScenario:
 		copyFields(attrs, values, map[string]string{
 			"risk_id":             "riskId",
@@ -190,6 +211,26 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 		attrs["connection_error_count"] = strconv.Itoa(countConnections(values, false, true))
 	}
 	return trimEmpty(attrs)
+}
+
+func monitoredComputerComplianceStatus(attrs map[string]string) string {
+	statuses := []string{
+		attrs["screenlock_status"],
+		attrs["disk_encryption_status"],
+		attrs["password_manager_status"],
+		attrs["antivirus_status"],
+	}
+	for _, status := range statuses {
+		if strings.EqualFold(strings.TrimSpace(status), "FAIL") || strings.EqualFold(strings.TrimSpace(status), "NEEDS_ATTENTION") {
+			return "needs_attention"
+		}
+	}
+	for _, status := range statuses {
+		if trimmed := strings.TrimSpace(status); trimmed != "" && !strings.EqualFold(trimmed, "OK") && !strings.EqualFold(trimmed, "PASS") {
+			return strings.ToLower(trimmed)
+		}
+	}
+	return "ok"
 }
 
 func copyFields(attrs map[string]string, values map[string]any, mapping map[string]string) {
