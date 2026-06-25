@@ -318,6 +318,37 @@ coverage_contract:
 	}
 }
 
+func TestCheckSourceCatalogsRejectsAuditEventsAsEntityFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: entity_family
+      title: Audit events
+      families: [audit]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, `coverage_contract dimension "audit_events" looks like audit event coverage and must use type "audit_event"`) {
+		t.Fatalf("issues = %#v, want audit_event type issue", issues)
+	}
+}
+
 func TestCheckSourceCatalogsSkipsCatalogRuntimeAdapter(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/catalogruntime/catalog.yaml", `

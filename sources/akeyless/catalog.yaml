@@ -41,13 +41,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: audit_events
-      type: entity_family
+      type: audit_event
       title: "Audit Events"
       families: [audit_events]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync
