@@ -12,7 +12,10 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-var _ GraphRule = (*cloudPublicExposurePrivilegedPrincipalRule)(nil)
+var (
+	_ GraphRule           = (*cloudPublicExposurePrivilegedPrincipalRule)(nil)
+	_ ScopedStaleResolver = (*cloudPublicExposurePrivilegedPrincipalRule)(nil)
+)
 
 const (
 	cloudPublicExposurePrivilegedPrincipalRuleID   = "cloud-public-exposure-privileged-principal"
@@ -173,6 +176,32 @@ LIMIT $row_limit`,
 		},
 		RowLimit: cloudPublicExposurePrivilegedPrincipalRowLimit,
 	}
+}
+
+// StaleResolutionScopeAttribute groups stale-finding resolution by cloud account.
+// The per-account cap can drop exposure x principal combinations for some accounts
+// while leaving others fully represented, so resolution must only touch accounts
+// that came back complete.
+func (r *cloudPublicExposurePrivilegedPrincipalRule) StaleResolutionScopeAttribute() string {
+	return "cloud_account_urn"
+}
+
+// IncompleteStaleResolutionScopes returns the set of account URNs whose rows were
+// capped this evaluation (graph_rule_truncated=true). account_capped is computed at
+// the account grouping level, so every row of a capped account carries the flag.
+// Findings for these accounts must stay open; findings for any other account are
+// safe to resolve once they no longer match.
+func (r *cloudPublicExposurePrivilegedPrincipalRule) IncompleteStaleResolutionScopes(rows []ports.CypherRow) map[string]struct{} {
+	incomplete := make(map[string]struct{})
+	for _, row := range rows {
+		if !cypherValueTruthy(row.Values[graphRuleTruncationColumn]) {
+			continue
+		}
+		if account := cypherRowString(row, "account_urn"); account != "" {
+			incomplete[account] = struct{}{}
+		}
+	}
+	return incomplete
 }
 
 func (r *cloudPublicExposurePrivilegedPrincipalRule) EvaluateRows(_ context.Context, runtime *cerebrov1.SourceRuntime, rows []ports.CypherRow) ([]*ports.FindingRecord, error) {

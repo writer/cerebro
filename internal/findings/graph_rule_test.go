@@ -55,6 +55,23 @@ func (r *stubGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRunti
 	return r.emit, nil
 }
 
+// scopedStubGraphRule opts into ScopedStaleResolver with an injectable scope
+// attribute and incomplete-scope set, so service tests can drive cap-aware stale
+// resolution without re-deriving scopes from rows.
+type scopedStubGraphRule struct {
+	stubGraphRule
+	scopeAttribute   string
+	incompleteScopes map[string]struct{}
+}
+
+func (r *scopedStubGraphRule) StaleResolutionScopeAttribute() string {
+	return r.scopeAttribute
+}
+
+func (r *scopedStubGraphRule) IncompleteStaleResolutionScopes(_ []ports.CypherRow) map[string]struct{} {
+	return r.incompleteScopes
+}
+
 func TestEvaluateSourceRuntimeGraphRulesExcludesNamedRules(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
 	store := &stubFindingStore{}
@@ -328,6 +345,141 @@ func TestEvaluateSourceRuntimeGraphRulesCapSignalSkipsStaleResolution(t *testing
 				t.Fatalf("stale finding StatusReason = %q, want graph_rule_no_longer_matches (no cap signal must auto-resolve)", got)
 			}
 		})
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesCapAwareStaleResolutionResolvesCompleteScopes(t *testing.T) {
+	// A per-scope-capped rule (ScopedStaleResolver) drops data for SOME scopes while
+	// leaving others fully represented. When only the internal cap fired (the global
+	// row limit was not hit) stale resolution must run scope-by-scope: keep capped
+	// scopes open, resolve scopes that came back complete, resolve scopes that no
+	// longer match at all, and leave findings with no scope key untouched.
+	const scopeAttr = "cloud_account_urn"
+	cappedAccount := "urn:cerebro:writer:cloud_account:capped"
+	completeAccount := "urn:cerebro:writer:cloud_account:complete"
+	absentAccount := "urn:cerebro:writer:cloud_account:absent"
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-aws", SourceId: "aws", TenantId: "writer"}
+	openFinding := func(id, account string) *ports.FindingRecord {
+		finding := &ports.FindingRecord{
+			ID:          id,
+			Fingerprint: id,
+			TenantID:    "writer",
+			RuntimeID:   "runtime-aws",
+			RuleID:      "scoped-rule",
+			Status:      findingStatusOpen,
+		}
+		if account != "" {
+			finding.Attributes = map[string]string{scopeAttr: account}
+		}
+		return finding
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"stale-capped":   openFinding("stale-capped", cappedAccount),
+		"stale-complete": openFinding("stale-complete", completeAccount),
+		"stale-absent":   openFinding("stale-absent", absentAccount),
+		"stale-noscope":  openFinding("stale-noscope", ""),
+	}}
+	graphStore := &stubGraphStore{cypherRows: []ports.CypherRow{
+		{Values: map[string]any{"account_urn": cappedAccount, graphRuleTruncationColumn: true}},
+		{Values: map[string]any{"account_urn": completeAccount, graphRuleTruncationColumn: false}},
+	}}
+	rule := &scopedStubGraphRule{
+		stubGraphRule: stubGraphRule{
+			spec:     &cerebrov1.RuleSpec{Id: "scoped-rule"},
+			sourceID: "aws",
+			query: ports.CypherQueryRequest{
+				Query:    "MATCH (n) RETURN n LIMIT $row_limit",
+				Params:   map[string]any{"row_limit": int64(250)},
+				RowLimit: 250,
+			},
+		},
+		scopeAttribute:   scopeAttr,
+		incompleteScopes: map[string]struct{}{cappedAccount: {}},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-aws"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	if !result.Evaluations[0].Truncated {
+		t.Fatalf("Truncated = false, want true (a capped row signals truncation)")
+	}
+	wantStatus := map[string]string{
+		"stale-capped":   findingStatusOpen,     // capped scope: a still-matching row may have been dropped
+		"stale-complete": findingStatusResolved, // fully-represented scope: safe to auto-resolve
+		"stale-absent":   findingStatusResolved, // scope no longer matches; cap cannot drop a whole scope
+		"stale-noscope":  findingStatusOpen,     // no scope key: cannot prove the scope was complete
+	}
+	for id, want := range wantStatus {
+		finding, ok := store.findings[id]
+		if !ok {
+			t.Fatalf("finding %q missing after evaluation", id)
+		}
+		if got := finding.Status; got != want {
+			t.Fatalf("finding %q status = %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesCapAwareResolutionSkippedOnRowLimit(t *testing.T) {
+	// When the GLOBAL row limit is hit, entire scopes can fall past the cutoff, so even a
+	// ScopedStaleResolver must keep the conservative global skip and resolve nothing: an
+	// absent scope here is indistinguishable from one whose rows were simply truncated.
+	const (
+		scopeAttr = "cloud_account_urn"
+		rowLimit  = 2
+	)
+	cappedAccount := "urn:cerebro:writer:cloud_account:capped"
+	completeAccount := "urn:cerebro:writer:cloud_account:complete"
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-aws", SourceId: "aws", TenantId: "writer"}
+	staleComplete := &ports.FindingRecord{
+		ID:          "stale-complete",
+		Fingerprint: "stale-complete",
+		TenantID:    "writer",
+		RuntimeID:   "runtime-aws",
+		RuleID:      "scoped-rule",
+		Status:      findingStatusOpen,
+		Attributes:  map[string]string{scopeAttr: completeAccount},
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{staleComplete.ID: cloneFinding(staleComplete)}}
+	graphStore := &stubGraphStore{cypherRows: []ports.CypherRow{
+		{Values: map[string]any{"account_urn": cappedAccount, graphRuleTruncationColumn: true}},
+		{Values: map[string]any{"account_urn": completeAccount, graphRuleTruncationColumn: false}},
+	}}
+	rule := &scopedStubGraphRule{
+		stubGraphRule: stubGraphRule{
+			spec:     &cerebrov1.RuleSpec{Id: "scoped-rule"},
+			sourceID: "aws",
+			query: ports.CypherQueryRequest{
+				Query:    "MATCH (n) RETURN n LIMIT $row_limit",
+				Params:   map[string]any{"row_limit": int64(rowLimit)},
+				RowLimit: rowLimit,
+			},
+		},
+		scopeAttribute:   scopeAttr,
+		incompleteScopes: map[string]struct{}{cappedAccount: {}},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-aws"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if !result.Evaluations[0].Truncated {
+		t.Fatalf("Truncated = false, want true (rows hit the row limit)")
+	}
+	if got := store.findings[staleComplete.ID].Status; got != findingStatusOpen {
+		t.Fatalf("stale finding status = %q, want still %q (row-limit truncation must skip scoped resolution)", got, findingStatusOpen)
 	}
 }
 
