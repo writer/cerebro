@@ -146,6 +146,48 @@ func TestSourceRuntimeHealthRecordHandlesPartialAndInvalidScheduleReceipt(t *tes
 	}
 }
 
+func TestSourceRuntimeHealthRecordsPreserveOrderAndSkipNil(t *testing.T) {
+	now := time.Date(2026, 6, 16, 9, 30, 0, 0, time.UTC)
+	runtimes := []*cerebrov1.SourceRuntime{
+		{
+			Id:       "runtime-c",
+			SourceId: "slack",
+			TenantId: "writer",
+			Config:   map[string]string{"family": "conversation"},
+		},
+		nil,
+		{
+			Id:       "runtime-a",
+			SourceId: "okta",
+			TenantId: "writer",
+			Config:   map[string]string{"family": "user"},
+		},
+		{
+			Id:           "runtime-b",
+			SourceId:     "aws",
+			TenantId:     "writer",
+			LastSyncedAt: timestamppb.New(now.Add(-time.Minute)),
+			Config:       map[string]string{"family": "account"},
+		},
+	}
+
+	records, err := (&App{}).sourceRuntimeHealthRecords(context.Background(), runtimes, now)
+	if err != nil {
+		t.Fatalf("sourceRuntimeHealthRecords() error = %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("len(records) = %d, want 3", len(records))
+	}
+	for index, wantRuntimeID := range []string{"runtime-c", "runtime-a", "runtime-b"} {
+		if records[index].RuntimeID != wantRuntimeID {
+			t.Fatalf("records[%d].RuntimeID = %q, want %q; records=%#v", index, records[index].RuntimeID, wantRuntimeID, records)
+		}
+	}
+	if records[0].Family != "conversation" || records[2].Family != "account" {
+		t.Fatalf("records did not retain runtime metadata: %#v", records)
+	}
+}
+
 func TestRuntimeHealthStatusStaleBoundaryAndFailurePrecedence(t *testing.T) {
 	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
