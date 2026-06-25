@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "id": "obs_123",
+      "traceId": "trace_123",
+      "name": "completion",
+      "type": "GENERATION",
+      "model": "gpt-4.1",
+      "startTime": "2026-06-24T12:00:00Z",
+      "usage": {
+        "input": 12,
+        "output": 34,
+        "total": 46
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "totalPages": 1
+  }
+}

@@ -33,6 +33,8 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 | `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
 | `kolide` | Kolide device posture source | configured catalog families |
 | `kubernetes` | Kubernetes inventory source | clusters, namespaces, pods, containers, service accounts, workloads, workload identity bindings |
+| `langchain` | LangChain LangSmith governance and observability source | organization, workspaces, members, roles, service keys, service accounts, tracing projects, runs, feedback, datasets, usage limits, audit logs |
+| `langfuse` | Langfuse LLM observability and prompt-management source | projects, project memberships, project API keys, traces, observations, scores, prompts, sessions, metrics, annotation queues |
 | `linode` | Linode source | linode.credential, linode.event, linode.issue, linode.user |
 | `meraki` | Cisco Meraki Dashboard API source | event types, organizations, Meraki auth users, access policies |
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |

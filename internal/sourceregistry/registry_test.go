@@ -106,6 +106,20 @@ func TestBuiltin(t *testing.T) {
 	if kolide.Spec().Name != "Kolide" {
 		t.Fatalf("kolide Spec().Name = %q, want %q", kolide.Spec().Name, "Kolide")
 	}
+	langchain, ok := registry.Get("langchain")
+	if !ok {
+		t.Fatal("Get(langchain) = false, want true")
+	}
+	if langchain.Spec().Name != "LangChain" {
+		t.Fatalf("langchain Spec().Name = %q, want %q", langchain.Spec().Name, "LangChain")
+	}
+	langfuse, ok := registry.Get("langfuse")
+	if !ok {
+		t.Fatal("Get(langfuse) = false, want true")
+	}
+	if langfuse.Spec().Name != "Langfuse" {
+		t.Fatalf("langfuse Spec().Name = %q, want %q", langfuse.Spec().Name, "Langfuse")
+	}
 	okta, ok := registry.Get("okta")
 	if !ok {
 		t.Fatal("Get(okta) = false, want true")

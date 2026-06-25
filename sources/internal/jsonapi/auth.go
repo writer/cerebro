@@ -12,10 +12,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
@@ -51,11 +52,11 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 	case "api_key", "api_token":
 		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Token"), settings.token, s.options.SourceID)
 	case "basic":
-		if settings.username != "" || settings.password != "" {
-			if settings.username == "" || settings.password == "" {
+		if settings.authPrincipal != "" || settings.authSecret != "" {
+			if settings.authPrincipal == "" || settings.authSecret == "" {
 				return fmt.Errorf("%s username and password are required for basic auth", s.options.SourceID)
 			}
-			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(settings.username+":"+settings.password)))
+			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(settings.authPrincipal+":"+settings.authSecret)))
 			return nil
 		}
 		return setTokenHeader(req, "Authorization", "Basic", settings.token, s.options.SourceID)
@@ -99,8 +100,8 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 }
 
 func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error {
-	integrationKey := firstNonEmpty(settings.clientID, settings.username)
-	secretKey := firstNonEmpty(settings.clientSecret, settings.password)
+	integrationKey := firstNonEmpty(settings.clientID, settings.authPrincipal)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.authSecret)
 	if integrationKey == "" || secretKey == "" {
 		return fmt.Errorf("%s client_id and client_secret are required for Duo HMAC auth", sourceID)
 	}
@@ -123,9 +124,9 @@ func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error
 // setAWSSigV4Auth signs the request with AWS Signature Version 4.
 // It uses access_key/secret_key from config (mapped to clientID/clientSecret)
 // and derives region and service from the request URL host or config values.
-func (s *Source) setAWSSigV4Auth(_ context.Context, req *http.Request, settings settings) error {
-	accessKey := firstNonEmpty(settings.clientID, settings.username)
-	secretKey := firstNonEmpty(settings.clientSecret, settings.password)
+func (s *Source) setAWSSigV4Auth(ctx context.Context, req *http.Request, settings settings) error {
+	accessKey := firstNonEmpty(settings.clientID, settings.authPrincipal)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.authSecret)
 	if accessKey == "" || secretKey == "" {
 		return fmt.Errorf("%s access_key and secret_key are required for aws_sigv4 auth", s.options.SourceID)
 	}
@@ -133,63 +134,15 @@ func (s *Source) setAWSSigV4Auth(_ context.Context, req *http.Request, settings 
 	service := firstNonEmpty(settings.service, "execute-api")
 
 	now := time.Now().UTC()
-	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
-
-	req.Header.Set("X-Amz-Date", amzDate)
-
-	// Build canonical request.
-	canonicalURI := req.URL.EscapedPath()
-	if canonicalURI == "" {
-		canonicalURI = "/"
-	}
-	sortedQuery := make([]string, 0, len(req.URL.Query()))
-	for k, vs := range req.URL.Query() {
-		for _, v := range vs {
-			sortedQuery = append(sortedQuery, rfc3986Escape(k)+"="+rfc3986Escape(v))
-		}
-	}
-	sort.Strings(sortedQuery)
-	canonicalQuery := strings.Join(sortedQuery, "&")
-
 	payloadHash := "UNSIGNED-PAYLOAD"
 	if req.Body == nil {
-		payloadHash = sha256Hex([]byte(""))
+		payloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	}
-
-	canonicalHeaders := "host:" + req.URL.Host + "\n" + "x-amz-date:" + amzDate + "\n"
-	signedHeaders := "host;x-amz-date"
-
-	canonicalRequest := strings.Join([]string{
-		req.Method,
-		canonicalURI,
-		canonicalQuery,
-		canonicalHeaders,
-		signedHeaders,
-		payloadHash,
-	}, "\n")
-
-	// Build string to sign.
-	credentialScope := dateStamp + "/" + region + "/" + service + "/aws4_request"
-	stringToSign := strings.Join([]string{
-		"AWS4-HMAC-SHA256",
-		amzDate,
-		credentialScope,
-		sha256Hex([]byte(canonicalRequest)),
-	}, "\n")
-
-	// Calculate signing key.
-	kDate := hmacSHA256([]byte("AWS4"+secretKey), dateStamp)
-	kRegion := hmacSHA256(kDate, region)
-	kService := hmacSHA256(kRegion, service)
-	kSigning := hmacSHA256(kService, "aws4_request")
-
-	signature := hex.EncodeToString(hmacSHA256(kSigning, stringToSign))
-
-	authHeader := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		accessKey, credentialScope, signedHeaders, signature)
-	req.Header.Set("Authorization", authHeader)
-	return nil
+	return awsv4.NewSigner().SignHTTP(ctx, aws.Credentials{
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretKey,
+		Source:          "cerebro-jsonapi",
+	}, req, payloadHash, service, region, now)
 }
 
 // twoStepAccessToken exchanges an API key for a session token via a two-step
@@ -259,25 +212,10 @@ func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (str
 	return token, nil
 }
 
-func sha256Hex(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
-}
-
 func hmacSHA256(key []byte, data string) []byte {
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte(data))
 	return mac.Sum(nil)
-}
-
-// rfc3986Escape encodes a string per RFC 3986, which AWS SigV4 requires.
-// Unlike url.QueryEscape, it encodes spaces as %20 (not +) and does not
-// encode tilde (~).
-func rfc3986Escape(s string) string {
-	escaped := url.QueryEscape(s)
-	escaped = strings.ReplaceAll(escaped, "+", "%20")
-	escaped = strings.ReplaceAll(escaped, "%7E", "~")
-	return escaped
 }
 
 func setTokenHeader(req *http.Request, header string, scheme string, token string, sourceID string) error {
@@ -479,8 +417,17 @@ func oauthCacheKey(settings settings, grantType string) string {
 		settings.tenantID,
 		settings.tokenURL,
 		settings.clientID,
-		stableID(settings.clientSecret),
+		cacheSecretID(settings),
 		settings.refreshToken,
 		strings.Join(nonEmpty(settings.oauthScopes), " "),
 	}, "\x00")
+}
+
+func cacheSecretID(settings settings) string {
+	if strings.TrimSpace(settings.clientSecret) == "" {
+		return ""
+	}
+	material := firstNonEmpty(settings.clientID, settings.tenantID, settings.tokenURL, "jsonapi-oauth-cache")
+	sum := hmacSHA256([]byte(material), settings.clientSecret)
+	return hex.EncodeToString(sum)[:24]
 }

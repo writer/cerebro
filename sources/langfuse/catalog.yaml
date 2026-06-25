@@ -1,0 +1,68 @@
+id: langfuse
+name: Langfuse
+description: Langfuse LLM observability and prompt-management source covering projects, project memberships, project API keys, traces, observations, scores, prompts, sessions, metrics, and annotation queues.
+emitted_kinds:
+  - langfuse.project
+  - langfuse.project_member
+  - langfuse.api_key
+  - langfuse.trace
+  - langfuse.observation
+  - langfuse.score
+  - langfuse.prompt
+  - langfuse.session
+  - langfuse.metric
+  - langfuse.annotation_queue
+coverage_contract:
+  owner_domain: ai
+  authority_domain: langfuse
+  dimensions:
+    - id: projects
+      type: entity_family
+      title: Langfuse projects
+      families: [project]
+      support: supported
+      high_value: true
+    - id: users_and_access
+      type: app_entitlement
+      title: Project memberships and project API keys
+      families: [project_member, api_key]
+      support: supported
+      high_value: true
+    - id: observability_activity
+      type: audit_event
+      title: Traces, observations, scores, sessions, metrics, prompts, and annotation queues
+      families: [trace, observation, score, prompt, session, metric, annotation_queue]
+      support: supported
+      high_value: true
+event_contracts:
+  - kind: langfuse.project
+    schema_ref: langfuse/project/v1
+    required_attributes: [project_id]
+    required_payload_fields: [id]
+  - kind: langfuse.project_member
+    schema_ref: langfuse/project_member/v1
+    required_attributes: [project_id, user_id]
+  - kind: langfuse.api_key
+    schema_ref: langfuse/api_key/v1
+    required_attributes: [project_id, api_key_id]
+  - kind: langfuse.trace
+    schema_ref: langfuse/trace/v1
+    required_attributes: [trace_id]
+  - kind: langfuse.observation
+    schema_ref: langfuse/observation/v1
+    required_attributes: [observation_id]
+  - kind: langfuse.score
+    schema_ref: langfuse/score/v1
+    required_attributes: [score_id]
+  - kind: langfuse.prompt
+    schema_ref: langfuse/prompt/v1
+    required_attributes: [prompt_id]
+  - kind: langfuse.session
+    schema_ref: langfuse/session/v1
+    required_attributes: [session_id]
+  - kind: langfuse.metric
+    schema_ref: langfuse/metric/v1
+    required_attributes: [metric_id]
+  - kind: langfuse.annotation_queue
+    schema_ref: langfuse/annotation_queue/v1
+    required_attributes: [queue_id]

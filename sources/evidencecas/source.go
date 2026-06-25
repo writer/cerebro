@@ -91,9 +91,11 @@ func New() (*Source, error) {
 					"source_product": "evidence_cas",
 					"evidence_type":  "evidence_cas.artifact",
 				},
-				ConfigQuery: map[string]string{
-					"prefix": "prefix",
-					"tag":    "tag",
+				Config: jsonapi.FamilyConfig{
+					ConfigQuery: map[string]string{
+						"prefix": "prefix",
+						"tag":    "tag",
+					},
 				},
 			},
 		},

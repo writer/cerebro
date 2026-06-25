@@ -234,20 +234,13 @@ func withPathParams(params ...string) familyOption {
 
 func withStaticAttributes(extra map[string]string) familyOption {
 	return func(f *jsonapi.Family) {
-		merged := make(map[string]string, len(f.StaticAttributes)+len(extra))
-		for key, value := range f.StaticAttributes {
-			merged[key] = value
-		}
-		for key, value := range extra {
-			merged[key] = value
-		}
-		f.StaticAttributes = merged
+		jsonapi.MergeStaticAttributes(f, extra)
 	}
 }
 
 func withQuery(query map[string]string) familyOption {
 	return func(f *jsonapi.Family) {
-		f.ConfigQuery = query
+		f.Config.ConfigQuery = query
 	}
 }
 

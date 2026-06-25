@@ -33,12 +33,12 @@ type record struct {
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
 	query := url.Values{}
-	for key, value := range family.StaticQuery {
+	for key, value := range family.Config.StaticQuery {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 			query.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 		}
 	}
-	for key, values := range settings.query {
+	for key, values := range settings.request.query {
 		for _, value := range values {
 			query.Add(key, value)
 		}
@@ -66,7 +66,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
 	records := make([]record, 0, len(items))
 	for _, item := range items {
-		item, err = rawWithPathParams(item, settings.pathParams)
+		item, err = rawWithPathParams(item, settings.request.pathParams)
 		if err != nil {
 			return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 		}
@@ -91,7 +91,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 func (s *Source) enrichRecords(ctx context.Context, family Family, settings settings, records []record) ([]record, error) {
 	enriched := make([]record, 0, len(records))
 	for _, original := range records {
-		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.pathParams, original.Values)
+		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.request.pathParams, original.Values)
 		if err != nil {
 			enriched = append(enriched, original)
 			continue
@@ -219,6 +219,11 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	}
 	req.Header.Set("Accept", "application/json")
 	for key, value := range s.options.StaticHeaders {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			req.Header.Set(strings.TrimSpace(key), strings.TrimSpace(value))
+		}
+	}
+	for key, value := range settings.request.headers {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 			req.Header.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 		}
@@ -630,7 +635,7 @@ func pullFromRecords(sourceID string, settings settings, family Family, records 
 func eventFromRecord(sourceID string, settings settings, family Family, record record) *primitives.Event {
 	occurredAt := occurredAtFor(record.Values, family.TimestampKeys)
 	return &primitives.Event{
-		Id:         eventID(sourceID, settings, family.Name, record.Identity),
+		Id:         eventID(sourceID, settings.tenantID, settings.baseURL, settings.path, family.Name, record.Identity),
 		TenantId:   settings.tenantID,
 		SourceId:   sourceID,
 		Kind:       sourceID + "." + family.Name,
@@ -641,9 +646,9 @@ func eventFromRecord(sourceID string, settings settings, family Family, record r
 	}
 }
 
-func eventID(sourceID string, settings settings, family string, recordID string) string {
-	scope := sha256.Sum256([]byte(settings.baseURL + "\x00" + settings.path))
-	parts := []string{sourceID, normalizeID(settings.tenantID), hex.EncodeToString(scope[:])[:12], normalizeID(family), normalizeID(recordID)}
+func eventID(sourceID string, tenantID string, baseURL string, path string, family string, recordID string) string {
+	scope := sha256.Sum256([]byte(baseURL + "\x00" + path))
+	parts := []string{sourceID, normalizeID(tenantID), hex.EncodeToString(scope[:])[:12], normalizeID(family), normalizeID(recordID)}
 	return strings.Join(parts, "-")
 }
 
@@ -654,10 +659,13 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 		"provider":        sourceID,
 		"source_provider": sourceID,
 	}
-	for key, value := range settings.pathParams {
+	for key, value := range settings.request.pathParams {
 		addAttribute(attrs, key, value)
 	}
 	for key, value := range family.StaticAttributes {
+		addAttribute(attrs, key, value)
+	}
+	for key, value := range settings.request.configAttributes {
 		addAttribute(attrs, key, value)
 	}
 	for attr, path := range family.Attributes {

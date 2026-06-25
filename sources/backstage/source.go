@@ -67,7 +67,7 @@ func New() (*Source, error) {
 					"dora_service": "dora_service",
 				},
 				StaticAttributes: map[string]string{"source_product": "backstage"},
-				StaticQuery:      map[string]string{"filter": "kind=component"},
+				Config:           jsonapi.FamilyConfig{StaticQuery: map[string]string{"filter": "kind=component"}},
 				PageSizeParams:   []string{"limit"},
 			},
 		},
