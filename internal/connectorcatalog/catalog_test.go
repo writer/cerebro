@@ -38,7 +38,7 @@ entries:
           event: {kind: example_idp.user, schema_ref: example_idp/user/v1}
           projection: {template: identity_user}
           coverage:
-            - {type: entity_family, support: partial, high_value: true}
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
         - id: groups
           path: /v1/groups
           record_selector: $.data[*]
@@ -46,7 +46,7 @@ entries:
           event: {kind: example_idp.group, schema_ref: example_idp/group/v1}
           projection: {template: identity_group}
           coverage:
-            - {type: entity_family, support: partial, high_value: true}
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
 `)
 
 	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
@@ -117,6 +117,22 @@ entries:
 		if !issuesContain(analysis.Issues, want) {
 			t.Fatalf("issues = %#v, want %q", analysis.Issues, want)
 		}
+	}
+}
+
+func TestAnalyzeDirRequiresExplicitHighValueCoverageMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, strings.ReplaceAll(minimalDefinitionYAML(), "evidence_types: [source_snapshot], control_domains: [asset_inventory]", ""))
+
+	analysis, err := AnalyzeDir(root, Options{})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if !issuesContain(analysis.Issues, `high-value coverage dimension "users_entity_family" must declare evidence types`) {
+		t.Fatalf("issues = %#v, want missing evidence types issue", analysis.Issues)
+	}
+	if !issuesContain(analysis.Issues, `high-value coverage dimension "users_entity_family" must declare control domains`) {
+		t.Fatalf("issues = %#v, want missing control domains issue", analysis.Issues)
 	}
 }
 
@@ -387,7 +403,7 @@ entries:
           event: {kind: example.user, schema_ref: example/user/v1}
           projection: {template: identity_user}
           coverage:
-            - {type: entity_family, support: partial, high_value: true}
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
         - id: groups
           path: /v1/groups
           record_selector: $.data[*]
@@ -395,7 +411,7 @@ entries:
           event: {kind: example.group, schema_ref: example/group/v1}
           projection: {template: identity_group}
           coverage:
-            - {type: entity_family, support: partial, high_value: true}
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
 `
 }
 

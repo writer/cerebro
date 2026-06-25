@@ -56,48 +56,64 @@ coverage_contract:
       families: [activity]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: agents
       type: entity_family
       title: SentinelOne agents
       families: [agent]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: applications
       type: entity_family
       title: Application inventory
       families: [application]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: exclusions
       type: entity_family
       title: Security exclusions
       families: [exclusion]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: groups
       type: entity_family
       title: SentinelOne groups
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sites
       type: entity_family
       title: SentinelOne sites
       families: [site]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: threats
       type: entity_family
       title: Threat detections
       families: [threat]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: remediation_state
       type: remediation_state
       title: Threat remediation lifecycle state
       families: [threat]
       support: partial
       high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:

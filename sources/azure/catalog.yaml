@@ -428,84 +428,112 @@ coverage_contract:
       families: [activity_log]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: activity_log_alert
       type: entity_family
       title: Azure Activity Log Alert
       families: [activity_log_alert]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ad_authorization_policy
       type: entity_family
       title: Azure authorization policy
       families: [authorization_policy]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: aks_cluster
       type: entity_family
       title: Azure AKS clusters
       families: [aks_cluster]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: aks_node
       type: entity_family
       title: Azure AKS nodes and node pools
       families: [aks_cluster, aks_node_pool, virtual_machine_scale_set_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: app_service
       type: entity_family
       title: Azure App Service apps
       families: [app_service]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: app_role_assignment
       type: app_entitlement
       title: Azure app role assignments
       families: [app_role_assignment]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: application
       type: entity_family
       title: Azure applications
       families: [application]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: application_container
       type: entity_family
       title: Azure application containers
       families: [application_container]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: application_gateway
       type: entity_family
       title: Azure Application Gateway
       families: [application_gateway]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: application_insight
       type: entity_family
       title: Azure Application Insights
       families: [application_insight, activity_log_alert, log_alert, metric_alert_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cognitive_services_account
       type: entity_family
       title: Azure Cognitive Services accounts
       families: [cognitive_services_account, cognitive_services_deployment]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: container_registry
       type: entity_family
       title: Azure Container Registry
       families: [container_registry]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: container_repository
       type: entity_family
       title: Azure container repositories
       families: [container_registry]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       known_unsupported_fields: [per-repository metadata and image tags]
     - id: container_vulnerability
       type: entity_family
@@ -513,246 +541,328 @@ coverage_contract:
       families: [server_vulnerability, server_vulnerability_subassessment]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cosmos_account
       type: entity_family
       title: Azure Cosmos DB accounts
       families: [cosmos_account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: cosmos_postgresql
       type: entity_family
       title: Azure Cosmos DB for PostgreSQL
       families: [cosmos_postgresql, cosmos_postgresql_firewall_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: credential
       type: entity_family
       title: Azure application and service principal credentials
       families: [credential]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: database
       type: entity_family
       title: Azure database services
       families: [cosmos_postgresql, mysql_server, postgresql_server, sql_database, sql_managed_instance, synapse_sql_pool]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: databricks_workspace
       type: entity_family
       title: Azure Databricks workspaces
       families: [databricks_workspace]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: diagnostic_setting
       type: entity_family
       title: Azure diagnostic settings
       families: [diagnostic_setting, diagnostic_setting_resource]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: directory_audit
       type: audit_event
       title: Azure directory audits
       families: [directory_audit]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: directory_role_assignment
       type: app_entitlement
       title: Azure directory role assignments
       families: [directory_role_assignment]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: effective_permission
       type: app_entitlement
       title: Azure effective permissions
       families: [effective_permission]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: foundry_model_deployment
       type: entity_family
       title: Azure Foundry model deployments
       families: [cognitive_services_deployment]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: function_app
       type: entity_family
       title: Azure Functions
       families: [function_app]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: group
       type: entity_family
       title: Azure groups
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: group_membership
       type: relationship
       title: Azure group memberships
       families: [group_membership]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: iam_role_assignment
       type: app_entitlement
       title: Azure RBAC role assignments
       families: [iam_role_assignment]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: key_vault
       type: entity_family
       title: Azure Key Vaults
       families: [key_vault]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: key_vault_key
       type: entity_family
       title: Azure Key Vault keys
       families: [key_vault_key]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: key_vault_secret
       type: entity_family
       title: Azure Key Vault secrets
       families: [key_vault_secret]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: load_balancer
       type: entity_family
       title: Azure Load Balancers
       families: [load_balancer]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: log_alert
       type: entity_family
       title: Azure log alert rules
       families: [log_alert]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: machine_learning_workspace
       type: entity_family
       title: Azure Machine Learning workspaces
       families: [machine_learning_workspace, machine_learning_compute]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: managed_disk
       type: entity_family
       title: Azure managed disks
       families: [managed_disk]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: metric_alert_rule
       type: entity_family
       title: Azure metric alert rules
       families: [metric_alert_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: defender_config
       type: entity_family
       title: Microsoft Defender for Cloud configuration
       families: [defender_config, security_setting]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: network_security_group
       type: entity_family
       title: Azure Network Security Groups
       families: [network_security_group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: postgresql_server
       type: entity_family
       title: Azure PostgreSQL servers
       families: [postgresql_server, postgresql_firewall_rule]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: public_ip_address
       type: entity_family
       title: Azure public IP addresses
       families: [public_ip_address]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: queue
       type: entity_family
       title: Azure Storage queues
       families: [storage_queue]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: resource_exposure
       type: relationship
       title: Azure public resource exposure
       families: [resource_exposure]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: role
       type: app_entitlement
       title: Azure role definitions
       families: [role]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: route_table
       type: entity_family
       title: Azure route tables
       families: [route_table]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: scale_set_virtual_machine
       type: entity_family
       title: Azure scale set virtual machines
       families: [virtual_machine_scale_set_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: security_contact
       type: entity_family
       title: Azure security contacts
       families: [security_contact]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: server_vulnerability
       type: entity_family
       title: Azure server vulnerabilities
       families: [server_vulnerability, server_vulnerability_subassessment]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: service_principal
       type: entity_family
       title: Azure service principals
       families: [service_principal]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sql_database
       type: entity_family
       title: Azure SQL databases
       families: [sql_database]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sql_managed_instance
       type: entity_family
       title: Azure SQL managed instances
       families: [sql_managed_instance, sql_managed_instance_tde]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sql_server
       type: entity_family
       title: Azure SQL servers
       families: [sql_server]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: sql_server_on_virtual_machine
       type: entity_family
       title: Azure SQL Server on virtual machines
       families: [sql_server_on_virtual_machine]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: storage_account
       type: entity_family
       title: Azure Storage accounts
       families: [storage_account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: storage_blob
       type: entity_family
       title: Azure Storage blobs
       families: [asset_metadata]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       known_unsupported_fields: [object-level ACLs and content inspection]
     - id: storage_container
       type: entity_family
@@ -760,51 +870,69 @@ coverage_contract:
       families: [storage_container]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: subnet
       type: entity_family
       title: Azure subnets
       families: [subnet]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: subscription
       type: entity_family
       title: Azure subscriptions
       families: [asset_metadata, policy_assignment, security_contact]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: synapse_warehouse
       type: entity_family
       title: Azure Synapse warehouses
       families: [synapse_sql_pool]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: user
       type: entity_family
       title: Azure users
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: virtual_machine
       type: entity_family
       title: Azure virtual machines
       families: [virtual_machine]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: virtual_machine_extension
       type: entity_family
       title: Azure virtual machine extensions
       families: [virtual_machine_extension]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: virtual_machine_scale_set
       type: entity_family
       title: Azure virtual machine scale sets
       families: [virtual_machine_scale_set, virtual_machine_scale_set_instance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: virtual_network
       type: entity_family
       title: Azure virtual networks
       families: [virtual_network]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]

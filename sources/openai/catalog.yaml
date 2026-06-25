@@ -51,66 +51,88 @@ coverage_contract:
       families: [audit_log]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: certificates
       type: lifecycle_state
       title: Organization and project certificates
       families: [certificate, project_certificate]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: data_retention
       type: lifecycle_state
       title: Organization and project data-retention settings
       families: [data_retention, project_data_retention]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: identity_access
       type: app_entitlement
       title: Organization users, groups, roles, and assignments
       families: [user, invite, group, group_user, role, user_role, group_role]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: project_access
       type: app_entitlement
       title: Project users, groups, roles, and assignments
       families: [project_user, project_user_role, project_group, project_group_role, project_role]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: project_controls
       type: lifecycle_state
       title: Project rate limits and model/tool permissions
       families: [project_rate_limit, project_model_permission, project_hosted_tool_permission]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: projects
       type: entity_family
       title: Projects
       families: [project]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: service_accounts
       type: entity_family
       title: Organization and project service accounts
       families: [service_account, project_service_account]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: spend_controls
       type: lifecycle_state
       title: Organization and project spend alerts
       families: [spend_alert, project_spend_alert]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: tokens_and_keys
       type: app_entitlement
       title: Organization, project, and admin API keys
       families: [api_key, admin_api_key, project_api_key]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: usage_and_costs
       type: entity_family
       title: Usage and cost report buckets
       families: [usage_audio_speech, usage_audio_transcription, usage_code_interpreter_session, usage_completion, usage_embedding, usage_image, usage_moderation, usage_vector_store, usage_file_search_call, usage_web_search_call, cost]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: openai.user
     schema_ref: openai/user/v1

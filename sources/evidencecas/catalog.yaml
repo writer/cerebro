@@ -13,18 +13,24 @@ coverage_contract:
       families: [object]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: integrity_metadata
       type: entity_family
       title: Evidence URI and digest metadata
       families: [object]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: source_event_links
       type: relationship
       title: Source event evidence links
       families: [object]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: evidence_cas.object
     schema_ref: evidence_cas/object/v1

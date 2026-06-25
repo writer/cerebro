@@ -135,36 +135,48 @@ coverage_contract:
       families: [contract]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: regulatory_notifications
       type: lifecycle_state
       title: Regulatory notification status
       families: [regulatory_notification]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: recovery_objectives
       type: entity_family
       title: Recovery objectives and BIA records
       families: [recovery_objective]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: authorization_packages
       type: entity_family
       title: Authorization packages and ATO records
       families: [authorization_package]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: poam_items
       type: lifecycle_state
       title: POA&M weakness remediation items
       families: [poam_item]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: training_attestations
       type: lifecycle_state
       title: Security training attestations
       families: [training_attestation]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: vendors
       type: entity_family
       title: Vendors
@@ -195,15 +207,21 @@ coverage_contract:
       families: [risk_scenario]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: people
       type: entity_family
       title: People and users
       families: [person, user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: integrations
       type: entity_family
       title: GRC integrations
       families: [integration]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]

@@ -40,78 +40,104 @@ coverage_contract:
       families: [api_key]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: compliance_activity
       type: audit_event
       title: Compliance activity feed
       families: [compliance_activity]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: compliance_directory
       type: app_entitlement
       title: Compliance organizations, users, roles, role permissions, groups, and group members
       families: [compliance_organization, compliance_organization_user, compliance_role, compliance_role_permission, compliance_group, compliance_group_member]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: compliance_settings
       type: lifecycle_state
       title: Effective compliance organization settings
       families: [compliance_organization_setting]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: compliance_projects
       type: app_entitlement
       title: Claude projects and active collaborator role assignments
       families: [compliance_project, compliance_project_collaborator]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: external_keys
       type: lifecycle_state
       title: External key configurations
       families: [external_key]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: organization_profile
       type: entity_family
       title: Current organization
       families: [organization]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: rate_limits
       type: lifecycle_state
       title: Organization and workspace rate limits
       families: [rate_limit, workspace_rate_limit]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: spend_limits
       type: lifecycle_state
       title: Effective spend limits and increase requests
       families: [spend_limit, spend_limit_increase_request]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: usage_and_costs
       type: entity_family
       title: Usage, Claude Code analytics, and cost report buckets
       families: [usage_report_message, usage_report_claude_code, cost_report, analytics_cost]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users_and_access
       type: app_entitlement
       title: Organization users, invites, and workspace membership
       families: [user, invite, workspace_member]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: workload_identity
       type: app_entitlement
       title: Service accounts and workload identity federation
       families: [service_account, federation_issuer, federation_rule]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: workspaces
       type: entity_family
       title: Workspaces
       families: [workspace]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: anthropic.organization
     schema_ref: anthropic/organization/v1

@@ -16,24 +16,32 @@ coverage_contract:
       families: [fix]
       support: supported
       high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
     - id: image_packages
       type: entity_family
       title: Image packages
       families: [image_package]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: image_scans
       type: entity_family
       title: Image scan reports
       families: [image_scan]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: image_vulnerabilities
       type: entity_family
       title: Image vulnerabilities
       families: [image_vulnerability]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: trivy.image_scan
     schema_ref: trivy/image_scan/v1

@@ -130,6 +130,8 @@ coverage_contract:
       families: [app_assignment]
       support: partial
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
       known_unsupported_fields:
         - app-specific fine-grained entitlement payloads
     - id: api_tokens
@@ -138,6 +140,8 @@ coverage_contract:
       families: [api_token]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Token values are never collected; only token metadata, creator user, timestamps, and network conditions are surfaced.
     - id: applications
@@ -146,12 +150,16 @@ coverage_contract:
       families: [application]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: authorization_servers
       type: entity_family
       title: Authorization servers
       families: [authorization_server]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: authenticators
       type: entity_family
       title: Authenticators
@@ -171,18 +179,24 @@ coverage_contract:
       families: [brand]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: device_assurance
       type: entity_family
       title: Device assurance policies
       families: [device_assurance]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: event_hooks
       type: entity_family
       title: Event hooks
       families: [event_hook]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: audit_events
       type: audit_event
       title: Audit events
@@ -204,6 +218,8 @@ coverage_contract:
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: group_memberships
       type: relationship
       title: Group memberships
@@ -223,29 +239,39 @@ coverage_contract:
       families: [identity_provider]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: inline_hooks
       type: entity_family
       title: Inline hooks
       families: [inline_hook]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
       support: supported
       high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
     - id: network_zones
       type: entity_family
       title: Network zones
       families: [network_zone]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: log_streams
       type: entity_family
       title: Log streams
       families: [log_stream]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: policy_rules
       type: entity_family
       title: Policy rules
@@ -265,6 +291,8 @@ coverage_contract:
       families: [admin_role, app_assignment, application, audit, identity_provider, network_zone, policy_rule, trusted_origin, user]
       support: partial
       high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:
@@ -276,12 +304,16 @@ coverage_contract:
       families: [threat_insight]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: trusted_origins
       type: entity_family
       title: Trusted origins
       families: [trusted_origin]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: users
       type: entity_family
       title: Users

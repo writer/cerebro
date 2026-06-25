@@ -286,6 +286,38 @@ coverage_contract:
 	}
 }
 
+func TestCheckSourceCatalogsRequiresExplicitHighValueCoverageMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/github/catalog.yaml", `
+id: github
+name: GitHub
+description: GitHub source
+emitted_kinds:
+  - github.audit
+coverage_contract:
+  owner_domain: source_control
+  authority_domain: github
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: Audit events
+      families: [audit]
+      support: supported
+      high_value: true
+`)
+
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if !issueMessagesContain(issues, `coverage_contract dimension "audit_events" must declare evidence_types`) {
+		t.Fatalf("issues = %#v, want missing evidence_types issue", issues)
+	}
+	if !issueMessagesContain(issues, `coverage_contract dimension "audit_events" must declare control_domains`) {
+		t.Fatalf("issues = %#v, want missing control_domains issue", issues)
+	}
+}
+
 func TestCheckSourceCatalogsSkipsCatalogRuntimeAdapter(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/catalogruntime/catalog.yaml", `

@@ -25,6 +25,8 @@ coverage_contract:
       families: [resource]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: authenticator
@@ -33,6 +35,8 @@ coverage_contract:
       families: [authenticator]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: resource_2
@@ -41,6 +45,8 @@ coverage_contract:
       families: [resource_2]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: resource_3
@@ -49,6 +55,8 @@ coverage_contract:
       families: [resource_3]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

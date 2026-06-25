@@ -21,12 +21,16 @@ coverage_contract:
       families: [case]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: iocs
       type: entity_family
       title: Indicators of compromise
       families: [ioc]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: panopticon.alert
     schema_ref: panopticon/alert/v1

@@ -25,6 +25,8 @@ coverage_contract:
       families: [audit_log]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: member
@@ -33,6 +35,8 @@ coverage_contract:
       families: [member]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: role
@@ -41,6 +45,8 @@ coverage_contract:
       families: [role]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: permission
@@ -49,6 +55,8 @@ coverage_contract:
       families: [permission]
       support: partial
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

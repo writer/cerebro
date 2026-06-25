@@ -43,6 +43,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -67,6 +69,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -91,6 +95,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -139,6 +145,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -163,6 +171,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -187,6 +197,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -237,6 +249,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -261,6 +275,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -285,6 +301,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -337,6 +355,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -361,6 +381,8 @@ entries:
               families: [content_assets]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -385,6 +407,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -433,6 +457,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -457,6 +483,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -481,6 +509,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -536,6 +566,8 @@ entries:
               families: [assets]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: pageToken
@@ -560,6 +592,8 @@ entries:
               families: [assets]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: pageToken
@@ -584,6 +618,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: pageToken
@@ -634,6 +670,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -658,6 +696,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -682,6 +722,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -730,6 +772,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -754,6 +798,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -778,6 +824,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -829,6 +877,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -853,6 +903,8 @@ entries:
               families: [content_assets]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -877,6 +929,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -928,6 +982,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -952,6 +1008,8 @@ entries:
               families: [content_assets]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -976,6 +1034,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1028,6 +1088,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1052,6 +1114,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1076,6 +1140,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1124,6 +1190,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1148,6 +1216,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1172,6 +1242,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1220,6 +1292,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1244,6 +1318,8 @@ entries:
               families: [projects]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1268,6 +1344,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1319,6 +1397,8 @@ entries:
               families: [users]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1343,6 +1423,8 @@ entries:
               families: [content_assets]
               support: partial
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1367,6 +1449,8 @@ entries:
               families: [audit_events]
               support: partial
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
           pagination:
             type: cursor
             cursor_param: cursor
@@ -1399,6 +1483,8 @@ entries:
             - families:
                 - field
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
               id: audit_events
               support: partial
               title: Field
@@ -1431,6 +1517,8 @@ entries:
             - families:
                 - userdefinedfield
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: userdefinedfield
               support: partial
               title: Userdefinedfield
@@ -1463,6 +1551,8 @@ entries:
             - families:
                 - excludedrole
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: excludedrole
               support: partial
               title: Excludedrole
@@ -1495,6 +1585,8 @@ entries:
             - families:
                 - entityinformation_field
               high_value: true
+              evidence_types: [security_monitoring]
+              control_domains: [logging_monitoring, security_operations]
               id: alerts
               support: partial
               title: Entityinformation Field
@@ -1597,6 +1689,8 @@ entries:
             - families:
                 - webhook
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: webhook
               support: partial
               title: Webhook
@@ -1792,6 +1886,8 @@ entries:
             - families:
                 - account
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: account
               support: partial
               title: Account
@@ -1824,6 +1920,8 @@ entries:
             - families:
                 - credential
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: secrets
               support: partial
               title: Credential
@@ -1987,6 +2085,8 @@ entries:
             - families:
                 - groups_json
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: groups_json
               support: partial
               title: Groups Json
@@ -2019,6 +2119,8 @@ entries:
             - families:
                 - user_actions_json
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: user_actions_json
               support: partial
               title: User Actions Json
@@ -2053,6 +2155,8 @@ entries:
             - families:
                 - notifications_json
               high_value: true
+              evidence_types: [security_monitoring]
+              control_domains: [logging_monitoring, security_operations]
               id: alerts
               support: partial
               title: Notifications Json
@@ -2187,6 +2291,8 @@ entries:
             - families:
                 - event_type
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
               id: audit_events
               support: partial
               title: Event Type
@@ -2219,6 +2325,8 @@ entries:
             - families:
                 - group
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: group
               support: partial
               title: Group
@@ -2256,6 +2364,8 @@ entries:
             - families:
                 - user
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: user
               support: partial
               title: User
@@ -2291,6 +2401,8 @@ entries:
             - families:
                 - channel
               high_value: true
+              evidence_types: [security_monitoring]
+              control_domains: [logging_monitoring, security_operations]
               id: alerts
               support: partial
               title: Channel
@@ -2391,6 +2503,8 @@ entries:
             - families:
                 - account
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: account
               support: partial
               title: Account
@@ -2426,6 +2540,8 @@ entries:
             - families:
                 - activity
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
               id: audit_events
               support: partial
               title: Activity
@@ -2457,6 +2573,8 @@ entries:
             - families:
                 - verify_credential
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: secrets
               support: partial
               title: Verify Credential
@@ -2493,6 +2611,8 @@ entries:
             - families:
                 - notification
               high_value: true
+              evidence_types: [security_monitoring]
+              control_domains: [logging_monitoring, security_operations]
               id: alerts
               support: partial
               title: Notification
@@ -2604,6 +2724,8 @@ entries:
             - families:
                 - webhook
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: webhook
               support: partial
               title: Webhook
@@ -2806,6 +2928,8 @@ entries:
             - families:
                 - activity
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
               id: audit_events
               support: partial
               title: Activity
@@ -2842,6 +2966,8 @@ entries:
             - families:
                 - api_key
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: secrets
               support: partial
               title: Api Key
@@ -2880,6 +3006,8 @@ entries:
             - families:
                 - group
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: group
               support: partial
               title: Group
@@ -2913,6 +3041,8 @@ entries:
             - families:
                 - invalid_email
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: invalid_email
               support: partial
               title: Invalid Email
@@ -3079,6 +3209,8 @@ entries:
             - families:
                 - usergroups_list
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: usergroups_list
               support: partial
               title: Usergroups List
@@ -3113,6 +3245,8 @@ entries:
             - families:
                 - team_accesslog
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
               id: audit_events
               support: partial
               title: Team Accesslog
@@ -3150,6 +3284,8 @@ entries:
             - families:
                 - admin_conversations_getteam
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: admin_conversations_getteam
               support: partial
               title: Admin Conversations Getteam
@@ -3185,6 +3321,8 @@ entries:
             - families:
                 - apps_permissions_resources_list
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: apps_permissions_resources_list
               support: partial
               title: Apps Permissions Resources List
@@ -3287,6 +3425,8 @@ entries:
             - families:
                 - list_membership
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: list_membership
               support: partial
               title: List Membership
@@ -3327,6 +3467,8 @@ entries:
             - families:
                 - member
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: member
               support: partial
               title: Member
@@ -3367,6 +3509,8 @@ entries:
             - families:
                 - job
               high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [security_operations]
               id: policies
               support: partial
               title: Job
@@ -3403,6 +3547,8 @@ entries:
             - families:
                 - dm_event
               high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
               id: audit_events
               support: partial
               title: Dm Event
@@ -3509,6 +3655,8 @@ entries:
             - families:
                 - group
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: group
               support: partial
               title: Group
@@ -3543,6 +3691,8 @@ entries:
             - families:
                 - user
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: user
               support: partial
               title: User
@@ -3577,6 +3727,8 @@ entries:
             - families:
                 - invite
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: invite
               support: partial
               title: Invite
@@ -3613,6 +3765,8 @@ entries:
             - families:
                 - group_2
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: group_2
               support: partial
               title: Group 2
@@ -3705,6 +3859,8 @@ entries:
             - families:
                 - subaccount
               high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
               id: subaccount
               support: partial
               title: Subaccount

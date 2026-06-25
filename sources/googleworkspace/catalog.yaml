@@ -49,24 +49,32 @@ coverage_contract:
       families: [audit]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
     - id: groups
       type: entity_family
       title: Groups
       families: [group]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: group_memberships
       type: relationship
       title: Group memberships
       families: [group_member]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [asset_inventory]
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
       families: [audit, group, group_member, role_assignment, user]
       support: partial
       high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
       known_unsupported_fields:
         - full Directory API deletion tombstones
     - id: remediation_state
@@ -75,6 +83,8 @@ coverage_contract:
       families: [audit, group_member, user]
       support: partial
       high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:
@@ -86,9 +96,13 @@ coverage_contract:
       families: [role_assignment]
       support: partial
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
     - id: users
       type: entity_family
       title: Users
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]

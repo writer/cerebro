@@ -21,54 +21,72 @@ coverage_contract:
       families: [agent_identity]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: host_posture
       type: entity_family
       title: Host posture observations
       families: [host_posture]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: repo_worktree_context
       type: entity_family
       title: Repository worktree context
       families: [repo_worktree_context]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: ai_session_risk
       type: lifecycle_state
       title: AI session risk summaries
       families: [ai_session_summary]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: ai_workflow_risk
       type: lifecycle_state
       title: AI workflow risk assessments
       families: [ai_workflow_risk]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: security_findings
       type: entity_family
       title: Endpoint security findings
       families: [security_finding]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: grc_evidence
       type: entity_family
       title: GRC evidence records
       families: [grc_evidence]
       support: supported
       high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
     - id: trust_gate_decisions
       type: lifecycle_state
       title: Trust gate decisions
       families: [trust_gate_decision]
       support: supported
       high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
     - id: action_outcomes
       type: audit_event
       title: Trusted endpoint action outcomes
       families: [action_outcome]
       support: supported
       high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
 event_contracts:
   - kind: trusted_endpoint.agent_identity
     schema_ref: trusted_endpoint/agent_identity/v1
