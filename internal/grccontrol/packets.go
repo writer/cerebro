@@ -40,10 +40,14 @@ type CustomBuildInput struct {
 }
 
 type PacketResult struct {
-	Profile  Profile
-	Packet   compliance.ControlEvidencePacket
-	Controls []ControlItem
-	Metadata ReportMetadata
+	Profile   Profile
+	Packet    compliance.ControlEvidencePacket
+	Controls  []ControlItem
+	Metadata  ReportMetadata
+	Findings  []*ports.FindingRecord
+	Evidence  []*cerebrov1.FindingEvidence
+	Runtimes  []*cerebrov1.SourceRuntime
+	SourceIDs map[string]string
 }
 
 type CustomPacketResult struct {
@@ -211,9 +215,13 @@ func BuildBuiltinEvidencePacket(input BuildInput) (PacketResult, error) {
 	packet.Summary = SummarizePacket(packet.SelectionID, packet.Controls)
 	controls := ControlItemsFromPacket(packet.Controls, input.Findings, input.SourceIDs)
 	return PacketResult{
-		Profile:  profile,
-		Packet:   packet,
-		Controls: controls,
+		Profile:   profile,
+		Packet:    packet,
+		Controls:  controls,
+		Findings:  input.Findings,
+		Evidence:  input.Evidence,
+		Runtimes:  input.Runtimes,
+		SourceIDs: input.SourceIDs,
 		Metadata: BuildReportMetadata(ReportMetadataInput{
 			ReportType:    "control",
 			Profile:       profile,

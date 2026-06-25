@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/evidencepackets"
 	"github.com/writer/cerebro/internal/grccontrol"
 )
 
@@ -56,9 +57,12 @@ func (a *App) handleGRCControlEvidencePacket(w http.ResponseWriter, r *http.Requ
 		writeGRCControlPacketError(w, err)
 		return
 	}
+	if r.URL.Path == "/grc/evidence-packets" {
+		writeJSON(w, http.StatusOK, evidencepackets.Build(result))
+		return
+	}
 	writeGRCControlPacketJSON(w, result)
 }
-
 func (a *App) handleGRCControlEvidencePacketDetail(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(r.URL.Query().Get("control")) == "" {
 		writeGRCError(w, fmt.Errorf("%w: control query parameter is required", errInvalidHTTPRequest))
