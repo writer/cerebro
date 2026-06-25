@@ -123,6 +123,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         static_checks = workflow.split("- name: Run static checks", 1)[1].split("\n  #", 1)[0]
 
+        self.assertIn("GITHUB_TOKEN: ${{ github.token }}", static_checks)
         self.assertIn("scripts/verify_latest_runtime_contracts.py", static_checks)
         self.assertLess(
             static_checks.index("scripts/validate_stack_config.py"),
@@ -216,6 +217,50 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
                 self.assertIn(".github/scripts/github-deployment-status.sh create", job_block)
                 self.assertIn(".github/scripts/github-deployment-status.sh status", job_block)
 
+        manual_block = workflow.split("  deploy-manual:", 1)[1]
+        self.assertIn("deployments: write", manual_block)
+        self.assertIn("Create GitHub deployment record (manual)", manual_block)
+        self.assertIn("Mark GitHub deployment in progress (manual)", manual_block)
+        self.assertIn("Complete GitHub deployment record (manual)", manual_block)
+        self.assertIn(".github/scripts/github-deployment-status.sh create", manual_block)
+        self.assertIn(".github/scripts/github-deployment-status.sh status", manual_block)
+
+    def test_aws_deploy_jobs_require_promotion_receipts_before_pulumi_up(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertNotIn("wait-for-ecr-image.sh", workflow)
+        for job_marker, stack in (("  deploy-sec-dev-main:", "sec-dev"), ("  deploy-go-prod:", "go-prod")):
+            with self.subTest(stack=stack):
+                job_block = workflow.split(job_marker, 1)[1].split("\n  # ", 1)[0]
+                self.assertIn(f"Ensure ECR promotion ({stack})", job_block)
+                self.assertIn("scripts/ensure_ecr_promotion.py", job_block)
+                self.assertIn("--dispatch-if-missing", job_block)
+                self.assertIn(f"promotion-receipt-{stack}.json", job_block)
+                self.assertLess(job_block.index(f"Ensure ECR promotion ({stack})"), job_block.index(f"Pulumi Up ({stack})"))
+
+        manual_block = workflow.split("  deploy-manual:", 1)[1]
+        self.assertIn("Ensure ECR promotion (AWS)", manual_block)
+        self.assertIn("scripts/ensure_ecr_promotion.py", manual_block)
+        self.assertIn("--dispatch-if-missing", manual_block)
+        self.assertIn("promotion-receipt-${STACK_NAME}.json", manual_block)
+        self.assertLess(manual_block.index("Ensure ECR promotion (AWS)"), manual_block.index("Pulumi Up (AWS)"))
+
+    def test_github_deployment_status_describes_degraded_post_deploy_health(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+
+        for job_marker, complete_step in (
+            ("  deploy-sec-dev-main:", "Complete GitHub deployment record (sec-dev)"),
+            ("  deploy-go-prod:", "Complete GitHub deployment record (go-prod)"),
+            ("  deploy-manual:", "Complete GitHub deployment record (manual)"),
+        ):
+            with self.subTest(job_marker=job_marker):
+                job_block = workflow.split(job_marker, 1)[1].split("\n  # ", 1)[0]
+                complete_block = job_block.split(complete_step, 1)[1].split("\n      - name:", 1)[0]
+                self.assertIn("GRAPH_HEALTH_DEGRADED", complete_block)
+                self.assertIn("SOURCE_RUNTIME_DEGRADED", complete_block)
+                self.assertIn("graph health degraded", complete_block)
+                self.assertIn("source runtime degraded", complete_block)
+
     def test_go_prod_deploy_skips_cosmo_canary_while_runtime_is_disabled(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         deploy_block = workflow.split("name: Deploy go-prod", 1)[1]
@@ -242,6 +287,7 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
     def test_manual_aws_deploy_runs_guards_before_pulumi_up(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         deploy_block = workflow.split("  deploy-manual:", 1)[1]
+        self.assertLess(deploy_block.index("Ensure ECR promotion (AWS)"), deploy_block.index("Pulumi Up (AWS)"))
         self.assertLess(deploy_block.index("Verify AWS scan-role trust (AWS)"), deploy_block.index("Pulumi Up (AWS)"))
         self.assertLess(deploy_block.index("Verify AWS secret imports (AWS)"), deploy_block.index("Pulumi Up (AWS)"))
         self.assertLess(deploy_block.index("Pulumi Up (AWS)"), deploy_block.index("Verify AWS Bedrock task role (AWS)"))

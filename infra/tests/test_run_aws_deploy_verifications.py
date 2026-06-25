@@ -244,6 +244,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
     def test_source_failure_reports_warning_but_does_not_fail_without_graph_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             summary_path = Path(temp_dir) / "summary.md"
+            output_path = Path(temp_dir) / "outputs.txt"
             with (
                 patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary_path)}),
                 patch("scripts.run_aws_deploy_verifications._start_process", return_value=FakeProcess(1)),
@@ -258,12 +259,16 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                             "--graph-health",
                             "--graph-health-output",
                             str(Path(temp_dir) / "graph.tsv"),
+                            "--github-output",
+                            str(output_path),
                         ]
                     )
                 summary = summary_path.read_text(encoding="utf-8")
+                outputs = output_path.read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
         self.assertIn("Source runtime verification degraded (sec-dev)", summary)
+        self.assertIn("source_runtime_degraded=true", outputs)
 
     def test_source_runtime_default_grace_after_graph_health_is_short(self) -> None:
         fake_source = FakeProcess(0)

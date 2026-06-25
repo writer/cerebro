@@ -59,6 +59,20 @@ uv run pulumi up --stack sec-dev
 uv run pulumi up --stack go-prod
 ```
 
+### Promotion and deployment receipts
+
+The stack file remains the release source of truth. A deployment should use the exact `cerebro:imageTag` and, when configured, `cerebro:webImageTag` that were reviewed in the stack config.
+
+The normal production path is:
+
+1. A release proposal updates `infra/aws/Pulumi.<stack>.yaml`.
+2. CI verifies the signed GHCR image and attestations, mirrors the tag into the environment ECR repository, and uploads a `promotion-receipt-<stack>` artifact.
+3. `Infrastructure Deploy` runs `scripts/ensure_ecr_promotion.py` before Pulumi. The script verifies every image tag declared by the stack, writes `promotion-receipt-<stack>.json`, and blocks Pulumi if the receipt cannot be produced.
+4. If an AWS deploy finds a missing ECR tag, it dispatches `ci.yml` on `main`, waits for that promotion run to finish, and checks the exact stack tag again before continuing.
+5. Pulumi deploys the stack and post-deploy verification records graph/source health.
+
+Manual `Infrastructure Deploy` dispatches follow the same AWS preflight and GitHub Deployment record path. A successful deploy can still finish with degraded post-deploy health; the deployment status description will call out graph health degradation, source runtime degradation, or both, and the graph-health artifact/issue remains the follow-up surface.
+
 ### Go-prod source-role trust rollout
 
 When a go-prod deploy is blocked by source runtime role trust drift:
@@ -124,6 +138,6 @@ Common AWS outputs include `api_url`, `alb_dns_name`, `ecs_cluster_name`, `ecs_s
 
 ## Deployment boundaries
 
-Image promotion is intentionally explicit and reviewable. Update the stack's `cerebro:imageTag`; do not add automatic cross-repository deployment linkage.
+Image promotion is intentionally explicit and reviewable. Update the stack's `cerebro:imageTag`; do not infer deploy tags from another repository. Deploy recovery may re-run this repository's CI promotion path, but Pulumi must still consume the reviewed stack tag and a matching ECR promotion receipt.
 
 Keep stack files free of plaintext secrets. Use Pulumi encrypted values and external secret imports instead.

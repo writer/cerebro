@@ -31,6 +31,16 @@ class CIWorkflowTest(unittest.TestCase):
         self.assertIn("(github.event_name == 'push' && github.ref == 'refs/heads/main'", publish_block)
         self.assertIn("infra/aws/Pulumi.go-prod.yaml", publish_block)
 
+    def test_publish_jobs_upload_promotion_receipts(self) -> None:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("Record sec-dev promotion receipt", workflow)
+        self.assertIn("Record sec-prod promotion receipt", workflow)
+        self.assertIn("infra/scripts/ensure_ecr_promotion.py --stack-file infra/aws/Pulumi.sec-dev.yaml", workflow)
+        self.assertIn("infra/scripts/ensure_ecr_promotion.py --stack-file infra/aws/Pulumi.go-prod.yaml", workflow)
+        self.assertIn("name: promotion-receipt-sec-dev", workflow)
+        self.assertIn("name: promotion-receipt-go-prod", workflow)
+
     def test_ci_workflow_contract_changes_do_not_trigger_deploys(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         filter_block = workflow.split("- name: Filter changed paths", 1)[1].split("\n      - name:", 1)[0]

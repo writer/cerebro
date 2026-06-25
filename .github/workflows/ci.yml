@@ -367,6 +367,19 @@ jobs:
             --severity CRITICAL \
             "${ECR_IMAGE}"
 
+      - name: Record sec-dev promotion receipt
+        if: steps.ghcr-image.outputs.available == 'true' && (steps.web-image-tag.outputs.tag == '' || steps.web-ghcr-image.outputs.available == 'true')
+        shell: bash
+        run: python3 infra/scripts/ensure_ecr_promotion.py --stack-file infra/aws/Pulumi.sec-dev.yaml --receipt-output promotion-receipt-sec-dev.json --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload sec-dev promotion receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: promotion-receipt-sec-dev
+          path: promotion-receipt-sec-dev.json
+          if-no-files-found: ignore
+
   # Main merge/manual recovery: Pull from GHCR and push to sec-prod ECR.
   publish-sec-prod:
     name: Publish to sec-prod ECR
@@ -492,3 +505,15 @@ jobs:
             --scanners vuln \
             --severity CRITICAL \
             "${ECR_IMAGE}"
+
+      - name: Record sec-prod promotion receipt
+        shell: bash
+        run: python3 infra/scripts/ensure_ecr_promotion.py --stack-file infra/aws/Pulumi.go-prod.yaml --receipt-output promotion-receipt-go-prod.json --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload sec-prod promotion receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: promotion-receipt-go-prod
+          path: promotion-receipt-go-prod.json
+          if-no-files-found: ignore
