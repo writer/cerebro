@@ -117,7 +117,7 @@ func (r *policyCatalogRule) RuleMetadata() RuleDefinition {
 	if r == nil {
 		return RuleDefinition{}
 	}
-	return cloneRuleDefinition(r.config.Definition)
+	return policyRuleDefinitionWithDepth(r.config)
 }
 
 func (r *policyCatalogRule) Spec() *cerebrov1.RuleSpec {
@@ -144,7 +144,7 @@ func (r *policyGraphCatalogRule) RuleMetadata() RuleDefinition {
 	if r == nil {
 		return RuleDefinition{}
 	}
-	return cloneRuleDefinition(r.config.Definition)
+	return policyRuleDefinitionWithDepth(r.config)
 }
 
 func (r *policyGraphCatalogRule) Spec() *cerebrov1.RuleSpec {
@@ -159,6 +159,16 @@ func (r *policyGraphCatalogRule) SupportsRuntime(runtime *cerebrov1.SourceRuntim
 		return false
 	}
 	return r.delegate.SupportsRuntime(runtime)
+}
+
+func policyRuleDefinitionWithDepth(config policyRuleConfig) RuleDefinition {
+	definition := cloneRuleDefinition(config.Definition)
+	definition.EvidenceType = strings.TrimSpace(config.EvidenceType)
+	definition.AssessmentMethods = cloneStringSlice(config.AssessmentMethods)
+	definition.AuditorGuidance = strings.TrimSpace(config.AuditorGuidance)
+	definition.RiskStatement = strings.TrimSpace(config.RiskStatement)
+	definition.RemediationIntent = strings.TrimSpace(config.RemediationIntent)
+	return definition
 }
 
 func (r *policyGraphCatalogRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {

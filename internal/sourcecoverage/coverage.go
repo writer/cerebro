@@ -37,24 +37,27 @@ type RuntimeObservation struct {
 }
 
 type Record struct {
-	SourceID                 string   `json:"source_id"`
-	TenantID                 string   `json:"tenant_id,omitempty"`
-	DimensionID              string   `json:"dimension_id"`
-	DimensionType            string   `json:"dimension_type"`
-	Title                    string   `json:"title"`
-	State                    string   `json:"state"`
-	SupportLevel             string   `json:"support_level"`
-	RuntimeID                string   `json:"runtime_id,omitempty"`
-	Family                   string   `json:"family,omitempty"`
-	LastSyncedAt             string   `json:"last_synced_at,omitempty"`
-	OwnerDomain              string   `json:"owner_domain,omitempty"`
-	AuthorityDomain          string   `json:"authority_domain,omitempty"`
-	HighValue                bool     `json:"high_value,omitempty"`
-	BlindSpot                bool     `json:"blind_spot"`
-	Warning                  string   `json:"warning,omitempty"`
-	KnownUnsupportedFields   []string `json:"known_unsupported_fields,omitempty"`
-	Notes                    []string `json:"notes,omitempty"`
-	SupportedRuntimeFamilies []string `json:"supported_runtime_families,omitempty"`
+	SourceID                 string                         `json:"source_id"`
+	TenantID                 string                         `json:"tenant_id,omitempty"`
+	DimensionID              string                         `json:"dimension_id"`
+	DimensionType            string                         `json:"dimension_type"`
+	Title                    string                         `json:"title"`
+	State                    string                         `json:"state"`
+	SupportLevel             string                         `json:"support_level"`
+	RuntimeID                string                         `json:"runtime_id,omitempty"`
+	Family                   string                         `json:"family,omitempty"`
+	LastSyncedAt             string                         `json:"last_synced_at,omitempty"`
+	OwnerDomain              string                         `json:"owner_domain,omitempty"`
+	AuthorityDomain          string                         `json:"authority_domain,omitempty"`
+	HighValue                bool                           `json:"high_value,omitempty"`
+	BlindSpot                bool                           `json:"blind_spot"`
+	Warning                  string                         `json:"warning,omitempty"`
+	KnownUnsupportedFields   []string                       `json:"known_unsupported_fields,omitempty"`
+	Notes                    []string                       `json:"notes,omitempty"`
+	EvidenceTypes            []string                       `json:"evidence_types,omitempty"`
+	ControlDomains           []string                       `json:"control_domains,omitempty"`
+	ControlRefs              []sourcecdk.CoverageControlRef `json:"control_refs,omitempty"`
+	SupportedRuntimeFamilies []string                       `json:"supported_runtime_families,omitempty"`
 }
 
 type Summary struct {
@@ -320,6 +323,9 @@ func cloneRecords(records []Record) []Record {
 		cloned[i] = record
 		cloned[i].KnownUnsupportedFields = append([]string(nil), record.KnownUnsupportedFields...)
 		cloned[i].Notes = append([]string(nil), record.Notes...)
+		cloned[i].EvidenceTypes = append([]string(nil), record.EvidenceTypes...)
+		cloned[i].ControlDomains = append([]string(nil), record.ControlDomains...)
+		cloned[i].ControlRefs = append([]sourcecdk.CoverageControlRef(nil), record.ControlRefs...)
 		cloned[i].SupportedRuntimeFamilies = append([]string(nil), record.SupportedRuntimeFamilies...)
 	}
 	return cloned
@@ -345,6 +351,9 @@ func coverageRecord(contract sourcecdk.CoverageContract, dimension sourcecdk.Cov
 		HighValue:                dimension.HighValue,
 		KnownUnsupportedFields:   append([]string(nil), dimension.KnownUnsupportedFields...),
 		Notes:                    append([]string(nil), dimension.Notes...),
+		EvidenceTypes:            append([]string(nil), dimension.EvidenceTypes...),
+		ControlDomains:           append([]string(nil), dimension.ControlDomains...),
+		ControlRefs:              append([]sourcecdk.CoverageControlRef(nil), dimension.ControlRefs...),
 		SupportedRuntimeFamilies: append([]string(nil), dimension.Families...),
 	}
 	if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {

@@ -114,6 +114,11 @@ coverage_contract:
       families: [user]
       support: supported
       high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
     - id: remediation
       type: remediation_state
       title: Remediation lifecycle
@@ -134,6 +139,20 @@ coverage_contract:
 	}
 	if got := catalog.CoverageContract.Dimensions[1].Support; got != CoverageSupportUnsupported {
 		t.Fatalf("Dimensions[1].Support = %q, want unsupported", got)
+	}
+	users := catalog.CoverageContract.Dimensions[0]
+	if len(users.EvidenceTypes) != 1 || users.EvidenceTypes[0] != "identity_configuration" {
+		t.Fatalf("users evidence types = %#v, want identity_configuration", users.EvidenceTypes)
+	}
+	if len(users.ControlDomains) != 1 || users.ControlDomains[0] != "identity_access" {
+		t.Fatalf("users control domains = %#v, want identity_access", users.ControlDomains)
+	}
+	if len(users.ControlRefs) != 1 || users.ControlRefs[0].FrameworkName != "SOC 2" || users.ControlRefs[0].ControlID != "CC6.1" {
+		t.Fatalf("users control refs = %#v, want SOC 2 CC6.1", users.ControlRefs)
+	}
+	remediation := catalog.CoverageContract.Dimensions[1]
+	if len(remediation.EvidenceTypes) != 1 || remediation.EvidenceTypes[0] != "remediation_state" {
+		t.Fatalf("remediation evidence types = %#v, want default remediation_state", remediation.EvidenceTypes)
 	}
 }
 

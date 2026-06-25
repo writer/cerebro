@@ -84,6 +84,37 @@ func TestBuildReportSummarizesRecordsAndBlindSpots(t *testing.T) {
 	}
 }
 
+func TestBuildReportClonesCoverageEvidenceSlices(t *testing.T) {
+	records := []Record{{
+		SourceID:                 "aws",
+		DimensionID:              "s3_bucket",
+		State:                    StateHealthy,
+		KnownUnsupportedFields:   []string{"legacy_acl"},
+		Notes:                    []string{"note"},
+		EvidenceTypes:            []string{"network_exposure"},
+		ControlDomains:           []string{"network_security"},
+		ControlRefs:              []sourcecdk.CoverageControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}},
+		SupportedRuntimeFamilies: []string{"s3_bucket"},
+	}}
+
+	report := BuildReport(records, Options{}, time.Now())
+	report.Records[0].KnownUnsupportedFields[0] = "mutated"
+	report.Records[0].Notes[0] = "mutated"
+	report.Records[0].EvidenceTypes[0] = "mutated"
+	report.Records[0].ControlDomains[0] = "mutated"
+	report.Records[0].ControlRefs[0].ControlID = "mutated"
+	report.Records[0].SupportedRuntimeFamilies[0] = "mutated"
+
+	if records[0].KnownUnsupportedFields[0] != "legacy_acl" ||
+		records[0].Notes[0] != "note" ||
+		records[0].EvidenceTypes[0] != "network_exposure" ||
+		records[0].ControlDomains[0] != "network_security" ||
+		records[0].ControlRefs[0].ControlID != "CC6.6" ||
+		records[0].SupportedRuntimeFamilies[0] != "s3_bucket" {
+		t.Fatalf("BuildReport() did not isolate record slices: %#v", records[0])
+	}
+}
+
 func TestGateForTotalsUsesBoundedReleaseGateReasons(t *testing.T) {
 	cases := []struct {
 		name   string

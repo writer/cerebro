@@ -24,6 +24,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/connectordiagnostics"
 	"github.com/writer/cerebro/internal/connectorpreflight"
+	"github.com/writer/cerebro/internal/connectorpreview"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -341,16 +342,7 @@ type connectorRegionGuidanceView struct {
 	Description         string   `json:"description,omitempty"`
 }
 
-type connectorScopeOptionView struct {
-	ID                     string   `json:"id"`
-	Label                  string   `json:"label"`
-	Type                   string   `json:"type"`
-	Families               []string `json:"families,omitempty"`
-	Support                string   `json:"support,omitempty"`
-	HighValue              bool     `json:"high_value,omitempty"`
-	KnownUnsupportedFields []string `json:"known_unsupported_fields,omitempty"`
-	Notes                  []string `json:"notes,omitempty"`
-}
+type connectorScopeOptionView = connectorpreview.ScopeOption
 
 type connectorResourceFamilyView struct {
 	ID                 string   `json:"id"`
@@ -613,7 +605,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 				Status: "available",
 			},
 			connectorCatalogSetupState: connectorCatalogSetupState{
-				ScopeOptions: connectorScopeOptionsFromDefinition(definition),
+				ScopeOptions: connectorpreview.ScopeOptionsFromDefinition(definition),
 			},
 		}
 		if _, err := sourceregistry.DynamicDefinitionSource(definition); err == nil && definition.Validation.Status != connectordefinitions.ValidationBlocked {
@@ -661,7 +653,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 				Status: catalogEntry.Status,
 			},
 			connectorCatalogSetupState: connectorCatalogSetupState{
-				ScopeOptions: connectorScopeOptionsFromDefinition(catalogEntry.Definition),
+				ScopeOptions: connectorpreview.ScopeOptionsFromDefinition(catalogEntry.Definition),
 			},
 		}
 		applyConnectorCatalogMetadata(&entry, catalogEntry)
@@ -1888,7 +1880,7 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 		entry.EmittedKinds = connectorDefinitionEmittedKinds(catalogEntry.Definition)
 	}
 	if len(entry.ScopeOptions) == 0 {
-		entry.ScopeOptions = connectorScopeOptionsFromDefinition(catalogEntry.Definition)
+		entry.ScopeOptions = connectorpreview.ScopeOptionsFromDefinition(catalogEntry.Definition)
 	}
 }
 
@@ -2117,41 +2109,6 @@ func connectorProjectionTemplate(family connectordefinitions.ResourceFamily) str
 	return strings.TrimSpace(family.Projection.Template)
 }
 
-func connectorScopeOptionsFromDefinition(definition connectordefinitions.Definition) []connectorScopeOptionView {
-	options := make([]connectorScopeOptionView, 0, len(definition.ResourceFamilies))
-	for _, family := range definition.ResourceFamilies {
-		for _, dimension := range family.Coverage {
-			if len(dimension.Families) == 0 {
-				continue
-			}
-			if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
-				continue
-			}
-			label := strings.TrimSpace(dimension.Title)
-			if label == "" {
-				label = firstNonEmpty(family.Label, connectorFieldLabel(family.ID))
-			}
-			options = append(options, connectorScopeOptionView{
-				ID:                     dimension.ID,
-				Label:                  label,
-				Type:                   dimension.Type,
-				Families:               append([]string{}, dimension.Families...),
-				Support:                dimension.Support,
-				HighValue:              dimension.HighValue,
-				KnownUnsupportedFields: append([]string{}, dimension.KnownUnsupportedFields...),
-				Notes:                  append([]string{}, dimension.Notes...),
-			})
-		}
-	}
-	sort.Slice(options, func(i, j int) bool {
-		if options[i].HighValue != options[j].HighValue {
-			return options[i].HighValue
-		}
-		return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label)
-	})
-	return options
-}
-
 func (a *App) connectorSourceExists(sourceID string) bool {
 	if a == nil || a.sources == nil {
 		return false
@@ -2165,62 +2122,14 @@ func (a *App) connectorScopeOptions(sourceID string, emittedKinds []string) []co
 	if a != nil && a.sources != nil {
 		if source, ok := a.sources.Get(sourceID); ok {
 			if provider, ok := source.(sourcecdk.CoverageContractProvider); ok {
-				options := connectorScopeOptionsFromCoverage(provider.CoverageContract())
+				options := connectorpreview.ScopeOptionsFromCoverage(provider.CoverageContract())
 				if len(options) > 0 {
 					return options
 				}
 			}
 		}
 	}
-	return connectorScopeOptionsFromKinds(emittedKinds)
-}
-
-func connectorScopeOptionsFromCoverage(contract sourcecdk.CoverageContract) []connectorScopeOptionView {
-	options := make([]connectorScopeOptionView, 0, len(contract.Dimensions))
-	for _, dimension := range contract.Dimensions {
-		if len(dimension.Families) == 0 {
-			continue
-		}
-		if dimension.Support == sourcecdk.CoverageSupportUnsupported || dimension.Support == sourcecdk.CoverageSupportPlanned {
-			continue
-		}
-		options = append(options, connectorScopeOptionView{
-			ID:                     dimension.ID,
-			Label:                  dimension.Title,
-			Type:                   dimension.Type,
-			Families:               append([]string{}, dimension.Families...),
-			Support:                dimension.Support,
-			HighValue:              dimension.HighValue,
-			KnownUnsupportedFields: append([]string{}, dimension.KnownUnsupportedFields...),
-			Notes:                  append([]string{}, dimension.Notes...),
-		})
-	}
-	sort.Slice(options, func(i, j int) bool {
-		if options[i].HighValue != options[j].HighValue {
-			return options[i].HighValue
-		}
-		return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label)
-	})
-	return options
-}
-
-func connectorScopeOptionsFromKinds(kinds []string) []connectorScopeOptionView {
-	options := make([]connectorScopeOptionView, 0, len(kinds))
-	for _, kind := range kinds {
-		kind = strings.TrimSpace(kind)
-		if kind == "" {
-			continue
-		}
-		options = append(options, connectorScopeOptionView{
-			ID:       kind,
-			Label:    connectorFieldLabel(strings.ReplaceAll(kind, ".", "_")),
-			Type:     "emitted_kind",
-			Families: []string{kind},
-			Support:  sourcecdk.CoverageSupportSupported,
-		})
-	}
-	sort.Slice(options, func(i, j int) bool { return strings.ToLower(options[i].Label) < strings.ToLower(options[j].Label) })
-	return options
+	return connectorpreview.ScopeOptionsFromKinds(emittedKinds)
 }
 
 func connectorScopePolicy(policy resourcescope.Policy) (resourcescope.Policy, error) {

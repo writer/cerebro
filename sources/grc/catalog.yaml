@@ -103,24 +103,32 @@ coverage_contract:
       families: [framework]
       support: supported
       high_value: true
+      evidence_types: [control_catalog]
+      control_domains: [compliance_operations]
     - id: controls
       type: entity_family
       title: GRC controls
       families: [control]
       support: supported
       high_value: true
+      evidence_types: [control_catalog]
+      control_domains: [compliance_operations]
     - id: control_tests
       type: lifecycle_state
       title: Control test status
       families: [control_test]
       support: supported
       high_value: true
+      evidence_types: [control_assessment]
+      control_domains: [compliance_operations]
     - id: policies
       type: entity_family
       title: Policies and documents
       families: [policy, document]
       support: supported
       high_value: true
+      evidence_types: [policy_document]
+      control_domains: [compliance_operations]
     - id: contracts
       type: entity_family
       title: Third-party contracts and obligations
@@ -163,18 +171,24 @@ coverage_contract:
       families: [vendor]
       support: supported
       high_value: true
+      evidence_types: [third_party_risk]
+      control_domains: [vendor_risk]
     - id: vulnerabilities
       type: entity_family
       title: Vulnerabilities
       families: [vulnerability]
       support: supported
       high_value: true
+      evidence_types: [vulnerability_management]
+      control_domains: [vulnerability_management]
     - id: vulnerable_assets
       type: relationship
       title: Vulnerability to asset relationships
       families: [vulnerable_asset]
       support: supported
       high_value: true
+      evidence_types: [relationship_evidence, vulnerability_management]
+      control_domains: [vulnerability_management]
     - id: risk_scenarios
       type: entity_family
       title: Risk scenarios

@@ -867,6 +867,8 @@ func renderCatalog(request normalizedRequest) string {
 		fmt.Fprintf(&b, "      families: [%s]\n", family.Name)
 		fmt.Fprintf(&b, "      support: partial\n")
 		fmt.Fprintf(&b, "      high_value: true\n")
+		fmt.Fprintf(&b, "      evidence_types: [source_snapshot]\n")
+		fmt.Fprintf(&b, "      control_domains: [asset_inventory]\n")
 		fmt.Fprintf(&b, "      notes:\n")
 		fmt.Fprintf(&b, "        - Generated Source Runtime SDK mapping requires provider field review before certification.\n")
 	}
@@ -874,6 +876,8 @@ func renderCatalog(request normalizedRequest) string {
 	fmt.Fprintf(&b, "      type: incremental_sync\n")
 	fmt.Fprintf(&b, "      title: Incremental cursor sync\n")
 	fmt.Fprintf(&b, "      support: planned\n")
+	fmt.Fprintf(&b, "      evidence_types: [source_sync_status]\n")
+	fmt.Fprintf(&b, "      control_domains: [source_operations]\n")
 	fmt.Fprintf(&b, "event_contracts:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - kind: %s\n", family.EventKind)

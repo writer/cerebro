@@ -572,8 +572,14 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 				Fields:   map[string]string{"entity_id": "$.id"},
 			},
 			Coverage: []CoverageDimensionSpec{{
-				Type:    "entity_family",
-				Support: "supported",
+				Type:           "entity_family",
+				Support:        "supported",
+				EvidenceTypes:  []string{"identity_configuration"},
+				ControlDomains: []string{"identity_access"},
+				ControlRefs: []CoverageControlRefSpec{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.1",
+				}},
 			}},
 		}},
 	})
@@ -588,6 +594,16 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 	}
 	if got := definition.ResourceFamilies[0].Coverage[0].ID; got != "users_entity_family" {
 		t.Fatalf("coverage id = %q, want users_entity_family", got)
+	}
+	coverage := definition.ResourceFamilies[0].Coverage[0]
+	if len(coverage.EvidenceTypes) != 1 || coverage.EvidenceTypes[0] != "identity_configuration" {
+		t.Fatalf("evidence types = %#v, want identity_configuration", coverage.EvidenceTypes)
+	}
+	if len(coverage.ControlDomains) != 1 || coverage.ControlDomains[0] != "identity_access" {
+		t.Fatalf("control domains = %#v, want identity_access", coverage.ControlDomains)
+	}
+	if len(coverage.ControlRefs) != 1 || coverage.ControlRefs[0].FrameworkName != "SOC 2" || coverage.ControlRefs[0].ControlID != "CC6.1" {
+		t.Fatalf("control refs = %#v, want SOC 2 CC6.1", coverage.ControlRefs)
 	}
 }
 
