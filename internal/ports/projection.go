@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
-
-const cerebroURNPrefix = "urn:cerebro:"
 
 // ProjectedEntity is the normalized current-state and graph entity shape.
 type ProjectedEntity struct {
@@ -72,17 +71,15 @@ func ValidateProjectedLinkTenantScope(link *ProjectedLink) error {
 func validateProjectedCerebroURNScope(field string, rawURN string, rawTenantID string) error {
 	urn := strings.TrimSpace(rawURN)
 	tenantID := strings.TrimSpace(rawTenantID)
-	if urn == "" || tenantID == "" || !strings.HasPrefix(urn, cerebroURNPrefix) {
+	if urn == "" || tenantID == "" || !strings.HasPrefix(urn, cerebrourn.Prefix) {
 		return nil
 	}
-	remainder := strings.TrimPrefix(urn, cerebroURNPrefix)
-	urnTenantID, _, ok := strings.Cut(remainder, ":")
-	urnTenantID = strings.TrimSpace(urnTenantID)
-	if !ok || urnTenantID == "" {
-		return fmt.Errorf("%s %q is missing a Cerebro tenant scope", field, urn)
+	parsed, err := cerebrourn.Parse(urn)
+	if err != nil {
+		return fmt.Errorf("%s %q is invalid: %w", field, urn, err)
 	}
-	if urnTenantID != tenantID {
-		return fmt.Errorf("%s %q is scoped to tenant %q, not projection tenant %q", field, urn, urnTenantID, tenantID)
+	if parsed.TenantID != tenantID {
+		return fmt.Errorf("%s %q is scoped to tenant %q, not projection tenant %q", field, urn, parsed.TenantID, tenantID)
 	}
 	return nil
 }

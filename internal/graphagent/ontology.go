@@ -3,6 +3,8 @@ package graphagent
 import (
 	"fmt"
 	"strings"
+
+	"github.com/writer/cerebro/internal/fabriccontract"
 )
 
 type OntologyEntity struct {
@@ -33,35 +35,35 @@ var canonicalGraphOntology = GraphOntology{
 	Properties: []string{"tenant_id", "urn", "source_id", "runtime_id", "entity_type", "label", "attributes_json"},
 	Entities: []OntologyEntity{
 		{
-			Type:        "finding",
+			Type:        fabriccontract.EntityTypeFinding,
 			Description: "Workflow finding anchors. Active findings are linked from affected resources via relation 'has_finding'.",
 			Aliases:     []string{"Finding", "FINDING", "finding", "alert", "issue"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:finding:finding-1"},
 		},
 		{
-			Type:        "github.code.repository",
+			Type:        fabriccontract.EntityTypeGithubCodeRepository,
 			Description: "GitHub code repository resources emitted by code-repository events; repository metadata is stored in attributes_json.",
 			Aliases:     []string{"repo", "repository", "github repo", "code repository"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:github_code_repository:1"},
 		},
 		{
-			Type:        "identity.email",
+			Type:        fabriccontract.EntityTypeIdentityEmail,
 			Description: "Canonical email identity anchors linked from concrete principals through represents_identity.",
 			Aliases:     []string{"email identity", "canonical email", "identity email", "principal email"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
 		},
 		{
-			Type:        "identity.login",
+			Type:        fabriccontract.EntityTypeIdentityLogin,
 			Description: "Canonical login identity anchors linked from concrete principals through represents_identity.",
 			Aliases:     []string{"login identity", "canonical login", "identity login", "username identity"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:identity:login:alice"},
 		},
 		{
-			Type:        "source",
+			Type:        fabriccontract.EntityTypeSource,
 			Description: "Projected source/integration nodes used for connector health. Freshness and health metadata are stored in attributes_json.",
 			Aliases:     []string{"source", "source runtime", "runtime", "connector"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
@@ -70,28 +72,28 @@ var canonicalGraphOntology = GraphOntology{
 	},
 	Relations: []OntologyRelation{
 		{
-			Relation:    "has_finding",
+			Relation:    fabriccontract.RelationHasFinding,
 			Description: "Active edge from an affected resource Entity to a finding Entity.",
 			Aliases:     []string{"HAS_FINDING", "finding", "has finding"},
 			FromTypes:   []string{"*"},
 			ToTypes:     []string{"finding"},
 		},
 		{
-			Relation:    "belongs_to",
+			Relation:    fabriccontract.RelationBelongsTo,
 			Description: "Ownership/scope edge, such as repository to org, finding to scan, or runtime child to parent.",
 			Aliases:     []string{"BELONGS_TO", "BELONGS_TO_SOURCE", "belongs to source", "source"},
 			FromTypes:   []string{"*"},
 			ToTypes:     []string{"*"},
 		},
 		{
-			Relation:    "has_identifier",
+			Relation:    fabriccontract.RelationHasIdentifier,
 			Description: "Edge from a concrete identity/resource node to a normalized identifier node.",
 			Aliases:     []string{"HAS_IDENTIFIER", "identity_email", "email", "identifier"},
 			FromTypes:   []string{"*"},
 			ToTypes:     []string{"identifier"},
 		},
 		{
-			Relation:    "represents_identity",
+			Relation:    fabriccontract.RelationRepresentsIdentity,
 			Description: "Edge between concrete principals, identifier anchors, and canonical identity.email/identity.login nodes.",
 			Aliases:     []string{"REPRESENTS_IDENTITY", "represents"},
 			FromTypes:   []string{"*"},

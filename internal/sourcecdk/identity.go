@@ -1,20 +1,15 @@
 package sourcecdk
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
+
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 // StableExternalID returns a deterministic, delimiter-safe key for provider IDs.
 func StableExternalID(value string, emptyFallback string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
-		return emptyFallback
-	}
-	sum := sha256.Sum256([]byte(normalized))
-	return "id-" + hex.EncodeToString(sum[:16])
+	return cerebrourn.StableExternalID(value, emptyFallback)
 }
 
 // URNFor builds and validates a tenant-scoped source entity URN.
@@ -31,7 +26,11 @@ func URNFor(tenant, kind, providerID string) (URN, error) {
 	if providerID == "" {
 		return "", fmt.Errorf("provider id is required")
 	}
-	return ParseURN("urn:cerebro:" + tenant + ":" + kind + ":" + providerID)
+	raw, err := cerebrourn.Mint(tenant, kind, providerID)
+	if err != nil {
+		return "", err
+	}
+	return URN(raw), nil
 }
 
 // URNForEscaped builds a URN after hashing provider-controlled parts that may

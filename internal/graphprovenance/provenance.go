@@ -9,6 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/projectionmeta"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 type Request struct {
@@ -76,11 +77,11 @@ LIMIT 1`,
 }
 
 func TenantIDFromURN(urn string) string {
-	parts := strings.SplitN(strings.TrimSpace(urn), ":", 5)
-	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+	parsed, err := cerebrourn.Parse(urn)
+	if err != nil || len(parsed.Parts) == 0 {
 		return ""
 	}
-	return strings.TrimSpace(parts[2])
+	return parsed.TenantID
 }
 
 func fromRow(row ports.CypherRow) (Response, error) {

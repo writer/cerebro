@@ -13,6 +13,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/evidencepackets"
 	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
@@ -227,6 +228,46 @@ func TestGRCControlEvidencePacketEndpointBuildsProfilePosture(t *testing.T) {
 	}
 	if !payload.Metadata.Scope.Exclusions.AppliedToIncrementalFetch || !payload.Metadata.Scope.IncrementalFetch.PolicyAppliedBeforeRead {
 		t.Fatalf("scope incremental metadata = %#v, want exclusions carried before incremental fetch", payload.Metadata.Scope)
+	}
+}
+
+func TestGRCEvidencePacketsEndpointBuildsPackagedAuditRecords(t *testing.T) {
+	server := newGRCControlPacketTestServer(t)
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/evidence-packets?tenant_id=writer&profile=soc2-security-core&framework=SOC%202")
+	if err != nil {
+		t.Fatalf("GET /grc/evidence-packets error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/evidence-packets status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload evidencepackets.Response
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode evidence packets: %v", err)
+	}
+	if payload.Version != evidencepackets.ContractVersion {
+		t.Fatalf("version = %q, want %q", payload.Version, evidencepackets.ContractVersion)
+	}
+	if payload.Program.ControlCount == 0 || payload.Program.RequestCount == 0 {
+		t.Fatalf("program summary = %#v, want controls and requests", payload.Program)
+	}
+	if len(payload.Frameworks) == 0 || len(payload.Controls) == 0 || len(payload.Requests) == 0 {
+		t.Fatalf("packaged record counts frameworks=%d controls=%d requests=%d", len(payload.Frameworks), len(payload.Controls), len(payload.Requests))
+	}
+	if payload.Snapshot.Hash == "" || payload.Export.Redaction == "" {
+		t.Fatalf("snapshot/export = %#v %#v, want immutable hash and redaction metadata", payload.Snapshot, payload.Export)
+	}
+	var foundReview bool
+	for _, review := range payload.Reviews {
+		if review.SubjectID != "" && review.Status != "" {
+			foundReview = true
+			break
+		}
+	}
+	if !foundReview {
+		t.Fatalf("reviews = %#v, want packet or request review records", payload.Reviews)
 	}
 }
 
