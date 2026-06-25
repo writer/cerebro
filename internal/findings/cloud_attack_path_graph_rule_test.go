@@ -141,6 +141,36 @@ func TestCloudPublicExposurePrivilegedPrincipalSignalsPerAccountCapTruncation(t 
 	}
 }
 
+func TestCloudPublicExposurePrivilegedPrincipalScopedStaleResolution(t *testing.T) {
+	// The rule groups stale resolution by cloud account so the per-account cap only
+	// pins the accounts it actually truncated. The scope attribute must match the
+	// finding attribute buildFinding writes ("cloud_account_urn"), and only capped
+	// rows that carry an account become incomplete scopes.
+	resolver := newCloudPublicExposurePrivilegedPrincipalRule().(ScopedStaleResolver)
+	if got := resolver.StaleResolutionScopeAttribute(); got != "cloud_account_urn" {
+		t.Fatalf("StaleResolutionScopeAttribute() = %q, want cloud_account_urn", got)
+	}
+	incomplete := resolver.IncompleteStaleResolutionScopes([]ports.CypherRow{
+		{Values: map[string]any{"account_urn": "acct-capped", graphRuleTruncationColumn: true}},
+		{Values: map[string]any{"account_urn": "acct-capped", graphRuleTruncationColumn: true}},
+		{Values: map[string]any{"account_urn": "acct-string-capped", graphRuleTruncationColumn: "true"}},
+		{Values: map[string]any{"account_urn": "acct-complete", graphRuleTruncationColumn: false}},
+		{Values: map[string]any{graphRuleTruncationColumn: true}}, // capped row without an account: ignored
+	})
+	want := map[string]struct{}{"acct-capped": {}, "acct-string-capped": {}}
+	if len(incomplete) != len(want) {
+		t.Fatalf("IncompleteStaleResolutionScopes() = %v, want %v", incomplete, want)
+	}
+	for account := range want {
+		if _, ok := incomplete[account]; !ok {
+			t.Fatalf("IncompleteStaleResolutionScopes() missing capped account %q: %v", account, incomplete)
+		}
+	}
+	if _, ok := incomplete["acct-complete"]; ok {
+		t.Fatalf("IncompleteStaleResolutionScopes() included fully-represented account acct-complete: %v", incomplete)
+	}
+}
+
 func TestCloudCurrentPublicExposureGraphRuleRequiresStampedRecentReachability(t *testing.T) {
 	rule := newCloudPublicResourceExposureGraphRule().(GraphRule)
 	query := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-resource-exposure", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "resource_exposure"}})

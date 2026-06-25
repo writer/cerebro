@@ -28,3 +28,25 @@ func asGraphRule(rule Rule) (GraphRule, bool) {
 	graphRule, ok := rule.(GraphRule)
 	return graphRule, ok
 }
+
+// ScopedStaleResolver is an optional GraphRule capability for rules whose query
+// applies an internal per-scope cap (for example a per-account cap) that can drop
+// matching rows for some scopes while leaving others fully represented. It lets the
+// service auto-resolve stale findings for the fully-represented scopes instead of
+// skipping stale-finding resolution for the whole (tenant, rule) just because the
+// internal cap fired on one scope.
+//
+// It is only consulted when the global row limit was NOT hit. A row-limit truncation
+// can drop entire scopes past the cutoff, so a scope's absence in that case is not
+// evidence that it stopped matching; the service keeps the conservative global skip.
+type ScopedStaleResolver interface {
+	GraphRule
+	// StaleResolutionScopeAttribute is the finding attribute that carries the scope
+	// key the resolver groups on (for example "cloud_account_urn"). Open findings
+	// whose attribute is missing are treated as out-of-scope and left untouched.
+	StaleResolutionScopeAttribute() string
+	// IncompleteStaleResolutionScopes returns the set of scope keys whose rows were
+	// capped this evaluation, derived from the evaluated rows. A scope is incomplete
+	// if any of its rows was dropped by the internal cap.
+	IncompleteStaleResolutionScopes(rows []ports.CypherRow) map[string]struct{}
+}

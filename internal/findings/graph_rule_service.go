@@ -140,7 +140,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	queryRequest := rule.QueryFor(runtime)
 	if strings.TrimSpace(queryRequest.Query) == "" {
 		if retiredGraphRule(rule) {
-			if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), nil); err != nil {
+			if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), nil, nil); err != nil {
 				evaluationErr := fmt.Errorf("resolve retired graph findings for rule %q: %w", spec.GetId(), err)
 				return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 			}
@@ -162,7 +162,8 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result.RowsRead = boundedUint32(len(rows))
-	result.Truncated = cypherRowsTruncated(queryRequest, len(rows)) || cypherRowsSignalTruncated(rows)
+	rowLimitTruncated := cypherRowsTruncated(queryRequest, len(rows))
+	result.Truncated = rowLimitTruncated || cypherRowsSignalTruncated(rows)
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {
 		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
@@ -215,8 +216,25 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			}
 		}
 	}
-	if !result.Truncated {
-		if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), emittedFindingIDs); err != nil {
+	resolveStale := !result.Truncated
+	var scopeFilter *staleScopeFilter
+	if result.Truncated && !rowLimitTruncated {
+		// Only an internal per-scope cap fired (not the global row limit). Scopes
+		// returned in full can still auto-resolve; scopes that were capped this pass
+		// must stay open because a still-matching row may have been dropped. The
+		// row-limit case keeps the conservative global skip above.
+		if scoped, ok := rule.(ScopedStaleResolver); ok {
+			if attribute := strings.TrimSpace(scoped.StaleResolutionScopeAttribute()); attribute != "" {
+				scopeFilter = &staleScopeFilter{
+					attribute:  attribute,
+					incomplete: scoped.IncompleteStaleResolutionScopes(rows),
+				}
+				resolveStale = true
+			}
+		}
+	}
+	if resolveStale {
+		if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), emittedFindingIDs, scopeFilter); err != nil {
 			evaluationErr := fmt.Errorf("resolve stale graph findings for rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
@@ -335,6 +353,34 @@ func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []s
 	return graphRules, nil
 }
 
+// staleScopeFilter narrows stale-finding auto-resolution to scopes that were fully
+// represented during a per-scope-capped evaluation. A nil filter resolves every
+// non-emitted open finding, which is the default for rules without an internal cap
+// and for the row-limit-clean path.
+type staleScopeFilter struct {
+	attribute  string
+	incomplete map[string]struct{}
+}
+
+// shouldResolve reports whether a non-emitted open finding may be auto-resolved.
+// With no filter every candidate is resolvable. With a filter, a finding resolves
+// only when it carries a scope key that was NOT capped this pass; findings without
+// a scope key stay open because we cannot prove their scope was fully represented.
+func (f *staleScopeFilter) shouldResolve(finding *ports.FindingRecord) bool {
+	if f == nil {
+		return true
+	}
+	if finding == nil {
+		return false
+	}
+	key := strings.TrimSpace(finding.Attributes[f.attribute])
+	if key == "" {
+		return false
+	}
+	_, capped := f.incomplete[key]
+	return !capped
+}
+
 // resolveStaleGraphFindings closes any open finding emitted previously by one graph rule whose
 // source rows are no longer present in the latest evaluation. Without this, dormant findings
 // would never auto-resolve when an offending principal is finally deprovisioned in both
@@ -346,7 +392,7 @@ func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []s
 // rule would report. Scoping by runtime here would close a finding that runtime A emitted as
 // soon as runtime B syncs and finishes its own evaluation (because runtime B's emit set
 // doesn't include runtime A's finding under the runtime-keyed query).
-func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string, _ string, ruleID string, emittedFindingIDs map[string]struct{}) error {
+func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string, _ string, ruleID string, emittedFindingIDs map[string]struct{}, scopeFilter *staleScopeFilter) error {
 	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
 		TenantID: strings.TrimSpace(tenantID),
 		RuleID:   strings.TrimSpace(ruleID),
@@ -360,6 +406,9 @@ func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string
 			continue
 		}
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
+			continue
+		}
+		if !scopeFilter.shouldResolve(finding) {
 			continue
 		}
 		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
