@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -604,6 +605,18 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	graph, err := graphStore.GetEntityNeighborhood(r.Context(), entityURN, int(limit))
+	if errors.Is(err, ports.ErrGraphEntityNotFound) {
+		for _, candidateURN := range grcEntityImpactFallbackURNs(entityURN) {
+			graph, err = graphStore.GetEntityNeighborhood(r.Context(), candidateURN, int(limit))
+			if err == nil {
+				entityURN = candidateURN
+				break
+			}
+			if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+				break
+			}
+		}
+	}
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -634,6 +647,42 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		Findings:    grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence)),
 		GeneratedAt: time.Now().UTC(),
 	})
+}
+
+func grcEntityImpactFallbackURNs(entityURN string) []string {
+	parsed, err := cerebrourn.Parse(entityURN)
+	if err != nil {
+		return nil
+	}
+	var candidates []string
+	addCandidate := func(kind string, parts ...string) {
+		candidate, err := cerebrourn.Mint(parsed.TenantID, kind, parts...)
+		if err != nil || candidate == "" || candidate == entityURN {
+			return
+		}
+		for _, existing := range candidates {
+			if existing == candidate {
+				return
+			}
+		}
+		candidates = append(candidates, candidate)
+	}
+	switch parsed.Kind {
+	case "github_repo", "github_repository", "repo":
+		addCandidate("github_code_repository", parsed.Parts...)
+		if len(parsed.Parts) > 1 {
+			addCandidate("github_code_repository", strings.Join(parsed.Parts, "/"))
+		}
+		if len(parsed.Parts) == 1 && !strings.Contains(parsed.Parts[0], "/") {
+			login := parsed.Parts[0]
+			addCandidate("github_user", login)
+			addCandidate("identity", "login", login)
+			addCandidate("identifier", "login", login)
+			addCandidate("github_resource", "team", login)
+			addCandidate("github_resource", "org", login)
+		}
+	}
+	return candidates
 }
 
 func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
