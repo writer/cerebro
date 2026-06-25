@@ -279,6 +279,42 @@ func TestProjectGRCEventLogDoesNotSetUserIDForNonUserActor(t *testing.T) {
 	}
 }
 
+func TestProjectGRCEventLogDefaultsMissingActorTypeToResource(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-event-log-3",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.event_log",
+		Attributes: map[string]string{
+			"provider":     "grc",
+			"event_log_id": "event-log-3",
+			"action":       "resource.updated",
+			"actor_id":     "automation",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	eventURN := "urn:cerebro:writer:grc_audit_event:grc:event-log-3"
+	actorURN := "urn:cerebro:writer:grc_audit_actor:grc:resource:automation"
+	entity := state.entities[actorURN]
+	if entity == nil || entity.EntityType != "audit.actor" {
+		t.Fatalf("default actor entity missing: %#v", entity)
+	}
+	if got := entity.Attributes["actor_type"]; got != "resource" {
+		t.Fatalf("default actor_type = %q, want resource", got)
+	}
+	assertProjectedLink(t, state, actorURN, relationActedOn, eventURN)
+	link := state.links[actorURN+"|"+relationActedOn+"|"+eventURN]
+	if got := link.Attributes["actor_type"]; got != "resource" {
+		t.Fatalf("default actor link actor_type = %q, want resource", got)
+	}
+}
+
 func TestProjectGRCGroupAndVendorRiskAttribute(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

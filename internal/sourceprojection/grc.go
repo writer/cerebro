@@ -326,7 +326,7 @@ func grcEventLogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, eventURN, relationActedOn, map[string]string{
 			"action":     firstAttribute(attrs, "action"),
 			"actor_id":   firstAttribute(attrs, "actor_id"),
-			"actor_type": firstAttribute(attrs, "actor_type"),
+			"actor_type": grcEventActorType(attrs),
 			"event_id":   event.GetId(),
 		}))
 	}
@@ -1632,14 +1632,15 @@ func grcEventActorURN(tenantID string, provider string, attrs map[string]string)
 	if actorID == "" {
 		return ""
 	}
-	if strings.EqualFold(firstAttribute(attrs, "actor_type"), "user") {
+	actorType := grcEventActorType(attrs)
+	if strings.EqualFold(actorType, "user") {
 		return grcUserURN(tenantID, provider, actorID)
 	}
-	return projectionURN(tenantID, "grc_audit_actor", provider, firstAttribute(attrs, "actor_type", "resource"), actorID)
+	return projectionURN(tenantID, "grc_audit_actor", provider, actorType, actorID)
 }
 
 func grcEventActorEntity(tenantID string, sourceID string, actorURN string, provider string, attrs map[string]string) *ports.ProjectedEntity {
-	actorType := firstAttribute(attrs, "actor_type", "resource")
+	actorType := grcEventActorType(attrs)
 	actorID := firstAttribute(attrs, "actor_id")
 	entityType := "audit.actor"
 	if strings.EqualFold(actorType, "user") {
@@ -1661,6 +1662,10 @@ func grcEventActorEntity(tenantID string, sourceID string, actorURN string, prov
 		Label:      eventActorLabel(actorType, actorID),
 		Attributes: grcAttributes(nil, attributes),
 	}
+}
+
+func grcEventActorType(attrs map[string]string) string {
+	return firstNonEmpty(firstAttribute(attrs, "actor_type"), "resource")
 }
 
 func eventActorLabel(actorType string, actorID string) string {
