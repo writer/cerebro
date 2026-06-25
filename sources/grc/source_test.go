@@ -1090,3 +1090,38 @@ func writeJSON(t *testing.T, w http.ResponseWriter, payload any) {
 		t.Fatalf("encode response: %v", err)
 	}
 }
+
+func TestOccurredAtForVulnerabilityRemediationIgnoresDeadlineOnlyFields(t *testing.T) {
+	before := time.Now().UTC()
+	occurredAt := occurredAtFor(familyVulnerabilityRemediation, map[string]any{
+		"slaDeadlineDate": "2099-01-01T00:00:00Z",
+	})
+	after := time.Now().UTC()
+
+	if occurredAt.Before(before.Add(-time.Second)) || occurredAt.After(after.Add(time.Second)) {
+		t.Fatalf("occurredAt = %v, want current sync time in [%v, %v]", occurredAt, before, after)
+	}
+}
+
+func TestOccurredAtForVulnerabilityRemediationPrefersObservedStateDates(t *testing.T) {
+	occurredAt := occurredAtFor(familyVulnerabilityRemediation, map[string]any{
+		"detectedDate":     "2026-05-01T00:00:00Z",
+		"slaDeadlineDate":  "2099-01-01T00:00:00Z",
+		"remediationState": "OPEN",
+	})
+	want := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	if !occurredAt.Equal(want) {
+		t.Fatalf("occurredAt = %v, want detected date %v", occurredAt, want)
+	}
+
+	remediatedAt := occurredAtFor(familyVulnerabilityRemediation, map[string]any{
+		"detectedDate":     "2026-05-01T00:00:00Z",
+		"remediationDate":  "2026-05-10T00:00:00Z",
+		"slaDeadlineDate":  "2099-01-01T00:00:00Z",
+		"remediationState": "REMEDIATED",
+	})
+	want = time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	if !remediatedAt.Equal(want) {
+		t.Fatalf("remediated occurredAt = %v, want remediation date %v", remediatedAt, want)
+	}
+}

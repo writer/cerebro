@@ -423,7 +423,7 @@ func timestampKeys(family string) []string {
 	case familyVulnerability:
 		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
 	case familyVulnerabilityRemediation:
-		return []string{"remediationDate", "slaDeadlineDate", "detectedDate"}
+		return []string{"remediationDate", "detectedDate"}
 	case familyVulnerableAsset:
 		return []string{"lastDetectedDate", "lastSeenDate", "updatedAt"}
 	case familyRiskScenario:
