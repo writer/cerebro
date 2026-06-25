@@ -51,6 +51,15 @@ const (
 	familyIntegration     = "integration"
 )
 
+const (
+	familyContract                 = "contract"
+	familyDiscoveredVendor         = "discovered_vendor"
+	familyEventLog                 = "event_log"
+	familyGroup                    = "group"
+	familyVendorRiskAttribute      = "vendor_risk_attribute"
+	familyVulnerabilityRemediation = "vulnerability_remediation"
+)
+
 // Source is the provider-neutral GRC source. Provider-specific APIs are kept
 // behind drivers; emitted event kinds stay canonical grc.*.
 type Source struct {
@@ -134,8 +143,14 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		s.family(familyControlTest, "/v1/tests"),
 		s.family(familyPolicy, "/v1/policies"),
 		s.family(familyDocument, "/v1/documents"),
+		s.family(familyContract, "/v1/contracts"),
+		s.family(familyDiscoveredVendor, "/v1/discovered-vendors"),
+		s.family(familyEventLog, "/v1/event-logs"),
+		s.family(familyGroup, "/v1/groups"),
+		s.family(familyVendorRiskAttribute, "/v1/vendor-risk-attributes"),
 		s.family(familyVendor, "/v1/vendors"),
 		s.family(familyVulnerability, "/v1/vulnerabilities"),
+		s.family(familyVulnerabilityRemediation, "/v1/vulnerability-remediations"),
 		s.family(familyVulnerableAsset, "/v1/vulnerable-assets"),
 		s.family(familyRiskScenario, "/v1/risk-scenarios"),
 		s.family(familyPerson, "/v1/people"),
@@ -395,10 +410,20 @@ func timestampKeys(family string) []string {
 		return []string{"approvedAtDate"}
 	case familyDocument:
 		return []string{"uploadStatusDate"}
+	case familyContract:
+		return []string{"executedDate", "creationDate"}
+	case familyDiscoveredVendor:
+		return []string{"discoveredDate", "ignored.ignoredAtDate", "rejected.rejectedAtDate"}
+	case familyEventLog:
+		return []string{"date"}
+	case familyGroup:
+		return []string{"creationDate"}
 	case familyVendor:
 		return []string{"lastSecurityReviewCompletionDate"}
 	case familyVulnerability:
 		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
+	case familyVulnerabilityRemediation:
+		return []string{"remediationDate", "slaDeadlineDate", "detectedDate"}
 	case familyVulnerableAsset:
 		return []string{"lastDetectedDate", "lastSeenDate", "updatedAt"}
 	case familyRiskScenario:

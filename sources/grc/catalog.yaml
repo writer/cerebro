@@ -13,8 +13,13 @@ emitted_kinds:
   - grc.authorization_package
   - grc.poam_item
   - grc.training_attestation
+  - grc.discovered_vendor
+  - grc.event_log
+  - grc.group
+  - grc.vendor_risk_attribute
   - grc.vendor
   - grc.vulnerability
+  - grc.vulnerability_remediation
   - grc.vulnerable_asset
   - grc.risk_scenario
   - grc.person
@@ -65,12 +70,32 @@ event_contracts:
     schema_ref: grc/training_attestation/v1
     required_attributes:
       - family
+  - kind: grc.discovered_vendor
+    schema_ref: grc/discovered_vendor/v1
+    required_attributes:
+      - family
+  - kind: grc.event_log
+    schema_ref: grc/event_log/v1
+    required_attributes:
+      - family
+  - kind: grc.group
+    schema_ref: grc/group/v1
+    required_attributes:
+      - family
+  - kind: grc.vendor_risk_attribute
+    schema_ref: grc/vendor_risk_attribute/v1
+    required_attributes:
+      - family
   - kind: grc.vendor
     schema_ref: grc/vendor/v1
     required_attributes:
       - family
   - kind: grc.vulnerability
     schema_ref: grc/vulnerability/v1
+    required_attributes:
+      - family
+  - kind: grc.vulnerability_remediation
+    schema_ref: grc/vulnerability_remediation/v1
     required_attributes:
       - family
   - kind: grc.vulnerable_asset
@@ -177,6 +202,38 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+    - id: discovered_vendors
+      type: lifecycle_state
+      title: Discovered vendors
+      families: [discovered_vendor]
+      support: supported
+      high_value: true
+      evidence_types: [third_party_risk]
+      control_domains: [vendor_risk]
+    - id: audit_event_logs
+      type: lifecycle_state
+      title: GRC audit event logs
+      families: [event_log]
+      support: supported
+      high_value: true
+      evidence_types: [audit_event]
+      control_domains: [security_operations]
+    - id: groups
+      type: entity_family
+      title: GRC groups
+      families: [group]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+    - id: vendor_risk_attributes
+      type: entity_family
+      title: Vendor risk attributes
+      families: [vendor_risk_attribute]
+      support: supported
+      high_value: true
+      evidence_types: [third_party_risk]
+      control_domains: [vendor_risk]
     - id: vendors
       type: entity_family
       title: Vendors
@@ -189,6 +246,14 @@ coverage_contract:
       type: entity_family
       title: Vulnerabilities
       families: [vulnerability]
+      support: supported
+      high_value: true
+      evidence_types: [vulnerability_management]
+      control_domains: [vulnerability_management]
+    - id: vulnerability_remediations
+      type: lifecycle_state
+      title: Vulnerability remediation status
+      families: [vulnerability_remediation]
       support: supported
       high_value: true
       evidence_types: [vulnerability_management]
