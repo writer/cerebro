@@ -1027,18 +1027,19 @@ RETURN e.urn, e.entity_type, e.label`, map[string]any{"root_urns": roots})
 		if err := result.Err(); err != nil {
 			return nil, fmt.Errorf("query graph roots: %w", err)
 		}
+		presentRoots := make([]string, 0, len(roots))
 		for _, rootURN := range roots {
-			if accumulators[rootURN] == nil {
-				return nil, fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, rootURN)
+			if accumulators[rootURN] != nil {
+				presentRoots = append(presentRoots, rootURN)
 			}
 		}
-		if limit > 0 {
-			params := map[string]any{"root_urns": roots, "limit": limit}
+		if limit > 0 && len(presentRoots) > 0 {
+			params := map[string]any{"root_urns": presentRoots, "limit": limit}
 			if err := collectBatchedNeighborhoodRows(ctx, tx, outgoingNeighborhoodBatchQuery, params, accumulators); err != nil {
 				return nil, err
 			}
 			incomingRootsByLimit := make(map[int][]string)
-			for _, rootURN := range roots {
+			for _, rootURN := range presentRoots {
 				remaining := accumulators[rootURN].remaining
 				if remaining > 0 {
 					incomingRootsByLimit[remaining] = append(incomingRootsByLimit[remaining], rootURN)
@@ -1056,7 +1057,7 @@ RETURN e.urn, e.entity_type, e.label`, map[string]any{"root_urns": roots})
 				}
 			}
 		}
-		for _, rootURN := range roots {
+		for _, rootURN := range presentRoots {
 			accumulator := accumulators[rootURN]
 			accumulator.neighborhood.Neighbors = neighborhoodNodes(accumulator.neighbors)
 			accumulator.neighborhood.Relations = neighborhoodRelations(accumulator.relations)

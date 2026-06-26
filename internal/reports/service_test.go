@@ -141,6 +141,7 @@ func (s *stubFindingStore) LinkFindingExternalRef(_ context.Context, request por
 type stubGraphStore struct {
 	rootURN       string
 	limit         int
+	calls         []string
 	neighborhoods map[string]*ports.EntityNeighborhood
 }
 
@@ -149,6 +150,7 @@ func (s *stubGraphStore) Ping(context.Context) error { return nil }
 func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
 	s.rootURN = rootURN
 	s.limit = limit
+	s.calls = append(s.calls, rootURN)
 	neighborhood, ok := s.neighborhoods[rootURN]
 	if !ok {
 		return nil, ports.ErrGraphEntityNotFound
@@ -158,6 +160,27 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 
 func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	return nil, nil
+}
+
+type stubBatchGraphStore struct {
+	*stubGraphStore
+	batchCalls [][]string
+	batchLimit int
+}
+
+func (s *stubBatchGraphStore) GetEntityNeighborhoods(_ context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+	roots := append([]string(nil), rootURNs...)
+	s.batchCalls = append(s.batchCalls, roots)
+	s.batchLimit = limit
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(roots))
+	for _, rootURN := range roots {
+		neighborhood, ok := s.neighborhoods[rootURN]
+		if !ok {
+			continue
+		}
+		neighborhoods[rootURN] = cloneNeighborhood(neighborhood)
+	}
+	return neighborhoods, nil
 }
 
 type stubReportStore struct {
@@ -479,6 +502,117 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	}
 }
 
+func TestRunFindingSummaryReportBatchesGraphEvidenceNeighborhoods(t *testing.T) {
+	resourceOne := "urn:cerebro:writer:test_resource:one"
+	resourceTwo := "urn:cerebro:writer:test_resource:two"
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-runtime",
+				RuleID:       "test-rule",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{resourceOne},
+				Attributes: map[string]string{
+					"primary_resource_urn": resourceOne,
+				},
+			},
+			{
+				ID:           "finding-2",
+				TenantID:     "writer",
+				RuntimeID:    "writer-runtime",
+				RuleID:       "test-rule",
+				Severity:     "MEDIUM",
+				Status:       "open",
+				ResourceURNs: []string{resourceTwo},
+				Attributes: map[string]string{
+					"primary_resource_urn": resourceTwo,
+				},
+			},
+		},
+	}
+	graphStore := &stubBatchGraphStore{
+		stubGraphStore: &stubGraphStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+			resourceOne: testNeighborhood(resourceOne),
+			resourceTwo: testNeighborhood(resourceTwo),
+		}},
+	}
+	service := New(findingStore, graphStore, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:      "writer",
+			reportParameterRuntimeIDs:    "writer-runtime",
+			reportParameterGraphLimit:    "4",
+			reportParameterResourceLimit: "2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	graphEvidence, ok := response.GetRun().GetResult().AsMap()["graph_evidence"].([]any)
+	if !ok || len(graphEvidence) != 2 {
+		t.Fatalf("graph_evidence = %#v, want 2 entries", response.GetRun().GetResult().AsMap()["graph_evidence"])
+	}
+	if len(graphStore.batchCalls) != 1 {
+		t.Fatalf("GetEntityNeighborhoods() calls = %#v, want one batch", graphStore.batchCalls)
+	}
+	if got := graphStore.batchCalls[0]; len(got) != 2 || got[0] != resourceOne || got[1] != resourceTwo {
+		t.Fatalf("GetEntityNeighborhoods().roots = %#v, want [%q %q]", got, resourceOne, resourceTwo)
+	}
+	if graphStore.batchLimit != 4 {
+		t.Fatalf("GetEntityNeighborhoods().limit = %d, want 4", graphStore.batchLimit)
+	}
+	if len(graphStore.calls) != 0 {
+		t.Fatalf("GetEntityNeighborhood() calls = %#v, want no individual lookups", graphStore.calls)
+	}
+}
+
+func TestGraphEvidenceUsesBatchPartialResultsForMissingRoots(t *testing.T) {
+	present := "urn:cerebro:writer:test_resource:present"
+	missing := "urn:cerebro:writer:test_resource:missing"
+	graphStore := &stubBatchGraphStore{
+		stubGraphStore: &stubGraphStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+			present: testNeighborhood(present),
+		}},
+	}
+	service := New(nil, graphStore, nil)
+
+	evidence, neighborhoods, err := service.graphEvidence(context.Background(), map[string]int{
+		present: 2,
+		missing: 1,
+	}, 2, 4)
+	if err != nil {
+		t.Fatalf("graphEvidence() error = %v", err)
+	}
+	if len(neighborhoods) != 1 || neighborhoods[present] == nil {
+		t.Fatalf("graphEvidence() neighborhoods = %#v, want only present root", neighborhoods)
+	}
+	if len(evidence) != 2 {
+		t.Fatalf("graphEvidence() evidence = %#v, want 2 entries", evidence)
+	}
+	included, ok := evidence[0].(map[string]any)
+	if !ok || included["resource_urn"] != present || included["status"] != graphEvidenceEntryStatusIncluded {
+		t.Fatalf("graphEvidence()[0] = %#v, want included present root", evidence[0])
+	}
+	notFound, ok := evidence[1].(map[string]any)
+	if !ok || notFound["resource_urn"] != missing || notFound["status"] != graphEvidenceEntryStatusNotFound {
+		t.Fatalf("graphEvidence()[1] = %#v, want missing root", evidence[1])
+	}
+	if len(graphStore.batchCalls) != 1 {
+		t.Fatalf("GetEntityNeighborhoods() calls = %#v, want one batch", graphStore.batchCalls)
+	}
+	if got := graphStore.batchCalls[0]; len(got) != 2 || got[0] != present || got[1] != missing {
+		t.Fatalf("GetEntityNeighborhoods().roots = %#v, want [%q %q]", got, present, missing)
+	}
+	if len(graphStore.calls) != 0 {
+		t.Fatalf("GetEntityNeighborhood() calls = %#v, want no individual lookups", graphStore.calls)
+	}
+}
+
 func TestRunFindingSummaryReportDoesNotPublishMultiRuntimeListAsRuntimeID(t *testing.T) {
 	findingStore := &stubFindingStore{findings: []*ports.FindingRecord{
 		{ID: "finding-1", TenantID: "example", RuntimeID: "example-github-audit", RuleID: "github-rule", Severity: "HIGH", Status: "OPEN"},
@@ -592,6 +726,40 @@ func TestRunRiskDeltaReportSimulatesPublicExposureRemoval(t *testing.T) {
 	}
 }
 
+func TestRiskDeltaGraphNeighborhoodsBatchesRoots(t *testing.T) {
+	target := "urn:cerebro:writer:test_resource:target"
+	related := "urn:cerebro:writer:test_resource:related"
+	graphStore := &stubBatchGraphStore{
+		stubGraphStore: &stubGraphStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+			target:  testNeighborhood(target),
+			related: testNeighborhood(related),
+		}},
+	}
+	service := New(nil, graphStore, nil)
+
+	neighborhoods, err := service.riskDeltaGraphNeighborhoods(context.Background(), target, []*ports.FindingRecord{
+		{Attributes: map[string]string{"primary_resource_urn": related}},
+	}, 2, 6)
+	if err != nil {
+		t.Fatalf("riskDeltaGraphNeighborhoods() error = %v", err)
+	}
+	if len(neighborhoods) != 2 {
+		t.Fatalf("riskDeltaGraphNeighborhoods() = %#v, want 2 neighborhoods", neighborhoods)
+	}
+	if len(graphStore.batchCalls) != 1 {
+		t.Fatalf("GetEntityNeighborhoods() calls = %#v, want one batch", graphStore.batchCalls)
+	}
+	if got := graphStore.batchCalls[0]; len(got) != 2 || got[0] != target || got[1] != related {
+		t.Fatalf("GetEntityNeighborhoods().roots = %#v, want [%q %q]", got, target, related)
+	}
+	if graphStore.batchLimit != 6 {
+		t.Fatalf("GetEntityNeighborhoods().limit = %d, want 6", graphStore.batchLimit)
+	}
+	if len(graphStore.calls) != 0 {
+		t.Fatalf("GetEntityNeighborhood() calls = %#v, want no individual lookups", graphStore.calls)
+	}
+}
+
 func TestRunRiskDeltaReportRejectsCrossTenantTargetURN(t *testing.T) {
 	graphStore := &stubGraphStore{
 		neighborhoods: map[string]*ports.EntityNeighborhood{
@@ -616,6 +784,40 @@ func TestRunRiskDeltaReportRejectsCrossTenantTargetURN(t *testing.T) {
 	}
 	if graphStore.rootURN != "" {
 		t.Fatalf("GetEntityNeighborhood rootURN = %q, want no cross-tenant graph read", graphStore.rootURN)
+	}
+}
+
+func TestRiskActionPlanGraphNeighborhoodsBatchesUniqueLimitedRoots(t *testing.T) {
+	first := "urn:cerebro:writer:test_resource:first"
+	second := "urn:cerebro:writer:test_resource:second"
+	third := "urn:cerebro:writer:test_resource:third"
+	graphStore := &stubBatchGraphStore{
+		stubGraphStore: &stubGraphStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+			first:  testNeighborhood(first),
+			second: testNeighborhood(second),
+			third:  testNeighborhood(third),
+		}},
+	}
+	service := New(nil, graphStore, nil)
+
+	neighborhoods, err := service.riskActionPlanGraphNeighborhoods(context.Background(), []string{first, "", first, second, third}, 2, 5)
+	if err != nil {
+		t.Fatalf("riskActionPlanGraphNeighborhoods() error = %v", err)
+	}
+	if len(neighborhoods) != 2 {
+		t.Fatalf("riskActionPlanGraphNeighborhoods() = %#v, want 2 neighborhoods", neighborhoods)
+	}
+	if len(graphStore.batchCalls) != 1 {
+		t.Fatalf("GetEntityNeighborhoods() calls = %#v, want one batch", graphStore.batchCalls)
+	}
+	if got := graphStore.batchCalls[0]; len(got) != 2 || got[0] != first || got[1] != second {
+		t.Fatalf("GetEntityNeighborhoods().roots = %#v, want [%q %q]", got, first, second)
+	}
+	if graphStore.batchLimit != 5 {
+		t.Fatalf("GetEntityNeighborhoods().limit = %d, want 5", graphStore.batchLimit)
+	}
+	if len(graphStore.calls) != 0 {
+		t.Fatalf("GetEntityNeighborhood() calls = %#v, want no individual lookups", graphStore.calls)
 	}
 }
 
@@ -1254,6 +1456,18 @@ func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeig
 		cloned.Relations = append(cloned.Relations, cloneNeighborhoodRelation(relation))
 	}
 	return cloned
+}
+
+func testNeighborhood(rootURN string) *ports.EntityNeighborhood {
+	return &ports.EntityNeighborhood{
+		Root: &ports.NeighborhoodNode{
+			URN:        rootURN,
+			EntityType: "test.resource",
+			Label:      rootURN,
+		},
+		Neighbors: []*ports.NeighborhoodNode{},
+		Relations: []*ports.NeighborhoodRelation{},
+	}
 }
 
 func cloneNeighborhoodNode(node *ports.NeighborhoodNode) *ports.NeighborhoodNode {

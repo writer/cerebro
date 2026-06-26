@@ -102,7 +102,7 @@ func (s *impactBatchStubStore) GetEntityNeighborhoods(_ context.Context, rootURN
 	for _, rootURN := range roots {
 		neighborhood, ok := s.neighborhoods[rootURN]
 		if !ok {
-			return nil, ports.ErrGraphEntityNotFound
+			continue
 		}
 		neighborhoods[rootURN] = neighborhood
 	}

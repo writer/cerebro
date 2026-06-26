@@ -62,6 +62,10 @@ type Service struct {
 	reportStore  ports.ReportStore
 }
 
+type graphNeighborhoodBatchStore interface {
+	GetEntityNeighborhoods(context.Context, []string, int) (map[string]*ports.EntityNeighborhood, error)
+}
+
 // New constructs the report service.
 func New(findingStore ports.FindingStore, graphStore ports.GraphQueryStore, reportStore ports.ReportStore) *Service {
 	return &Service{
@@ -521,30 +525,34 @@ func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]i
 	if len(entries) > resourceLimit {
 		entries = entries[:resourceLimit]
 	}
+	roots := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		roots = append(roots, entry.Key)
+	}
+	if batchNeighborhoods, ok, err := s.batchGraphNeighborhoods(ctx, roots, graphLimit); err != nil {
+		return nil, nil, fmt.Errorf("batch load graph evidence: %w", err)
+	} else if ok {
+		evidence := make([]any, 0, len(entries))
+		neighborhoods := make(map[string]*ports.EntityNeighborhood, len(entries))
+		for _, entry := range entries {
+			neighborhood, found := batchNeighborhoods[entry.Key]
+			if !found {
+				evidence = append(evidence, missingGraphEvidenceEntry(entry))
+				continue
+			}
+			evidence = appendIncludedGraphEvidence(evidence, neighborhoods, entry, neighborhood)
+		}
+		return evidence, neighborhoods, nil
+	}
 	evidence := make([]any, 0, len(entries))
 	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(entries))
 	for _, entry := range entries {
 		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, entry.Key, graphLimit)
 		switch {
 		case err == nil:
-			if neighborhood == nil {
-				neighborhood = &ports.EntityNeighborhood{}
-			}
-			neighborhoods[entry.Key] = neighborhood
-			evidence = append(evidence, map[string]any{
-				"resource_urn":  entry.Key,
-				"finding_count": entry.Count,
-				"status":        graphEvidenceEntryStatusIncluded,
-				"root":          graphNodePayload(neighborhood.Root),
-				"neighbors":     graphNodesPayload(neighborhood.Neighbors),
-				"relations":     graphRelationsPayload(neighborhood.Relations),
-			})
+			evidence = appendIncludedGraphEvidence(evidence, neighborhoods, entry, neighborhood)
 		case errors.Is(err, ports.ErrGraphEntityNotFound):
-			evidence = append(evidence, map[string]any{
-				"resource_urn":  entry.Key,
-				"finding_count": entry.Count,
-				"status":        graphEvidenceEntryStatusNotFound,
-			})
+			evidence = append(evidence, missingGraphEvidenceEntry(entry))
 		default:
 			return nil, nil, fmt.Errorf("load graph evidence for %q: %w", entry.Key, err)
 		}
@@ -566,10 +574,65 @@ func (s *Service) riskDeltaGraphNeighborhoods(ctx context.Context, targetURN str
 		}
 		roots = append(roots, entry.Key)
 	}
-	seen := map[string]struct{}{}
-	neighborhoods := map[string]*ports.EntityNeighborhood{}
+	return s.graphNeighborhoods(ctx, roots, resourceLimit, graphLimit, "risk delta")
+}
+
+func (s *Service) graphNeighborhoods(ctx context.Context, rawRoots []string, resourceLimit int, graphLimit int, label string) (map[string]*ports.EntityNeighborhood, error) {
+	roots := limitedGraphNeighborhoodRoots(rawRoots, resourceLimit)
+	if batchNeighborhoods, ok, err := s.batchGraphNeighborhoods(ctx, roots, graphLimit); err != nil {
+		return nil, fmt.Errorf("batch load %s graph neighborhoods: %w", label, err)
+	} else if ok {
+		return batchNeighborhoods, nil
+	}
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(roots))
 	for _, rootURN := range roots {
-		rootURN = strings.TrimSpace(rootURN)
+		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, rootURN, graphLimit)
+		switch {
+		case err == nil:
+			neighborhoods[rootURN] = normalizedNeighborhood(neighborhood)
+		case errors.Is(err, ports.ErrGraphEntityNotFound):
+			continue
+		default:
+			return nil, fmt.Errorf("load %s graph neighborhood for %q: %w", label, rootURN, err)
+		}
+	}
+	return neighborhoods, nil
+}
+
+func (s *Service) batchGraphNeighborhoods(ctx context.Context, roots []string, graphLimit int) (map[string]*ports.EntityNeighborhood, bool, error) {
+	if len(roots) == 0 {
+		return map[string]*ports.EntityNeighborhood{}, true, nil
+	}
+	batchStore, ok := s.graphStore.(graphNeighborhoodBatchStore)
+	if !ok {
+		return nil, false, nil
+	}
+	neighborhoods, err := batchStore.GetEntityNeighborhoods(ctx, roots, graphLimit)
+	if err != nil {
+		return nil, true, err
+	}
+	normalized := make(map[string]*ports.EntityNeighborhood, len(neighborhoods))
+	for _, rootURN := range roots {
+		neighborhood, ok := neighborhoods[rootURN]
+		if !ok {
+			continue
+		}
+		normalized[rootURN] = normalizedNeighborhood(neighborhood)
+	}
+	return normalized, true, nil
+}
+
+func limitedGraphNeighborhoodRoots(rawRoots []string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	roots := make([]string, 0, min(len(rawRoots), limit))
+	seen := map[string]struct{}{}
+	for _, rawRoot := range rawRoots {
+		if len(roots) >= limit {
+			break
+		}
+		rootURN := strings.TrimSpace(rawRoot)
 		if rootURN == "" {
 			continue
 		}
@@ -577,20 +640,37 @@ func (s *Service) riskDeltaGraphNeighborhoods(ctx context.Context, targetURN str
 			continue
 		}
 		seen[rootURN] = struct{}{}
-		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, rootURN, graphLimit)
-		switch {
-		case err == nil:
-			if neighborhood == nil {
-				neighborhood = &ports.EntityNeighborhood{}
-			}
-			neighborhoods[rootURN] = neighborhood
-		case errors.Is(err, ports.ErrGraphEntityNotFound):
-			continue
-		default:
-			return nil, fmt.Errorf("load risk delta graph neighborhood for %q: %w", rootURN, err)
-		}
+		roots = append(roots, rootURN)
 	}
-	return neighborhoods, nil
+	return roots
+}
+
+func normalizedNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {
+	if neighborhood == nil {
+		return &ports.EntityNeighborhood{}
+	}
+	return neighborhood
+}
+
+func appendIncludedGraphEvidence(evidence []any, neighborhoods map[string]*ports.EntityNeighborhood, entry countEntry, neighborhood *ports.EntityNeighborhood) []any {
+	neighborhood = normalizedNeighborhood(neighborhood)
+	neighborhoods[entry.Key] = neighborhood
+	return append(evidence, map[string]any{
+		"resource_urn":  entry.Key,
+		"finding_count": entry.Count,
+		"status":        graphEvidenceEntryStatusIncluded,
+		"root":          graphNodePayload(neighborhood.Root),
+		"neighbors":     graphNodesPayload(neighborhood.Neighbors),
+		"relations":     graphRelationsPayload(neighborhood.Relations),
+	})
+}
+
+func missingGraphEvidenceEntry(entry countEntry) map[string]any {
+	return map[string]any{
+		"resource_urn":  entry.Key,
+		"finding_count": entry.Count,
+		"status":        graphEvidenceEntryStatusNotFound,
+	}
 }
 
 func findingSummaryDefinition() *cerebrov1.ReportDefinition {
