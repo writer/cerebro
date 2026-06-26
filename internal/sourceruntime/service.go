@@ -445,6 +445,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 			acceptedEvents = append(acceptedEvents, syncedEvent)
 		}
+		acceptedEvents = dedupeAcceptedEvents(acceptedEvents)
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
 		if ledgerEnabled {
@@ -1045,6 +1046,25 @@ func readSourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.
 		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 	}
 	return source.Read(ctx, cfg, cursor)
+}
+
+func dedupeAcceptedEvents(events []*cerebrov1.EventEnvelope) []*cerebrov1.EventEnvelope {
+	if len(events) < 2 {
+		return events
+	}
+	seen := make(map[string]struct{}, len(events))
+	deduped := events[:0]
+	for _, event := range events {
+		eventID := strings.TrimSpace(event.GetId())
+		if eventID != "" {
+			if _, ok := seen[eventID]; ok {
+				continue
+			}
+			seen[eventID] = struct{}{}
+		}
+		deduped = append(deduped, event)
+	}
+	return deduped
 }
 
 func pullShortCircuitReason(pull sourcecdk.Pull) sourcecdk.PullShortCircuitReason {

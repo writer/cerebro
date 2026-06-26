@@ -1276,6 +1276,52 @@ func TestGitHubAuditFreshnessProbeFailsOpenToFullRead(t *testing.T) {
 	}
 }
 
+func TestGitHubAuditUnavailableDoesNotFailCheckOrRead(t *testing.T) {
+	auditRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/orgs/writer/audit-log" {
+			http.NotFound(w, r)
+			return
+		}
+		auditRequests++
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAudit,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(audit unavailable) error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(audit unavailable) error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(pull.Events) = %d, want 0", len(pull.Events))
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("ShortCircuitReason = %q, want not_modified", pull.ShortCircuitReason)
+	}
+	if pull.Checkpoint == nil {
+		t.Fatal("pull.Checkpoint = nil, want freshness checkpoint for unavailable audit log")
+	}
+	if auditRequests < 2 {
+		t.Fatalf("audit requests = %d, want check and read attempts", auditRequests)
+	}
+}
+
 func TestGitHubAuditFreshnessCheckpointDoesNotExposeProviderMetadata(t *testing.T) {
 	auditEntry := map[string]any{
 		"@timestamp":   1776916397852,

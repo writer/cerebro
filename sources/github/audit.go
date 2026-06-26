@@ -47,7 +47,7 @@ type auditPayload struct {
 }
 
 func (s *Source) checkAudit(ctx context.Context, client *gogithub.Client, settings settings) error {
-	_, _, err := client.Organizations.GetAuditLog(ctx, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, "", 1))
+	_, _, err := githubaudit.GetAuditLog(ctx, client, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, "", 1))
 	if err != nil {
 		return wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
 	}
@@ -68,7 +68,7 @@ func (s *Source) discoverAudit(ctx context.Context, client *gogithub.Client, set
 func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	readCheckpoint, shortCircuit, err := sourcecdk.BeginFamilyFreshnessReadWithOptions("github", familyAudit, cursor, checkpoint, func(checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.ChangeProbe, error) {
 		probe, err := githubaudit.LatestEventChangeProbe(ctx, settings.owner, settings.auditInclude, settings.auditPhrase, checkpoint, func(ctx context.Context, opts *gogithub.GetAuditLogOptions) ([]*gogithub.AuditEntry, *gogithub.Response, error) {
-			return client.Organizations.GetAuditLog(ctx, settings.owner, opts)
+			return githubaudit.GetAuditLog(ctx, client, settings.owner, opts)
 		})
 		if err != nil {
 			return sourcecdk.ChangeProbe{}, wrapLookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err)
@@ -82,7 +82,7 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 		return *shortCircuit, nil
 	}
 	after := readAuditCursor(cursor)
-	entries, resp, err := client.Organizations.GetAuditLog(ctx, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, after, settings.perPage))
+	entries, resp, err := githubaudit.GetAuditLog(ctx, client, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, after, settings.perPage))
 	if err != nil {
 		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
 	}
