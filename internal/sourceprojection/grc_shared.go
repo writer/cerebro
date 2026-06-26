@@ -7,6 +7,72 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+type grcProjectionContext struct {
+	event    *cerebrov1.EventEnvelope
+	tenantID string
+	sourceID string
+	provider string
+	attrs    map[string]string
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func newGRCProjectionContext(event *cerebrov1.EventEnvelope) (*grcProjectionContext, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, err
+	}
+	attrs := event.GetAttributes()
+	return &grcProjectionContext{
+		event:    event,
+		tenantID: tenantID,
+		sourceID: event.GetSourceId(),
+		provider: grcProvider(attrs),
+		attrs:    attrs,
+		entities: map[string]*ports.ProjectedEntity{},
+		links:    map[string]*ports.ProjectedLink{},
+	}, nil
+}
+
+func (ctx *grcProjectionContext) resourceURN(kind string, id string) string {
+	return projectionURN(ctx.tenantID, kind, ctx.provider, id)
+}
+
+func (ctx *grcProjectionContext) globalURN(kind string, parts ...string) string {
+	return projectionURN(ctx.tenantID, kind, parts...)
+}
+
+func (ctx *grcProjectionContext) addResourceEntity(urn string, entityType string, label string, extra map[string]string) {
+	ctx.addEntity(urn, entityType, label, grcAttributes(ctx.attrs, extra))
+}
+
+func (ctx *grcProjectionContext) addReferenceEntity(urn string, entityType string, label string, attrs map[string]string) {
+	ctx.addEntity(urn, entityType, label, grcAttributes(nil, attrs))
+}
+
+func (ctx *grcProjectionContext) addEntity(urn string, entityType string, label string, attrs map[string]string) {
+	addEntity(ctx.entities, &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   ctx.tenantID,
+		SourceID:   ctx.sourceID,
+		EntityType: entityType,
+		Label:      label,
+		Attributes: attrs,
+	})
+}
+
+func (ctx *grcProjectionContext) addEventLink(fromURN string, toURN string, relation string) {
+	addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, fromURN, toURN, relation, ctx.eventLinkAttributes()))
+}
+
+func (ctx *grcProjectionContext) eventLinkAttributes() map[string]string {
+	return map[string]string{"event_id": ctx.event.GetId()}
+}
+
+func (ctx *grcProjectionContext) done() ([]*ports.ProjectedEntity, []*ports.ProjectedLink) {
+	return entitiesAndLinks(ctx.entities, ctx.links)
+}
+
 func grcAttributeList(value string) []string {
 	values := []string{}
 	seen := map[string]struct{}{}

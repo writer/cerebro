@@ -6,108 +6,90 @@ import (
 )
 
 func grcVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
+	ctx, err := newGRCProjectionContext(event)
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
-	vendorID := firstAttribute(attrs, "vendor_id", "external_id")
+	vendorID := firstAttribute(ctx.attrs, "vendor_id", "external_id")
 	if vendorID == "" {
 		return nil, nil, nil
 	}
-	provider := grcProvider(attrs)
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	vendorURN := projectionURN(tenantID, "vendor", provider, vendorID)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        vendorURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: "vendor",
-		Label:      firstAttribute(attrs, "name", "vendor_id"),
-		Attributes: grcAttributes(attrs, map[string]string{"vendor_id": vendorID, "source_system": provider}),
-	})
-	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, firstAttribute(attrs, "name"), "grc_vendor_name_alias", "0.90")
-	addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, relationHasIdentifier, firstAttribute(attrs, "website_url", "website", "url", "domain"), "grc_vendor_website_host", "0.95")
-	for _, ownerID := range []string{firstAttribute(attrs, "security_owner_user_id"), firstAttribute(attrs, "business_owner_user_id")} {
+	vendorURN := ctx.resourceURN("vendor", vendorID)
+	ctx.addResourceEntity(
+		vendorURN,
+		"vendor",
+		firstAttribute(ctx.attrs, "name", "vendor_id"),
+		map[string]string{"vendor_id": vendorID, "source_system": ctx.provider},
+	)
+	addVendorAliasLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, vendorURN, firstAttribute(ctx.attrs, "name"), "grc_vendor_name_alias", "0.90")
+	addInternetHostLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, vendorURN, relationHasIdentifier, firstAttribute(ctx.attrs, "website_url", "website", "url", "domain"), "grc_vendor_website_host", "0.95")
+	for _, ownerID := range []string{firstAttribute(ctx.attrs, "security_owner_user_id"), firstAttribute(ctx.attrs, "business_owner_user_id")} {
 		if ownerID == "" {
 			continue
 		}
-		ownerURN := grcUserURN(tenantID, provider, ownerID)
-		addEntity(entities, grcUserEntity(tenantID, event.GetSourceId(), ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": provider}))
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), vendorURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
+		ownerURN := grcUserURN(ctx.tenantID, ctx.provider, ownerID)
+		addEntity(ctx.entities, grcUserEntity(ctx.tenantID, ctx.sourceID, ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": ctx.provider}))
+		ctx.addEventLink(vendorURN, ownerURN, relationOwnedBy)
 	}
-	addSecurityContactEmailLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, firstAttribute(attrs, "account_manager_email", "security_contact_email", "contact_email"), "account_manager")
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
-	return projectedEntities, projectedLinks, nil
+	addSecurityContactEmailLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, vendorURN, firstAttribute(ctx.attrs, "account_manager_email", "security_contact_email", "contact_email"), "account_manager")
+	entities, links := ctx.done()
+	return entities, links, nil
 }
 
 func grcDiscoveredVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
+	ctx, err := newGRCProjectionContext(event)
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
-	discoveryID := firstAttribute(attrs, "discovered_vendor_id", "vendor_id", "external_id")
+	discoveryID := firstAttribute(ctx.attrs, "discovered_vendor_id", "vendor_id", "external_id")
 	if discoveryID == "" {
 		return nil, nil, nil
 	}
-	provider := grcProvider(attrs)
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	discoveryURN := projectionURN(tenantID, "vendor_discovery", provider, discoveryID)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        discoveryURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: "vendor.discovery",
-		Label:      firstAttribute(attrs, "name", "normalized_name", "discovered_vendor_id"),
-		Attributes: grcAttributes(attrs, map[string]string{
+	discoveryURN := ctx.resourceURN("vendor_discovery", discoveryID)
+	ctx.addResourceEntity(
+		discoveryURN,
+		"vendor.discovery",
+		firstAttribute(ctx.attrs, "name", "normalized_name", "discovered_vendor_id"),
+		map[string]string{
 			"discovered_vendor_id": discoveryID,
-			"source_system":        provider,
-			"status":               discoveredVendorStatus(attrs),
-		}),
-	})
-	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, discoveryURN, firstAttribute(attrs, "name"), "grc_discovered_vendor_name", "0.90")
-	addVendorAliasLink(entities, links, tenantID, event.GetSourceId(), event, discoveryURN, firstAttribute(attrs, "normalized_name"), "grc_discovered_vendor_normalized_name", "0.95")
-	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, discoveryURN, "vendor_category", firstAttribute(attrs, "category"))
-	addGRCUserActionLink(entities, links, tenantID, event.GetSourceId(), event, provider, firstAttribute(attrs, "ignored_by_user_id"), discoveryURN, "ignored")
-	addGRCUserActionLink(entities, links, tenantID, event.GetSourceId(), event, provider, firstAttribute(attrs, "rejected_by_user_id"), discoveryURN, "rejected")
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
-	return projectedEntities, projectedLinks, nil
+			"source_system":        ctx.provider,
+			"status":               discoveredVendorStatus(ctx.attrs),
+		},
+	)
+	addVendorAliasLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, discoveryURN, firstAttribute(ctx.attrs, "name"), "grc_discovered_vendor_name", "0.90")
+	addVendorAliasLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, discoveryURN, firstAttribute(ctx.attrs, "normalized_name"), "grc_discovered_vendor_normalized_name", "0.95")
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, discoveryURN, "vendor_category", firstAttribute(ctx.attrs, "category"))
+	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "ignored_by_user_id"), discoveryURN, "ignored")
+	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "rejected_by_user_id"), discoveryURN, "rejected")
+	entities, links := ctx.done()
+	return entities, links, nil
 }
 
 func grcVendorRiskAttributeProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
+	ctx, err := newGRCProjectionContext(event)
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
-	attributeID := firstAttribute(attrs, "vendor_risk_attribute_id", "external_id")
+	attributeID := firstAttribute(ctx.attrs, "vendor_risk_attribute_id", "external_id")
 	if attributeID == "" {
 		return nil, nil, nil
 	}
-	provider := grcProvider(attrs)
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	attributeURN := projectionURN(tenantID, "vendor_risk_attribute", provider, attributeID)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        attributeURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: "vendor.risk_attribute",
-		Label:      firstAttribute(attrs, "name", "vendor_risk_attribute_id"),
-		Attributes: grcAttributes(attrs, map[string]string{
-			"enabled":                  firstAttribute(attrs, "enabled"),
-			"risk_level":               firstAttribute(attrs, "risk_level"),
-			"source_system":            provider,
+	attributeURN := ctx.resourceURN("vendor_risk_attribute", attributeID)
+	ctx.addResourceEntity(
+		attributeURN,
+		"vendor.risk_attribute",
+		firstAttribute(ctx.attrs, "name", "vendor_risk_attribute_id"),
+		map[string]string{
+			"enabled":                  firstAttribute(ctx.attrs, "enabled"),
+			"risk_level":               firstAttribute(ctx.attrs, "risk_level"),
+			"source_system":            ctx.provider,
 			"vendor_risk_attribute_id": attributeID,
-		}),
-	})
-	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, attributeURN, "vendor_category", firstAttribute(attrs, "vendor_categories"))
-	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, attributeURN, "vendor_risk_level", firstAttribute(attrs, "risk_level"))
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
-	return projectedEntities, projectedLinks, nil
+		},
+	)
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, attributeURN, "vendor_category", firstAttribute(ctx.attrs, "vendor_categories"))
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, attributeURN, "vendor_risk_level", firstAttribute(ctx.attrs, "risk_level"))
+	entities, links := ctx.done()
+	return entities, links, nil
 }
 
 func discoveredVendorStatus(attrs map[string]string) string {
