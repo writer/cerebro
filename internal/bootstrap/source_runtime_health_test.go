@@ -12,6 +12,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/nhicoverage"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -508,7 +509,10 @@ func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *tes
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
 	}
-	var report sourcecoverage.Report
+	var report struct {
+		sourcecoverage.Report
+		NHICoverage nhicoverage.Report `json:"nhi_coverage"`
+	}
 	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
 		t.Fatalf("decode report: %v", err)
 	}
@@ -520,6 +524,18 @@ func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *tes
 	}
 	if report.Gate.Status != "fail" || report.Gate.BlockingReason != "blind_spot" {
 		t.Fatalf("report gate = %#v, want blind_spot failure", report.Gate)
+	}
+	if report.NHICoverage.Version != nhicoverage.Version {
+		t.Fatalf("NHI coverage version = %q, want %q", report.NHICoverage.Version, nhicoverage.Version)
+	}
+	if report.NHICoverage.Totals.Dimensions != 1 || report.NHICoverage.Totals.BlindSpots != 1 {
+		t.Fatalf("NHI coverage totals = %#v", report.NHICoverage.Totals)
+	}
+	if len(report.NHICoverage.Records) != 1 {
+		t.Fatalf("NHI coverage records = %#v, want one application identity record", report.NHICoverage.Records)
+	}
+	if got := report.NHICoverage.Records[0]; got.DimensionID != "applications" || got.Lane != nhicoverage.LaneInventory || got.SubjectKind != "application" {
+		t.Fatalf("NHI coverage record = %#v, want application inventory", got)
 	}
 	for _, record := range report.Records {
 		if record.TenantID == "other" || record.RuntimeID == "other-okta-application" {
