@@ -50,7 +50,7 @@ type auditPayload struct {
 func (s *Source) checkAudit(ctx context.Context, client *gogithub.Client, settings settings) error {
 	_, _, err := githubaudit.GetAuditLog(ctx, client, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, "", 1))
 	if err != nil {
-		return githubapi.LookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
+		return githubapi.ProviderUnavailableLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err, settings.hasAuth())
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 			return githubaudit.GetAuditLog(ctx, client, settings.owner, opts)
 		})
 		if err != nil {
-			return sourcecdk.ChangeProbe{}, githubapi.LookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err)
+			return sourcecdk.ChangeProbe{}, githubapi.ProviderUnavailableLookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err, settings.hasAuth())
 		}
 		return probe, nil
 	}, githubaudit.FreshnessReadOptions())
