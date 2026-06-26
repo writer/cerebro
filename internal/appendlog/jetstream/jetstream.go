@@ -53,6 +53,8 @@ const (
 	replayStrategyRuntimeIndex      = "runtime_index"
 )
 
+var errRuntimeReplayIndexRequired = errors.New("runtime replay index required")
+
 var waitBeforePublishRetryFunc = waitBeforePublishRetry
 
 type publisher interface {
@@ -726,14 +728,14 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	runtimeIndexEligible := runtimeIndexReplayEligible(request)
 	if requireRuntimeIndex && !runtimeIndexEligible {
 		scan = replayScanStats{strategy: replayStrategyRuntimeIndex, subjectFilterCount: len(subjectFilters)}
-		err = errors.New("runtime replay index required for ineligible replay request")
+		err = fmt.Errorf("%w: ineligible replay request", errRuntimeReplayIndexRequired)
 		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
 		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
 		return nil, err
 	}
 	if requireRuntimeIndex && l.runtimeIndex == nil {
 		scan = replayScanStats{strategy: replayStrategyRuntimeIndex, subjectFilterCount: len(subjectFilters)}
-		err = errors.New("runtime replay index required but not configured")
+		err = fmt.Errorf("%w: not configured", errRuntimeReplayIndexRequired)
 		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
 		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
 		return nil, err
@@ -745,9 +747,9 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		} else if requireRuntimeIndex {
 			scan = indexScan
 			if indexErr != nil {
-				err = fmt.Errorf("runtime replay index lookup: %w", indexErr)
+				err = fmt.Errorf("%w: lookup: %w", errRuntimeReplayIndexRequired, indexErr)
 			} else {
-				err = errors.New("runtime replay index required but unavailable")
+				err = fmt.Errorf("%w: unavailable", errRuntimeReplayIndexRequired)
 			}
 			recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
 			jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))

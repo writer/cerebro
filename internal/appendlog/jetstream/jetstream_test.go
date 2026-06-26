@@ -1630,8 +1630,8 @@ func TestReplayRequiresRuntimeIndexRejectsUnconfiguredIndex(t *testing.T) {
 		RequireRuntimeIndex: true,
 		Limit:               10,
 	})
-	if err == nil || !strings.Contains(err.Error(), "runtime replay index required but not configured") {
-		t.Fatalf("Replay() error = %v, want required runtime index configuration error", err)
+	if !errors.Is(err, errRuntimeReplayIndexRequired) {
+		t.Fatalf("Replay() error = %v, want errRuntimeReplayIndexRequired", err)
 	}
 	if replay.getMsgCalls != 0 {
 		t.Fatalf("GetMsg calls = %d, want 0 fallback scans", replay.getMsgCalls)
@@ -1661,8 +1661,8 @@ func TestReplayRequiresRuntimeIndexRejectsUnavailableIndex(t *testing.T) {
 		RequireRuntimeIndex: true,
 		Limit:               10,
 	})
-	if err == nil || !strings.Contains(err.Error(), "runtime replay index required but unavailable") {
-		t.Fatalf("Replay() error = %v, want unavailable runtime index error", err)
+	if !errors.Is(err, errRuntimeReplayIndexRequired) {
+		t.Fatalf("Replay() error = %v, want errRuntimeReplayIndexRequired", err)
 	}
 	if index.calls != 1 {
 		t.Fatalf("index lookup calls = %d, want 1", index.calls)
