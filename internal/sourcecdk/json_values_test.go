@@ -30,6 +30,28 @@ func TestJSONScalarString(t *testing.T) {
 	}
 }
 
+func TestJSONFieldString(t *testing.T) {
+	values := map[string]any{
+		"owner": map[string]any{
+			"displayName": "  Ada Lovelace  ",
+		},
+		"tags": []any{"prod", "", "soc2"},
+	}
+	object := JSONObject(values)
+	if got := object.FieldString("owner"); got != "Ada Lovelace" {
+		t.Fatalf("FieldString(owner) = %q, want Ada Lovelace", got)
+	}
+	if got := object.FieldString("tags"); got != "prod,soc2" {
+		t.Fatalf("FieldString(tags) = %q, want prod,soc2", got)
+	}
+	if got := object.FieldString("missing.path"); got != "" {
+		t.Fatalf("FieldString(missing.path) = %q, want empty", got)
+	}
+	if got := len(object.Array("tags")); got != 3 {
+		t.Fatalf("len(Array(tags)) = %d, want 3", got)
+	}
+}
+
 func TestJSONScalarTime(t *testing.T) {
 	layouts := []string{time.RFC3339Nano, "2006-01-02"}
 

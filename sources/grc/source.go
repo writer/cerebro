@@ -27,28 +27,29 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID              = "grc"
-	defaultProvider       = "vanta"
-	defaultBaseURL        = "https://api.vanta.com"
-	defaultReadScope      = "vanta-api.all:read"
-	defaultPageSize       = 10
-	maxPageSize           = 100
-	httpTimeout           = 30 * time.Second
-	maxBodyBytes          = 8 << 20
-	tokenRefreshLeeway    = time.Minute
-	defaultFamily         = familyControlTest
-	familyFramework       = "framework"
-	familyControl         = "control"
-	familyControlTest     = "control_test"
-	familyPolicy          = "policy"
-	familyDocument        = "document"
-	familyVendor          = "vendor"
-	familyVulnerability   = "vulnerability"
-	familyVulnerableAsset = "vulnerable_asset"
-	familyRiskScenario    = "risk_scenario"
-	familyPerson          = "person"
-	familyUser            = "user"
-	familyIntegration     = "integration"
+	sourceID                = "grc"
+	defaultProvider         = "vanta"
+	defaultBaseURL          = "https://api.vanta.com"
+	defaultReadScope        = "vanta-api.all:read"
+	defaultPageSize         = 10
+	maxPageSize             = 100
+	httpTimeout             = 30 * time.Second
+	maxBodyBytes            = 8 << 20
+	tokenRefreshLeeway      = time.Minute
+	defaultFamily           = familyControlTest
+	familyFramework         = "framework"
+	familyControl           = "control"
+	familyControlTest       = "control_test"
+	familyPolicy            = "policy"
+	familyDocument          = "document"
+	familyVendor            = "vendor"
+	familyVulnerability     = "vulnerability"
+	familyVulnerableAsset   = "vulnerable_asset"
+	familyMonitoredComputer = "monitored_computer"
+	familyRiskScenario      = "risk_scenario"
+	familyPerson            = "person"
+	familyUser              = "user"
+	familyIntegration       = "integration"
 )
 
 const (
@@ -77,6 +78,7 @@ var familyEndpoints = []struct {
 	{familyEventLog, "/v1/event-logs"}, {familyGroup, "/v1/groups"}, {familyVendorRiskAttribute, "/v1/vendor-risk-attributes"},
 	{familyVendor, "/v1/vendors"}, {familyVulnerability, "/v1/vulnerabilities"},
 	{familyVulnerabilityRemediation, "/v1/vulnerability-remediations"}, {familyVulnerableAsset, "/v1/vulnerable-assets"},
+	{familyMonitoredComputer, "/v1/monitored-computers"},
 	{familyRiskScenario, "/v1/risk-scenarios"}, {familyPerson, "/v1/people"}, {familyUser, "/v1/users"},
 	{familyIntegration, "/v1/integrations"},
 }
@@ -379,6 +381,8 @@ func recordIDKeys(family grcFamily) []string {
 		return []string{"id", "email"}
 	case familyVulnerableAsset:
 		return []string{"id", "assetId", "targetId", "externalId", "name"}
+	case familyMonitoredComputer:
+		return []string{"id", "serialNumber", "udid"}
 	case familyRegulatoryNotification:
 		return []string{"id", "notificationId", "externalId"}
 	case familyRecoveryObjective:
@@ -423,8 +427,9 @@ var timestampKeySets = map[grcFamily][]string{
 	familyDiscoveredVendor: {"discoveredDate", "ignored.ignoredAtDate", "rejected.rejectedAtDate"}, familyEventLog: {"date"},
 	familyGroup: {"creationDate"}, familyVendor: {"lastSecurityReviewCompletionDate"},
 	familyVulnerability: {"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}, familyVulnerabilityRemediation: {"remediationDate", "detectedDate"},
-	familyVulnerableAsset: {"lastDetectedDate", "lastSeenDate", "updatedAt"}, familyRiskScenario: {"identificationDate"},
-	familyPerson: {"employment.startDate", "employment.endDate"},
+	familyVulnerableAsset: {"lastDetectedDate", "lastSeenDate", "updatedAt"}, familyMonitoredComputer: {"lastCheckDate"},
+	familyRiskScenario: {"identificationDate"},
+	familyPerson:       {"employment.startDate", "employment.endDate"},
 }
 
 func fieldString(values map[string]any, path string) string {

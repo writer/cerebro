@@ -599,6 +599,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"grc.vulnerability":                             grcVulnerabilityProjections,
 	"grc.vulnerability_remediation":                 grcVulnerabilityRemediationProjections,
 	"grc.vulnerable_asset":                          grcVulnerableAssetProjections,
+	"grc.monitored_computer":                        grcMonitoredComputerProjections,
 	"grc.risk_scenario":                             grcRiskScenarioProjections,
 	"grc.person":                                    grcPersonProjections,
 	"grc.user":                                      grcUserProjections,

@@ -1208,6 +1208,21 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				}},
 				"lastSeenDate": "2026-05-11T00:00:00Z",
 			}})
+		case "/v1/monitored-computers":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":                    "computer-1",
+				"integrationId":         "kandji",
+				"lastCheckDate":         "2026-06-24T17:00:00Z",
+				"screenlock":            map[string]any{"outcome": "OK"},
+				"diskEncryption":        map[string]any{"outcome": "OK"},
+				"passwordManager":       map[string]any{"outcome": "NEEDS_ATTENTION"},
+				"antivirusInstallation": map[string]any{"outcome": "OK"},
+				"operatingSystem":       map[string]any{"type": "MACOS", "version": "15.5"},
+				"owner":                 map[string]any{"id": "person-1", "displayName": "Designer One", "emailAddress": "designer@example.com"},
+				"serialNumber":          "serial-1",
+				"udid":                  "udid-1",
+			}})
 		case "/v1/tests":
 			requireBearer(t, r)
 			writePage(t, w, false, "", []map[string]any{{

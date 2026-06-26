@@ -25,6 +25,7 @@ var attributeFieldMappings = map[grcFamily][]string{
 	familyVendor:                   {"vendor_id", "id", "name", "name", "website_url", "websiteUrl", "account_manager_email", "accountManagerEmail", "services_provided", "servicesProvided", "security_owner_user_id", "securityOwnerUserId", "business_owner_user_id", "businessOwnerUserId", "contract_start_date", "contractStartDate", "contract_renewal_date", "contractRenewalDate", "contract_termination_date", "contractTerminationDate", "next_security_review_due_date", "nextSecurityReviewDueDate", "last_security_review_completion_date", "lastSecurityReviewCompletionDate", "category", "category.displayName", "status", "status", "inherent_risk_level", "inherentRiskLevel", "residual_risk_level", "residualRiskLevel"},
 	familyVulnerability:            {"vulnerability_id", "id", "name", "name", "description", "description", "integration_id", "integrationId", "package_identifier", "packageIdentifier", "package", "packageIdentifier", "package_purl", "packageIdentifier", "vulnerability_type", "vulnerabilityType", "target_id", "targetId", "first_detected_at", "firstDetectedDate", "source_detected_at", "sourceDetectedDate", "last_detected_at", "lastDetectedDate", "severity", "severity", "cvss_severity_score", "cvssSeverityScore", "scanner_score", "scannerScore", "is_fixable", "isFixable", "fixed_version", "fixedVersion", "remediate_by_date", "remediateByDate", "external_url", "externalURL", "scan_source", "scanSource"},
 	familyVulnerabilityRemediation: {"remediation_id", "id", "vulnerability_id", "vulnerabilityId", "vulnerable_asset_id", "vulnerableAssetId", "target_id", "vulnerableAssetId", "asset_id", "vulnerableAssetId", "severity", "severity", "detected_at", "detectedDate", "sla_deadline_at", "slaDeadlineDate", "remediation_date", "remediationDate", "remediated_at", "remediationDate", "vulnerability_status", "status", "remediation_status", "status"},
+	familyMonitoredComputer:        {"computer_id", "id", "device_id", "id", "device_uuid", "udid", "serial_number", "serialNumber", "integration_id", "integrationId", "last_check_at", "lastCheckDate", "screenlock_status", "screenlock.outcome", "disk_encryption_status", "diskEncryption.outcome", "password_manager_status", "passwordManager.outcome", "antivirus_status", "antivirusInstallation.outcome", "os", "operatingSystem.type", "os_name", "operatingSystem.type", "os_version", "operatingSystem.version", "owner_id", "owner.id", "owner_email", "owner.emailAddress", "owner_display_name", "owner.displayName"},
 	familyRiskScenario:             {"risk_id", "riskId", "description", "description", "likelihood", "likelihood", "impact", "impact", "residual_likelihood", "residualLikelihood", "residual_impact", "residualImpact", "categories", "categories", "cia_categories", "ciaCategories", "treatment", "treatment", "owner", "owner", "note", "note", "risk_register", "riskRegister", "review_status", "reviewStatus", "type", "type", "identified_at", "identificationDate"},
 	familyPerson:                   {"person_id", "id", "user_id", "userId", "email", "emailAddress", "department", "employment.department", "employment_end_date", "employment.endDate", "employee_number", "employment.employeeNumber", "job_title", "employment.jobTitle", "manager", "employment.manager", "manager_id", "employment.managerId", "employment_start_date", "employment.startDate", "employment_status", "employment.status", "group_ids", "groupIds"},
 	familyUser:                     {"user_id", "id", "email", "email", "display_name", "displayName", "is_active", "isActive"},
@@ -62,12 +63,42 @@ func attributesFor(settings settings, family grcFamily, record grcRecord) map[st
 		copyFirstField(attrs, values, "last_detected_at", "lastDetectedDate", "lastSeenDate", "updatedAt")
 		copyVulnerableAssetPlatformReferences(attrs, values)
 		copyVulnerableAssetReferences(attrs, values)
+	case familyMonitoredComputer:
+		attrs["source_product"] = settings.provider
+		attrs["compliance_status"] = monitoredComputerComplianceStatus(attrs)
 	case familyIntegration:
 		attrs["connection_count"] = strconv.Itoa(len(arrayValue(values, "connections")))
 		attrs["disabled_connection_count"] = strconv.Itoa(countConnections(values, true, false))
 		attrs["connection_error_count"] = strconv.Itoa(countConnections(values, false, true))
 	}
 	return trimEmpty(attrs)
+}
+
+func monitoredComputerComplianceStatus(attrs map[string]string) string {
+	result := ""
+	statuses := []string{
+		attrs["screenlock_status"],
+		attrs["disk_encryption_status"],
+		attrs["password_manager_status"],
+		attrs["antivirus_status"],
+	}
+	for _, status := range statuses {
+		trimmed := strings.TrimSpace(status)
+		if trimmed == "" {
+			continue
+		}
+		if strings.EqualFold(trimmed, "FAIL") || strings.EqualFold(trimmed, "NEEDS_ATTENTION") {
+			return "needs_attention"
+		}
+		if strings.EqualFold(trimmed, "OK") || strings.EqualFold(trimmed, "PASS") {
+			result = "ok"
+			continue
+		}
+		if result == "" {
+			result = strings.ToLower(trimmed)
+		}
+	}
+	return result
 }
 
 func copyFieldPairs(attrs map[string]string, values map[string]any, pairs []string) {
