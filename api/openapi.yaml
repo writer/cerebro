@@ -4363,6 +4363,8 @@ paths:
                   updated_at:
                     type: string
                     format: date-time
+        '401':
+          description: Authenticated user identity is required.
     put:
       summary: Save current user preferences
       tags:
@@ -4411,6 +4413,8 @@ paths:
                   updated_at:
                     type: string
                     format: date-time
+        '401':
+          description: Authenticated user identity is required.
 
 components:
   securitySchemes:
