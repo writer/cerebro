@@ -33,6 +33,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerAgentPlatformRoutes(mux)
 	app.registerReportRoutes(mux)
 	app.registerAskQueryRoutes(mux)
+	app.registerUserPreferenceRoutes(mux)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
 	app.registerSourceRoutes(mux)
@@ -102,6 +103,11 @@ func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /ask-queries", routeSurfacePlatformHTTP, app.handleCreateAskQuery)
 	registerHTTPRoute(mux, "PATCH /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleUpdateAskQuery)
 	registerHTTPRoute(mux, "DELETE /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleDeleteAskQuery)
+}
+
+func (app *App) registerUserPreferenceRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /user/preferences", routeSurfacePlatformHTTP, app.handleGetUserPreferences)
+	registerHTTPRoute(mux, "PUT /user/preferences", routeSurfacePlatformHTTP, app.handlePutUserPreferences)
 }
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {

@@ -117,6 +117,23 @@ func TestAskQueryHTTPRoutesRequireWriteScope(t *testing.T) {
 	}
 }
 
+func TestUserPreferenceHTTPRoutesAllowViewerPreferenceWrites(t *testing.T) {
+	readPolicy := httpRoutePolicyFor(http.MethodGet, "/user/preferences")
+	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+		t.Fatalf("GET /user/preferences policy = %#v, want read scope", readPolicy)
+	}
+
+	writePolicy := httpRoutePolicyFor(http.MethodPut, "/user/preferences")
+	if writePolicy.Scope != scopeUserPreferencesWrite || writePolicy.AdminOnly {
+		t.Fatalf("PUT /user/preferences policy = %#v, want user preferences write scope", writePolicy)
+	}
+
+	viewer := authPrincipal{Roles: []string{roleCerebroViewer}}
+	if err := authorizePrincipalHTTPPolicy(viewer, writePolicy); err != nil {
+		t.Fatalf("viewer rejected for preference write: %v", err)
+	}
+}
+
 func TestCustomDashboardHTTPRoutesRequireWriteScope(t *testing.T) {
 	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/dashboards")
 	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
