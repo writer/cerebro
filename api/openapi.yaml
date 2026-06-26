@@ -4373,6 +4373,8 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - preferences
               properties:
                 tenant_id:
                   type: string

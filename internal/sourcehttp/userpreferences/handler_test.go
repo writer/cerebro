@@ -126,6 +126,16 @@ func TestPutRejectsNullPayload(t *testing.T) {
 	}
 }
 
+func TestPutRejectsMissingPreferences(t *testing.T) {
+	handler := testHandler(newStubStore())
+
+	recorder := httptest.NewRecorder()
+	handler.Put(recorder, testRequest(http.MethodPut, `{"tenant_id":"local"}`))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestKeyUsesTrustedResolverInsteadOfHeaders(t *testing.T) {
 	handler := testHandler(newStubStore())
 	request := testRequest(http.MethodGet, "")

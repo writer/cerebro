@@ -32,8 +32,8 @@ type Handler struct {
 }
 
 type requestBody struct {
-	TenantID    string          `json:"tenant_id"`
-	Preferences json.RawMessage `json:"preferences"`
+	TenantID    string           `json:"tenant_id"`
+	Preferences *json.RawMessage `json:"preferences"`
 }
 
 type responseBody struct {
@@ -94,7 +94,11 @@ func (h Handler) Put(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusForKeyError(err), err.Error())
 		return
 	}
-	payload := bytes.TrimSpace(request.Preferences)
+	if request.Preferences == nil {
+		writeError(w, http.StatusBadRequest, "preferences are required")
+		return
+	}
+	payload := bytes.TrimSpace(*request.Preferences)
 	if len(payload) == 0 {
 		payload = []byte("{}")
 	}

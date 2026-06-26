@@ -15,3 +15,12 @@ func customDashboardActorID(ctx context.Context) string {
 	}
 	return "anonymous"
 }
+
+func userPreferenceActorID(ctx context.Context) string {
+	if auth, ok := ctx.Value(authContextKey{}).(authContext); ok {
+		if name := strings.TrimSpace(auth.principal.Name); name != "" {
+			return name
+		}
+	}
+	return "anonymous"
+}
