@@ -98,9 +98,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 }
 
 func supportedFamilies() []string {
-	families := make([]string, 0, len(familyEndpoints))
-	for _, endpoint := range familyEndpoints {
-		families = append(families, string(endpoint.name))
+	families := make([]string, 0, len(grcFamilyDescriptors))
+	for _, descriptor := range grcFamilyDescriptors {
+		families = append(families, string(descriptor.Family))
 	}
 	return families
 }
