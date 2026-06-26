@@ -1378,6 +1378,52 @@ func TestGitHubProviderUnavailableDoesNotFailGraphRuntimeFamilies(t *testing.T) 
 	}
 }
 
+func TestGitHubAppInstallationTokenUnavailableDoesNotFailRepositoryRuntime(t *testing.T) {
+	privateKey := testGitHubAppPrivateKeyPEM(t)
+	tokenRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v3/app/installations/123/access_tokens" {
+			tokenRequests++
+			http.NotFound(w, r)
+			return
+		}
+		t.Fatalf("unexpected GitHub API request after failed app token fetch: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"app_id":          "42",
+		"base_url":        server.URL,
+		"family":          familyRepository,
+		"installation_id": "123",
+		"owner":           "writer",
+		"private_key":     privateKey,
+	})
+
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(repository app token unavailable) error = %v", err)
+	}
+	pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(repository app token unavailable) error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(pull.Events) = %d, want 0", len(pull.Events))
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+		t.Fatalf("ShortCircuitReason = %q, want not_modified", pull.ShortCircuitReason)
+	}
+	if tokenRequests < 2 {
+		t.Fatalf("installation token requests = %d, want check and read attempts", tokenRequests)
+	}
+}
+
 func TestGitHubPullRequestOwnerUnavailableStillFails(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

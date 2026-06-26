@@ -48,6 +48,21 @@ type githubAppInstallationTokenResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+type GitHubAppInstallationTokenHTTPError struct {
+	StatusCode int
+}
+
+func (err *GitHubAppInstallationTokenHTTPError) Error() string {
+	return fmt.Sprintf("github app installation token request returned HTTP %d", err.StatusCode)
+}
+
+func (err *GitHubAppInstallationTokenHTTPError) HTTPStatus() int {
+	if err == nil {
+		return 0
+	}
+	return err.StatusCode
+}
+
 func (cfg GitHubAppAuthConfig) Configured() bool {
 	return cfg.AppID != "" && cfg.InstallationID != "" && (cfg.PrivateKey != "" || cfg.PrivateKeyBase64 != "")
 }
@@ -134,7 +149,7 @@ func (rt *githubAppTokenTransport) installationToken(ctx context.Context) (strin
 	defer func() { _ = resp.Body.Close() }()
 	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("github app installation token request returned HTTP %d", resp.StatusCode)
+		return "", &GitHubAppInstallationTokenHTTPError{StatusCode: resp.StatusCode}
 	}
 	if readErr != nil {
 		return "", fmt.Errorf("read github app installation token response: %w", readErr)
