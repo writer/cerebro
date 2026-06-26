@@ -82,6 +82,26 @@ func customDashboardTestHandler(app *App) *customdashboards.Handler {
 	return customdashboards.NewHandler(app.deps.StateStore, effectiveTenantFilter, authorizeTenantID, customDashboardActorID)
 }
 
+func TestUserPreferenceActorIDRequiresHumanPrincipal(t *testing.T) {
+	humanContext := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Name: "person@example.test", ClientID: "client-1"},
+	})
+	if got := userPreferenceActorID(humanContext); got != "person@example.test" {
+		t.Fatalf("userPreferenceActorID() = %q, want human principal name", got)
+	}
+
+	machineContext := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			ClientID:     "client-1",
+			DeviceID:     "device-1",
+			CredentialID: "credential-id-fixture", // #nosec G101 -- credential identifier fixture, not a secret.
+		},
+	})
+	if got := userPreferenceActorID(machineContext); got != "" {
+		t.Fatalf("userPreferenceActorID() = %q, want empty machine identity", got)
+	}
+}
+
 func TestHandleCreateCustomDashboardValidatesAndPersists(t *testing.T) {
 	store := newStubCustomDashboardStore()
 	app := askQueryTestApp(store)
