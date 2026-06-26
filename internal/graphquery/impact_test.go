@@ -62,6 +62,40 @@ func (s *impactStubStore) maxConcurrentLookups() int {
 	return s.maxLookups
 }
 
+type impactBatchStubStore struct {
+	impactStubStore
+
+	batchMu    sync.Mutex
+	batchCalls [][]string
+}
+
+func (s *impactBatchStubStore) GetEntityNeighborhoods(_ context.Context, rootURNs []string, _ int) (map[string]*ports.EntityNeighborhood, error) {
+	roots := append([]string(nil), rootURNs...)
+	s.batchMu.Lock()
+	s.batchCalls = append(s.batchCalls, roots)
+	s.batchMu.Unlock()
+
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(roots))
+	for _, rootURN := range roots {
+		neighborhood, ok := s.neighborhoods[rootURN]
+		if !ok {
+			return nil, ports.ErrGraphEntityNotFound
+		}
+		neighborhoods[rootURN] = neighborhood
+	}
+	return neighborhoods, nil
+}
+
+func (s *impactBatchStubStore) batchedRoots() [][]string {
+	s.batchMu.Lock()
+	defer s.batchMu.Unlock()
+	calls := make([][]string, 0, len(s.batchCalls))
+	for _, roots := range s.batchCalls {
+		calls = append(calls, append([]string(nil), roots...))
+	}
+	return calls
+}
+
 func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testing.T) {
 	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
 	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"
@@ -114,6 +148,45 @@ func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testin
 	}
 	if len(result.Evidence) != 1 || result.Evidence[0].URN != alertURN {
 		t.Fatalf("Evidence = %#v, want GitHub alert", result.Evidence)
+	}
+}
+
+func TestGetImpactUsesBatchedFrontierLookupWhenAvailable(t *testing.T) {
+	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	firstPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	secondPackageURN := "urn:cerebro:writer:package:canonical:pkg:npm/bar"
+	store := &impactBatchStubStore{impactStubStore: impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+		rootURN: {
+			Root: node(rootURN, "vulnerability", "CVE-2026-4242"),
+			Neighbors: []*ports.NeighborhoodNode{
+				node(firstPackageURN, "package", "foo"),
+				node(secondPackageURN, "package", "bar"),
+			},
+		},
+		firstPackageURN:  emptyNeighborhood(firstPackageURN, "package"),
+		secondPackageURN: emptyNeighborhood(secondPackageURN, "package"),
+	}}}
+
+	if _, err := New(store).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindVulnerability,
+		TenantID:   "writer",
+		Identifier: "CVE-2026-4242",
+		Depth:      2,
+	}); err != nil {
+		t.Fatalf("GetImpact() error = %v", err)
+	}
+	if queries := store.queryURNs(); len(queries) != 0 {
+		t.Fatalf("single-root queries = %#v, want batched path only", queries)
+	}
+	calls := store.batchedRoots()
+	if len(calls) != 2 {
+		t.Fatalf("batch calls = %#v, want root and frontier batches", calls)
+	}
+	if len(calls[0]) != 1 || calls[0][0] != rootURN {
+		t.Fatalf("first batch = %#v, want root", calls[0])
+	}
+	if len(calls[1]) != 2 || calls[1][0] != firstPackageURN || calls[1][1] != secondPackageURN {
+		t.Fatalf("second batch = %#v, want package frontier", calls[1])
 	}
 }
 
