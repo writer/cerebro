@@ -1322,6 +1322,142 @@ func TestGitHubAuditUnavailableDoesNotFailCheckOrRead(t *testing.T) {
 	}
 }
 
+func TestGitHubProviderUnavailableDoesNotFailGraphRuntimeFamilies(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		family string
+		repo   string
+	}{
+		{name: "dependabot", family: familyDependabot, repo: "cerebro"},
+		{name: "org inventory", family: familyOrgInventory},
+		{name: "repository", family: familyRepository},
+		{name: "secret scanning", family: familySecretScanning},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				requests++
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackBaseURL = true
+			values := map[string]string{
+				"base_url": server.URL,
+				"family":   tt.family,
+				"owner":    "writer",
+				"token":    "test-token",
+			}
+			if tt.repo != "" {
+				values["repo"] = tt.repo
+			}
+			cfg := sourcecdk.NewConfig(values)
+
+			if err := source.Check(context.Background(), cfg); err != nil {
+				t.Fatalf("Check(%s unavailable) error = %v", tt.family, err)
+			}
+			pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+			if err != nil {
+				t.Fatalf("ReadWithCheckpoint(%s unavailable) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 0 {
+				t.Fatalf("len(pull.Events) = %d, want 0", len(pull.Events))
+			}
+			if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonNotModified {
+				t.Fatalf("ShortCircuitReason = %q, want not_modified", pull.ShortCircuitReason)
+			}
+			if requests == 0 {
+				t.Fatal("requests = 0, want provider probe attempted")
+			}
+		})
+	}
+}
+
+func TestGitHubPullRequestOwnerUnavailableStillFails(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		requests++
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyPullRequest,
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+
+	if err := source.Check(context.Background(), cfg); err == nil {
+		t.Fatal("Check(pull_request unavailable owner) error = nil, want non-nil")
+	}
+	if _, err := source.Discover(context.Background(), cfg); err == nil {
+		t.Fatal("Discover(pull_request unavailable owner) error = nil, want non-nil")
+	}
+	if requests == 0 {
+		t.Fatal("requests = 0, want provider probe attempted")
+	}
+}
+
+func TestGitHubRepositoryCheckDoesNotDoubleWrapLookupErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"message":"server error"}`, http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	for _, tt := range []struct {
+		name   string
+		values map[string]string
+	}{
+		{
+			name:   "repo",
+			values: map[string]string{"base_url": server.URL, "family": familyRepository, "owner": "writer", "repo": "cerebro"},
+		},
+		{
+			name:   "owner",
+			values: map[string]string{"base_url": server.URL, "family": familyRepository, "owner": "writer"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := source.Check(context.Background(), sourcecdk.NewConfig(tt.values))
+			if err == nil {
+				t.Fatal("Check() error = nil, want non-nil")
+			}
+			if got := errorWrapDepth(err); got != 1 {
+				t.Fatalf("error wrap depth = %d, want 1", got)
+			}
+		})
+	}
+}
+
+func errorWrapDepth(err error) int {
+	depth := 0
+	for err != nil {
+		err = errors.Unwrap(err)
+		if err != nil {
+			depth++
+		}
+	}
+	return depth
+}
+
 func TestGitHubAuditFreshnessCheckpointDoesNotExposeProviderMetadata(t *testing.T) {
 	auditEntry := map[string]any{
 		"@timestamp":   1776916397852,

@@ -18,6 +18,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
 
@@ -93,7 +94,6 @@ func New() (*Source, error) {
 	}, nil
 }
 
-// Spec returns static metadata for the GitHub source.
 func (s *Source) Spec() *cerebrov1.SourceSpec {
 	return s.spec
 }
@@ -119,10 +119,10 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if settings.family == familyRepository {
 		if settings.repo != "" {
 			_, err := getRepo(ctx, client, settings.owner, settings.repo)
-			return err
+			return githubapi.ProviderUnavailableOrError(err, settings.hasAuth())
 		}
 		_, err := listRepos(ctx, client, settings.owner, settings.perPage)
-		return err
+		return githubapi.ProviderUnavailableOrError(err, settings.hasAuth())
 	}
 	if settings.repo != "" {
 		_, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -222,7 +222,7 @@ func (s *Source) readPullRequests(ctx context.Context, client *gogithub.Client, 
 		},
 	})
 	if err != nil {
-		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github repo %s/%s", settings.owner, settings.repo), err)
+		return sourcecdk.Pull{}, githubapi.LookupError(fmt.Sprintf("github repo %s/%s", settings.owner, settings.repo), err)
 	}
 	nextCursor := ""
 	if resp != nil && resp.NextPage > 0 {
@@ -234,7 +234,7 @@ func (s *Source) readPullRequests(ctx context.Context, client *gogithub.Client, 
 }
 
 func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, configHash string) (sourcecdk.Pull, error) {
-	options := githubcanary.RepositoryReadOptions{Owner: settings.owner, Repo: settings.repo, PerPage: settings.perPage, ConfigHash: configHash, Cursor: cursor, Checkpoint: checkpoint}
+	options := githubcanary.RepositoryReadOptions{Owner: settings.owner, Repo: settings.repo, PerPage: settings.perPage, ConfigHash: configHash, Cursor: cursor, Checkpoint: checkpoint, AllowProviderUnavailable: settings.hasAuth()}
 	options.Build = func(repo *gogithub.Repository) (*primitives.Event, error) { return repositoryEvent(settings, repo) }
 	return githubcanary.ReadRepositories(ctx, client, options)
 }
@@ -481,16 +481,4 @@ func timestamp(value *gogithub.Timestamp) *time.Time {
 	}
 	result := value.UTC()
 	return &result
-}
-
-func isNotFound(err error) bool {
-	var apiErr *gogithub.ErrorResponse
-	return errors.As(err, &apiErr) && apiErr.Response != nil && apiErr.Response.StatusCode == 404
-}
-
-func wrapLookupError(subject string, err error) error {
-	if isNotFound(err) {
-		return fmt.Errorf("%s not found", subject)
-	}
-	return fmt.Errorf("%s: %w", subject, err)
 }

@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 	"github.com/writer/cerebro/sources/internal/githubapp"
 	"github.com/writer/cerebro/sources/internal/githubcanary"
 )
@@ -45,10 +46,7 @@ func (s *Source) checkOrgInventory(ctx context.Context, client *gogithub.Client,
 	_, _, err := client.Organizations.ListMembers(ctx, settings.owner, &gogithub.ListMembersOptions{
 		ListOptions: gogithub.ListOptions{PerPage: 1},
 	})
-	if err != nil {
-		return wrapLookupError(fmt.Sprintf("github org members for %s", settings.owner), err)
-	}
-	return nil
+	return githubapi.ProviderUnavailableLookupError(fmt.Sprintf("github org members for %s", settings.owner), err, settings.hasAuth())
 }
 
 func (s *Source) discoverOrgInventory(ctx context.Context, client *gogithub.Client, settings settings) ([]sourcecdk.URN, error) {
@@ -78,7 +76,11 @@ func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, 
 		ListOptions: gogithub.ListOptions{PerPage: 100},
 	})
 	if err != nil {
-		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github org members for %s", settings.owner), err)
+		if settings.hasAuth() && githubapi.ProviderUnavailable(err) {
+			pull := githubapi.ProviderUnavailablePull(checkpoint)
+			return canary.Apply(pull, "github", familyOrgInventory), nil
+		}
+		return sourcecdk.Pull{}, githubapi.LookupError(fmt.Sprintf("github org members for %s", settings.owner), err)
 	}
 	for _, member := range members {
 		event, err := orgMemberEvent(settings, member, "member", now)

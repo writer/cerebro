@@ -2,9 +2,7 @@ package githubcanary
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 )
 
 const (
@@ -36,13 +35,14 @@ type Result struct {
 }
 
 type RepositoryReadOptions struct {
-	Owner      string
-	Repo       string
-	PerPage    int
-	ConfigHash string
-	Cursor     *cerebrov1.SourceCursor
-	Checkpoint *cerebrov1.SourceCheckpoint
-	Build      func(*gogithub.Repository) (*primitives.Event, error)
+	Owner                    string
+	Repo                     string
+	PerPage                  int
+	ConfigHash               string
+	Cursor                   *cerebrov1.SourceCursor
+	Checkpoint               *cerebrov1.SourceCheckpoint
+	AllowProviderUnavailable bool
+	Build                    func(*gogithub.Repository) (*primitives.Event, error)
 }
 
 func ReadRepositories(ctx context.Context, client *gogithub.Client, options RepositoryReadOptions) (sourcecdk.Pull, error) {
@@ -55,6 +55,9 @@ func ReadRepositories(ctx context.Context, client *gogithub.Client, options Repo
 	if strings.TrimSpace(options.Repo) == "" && page == 1 && sourcecdk.CursorToken(options.Cursor) == "" {
 		canary, err = ProbeRepository(ctx, client, options.Owner, options.Checkpoint, options.ConfigHash, time.Now().UTC())
 		if err != nil {
+			if options.AllowProviderUnavailable && githubapi.ProviderUnavailable(err) {
+				return githubapi.ProviderUnavailablePull(readCheckpoint), nil
+			}
 			return sourcecdk.Pull{}, err
 		}
 		if pull, ok := canary.ShortCircuitPull(); ok {
@@ -67,12 +70,18 @@ func ReadRepositories(ctx context.Context, client *gogithub.Client, options Repo
 		}
 		repo, err := getRepository(ctx, client, options.Owner, options.Repo)
 		if err != nil {
+			if options.AllowProviderUnavailable && githubapi.ProviderUnavailable(err) {
+				return githubapi.ProviderUnavailablePull(readCheckpoint), nil
+			}
 			return sourcecdk.Pull{}, err
 		}
 		return sourcecdk.IncrementalPullFromRecords("github", "repository", []*gogithub.Repository{repo}, "", readCheckpoint, options.Build)
 	}
 	repos, resp, err := listRepositoriesPage(ctx, client, options.Owner, page, options.PerPage)
 	if err != nil {
+		if options.AllowProviderUnavailable && githubapi.ProviderUnavailable(err) {
+			return githubapi.ProviderUnavailablePull(readCheckpoint), nil
+		}
 		return sourcecdk.Pull{}, err
 	}
 	nextCursor := ""
@@ -182,16 +191,7 @@ func AuditLogMetadata(owner string, entries []*gogithub.AuditEntry, configHash s
 }
 
 func AuditLogUnavailable(err error) bool {
-	var apiErr *gogithub.ErrorResponse
-	if !errors.As(err, &apiErr) || apiErr.Response == nil {
-		return false
-	}
-	switch apiErr.Response.StatusCode {
-	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
-		return true
-	default:
-		return false
-	}
+	return githubapi.ProviderUnavailable(err)
 }
 
 func evaluate(checkpoint *cerebrov1.SourceCheckpoint, source, family string, metadata map[string]string, watermark time.Time, observedAt time.Time, policy sourcecdk.CanaryReconciliationPolicy) *Result {
@@ -239,7 +239,7 @@ func listRepositoriesPage(ctx context.Context, client *gogithub.Client, owner st
 	if err == nil {
 		return repos, resp, nil
 	}
-	if !isNotFound(err) {
+	if !githubapi.NotFound(err) {
 		return nil, nil, fmt.Errorf("list github org repos for %s: %w", owner, err)
 	}
 	repos, resp, err = client.Repositories.ListByUser(ctx, owner, &gogithub.RepositoryListByUserOptions{
@@ -328,11 +328,6 @@ func timestamp(value *gogithub.Timestamp) *time.Time {
 	}
 	result := value.UTC()
 	return &result
-}
-
-func isNotFound(err error) bool {
-	var apiErr *gogithub.ErrorResponse
-	return errors.As(err, &apiErr) && apiErr.Response != nil && apiErr.Response.StatusCode == http.StatusNotFound
 }
 
 func firstNonEmpty(values ...string) string {

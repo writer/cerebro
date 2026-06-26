@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 )
 
 const familySecretScanning = "secret_scanning_alert"
@@ -41,10 +42,7 @@ type secretScanningAlertPayload struct {
 
 func (s *Source) checkSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings) error {
 	_, _, err := listSecretScanningAlertsForOrg(ctx, client, settings, nil, 1)
-	if err != nil {
-		return wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
-	}
-	return nil
+	return githubapi.ProviderUnavailableLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err, settings.hasAuth())
 }
 
 func (s *Source) discoverSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings) ([]sourcecdk.URN, error) {
@@ -58,7 +56,10 @@ func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.
 	readCheckpoint := sourcecdk.IncrementalCheckpointForCursor("github", familySecretScanning, cursor, checkpoint)
 	alerts, resp, err := listSecretScanningAlertsForOrg(ctx, client, settings, cursor, settings.perPage)
 	if err != nil {
-		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
+		if settings.hasAuth() && githubapi.ProviderUnavailable(err) {
+			return githubapi.ProviderUnavailablePull(readCheckpoint), nil
+		}
+		return sourcecdk.Pull{}, githubapi.LookupError(fmt.Sprintf("github secret scanning alerts for org %s", settings.owner), err)
 	}
 	nextCursor := ""
 	if resp != nil {

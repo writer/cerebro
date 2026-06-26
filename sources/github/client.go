@@ -10,6 +10,7 @@ import (
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 )
 
 func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
@@ -54,7 +55,7 @@ func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupI
 func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo string) (*gogithub.Repository, error) {
 	repository, _, err := client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
-		return nil, wrapLookupError(fmt.Sprintf("github repo %s/%s", owner, repo), err)
+		return nil, githubapi.LookupError(fmt.Sprintf("github repo %s/%s", owner, repo), err)
 	}
 	return repository, nil
 }
@@ -77,7 +78,7 @@ func listReposPage(ctx context.Context, client *gogithub.Client, owner string, p
 	if err == nil {
 		return repos, resp, nil
 	}
-	if !isNotFound(err) {
+	if !githubapi.NotFound(err) {
 		return nil, nil, fmt.Errorf("list github org repos for %s: %w", owner, err)
 	}
 	repos, resp, err = client.Repositories.ListByUser(ctx, owner, &gogithub.RepositoryListByUserOptions{
@@ -90,7 +91,7 @@ func listReposPage(ctx context.Context, client *gogithub.Client, owner string, p
 		},
 	})
 	if err != nil {
-		return nil, nil, wrapLookupError(fmt.Sprintf("github owner %s", owner), err)
+		return nil, nil, githubapi.LookupError(fmt.Sprintf("github owner %s", owner), err)
 	}
 	return repos, resp, nil
 }
