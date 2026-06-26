@@ -5144,6 +5144,17 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 				"analyzer_label": "high-confidence",
 				"created_at":     "2026-06-17T12:06:00Z",
 			}})
+		case "/api/v1/repositories/7/knowledge":
+			writeTestJSON(t, w, map[string]any{
+				"entries": []map[string]any{{
+					"slug":            "repository-commit-learning",
+					"title":           "Repository commit learning",
+					"summary":         "Archetype learned the latest repository head.",
+					"repository_id":   7,
+					"repository_name": "Archetype",
+					"owner":           "WriterInternal",
+				}},
+			})
 		default:
 			http.NotFound(w, r)
 		}
@@ -5199,14 +5210,14 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	if !ok {
 		t.Fatalf("graph ingest details = %#v, want object", resultPayload["ingest"])
 	}
-	if got := ingestPayload["events_read"]; got != float64(2) {
-		t.Fatalf("events_read = %#v, want 2", got)
+	if got := ingestPayload["events_read"]; got != float64(3) {
+		t.Fatalf("events_read = %#v, want 3", got)
 	}
-	if got := ingestPayload["entities_projected"]; got != float64(3) {
-		t.Fatalf("entities_projected = %#v, want 3", got)
+	if got := ingestPayload["entities_projected"]; got != float64(4) {
+		t.Fatalf("entities_projected = %#v, want 4", got)
 	}
-	if got := ingestPayload["links_projected"]; got != float64(5) {
-		t.Fatalf("links_projected = %#v, want 5", got)
+	if got := ingestPayload["links_projected"]; got != float64(7) {
+		t.Fatalf("links_projected = %#v, want 7", got)
 	}
 	if !sawAuth.Load() {
 		t.Fatal("Archetype API did not receive bearer token")
@@ -5215,19 +5226,25 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/Archetype"
 	scanURN := "urn:cerebro:writer:archetype_scan:1"
 	findingURN := "urn:cerebro:writer:archetype_finding:10"
+	noteURN := "urn:cerebro:writer:archetype_library_note:WriterInternal/Archetype:repository-commit-learning"
 	if entity := graphStore.entities[findingURN]; entity == nil || entity.EntityType != "archetype.finding" {
 		t.Fatalf("projected finding entity = %#v, want archetype.finding", entity)
 	}
 	if entity := graphStore.entities[scanURN]; entity == nil || entity.EntityType != "archetype.scan" {
 		t.Fatalf("projected scan entity = %#v, want archetype.scan", entity)
 	}
+	if entity := graphStore.entities[noteURN]; entity == nil || entity.EntityType != "archetype.library_note" {
+		t.Fatalf("projected library note entity = %#v, want archetype.library_note", entity)
+	}
 	if entity := graphStore.entities[repoURN]; entity == nil || entity.EntityType != "github.code.repository" {
 		t.Fatalf("projected repository entity = %#v, want github.code.repository", entity)
 	}
 	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", scanURN)
 	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", findingURN)
+	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", noteURN)
 	assertBootstrapProjectedLink(t, graphStore, findingURN, "belongs_to", scanURN)
 	assertBootstrapProjectedLink(t, graphStore, findingURN, "affects", repoURN)
+	assertBootstrapProjectedLink(t, graphStore, noteURN, "belongs_to", scanURN)
 
 	neighborhoodResp, err := server.Client().Get(server.URL + "/platform/graph/neighborhood?root_urn=" + url.QueryEscape(findingURN) + "&limit=10")
 	if err != nil {

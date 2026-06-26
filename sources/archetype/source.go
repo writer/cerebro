@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,6 +59,16 @@ type vulnerabilityRecord struct {
 	AnalyzerLabel string  `json:"analyzer_label"`
 	CreatedAt     string  `json:"created_at"`
 }
+type knowledgeEntryRecord struct {
+	Slug             string   `json:"slug"`
+	Title            string   `json:"title"`
+	Summary          string   `json:"summary"`
+	Topics           []string `json:"topics,omitempty"`
+	DominantSeverity string   `json:"dominant_severity,omitempty"`
+	RepositoryID     int      `json:"repository_id"`
+	RepositoryName   string   `json:"repository_name"`
+	Owner            string   `json:"owner"`
+}
 type repositoryRecord struct {
 	ID    int    `json:"id"`
 	Owner string `json:"owner"`
@@ -81,8 +92,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	var scans []scanRecord
-	return s.get(ctx, st, "/scans", &scans)
+	return s.get(ctx, st, "/scans", new([]scanRecord))
 }
 func (s *Source) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
@@ -102,6 +112,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	sort.Slice(scans, func(i, j int) bool { return scans[i].ID < scans[j].ID })
 	last := lastScanID(cursor, checkpoint)
 	repos := map[int]repositoryRecord{}
+	knowledgeRepos := map[int]bool{}
 	events := []*primitives.Event{}
 	for _, scan := range scans {
 		if scan.ID <= last {
@@ -121,11 +132,23 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		for _, vuln := range vulns {
 			events = append(events, vulnerabilityEvent(st, scan, vuln, repos[scan.RepositoryID]))
 		}
+		if !knowledgeRepos[scan.RepositoryID] {
+			entries, cacheable := s.repositoryKnowledge(ctx, st, scan.RepositoryID)
+			knowledgeRepos[scan.RepositoryID] = cacheable
+			for _, entry := range entries {
+				if event := libraryNoteEvent(st, scan, entry, repos[scan.RepositoryID]); event != nil {
+					events = append(events, event)
+				}
+			}
+			if err := ctx.Err(); err != nil {
+				return sourcecdk.Pull{}, err
+			}
+		}
 	}
 	if len(events) == 0 {
 		return sourcecdk.NotModifiedPull(checkpoint), nil
 	}
-	next := strconv.Itoa(maxScanID(scans))
+	next := strconv.Itoa(scans[len(scans)-1].ID)
 	return sourcecdk.Pull{Events: events, Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: next, Watermark: events[len(events)-1].OccurredAt}}, nil
 }
 func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
@@ -157,8 +180,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	if err != nil {
 		return st, err
 	}
-	st.baseURL = baseURL
-	st.apiPrefix = strings.TrimRight(apiPrefix, "/")
+	st.baseURL, st.apiPrefix = baseURL, strings.TrimRight(apiPrefix, "/")
 	st.privateEndpointAllowlist = privateEndpointAllowlist
 	return st, nil
 }
@@ -184,7 +206,7 @@ func (s *Source) get(ctx context.Context, st settings, path string, out any) err
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("archetype GET %s failed with status %d", path, resp.StatusCode)
+		return &sourcecdk.HTTPStatusError{Code: resp.StatusCode, Message: fmt.Sprintf("archetype GET %s failed with status %d", path, resp.StatusCode)}
 	}
 	return json.Unmarshal(resp.Body, out)
 }
@@ -199,13 +221,45 @@ func (s *Source) repositories(ctx context.Context, st settings) map[int]reposito
 	}
 	return out
 }
+func (s *Source) repositoryKnowledge(ctx context.Context, st settings, repositoryID int) ([]knowledgeEntryRecord, bool) {
+	var response struct {
+		Entries []knowledgeEntryRecord `json:"entries"`
+	}
+	if err := s.get(ctx, st, fmt.Sprintf("/repositories/%d/knowledge", repositoryID), &response); err != nil {
+		if sourcecdk.IsHTTPStatus(err, http.StatusNotFound) || sourcecdk.IsHTTPStatus(err, http.StatusForbidden) || sourcecdk.IsRetryableHTTPStatus(err) {
+			return nil, !sourcecdk.IsRetryableHTTPStatus(err)
+		}
+		return nil, false
+	}
+	return response.Entries, true
+}
 func scanEvent(st settings, scan scanRecord, repo repositoryRecord) *primitives.Event {
-	attrs := map[string]string{"scan_id": itoa(scan.ID), "repository_id": itoa(scan.RepositoryID), "status": scan.Status, "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
-	return event(st, "archetype.scan", "archetype-scan-"+itoa(scan.ID), "archetype/scan/v1", scanTime(scan), attrs, scan)
+	attrs := map[string]string{"scan_id": strconv.Itoa(scan.ID), "repository_id": strconv.Itoa(scan.RepositoryID), "status": scan.Status, "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
+	return event(st, "archetype.scan", "archetype-scan-"+strconv.Itoa(scan.ID), "archetype/scan/v1", scanTime(scan), attrs, scan)
 }
 func vulnerabilityEvent(st settings, scan scanRecord, vuln vulnerabilityRecord, repo repositoryRecord) *primitives.Event {
-	attrs := map[string]string{"vulnerability_id": itoa(vuln.ID), "scan_id": itoa(vuln.ScanID), "repository_id": itoa(scan.RepositoryID), "severity": vuln.Severity, "category": vuln.Category, "file_path": vuln.FilePath, "line_number": itoa(vuln.LineNumber), "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
-	return event(st, "archetype.vulnerability", "archetype-vulnerability-"+itoa(vuln.ID), "archetype/vulnerability/v1", parseTime(vuln.CreatedAt, scanTime(scan)), attrs, vuln)
+	attrs := map[string]string{"vulnerability_id": strconv.Itoa(vuln.ID), "scan_id": strconv.Itoa(vuln.ScanID), "repository_id": strconv.Itoa(scan.RepositoryID), "severity": vuln.Severity, "category": vuln.Category, "file_path": vuln.FilePath, "line_number": strconv.Itoa(vuln.LineNumber), "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
+	return event(st, "archetype.vulnerability", "archetype-vulnerability-"+strconv.Itoa(vuln.ID), "archetype/vulnerability/v1", parseTime(vuln.CreatedAt, scanTime(scan)), attrs, vuln)
+}
+func libraryNoteEvent(st settings, scan scanRecord, entry knowledgeEntryRecord, repo repositoryRecord) *primitives.Event {
+	entry.Slug = first(entry.Slug)
+	entry.Owner, entry.RepositoryName = first(entry.Owner, repo.Owner), first(entry.RepositoryName, repo.Name)
+	if entry.RepositoryID == 0 {
+		entry.RepositoryID = scan.RepositoryID
+	}
+	if entry.Owner == "" || entry.RepositoryName == "" || entry.Slug == "" {
+		return nil
+	}
+	attrs := map[string]string{
+		"knowledge_slug":    entry.Slug,
+		"scan_id":           strconv.Itoa(scan.ID),
+		"repository_id":     strconv.Itoa(entry.RepositoryID),
+		"dominant_severity": entry.DominantSeverity,
+		"owner":             entry.Owner,
+		"repo":              entry.RepositoryName,
+	}
+	eventID := "archetype-library-" + strconv.Itoa(entry.RepositoryID) + "-" + url.QueryEscape(entry.Slug)
+	return event(st, "archetype.library_note", eventID, "archetype/library-note/v1", scanTime(scan), attrs, entry)
 }
 func event(st settings, kind, id, schema string, at time.Time, attrs map[string]string, payload any) *primitives.Event {
 	body, _ := json.Marshal(payload)
@@ -215,15 +269,6 @@ func lastScanID(cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceChec
 	value := first(sourcecdk.CursorToken(cursor), checkpoint.GetCursorOpaque())
 	id, _ := strconv.Atoi(value)
 	return id
-}
-func maxScanID(scans []scanRecord) int {
-	max := 0
-	for _, scan := range scans {
-		if scan.ID > max {
-			max = scan.ID
-		}
-	}
-	return max
 }
 func scanTime(scan scanRecord) time.Time {
 	return parseTime(first(scan.CompletedAt, scan.StartedAt, scan.CreatedAt), time.Now().UTC())
@@ -250,4 +295,3 @@ func compact(attrs map[string]string) map[string]string {
 	}
 	return attrs
 }
-func itoa(value int) string { return strconv.Itoa(value) }
