@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -49,6 +50,8 @@ func stubKey(tenantID string, userID string) string {
 func testHandler(store ports.StateStore) Handler {
 	return NewHandler(store, func(context.Context, string) (string, error) {
 		return "local", nil
+	}, func(context.Context) string {
+		return "person@example.com"
 	})
 }
 
@@ -113,8 +116,34 @@ func TestPutRejectsNonObjectPayload(t *testing.T) {
 	}
 }
 
-func TestKeyFallsBackToAnonymousUser(t *testing.T) {
+func TestPutRejectsNullPayload(t *testing.T) {
 	handler := testHandler(newStubStore())
+
+	recorder := httptest.NewRecorder()
+	handler.Put(recorder, testRequest(http.MethodPut, `{"preferences":null}`))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestKeyUsesTrustedResolverInsteadOfHeaders(t *testing.T) {
+	handler := testHandler(newStubStore())
+	request := testRequest(http.MethodGet, "")
+	request.Header.Set("X-Cerebro-User-ID", "victim@example.com")
+
+	key, err := handler.keyForRequest(request, "")
+	if err != nil {
+		t.Fatalf("keyForRequest() error = %v", err)
+	}
+	if key.UserID != "person@example.com" {
+		t.Fatalf("user id = %q, want trusted resolver value", key.UserID)
+	}
+}
+
+func TestKeyFallsBackToAnonymousUser(t *testing.T) {
+	handler := NewHandler(newStubStore(), func(context.Context, string) (string, error) {
+		return "local", nil
+	}, nil)
 	key, err := handler.keyForRequest(httptest.NewRequest(http.MethodGet, "/user/preferences", nil), "")
 	if err != nil {
 		t.Fatalf("keyForRequest() error = %v", err)
@@ -127,10 +156,22 @@ func TestKeyFallsBackToAnonymousUser(t *testing.T) {
 func TestTenantResolverErrorRejectsRequest(t *testing.T) {
 	handler := NewHandler(newStubStore(), func(context.Context, string) (string, error) {
 		return "", errors.New("tenant rejected")
-	})
+	}, func(context.Context) string { return "person@example.com" })
 	recorder := httptest.NewRecorder()
 	handler.Get(recorder, testRequest(http.MethodGet, ""))
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", recorder.Code)
+	}
+}
+
+func TestCleanUserIDTruncatesAtUTF8Boundary(t *testing.T) {
+	userID := strings.Repeat("a", maxUserIDBytes-1) + "界" + "tail"
+	cleaned := cleanUserID(userID)
+
+	if !utf8.ValidString(cleaned) {
+		t.Fatalf("cleaned user id is invalid UTF-8: %q", cleaned)
+	}
+	if len(cleaned) > maxUserIDBytes {
+		t.Fatalf("cleaned user id length = %d, want <= %d", len(cleaned), maxUserIDBytes)
 	}
 }

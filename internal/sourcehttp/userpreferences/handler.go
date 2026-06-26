@@ -16,14 +16,19 @@ import (
 )
 
 const maxPreferenceBytes = 64 * 1024
+const maxUserIDBytes = 240
 
 // TenantResolver returns the effective tenant for a request body or query value.
 type TenantResolver func(context.Context, string) (string, error)
+
+// UserResolver returns the authenticated user identity from trusted request context.
+type UserResolver func(context.Context) string
 
 // Handler serves user-level console preferences.
 type Handler struct {
 	store          ports.UserPreferenceStore
 	tenantResolver TenantResolver
+	userResolver   UserResolver
 }
 
 type requestBody struct {
@@ -42,12 +47,12 @@ type responseBody struct {
 
 // NewHandler builds a preferences handler from the optional StateStore
 // capability. A missing capability returns 503 from request handlers.
-func NewHandler(store ports.StateStore, tenantResolver TenantResolver) Handler {
+func NewHandler(store ports.StateStore, tenantResolver TenantResolver, userResolver UserResolver) Handler {
 	preferenceStore, _ := store.(ports.UserPreferenceStore)
 	if isNil(preferenceStore) {
 		preferenceStore = nil
 	}
-	return Handler{store: preferenceStore, tenantResolver: tenantResolver}
+	return Handler{store: preferenceStore, tenantResolver: tenantResolver, userResolver: userResolver}
 }
 
 // Get returns persisted preferences, or defaults when the user has not saved any.
@@ -119,9 +124,17 @@ func (h Handler) Put(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) keyForRequest(r *http.Request, requestedTenantID string) (ports.UserPreferenceKey, error) {
+	if r == nil {
+		tenantID := strings.TrimSpace(requestedTenantID)
+		if tenantID == "" {
+			tenantID = "default"
+		}
+		return ports.UserPreferenceKey{TenantID: tenantID, UserID: "anonymous"}, nil
+	}
+	ctx := r.Context()
 	tenantID := strings.TrimSpace(requestedTenantID)
 	if h.tenantResolver != nil {
-		resolvedTenantID, err := h.tenantResolver(r.Context(), requestedTenantID)
+		resolvedTenantID, err := h.tenantResolver(ctx, requestedTenantID)
 		if err != nil {
 			return ports.UserPreferenceKey{}, err
 		}
@@ -130,15 +143,13 @@ func (h Handler) keyForRequest(r *http.Request, requestedTenantID string) (ports
 	if tenantID == "" {
 		tenantID = "default"
 	}
-	return ports.UserPreferenceKey{TenantID: tenantID, UserID: userIDForRequest(r)}, nil
+	return ports.UserPreferenceKey{TenantID: tenantID, UserID: h.userIDForContext(ctx)}, nil
 }
 
-func userIDForRequest(r *http.Request) string {
-	if r != nil {
-		for _, header := range []string{"X-Cerebro-User-ID", "X-Cerebro-User-Email", "X-Cerebro-User-Subject", "X-Cerebro-User-Name"} {
-			if value := cleanUserID(r.Header.Get(header)); value != "" {
-				return value
-			}
+func (h Handler) userIDForContext(ctx context.Context) string {
+	if h.userResolver != nil {
+		if value := cleanUserID(h.userResolver(ctx)); value != "" {
+			return value
 		}
 	}
 	return "anonymous"
@@ -155,15 +166,27 @@ func cleanUserID(value string) string {
 		}
 		return r
 	}, value)
-	if len(value) > 240 {
-		value = value[:240]
+	if len(value) > maxUserIDBytes {
+		value = truncateValidUTF8(value, maxUserIDBytes)
 	}
 	return strings.TrimSpace(value)
 }
 
+func truncateValidUTF8(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	for end := limit; end > 0; end-- {
+		if utf8.ValidString(value[:end]) {
+			return value[:end]
+		}
+	}
+	return ""
+}
+
 func validPreferencePayload(payload []byte) bool {
 	var decoded map[string]any
-	return json.Unmarshal(payload, &decoded) == nil
+	return json.Unmarshal(payload, &decoded) == nil && decoded != nil
 }
 
 func responseFor(tenantID string, userID string, preferences []byte, persisted bool, createdAt time.Time, updatedAt time.Time) responseBody {
