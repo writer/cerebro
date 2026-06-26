@@ -31,11 +31,15 @@ jobs:
       - name: Resolve release tag
         id: resolve
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          DISPATCH_INPUTS_JSON: ${{ toJSON(github.event.inputs) }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            tag="${{ github.ref_name }}"
+          if [ "${EVENT_NAME}" = "push" ]; then
+            tag="${REF_NAME}"
           else
-            tag="${{ inputs.release_tag }}"
+            tag="$(echo "${DISPATCH_INPUTS_JSON}" | jq -r '.release_tag // empty')"
           fi
           if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "ERROR: tag '${tag}' must match vMAJOR.MINOR.PATCH[-PRERELEASE]"
@@ -316,6 +320,9 @@ jobs:
   notify-infra-release:
     runs-on: ubuntu-latest
     needs: [resolve-tag, ghcr-publish, runtime-contract-upload]
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -325,11 +332,20 @@ jobs:
           - target_environment: go-prod
             apply_mode: pull_request
     steps:
+      - name: Fetch secrets from Infisical
+        uses: WriterInternal/devops-github-actions/infisical-secrets@cf0625c0cb6646c057b9bc81c49c8554b2313e27 # v2.3.0
+        with:
+          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          required-keys: CEREBRO_INFRA_PROMOTION_TOKEN CEREBRO_INFRA_REPOSITORY
       - name: Dispatch release deployment request
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.CEREBRO_INFRA_PROMOTION_TOKEN }}
-          INFRA_REPOSITORY: ${{ secrets.CEREBRO_INFRA_REPOSITORY }}
+          GH_TOKEN: ${{ env.CEREBRO_INFRA_PROMOTION_TOKEN }}
+          INFRA_REPOSITORY: ${{ env.CEREBRO_INFRA_REPOSITORY }}
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
           IMAGE_DIGEST: ${{ needs.ghcr-publish.outputs.digest }}
           SOURCE_REPOSITORY: ${{ github.repository }}

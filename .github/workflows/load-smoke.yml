@@ -42,23 +42,35 @@ jobs:
   load-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
     env:
-      INPUT_BASE_URL: ${{ github.event.inputs.base_url }}
-      INPUT_DURATION_SECONDS: ${{ github.event.inputs.duration_seconds }}
-      INPUT_RPS: ${{ github.event.inputs.rps }}
-      INPUT_CONCURRENCY: ${{ github.event.inputs.concurrency }}
-      INPUT_MAX_P95_MS: ${{ github.event.inputs.max_p95_ms }}
-      SECRET_BASE_URL: ${{ secrets.CEREBRO_LOAD_SMOKE_BASE_URL }}
-      CEREBRO_LOAD_SMOKE_BEARER_TOKEN: ${{ secrets.CEREBRO_LOAD_SMOKE_BEARER_TOKEN }}
+      INPUT_DISPATCH_JSON: ${{ toJSON(github.event.inputs) }}
       EVENT_NAME: ${{ github.event_name }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - name: Fetch secrets from Infisical
+        uses: WriterInternal/devops-github-actions/infisical-secrets@cf0625c0cb6646c057b9bc81c49c8554b2313e27 # v2.3.0
+        with:
+          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          required-keys: CEREBRO_LOAD_SMOKE_BASE_URL CEREBRO_LOAD_SMOKE_BEARER_TOKEN
+
       - name: Resolve target
         id: target
         shell: bash
+        env:
+          SECRET_BASE_URL: ${{ env.CEREBRO_LOAD_SMOKE_BASE_URL }}
+          INPUT_DISPATCH_JSON: ${{ env.INPUT_DISPATCH_JSON }}
+          EVENT_NAME: ${{ env.EVENT_NAME }}
         run: |
-          target_url="${INPUT_BASE_URL:-$SECRET_BASE_URL}"
+          input_base_url="$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.base_url // empty')"
+          target_url="${input_base_url:-$SECRET_BASE_URL}"
           if [ -z "$target_url" ]; then
             if [ "$EVENT_NAME" = "schedule" ]; then
               echo "Scheduled load smoke requires CEREBRO_LOAD_SMOKE_BASE_URL."
@@ -74,10 +86,10 @@ jobs:
             echo "CEREBRO_BASE_URL<<LOAD_SMOKE_BASE_URL"
             echo "$target_url"
             echo "LOAD_SMOKE_BASE_URL"
-            echo "LOAD_SMOKE_DURATION=${INPUT_DURATION_SECONDS:-60}"
-            echo "LOAD_SMOKE_RPS=${INPUT_RPS:-3}"
-            echo "LOAD_SMOKE_CONCURRENCY=${INPUT_CONCURRENCY:-6}"
-            echo "LOAD_SMOKE_MAX_P95_MS=${INPUT_MAX_P95_MS:-750}"
+            echo "LOAD_SMOKE_DURATION=$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.duration_seconds // "60"')"
+            echo "LOAD_SMOKE_RPS=$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.rps // "3"')"
+            echo "LOAD_SMOKE_CONCURRENCY=$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.concurrency // "6"')"
+            echo "LOAD_SMOKE_MAX_P95_MS=$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.max_p95_ms // "750"')"
             echo "LOAD_SMOKE_JSON_OUT=tmp/load-smoke.json"
             echo "LOAD_SMOKE_MARKDOWN_OUT=tmp/load-smoke.md"
           } >> "$GITHUB_ENV"
