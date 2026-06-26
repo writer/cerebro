@@ -3,7 +3,6 @@ package reports
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -186,34 +185,7 @@ func normalizeBoolParameter(raw string, defaultValue bool, parameterID string) (
 }
 
 func (s *Service) riskActionPlanGraphNeighborhoods(ctx context.Context, targetURNs []string, resourceLimit int, graphLimit int) (map[string]*ports.EntityNeighborhood, error) {
-	neighborhoods := map[string]*ports.EntityNeighborhood{}
-	seen := map[string]struct{}{}
-	for _, targetURN := range targetURNs {
-		if len(seen) >= resourceLimit {
-			break
-		}
-		targetURN = strings.TrimSpace(targetURN)
-		if targetURN == "" {
-			continue
-		}
-		if _, ok := seen[targetURN]; ok {
-			continue
-		}
-		seen[targetURN] = struct{}{}
-		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, targetURN, graphLimit)
-		switch {
-		case err == nil:
-			if neighborhood == nil {
-				neighborhood = &ports.EntityNeighborhood{}
-			}
-			neighborhoods[targetURN] = neighborhood
-		case errors.Is(err, ports.ErrGraphEntityNotFound):
-			continue
-		default:
-			return nil, fmt.Errorf("load risk action plan graph neighborhood for %q: %w", targetURN, err)
-		}
-	}
-	return neighborhoods, nil
+	return s.graphNeighborhoods(ctx, targetURNs, resourceLimit, graphLimit, "risk action plan")
 }
 
 func riskActionPlanDefinition() *cerebrov1.ReportDefinition {
