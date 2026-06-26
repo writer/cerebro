@@ -50,6 +50,29 @@ func (s *impactStubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQue
 	return nil, nil
 }
 
+func TestSortedImpactRelationsOrdersByRelationFields(t *testing.T) {
+	relations := map[string]*ports.NeighborhoodRelation{
+		"shuffled-1": rel("urn:cerebro:writer:asset:b", "depends_on", "urn:cerebro:writer:asset:a"),
+		"shuffled-2": rel("urn:cerebro:writer:asset:a", "owns", "urn:cerebro:writer:asset:c"),
+		"shuffled-3": rel("urn:cerebro:writer:asset:a", "depends_on", "urn:cerebro:writer:asset:b"),
+	}
+
+	result := sortedImpactRelations(relations)
+
+	if len(result) != 3 {
+		t.Fatalf("sortedImpactRelations() len = %d, want 3", len(result))
+	}
+	if result[0].FromURN != "urn:cerebro:writer:asset:a" || result[0].Relation != "depends_on" || result[0].ToURN != "urn:cerebro:writer:asset:b" {
+		t.Fatalf("sortedImpactRelations()[0] = %#v, want asset:a depends_on asset:b", result[0])
+	}
+	if result[1].FromURN != "urn:cerebro:writer:asset:a" || result[1].Relation != "owns" || result[1].ToURN != "urn:cerebro:writer:asset:c" {
+		t.Fatalf("sortedImpactRelations()[1] = %#v, want asset:a owns asset:c", result[1])
+	}
+	if result[2].FromURN != "urn:cerebro:writer:asset:b" || result[2].Relation != "depends_on" || result[2].ToURN != "urn:cerebro:writer:asset:a" {
+		t.Fatalf("sortedImpactRelations()[2] = %#v, want asset:b depends_on asset:a", result[2])
+	}
+}
+
 func (s *impactStubStore) queryURNs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -315,11 +315,28 @@ func sortedImpactRelations(relations map[string]*ports.NeighborhoodRelation) []*
 		result = append(result, relation)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		left := result[i].FromURN + "|" + result[i].Relation + "|" + result[i].ToURN
-		right := result[j].FromURN + "|" + result[j].Relation + "|" + result[j].ToURN
-		return left < right
+		return compareImpactRelations(result[i], result[j]) < 0
 	})
 	return result
+}
+
+func compareImpactRelations(left *ports.NeighborhoodRelation, right *ports.NeighborhoodRelation) int {
+	switch {
+	case left.FromURN < right.FromURN:
+		return -1
+	case left.FromURN > right.FromURN:
+		return 1
+	case left.Relation < right.Relation:
+		return -1
+	case left.Relation > right.Relation:
+		return 1
+	case left.ToURN < right.ToURN:
+		return -1
+	case left.ToURN > right.ToURN:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func canonicalPackageImpactIdentity(value string) string {

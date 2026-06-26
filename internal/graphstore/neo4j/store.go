@@ -2136,22 +2136,15 @@ func neighborhoodNodes(values map[string]*ports.NeighborhoodNode) []*ports.Neigh
 }
 
 func neighborhoodRelations(values map[string]*ports.NeighborhoodRelation) []*ports.NeighborhoodRelation {
-	relations := make([]*ports.NeighborhoodRelation, 0, len(values))
-	for _, relation := range values {
-		relations = append(relations, relation)
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
 	}
-	slices.SortFunc(relations, func(left *ports.NeighborhoodRelation, right *ports.NeighborhoodRelation) int {
-		leftKey := left.FromURN + "|" + left.Relation + "|" + left.ToURN
-		rightKey := right.FromURN + "|" + right.Relation + "|" + right.ToURN
-		switch {
-		case leftKey < rightKey:
-			return -1
-		case leftKey > rightKey:
-			return 1
-		default:
-			return 0
-		}
-	})
+	slices.Sort(keys)
+	relations := make([]*ports.NeighborhoodRelation, 0, len(keys))
+	for _, key := range keys {
+		relations = append(relations, values[key])
+	}
 	return relations
 }
 
