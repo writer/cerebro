@@ -145,6 +145,43 @@ func TestProjectEventRejectsAttestedURNDeclaredTypeMismatchForNonSensitiveType(t
 	}
 }
 
+func TestProjectEventRejectsUnsafePlainURNIdentifierForNonSensitiveTypes(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		delta GraphDelta
+	}{
+		{
+			name: "asset tag email entity",
+			delta: GraphDelta{Entities: []Entity{{
+				URN:        "urn:cerebro:tenant-a:asset.tag:alice@example.com",
+				EntityType: "asset.tag",
+			}}},
+		},
+		{
+			name: "classification arn entity",
+			delta: GraphDelta{Entities: []Entity{{
+				URN:        "urn:cerebro:tenant-a:data.classification:arn:aws:iam::123456789012:root",
+				EntityType: "data.classification",
+			}}},
+		},
+		{
+			name: "link endpoint",
+			delta: GraphDelta{Links: []Link{{
+				FromURN:  "urn:cerebro:tenant-a:data.classification:restricted",
+				ToURN:    "urn:cerebro:tenant-a:asset.tag:alice@example.com",
+				Relation: "tagged_as",
+			}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.delta.Attestation = Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)}
+			if _, _, err := ProjectEvent(eventWithPayload(t, tc.delta)); err == nil {
+				t.Fatalf("ProjectEvent() error = nil, want unsafe plain URN identifier rejection")
+			}
+		})
+	}
+}
+
 func TestProjectEventRejectsUnknownEntityTypeRawURN(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

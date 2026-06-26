@@ -95,6 +95,9 @@ func projectEntity(tenantID string, sourceID string, entity Entity) (*ports.Proj
 	if unblindedSensitiveURN(tenantID, urn) {
 		return nil, fmt.Errorf("attested compute entity urn %q contains a sensitive type and must use an attested token urn", urn)
 	}
+	if unsafePlainURNIdentifier(tenantID, urn) {
+		return nil, fmt.Errorf("attested compute entity urn %q contains an unsafe plain identifier", urn)
+	}
 	label := strings.TrimSpace(entity.Label)
 	if label != "" && !TokenLike(label) {
 		return nil, fmt.Errorf("attested compute entity %q label must be tokenized", entityType)
@@ -126,6 +129,9 @@ func projectLink(tenantID string, sourceID string, link Link) (*ports.ProjectedL
 	}
 	if unblindedSensitiveURN(tenantID, fromURN) || unblindedSensitiveURN(tenantID, toURN) {
 		return nil, fmt.Errorf("attested compute link endpoints for sensitive entity types must use attested token urns")
+	}
+	if unsafePlainURNIdentifier(tenantID, fromURN) || unsafePlainURNIdentifier(tenantID, toURN) {
+		return nil, fmt.Errorf("attested compute link endpoints must use safe plain identifiers or attested token urns")
 	}
 	if !allowedRelation(relation) {
 		return nil, fmt.Errorf("attested compute relation %q is not allowed", relation)
@@ -216,22 +222,78 @@ func parseAttestedURN(tenantID string, urn string) (string, bool) {
 	return entityType, true
 }
 
+func tenantURNParts(tenantID string, urn string) (string, string, bool) {
+	tenantID = strings.TrimSpace(tenantID)
+	urn = strings.TrimSpace(urn)
+	prefix := "urn:cerebro:" + tenantID + ":"
+	if tenantID == "" || !strings.HasPrefix(urn, prefix) {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(urn, prefix)
+	entityType, identifier, ok := strings.Cut(rest, ":")
+	entityType = strings.TrimSpace(entityType)
+	identifier = strings.TrimSpace(identifier)
+	if !ok || entityType == "" || identifier == "" {
+		return "", "", false
+	}
+	return entityType, identifier, true
+}
+
 func unblindedSensitiveURN(tenantID string, urn string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	urn = strings.TrimSpace(urn)
 	if tenantID == "" || urn == "" || attestedURN(tenantID, urn) {
 		return false
 	}
-	prefix := "urn:cerebro:" + tenantID + ":"
-	if !strings.HasPrefix(urn, prefix) {
+	entityType, _, ok := tenantURNParts(tenantID, urn)
+	if !ok {
 		return false
 	}
-	rest := strings.TrimPrefix(urn, prefix)
-	if strings.HasPrefix(strings.ToLower(rest), "attested:") {
+	if strings.EqualFold(entityType, "attested") {
 		return true
 	}
-	entityType, _, _ := strings.Cut(rest, ":")
 	return sensitiveEntityType(entityType)
+}
+
+func unsafePlainURNIdentifier(tenantID string, urn string) bool {
+	if attestedURN(tenantID, urn) {
+		return false
+	}
+	entityType, identifier, ok := tenantURNParts(tenantID, urn)
+	if !ok {
+		return true
+	}
+	if strings.EqualFold(entityType, "attested") || sensitiveEntityType(entityType) {
+		return false
+	}
+	return !safePlainURNIdentifier(entityType, identifier)
+}
+
+func safePlainURNIdentifier(entityType string, identifier string) bool {
+	switch strings.ToLower(strings.TrimSpace(entityType)) {
+	case "asset.tag", "data.classification":
+	default:
+		return false
+	}
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" || len(identifier) > 96 {
+		return false
+	}
+	hasAlnum := false
+	for _, char := range identifier {
+		switch {
+		case char >= 'a' && char <= 'z':
+			hasAlnum = true
+		case char >= 'A' && char <= 'Z':
+			hasAlnum = true
+		case char >= '0' && char <= '9':
+			hasAlnum = true
+		case char == '.' || char == '_' || char == '-':
+		default:
+			return false
+		}
+	}
+	return hasAlnum
 }
 
 func blindedValue(tenantID string, value string) bool {
