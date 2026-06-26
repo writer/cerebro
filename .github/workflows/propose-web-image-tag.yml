@@ -36,16 +36,32 @@ jobs:
   propose:
     name: Update web image tag
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      id-token: write
+      packages: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
+      - name: Fetch secrets from Infisical
+        uses: WriterInternal/devops-github-actions/infisical-secrets@cf0625c0cb6646c057b9bc81c49c8554b2313e27 # v2.3.0
+        with:
+          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          required-keys: CEREBRO_DEPLOY_APP_PRIVATE_KEY
+
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Resolve inputs
-        id: inputs
+        id: resolved
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -133,7 +149,7 @@ jobs:
       - name: Verify GHCR image exists
         shell: bash
         env:
-          IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+          IMAGE_TAG: ${{ steps.resolved.outputs.tag }}
         run: |
           set -euo pipefail
           if ! docker manifest inspect "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
@@ -156,7 +172,7 @@ jobs:
         id: verify
         shell: bash
         env:
-          IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+          IMAGE_TAG: ${{ steps.resolved.outputs.tag }}
           COSIGN_EXPERIMENTAL: "true"
         run: |
           set -euo pipefail
@@ -180,10 +196,10 @@ jobs:
           fi
 
       - name: Validate dispatched digest
-        if: steps.inputs.outputs.expected_digest != ''
+        if: steps.resolved.outputs.expected_digest != ''
         shell: bash
         env:
-          EXPECTED_DIGEST: ${{ steps.inputs.outputs.expected_digest }}
+          EXPECTED_DIGEST: ${{ steps.resolved.outputs.expected_digest }}
           VERIFIED_DIGEST: ${{ steps.verify.outputs.digest }}
         run: |
           set -euo pipefail
@@ -198,7 +214,7 @@ jobs:
         shell: bash
         env:
           DEPLOY_APP_CLIENT_ID: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
-          DEPLOY_APP_PRIVATE_KEY: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+          DEPLOY_APP_PRIVATE_KEY: ${{ env.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
 
@@ -216,17 +232,17 @@ jobs:
         uses: ./.github/actions/deploy-app-token
         with:
           client-id: ${{ vars.CEREBRO_DEPLOY_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
+          private-key: ${{ env.CEREBRO_DEPLOY_APP_PRIVATE_KEY }}
 
       - name: Apply stack config update
         shell: bash
         env:
           GH_TOKEN: ${{ steps.deploy-app-token.outputs.token }}
           DEPLOY_APP_SLUG: ${{ steps.deploy-app-token.outputs.app-slug }}
-          APPLY_MODE: ${{ steps.inputs.outputs.mode }}
+          APPLY_MODE: ${{ steps.resolved.outputs.mode }}
           EVENT_NAME: ${{ github.event_name }}
-          STACK_NAME: ${{ steps.inputs.outputs.env }}
-          IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+          STACK_NAME: ${{ steps.resolved.outputs.env }}
+          IMAGE_TAG: ${{ steps.resolved.outputs.tag }}
           IMAGE_DIGEST: ${{ steps.verify.outputs.digest }}
           SOURCE_REPO: ${{ github.event.client_payload.source_repository || 'manual' }}
           SOURCE_REF: ${{ github.event.client_payload.source_ref || github.sha }}

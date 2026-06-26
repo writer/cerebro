@@ -134,14 +134,14 @@ jobs:
           persist-credentials: false
       - name: Fetch secrets from Infisical
         if: steps.target.outputs.should_run == 'true'
-        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
+        uses: WriterInternal/devops-github-actions/infisical-secrets@cf0625c0cb6646c057b9bc81c49c8554b2313e27 # v2.3.0
         with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
+          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          required-keys: FACTORY_API_KEY
       - name: Run Droid Exec
         if: steps.target.outputs.should_run == 'true'
         uses: Factory-AI/droid-action@8ea31f351ee6636ebef918ccb64682f477af7184 # main
