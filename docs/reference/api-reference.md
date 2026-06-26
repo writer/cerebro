@@ -50,6 +50,11 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 - `POST /platform/runtime-response/actions`
 - `GET /platform/runtime-response/blocklist`
 - `POST /platform/runtime-response/blocklist/{entryID}/revoke`
+
+Runtime response capabilities include locally executable blocklist actions plus external workflow actions owned by
+Aperio, such as `google_workspace.revoke_oauth_grant`, `slack.revoke_app_install`, and
+`github.revoke_oauth_app`. External Aperio actions are advertised with provider, target type, required context key,
+dry-run, and approval metadata; they remain proposal workflows rather than direct Cerebro runtime mutations.
 - `GET /grc/control-archetypes`
 - `GET /grc/control-profiles`
 - `GET /grc/control-coverage`

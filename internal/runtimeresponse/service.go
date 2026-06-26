@@ -20,15 +20,28 @@ var (
 )
 
 const (
-	ActionBlockIP     = "block_ip"
-	ActionBlockDomain = "block_domain"
+	ActionBlockIP                         = "block_ip"
+	ActionBlockDomain                     = "block_domain"
+	ActionGoogleWorkspaceRevokeOAuthGrant = "google_workspace.revoke_oauth_grant"
+	ActionSlackRevokeAppInstall           = "slack.revoke_app_install"
+	ActionGitHubRevokeOAuthApp            = "github.revoke_oauth_app"
+	ActionOktaSuspendUser                 = "okta.suspend_user"
+	ActionMicrosoft365RevokeSessions      = "microsoft_365.revoke_sessions"
+	ActionAtlassianRevokeUserAccess       = "atlassian.revoke_user_access"
+	ActionSalesforceRemoveAdminRole       = "salesforce.remove_admin_role"
 )
 
 type Capability struct {
-	Action        string `json:"action"`
-	Mode          string `json:"mode"`
-	Supported     bool   `json:"supported"`
-	RequiresScope bool   `json:"requires_trusted_scope"`
+	Action              string   `json:"action"`
+	Mode                string   `json:"mode"`
+	Supported           bool     `json:"supported"`
+	RequiresScope       bool     `json:"requires_trusted_scope"`
+	Provider            string   `json:"provider,omitempty"`
+	ExternalOwner       string   `json:"external_owner,omitempty"`
+	TargetTypes         []string `json:"target_types,omitempty"`
+	RequiredContextKeys []string `json:"required_context_keys,omitempty"`
+	DryRun              bool     `json:"dry_run"`
+	ApprovalRequired    bool     `json:"approval_required"`
 }
 
 type ExecuteRequest struct {
@@ -53,7 +66,7 @@ func New(store ports.RuntimeBlocklistStore) *Service {
 }
 
 func (s *Service) Capabilities() []Capability {
-	return []Capability{
+	capabilities := []Capability{
 		{Action: ActionBlockIP, Mode: "local_blocklist", Supported: s != nil && s.store != nil, RequiresScope: true},
 		{Action: ActionBlockDomain, Mode: "local_blocklist", Supported: s != nil && s.store != nil, RequiresScope: true},
 		{Action: "scale_down", Mode: "remote_or_provider", Supported: false, RequiresScope: true},
@@ -62,6 +75,96 @@ func (s *Service) Capabilities() []Capability {
 		{Action: "isolate_host", Mode: "remote_tool", Supported: false, RequiresScope: true},
 		{Action: "quarantine_file", Mode: "remote_tool", Supported: false, RequiresScope: true},
 		{Action: "revoke_credentials", Mode: "remote_tool", Supported: false, RequiresScope: true},
+	}
+	return append(capabilities, aperioExternalWorkflowCapabilities()...)
+}
+
+func aperioExternalWorkflowCapabilities() []Capability {
+	return []Capability{
+		{
+			Action:              ActionGoogleWorkspaceRevokeOAuthGrant,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "GOOGLE_WORKSPACE",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"oauth_grant", "oauth_app"},
+			RequiredContextKeys: []string{"oauth_grant_id", "oauth_app_id", "oauth_user_email"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
+		{
+			Action:              ActionSlackRevokeAppInstall,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "SLACK",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"oauth_app", "slack_app"},
+			RequiredContextKeys: []string{"oauth_app_id", "slack_app_id", "workspace_id"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
+		{
+			Action:              ActionGitHubRevokeOAuthApp,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "GITHUB",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"oauth_app", "github_oauth_app"},
+			RequiredContextKeys: []string{"oauth_app_id", "github_org", "github_user"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
+		{
+			Action:              ActionOktaSuspendUser,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "OKTA",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"user", "identity"},
+			RequiredContextKeys: []string{"okta_user_id", "user_email"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
+		{
+			Action:              ActionMicrosoft365RevokeSessions,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "MICROSOFT_365",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"user", "identity"},
+			RequiredContextKeys: []string{"user_id", "user_principal_name"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
+		{
+			Action:              ActionAtlassianRevokeUserAccess,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "ATLASSIAN",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"user", "group", "project"},
+			RequiredContextKeys: []string{"atlassian_account_id", "resource_id"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
+		{
+			Action:              ActionSalesforceRemoveAdminRole,
+			Mode:                "external_aperio_workflow",
+			Supported:           false,
+			RequiresScope:       true,
+			Provider:            "SALESFORCE",
+			ExternalOwner:       "aperio",
+			TargetTypes:         []string{"user", "permission_set", "profile"},
+			RequiredContextKeys: []string{"salesforce_user_id", "permission_set_id"},
+			DryRun:              true,
+			ApprovalRequired:    true,
+		},
 	}
 }
 

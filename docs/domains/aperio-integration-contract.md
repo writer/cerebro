@@ -113,6 +113,13 @@ atlassian.revoke_user_access
 Actions that are still owned by Aperio should still be represented as external refs and workflow events so Cerebro
 evidence packets, reports, audit logs, and Ask can explain what happened.
 
+`GET /platform/runtime-response/capabilities` advertises those Aperio-owned SaaS response actions with
+`mode=external_aperio_workflow`, `external_owner=aperio`, `supported=false`, `dry_run=true`, and
+`approval_required=true`. That lets Web and agents discover the action vocabulary, target types, and required context
+keys while preserving Aperio as the workflow owner. Until a specific provider adapter moves into Cerebro, callers
+should use the Aperio MCP proposal path, especially `aperio.propose_cerebro_response`, rather than POSTing those
+external workflow actions to `/platform/runtime-response/actions`.
+
 ## Detection Pack And Coverage Metadata
 
 Aperio detection packs should publish stable pack metadata alongside findings:
@@ -156,4 +163,3 @@ search, and cite Cerebro tools or evidence packets when they are used.
 Aperio should propagate W3C `traceparent` into Cerebro claim writes, external-ref updates, action requests, MCP calls,
 and Web deep links. Cerebro Web should surface the returned trace id so an analyst can follow a detection from Aperio
 sync through claim projection, graph reasoning, evidence packet generation, and response action reconciliation.
-
