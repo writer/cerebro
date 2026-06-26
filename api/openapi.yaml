@@ -4323,6 +4323,35 @@ paths:
             application/json:
               schema:
                 type: object
+  /user/preferences:
+    get:
+      summary: Get current user preferences
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Stored preferences for the authenticated user, or defaults when none have been saved.
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      summary: Save current user preferences
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Stored preferences for the authenticated user after normalization.
+          content:
+            application/json:
+              schema:
+                type: object
 
 components:
   securitySchemes:
