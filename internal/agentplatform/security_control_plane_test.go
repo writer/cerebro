@@ -40,10 +40,12 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 		"graph-ask-regression-evals",
 		"model-provider-comparison",
 		"ai-provider-governance",
+		"claim-verification",
 		"a2a-protocol-boundary",
 		"event-subscription-webhooks",
 		"public-idempotency-contract",
 		"security-memory",
+		"agent-work-ledger",
 		"connector-oauth-agent-infra",
 		"defensive-simulation-harness",
 	} {
@@ -95,7 +97,7 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 			t.Fatalf("eval scenario must bind capability and rubrics: %+v", scenario)
 		}
 	}
-	for _, required := range []string{"tenant-isolation", "graph-ask-grounded-regression", "model-provider-comparison", "graph-action-execution-safety", "ai-governance-posture", "simulation-bounds"} {
+	for _, required := range []string{"tenant-isolation", "graph-ask-grounded-regression", "model-provider-comparison", "graph-action-execution-safety", "ai-governance-posture", "claim-verification", "agent-work-ledger", "simulation-bounds"} {
 		if !scenarios[required] {
 			t.Fatalf("eval scenario %q missing: %+v", required, snapshot.EvalSuite.Scenarios)
 		}
@@ -110,6 +112,12 @@ func TestSecurityControlPlaneSnapshotCoversAgentStrategies(t *testing.T) {
 	}
 	if len(snapshot.RubricVerifiers) == 0 || len(snapshot.ModelComparisons) == 0 || len(snapshot.AIGovernanceSources) == 0 {
 		t.Fatalf("snapshot missing NLP governance surfaces: rubrics=%+v comparisons=%+v sources=%+v", snapshot.RubricVerifiers, snapshot.ModelComparisons, snapshot.AIGovernanceSources)
+	}
+	if snapshot.ClaimVerification.ID == "" || len(snapshot.ClaimVerification.Gates) == 0 {
+		t.Fatalf("snapshot missing claim verification contract: %+v", snapshot.ClaimVerification)
+	}
+	if snapshot.AgentWork.ID == "" || len(snapshot.AgentWork.StateModel) == 0 {
+		t.Fatalf("snapshot missing agent work contract: %+v", snapshot.AgentWork)
 	}
 }
 

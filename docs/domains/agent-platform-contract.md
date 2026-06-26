@@ -80,6 +80,12 @@ The first supported integration strategies are:
 - Evidence packets: every security-agent run starts from a tenant-scoped packet containing preflight results,
   evidence references, recommended roles, verifier results, action-stage status, eval scenarios, memory policy,
   connector gates, simulation bounds, confidence, and write-back requirements.
+- Claim verification: every agent conclusion that can change risk, priority, ownership, finding lifecycle, memory, or
+  action stage is represented as a typed claim. A claim carries supporting evidence, counterevidence, missing evidence,
+  freshness state, coverage caveats, a verdict, and the highest allowed next action stage.
+- Agent work ledger: investigations are modeled as durable work objects, not prompt transcripts. A work object carries
+  the objective, current hypothesis, trace ids, claim ids, evidence URNs, verifier results, action proposals,
+  approvals, verification checks, closure reason, and scoped memory writes.
 - Verifier layer: tenant scope, graph provenance, freshness, coverage gaps, connector readiness, action-stage
   safety, eval readiness, and memory provenance are independent pass/warn/block checks.
 - Specialized security roles: narrow profiles such as exposure, identity drift, coverage, remediation, triage, and
@@ -116,6 +122,31 @@ idempotency, tenant isolation, stale coverage, prompt-injection handling, remedi
 graph action execution safety, connector readiness, and bounded simulation. The security behavior fixture remains in
 `internal/agentplatform/testdata/security_agent_eval_cases.json` and exercises evidence packets, verifiers, action
 gates, confidence, and write-back requirements.
+
+## Claim Verification Contract
+
+Agents should not convert an answer into a recommendation or action proposal until Cerebro has verified the underlying
+claim. The `agent-claim-verification` contract separates the claim from the answer text and returns:
+
+- `verdict`: `supported`, `weakly_supported`, `contradicted`, or `unknown`.
+- `allowed_next_stage`: the highest action-ladder stage the agent may enter from that verdict.
+- `supporting_evidence` and `counter_evidence`: cited, tenant-scoped evidence references.
+- `missing_evidence`: source or graph evidence the agent must name as unavailable.
+- `warnings` and `blockers`: freshness, coverage, tenant, evidence, counterevidence, and stage-gate results.
+- `required_write_back`: the records that should be attached to the trace, work item, finding, or memory surface.
+
+Coverage-conditioned truth is part of the contract. An agent may say that fresh AWS graph data did not show exposure,
+but it must not turn stale identity coverage or missing endpoint telemetry into a global "no exposure" conclusion.
+
+## Agent Work Contract
+
+Cerebro work records preserve investigation state across agent runs. The `agent-work-ledger` contract defines a durable
+work object with a small state model: `open`, `waiting_on_evidence`, `waiting_on_approval`, `verifying`, `closed`, and
+`blocked`.
+
+An agent work item should link every material conclusion to a claim verification, every action proposal to a state
+delta, and every closure to verification evidence or an explicit blocked reason. Raw transcripts are not the work
+object; trace ids, claim ids, evidence URNs, verifier results, and closure records are.
 
 ## Execution Contract
 
