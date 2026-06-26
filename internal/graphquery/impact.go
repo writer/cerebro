@@ -25,10 +25,6 @@ const (
 	impactNeighborhoodConcurrency = 8
 )
 
-type impactBatchNeighborhoodStore interface {
-	GetEntityNeighborhoods(context.Context, []string, int) (map[string]*ports.EntityNeighborhood, error)
-}
-
 type ImpactRequest struct {
 	Kind       string
 	TenantID   string
@@ -75,12 +71,12 @@ func (s *Service) GetImpact(ctx context.Context, request ImpactRequest) (*Impact
 		Relations: sortedImpactRelations(relations),
 	}
 	for _, node := range sortedImpactNodes(nodes) {
-		switch {
-		case classifyImpactNode(node) == ImpactKindPackage:
+		switch classifyImpactNode(node) {
+		case ImpactKindPackage:
 			result.Packages = append(result.Packages, node)
-		case classifyImpactNode(node) == ImpactKindVulnerability:
+		case ImpactKindVulnerability:
 			result.Vulnerabilities = append(result.Vulnerabilities, node)
-		case classifyImpactNode(node) == "evidence":
+		case "evidence":
 			result.Evidence = append(result.Evidence, node)
 		default:
 			result.Assets = append(result.Assets, node)
@@ -90,9 +86,9 @@ func (s *Service) GetImpact(ctx context.Context, request ImpactRequest) (*Impact
 }
 
 func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth int, limit int) (map[string]*ports.NeighborhoodNode, map[string]*ports.NeighborhoodRelation, error) {
-	nodes := map[string]*ports.NeighborhoodNode{}
-	relations := map[string]*ports.NeighborhoodRelation{}
-	visited := map[string]bool{}
+	nodes := make(map[string]*ports.NeighborhoodNode, limit)
+	relations := make(map[string]*ports.NeighborhoodRelation, limit*2)
+	visited := make(map[string]bool, limit)
 	frontier := []string{rootURN}
 	for hop := 0; hop < depth && len(frontier) > 0 && len(nodes) < limit; hop++ {
 		roots := make([]string, 0, len(frontier))
@@ -106,7 +102,7 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 		if len(roots) == 0 {
 			break
 		}
-		next := []string{}
+		next := make([]string, 0, min(limit-len(nodes), len(roots)*defaultNeighborhoodLimit))
 		for start := 0; start < len(roots) && len(nodes) < limit; start += impactNeighborhoodConcurrency {
 			end := min(start+impactNeighborhoodConcurrency, len(roots))
 			neighborhoods, err := s.collectImpactNeighborhoods(ctx, roots[start:end], limit)
@@ -142,7 +138,7 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 
 func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string, limit int) ([]*ports.EntityNeighborhood, error) {
 	results := make([]*ports.EntityNeighborhood, len(roots))
-	if batchStore, ok := s.store.(impactBatchNeighborhoodStore); ok {
+	if batchStore, ok := s.store.(ports.GraphNeighborhoodBatchStore); ok {
 		neighborhoods, err := batchStore.GetEntityNeighborhoods(ctx, roots, limit)
 		if err != nil {
 			return nil, err
@@ -184,7 +180,7 @@ func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string
 }
 
 func filterImpactRelations(nodes map[string]*ports.NeighborhoodNode, relations map[string]*ports.NeighborhoodRelation) map[string]*ports.NeighborhoodRelation {
-	filtered := map[string]*ports.NeighborhoodRelation{}
+	filtered := make(map[string]*ports.NeighborhoodRelation, len(relations))
 	for key, relation := range relations {
 		if relation == nil {
 			continue
