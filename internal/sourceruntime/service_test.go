@@ -289,6 +289,27 @@ func (nilEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceC
 	}}, nil
 }
 
+type duplicateEventSource struct{}
+
+func (duplicateEventSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "duplicate_event"}
+}
+
+func (duplicateEventSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (duplicateEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (duplicateEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{
+		runtimeTestEvent("duplicate-event", "duplicate_event", "duplicate_event.event"),
+		runtimeTestEvent("duplicate-event", "duplicate_event", "duplicate_event.event"),
+	}}, nil
+}
+
 type invalidEventSource struct{}
 
 func (invalidEventSource) Spec() *cerebrov1.SourceSpec {
@@ -1906,6 +1927,39 @@ func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
 	}
 	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-nil-event" {
 		t.Fatalf("appended event source_runtime_id = %q, want writer-nil-event", got)
+	}
+}
+
+func TestSyncRuntimeDedupesAcceptedEventsByID(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(duplicateEventSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-duplicate-event": {
+				Id:       "writer-duplicate-event",
+				SourceId: "duplicate_event",
+				TenantId: "writer",
+			},
+		},
+	}
+	log := &appendLog{}
+	projector := &projector{result: ports.ProjectionResult{EntitiesProjected: 1, LinksProjected: 1}}
+	service := New(registry, store, log, projector)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-duplicate-event"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync().EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	if len(log.events) != 1 || len(projector.events) != 1 {
+		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
+	}
+	if got := log.events[0].GetId(); got != "duplicate-event" {
+		t.Fatalf("appended event id = %q, want duplicate-event", got)
 	}
 }
 
