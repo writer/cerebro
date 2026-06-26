@@ -29,7 +29,7 @@ func grcVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		}
 		ownerURN := grcUserURN(ctx.tenantID, ctx.provider, ownerID)
 		addEntity(ctx.entities, grcUserEntity(ctx.tenantID, ctx.sourceID, ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": ctx.provider}))
-		ctx.addEventLink(vendorURN, ownerURN, relationOwnedBy, nil)
+		ctx.addEventLink(vendorURN, ownerURN, relationOwnedBy)
 	}
 	addSecurityContactEmailLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, vendorURN, firstAttribute(ctx.attrs, "account_manager_email", "security_contact_email", "contact_email"), "account_manager")
 	entities, links := ctx.done()

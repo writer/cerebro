@@ -63,7 +63,7 @@ func grcRegulatoryNotificationProjections(event *cerebrov1.EventEnvelope) ([]*po
 			firstAttribute(ctx.attrs, "incident_title", "incident_name", "incident_id", "case_id"),
 			map[string]string{"incident_id": incidentID, "source_system": ctx.provider},
 		)
-		ctx.addEventLink(notificationURN, incidentURN, relationObservedOn, nil)
+		ctx.addEventLink(notificationURN, incidentURN, relationObservedOn)
 	}
 	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, notificationURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id"))
 	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, notificationURN, ctx.provider)
@@ -104,7 +104,7 @@ func grcRecoveryObjectiveProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 			processName,
 			map[string]string{"business_process": processName, "source_system": ctx.provider},
 		)
-		ctx.addEventLink(objectiveURN, processURN, relationSupports, nil)
+		ctx.addEventLink(objectiveURN, processURN, relationSupports)
 	}
 	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, objectiveURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id"))
 	addGRCTargetReferenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, objectiveURN, ctx.provider, ctx.attrs, relationTargeted, "grc_recovery_objective")
@@ -176,7 +176,7 @@ func grcPOAMItemProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			firstAttribute(ctx.attrs, "finding_name", "title", "finding_id"),
 			map[string]string{"finding_id": findingID, "source_system": ctx.provider},
 		)
-		ctx.addEventLink(itemURN, findingURN, relationAssociatedWith, nil)
+		ctx.addEventLink(itemURN, findingURN, relationAssociatedWith)
 	}
 	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, itemURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id"))
 	addGRCTargetReferenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, itemURN, ctx.provider, ctx.attrs, relationTargeted, "grc_poam_item")
@@ -218,14 +218,14 @@ func grcTrainingAttestationProjections(event *cerebrov1.EventEnvelope) ([]*ports
 			firstAttribute(ctx.attrs, "person_name", "email", "person_id"),
 			map[string]string{"person_id": personID, "source_system": ctx.provider},
 		)
-		ctx.addEventLink(personURN, attestationURN, relationHasEvidence, nil)
-		ctx.addEventLink(attestationURN, personURN, relationObservedOn, nil)
+		ctx.addEventLink(personURN, attestationURN, relationHasEvidence)
+		ctx.addEventLink(attestationURN, personURN, relationObservedOn)
 	}
 	if userID := firstAttribute(ctx.attrs, "user_id"); userID != "" {
 		userURN := grcUserURN(ctx.tenantID, ctx.provider, userID)
 		addEntity(ctx.entities, grcUserEntity(ctx.tenantID, ctx.sourceID, userURN, firstAttribute(ctx.attrs, "display_name", "email", "user_id"), grcAttributes(nil, map[string]string{"user_id": userID, "source_system": ctx.provider})))
-		ctx.addEventLink(userURN, attestationURN, relationHasEvidence, nil)
-		ctx.addEventLink(attestationURN, userURN, relationObservedOn, nil)
+		ctx.addEventLink(userURN, attestationURN, relationHasEvidence)
+		ctx.addEventLink(attestationURN, userURN, relationObservedOn)
 	}
 	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, attestationURN, ctx.provider)
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, attestationURN, ctx.provider, ctx.attrs)

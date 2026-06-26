@@ -61,18 +61,12 @@ func (ctx *grcProjectionContext) addEntity(urn string, entityType string, label 
 	})
 }
 
-func (ctx *grcProjectionContext) addEventLink(fromURN string, toURN string, relation string, attrs map[string]string) {
-	addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, fromURN, toURN, relation, ctx.eventLinkAttributes(attrs)))
+func (ctx *grcProjectionContext) addEventLink(fromURN string, toURN string, relation string) {
+	addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, fromURN, toURN, relation, ctx.eventLinkAttributes()))
 }
 
-func (ctx *grcProjectionContext) eventLinkAttributes(attrs map[string]string) map[string]string {
-	merged := map[string]string{"event_id": ctx.event.GetId()}
-	for key, value := range attrs {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			merged[key] = trimmed
-		}
-	}
-	return merged
+func (ctx *grcProjectionContext) eventLinkAttributes() map[string]string {
+	return map[string]string{"event_id": ctx.event.GetId()}
 }
 
 func (ctx *grcProjectionContext) done() ([]*ports.ProjectedEntity, []*ports.ProjectedLink) {
