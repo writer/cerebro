@@ -53,6 +53,8 @@ const (
 	replayStrategyRuntimeIndex      = "runtime_index"
 )
 
+var errRuntimeReplayIndexRequired = errors.New("runtime replay index required")
+
 var waitBeforePublishRetryFunc = waitBeforePublishRetry
 
 type publisher interface {
@@ -722,10 +724,36 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, nil
 	}
 	resolved := false
-	if l.runtimeIndex != nil && runtimeIndexReplayEligible(request) {
+	requireRuntimeIndex := request.RequireRuntimeIndex
+	runtimeIndexEligible := runtimeIndexReplayEligible(request)
+	if requireRuntimeIndex && !runtimeIndexEligible {
+		scan = replayScanStats{strategy: replayStrategyRuntimeIndex, subjectFilterCount: len(subjectFilters)}
+		err = fmt.Errorf("%w: ineligible replay request", errRuntimeReplayIndexRequired)
+		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
+		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
+		return nil, err
+	}
+	if requireRuntimeIndex && l.runtimeIndex == nil {
+		scan = replayScanStats{strategy: replayStrategyRuntimeIndex, subjectFilterCount: len(subjectFilters)}
+		err = fmt.Errorf("%w: not configured", errRuntimeReplayIndexRequired)
+		recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
+		jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
+		return nil, err
+	}
+	if l.runtimeIndex != nil && runtimeIndexEligible {
 		indexed, indexScan, ok, indexErr := replayRuntimeIndexed(ctx, l.runtimeIndex, stream.Config.Name, stream.State, streamRef, subjectFilters, useSubjectIndex, subjectPrefixes, request, candidateLimit)
 		if indexErr == nil && ok {
 			candidates, scan, resolved = indexed, indexScan, true
+		} else if requireRuntimeIndex {
+			scan = indexScan
+			if indexErr != nil {
+				err = fmt.Errorf("%w: lookup: %w", errRuntimeReplayIndexRequired, indexErr)
+			} else {
+				err = fmt.Errorf("%w: unavailable", errRuntimeReplayIndexRequired)
+			}
+			recordJetStreamReplayMetrics(ctx, scan, "failed", jetstreamErrorCategory(err), time.Since(started), 0)
+			jetstreamTelemetryError(ctx, span, "replay", err, streamAttrs.With(scan.attrs(limit, candidateLimit, ctx)))
+			return nil, err
 		}
 	}
 	if !resolved {
@@ -1253,6 +1281,7 @@ func jetstreamReplayRequestAttrs(request ports.ReplayRequest) telemetry.Attribut
 		telemetry.Field{Key: "replay.kind_prefix", Value: request.KindPrefix},
 		telemetry.Field{Key: "replay.kind_prefixes", Value: strings.Join(kindPrefixes, ",")},
 		telemetry.Field{Key: "replay.attribute_filter_keys", Value: strings.Join(filterKeys, ",")},
+		telemetry.Field{Key: "replay.require_runtime_index", Value: request.RequireRuntimeIndex},
 	)
 }
 
@@ -1630,13 +1659,14 @@ func normalizeReplayLimit(limit uint32) uint32 {
 
 func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
 	normalized := ports.ReplayRequest{
-		RuntimeID:        strings.TrimSpace(req.RuntimeID),
-		KindPrefix:       strings.TrimSpace(req.KindPrefix),
-		KindPrefixes:     normalizeReplayKindPrefixes(req.KindPrefixes),
-		ExactKindFilters: req.ExactKindFilters,
-		TenantID:         strings.TrimSpace(req.TenantID),
-		AttributeEquals:  make(map[string]string, len(req.AttributeEquals)),
-		Limit:            req.Limit,
+		RuntimeID:           strings.TrimSpace(req.RuntimeID),
+		KindPrefix:          strings.TrimSpace(req.KindPrefix),
+		KindPrefixes:        normalizeReplayKindPrefixes(req.KindPrefixes),
+		ExactKindFilters:    req.ExactKindFilters,
+		RequireRuntimeIndex: req.RequireRuntimeIndex,
+		TenantID:            strings.TrimSpace(req.TenantID),
+		AttributeEquals:     make(map[string]string, len(req.AttributeEquals)),
+		Limit:               req.Limit,
 	}
 	for key, value := range req.AttributeEquals {
 		trimmedKey := strings.TrimSpace(key)

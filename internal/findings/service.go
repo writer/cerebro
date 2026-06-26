@@ -13,6 +13,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/appendlogindex"
 	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -62,6 +63,8 @@ var (
 type Service struct {
 	runtimeStore              ports.SourceRuntimeStore
 	replayer                  ports.EventReplayer
+	replayPreparer            ReplayPreparer
+	requireRuntimeIndexReplay bool
 	store                     ports.FindingStore
 	runStore                  ports.FindingEvaluationRunStore
 	evidenceStore             ports.FindingEvidenceStore
@@ -78,6 +81,10 @@ type Service struct {
 	ttlClock                  ttlClock
 	ttlLogSink                ttlLogSink
 }
+
+// ReplayPreparer runs before replay-backed finding evaluation to make required
+// replay indexes ready without hiding failures behind fallback scans.
+type ReplayPreparer func(context.Context) error
 
 // defaultGraphRuleQueryTimeout bounds a single graph rule's Cypher read so one
 // pathological rule cannot consume the entire orchestrator phase budget. A stuck
@@ -256,6 +263,45 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 	return s
 }
 
+// WithReplayPreparer wires an optional pre-replay readiness hook.
+func (s *Service) WithReplayPreparer(preparer ReplayPreparer) *Service {
+	if s == nil {
+		return nil
+	}
+	s.replayPreparer = preparer
+	return s
+}
+
+// WithRuntimeIndexReplayPreparer wires the runtime-index warmup required by
+// replay-backed rules when JetStream runtime indexing is enabled.
+func (s *Service) WithRuntimeIndexReplayPreparer(enabled bool, appendLog ports.AppendLog, stateStore ports.StateStore) *Service {
+	if s == nil || !enabled {
+		return s
+	}
+	s.requireRuntimeIndexReplay = true
+	source, sourceOK := appendLog.(ports.RuntimeIndexSource)
+	writer, writerOK := stateStore.(ports.RuntimeIndexWriter)
+	return s.WithReplayPreparer(func(ctx context.Context) error {
+		if !sourceOK || source == nil {
+			return fmt.Errorf("%w: append log does not support runtime indexing", ErrRuntimeUnavailable)
+		}
+		if !writerOK || writer == nil {
+			return fmt.Errorf("%w: state store does not support runtime indexing", ErrRuntimeUnavailable)
+		}
+		if err := appendlogindex.PrepareReplay(ctx, source, writer, 0, 0); err != nil {
+			return fmt.Errorf("prepare append log runtime index: %w", err)
+		}
+		return nil
+	})
+}
+
+func (s *Service) prepareReplay(ctx context.Context) error {
+	if s == nil || s.replayPreparer == nil {
+		return nil
+	}
+	return s.replayPreparer(ctx)
+}
+
 // WithFindingCandidateStore wires the isolated candidate-finding persistence
 // boundary. Candidate evaluations do not write production findings until an
 // explicit promotion call uses the production store.
@@ -338,7 +384,11 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	var events []*cerebrov1.EventEnvelope
 	if rule.SupportsRuntime(runtime) {
-		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, []Rule{rule}))
+		if err := s.prepareReplay(ctx); err != nil {
+			evaluationErr := fmt.Errorf("prepare replay runtime %q events: %w", runtimeID, err)
+			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
+		}
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, []Rule{rule}, s.requireRuntimeIndexReplay))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
 			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
@@ -472,7 +522,11 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	var events []*cerebrov1.EventEnvelope
 	if rulesNeedReplay(runtime, states) {
-		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromEvaluationStates(states)))
+		if err := s.prepareReplay(ctx); err != nil {
+			evaluationErr := fmt.Errorf("prepare replay runtime %q events: %w", runtimeID, err)
+			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
+		}
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromEvaluationStates(states), s.requireRuntimeIndexReplay))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
@@ -590,10 +644,11 @@ func rulesNeedReplay(runtime *cerebrov1.SourceRuntime, states []*ruleEvaluationS
 	return false
 }
 
-func replayRequestForRules(runtime *cerebrov1.SourceRuntime, runtimeID string, limit uint32, rules []Rule) ports.ReplayRequest {
+func replayRequestForRules(runtime *cerebrov1.SourceRuntime, runtimeID string, limit uint32, rules []Rule, requireRuntimeIndex bool) ports.ReplayRequest {
 	request := ports.ReplayRequest{
-		RuntimeID: strings.TrimSpace(runtimeID),
-		Limit:     limit,
+		RuntimeID:           strings.TrimSpace(runtimeID),
+		RequireRuntimeIndex: requireRuntimeIndex,
+		Limit:               limit,
 	}
 	kindPrefixes := replayExactKindFiltersForRules(runtime, rules)
 	if len(kindPrefixes) > 0 {

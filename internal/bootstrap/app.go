@@ -1522,19 +1522,19 @@ func (a *App) findingService() *findings.Service {
 }
 
 func (a *App) newFindingService() *findings.Service {
-	return newFindingWorkflowFeatureService(newFindingFeatureDeps(a.deps))
+	return newFindingWorkflowFeatureService(newFindingFeatureDeps(a.deps)).WithRuntimeIndexReplayPreparer(a.cfg.AppendLog.JetStreamRuntimeIndexEnabled, a.deps.AppendLog, a.deps.StateStore)
 }
 
 func (s *bootstrapService) findingCoreService() *findings.Service {
-	return newFindingCoreFeatureService(newFindingFeatureDeps(s.deps))
+	return newFindingCoreFeatureService(newFindingFeatureDeps(s.deps)).WithRuntimeIndexReplayPreparer(s.cfg.AppendLog.JetStreamRuntimeIndexEnabled, s.deps.AppendLog, s.deps.StateStore)
 }
 
 func (s *bootstrapService) findingCandidateService() *findings.Service {
-	return newFindingCandidateFeatureService(newFindingFeatureDeps(s.deps))
+	return newFindingCandidateFeatureService(newFindingFeatureDeps(s.deps)).WithRuntimeIndexReplayPreparer(s.cfg.AppendLog.JetStreamRuntimeIndexEnabled, s.deps.AppendLog, s.deps.StateStore)
 }
 
 func (s *bootstrapService) findingWorkflowService() *findings.Service {
-	return newFindingWorkflowFeatureService(newFindingFeatureDeps(s.deps))
+	return newFindingWorkflowFeatureService(newFindingFeatureDeps(s.deps)).WithRuntimeIndexReplayPreparer(s.cfg.AppendLog.JetStreamRuntimeIndexEnabled, s.deps.AppendLog, s.deps.StateStore)
 }
 
 const (

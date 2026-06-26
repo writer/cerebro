@@ -9,12 +9,14 @@ import (
 )
 
 type fakeIndexSource struct {
-	scans []ports.RuntimeIndexScan
-	calls []uint64
+	scans   []ports.RuntimeIndexScan
+	calls   []uint64
+	batches []uint32
 }
 
-func (f *fakeIndexSource) ScanRuntimeIndex(_ context.Context, fromSeq uint64, _ uint32) (ports.RuntimeIndexScan, error) {
+func (f *fakeIndexSource) ScanRuntimeIndex(_ context.Context, fromSeq uint64, batch uint32) (ports.RuntimeIndexScan, error) {
 	f.calls = append(f.calls, fromSeq)
+	f.batches = append(f.batches, batch)
 	idx := len(f.calls) - 1
 	if idx < len(f.scans) {
 		return f.scans[idx], nil
@@ -123,5 +125,33 @@ func TestPopulatePropagatesPutError(t *testing.T) {
 	writer := &fakeIndexWriter{putErr: boom}
 	if _, err := Populate(context.Background(), source, writer, 0, 0); !errors.Is(err, boom) {
 		t.Fatalf("Populate() error = %v, want put boom", err)
+	}
+}
+
+func TestPrepareReplaySucceedsWhenCaughtUp(t *testing.T) {
+	source := &fakeIndexSource{scans: []ports.RuntimeIndexScan{
+		{Entries: []ports.RuntimeIndexEntry{entry(1)}, Watermark: 100, CaughtUp: true},
+	}}
+	writer := &fakeIndexWriter{}
+
+	if err := PrepareReplay(context.Background(), source, writer, 0, 0); err != nil {
+		t.Fatalf("PrepareReplay() error = %v", err)
+	}
+	if got := source.batches; len(got) != 1 || got[0] != DefaultReplayPrepareBatch {
+		t.Fatalf("scan batches = %#v, want default replay prepare batch %d", got, DefaultReplayPrepareBatch)
+	}
+}
+
+func TestPrepareReplayReturnsWarmingWhenStillBehind(t *testing.T) {
+	source := &fakeIndexSource{scans: []ports.RuntimeIndexScan{
+		{Entries: []ports.RuntimeIndexEntry{entry(1)}, Watermark: 100},
+	}}
+	writer := &fakeIndexWriter{}
+
+	if err := PrepareReplay(context.Background(), source, writer, 0, 1); !errors.Is(err, ErrWarming) {
+		t.Fatalf("PrepareReplay() error = %v, want ErrWarming", err)
+	}
+	if got := writer.putWatermarks; len(got) != 1 || got[0] != 100 {
+		t.Fatalf("put watermarks = %#v, want [100]", got)
 	}
 }

@@ -1608,6 +1608,70 @@ func TestReplayRuntimeIndexedFallsBackWhenUnavailable(t *testing.T) {
 	}
 }
 
+func TestReplayRequiresRuntimeIndexRejectsUnconfiguredIndex(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 2, Msgs: 2},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "other-runtime")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	_, err := log.Replay(context.Background(), ports.ReplayRequest{
+		RuntimeID:           "writer-github",
+		RequireRuntimeIndex: true,
+		Limit:               10,
+	})
+	if !errors.Is(err, errRuntimeReplayIndexRequired) {
+		t.Fatalf("Replay() error = %v, want errRuntimeReplayIndexRequired", err)
+	}
+	if replay.getMsgCalls != 0 {
+		t.Fatalf("GetMsg calls = %d, want 0 fallback scans", replay.getMsgCalls)
+	}
+}
+
+func TestReplayRequiresRuntimeIndexRejectsUnavailableIndex(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}},
+				State:  natsjetstream.StreamState{FirstSeq: 1, LastSeq: 2, Msgs: 2},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "other-runtime")),
+			},
+		},
+	}
+	index := &fakeRuntimeReplayIndex{result: ports.RuntimeIndexResult{Available: false}}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events", runtimeIndex: index}
+
+	_, err := log.Replay(context.Background(), ports.ReplayRequest{
+		RuntimeID:           "writer-github",
+		RequireRuntimeIndex: true,
+		Limit:               10,
+	})
+	if !errors.Is(err, errRuntimeReplayIndexRequired) {
+		t.Fatalf("Replay() error = %v, want errRuntimeReplayIndexRequired", err)
+	}
+	if index.calls != 1 {
+		t.Fatalf("index lookup calls = %d, want 1", index.calls)
+	}
+	if replay.getMsgCalls != 0 {
+		t.Fatalf("GetMsg calls = %d, want 0 fallback scans", replay.getMsgCalls)
+	}
+}
+
 func TestReplayRuntimeIndexedSkipsPurgedSequences(t *testing.T) {
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{

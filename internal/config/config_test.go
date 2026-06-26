@@ -97,6 +97,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.AppendLog.Driver != "" {
 		t.Fatalf("AppendLog.Driver = %q, want empty", cfg.AppendLog.Driver)
 	}
+	if !cfg.AppendLog.JetStreamRuntimeIndexEnabled {
+		t.Fatal("AppendLog.JetStreamRuntimeIndexEnabled = false, want true default")
+	}
 	if cfg.StateStore.Driver != "" {
 		t.Fatalf("StateStore.Driver = %q, want empty", cfg.StateStore.Driver)
 	}
@@ -384,6 +387,19 @@ func TestLoadFromEnv(t *testing.T) {
 		cfg.ConnectorSecretStores.AWSSecretsManager.ExternalID != "external-writer" ||
 		cfg.ConnectorSecretStores.AWSSecretsManager.Endpoint != "http://127.0.0.1:4566" {
 		t.Fatalf("ConnectorSecretStores.AWSSecretsManager = %#v", cfg.ConnectorSecretStores.AWSSecretsManager)
+	}
+}
+
+func TestLoadAllowsDisablingJetStreamRuntimeIndex(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AppendLog.JetStreamRuntimeIndexEnabled {
+		t.Fatal("JetStreamRuntimeIndexEnabled = true, want false when explicitly disabled")
 	}
 }
 

@@ -559,7 +559,7 @@ func Load() (Config, error) {
 	if cfg.AppendLog.JetStreamPublishMaxInFlight, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", 0); err != nil {
 		return Config{}, err
 	}
-	if cfg.AppendLog.JetStreamRuntimeIndexEnabled, err = parseBoolEnv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED"); err != nil {
+	if cfg.AppendLog.JetStreamRuntimeIndexEnabled, err = parseBoolEnvDefault("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", true); err != nil {
 		return Config{}, err
 	}
 	if cfg.AppendLog.JetStreamPublishRetryAttempts, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", 0); err != nil {
