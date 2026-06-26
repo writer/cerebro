@@ -18,12 +18,14 @@ const (
 type InventoryCategoryRequest struct {
 	TenantID string
 	SourceID string
+	Surface  string
 	Limit    uint32
 }
 
 type InventoryAssetRequest struct {
 	TenantID   string
 	SourceID   string
+	Surface    string
 	CategoryID string
 	EntityType string
 	Query      string
@@ -38,6 +40,7 @@ type InventoryAssetDetailRequest struct {
 type InventoryCategory struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
+	Surface     string   `json:"surface,omitempty"`
 	EntityTypes []string `json:"entity_types"`
 	Count       int      `json:"count"`
 }
@@ -45,6 +48,7 @@ type InventoryCategory struct {
 type InventoryAsset struct {
 	URN                        string                      `json:"urn"`
 	EntityType                 string                      `json:"entity_type"`
+	Surface                    string                      `json:"surface,omitempty"`
 	Label                      string                      `json:"label"`
 	SourceID                   string                      `json:"source_id,omitempty"`
 	RuntimeID                  string                      `json:"runtime_id,omitempty"`
@@ -105,20 +109,26 @@ func (s *Service) ListInventoryCategories(ctx context.Context, request Inventory
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
+	surfaceClause, surfaceParams := inventorySurfaceParams(request.Surface)
+	params := map[string]any{
+		"tenant_id":             tenantID,
+		"source_id":             strings.TrimSpace(request.SourceID),
+		"excluded_entity_types": excludedInventoryEntityTypes(),
+		"limit":                 normalizeInventoryLimit(request.Limit),
+	}
+	for key, value := range surfaceParams {
+		params[key] = value
+	}
 	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: `MATCH (e:Entity)
 WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
   AND ($source_id = '' OR e.source_id = $source_id)
   AND NOT e.entity_type IN $excluded_entity_types
+` + surfaceClause + `
 RETURN e.entity_type AS entity_type, count(e) AS count
 ORDER BY count DESC, entity_type ASC
 LIMIT $limit`,
-		Params: map[string]any{
-			"tenant_id":             tenantID,
-			"source_id":             strings.TrimSpace(request.SourceID),
-			"excluded_entity_types": excludedInventoryEntityTypes(),
-			"limit":                 normalizeInventoryLimit(request.Limit),
-		},
+		Params:   params,
 		RowLimit: normalizeInventoryLimit(request.Limit),
 	})
 	if err != nil {
@@ -134,7 +144,7 @@ LIMIT $limit`,
 		id, label := inventoryCategoryForEntityType(entityType)
 		category := grouped[id]
 		if category == nil {
-			category = &InventoryCategory{ID: id, Label: label}
+			category = &InventoryCategory{ID: id, Label: label, Surface: InventorySurfaceForEntityType(entityType)}
 			grouped[id] = category
 		}
 		category.EntityTypes = append(category.EntityTypes, entityType)
@@ -160,24 +170,30 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 	}
 	entityTypes := inventoryEntityTypesForFilter(request.CategoryID, request.EntityType)
 	query := strings.ToLower(strings.TrimSpace(request.Query))
+	surfaceClause, surfaceParams := inventorySurfaceParams(request.Surface)
+	params := map[string]any{
+		"tenant_id":             strings.TrimSpace(request.TenantID),
+		"source_id":             strings.TrimSpace(request.SourceID),
+		"entity_types":          entityTypes,
+		"excluded_entity_types": excludedInventoryEntityTypes(),
+		"q":                     query,
+		"limit":                 normalizeInventoryLimit(request.Limit),
+	}
+	for key, value := range surfaceParams {
+		params[key] = value
+	}
 	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: `MATCH (e:Entity)
 WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
   AND ($source_id = '' OR e.source_id = $source_id)
   AND (size($entity_types) = 0 OR e.entity_type IN $entity_types)
   AND NOT e.entity_type IN $excluded_entity_types
+` + surfaceClause + `
   AND ($q = '' OR toLower(coalesce(e.label, '')) CONTAINS $q OR toLower(e.urn) CONTAINS $q OR toLower(coalesce(e.attributes_json, '')) CONTAINS $q)
 RETURN e.urn AS urn, e.entity_type AS entity_type, e.label AS label, e.source_id AS source_id, e.runtime_id AS runtime_id, coalesce(e.attributes_json, '{}') AS attributes_json
 ORDER BY e.entity_type ASC, e.label ASC, e.urn ASC
 LIMIT $limit`,
-		Params: map[string]any{
-			"tenant_id":             strings.TrimSpace(request.TenantID),
-			"source_id":             strings.TrimSpace(request.SourceID),
-			"entity_types":          entityTypes,
-			"excluded_entity_types": excludedInventoryEntityTypes(),
-			"q":                     query,
-			"limit":                 normalizeInventoryLimit(request.Limit),
-		},
+		Params:   params,
 		RowLimit: normalizeInventoryLimit(request.Limit),
 	})
 	if err != nil {
@@ -251,6 +267,7 @@ func inventoryAssetFromRow(row ports.CypherRow) InventoryAsset {
 	return InventoryAsset{
 		URN:         rowString(row, "urn"),
 		EntityType:  rowString(row, "entity_type"),
+		Surface:     InventorySurfaceForEntityType(rowString(row, "entity_type")),
 		Label:       firstInventoryString(rowString(row, "label"), rowString(row, "urn")),
 		SourceID:    rowString(row, "source_id"),
 		RuntimeID:   rowString(row, "runtime_id"),

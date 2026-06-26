@@ -190,9 +190,9 @@ func (a *App) handleGRCInventoryCategories(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	categories, err := a.graphQueryService().ListInventoryCategories(r.Context(), graphquery.InventoryCategoryRequest{
-		TenantID: scope.TenantID,
-		SourceID: scope.SourceID,
-		Limit:    scope.Limit,
+		TenantID: scope.TenantID, SourceID: scope.SourceID,
+		Surface: strings.TrimSpace(r.URL.Query().Get("surface")),
+		Limit:   scope.Limit,
 	})
 	if err != nil {
 		writeGRCError(w, err)
@@ -208,8 +208,8 @@ func (a *App) handleGRCInventoryAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assets, err := a.graphQueryService().ListInventoryAssets(r.Context(), graphquery.InventoryAssetRequest{
-		TenantID:   scope.TenantID,
-		SourceID:   scope.SourceID,
+		TenantID: scope.TenantID, SourceID: scope.SourceID,
+		Surface:    strings.TrimSpace(r.URL.Query().Get("surface")),
 		CategoryID: strings.TrimSpace(r.URL.Query().Get("category_id")),
 		EntityType: strings.TrimSpace(r.URL.Query().Get("entity_type")),
 		Query:      strings.TrimSpace(r.URL.Query().Get("q")),
@@ -324,8 +324,8 @@ func (a *App) handleGRCResourceScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resources, err := a.graphQueryService().ListInventoryAssets(r.Context(), graphquery.InventoryAssetRequest{
-		TenantID:   scope.TenantID,
-		SourceID:   sourceID,
+		TenantID: scope.TenantID, SourceID: sourceID,
+		Surface:    strings.TrimSpace(r.URL.Query().Get("surface")),
 		CategoryID: strings.TrimSpace(r.URL.Query().Get("category_id")),
 		EntityType: strings.TrimSpace(r.URL.Query().Get("entity_type")),
 		Query:      strings.TrimSpace(r.URL.Query().Get("q")),

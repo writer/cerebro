@@ -57,6 +57,29 @@ func TestGRCInventoryReviewPostureRequiresOwnerForHighRiskUnownedAssets(t *testi
 	}
 }
 
+func TestGRCInventoryReviewPostureDoesNotRequireOwnerForSupportingRecords(t *testing.T) {
+	asset := graphquery.InventoryAsset{
+		URN:        "urn:cerebro:writer:sentinelone_installed_app:agent-1:app-1",
+		EntityType: "sentinelone.installed_application",
+		RiskScore:  90,
+		ScopeState: grcinventory.ScopeStateInScope,
+		Attributes: map[string]string{},
+	}
+	grcinventory.ApplyReviewPosture(&asset)
+	if asset.Surface != graphquery.InventorySurfaceComponent {
+		t.Fatalf("surface = %q, want %q", asset.Surface, graphquery.InventorySurfaceComponent)
+	}
+	if asset.ReviewDisposition == nil || asset.ReviewDisposition.State != grcinventory.ReviewBaseline {
+		t.Fatalf("review_disposition = %#v, want baseline", asset.ReviewDisposition)
+	}
+	if asset.Accountability == nil || asset.Accountability.State != grcinventory.AccountabilityNone {
+		t.Fatalf("accountability = %#v, want not_required", asset.Accountability)
+	}
+	if len(asset.Accountability.Reasons) == 0 || asset.Accountability.Reasons[0].Code != "supporting_record" {
+		t.Fatalf("accountability reasons = %#v, want supporting_record", asset.Accountability.Reasons)
+	}
+}
+
 func TestGRCInventoryAccountabilityOverrideMarksOwnerNotRequired(t *testing.T) {
 	asset := graphquery.InventoryAsset{
 		URN:        "urn:cerebro:writer:aws_s3_bucket:bucket-a",

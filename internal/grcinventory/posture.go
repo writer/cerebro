@@ -30,20 +30,21 @@ const (
 )
 
 type Summary struct {
-	TotalAssets         int `json:"total_assets"`
-	InScopeAssets       int `json:"in_scope_assets"`
-	OutOfScopeAssets    int `json:"out_of_scope_assets"`
-	HighRiskAssets      int `json:"high_risk_assets"`
-	UnassignedAssets    int `json:"unassigned_assets"`
-	BaselineAssets      int `json:"baseline_assets"`
-	NeedsReviewAssets   int `json:"needs_review_assets"`
-	OwnerRequiredAssets int `json:"owner_required_assets"`
-	AccountableAssets   int `json:"accountable_assets"`
-	ReportedIssueAssets int `json:"reported_issue_assets"`
-	OrgGroups           int `json:"org_groups"`
-	PublicAssets        int `json:"public_assets"`
-	ScopedCoveragePct   int `json:"scoped_coverage_pct"`
-	AssignedCoveragePct int `json:"assigned_coverage_pct"`
+	TotalAssets         int            `json:"total_assets"`
+	InScopeAssets       int            `json:"in_scope_assets"`
+	OutOfScopeAssets    int            `json:"out_of_scope_assets"`
+	HighRiskAssets      int            `json:"high_risk_assets"`
+	UnassignedAssets    int            `json:"unassigned_assets"`
+	BaselineAssets      int            `json:"baseline_assets"`
+	NeedsReviewAssets   int            `json:"needs_review_assets"`
+	OwnerRequiredAssets int            `json:"owner_required_assets"`
+	AccountableAssets   int            `json:"accountable_assets"`
+	ReportedIssueAssets int            `json:"reported_issue_assets"`
+	OrgGroups           int            `json:"org_groups"`
+	PublicAssets        int            `json:"public_assets"`
+	ScopedCoveragePct   int            `json:"scoped_coverage_pct"`
+	AssignedCoveragePct int            `json:"assigned_coverage_pct"`
+	SurfaceCounts       map[string]int `json:"surface_counts,omitempty"`
 }
 
 func ApplyScope(asset *graphquery.InventoryAsset, record *ports.GRCInventoryScopeRecord) {
@@ -83,6 +84,8 @@ func ApplyReviewPosture(asset *graphquery.InventoryAsset) {
 	if strings.TrimSpace(asset.ScopeState) == "" {
 		asset.ScopeState = ScopeStateInScope
 	}
+	surface := inventorySurface(*asset)
+	asset.Surface = surface
 	owner := AssetOwnerPrincipal(*asset)
 	accountabilityReasons := accountabilityReasons(*asset)
 	if asset.ScopeState == ScopeStateOutScope {
@@ -96,6 +99,30 @@ func ApplyReviewPosture(asset *graphquery.InventoryAsset) {
 		asset.Accountability = &graphquery.InventoryAccountability{
 			State:   AccountabilityNone,
 			Label:   "Owner not required",
+			Reasons: []graphquery.InventoryReviewReason{reason},
+		}
+		return
+	}
+	if supportingInventorySurface(surface) {
+		reason := graphquery.InventoryReviewReason{Code: "supporting_record", Label: "Supporting record"}
+		asset.Accountability = &graphquery.InventoryAccountability{
+			State:   AccountabilityNone,
+			Label:   "Owner not required",
+			Reasons: []graphquery.InventoryReviewReason{reason},
+		}
+		if hasActiveReport(*asset) {
+			asset.ReviewDisposition = &graphquery.InventoryReviewDisposition{
+				State:   ReviewReportedIssue,
+				Label:   "Reported issue",
+				Detail:  fallback(asset.LatestAssetReportReason, "A reviewer reported this record for triage."),
+				Reasons: []graphquery.InventoryReviewReason{{Code: "reported_issue", Label: "Reviewer report"}},
+			}
+			return
+		}
+		asset.ReviewDisposition = &graphquery.InventoryReviewDisposition{
+			State:   ReviewBaseline,
+			Label:   "Baseline",
+			Detail:  "Linked to related assets. Owner review is not required.",
 			Reasons: []graphquery.InventoryReviewReason{reason},
 		}
 		return
@@ -202,9 +229,15 @@ func FilterByAccountability(assets []graphquery.InventoryAsset, state string) []
 }
 
 func Summarize(assets []graphquery.InventoryAsset) Summary {
-	summary := Summary{TotalAssets: len(assets)}
+	summary := Summary{TotalAssets: len(assets), SurfaceCounts: map[string]int{}}
 	orgs := map[string]struct{}{}
+	ownerTrackableAssets := 0
 	for _, asset := range assets {
+		surface := inventorySurface(asset)
+		summary.SurfaceCounts[surface]++
+		if surface == graphquery.InventorySurfaceAsset {
+			ownerTrackableAssets++
+		}
 		ApplyReviewPosture(&asset)
 		state := strings.TrimSpace(asset.ScopeState)
 		if state == ScopeStateInScope {
@@ -216,7 +249,7 @@ func Summarize(assets []graphquery.InventoryAsset) Summary {
 		if asset.RiskScore >= 70 {
 			summary.HighRiskAssets++
 		}
-		if AssetOwner(asset) == "Unassigned" {
+		if surface == graphquery.InventorySurfaceAsset && AssetOwner(asset) == "Unassigned" {
 			summary.UnassignedAssets++
 		}
 		if asset.ReviewDisposition != nil {
@@ -247,7 +280,12 @@ func Summarize(assets []graphquery.InventoryAsset) Summary {
 	summary.OrgGroups = len(orgs)
 	if summary.TotalAssets > 0 {
 		summary.ScopedCoveragePct = int(float64(summary.InScopeAssets) / float64(summary.TotalAssets) * 100)
-		summary.AssignedCoveragePct = int(float64(summary.TotalAssets-summary.UnassignedAssets) / float64(summary.TotalAssets) * 100)
+	}
+	if ownerTrackableAssets > 0 {
+		summary.AssignedCoveragePct = int(float64(ownerTrackableAssets-summary.UnassignedAssets) / float64(ownerTrackableAssets) * 100)
+	}
+	if len(summary.SurfaceCounts) == 0 {
+		summary.SurfaceCounts = nil
 	}
 	return summary
 }
@@ -308,6 +346,22 @@ func AssetOrg(asset graphquery.InventoryAsset) string {
 
 func AssetPublic(asset graphquery.InventoryAsset) bool {
 	return attributeTruthy(asset, "public", "publicly_accessible", "internet_exposed", "external")
+}
+
+func inventorySurface(asset graphquery.InventoryAsset) string {
+	if strings.TrimSpace(asset.Surface) != "" {
+		return graphquery.NormalizeInventorySurface(asset.Surface)
+	}
+	return graphquery.InventorySurfaceForEntityType(asset.EntityType)
+}
+
+func supportingInventorySurface(surface string) bool {
+	switch graphquery.NormalizeInventorySurface(surface) {
+	case graphquery.InventorySurfaceComponent, graphquery.InventorySurfaceSignal, graphquery.InventorySurfaceAlias, graphquery.InventorySurfaceRawRecord:
+		return true
+	default:
+		return false
+	}
 }
 
 func hasActiveReport(asset graphquery.InventoryAsset) bool {
