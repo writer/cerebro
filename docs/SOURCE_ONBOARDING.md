@@ -170,6 +170,23 @@ and run bounded recovery:
    failures include structured context plus recent raw task logs; bootstrap
    failures include both bootstrap structured logs and raw logs when available.
 
+When a backfill fails before appending graph ingest history, classify the first
+provider/runtime error before widening the retry window:
+
+- Duplicate source-runtime outbox keys for the same attempted page usually mean
+  the runtime emitted duplicate event ids in one accepted page. Retry only after
+  the deployed runtime image includes page-level event-id de-duplication; repeated
+  retries with the same image will keep failing at the append/outbox boundary.
+- Provider authorization errors that report an unavailable data plane, such as a
+  GitHub audit-log HTTP 401/403/404 for an installed app, should be fixed in the
+  source implementation to return an empty/not-modified page when the source is
+  optional for that tenant. Do not remove the declared runtime or quarantine it
+  just to make graph health pass.
+- After promoting a runtime fix, run one bounded manual backfill for only the
+  affected runtime ids, then dispatch graph-health insight again and link the
+  successful release, deploy, backfill, and graph-health runs on the follow-up
+  issue.
+
 Deploy graph-health healing retries failed source-runtime attempts for 600
 seconds by default. Use the manual backfill workflow when a follow-up issue
 needs a narrower runtime list, a longer retry window, or a plan hash review
