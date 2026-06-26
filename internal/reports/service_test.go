@@ -176,7 +176,7 @@ func (s *stubBatchGraphStore) GetEntityNeighborhoods(_ context.Context, rootURNs
 	for _, rootURN := range roots {
 		neighborhood, ok := s.neighborhoods[rootURN]
 		if !ok {
-			return nil, fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, rootURN)
+			continue
 		}
 		neighborhoods[rootURN] = cloneNeighborhood(neighborhood)
 	}
@@ -565,6 +565,48 @@ func TestRunFindingSummaryReportBatchesGraphEvidenceNeighborhoods(t *testing.T) 
 	}
 	if graphStore.batchLimit != 4 {
 		t.Fatalf("GetEntityNeighborhoods().limit = %d, want 4", graphStore.batchLimit)
+	}
+	if len(graphStore.calls) != 0 {
+		t.Fatalf("GetEntityNeighborhood() calls = %#v, want no individual lookups", graphStore.calls)
+	}
+}
+
+func TestGraphEvidenceUsesBatchPartialResultsForMissingRoots(t *testing.T) {
+	present := "urn:cerebro:writer:test_resource:present"
+	missing := "urn:cerebro:writer:test_resource:missing"
+	graphStore := &stubBatchGraphStore{
+		stubGraphStore: &stubGraphStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+			present: testNeighborhood(present),
+		}},
+	}
+	service := New(nil, graphStore, nil)
+
+	evidence, neighborhoods, err := service.graphEvidence(context.Background(), map[string]int{
+		present: 2,
+		missing: 1,
+	}, 2, 4)
+	if err != nil {
+		t.Fatalf("graphEvidence() error = %v", err)
+	}
+	if len(neighborhoods) != 1 || neighborhoods[present] == nil {
+		t.Fatalf("graphEvidence() neighborhoods = %#v, want only present root", neighborhoods)
+	}
+	if len(evidence) != 2 {
+		t.Fatalf("graphEvidence() evidence = %#v, want 2 entries", evidence)
+	}
+	included, ok := evidence[0].(map[string]any)
+	if !ok || included["resource_urn"] != present || included["status"] != graphEvidenceEntryStatusIncluded {
+		t.Fatalf("graphEvidence()[0] = %#v, want included present root", evidence[0])
+	}
+	notFound, ok := evidence[1].(map[string]any)
+	if !ok || notFound["resource_urn"] != missing || notFound["status"] != graphEvidenceEntryStatusNotFound {
+		t.Fatalf("graphEvidence()[1] = %#v, want missing root", evidence[1])
+	}
+	if len(graphStore.batchCalls) != 1 {
+		t.Fatalf("GetEntityNeighborhoods() calls = %#v, want one batch", graphStore.batchCalls)
+	}
+	if got := graphStore.batchCalls[0]; len(got) != 2 || got[0] != present || got[1] != missing {
+		t.Fatalf("GetEntityNeighborhoods().roots = %#v, want [%q %q]", got, present, missing)
 	}
 	if len(graphStore.calls) != 0 {
 		t.Fatalf("GetEntityNeighborhood() calls = %#v, want no individual lookups", graphStore.calls)

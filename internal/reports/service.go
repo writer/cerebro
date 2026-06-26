@@ -609,9 +609,6 @@ func (s *Service) batchGraphNeighborhoods(ctx context.Context, roots []string, g
 	}
 	neighborhoods, err := batchStore.GetEntityNeighborhoods(ctx, roots, graphLimit)
 	if err != nil {
-		if errors.Is(err, ports.ErrGraphEntityNotFound) {
-			return nil, false, nil
-		}
 		return nil, true, err
 	}
 	normalized := make(map[string]*ports.EntityNeighborhood, len(neighborhoods))
