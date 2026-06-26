@@ -2,10 +2,10 @@ package githubaudit
 
 import (
 	"context"
-	"errors"
-	"net/http"
 
 	gogithub "github.com/google/go-github/v66/github"
+
+	"github.com/writer/cerebro/sources/internal/githubapi"
 )
 
 // GetAuditLog fetches an audit-log page and treats unavailable audit-log
@@ -19,14 +19,5 @@ func GetAuditLog(ctx context.Context, client *gogithub.Client, owner string, opt
 }
 
 func AuditLogUnavailable(err error) bool {
-	var apiErr *gogithub.ErrorResponse
-	if !errors.As(err, &apiErr) || apiErr.Response == nil {
-		return false
-	}
-	switch apiErr.Response.StatusCode {
-	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
-		return true
-	default:
-		return false
-	}
+	return githubapi.ProviderUnavailable(err)
 }
