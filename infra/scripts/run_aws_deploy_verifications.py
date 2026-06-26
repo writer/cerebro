@@ -40,6 +40,7 @@ DEFAULT_GRAPH_HEALTH_HEAL_FAILED_RUN_RETRY_SECONDS = 600
 DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS = 3600
 DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS = 900
 DEFAULT_GRAPH_HEALTH_PROCESS_TIMEOUT_SECONDS = 960
+DEFAULT_GRAPH_HEALTH_TYPED_PROPERTY_BACKFILL_BATCH_SIZE = 5000
 
 
 def _stack_name(path: Path) -> str:
@@ -383,15 +384,17 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
 
 
 def _graph_health_runtime_ids(diagnostics: str) -> list[str]:
-    runtime_ids = {
-        match.group(1)
-        for match in re.finditer(r"([A-Za-z0-9_.-]+):graph-ingest:\1(?::|$)", diagnostics)
-    }
+    runtime_ids = set(_graph_health_failed_runtime_ids(diagnostics))
+    runtime_ids.update(_graph_health_missing_runtime_ids(diagnostics))
     return sorted(runtime_ids)
 
 
 def _graph_health_needs_primary_link_repair(diagnostics: str) -> bool:
     return "open_findings_missing_primary_has_finding_edge" in diagnostics
+
+
+def _graph_health_needs_typed_property_backfill(diagnostics: str) -> bool:
+    return "entities_missing_typed_properties" in diagnostics
 
 
 def _source_id_for_runtime(stack_file: Path, runtime_id: str) -> str:
@@ -467,6 +470,28 @@ def _graph_health_primary_link_repair_command(args: argparse.Namespace) -> list[
     ]
 
 
+def _graph_health_entity_typed_property_backfill_command(args: argparse.Namespace) -> list[str]:
+    return [
+        sys.executable,
+        "scripts/verify_graph_health_ecs.py",
+        "--stack-file",
+        str(args.stack_file),
+        "--wait-timeout-seconds",
+        "1800",
+        "--poll-seconds",
+        "5",
+        "--graph-command-retry-seconds",
+        "0",
+        "--credential-safe-timeout-seconds",
+        "1800",
+        "--graph-command",
+        "graph",
+        "backfill-entity-typed-properties",
+        "apply=true",
+        f"batch_size={args.graph_health_typed_property_backfill_batch_size}",
+    ]
+
+
 def _attempt_graph_health_heal(args: argparse.Namespace, diagnostics: str) -> bool:
     runtime_ids = _graph_health_runtime_ids(diagnostics)
     healed_any = False
@@ -476,6 +501,15 @@ def _attempt_graph_health_heal(args: argparse.Namespace, diagnostics: str) -> bo
         completed = subprocess.run(command, text=True)
         if completed.returncode != 0:
             print(f"WARNING: graph-health primary-link repair command failed with exit code {completed.returncode}", file=sys.stderr)
+        else:
+            healed_any = True
+
+    if _graph_health_needs_typed_property_backfill(diagnostics):
+        command = _graph_health_entity_typed_property_backfill_command(args)
+        print(f"Running graph-health entity typed-property backfill command: {' '.join(command)}", file=sys.stderr, flush=True)
+        completed = subprocess.run(command, text=True)
+        if completed.returncode != 0:
+            print(f"WARNING: graph-health entity typed-property backfill command failed with exit code {completed.returncode}", file=sys.stderr)
         else:
             healed_any = True
 
@@ -726,6 +760,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--graph-health-heal", action="store_true", help="Try to re-run failed source runtimes before degrading graph health.")
     parser.add_argument("--graph-health-heal-concurrency", type=_positive_int, default=4)
+    parser.add_argument(
+        "--graph-health-typed-property-backfill-batch-size",
+        type=_positive_int,
+        default=DEFAULT_GRAPH_HEALTH_TYPED_PROPERTY_BACKFILL_BATCH_SIZE,
+        help="Batch size for graph-health entity typed-property backfill repair.",
+    )
     parser.add_argument(
         "--graph-health-heal-failed-run-retry-seconds",
         type=_non_negative_int,

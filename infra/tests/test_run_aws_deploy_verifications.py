@@ -629,6 +629,45 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertIn("repair-open-finding-primary-links", command)
         self.assertIn("apply=true", command)
 
+    def test_graph_typed_property_failure_backfills_then_reruns_health(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            results = iter(
+                [
+                    run_aws_deploy_verifications.GraphHealthResult(
+                        23,
+                        "ERROR: graph integrity failed 1 checks: entities_missing_typed_properties=527840",
+                    ),
+                    run_aws_deploy_verifications.GraphHealthResult(0, ""),
+                ]
+            )
+            with (
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args, **_kwargs: next(results)) as stream,
+                patch(
+                    "scripts.run_aws_deploy_verifications.subprocess.run",
+                    return_value=subprocess.CompletedProcess(["backfill"], 0),
+                ) as run,
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.sec-dev.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--graph-health-heal",
+                    ]
+                )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(stream.call_count, 2)
+        command = run.call_args.args[0]
+        self.assertIn("scripts/verify_graph_health_ecs.py", command)
+        self.assertIn("--graph-command", command)
+        self.assertIn("backfill-entity-typed-properties", command)
+        self.assertIn("apply=true", command)
+        self.assertIn("batch_size=5000", command)
+
     def test_graph_failure_heals_then_reruns_health(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             results = iter(
@@ -659,6 +698,17 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(stream.call_count, 2)
         heal.assert_called_once()
+
+    def test_graph_health_runtime_ids_include_missing_ingest_history(self) -> None:
+        diagnostics = (
+            "ERROR: missing graph ingest run history for 2 declared runtime(s): "
+            "runtime-a, runtime-b; latest graph ingest run failed for 1 runtime(s): "
+            "runtime-c:graph-ingest:runtime-c:20260601T000000Z:status=failed"
+        )
+
+        runtime_ids = run_aws_deploy_verifications._graph_health_runtime_ids(diagnostics)
+
+        self.assertEqual(runtime_ids, ["runtime-a", "runtime-b", "runtime-c"])
 
     def test_graph_failure_heals_runtime_ids_in_parallel(self) -> None:
         args = argparse.Namespace(

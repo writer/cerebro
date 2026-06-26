@@ -114,10 +114,12 @@ When a go-prod deploy is blocked by source runtime role trust drift:
      --allow-transient-source-failures
    ```
 
-   Automated deploy graph-health healing retries failed source-runtime recovery
-   attempts for 600 seconds by default. For missing ingest history on a small
-   runtime set, use the `Source Runtime Backfill` workflow with a reviewed
-   `plan_hash` and an explicit `failed_run_retry_seconds` value.
+   Automated deploy graph-health healing retries failed or missing-history
+   source-runtime recovery attempts for 600 seconds by default. It also runs the
+   bounded entity typed-property backfill repair when that graph integrity
+   invariant fails. For missing ingest history on a small runtime set, use the
+   `Source Runtime Backfill` workflow with a reviewed `plan_hash` and an
+   explicit `failed_run_retry_seconds` value.
 
 ## Important config
 
