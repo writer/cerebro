@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/nhicoverage"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecoverage"
@@ -31,7 +32,6 @@ type sourceRuntimeHealthResponse struct {
 	Coverage        []sourcecoverage.Record      `json:"coverage,omitempty"`
 	CoverageSummary []sourcecoverage.Summary     `json:"coverage_summaries,omitempty"`
 }
-
 type runtimeFreshnessResponse struct {
 	GeneratedAt          string                    `json:"generated_at"`
 	Status               string                    `json:"status"`
@@ -172,7 +172,7 @@ func (a *App) handleGetConnectorCoverage(w http.ResponseWriter, r *http.Request)
 	}
 	report := sourcecoverage.BuildScopedReport(health.Coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt)
 	emitSourceCoverageGateTelemetry(r.Context(), report)
-	writeJSON(w, http.StatusOK, report)
+	writeJSON(w, http.StatusOK, nhicoverage.WithSourceCoverage(report))
 }
 func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthResponse, error) {
 	limit, err := uint32QueryParam(r, "limit")

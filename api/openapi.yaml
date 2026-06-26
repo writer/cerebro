@@ -4241,6 +4241,10 @@ paths:
       responses:
         '200':
           description: Tenant-scoped connector coverage report with per-dimension state, summaries, and blind spots.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCoverageResponse'
   /platform/graph/provenance:
     get:
       summary: Explain graph entity projection provenance
@@ -7499,6 +7503,234 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SourceCoverageSummary'
+    ConnectorCoverageResponse:
+      allOf:
+        - $ref: '#/components/schemas/SourceCoverageReport'
+        - type: object
+          properties:
+            nhi_coverage:
+              $ref: '#/components/schemas/NHICoverageReport'
+    SourceCoverageReport:
+      type: object
+      properties:
+        version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        totals:
+          $ref: '#/components/schemas/SourceCoverageTotals'
+        gate:
+          $ref: '#/components/schemas/SourceCoverageGate'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        blind_spots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageSummary'
+        blind_spot_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageSummary'
+    SourceCoverageTotals:
+      type: object
+      properties:
+        dimensions:
+          type: integer
+          minimum: 0
+        high_value_dimensions:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        partial:
+          type: integer
+          minimum: 0
+        unsupported:
+          type: integer
+          minimum: 0
+        unconfigured:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        blind_spots:
+          type: integer
+          minimum: 0
+    SourceCoverageGate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pass, warn, fail]
+        blocking_reason:
+          type: string
+          enum: [none, failed, blind_spot, stale, unconfigured, unsupported, partial, unknown]
+    NHICoverageReport:
+      type: object
+      properties:
+        version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        totals:
+          $ref: '#/components/schemas/NHICoverageTotals'
+        gate:
+          $ref: '#/components/schemas/SourceCoverageGate'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/NHICoverageRecord'
+        blind_spots:
+          type: array
+          items:
+            $ref: '#/components/schemas/NHICoverageRecord'
+        summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/NHICoverageSummary'
+        lane_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/NHICoverageLaneSummary'
+        blind_spot_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/NHICoverageSummary'
+    NHICoverageTotals:
+      type: object
+      properties:
+        dimensions:
+          type: integer
+          minimum: 0
+        high_value_dimensions:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        partial:
+          type: integer
+          minimum: 0
+        unsupported:
+          type: integer
+          minimum: 0
+        unconfigured:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        blind_spots:
+          type: integer
+          minimum: 0
+    NHICoverageRecord:
+      allOf:
+        - $ref: '#/components/schemas/SourceCoverageRecord'
+        - type: object
+          properties:
+            lane:
+              type: string
+              enum: [inventory, credential, entitlement, trust, exposure, activity]
+            subject_kind:
+              type: string
+    NHICoverageSummary:
+      type: object
+      properties:
+        source_id:
+          type: string
+        lane:
+          type: string
+          enum: [inventory, credential, entitlement, trust, exposure, activity]
+        total:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        partial:
+          type: integer
+          minimum: 0
+        unsupported:
+          type: integer
+          minimum: 0
+        unconfigured:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        blind_spots:
+          type: integer
+          minimum: 0
+    NHICoverageLaneSummary:
+      type: object
+      properties:
+        lane:
+          type: string
+          enum: [inventory, credential, entitlement, trust, exposure, activity]
+        total:
+          type: integer
+          minimum: 0
+        healthy:
+          type: integer
+          minimum: 0
+        partial:
+          type: integer
+          minimum: 0
+        unsupported:
+          type: integer
+          minimum: 0
+        unconfigured:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        blind_spots:
+          type: integer
+          minimum: 0
     SourceCoverageSummary:
       type: object
       properties:

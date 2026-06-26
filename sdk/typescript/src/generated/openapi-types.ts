@@ -525,6 +525,20 @@ export type Claim = {
   valid_to?: string;
 };
 
+export type ConnectorCoverageResponse = {
+  blind_spot_summaries?: SourceCoverageSummary[];
+  blind_spots?: SourceCoverageRecord[];
+  gate?: SourceCoverageGate;
+  generated_at?: string;
+  nhi_coverage?: NHICoverageReport;
+  records?: SourceCoverageRecord[];
+  source_id?: string;
+  summaries?: SourceCoverageSummary[];
+  tenant_id?: string;
+  totals?: SourceCoverageTotals;
+  version?: string;
+};
+
 export type ConnectorCredential = {
   auth_method: string;
   created_at?: string;
@@ -1043,6 +1057,56 @@ export type GRCAskRequest = {
   tenant_id: string;
 };
 
+export type GRCDashboardResponse = {
+  connectors?: Record<string, unknown>[];
+  controls?: Record<string, unknown>[];
+  coverage_blind_spots?: SourceCoverageRecord[];
+  coverage_summaries?: SourceCoverageSummary[];
+  evidence?: Record<string, unknown>[];
+  findings?: Record<string, unknown>[];
+  generated_at?: string;
+  product_areas?: GRCProductArea[];
+  source_summaries?: Record<string, unknown>[];
+  summary?: Record<string, unknown>;
+};
+
+export type GRCProductArea = {
+  blind_spots?: SourceCoverageRecord[];
+  control_domains?: string[];
+  coverage_dimensions?: string[];
+  description?: string;
+  detail?: string;
+  evidence_types?: string[];
+  href?: string;
+  id?: string;
+  signal?: string;
+  source_families?: string[];
+  status?: "attention" | "mapped" | "quiet";
+  title?: string;
+  workflows?: GRCProductAreaWorkflow[];
+};
+
+export type GRCProductAreaWorkflow = {
+  href?: string;
+  label?: string;
+};
+
+export type GRCProgramReadinessResponse = {
+  connectors?: Record<string, unknown>[];
+  controls?: Record<string, unknown>[];
+  coverage_blind_spots?: SourceCoverageRecord[];
+  coverage_summaries?: SourceCoverageSummary[];
+  frameworks?: Record<string, unknown>[];
+  generated_at?: string;
+  metadata?: Record<string, unknown>;
+  product_areas?: GRCProductArea[];
+  profile?: Record<string, unknown>;
+  proof_bundle?: Record<string, unknown>;
+  source_summaries?: Record<string, unknown>[];
+  summary?: Record<string, unknown>;
+  work_items?: Record<string, unknown>[];
+};
+
 export type GetEntityNeighborhoodResponse = {
   neighbors?: GraphEntity[];
   relations?: GraphRelation[];
@@ -1151,6 +1215,86 @@ export type IssueBootstrapTokenResponse = {
 
 export type ListClaimsResponse = {
   claims?: Claim[];
+};
+
+export type NHICoverageLaneSummary = {
+  blind_spots?: number;
+  failed?: number;
+  healthy?: number;
+  lane?: "inventory" | "credential" | "entitlement" | "trust" | "exposure" | "activity";
+  partial?: number;
+  stale?: number;
+  total?: number;
+  unconfigured?: number;
+  unknown?: number;
+  unsupported?: number;
+};
+
+export type NHICoverageRecord = {
+  authority_domain?: string;
+  blind_spot?: boolean;
+  control_domains?: string[];
+  control_refs?: CoverageControlRef[];
+  dimension_id?: string;
+  dimension_type?: "alert_state" | "app_entitlement" | "audit_event" | "deployment_state" | "entity_family" | "incremental_sync" | "lifecycle_state" | "relationship" | "remediation_state";
+  evidence_types?: string[];
+  family?: string;
+  high_value?: boolean;
+  known_unsupported_fields?: string[];
+  lane?: "inventory" | "credential" | "entitlement" | "trust" | "exposure" | "activity";
+  last_synced_at?: string;
+  notes?: string[];
+  owner_domain?: string;
+  runtime_id?: string;
+  source_id?: string;
+  state?: "healthy" | "partial" | "unsupported" | "unconfigured" | "stale" | "failed" | "unknown";
+  subject_kind?: string;
+  support_level?: "supported" | "partial" | "unsupported" | "planned";
+  supported_runtime_families?: string[];
+  tenant_id?: string;
+  title?: string;
+  warning?: string;
+};
+
+export type NHICoverageReport = {
+  blind_spot_summaries?: NHICoverageSummary[];
+  blind_spots?: NHICoverageRecord[];
+  gate?: SourceCoverageGate;
+  generated_at?: string;
+  lane_summaries?: NHICoverageLaneSummary[];
+  records?: NHICoverageRecord[];
+  source_id?: string;
+  summaries?: NHICoverageSummary[];
+  tenant_id?: string;
+  totals?: NHICoverageTotals;
+  version?: string;
+};
+
+export type NHICoverageSummary = {
+  blind_spots?: number;
+  failed?: number;
+  healthy?: number;
+  lane?: "inventory" | "credential" | "entitlement" | "trust" | "exposure" | "activity";
+  partial?: number;
+  source_id?: string;
+  stale?: number;
+  total?: number;
+  unconfigured?: number;
+  unknown?: number;
+  unsupported?: number;
+};
+
+export type NHICoverageTotals = {
+  blind_spots?: number;
+  dimensions?: number;
+  failed?: number;
+  healthy?: number;
+  high_value_dimensions?: number;
+  partial?: number;
+  stale?: number;
+  unconfigured?: number;
+  unknown?: number;
+  unsupported?: number;
 };
 
 export type PlatformJob = {
@@ -1426,6 +1570,11 @@ export type SourceCDKScaffoldPlan = {
   source_type?: string;
 };
 
+export type SourceCoverageGate = {
+  blocking_reason?: "none" | "failed" | "blind_spot" | "stale" | "unconfigured" | "unsupported" | "partial" | "unknown";
+  status?: "pass" | "warn" | "fail";
+};
+
 export type SourceCoverageRecord = {
   authority_domain?: string;
   blind_spot?: boolean;
@@ -1450,6 +1599,19 @@ export type SourceCoverageRecord = {
   warning?: string;
 };
 
+export type SourceCoverageReport = {
+  blind_spot_summaries?: SourceCoverageSummary[];
+  blind_spots?: SourceCoverageRecord[];
+  gate?: SourceCoverageGate;
+  generated_at?: string;
+  records?: SourceCoverageRecord[];
+  source_id?: string;
+  summaries?: SourceCoverageSummary[];
+  tenant_id?: string;
+  totals?: SourceCoverageTotals;
+  version?: string;
+};
+
 export type SourceCoverageSummary = {
   blind_spots?: number;
   failed?: number;
@@ -1458,6 +1620,19 @@ export type SourceCoverageSummary = {
   source_id?: string;
   stale?: number;
   total?: number;
+  unconfigured?: number;
+  unknown?: number;
+  unsupported?: number;
+};
+
+export type SourceCoverageTotals = {
+  blind_spots?: number;
+  dimensions?: number;
+  failed?: number;
+  healthy?: number;
+  high_value_dimensions?: number;
+  partial?: number;
+  stale?: number;
   unconfigured?: number;
   unknown?: number;
   unsupported?: number;

@@ -60,6 +60,36 @@ Generated detections consume those same coverage contracts. The public detection
 
 `source_manager` (reports run, sources preview), `viewer` (read)
 
+## nhicoverage — Non-Human Identity Coverage
+
+`internal/nhicoverage` derives an NHI coverage report from the existing source coverage report. It does not introduce a new store or source of truth. It filters source coverage dimensions into NHI lanes and keeps the original coverage record fields so operators can trace each NHI gap back to the source contract, runtime family, evidence type, and control domain that produced it.
+
+The `/connectors/coverage` response includes this derived report as `nhi_coverage` alongside the existing source coverage fields.
+
+### NHI Lanes
+
+| Lane | Coverage represented |
+| --- | --- |
+| `inventory` | Applications, service accounts, service principals, managed identities, OAuth clients, and machine users |
+| `credential` | API keys, access keys, service account keys, API tokens, client secrets, external keys, and secret records |
+| `entitlement` | RBAC bindings, permission sets, app assignments, policy assignments, and service account roles |
+| `trust` | Workload identity, federation, identity providers, impersonation, and trusted-origin relationships |
+| `exposure` | External principals, public or internet exposure, cross-account trust, and shared secrets |
+| `activity` | Audit-event coverage for NHI credential and principal activity |
+
+### Key Types
+
+- `Report` — derived NHI coverage report with totals, gate, records, blind spots, source/lane summaries, and lane summaries
+- `Record` — source coverage record plus `lane` and `subject_kind`
+- `Totals`, `Summary`, `LaneSummary` — NHI coverage aggregate views
+
+### Boundaries
+
+- NHI coverage is a report projection over `sourcecoverage.Report`
+- Remediation dimensions are excluded from NHI coverage
+- Finding rules and graph projections remain the owners of detections and entity relationships
+- Source coverage contracts remain the source of truth for support, runtime family, evidence type, and control mapping
+
 ## sourcehealth — Runtime Health Evaluation
 
 `internal/sourcehealth` evaluates source runtime health from raw runtime protobuf data. It computes lifecycle, schedule, freshness, source-sync, graph-ingest, and finding-evaluation states, plus backfill eligibility and recommended next actions.
@@ -148,6 +178,7 @@ Protobuf types from `gen/cerebro/v1`; no internal package dependencies
 ## Code Map
 
 - `internal/sourcecoverage/coverage.go` — coverage contract evaluation and report builder
+- `internal/nhicoverage/coverage.go` — NHI coverage projection over source coverage
 - `internal/sourcehealth/health.go` — runtime health evaluation and state computation
 - `internal/sourcehealthview/types.go` — health dashboard view model types
 - `internal/resourcescope/policy.go` — resource exclusion policy definition and management
