@@ -25,6 +25,10 @@ const (
 	impactNeighborhoodConcurrency = 8
 )
 
+type impactBatchNeighborhoodStore interface {
+	GetEntityNeighborhoods(context.Context, []string, int) (map[string]*ports.EntityNeighborhood, error)
+}
+
 type ImpactRequest struct {
 	Kind       string
 	TenantID   string
@@ -138,6 +142,20 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 
 func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string, limit int) ([]*ports.EntityNeighborhood, error) {
 	results := make([]*ports.EntityNeighborhood, len(roots))
+	if batchStore, ok := s.store.(impactBatchNeighborhoodStore); ok {
+		neighborhoods, err := batchStore.GetEntityNeighborhoods(ctx, roots, limit)
+		if err != nil {
+			return nil, err
+		}
+		for index, urn := range roots {
+			neighborhood, ok := neighborhoods[urn]
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, urn)
+			}
+			results[index] = neighborhood
+		}
+		return results, nil
+	}
 	if len(roots) == 1 {
 		neighborhood, err := s.store.GetEntityNeighborhood(ctx, roots[0], limit)
 		if err != nil {

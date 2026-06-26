@@ -985,6 +985,84 @@ ORDER BY neighbor.urn, r.relation LIMIT $limit`, map[string]any{"root_urn": norm
 	return neighborhood, nil
 }
 
+// GetEntityNeighborhoods returns bounded root-centered graph neighborhoods for
+// a batch of roots. It preserves the same per-root edge ordering as
+// GetEntityNeighborhood while collapsing frontier expansion into three read
+// queries instead of three queries per root.
+func (s *Store) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+	roots := normalizeNeighborhoodRootURNs(rootURNs)
+	if len(roots) == 0 {
+		return map[string]*ports.EntityNeighborhood{}, nil
+	}
+	if err := s.requireConfigured(); err != nil {
+		return nil, err
+	}
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(roots))
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+		accumulators := make(map[string]*neighborhoodAccumulator, len(roots))
+		result, err := tx.Run(ctx, `MATCH (e:Entity)
+WHERE e.urn IN $root_urns
+RETURN e.urn, e.entity_type, e.label`, map[string]any{"root_urns": roots})
+		if err != nil {
+			return nil, fmt.Errorf("query graph roots: %w", err)
+		}
+		for result.Next(ctx) {
+			record := result.Record()
+			root := &ports.NeighborhoodNode{
+				URN:        stringValue(record.Values[0]),
+				EntityType: stringValue(record.Values[1]),
+				Label:      stringValue(record.Values[2]),
+			}
+			accumulators[root.URN] = &neighborhoodAccumulator{
+				neighborhood: &ports.EntityNeighborhood{
+					Root:      root,
+					Neighbors: []*ports.NeighborhoodNode{},
+					Relations: []*ports.NeighborhoodRelation{},
+				},
+				neighbors: make(map[string]*ports.NeighborhoodNode),
+				relations: make(map[string]*ports.NeighborhoodRelation),
+				remaining: limit,
+			}
+		}
+		if err := result.Err(); err != nil {
+			return nil, fmt.Errorf("query graph roots: %w", err)
+		}
+		for _, rootURN := range roots {
+			if accumulators[rootURN] == nil {
+				return nil, fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, rootURN)
+			}
+		}
+		if limit > 0 {
+			params := map[string]any{"root_urns": roots, "limit": limit}
+			if err := collectBatchedNeighborhoodRows(ctx, tx, outgoingNeighborhoodBatchQuery, params, accumulators); err != nil {
+				return nil, err
+			}
+			incomingRoots := make([]string, 0, len(roots))
+			for _, rootURN := range roots {
+				if accumulators[rootURN].remaining > 0 {
+					incomingRoots = append(incomingRoots, rootURN)
+				}
+			}
+			if len(incomingRoots) > 0 {
+				params := map[string]any{"root_urns": incomingRoots, "limit": limit}
+				if err := collectBatchedNeighborhoodRows(ctx, tx, incomingNeighborhoodBatchQuery, params, accumulators); err != nil {
+					return nil, err
+				}
+			}
+		}
+		for _, rootURN := range roots {
+			accumulator := accumulators[rootURN]
+			accumulator.neighborhood.Neighbors = neighborhoodNodes(accumulator.neighbors)
+			accumulator.neighborhood.Relations = neighborhoodRelations(accumulator.relations)
+			neighborhoods[rootURN] = accumulator.neighborhood
+		}
+		return nil, nil
+	}); err != nil {
+		return nil, err
+	}
+	return neighborhoods, nil
+}
+
 // ExecuteReadCypher runs one bounded read-only Cypher query and returns its rows.
 //
 // The store enforces a row cap to keep graph rules from accidentally pulling unbounded result
@@ -1790,6 +1868,53 @@ func lookupNeighborhoodNode(ctx context.Context, tx neo4jdriver.ManagedTransacti
 	}, result.Err()
 }
 
+type neighborhoodAccumulator struct {
+	neighborhood *ports.EntityNeighborhood
+	neighbors    map[string]*ports.NeighborhoodNode
+	relations    map[string]*ports.NeighborhoodRelation
+	remaining    int
+}
+
+const outgoingNeighborhoodBatchQuery = `UNWIND $root_urns AS root_urn
+MATCH (root:Entity {urn: root_urn})
+CALL {
+  WITH root
+  MATCH (root)-[r:RELATION]->(neighbor:Entity)
+  RETURN neighbor.urn AS neighbor_urn, neighbor.entity_type AS neighbor_type, neighbor.label AS neighbor_label,
+         root.urn AS from_urn, r.relation AS relation_type, neighbor.urn AS to_urn, coalesce(r.attributes_json, '{}') AS attributes_json
+  ORDER BY neighbor.urn, r.relation
+  LIMIT $limit
+}
+RETURN root_urn, neighbor_urn, neighbor_type, neighbor_label, from_urn, relation_type, to_urn, attributes_json
+ORDER BY root_urn, neighbor_urn, relation_type`
+
+const incomingNeighborhoodBatchQuery = `UNWIND $root_urns AS root_urn
+MATCH (root:Entity {urn: root_urn})
+CALL {
+  WITH root
+  MATCH (neighbor:Entity)-[r:RELATION]->(root)
+  RETURN neighbor.urn AS neighbor_urn, neighbor.entity_type AS neighbor_type, neighbor.label AS neighbor_label,
+         neighbor.urn AS from_urn, r.relation AS relation_type, root.urn AS to_urn, coalesce(r.attributes_json, '{}') AS attributes_json
+  ORDER BY neighbor.urn, r.relation
+  LIMIT $limit
+}
+RETURN root_urn, neighbor_urn, neighbor_type, neighbor_label, from_urn, relation_type, to_urn, attributes_json
+ORDER BY root_urn, neighbor_urn, relation_type`
+
+func normalizeNeighborhoodRootURNs(rootURNs []string) []string {
+	roots := make([]string, 0, len(rootURNs))
+	seen := make(map[string]bool, len(rootURNs))
+	for _, raw := range rootURNs {
+		rootURN := strings.TrimSpace(raw)
+		if rootURN == "" || seen[rootURN] {
+			continue
+		}
+		seen[rootURN] = true
+		roots = append(roots, rootURN)
+	}
+	return roots
+}
+
 func collectNeighborhoodRows(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any, remaining int, neighbors map[string]*ports.NeighborhoodNode, relations map[string]*ports.NeighborhoodRelation) (int, error) {
 	result, err := tx.Run(ctx, query, params)
 	if err != nil {
@@ -1820,6 +1945,40 @@ func collectNeighborhoodRows(ctx context.Context, tx neo4jdriver.ManagedTransact
 		}
 	}
 	return remaining, result.Err()
+}
+
+func collectBatchedNeighborhoodRows(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any, accumulators map[string]*neighborhoodAccumulator) error {
+	result, err := tx.Run(ctx, query, params)
+	if err != nil {
+		return fmt.Errorf("query graph neighborhoods: %w", err)
+	}
+	for result.Next(ctx) {
+		record := result.Record()
+		rootURN := stringValue(record.Values[0])
+		accumulator := accumulators[rootURN]
+		if accumulator == nil || accumulator.remaining <= 0 {
+			continue
+		}
+		neighbor := &ports.NeighborhoodNode{
+			URN:        stringValue(record.Values[1]),
+			EntityType: stringValue(record.Values[2]),
+			Label:      stringValue(record.Values[3]),
+		}
+		attributes, err := decodeGraphAttributes(stringValue(record.Values[7]))
+		if err != nil {
+			return fmt.Errorf("decode graph neighborhood relation attributes: %w", err)
+		}
+		relation := &ports.NeighborhoodRelation{
+			FromURN:    stringValue(record.Values[4]),
+			Relation:   stringValue(record.Values[5]),
+			ToURN:      stringValue(record.Values[6]),
+			Attributes: attributes,
+		}
+		accumulator.neighbors[neighbor.URN] = neighbor
+		accumulator.relations[relation.FromURN+"|"+relation.Relation+"|"+relation.ToURN] = relation
+		accumulator.remaining--
+	}
+	return result.Err()
 }
 
 func graphAttributesJSON(attributes map[string]string) (string, error) {
