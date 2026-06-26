@@ -187,10 +187,12 @@ provider/runtime error before widening the retry window:
   successful release, deploy, backfill, and graph-health runs on the follow-up
   issue.
 
-Deploy graph-health healing retries failed source-runtime attempts for 600
-seconds by default. Use the manual backfill workflow when a follow-up issue
-needs a narrower runtime list, a longer retry window, or a plan hash review
-before running the recovery.
+Deploy graph-health healing retries failed or missing-history source-runtime
+attempts for 600 seconds by default. It also runs the bounded
+`graph backfill-entity-typed-properties apply=true` repair when graph integrity
+reports pre-promotion entities without typed properties. Use the manual backfill
+workflow when a follow-up issue needs a narrower runtime list, a longer retry
+window, or a plan hash review before running the recovery.
 
 Do not quarantine a runtime only to make graph health pass. Quarantine is for a
 known bad or intentionally paused runtime, and the same PR must remove the
