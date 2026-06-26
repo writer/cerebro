@@ -10,6 +10,27 @@ func TestRiskScoringWriteScopeRoleExpansion(t *testing.T) {
 	assertGRCContentWriteScopeExpansion(t, ScopeRiskScoringWrite)
 }
 
+func TestUserPreferencesWriteScopeRoleExpansion(t *testing.T) {
+	for _, role := range []string{
+		RoleCerebroViewer,
+		"viewer",
+		"reader",
+		"read_only",
+		RoleCerebroAnalyst,
+		RoleCerebroFindingManager,
+		RoleCerebroGRCReviewer,
+		RoleCerebroConnectorManager,
+		RoleCerebroResponder,
+		RoleCerebroSourceManager,
+		RoleCerebroJobManager,
+		RoleCerebroAdmin,
+	} {
+		if !hasScope(ScopesForRoles([]string{role}), ScopeUserPreferencesWrite) {
+			t.Fatalf("role %q did not expand to %s", role, ScopeUserPreferencesWrite)
+		}
+	}
+}
+
 func assertGRCContentWriteScopeExpansion(t *testing.T, scope string) {
 	t.Helper()
 	for _, role := range []string{

@@ -57,8 +57,10 @@ import (
 // mapping, and the source-to-handler dispatch. GRC program readiness adds a
 // thin HTTP handler that composes existing GRC packet builders, connector
 // health mapping, and source coverage into the internal/grcprogram readiness
-// domain response.
-const bootstrapProductionGoLineBudget = 26050
+// domain response. User preferences add only route wiring plus trusted actor
+// resolution; HTTP behavior lives in internal/sourcehttp/userpreferences and
+// storage stays behind the UserPreferenceStore port.
+const bootstrapProductionGoLineBudget = 26066
 
 type bootstrapFileLineCount struct {
 	path  string

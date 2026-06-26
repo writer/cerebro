@@ -4334,6 +4334,94 @@ paths:
             application/json:
               schema:
                 type: object
+  /user/preferences:
+    get:
+      summary: Get current user preferences
+      tags:
+        - Platform
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional tenant override constrained by the authenticated principal.
+      responses:
+        '200':
+          description: Stored preferences for the authenticated user, or defaults when none have been saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - tenant_id
+                  - user_id
+                  - preferences
+                  - persisted
+                properties:
+                  tenant_id:
+                    type: string
+                  user_id:
+                    type: string
+                  preferences:
+                    type: object
+                    additionalProperties: true
+                  persisted:
+                    type: boolean
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+    put:
+      summary: Save current user preferences
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - preferences
+              properties:
+                tenant_id:
+                  type: string
+                  description: Optional tenant override constrained by the authenticated principal.
+                preferences:
+                  type: object
+                  additionalProperties: true
+              additionalProperties: false
+      responses:
+        '200':
+          description: Stored preferences for the authenticated user after normalization.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - tenant_id
+                  - user_id
+                  - preferences
+                  - persisted
+                properties:
+                  tenant_id:
+                    type: string
+                  user_id:
+                    type: string
+                  preferences:
+                    type: object
+                    additionalProperties: true
+                  persisted:
+                    type: boolean
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
 
 components:
   securitySchemes:

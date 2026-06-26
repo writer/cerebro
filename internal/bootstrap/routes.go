@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
+	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -33,6 +34,9 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerAgentPlatformRoutes(mux)
 	app.registerReportRoutes(mux)
 	app.registerAskQueryRoutes(mux)
+	preferencesHandler := userpreferences.NewHandler(app.deps.StateStore, effectiveTenantFilter, userPreferenceActorID)
+	registerHTTPRoute(mux, "GET /user/preferences", routeSurfacePlatformHTTP, preferencesHandler.Get)
+	registerHTTPRoute(mux, "PUT /user/preferences", routeSurfacePlatformHTTP, preferencesHandler.Put)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
 	app.registerSourceRoutes(mux)

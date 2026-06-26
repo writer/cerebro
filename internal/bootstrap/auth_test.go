@@ -64,8 +64,8 @@ func TestCapabilityTokenCanAuthorizeWithRoleOnlyGrant(t *testing.T) {
 	if !ok {
 		t.Fatal("authenticateCapabilityToken() rejected role-only token")
 	}
-	if got := expandedPrincipalScopes(principal); len(got) != 1 || got[0] != scopeCosmoSecurityRead {
-		t.Fatalf("expanded scopes = %#v, want [%s]", got, scopeCosmoSecurityRead)
+	if got := expandedPrincipalScopes(principal); len(got) != 2 || got[0] != scopeCosmoSecurityRead || got[1] != scopeUserPreferencesWrite {
+		t.Fatalf("expanded scopes = %#v, want [%s %s]", got, scopeCosmoSecurityRead, scopeUserPreferencesWrite)
 	}
 	if err := authorizePrincipalHTTPPolicy(principal, httpRoutePolicyFor("GET", "/sources")); err != nil {
 		t.Fatalf("role-only capability token rejected for read route: %v", err)

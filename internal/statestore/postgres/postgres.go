@@ -66,6 +66,7 @@ type Store struct {
 	connectorCredentialReady   bool
 	connectorDefinitionReady   bool
 	appendLogRuntimeIndexReady bool
+	userPreferencesReady       bool
 }
 
 // Open opens a Postgres-backed current-state store.

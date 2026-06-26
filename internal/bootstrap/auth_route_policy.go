@@ -131,6 +131,8 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/ask-queries", Scope: scopeAskQueriesWrite, Static: true},
 	{Method: http.MethodPatch, Prefix: "/ask-queries/", Scope: scopeAskQueriesWrite},
 	{Method: http.MethodDelete, Prefix: "/ask-queries/", Scope: scopeAskQueriesWrite},
+	{Method: http.MethodGet, Exact: "/user/preferences", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPut, Exact: "/user/preferences", Scope: scopeUserPreferencesWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/jobs", Scope: scopeJobsWrite, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/jobs", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Prefix: "/platform/jobs/", Scope: scopeCosmoSecurityRead},
