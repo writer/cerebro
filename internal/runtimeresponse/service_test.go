@@ -2,6 +2,7 @@ package runtimeresponse
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -194,6 +195,64 @@ func TestCapabilitiesRequireTrustedScope(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesAdvertiseAperioExternalWorkflowActions(t *testing.T) {
+	capabilities := New(&recordingRuntimeBlocklistStore{}).Capabilities()
+	capability, ok := capabilityByAction(capabilities, ActionGoogleWorkspaceRevokeOAuthGrant)
+	if !ok {
+		t.Fatalf("Capabilities() missing %s: %#v", ActionGoogleWorkspaceRevokeOAuthGrant, capabilities)
+	}
+	if capability.Mode != "external_aperio_workflow" ||
+		capability.Supported ||
+		!capability.RequiresScope ||
+		capability.Provider != "GOOGLE_WORKSPACE" ||
+		capability.ExternalOwner != "aperio" ||
+		!capability.DryRun ||
+		!capability.ApprovalRequired {
+		t.Fatalf("Aperio Google Workspace capability drifted: %#v", capability)
+	}
+	if len(capability.TargetTypes) != 2 || capability.TargetTypes[0] != "oauth_grant" {
+		t.Fatalf("Aperio target types drifted: %#v", capability.TargetTypes)
+	}
+	if len(capability.RequiredContextKeys) == 0 || capability.RequiredContextKeys[0] != "oauth_grant_id" {
+		t.Fatalf("Aperio required context keys drifted: %#v", capability.RequiredContextKeys)
+	}
+
+	for _, action := range []string{
+		ActionSlackRevokeAppInstall,
+		ActionGitHubRevokeOAuthApp,
+		ActionOktaSuspendUser,
+		ActionMicrosoft365RevokeSessions,
+		ActionAtlassianRevokeUserAccess,
+		ActionSalesforceRemoveAdminRole,
+	} {
+		capability, ok := capabilityByAction(capabilities, action)
+		if !ok {
+			t.Fatalf("Capabilities() missing %s", action)
+		}
+		if capability.Mode != "external_aperio_workflow" || capability.ExternalOwner != "aperio" || !capability.ApprovalRequired || !capability.DryRun {
+			t.Fatalf("Aperio external workflow capability %s drifted: %#v", action, capability)
+		}
+	}
+}
+
+func TestCapabilitiesDoNotEmitAperioApprovalFieldsForLocalActions(t *testing.T) {
+	capabilities := New(&recordingRuntimeBlocklistStore{}).Capabilities()
+	capability, ok := capabilityByAction(capabilities, ActionBlockIP)
+	if !ok {
+		t.Fatalf("Capabilities() missing %s", ActionBlockIP)
+	}
+	payload, err := json.Marshal(capability)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	encoded := string(payload)
+	for _, field := range []string{"dry_run", "approval_required", "external_owner"} {
+		if strings.Contains(encoded, field) {
+			t.Fatalf("local capability encoded %s in %s", field, encoded)
+		}
+	}
+}
+
 func TestListDelegatesFilterToStore(t *testing.T) {
 	entry := &ports.RuntimeBlocklistEntry{ID: "rr-1", TenantID: "writer", Type: "ip", Value: "192.0.2.1"}
 	store := &recordingRuntimeBlocklistStore{listEntries: []*ports.RuntimeBlocklistEntry{entry}}
@@ -245,4 +304,13 @@ func TestListAndRevokeRequireStore(t *testing.T) {
 	if _, err := service.Revoke(context.Background(), "writer", "rr-1"); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("Revoke(nil store) error = %v, want ErrRuntimeUnavailable", err)
 	}
+}
+
+func capabilityByAction(capabilities []Capability, action string) (Capability, bool) {
+	for _, capability := range capabilities {
+		if capability.Action == action {
+			return capability, true
+		}
+	}
+	return Capability{}, false
 }

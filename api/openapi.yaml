@@ -6913,6 +6913,28 @@ components:
           type: boolean
         requires_trusted_scope:
           type: boolean
+        provider:
+          type: string
+          description: SaaS provider for externally owned response workflows.
+        external_owner:
+          type: string
+          description: Product or workflow owner for capabilities that Cerebro advertises but does not execute directly.
+        target_types:
+          type: array
+          items:
+            type: string
+          description: Supported target resource types for this response action.
+        required_context_keys:
+          type: array
+          items:
+            type: string
+          description: Finding or incident context keys required to propose or execute this action.
+        dry_run:
+          type: boolean
+          description: Whether the capability is exposed as a dry-run proposal workflow.
+        approval_required:
+          type: boolean
+          description: Whether mutating execution requires explicit human approval.
     RuntimeBlocklistEntryResponse:
       type: object
       required:
