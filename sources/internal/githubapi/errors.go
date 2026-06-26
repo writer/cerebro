@@ -31,10 +31,15 @@ func ProviderUnavailable(err error) bool {
 
 func ErrorStatus(err error) (int, bool) {
 	var apiErr *gogithub.ErrorResponse
-	if !errors.As(err, &apiErr) || apiErr.Response == nil {
-		return 0, false
+	if errors.As(err, &apiErr) && apiErr.Response != nil {
+		return apiErr.Response.StatusCode, true
 	}
-	return apiErr.Response.StatusCode, true
+	var statusErr interface{ HTTPStatus() int }
+	if errors.As(err, &statusErr) {
+		status := statusErr.HTTPStatus()
+		return status, status > 0
+	}
+	return 0, false
 }
 
 func LookupError(subject string, err error) error {
