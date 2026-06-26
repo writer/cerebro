@@ -2,6 +2,7 @@ package findings
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,6 +287,113 @@ func TestAnalyzeFindingPatternCorrelationsDetectsRuntimeThreatExposurePattern(t 
 	}
 }
 
+func TestAnalyzeFindingPatternCorrelationsRejectsMismatchedDimensionsAndWindows(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+
+	secretControl := compoundRiskFinding("gh-secret-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_code_repository:example/cerebro", "repository_secret_scanning.disable")
+	secretControl.FirstObservedAt = base
+	secretControl.LastObservedAt = base
+	secretControl.Attributes["repository"] = "example/cerebro"
+	delete(secretControl.Attributes, "repo")
+	secretAlertOtherRepo := compoundRiskFinding("gh-secret-alert", githubSecretScanningAlertCreatedRuleID, "HIGH", "", "example/other", "urn:cerebro:example:github_code_repository:example/other", "secret_scanning_alert.create")
+	secretAlertOtherRepo.FirstObservedAt = base.Add(30 * time.Minute)
+	secretAlertOtherRepo.LastObservedAt = base.Add(30 * time.Minute)
+	secretAlertOtherRepo.Attributes["repository"] = "example/other"
+	delete(secretAlertOtherRepo.Attributes, "repo")
+
+	dependabotControl := compoundRiskFinding("gh-dependabot-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_code_repository:example/cerebro", "repository_code_scanning.disable")
+	dependabotControl.FirstObservedAt = base
+	dependabotControl.LastObservedAt = base
+	dependabotControl.Attributes["repository"] = "example/cerebro"
+	delete(dependabotControl.Attributes, "repo")
+	dependabotOtherRepo := compoundRiskFinding("gh-dependabot-other", githubDependabotOpenAlertRuleID, "HIGH", "", "example/other", "urn:cerebro:example:github_dependabot_alert:example/other:7", "dependabot_alert.open")
+	dependabotOtherRepo.FirstObservedAt = base.Add(30 * time.Minute)
+	dependabotOtherRepo.LastObservedAt = base.Add(30 * time.Minute)
+	dependabotOtherRepo.Attributes["repository"] = "example/other"
+	delete(dependabotOtherRepo.Attributes, "repo")
+	dependabotLate := compoundRiskFinding("gh-dependabot-late", githubDependabotOpenAlertRuleID, "HIGH", "", "example/cerebro", "urn:cerebro:example:github_dependabot_alert:example/cerebro:8", "dependabot_alert.open")
+	dependabotLate.FirstObservedAt = base.Add(25 * time.Hour)
+	dependabotLate.LastObservedAt = base.Add(25 * time.Hour)
+	dependabotLate.Attributes["repository"] = "example/cerebro"
+	delete(dependabotLate.Attributes, "repo")
+
+	trivy := compoundRiskFinding("trivy-1", trivyImageVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:trivy_vulnerability:sha256:abc:CVE-2026-1:openssl", "scan.detected")
+	trivy.FirstObservedAt = base
+	trivy.LastObservedAt = base
+	trivy.Attributes["image_digest"] = "sha256:abc"
+	aureliusOtherImage := compoundRiskFinding("aurelius-1", aureliusPromotedVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:aurelius_vulnerability:vuln-1", "promoted")
+	aureliusOtherImage.FirstObservedAt = base.Add(20 * time.Minute)
+	aureliusOtherImage.LastObservedAt = base.Add(20 * time.Minute)
+	aureliusOtherImage.Attributes["container_image_urn"] = "urn:cerebro:writer:container_image_digest:sha256:def"
+	aureliusOtherImage.Attributes["image_digest"] = "sha256:def"
+
+	controlTamper := compoundRiskFinding("identity-control", identityAuthControlLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policy:pol-1", "policy.rule.deactivate")
+	controlTamper.FirstObservedAt = base
+	controlTamper.LastObservedAt = base
+	controlTamper.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u-admin"
+	delete(controlTamper.Attributes, "repo")
+	credentialOtherActor := compoundRiskFinding("identity-credential", identityAPIOrOAuthCredentialCreatedRuleID, "HIGH", "other@writer.com", "", "urn:cerebro:writer:okta_resource:api_token:token-1", "system.api_token.create")
+	credentialOtherActor.FirstObservedAt = base.Add(30 * time.Minute)
+	credentialOtherActor.LastObservedAt = base.Add(30 * time.Minute)
+	credentialOtherActor.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u-other"
+	delete(credentialOtherActor.Attributes, "repo")
+
+	publicExposure := compoundRiskFinding("cloud-public", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:kubernetes_workload:prod/api", "public_network_ingress")
+	publicExposure.FirstObservedAt = base
+	publicExposure.LastObservedAt = base
+	publicExposure.Attributes["internet_exposed"] = "true"
+	runtimeThreatOtherResource := compoundRiskFinding("runtime-threat", runtimeActiveThreatEvidenceRuleID, "HIGH", "", "", "urn:cerebro:writer:kubernetes_workload:prod/worker", "credential_use")
+	runtimeThreatOtherResource.FirstObservedAt = base.Add(15 * time.Minute)
+	runtimeThreatOtherResource.LastObservedAt = base.Add(15 * time.Minute)
+	runtimeThreatOtherResource.Attributes["evidence_type"] = "credential_use"
+
+	for _, tt := range []struct {
+		name      string
+		patternID string
+		records   []*ports.FindingRecord
+	}{
+		{
+			name:      "secret control and alert require same repository",
+			patternID: "github-code-security-control-disabled-with-secret-alert",
+			records:   []*ports.FindingRecord{secretControl, secretAlertOtherRepo},
+		},
+		{
+			name:      "dependabot control and alert require same repository",
+			patternID: "github-code-security-control-disabled-with-dependabot-alert",
+			records:   []*ports.FindingRecord{dependabotControl, dependabotOtherRepo},
+		},
+		{
+			name:      "dependabot control and alert require shared window",
+			patternID: "github-code-security-control-disabled-with-dependabot-alert",
+			records:   []*ports.FindingRecord{dependabotControl, dependabotLate},
+		},
+		{
+			name:      "container pattern requires same normalized image",
+			patternID: "container-image-promoted-vulnerability-with-trivy-scan",
+			records:   []*ports.FindingRecord{trivy, aureliusOtherImage},
+		},
+		{
+			name:      "identity hint requires same actor",
+			patternID: "identity-control-tamper-with-credential-change",
+			records:   []*ports.FindingRecord{controlTamper, credentialOtherActor},
+		},
+		{
+			name:      "runtime threat exposure requires same resource",
+			patternID: "runtime-active-threat-with-public-exposure",
+			records:   []*ports.FindingRecord{publicExposure, runtimeThreatOtherResource},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			correlations := AnalyzeFindingPatternCorrelations(tt.records, FindingExposureAnalysisOptions{
+				CorrelationWindow: time.Hour,
+			})
+			if correlation := findingCorrelationByPattern(correlations, tt.patternID); correlation != nil {
+				t.Fatalf("unexpected pattern correlation: %#v", correlation)
+			}
+		})
+	}
+}
+
 func TestAnalyzeFindingExposureReturnsActionCandidatesForCorrelatedFindings(t *testing.T) {
 	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	trivy := compoundRiskFinding("trivy-1", trivyImageVulnerabilityActiveRuleID, "HIGH", "", "", "urn:cerebro:writer:trivy_vulnerability:sha256:abc:CVE-2026-1:openssl", "scan.detected")
@@ -319,6 +427,16 @@ func TestAnalyzeFindingExposureReturnsActionCandidatesForCorrelatedFindings(t *t
 	if candidate.Owner != "containers" {
 		t.Fatalf("Owner = %q, want containers", candidate.Owner)
 	}
+	for _, reason := range []string{"action_type:remediate_promoted_container_vulnerability", "source:correlation:pattern", "pattern:container-image-promoted-vulnerability-with-trivy-scan"} {
+		if !stringSliceContains(candidate.Reasons, reason) {
+			t.Fatalf("Reasons = %#v, want %q", candidate.Reasons, reason)
+		}
+	}
+	for _, factor := range []string{"score:", "finding_count:2", "rule_count:2", "action_type:remediate_promoted_container_vulnerability", "source:correlation:pattern"} {
+		if !stringSliceContainsPrefix(candidate.RankFactors, factor) {
+			t.Fatalf("RankFactors = %#v, want prefix %q", candidate.RankFactors, factor)
+		}
+	}
 	if got := candidate.Evidence.FindingCount; got != 2 {
 		t.Fatalf("Evidence.FindingCount = %d, want 2", got)
 	}
@@ -326,6 +444,98 @@ func TestAnalyzeFindingExposureReturnsActionCandidatesForCorrelatedFindings(t *t
 		if !stringSliceContains(candidate.RuleIDs, ruleID) {
 			t.Fatalf("RuleIDs = %#v, want %q", candidate.RuleIDs, ruleID)
 		}
+	}
+}
+
+func TestBuildFindingActionCandidatesUsesIndependentLimitAndRankOrder(t *testing.T) {
+	first := compoundRiskFinding("first-1", runtimeActiveThreatEvidenceRuleID, "HIGH", "", "", "urn:cerebro:writer:kubernetes_workload:prod/api", "credential_use")
+	second := compoundRiskFinding("second-1", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:writer:github_dependabot_alert:example/cerebro:7", "dependabot_alert.open")
+	correlations := []FindingCorrelation{
+		{
+			Kind:       "pattern",
+			PatternID:  "lower",
+			Dimension:  compoundRiskKindResource,
+			Key:        "urn:cerebro:writer:github_dependabot_alert:example/cerebro:7",
+			Score:      50,
+			FindingIDs: []string{second.ID},
+			RuleIDs:    []string{githubDependabotOpenAlertRuleID},
+			Reasons:    []string{"vulnerable_dependency"},
+			Evidence:   newFindingEvidenceBundle([]*ports.FindingRecord{second}),
+		},
+		{
+			Kind:       "pattern",
+			PatternID:  "higher",
+			Dimension:  compoundRiskKindResource,
+			Key:        "urn:cerebro:writer:kubernetes_workload:prod/api",
+			Score:      90,
+			FindingIDs: []string{first.ID},
+			RuleIDs:    []string{runtimeActiveThreatEvidenceRuleID},
+			Reasons:    []string{"active_threat"},
+			Evidence:   newFindingEvidenceBundle([]*ports.FindingRecord{first}),
+		},
+	}
+
+	candidates := buildFindingActionCandidates([]*ports.FindingRecord{first, second}, correlations, nil, FindingExposureAnalysisOptions{
+		Limit:                1,
+		ActionCandidateLimit: 2,
+	})
+	if got := len(candidates); got != 2 {
+		t.Fatalf("len(candidates) = %d, want action candidate limit to override global limit", got)
+	}
+	if candidates[0].TargetURN != "urn:cerebro:writer:kubernetes_workload:prod/api" {
+		t.Fatalf("first candidate TargetURN = %q, want highest score first", candidates[0].TargetURN)
+	}
+	if !stringSliceContains(candidates[0].Reasons, "active_threat") {
+		t.Fatalf("first candidate Reasons = %#v, want active_threat", candidates[0].Reasons)
+	}
+	if !stringSliceContains(candidates[0].RankFactors, "score:90") {
+		t.Fatalf("first candidate RankFactors = %#v, want score:90", candidates[0].RankFactors)
+	}
+}
+
+func TestAnalyzeFindingExposureUsesIndependentCorrelationAndAttackPathLimits(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	resourceURN := "urn:cerebro:writer:aws_secret_store:prod-secrets"
+	publicExposure := compoundRiskFinding("cloud-public", cloudPublicResourceExposureRuleID, "HIGH", "admin@example.com", "writer/cerebro", resourceURN, "public_network_ingress")
+	publicExposure.RuntimeID = "writer-cloud"
+	publicExposure.FirstObservedAt = base
+	publicExposure.LastObservedAt = base
+	publicExposure.EventIDs = []string{"event-public"}
+	publicExposure.Attributes["rule_source_id"] = "cloud"
+	publicExposure.Attributes["internet_exposed"] = "true"
+
+	privilegePath := compoundRiskFinding("cloud-privilege", cloudPrivilegePathGrantedRuleID, "HIGH", "admin@example.com", "writer/cerebro", resourceURN, "privilege_path_granted")
+	privilegePath.RuntimeID = "writer-cloud"
+	privilegePath.FirstObservedAt = base.Add(15 * time.Minute)
+	privilegePath.LastObservedAt = privilegePath.FirstObservedAt
+	privilegePath.EventIDs = []string{"event-privilege"}
+	privilegePath.Attributes["rule_source_id"] = "cloud"
+	privilegePath.Attributes["privileged"] = "true"
+
+	report := AnalyzeFindingExposure([]*ports.FindingRecord{publicExposure, privilegePath}, FindingExposureAnalysisOptions{
+		Limit:             1,
+		CorrelationLimit:  2,
+		AttackPathLimit:   2,
+		CorrelationWindow: time.Hour,
+		GraphNeighborhoods: map[string]*ports.EntityNeighborhood{
+			"cloud": {
+				Root: &ports.NeighborhoodNode{URN: resourceURN, EntityType: "aws.secret_store", Label: "prod-secrets"},
+				Neighbors: []*ports.NeighborhoodNode{
+					{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+					{URN: "urn:cerebro:writer:aws_role:admin", EntityType: "aws.role", Label: "admin"},
+				},
+				Relations: []*ports.NeighborhoodRelation{
+					{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: resourceURN},
+					{FromURN: "urn:cerebro:writer:aws_role:admin", Relation: "can_admin", ToURN: resourceURN},
+				},
+			},
+		},
+	})
+	if got := len(report.Correlations); got != 2 {
+		t.Fatalf("len(Correlations) = %d, want correlation limit to override global limit", got)
+	}
+	if got := len(report.AttackPaths); got != 2 {
+		t.Fatalf("len(AttackPaths) = %d, want attack path limit to override global limit", got)
 	}
 }
 
@@ -899,6 +1109,15 @@ func cloneFindingWithoutAttributes(finding *ports.FindingRecord, keys ...string)
 func stringSliceContains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceContainsPrefix(values []string, wantPrefix string) bool {
+	for _, value := range values {
+		if strings.HasPrefix(value, wantPrefix) {
 			return true
 		}
 	}

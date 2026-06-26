@@ -1,6 +1,7 @@
 package findings
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -25,12 +26,15 @@ const FindingRiskGraphProjectedModelVersionAttribute = "risk_graph_projected_mod
 
 // FindingExposureAnalysisOptions scopes source-agnostic risk correlation output.
 type FindingExposureAnalysisOptions struct {
-	Limit               int
-	SampleLimit         int
-	CorrelationWindow   time.Duration
-	CorrelationPatterns []FindingCorrelationPattern
-	GraphNeighborhoods  map[string]*ports.EntityNeighborhood
-	RiskScoringConfig   *ports.RiskScoringConfig
+	Limit                int
+	CorrelationLimit     int
+	AttackPathLimit      int
+	ActionCandidateLimit int
+	SampleLimit          int
+	CorrelationWindow    time.Duration
+	CorrelationPatterns  []FindingCorrelationPattern
+	GraphNeighborhoods   map[string]*ports.EntityNeighborhood
+	RiskScoringConfig    *ports.RiskScoringConfig
 }
 
 // FindingExposureAnalysisReport combines generic compound risk, temporal correlation, and graph path summaries.
@@ -79,6 +83,8 @@ type FindingActionCandidate struct {
 	FindingIDs  []string              `json:"finding_ids"`
 	RuleIDs     []string              `json:"rule_ids"`
 	Reason      string                `json:"reason,omitempty"`
+	Reasons     []string              `json:"reasons,omitempty"`
+	RankFactors []string              `json:"rank_factors,omitempty"`
 	Evidence    FindingEvidenceBundle `json:"evidence"`
 }
 
@@ -140,13 +146,15 @@ func AnalyzeFindingExposure(records []*ports.FindingRecord, options FindingExpos
 	compoundOptions := CompoundRiskOptions{Limit: options.Limit, SampleLimit: options.SampleLimit}
 	candidateOptions := options
 	candidateOptions.Limit = 0
+	candidateOptions.CorrelationLimit = 0
+	candidateOptions.AttackPathLimit = 0
 	compoundRisks := AnalyzeCompoundRisks(records, compoundOptions)
 	correlations := AnalyzeFindingCorrelations(records, candidateOptions)
 	attackPaths := AnalyzeFindingAttackPaths(records, options.GraphNeighborhoods, candidateOptions)
 	return FindingExposureAnalysisReport{
 		CompoundRisks:    compoundRisks,
-		Correlations:     limitFindingCorrelations(correlations, options.Limit),
-		AttackPaths:      limitFindingAttackPaths(attackPaths, options.Limit),
+		Correlations:     limitFindingCorrelations(correlations, correlationOutputLimit(options)),
+		AttackPaths:      limitFindingAttackPaths(attackPaths, attackPathOutputLimit(options)),
 		ActionCandidates: buildFindingActionCandidates(records, correlations, attackPaths, options),
 	}
 }
@@ -189,7 +197,7 @@ func AnalyzeFindingCorrelations(records []*ports.FindingRecord, options FindingE
 			return left.Key < right.Key
 		}
 	})
-	return limitFindingCorrelations(correlations, options.Limit)
+	return limitFindingCorrelations(correlations, correlationOutputLimit(options))
 }
 
 func limitFindingCorrelations(correlations []FindingCorrelation, limit int) []FindingCorrelation {
@@ -432,6 +440,8 @@ func buildFindingActionCandidates(records []*ports.FindingRecord, correlations [
 			Reason:      firstNonEmpty(correlation.PatternName, strings.Join(correlation.Reasons, ",")),
 			Evidence:    correlation.Evidence,
 		}
+		candidate.Reasons = actionCandidateReasons(candidate, correlation.Reasons)
+		candidate.RankFactors = actionCandidateRankFactors(candidate)
 		candidates = appendUniqueFindingActionCandidate(candidates, seen, candidate)
 	}
 	for _, path := range attackPaths {
@@ -450,6 +460,8 @@ func buildFindingActionCandidates(records []*ports.FindingRecord, correlations [
 			Reason:     firstNonEmpty(path.Pattern, strings.Join(path.Reasons, ",")),
 			Evidence:   path.Evidence,
 		}
+		candidate.Reasons = actionCandidateReasons(candidate, path.Reasons)
+		candidate.RankFactors = actionCandidateRankFactors(candidate)
 		candidates = appendUniqueFindingActionCandidate(candidates, seen, candidate)
 	}
 	sort.Slice(candidates, func(i int, j int) bool {
@@ -466,10 +478,50 @@ func buildFindingActionCandidates(records []*ports.FindingRecord, correlations [
 			return left.TargetURN < right.TargetURN
 		}
 	})
-	if options.Limit > 0 && len(candidates) > options.Limit {
-		candidates = candidates[:options.Limit]
+	if limit := actionCandidateOutputLimit(options); limit > 0 && len(candidates) > limit {
+		candidates = candidates[:limit]
 	}
 	return candidates
+}
+
+func correlationOutputLimit(options FindingExposureAnalysisOptions) int {
+	if options.CorrelationLimit > 0 {
+		return options.CorrelationLimit
+	}
+	return options.Limit
+}
+
+func attackPathOutputLimit(options FindingExposureAnalysisOptions) int {
+	if options.AttackPathLimit > 0 {
+		return options.AttackPathLimit
+	}
+	return options.Limit
+}
+
+func actionCandidateOutputLimit(options FindingExposureAnalysisOptions) int {
+	if options.ActionCandidateLimit > 0 {
+		return options.ActionCandidateLimit
+	}
+	return options.Limit
+}
+
+func actionCandidateReasons(candidate FindingActionCandidate, sourceReasons []string) []string {
+	reasons := append([]string(nil), sourceReasons...)
+	reasons = append(reasons,
+		"action_type:"+candidate.ActionType,
+		"source:"+candidate.Source,
+	)
+	return uniqueSortedStrings(reasons)
+}
+
+func actionCandidateRankFactors(candidate FindingActionCandidate) []string {
+	return uniqueTrimmedStringsPreserveOrder([]string{
+		fmt.Sprintf("score:%d", candidate.Score),
+		fmt.Sprintf("finding_count:%d", len(candidate.FindingIDs)),
+		fmt.Sprintf("rule_count:%d", len(candidate.RuleIDs)),
+		"action_type:" + candidate.ActionType,
+		"source:" + candidate.Source,
+	})
 }
 
 func appendUniqueFindingActionCandidate(candidates []FindingActionCandidate, seen map[string]struct{}, candidate FindingActionCandidate) []FindingActionCandidate {
@@ -622,7 +674,7 @@ func AnalyzeFindingAttackPaths(records []*ports.FindingRecord, neighborhoods map
 			return left.FindingURN < right.FindingURN
 		}
 	})
-	return limitFindingAttackPaths(paths, options.Limit)
+	return limitFindingAttackPaths(paths, attackPathOutputLimit(options))
 }
 
 func limitFindingAttackPaths(paths []FindingAttackPath, limit int) []FindingAttackPath {
