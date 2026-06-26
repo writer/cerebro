@@ -90,7 +90,7 @@ config:
   cerebro:accessAuditSensitiveDeniedAlarmThreshold: 0
   cerebro:capabilityTokenSecretName: CEREBRO_CAPABILITY_TOKEN_SECRETS_GO_PROD
   cerebro:graphAgentLlmProvider: bedrock
-  cerebro:graphAgentLlmModel: us.anthropic.claude-sonnet-4-6
+  cerebro:graphAgentLlmModel: us.anthropic.claude-opus-4-8
   cerebro:bedrockRegion: us-east-1
   cerebro:allowedTenants:
     - writer
