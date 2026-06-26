@@ -83,11 +83,42 @@ func TestBedrockLLMClient_DraftCypherUsesInferenceProfile(t *testing.T) {
 	if runtime.lastInput.InferenceConfig == nil || aws.ToInt32(runtime.lastInput.InferenceConfig.MaxTokens) != 100 {
 		t.Fatalf("max_tokens = %#v, want 100", runtime.lastInput.InferenceConfig)
 	}
+	if runtime.lastInput.InferenceConfig.Temperature != nil {
+		t.Fatalf("temperature = %v, want omitted by default", aws.ToFloat32(runtime.lastInput.InferenceConfig.Temperature))
+	}
 	if len(runtime.lastInput.Messages) != 1 || len(runtime.lastInput.Messages[0].Content) != 1 {
 		t.Fatalf("messages = %#v", runtime.lastInput.Messages)
 	}
 	if !strings.Contains(bedrockContentText(runtime.lastInput.Messages[0].Content[0]), "Show risky assets") {
 		t.Fatalf("request message did not include question: %#v", runtime.lastInput.Messages)
+	}
+}
+
+func TestBedrockLLMClient_SendsConfiguredTemperature(t *testing.T) {
+	runtime := &stubBedrockRuntime{text: `{"rationale":"ok","cypher":"MATCH (n) RETURN n LIMIT 5","refusal":""}`}
+	client, err := NewBedrockLLMClient(context.Background(), BedrockConfig{
+		DefaultModel: "us.anthropic.claude-sonnet-4-6",
+		Runtime:      runtime,
+		MaxTokens:    100,
+		Temperature:  0.25,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show risky assets",
+		Model:    DefaultModel,
+	})
+	if err != nil {
+		t.Fatalf("draft cypher: %v", err)
+	}
+	if runtime.lastInput.InferenceConfig == nil || runtime.lastInput.InferenceConfig.Temperature == nil {
+		t.Fatalf("temperature = nil, want configured value")
+	}
+	if got := aws.ToFloat32(runtime.lastInput.InferenceConfig.Temperature); got != 0.25 {
+		t.Fatalf("temperature = %v, want 0.25", got)
 	}
 }
 

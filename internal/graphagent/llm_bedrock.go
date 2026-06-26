@@ -150,7 +150,13 @@ func (c *BedrockLLMClient) invokeMessages(ctx context.Context, modelID string, p
 	if err != nil {
 		return "", err
 	}
-	temperature32 := float32(c.temperature)
+	inferenceConfig := &bedrocktypes.InferenceConfiguration{
+		MaxTokens: &maxTokens32,
+	}
+	if c.temperature != 0 {
+		temperature32 := float32(c.temperature)
+		inferenceConfig.Temperature = &temperature32
+	}
 	out, err := c.client.Converse(ctx, &bedrockruntime.ConverseInput{
 		ModelId: aws.String(modelID),
 		Messages: []bedrocktypes.Message{{
@@ -159,10 +165,7 @@ func (c *BedrockLLMClient) invokeMessages(ctx context.Context, modelID string, p
 				&bedrocktypes.ContentBlockMemberText{Value: prompt},
 			},
 		}},
-		InferenceConfig: &bedrocktypes.InferenceConfiguration{
-			MaxTokens:   &maxTokens32,
-			Temperature: &temperature32,
-		},
+		InferenceConfig: inferenceConfig,
 	})
 	if err != nil {
 		return "", classifyBedrockInvokeError(err)
