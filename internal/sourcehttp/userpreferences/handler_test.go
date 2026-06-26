@@ -150,6 +150,19 @@ func TestKeyUsesTrustedResolverInsteadOfHeaders(t *testing.T) {
 	}
 }
 
+func TestKeyRejectsMissingTrustedUser(t *testing.T) {
+	handler := NewHandler(newStubStore(), func(context.Context, string) (string, error) {
+		return "local", nil
+	}, func(context.Context) string {
+		return ""
+	})
+
+	_, err := handler.keyForRequest(httptest.NewRequest(http.MethodGet, "/user/preferences", nil), "")
+	if !errors.Is(err, errUserIdentityUnavailable) {
+		t.Fatalf("keyForRequest() error = %v, want %v", err, errUserIdentityUnavailable)
+	}
+}
+
 func TestKeyFallsBackToAnonymousUser(t *testing.T) {
 	handler := NewHandler(newStubStore(), func(context.Context, string) (string, error) {
 		return "local", nil

@@ -18,6 +18,8 @@ import (
 const maxPreferenceBytes = 64 * 1024
 const maxUserIDBytes = 240
 
+var errUserIdentityUnavailable = errors.New("authenticated user identity is required")
+
 // TenantResolver returns the effective tenant for a request body or query value.
 type TenantResolver func(context.Context, string) (string, error)
 
@@ -147,16 +149,21 @@ func (h Handler) keyForRequest(r *http.Request, requestedTenantID string) (ports
 	if tenantID == "" {
 		tenantID = "default"
 	}
-	return ports.UserPreferenceKey{TenantID: tenantID, UserID: h.userIDForContext(ctx)}, nil
+	userID, err := h.userIDForContext(ctx)
+	if err != nil {
+		return ports.UserPreferenceKey{}, err
+	}
+	return ports.UserPreferenceKey{TenantID: tenantID, UserID: userID}, nil
 }
 
-func (h Handler) userIDForContext(ctx context.Context) string {
+func (h Handler) userIDForContext(ctx context.Context) (string, error) {
 	if h.userResolver != nil {
 		if value := cleanUserID(h.userResolver(ctx)); value != "" {
-			return value
+			return value, nil
 		}
+		return "", errUserIdentityUnavailable
 	}
-	return "anonymous"
+	return "anonymous", nil
 }
 
 func cleanUserID(value string) string {
