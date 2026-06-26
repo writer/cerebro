@@ -219,7 +219,10 @@ func responseFor(tenantID string, userID string, preferences []byte, persisted b
 	return response
 }
 
-func statusForKeyError(error) int {
+func statusForKeyError(err error) int {
+	if errors.Is(err, errUserIdentityUnavailable) {
+		return http.StatusUnauthorized
+	}
 	return http.StatusForbidden
 }
 

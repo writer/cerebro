@@ -22,5 +22,5 @@ func userPreferenceActorID(ctx context.Context) string {
 			return name
 		}
 	}
-	return "anonymous"
+	return ""
 }

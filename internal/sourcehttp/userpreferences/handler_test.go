@@ -163,6 +163,26 @@ func TestKeyRejectsMissingTrustedUser(t *testing.T) {
 	}
 }
 
+func TestMissingTrustedUserReturnsUnauthorized(t *testing.T) {
+	handler := NewHandler(newStubStore(), func(context.Context, string) (string, error) {
+		return "local", nil
+	}, func(context.Context) string {
+		return ""
+	})
+
+	getRecorder := httptest.NewRecorder()
+	handler.Get(getRecorder, testRequest(http.MethodGet, ""))
+	if getRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("get status = %d, want 401", getRecorder.Code)
+	}
+
+	putRecorder := httptest.NewRecorder()
+	handler.Put(putRecorder, testRequest(http.MethodPut, `{"preferences":{}}`))
+	if putRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("put status = %d, want 401", putRecorder.Code)
+	}
+}
+
 func TestKeyFallsBackToAnonymousUser(t *testing.T) {
 	handler := NewHandler(newStubStore(), func(context.Context, string) (string, error) {
 		return "local", nil
