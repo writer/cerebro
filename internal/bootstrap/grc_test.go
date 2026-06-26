@@ -285,7 +285,7 @@ func TestGRCDashboardTelemetryRecordsHTTPErrorStatus(t *testing.T) {
 		}
 	})
 
-	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	payload := decodeBootstrapTelemetryPayload(t, stderr, "grc.dashboard")
 	if got := payload["status"]; got != "failed" {
 		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
 	}
