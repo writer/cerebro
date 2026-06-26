@@ -63,3 +63,8 @@ type GraphQueryStore interface {
 	GetEntityNeighborhood(context.Context, string, int) (*EntityNeighborhood, error)
 	ExecuteReadCypher(context.Context, CypherQueryRequest) ([]CypherRow, error)
 }
+
+// GraphNeighborhoodBatchStore exposes batched bounded graph neighborhood reads.
+type GraphNeighborhoodBatchStore interface {
+	GetEntityNeighborhoods(context.Context, []string, int) (map[string]*EntityNeighborhood, error)
+}

@@ -97,6 +97,13 @@ func fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.Graph
 		return nil
 	}
 	results := make([]mcpGraphStoreNeighborhoodResult, len(roots))
+	if batchStore, ok := graphStore.(ports.GraphNeighborhoodBatchStore); ok {
+		neighborhoods, err := batchStore.GetEntityNeighborhoods(ctx, roots, limit)
+		for index, rootURN := range roots {
+			results[index] = mcpGraphStoreNeighborhoodResult{urn: rootURN, neighborhood: neighborhoods[rootURN], err: err}
+		}
+		return results
+	}
 	sem := make(chan struct{}, mcpMaxConcurrentGraphFetches)
 	var wg sync.WaitGroup
 	for index, rootURN := range roots {
@@ -1323,11 +1330,9 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 		for _, result := range fetchMCPGraphStoreNeighborhoods(r.Context(), graphStore, roots, graphLimit) {
 			switch {
 			case result.err == nil:
-				neighborhood := result.neighborhood
-				if neighborhood == nil {
-					neighborhood = &ports.EntityNeighborhood{}
+				if result.neighborhood != nil {
+					graphNeighborhoods[result.urn] = result.neighborhood
 				}
-				graphNeighborhoods[result.urn] = neighborhood
 			case errors.Is(result.err, ports.ErrGraphEntityNotFound):
 				continue
 			default:

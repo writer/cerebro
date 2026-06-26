@@ -62,10 +62,6 @@ type Service struct {
 	reportStore  ports.ReportStore
 }
 
-type graphNeighborhoodBatchStore interface {
-	GetEntityNeighborhoods(context.Context, []string, int) (map[string]*ports.EntityNeighborhood, error)
-}
-
 // New constructs the report service.
 func New(findingStore ports.FindingStore, graphStore ports.GraphQueryStore, reportStore ports.ReportStore) *Service {
 	return &Service{
@@ -603,7 +599,7 @@ func (s *Service) batchGraphNeighborhoods(ctx context.Context, roots []string, g
 	if len(roots) == 0 {
 		return map[string]*ports.EntityNeighborhood{}, true, nil
 	}
-	batchStore, ok := s.graphStore.(graphNeighborhoodBatchStore)
+	batchStore, ok := s.graphStore.(ports.GraphNeighborhoodBatchStore)
 	if !ok {
 		return nil, false, nil
 	}

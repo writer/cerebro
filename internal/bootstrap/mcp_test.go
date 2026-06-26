@@ -45,6 +45,64 @@ func TestMCPRequiresAuth(t *testing.T) {
 	}
 }
 
+type mcpBatchGraphStore struct {
+	batchCalls  [][]string
+	singleCalls []string
+	neighbors   map[string]*ports.EntityNeighborhood
+}
+
+func (s *mcpBatchGraphStore) Ping(context.Context) error { return nil }
+
+func (s *mcpBatchGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, _ int) (*ports.EntityNeighborhood, error) {
+	s.singleCalls = append(s.singleCalls, rootURN)
+	if neighborhood := s.neighbors[rootURN]; neighborhood != nil {
+		return neighborhood, nil
+	}
+	return nil, ports.ErrGraphEntityNotFound
+}
+
+func (s *mcpBatchGraphStore) GetEntityNeighborhoods(_ context.Context, roots []string, _ int) (map[string]*ports.EntityNeighborhood, error) {
+	s.batchCalls = append(s.batchCalls, append([]string(nil), roots...))
+	result := make(map[string]*ports.EntityNeighborhood, len(roots))
+	for _, rootURN := range roots {
+		if neighborhood := s.neighbors[rootURN]; neighborhood != nil {
+			result[rootURN] = neighborhood
+		}
+	}
+	return result, nil
+}
+
+func (s *mcpBatchGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	return nil, nil
+}
+
+func TestFetchMCPGraphStoreNeighborhoodsUsesBatchStore(t *testing.T) {
+	firstURN := "urn:cerebro:writer:asset:first"
+	secondURN := "urn:cerebro:writer:asset:second"
+	store := &mcpBatchGraphStore{neighbors: map[string]*ports.EntityNeighborhood{
+		firstURN:  {Root: &ports.NeighborhoodNode{URN: firstURN}},
+		secondURN: {Root: &ports.NeighborhoodNode{URN: secondURN}},
+	}}
+
+	results := fetchMCPGraphStoreNeighborhoods(context.Background(), store, []string{firstURN, secondURN}, 3)
+
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
+	}
+	if len(store.batchCalls) != 1 {
+		t.Fatalf("batchCalls = %#v, want one batch call", store.batchCalls)
+	}
+	if len(store.singleCalls) != 0 {
+		t.Fatalf("singleCalls = %#v, want batched path only", store.singleCalls)
+	}
+	if results[0].err != nil || results[0].neighborhood.Root.URN != firstURN {
+		t.Fatalf("first result = %#v, err=%v", results[0], results[0].err)
+	}
+	if results[1].err != nil || results[1].neighborhood.Root.URN != secondURN {
+		t.Fatalf("second result = %#v, err=%v", results[1], results[1].err)
+	}
+}
+
 func TestMCPInitializeAndToolsList(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()
