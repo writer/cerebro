@@ -89,6 +89,9 @@ func projectEntity(tenantID string, sourceID string, entity Entity) (*ports.Proj
 	if attestedURN(tenantID, urn) && !attestedURNForEntity(tenantID, urn, entityType) {
 		return nil, fmt.Errorf("attested compute entity urn %q must match declared entity type %q", urn, entityType)
 	}
+	if !attestedURN(tenantID, urn) && !plainURNForEntity(tenantID, urn, entityType) {
+		return nil, fmt.Errorf("attested compute entity urn %q must match declared entity type %q", urn, entityType)
+	}
 	if sensitiveEntityType(entityType) && !attestedURNForEntity(tenantID, urn, entityType) {
 		return nil, fmt.Errorf("attested compute sensitive entity %q must use an attested token urn", entityType)
 	}
@@ -204,6 +207,11 @@ func attestedURN(tenantID string, urn string) bool {
 
 func attestedURNForEntity(tenantID string, urn string, entityType string) bool {
 	embeddedType, ok := parseAttestedURN(tenantID, urn)
+	return ok && strings.EqualFold(strings.TrimSpace(embeddedType), strings.TrimSpace(entityType))
+}
+
+func plainURNForEntity(tenantID string, urn string, entityType string) bool {
+	embeddedType, _, ok := tenantURNParts(tenantID, urn)
 	return ok && strings.EqualFold(strings.TrimSpace(embeddedType), strings.TrimSpace(entityType))
 }
 
@@ -341,18 +349,26 @@ func sensitiveAttributeKey(key string) bool {
 		return false
 	}
 	switch normalized {
-	case "is_admin", "is_delegated_admin", "is_public", "mfa_enrolled", "mfa_enforced", "status", "severity", "confidence", "observed_at", "at", "last_observed_at", "sensitivity_label":
+	case "classification_level",
+		"confidence",
+		"control_status",
+		"is_admin",
+		"is_delegated_admin",
+		"is_public",
+		"last_observed_at",
+		"mfa_enforced",
+		"mfa_enrolled",
+		"observed_at",
+		"posture_state",
+		"risk_score",
+		"severity",
+		"sensitivity_label",
+		"status",
+		"at":
 		return false
 	}
 	if sensitiveAttributeMarker(normalized) {
 		return true
-	}
-	if strings.HasPrefix(normalized, "risk_") ||
-		strings.HasPrefix(normalized, "posture_") ||
-		strings.HasPrefix(normalized, "control_") ||
-		strings.HasPrefix(normalized, "classification_") ||
-		strings.HasPrefix(normalized, "attested_compute_") {
-		return false
 	}
 	return true
 }

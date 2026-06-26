@@ -145,6 +145,19 @@ func TestProjectEventRejectsAttestedURNDeclaredTypeMismatchForNonSensitiveType(t
 	}
 }
 
+func TestProjectEventRejectsPlainURNDeclaredTypeMismatchForNonSensitiveType(t *testing.T) {
+	payload := GraphDelta{
+		Attestation: Attestation{Format: AttestationFormatAWSNitroEnclavePOC, Measurement: strings.Repeat("a", 96)},
+		Entities: []Entity{{
+			URN:        "urn:cerebro:tenant-a:asset.tag:restricted",
+			EntityType: "data.classification",
+		}},
+	}
+	if _, _, err := ProjectEvent(eventWithPayload(t, payload)); err == nil {
+		t.Fatalf("ProjectEvent() error = nil, want plain URN declared type mismatch rejection")
+	}
+}
+
 func TestProjectEventRejectsUnsafePlainURNIdentifierForNonSensitiveTypes(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -252,7 +265,7 @@ func TestSensitiveAttributeKeyFailsClosedForUnknownKeys(t *testing.T) {
 }
 
 func TestSensitiveAttributeKeyDoesNotAllowSafePrefixPIIBypass(t *testing.T) {
-	for _, key := range []string{"risk_email", "control_user_name", "classification_arn", "posture_principal", "risk_owner"} {
+	for _, key := range []string{"risk_email", "control_user_name", "classification_arn", "posture_principal", "risk_owner", "risk_phone", "posture_address", "control_ssn", "classification_geolocation"} {
 		if !sensitiveAttributeKey(key) {
 			t.Fatalf("sensitiveAttributeKey(%q) = false, want true", key)
 		}
