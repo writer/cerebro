@@ -34,6 +34,15 @@
 - A change that crosses any non-goal must cite the relevant entry in the PR description, state which "What would change this" criterion has been met, and update `docs/engineering/non-goals.md` in the same change.
 - When in doubt, prefer the narrower interpretation. Scope creep that quietly bypasses a non-goal is a review-blocker, not a discussion.
 
+## Persona View Lens Design
+
+- Read [`docs/domains/persona-view-lenses.md`](docs/domains/persona-view-lenses.md) before changing persona behavior, navigation contracts, GRC/security homepage semantics, or docs that describe the product split.
+- Personas are enrichment layers over shared graph facts. They should not create separate truth, duplicate backend contracts, or imply authorization differences unless the change explicitly ships a permissions model.
+- A useful persona lens defines the audience's first question, promoted signals, decision frame, work queue, next actions, and question starters. Do not stop at renaming the same dashboard.
+- Lead with work and outcomes before navigation. Prefer "what is risky, what changed, who owns it, what should be fixed, and what can Cerebro explain?" over internal product taxonomy such as lens names, view names, graph jargon, or packaging language.
+- Preserve distinct operating frames for common personas: Security prioritizes active risk, owners, affected assets, and remediation; Audit prioritizes controls, evidence freshness, scope gaps, and packets; Platform prioritizes source trust, runtime freshness, graph coverage, and inventory ownership; Leadership prioritizes material risk, readiness/trends, owner follow-up, and review-ready summaries.
+- When modeling the same fact for multiple audiences, describe the persona-specific meaning. For example, a missing owner can mean remediation stall risk for Security, indefensible evidence for Audit, inventory cleanup for Platform, and an unresolved review follow-up for Leadership.
+
 ## Finding Rule Design Notes
 
 - Cerebro should turn source/runtime evidence into a security knowledge graph plus durable, prioritized findings that explain the risky condition, affected asset/identity/control, why it matters, and the evidence or graph path supporting it.
