@@ -30,6 +30,9 @@ A persona lens may change:
 - page copy,
 - default filters,
 - prioritized work queues,
+- prioritized signal ordering,
+- decision criteria,
+- recommended next actions,
 - suggested questions,
 - saved dashboard layouts,
 - report profile selection,
@@ -56,6 +59,30 @@ A persona lens must not change:
 
 Clients can add more lenses when a new audience has a distinct first question
 and can be served by composing existing contracts.
+
+## Enrichment Model
+
+Shallow lenses only rename the same dashboard for different audiences. Useful
+lenses enrich the same graph facts into a different operating frame. Client
+implementations should define the following persona-level fields before adding
+new backend contracts:
+
+- first question: the sentence the page should answer before showing
+  navigation,
+- promoted signals: the ordered metrics that matter most to the audience,
+- decision frame: the criteria that explain why those signals are promoted,
+- work queue: the items the audience should act on next,
+- next actions: links that move directly from the briefing to work,
+- question starters: useful prompts that teach the user what Cerebro can answer.
+
+For example, the same missing owner fact means different things by audience:
+
+| Audience | Enriched meaning |
+| --- | --- |
+| Security | Remediation may stall unless the finding has an accountable owner. |
+| Audit | Control evidence may not be defensible without an accountable owner. |
+| Platform | Inventory and source ownership need cleanup before downstream teams rely on the graph. |
+| Leadership | The program review needs a named follow-up owner before the risk can leave the agenda. |
 
 ## Design Rules
 
