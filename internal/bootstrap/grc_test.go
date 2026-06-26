@@ -165,6 +165,12 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if len(payload.SourceSummaries) != 2 {
 		t.Fatalf("source summaries len = %d, want 2", len(payload.SourceSummaries))
 	}
+	if len(payload.ProductAreas) == 0 {
+		t.Fatalf("product areas = 0, want backend product area taxonomy")
+	}
+	if payload.ProductAreas[0].ID != "compliance" || payload.ProductAreas[0].Status == "" {
+		t.Fatalf("first product area = %+v, want compliance area with status", payload.ProductAreas[0])
+	}
 	summaries := map[string]sourceRuntimeHealthSummary{}
 	for _, summary := range payload.SourceSummaries {
 		summaries[summary.SourceID] = summary
@@ -221,9 +227,9 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
 	server := httptest.NewServer(app.Handler())
-	defer server.Close()
 
 	stderr := captureBootstrapStderr(t, func() {
+		defer server.Close()
 		resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer&limit=1")
 		if err != nil {
 			t.Fatalf("GET /grc/dashboard error = %v", err)
@@ -232,9 +238,12 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
 		}
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			t.Fatalf("read /grc/dashboard body: %v", err)
+		}
 	})
 
-	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	payload := decodeBootstrapTelemetryPayload(t, stderr, "grc.dashboard")
 	for key, want := range map[string]any{
 		"kind":           "span_end",
 		"name":           "grc.dashboard",
@@ -260,9 +269,9 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 func TestGRCDashboardTelemetryRecordsHTTPErrorStatus(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
 	server := httptest.NewServer(app.Handler())
-	defer server.Close()
 
 	stderr := captureBootstrapStderr(t, func() {
+		defer server.Close()
 		resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer&limit=501")
 		if err != nil {
 			t.Fatalf("GET /grc/dashboard error = %v", err)
@@ -271,9 +280,12 @@ func TestGRCDashboardTelemetryRecordsHTTPErrorStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
 		}
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			t.Fatalf("read /grc/dashboard body: %v", err)
+		}
 	})
 
-	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	payload := decodeBootstrapTelemetryPayload(t, stderr, "grc.dashboard")
 	if got := payload["status"]; got != "failed" {
 		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
 	}

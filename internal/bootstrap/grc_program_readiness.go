@@ -52,6 +52,7 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		TenantID:           scope.TenantID,
 		Connectors:         grcProgramConnectors(grcConnectorItems(runtimes)),
 		CoverageBlindSpots: len(coverageBlindSpots),
+		CoverageRecords:    coverage,
 		GeneratedAt:        generatedAt,
 	})
 	writeJSON(w, http.StatusOK, grcProgramReadinessResponse{

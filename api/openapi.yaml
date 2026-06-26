@@ -2041,6 +2041,10 @@ paths:
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCDashboardResponse'
   /grc/program-readiness:
     get:
       summary: GRC program readiness
@@ -2066,6 +2070,10 @@ paths:
       responses:
         '200':
           description: Program-level audit readiness, prioritized work items, proof bundle links, and connector coverage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCProgramReadinessResponse'
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -7421,6 +7429,156 @@ components:
         blind_spots:
           type: integer
           minimum: 0
+    GRCDashboardResponse:
+      type: object
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        controls:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        connectors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        source_summaries:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        coverage_blind_spots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        coverage_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageSummary'
+        product_areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCProductArea'
+        generated_at:
+          type: string
+          format: date-time
+    GRCProgramReadinessResponse:
+      type: object
+      properties:
+        profile:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        frameworks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        controls:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        work_items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        proof_bundle:
+          type: object
+          additionalProperties: true
+        connectors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        product_areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCProductArea'
+        metadata:
+          type: object
+          additionalProperties: true
+        generated_at:
+          type: string
+          format: date-time
+        source_summaries:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        coverage_blind_spots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        coverage_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageSummary'
+    GRCProductAreaWorkflow:
+      type: object
+      properties:
+        label:
+          type: string
+        href:
+          type: string
+    GRCProductArea:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        href:
+          type: string
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCProductAreaWorkflow'
+        source_families:
+          type: array
+          items:
+            type: string
+        coverage_dimensions:
+          type: array
+          items:
+            type: string
+        evidence_types:
+          type: array
+          items:
+            type: string
+        control_domains:
+          type: array
+          items:
+            type: string
+        blind_spots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceCoverageRecord'
+        detail:
+          type: string
+        signal:
+          type: string
+        status:
+          type: string
+          enum: [attention, mapped, quiet]
     SourceCoverageRecord:
       type: object
       properties:
