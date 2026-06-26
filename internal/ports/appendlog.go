@@ -17,13 +17,14 @@ type AppendLog interface {
 
 // ReplayRequest scopes a bounded event replay from the append log.
 type ReplayRequest struct {
-	RuntimeID        string
-	KindPrefix       string
-	KindPrefixes     []string
-	ExactKindFilters bool
-	TenantID         string
-	AttributeEquals  map[string]string
-	Limit            uint32
+	RuntimeID           string
+	KindPrefix          string
+	KindPrefixes        []string
+	ExactKindFilters    bool
+	RequireRuntimeIndex bool
+	TenantID            string
+	AttributeEquals     map[string]string
+	Limit               uint32
 }
 
 // EventReplayer replays stored event envelopes from the append log.

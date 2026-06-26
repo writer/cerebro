@@ -893,6 +893,9 @@ func TestReplayExactKindFiltersForRulesIntersectRuntimeKind(t *testing.T) {
 	if got := request.Limit; got != uint32(25) {
 		t.Fatalf("Limit = %d, want 25", got)
 	}
+	if !request.RequireRuntimeIndex {
+		t.Fatal("RequireRuntimeIndex = false, want true")
+	}
 }
 
 func TestReplayExactKindFiltersForRulesRequireSupportingRuleCoverage(t *testing.T) {

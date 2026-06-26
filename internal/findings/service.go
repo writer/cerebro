@@ -592,8 +592,9 @@ func rulesNeedReplay(runtime *cerebrov1.SourceRuntime, states []*ruleEvaluationS
 
 func replayRequestForRules(runtime *cerebrov1.SourceRuntime, runtimeID string, limit uint32, rules []Rule) ports.ReplayRequest {
 	request := ports.ReplayRequest{
-		RuntimeID: strings.TrimSpace(runtimeID),
-		Limit:     limit,
+		RuntimeID:           strings.TrimSpace(runtimeID),
+		RequireRuntimeIndex: true,
+		Limit:               limit,
 	}
 	kindPrefixes := replayExactKindFiltersForRules(runtime, rules)
 	if len(kindPrefixes) > 0 {
