@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -172,66 +171,13 @@ var timestampKeySets = map[grcFamily][]string{
 }
 
 func fieldString(values map[string]any, path string) string {
-	value, ok := fieldValue(values, path)
-	if !ok {
-		return ""
-	}
-	return valueString(value)
-}
-
-func fieldValue(values map[string]any, path string) (any, bool) {
-	var current any = values
-	for _, part := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		current, ok = object[part]
-		if !ok {
-			return nil, false
-		}
-	}
-	return current, true
+	return sourcecdk.JSONObject(values).FieldString(path)
 }
 
 func valueString(value any) string {
-	switch typed := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return strings.TrimSpace(typed)
-	case bool:
-		return strconv.FormatBool(typed)
-	case float64:
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	case []any:
-		values := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if value := valueString(item); value != "" {
-				values = append(values, value)
-			}
-		}
-		return strings.Join(values, ",")
-	case map[string]any:
-		for _, key := range []string{"displayName", "name", "id", "email"} {
-			if value := valueString(typed[key]); value != "" {
-				return value
-			}
-		}
-		return ""
-	default:
-		return fmt.Sprint(typed)
-	}
+	return (sourcecdk.JSONScalar{Value: value}).SourceString()
 }
 
 func arrayValue(values map[string]any, key string) []any {
-	value, ok := values[key]
-	if !ok {
-		return nil
-	}
-	items, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	return items
+	return []any(sourcecdk.JSONObject(values).Array(key))
 }
