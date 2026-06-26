@@ -1037,14 +1037,20 @@ RETURN e.urn, e.entity_type, e.label`, map[string]any{"root_urns": roots})
 			if err := collectBatchedNeighborhoodRows(ctx, tx, outgoingNeighborhoodBatchQuery, params, accumulators); err != nil {
 				return nil, err
 			}
-			incomingRoots := make([]string, 0, len(roots))
+			incomingRootsByLimit := make(map[int][]string)
 			for _, rootURN := range roots {
-				if accumulators[rootURN].remaining > 0 {
-					incomingRoots = append(incomingRoots, rootURN)
+				remaining := accumulators[rootURN].remaining
+				if remaining > 0 {
+					incomingRootsByLimit[remaining] = append(incomingRootsByLimit[remaining], rootURN)
 				}
 			}
-			if len(incomingRoots) > 0 {
-				params := map[string]any{"root_urns": incomingRoots, "limit": limit}
+			incomingLimits := make([]int, 0, len(incomingRootsByLimit))
+			for remaining := range incomingRootsByLimit {
+				incomingLimits = append(incomingLimits, remaining)
+			}
+			slices.Sort(incomingLimits)
+			for _, remaining := range incomingLimits {
+				params := map[string]any{"root_urns": incomingRootsByLimit[remaining], "limit": remaining}
 				if err := collectBatchedNeighborhoodRows(ctx, tx, incomingNeighborhoodBatchQuery, params, accumulators); err != nil {
 					return nil, err
 				}
