@@ -947,6 +947,34 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
 	legacyURN := "urn:cerebro:writer:github_repo:sohalloran-writer"
 	canonicalURN := "urn:cerebro:writer:github_user:sohalloran-writer"
+	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-canonical": {
+				ID:             "finding-canonical",
+				TenantID:       "writer",
+				RuntimeID:      "writer-github",
+				Title:          "Canonical identity finding",
+				Severity:       "HIGH",
+				Status:         "open",
+				ResourceURNs:   []string{canonicalURN},
+				LastObservedAt: now,
+			},
+			"finding-legacy": {
+				ID:             "finding-legacy",
+				TenantID:       "writer",
+				RuntimeID:      "writer-github",
+				Title:          "Legacy identity finding",
+				Severity:       "MEDIUM",
+				Status:         "open",
+				ResourceURNs:   []string{legacyURN},
+				LastObservedAt: now.Add(-time.Minute),
+			},
+		},
+	}
 	graphStore := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			canonicalURN: {
@@ -958,7 +986,7 @@ func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
 			},
 		},
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}, GraphStore: graphStore}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -983,6 +1011,23 @@ func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
 	}
 	if graphStore.neighborhoodRootURN != canonicalURN {
 		t.Fatalf("queried root urn = %q, want %q", graphStore.neighborhoodRootURN, canonicalURN)
+	}
+	if got := store.findingListRequest.ResourceURN; got != "" {
+		t.Fatalf("finding resource urn = %q, want multi-resource lookup", got)
+	}
+	for _, want := range []string{canonicalURN, legacyURN} {
+		if !containsTrimmed(store.findingListRequest.ResourceURNs, want) {
+			t.Fatalf("finding resource urns = %#v, want %q", store.findingListRequest.ResourceURNs, want)
+		}
+	}
+	gotFindings := map[string]struct{}{}
+	for _, finding := range impact.Findings {
+		gotFindings[finding.ID] = struct{}{}
+	}
+	for _, want := range []string{"finding-canonical", "finding-legacy"} {
+		if _, ok := gotFindings[want]; !ok {
+			t.Fatalf("impact findings = %#v, want %q", impact.Findings, want)
+		}
 	}
 }
 
