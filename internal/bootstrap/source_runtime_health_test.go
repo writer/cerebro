@@ -509,10 +509,7 @@ func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *tes
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
 	}
-	var report struct {
-		sourcecoverage.Report
-		NHICoverage nhicoverage.Report `json:"nhi_coverage"`
-	}
+	var report nhicoverage.SourceCoverageResponse
 	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
 		t.Fatalf("decode report: %v", err)
 	}

@@ -32,6 +32,11 @@ type Report struct {
 	BlindSpotSummaries []Summary           `json:"blind_spot_summaries"`
 }
 
+type SourceCoverageResponse struct {
+	sourcecoverage.Report
+	NHICoverage Report `json:"nhi_coverage"`
+}
+
 type Record struct {
 	sourcecoverage.Record
 	Lane        string `json:"lane"`
@@ -81,6 +86,13 @@ type LaneSummary struct {
 type classification struct {
 	lane        string
 	subjectKind string
+}
+
+func WithSourceCoverage(report sourcecoverage.Report) SourceCoverageResponse {
+	return SourceCoverageResponse{
+		Report:      report,
+		NHICoverage: FromSourceCoverage(report),
+	}
 }
 
 func FromSourceCoverage(report sourcecoverage.Report) Report {
