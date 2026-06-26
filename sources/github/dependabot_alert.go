@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 )
 
 type dependabotAlertPayload struct {
@@ -43,10 +44,7 @@ type dependabotAlertPayload struct {
 
 func (s *Source) checkDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings) error {
 	_, _, err := client.Dependabot.ListRepoAlerts(ctx, settings.owner, settings.repo, dependabotAlertOptions(settings, "", 1))
-	if err != nil {
-		return wrapLookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err)
-	}
-	return nil
+	return githubapi.ProviderUnavailableLookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err, settings.hasAuth())
 }
 
 func (s *Source) discoverDependabotAlerts(ctx context.Context, client *gogithub.Client, settings settings) ([]sourcecdk.URN, error) {
@@ -69,7 +67,10 @@ func (s *Source) readDependabotAlerts(ctx context.Context, client *gogithub.Clie
 	after := sourcecdk.CursorToken(cursor)
 	alerts, resp, err := client.Dependabot.ListRepoAlerts(ctx, settings.owner, settings.repo, dependabotAlertOptions(settings, after, settings.perPage))
 	if err != nil {
-		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err)
+		if settings.hasAuth() && githubapi.ProviderUnavailable(err) {
+			return githubapi.ProviderUnavailablePull(readCheckpoint), nil
+		}
+		return sourcecdk.Pull{}, githubapi.LookupError(fmt.Sprintf("github dependabot alerts for repo %s/%s", settings.owner, settings.repo), err)
 	}
 	return sourcecdk.IncrementalPullFromRecords("github", familyDependabot, alerts, nextAuditCursor(resp), readCheckpoint, func(alert *gogithub.DependabotAlert) (*primitives.Event, error) {
 		return dependabotAlertEvent(settings, alert)

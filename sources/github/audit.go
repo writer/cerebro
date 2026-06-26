@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/githubapi"
 	"github.com/writer/cerebro/sources/internal/githubaudit"
 )
 
@@ -49,7 +50,7 @@ type auditPayload struct {
 func (s *Source) checkAudit(ctx context.Context, client *gogithub.Client, settings settings) error {
 	_, _, err := githubaudit.GetAuditLog(ctx, client, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, "", 1))
 	if err != nil {
-		return wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
+		return githubapi.LookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
 	}
 	return nil
 }
@@ -71,7 +72,7 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 			return githubaudit.GetAuditLog(ctx, client, settings.owner, opts)
 		})
 		if err != nil {
-			return sourcecdk.ChangeProbe{}, wrapLookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err)
+			return sourcecdk.ChangeProbe{}, githubapi.LookupError(fmt.Sprintf("github audit log canary for org %s", settings.owner), err)
 		}
 		return probe, nil
 	}, githubaudit.FreshnessReadOptions())
@@ -84,7 +85,7 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 	after := readAuditCursor(cursor)
 	entries, resp, err := githubaudit.GetAuditLog(ctx, client, settings.owner, githubaudit.Options(settings.auditInclude, settings.auditPhrase, settings.auditOrder, after, settings.perPage))
 	if err != nil {
-		return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
+		return sourcecdk.Pull{}, githubapi.LookupError(fmt.Sprintf("github audit log for org %s", settings.owner), err)
 	}
 	if len(entries) == 0 {
 		return sourcecdk.NotModifiedPull(readCheckpoint), nil
