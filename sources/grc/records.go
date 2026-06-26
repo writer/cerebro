@@ -98,42 +98,13 @@ func firstNonEmptyString(values ...string) string {
 }
 
 func recordID(family grcFamily, values map[string]any, raw json.RawMessage) string {
-	for _, key := range recordIDKeys(family) {
+	for _, key := range grcDescriptorFor(family).IDKeys {
 		if value := fieldString(values, key); value != "" {
 			return normalizeID(value)
 		}
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])[:16]
-}
-
-func recordIDKeys(family grcFamily) []string {
-	switch family {
-	case familyRiskScenario:
-		return []string{"riskId", "id"}
-	case familyIntegration:
-		return []string{"integrationId", "id"}
-	case familyPerson:
-		return []string{"id", "userId", "emailAddress"}
-	case familyUser:
-		return []string{"id", "email"}
-	case familyVulnerableAsset:
-		return []string{"id", "assetId", "targetId", "externalId", "name"}
-	case familyMonitoredComputer:
-		return []string{"id", "serialNumber", "udid"}
-	case familyRegulatoryNotification:
-		return []string{"id", "notificationId", "externalId"}
-	case familyRecoveryObjective:
-		return []string{"id", "objectiveId", "biaId", "externalId", "name"}
-	case familyAuthorizationPackage:
-		return []string{"id", "packageId", "atoId", "sspId", "externalId", "name"}
-	case familyPOAMItem:
-		return []string{"id", "poamItemId", "weaknessId", "findingId", "externalId", "title"}
-	case familyTrainingAttestation:
-		return []string{"id", "attestationId", "trainingAttestationId", "externalId"}
-	default:
-		return []string{"id", "externalId", "name"}
-	}
 }
 
 func normalizeID(value string) string {
@@ -143,7 +114,7 @@ func normalizeID(value string) string {
 }
 
 func occurredAtFor(family grcFamily, values map[string]any) time.Time {
-	for _, key := range timestampKeySets[family] {
+	for _, key := range grcDescriptorFor(family).TimestampKeys {
 		if value := fieldString(values, key); value != "" {
 			if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
 				return parsed.UTC()
@@ -154,20 +125,6 @@ func occurredAtFor(family grcFamily, values map[string]any) time.Time {
 		}
 	}
 	return time.Now().UTC()
-}
-
-var timestampKeySets = map[grcFamily][]string{
-	familyControl: {"modificationDate", "creationDate"}, familyControlTest: {"lastTestRunDate", "latestFlipDate"},
-	familyPolicy: {"approvedAtDate"}, familyDocument: {"uploadStatusDate"}, familyContract: {"executedDate", "creationDate"},
-	familyRegulatoryNotification: {"sentAt", "submittedAt", "notificationDate", "createdAt", "updatedAt"},
-	familyRecoveryObjective:      {"reviewedAt", "updatedAt", "createdAt"}, familyAuthorizationPackage: {"authorizedAt", "authorizationDate", "updatedAt", "createdAt"},
-	familyPOAMItem: {"closedAt", "openedAt", "identifiedAt", "updatedAt", "createdAt"}, familyTrainingAttestation: {"completedAt", "completionDate", "updatedAt", "createdAt"},
-	familyDiscoveredVendor: {"discoveredDate", "ignored.ignoredAtDate", "rejected.rejectedAtDate"}, familyEventLog: {"date"},
-	familyGroup: {"creationDate"}, familyVendor: {"lastSecurityReviewCompletionDate"},
-	familyVulnerability: {"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}, familyVulnerabilityRemediation: {"remediationDate", "detectedDate"},
-	familyVulnerableAsset: {"lastDetectedDate", "lastSeenDate", "updatedAt"}, familyMonitoredComputer: {"lastCheckDate"},
-	familyRiskScenario: {"identificationDate"},
-	familyPerson:       {"employment.startDate", "employment.endDate"},
 }
 
 func fieldString(values map[string]any, path string) string {

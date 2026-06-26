@@ -56,6 +56,39 @@ func TestReadVantaVulnerableAssetNormalizesFields(t *testing.T) {
 	}
 }
 
+func TestVulnerableAssetAttributesPreserveIDPriorityWhenFieldsConflict(t *testing.T) {
+	attrs := attributesFor(settings{provider: defaultProvider, tenantID: "writer"}, familyVulnerableAsset, grcRecord{
+		ID: "record-1",
+		Values: map[string]any{
+			"id":                "generic-id",
+			"assetId":           "asset-id",
+			"targetId":          "target-id",
+			"displayName":       "Conflicting Asset",
+			"integrationId":     "scanner-1",
+			"lastDetectedDate":  "2026-05-10T00:00:00Z",
+			"lastSeenDate":      "2026-05-11T00:00:00Z",
+			"externalURL":       "https://scanner.example/assets/generic-id",
+			"url":               "https://asset.example",
+			"packageIdentifier": "pkg:golang/example/module@1.2.3",
+		},
+	})
+	if got := attrs["asset_id"]; got != "generic-id" {
+		t.Fatalf("asset_id = %q, want generic-id", got)
+	}
+	if got := attrs["target_id"]; got != "generic-id" {
+		t.Fatalf("target_id = %q, want generic-id", got)
+	}
+	if got := attrs["target_name"]; got != "Conflicting Asset" {
+		t.Fatalf("target_name = %q, want Conflicting Asset", got)
+	}
+	if got := attrs["last_detected_at"]; got != "2026-05-10T00:00:00Z" {
+		t.Fatalf("last_detected_at = %q, want lastDetectedDate", got)
+	}
+	if _, ok := attrs["vulnerable_asset_id"]; ok {
+		t.Fatalf("vulnerable_asset_id = %q, want unset", attrs["vulnerable_asset_id"])
+	}
+}
+
 func TestJoinedVulnerableAssetReferencesZipsFlatFields(t *testing.T) {
 	raw := joinedVulnerableAssetReferences(map[string]any{
 		"vulnerabilityIds":   []any{"CVE-2026-4242", "CVE-2026-4243"},
