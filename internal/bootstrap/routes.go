@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
+	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -33,7 +34,8 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerAgentPlatformRoutes(mux)
 	app.registerReportRoutes(mux)
 	app.registerAskQueryRoutes(mux)
-	app.registerUserPreferenceRoutes(mux)
+	registerHTTPRoute(mux, "GET /user/preferences", routeSurfacePlatformHTTP, userpreferences.NewHandler(app.deps.StateStore, effectiveTenantFilter).Get)
+	registerHTTPRoute(mux, "PUT /user/preferences", routeSurfacePlatformHTTP, userpreferences.NewHandler(app.deps.StateStore, effectiveTenantFilter).Put)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
 	app.registerSourceRoutes(mux)
@@ -103,11 +105,6 @@ func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /ask-queries", routeSurfacePlatformHTTP, app.handleCreateAskQuery)
 	registerHTTPRoute(mux, "PATCH /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleUpdateAskQuery)
 	registerHTTPRoute(mux, "DELETE /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleDeleteAskQuery)
-}
-
-func (app *App) registerUserPreferenceRoutes(mux *http.ServeMux) {
-	registerHTTPRoute(mux, "GET /user/preferences", routeSurfacePlatformHTTP, app.handleGetUserPreferences)
-	registerHTTPRoute(mux, "PUT /user/preferences", routeSurfacePlatformHTTP, app.handlePutUserPreferences)
 }
 
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
