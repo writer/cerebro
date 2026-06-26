@@ -90,4 +90,10 @@ func TestGRCProgramReadinessEndpointReturnsProofBundleWorkQueue(t *testing.T) {
 	if len(payload.Frameworks) == 0 || payload.Frameworks[0].FrameworkName == "" {
 		t.Fatalf("frameworks = %+v, want readiness rollup", payload.Frameworks)
 	}
+	if len(payload.ProductAreas) == 0 {
+		t.Fatalf("product areas = 0, want backend product area taxonomy")
+	}
+	if payload.ProductAreas[0].ID != "compliance" || payload.ProductAreas[0].Status == "" {
+		t.Fatalf("first product area = %+v, want compliance area with status", payload.ProductAreas[0])
+	}
 }

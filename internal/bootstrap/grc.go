@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/grccontrol"
+	"github.com/writer/cerebro/internal/grcproductareas"
 	"github.com/writer/cerebro/internal/grctrends"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
@@ -47,6 +48,7 @@ type grcDashboardResponse struct {
 	SourceSummaries    []sourceRuntimeHealthSummary `json:"source_summaries,omitempty"`
 	CoverageBlindSpots []sourcecoverage.Record      `json:"coverage_blind_spots,omitempty"`
 	CoverageSummaries  []sourcecoverage.Summary     `json:"coverage_summaries,omitempty"`
+	ProductAreas       []grcproductareas.View       `json:"product_areas,omitempty"`
 	GeneratedAt        time.Time                    `json:"generated_at"`
 }
 
@@ -296,12 +298,11 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{TenantID: scope.TenantID, SourceID: scope.SourceID}, generatedAt)
+	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID, SourceID: scope.SourceID, Limit: scope.Limit}, generatedAt)
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "finding_count", Value: len(findingItems)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "evidence_count", Value: len(evidenceItems)})
-
 	writeJSON(w, http.StatusOK, grcDashboardResponse{
 		Summary:            grcBuildSummary(findingItems, controls, evidenceItems, runtimes, findingSummary, evidenceCount),
 		Findings:           grcLimitFindings(findingItems, 25),
@@ -311,6 +312,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		SourceSummaries:    sourceSummaries,
 		CoverageBlindSpots: coverageBlindSpots,
 		CoverageSummaries:  sourcecoverage.Summaries(coverage),
+		ProductAreas:       grcproductareas.BuildCoverageViews(coverage),
 		GeneratedAt:        generatedAt,
 	})
 }

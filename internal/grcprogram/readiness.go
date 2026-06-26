@@ -7,20 +7,23 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/grccontrol"
+	"github.com/writer/cerebro/internal/grcproductareas"
+	"github.com/writer/cerebro/internal/sourcecoverage"
 )
 
 const workItemLimit = 12
 
 type Readiness struct {
-	Profile     grccontrol.Profile        `json:"profile"`
-	Summary     Summary                   `json:"summary"`
-	Frameworks  []Framework               `json:"frameworks"`
-	Controls    []Control                 `json:"controls"`
-	WorkItems   []WorkItem                `json:"work_items"`
-	ProofBundle ProofBundle               `json:"proof_bundle"`
-	Connectors  []Connector               `json:"connectors"`
-	Metadata    grccontrol.ReportMetadata `json:"metadata"`
-	GeneratedAt time.Time                 `json:"generated_at"`
+	Profile      grccontrol.Profile        `json:"profile"`
+	Summary      Summary                   `json:"summary"`
+	Frameworks   []Framework               `json:"frameworks"`
+	Controls     []Control                 `json:"controls"`
+	WorkItems    []WorkItem                `json:"work_items"`
+	ProofBundle  ProofBundle               `json:"proof_bundle"`
+	Connectors   []Connector               `json:"connectors"`
+	ProductAreas []grcproductareas.View    `json:"product_areas,omitempty"`
+	Metadata     grccontrol.ReportMetadata `json:"metadata"`
+	GeneratedAt  time.Time                 `json:"generated_at"`
 }
 
 type Summary struct {
@@ -135,6 +138,7 @@ type BuildInput struct {
 	TenantID           string
 	Connectors         []Connector
 	CoverageBlindSpots int
+	CoverageRecords    []sourcecoverage.Record
 	GeneratedAt        time.Time
 }
 
@@ -151,15 +155,16 @@ func Build(input BuildInput) Readiness {
 	controls := buildControls(input.Result.Controls, input.Result.Profile.ID, input.TenantID)
 	summary := buildSummary(input.Result, input.Connectors, input.CoverageBlindSpots)
 	return Readiness{
-		Profile:     input.Result.Profile,
-		Summary:     summary,
-		Frameworks:  buildFrameworks(controls),
-		Controls:    controls,
-		WorkItems:   buildWorkItems(controls),
-		ProofBundle: buildProofBundle(input.Result, summary, input.Query, generatedAt),
-		Connectors:  input.Connectors,
-		Metadata:    input.Result.Metadata,
-		GeneratedAt: generatedAt,
+		Profile:      input.Result.Profile,
+		Summary:      summary,
+		Frameworks:   buildFrameworks(controls),
+		Controls:     controls,
+		WorkItems:    buildWorkItems(controls),
+		ProofBundle:  buildProofBundle(input.Result, summary, input.Query, generatedAt),
+		Connectors:   input.Connectors,
+		ProductAreas: grcproductareas.BuildCoverageViews(input.CoverageRecords),
+		Metadata:     input.Result.Metadata,
+		GeneratedAt:  generatedAt,
 	}
 }
 

@@ -165,6 +165,12 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if len(payload.SourceSummaries) != 2 {
 		t.Fatalf("source summaries len = %d, want 2", len(payload.SourceSummaries))
 	}
+	if len(payload.ProductAreas) == 0 {
+		t.Fatalf("product areas = 0, want backend product area taxonomy")
+	}
+	if payload.ProductAreas[0].ID != "compliance" || payload.ProductAreas[0].Status == "" {
+		t.Fatalf("first product area = %+v, want compliance area with status", payload.ProductAreas[0])
+	}
 	summaries := map[string]sourceRuntimeHealthSummary{}
 	for _, summary := range payload.SourceSummaries {
 		summaries[summary.SourceID] = summary
