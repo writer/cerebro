@@ -1430,7 +1430,7 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	}
 	addFindingAgeFilter(&clauses, &args, request.MinAgeDays, request.MaxAgeDays)
 	addFindingSLAStatusFilter(&clauses, &args, request.SLAStatus)
-	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
+	if err := addFindingArrayContainsAnyFilter(&clauses, &args, "resource_urns_json", append([]string{request.ResourceURN}, request.ResourceURNs...)); err != nil {
 		return nil, nil, err
 	}
 	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
@@ -2503,6 +2503,33 @@ func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string
 	}
 	*args = append(*args, payload)
 	*clauses = append(*clauses, fmt.Sprintf("%s @> $%d::jsonb", column, len(*args)))
+	return nil
+}
+
+func addFindingArrayContainsAnyFilter(clauses *[]string, args *[]any, column string, values []string) error {
+	itemClauses := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		payload, err := findingStringsJSON([]string{trimmed})
+		if err != nil {
+			return fmt.Errorf("marshal %s filter: %w", column, err)
+		}
+		*args = append(*args, payload)
+		itemClauses = append(itemClauses, fmt.Sprintf("%s @> $%d::jsonb", column, len(*args)))
+	}
+	if len(itemClauses) == 1 {
+		*clauses = append(*clauses, itemClauses[0])
+	} else if len(itemClauses) > 1 {
+		*clauses = append(*clauses, "("+strings.Join(itemClauses, " OR ")+")")
+	}
 	return nil
 }
 

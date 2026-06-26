@@ -523,6 +523,25 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	}
 }
 
+func TestFindingListQueryMatchesAnyResourceURN(t *testing.T) {
+	query, args, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-audit",
+		ResourceURNs: []string{"urn:cerebro:writer:github_user:octo", "urn:cerebro:writer:github_repo:octo"},
+		Limit:        25,
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	want := "(resource_urns_json @> $3::jsonb OR resource_urns_json @> $4::jsonb)"
+	if !strings.Contains(query, want) {
+		t.Fatalf("findingListQuery() query missing %q: %s", want, query)
+	}
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 5", got)
+	}
+}
+
 func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID:      "writer",

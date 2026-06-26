@@ -593,6 +593,7 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	requestedEntityURN := entityURN
 	limit, err := grcLimitFromRequest(r)
 	if err != nil {
 		writeGRCError(w, err)
@@ -604,6 +605,18 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	graph, err := graphStore.GetEntityNeighborhood(r.Context(), entityURN, int(limit))
+	if errors.Is(err, ports.ErrGraphEntityNotFound) {
+		for _, candidateURN := range graphquery.LegacyEntityImpactFallbackURNs(entityURN) {
+			graph, err = graphStore.GetEntityNeighborhood(r.Context(), candidateURN, int(limit))
+			if err == nil {
+				entityURN = candidateURN
+				break
+			}
+			if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+				break
+			}
+		}
+	}
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -618,7 +631,12 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{ResourceURN: entityURN, Limit: limit})
+	findingFilter := grcFindingFilter{ResourceURN: entityURN, Limit: limit}
+	if requestedEntityURN != entityURN {
+		findingFilter.ResourceURN = ""
+		findingFilter.ResourceURNs = []string{entityURN, requestedEntityURN}
+	}
+	findings, err := a.grcListFindingRecords(r, runtimes, findingFilter)
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -979,6 +997,7 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 			Severity:            filter.Severity,
 			Status:              filter.Status,
 			ResourceURN:         filter.ResourceURN,
+			ResourceURNs:        filter.ResourceURNs,
 			EventID:             filter.EventID,
 			PolicyID:            filter.PolicyID,
 			Framework:           filter.Framework,
@@ -1056,6 +1075,7 @@ func (a *App) grcFindingSummary(r *http.Request, runtimes []*cerebrov1.SourceRun
 			Severity:            filter.Severity,
 			Status:              filter.Status,
 			ResourceURN:         filter.ResourceURN,
+			ResourceURNs:        filter.ResourceURNs,
 			EventID:             filter.EventID,
 			PolicyID:            filter.PolicyID,
 			Framework:           filter.Framework,
@@ -1258,6 +1278,7 @@ func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.Sourc
 				Severity:            findingFilter.Severity,
 				Status:              findingFilter.Status,
 				ResourceURN:         findingFilter.ResourceURN,
+				ResourceURNs:        findingFilter.ResourceURNs,
 				EventID:             findingFilter.EventID,
 				PolicyID:            findingFilter.PolicyID,
 				Framework:           findingFilter.Framework,

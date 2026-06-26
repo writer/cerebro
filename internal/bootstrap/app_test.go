@@ -7866,8 +7866,18 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.Status != "" && strings.TrimSpace(finding.Status) != strings.TrimSpace(request.Status) {
 		return false
 	}
-	if request.ResourceURN != "" && !containsTrimmed(finding.ResourceURNs, request.ResourceURN) {
-		return false
+	resourceURNs := normalizedTestStrings(append(request.ResourceURNs, request.ResourceURN))
+	if len(resourceURNs) != 0 {
+		matched := false
+		for _, resourceURN := range resourceURNs {
+			if containsTrimmed(finding.ResourceURNs, resourceURN) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	if request.EventID != "" && !containsTrimmed(finding.EventIDs, request.EventID) {
 		return false

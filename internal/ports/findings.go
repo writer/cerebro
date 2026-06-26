@@ -126,6 +126,7 @@ type ListFindingsRequest struct {
 	Severity            string
 	Status              string
 	ResourceURN         string
+	ResourceURNs        []string
 	EventID             string
 	PolicyID            string
 	Framework           string
