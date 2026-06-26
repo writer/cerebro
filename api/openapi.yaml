@@ -2715,6 +2715,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/inventorySurfaceQuery'
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
@@ -2727,6 +2728,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/inventorySurfaceQuery'
         - $ref: '#/components/parameters/limitQuery'
         - name: category_id
           in: query
@@ -2787,6 +2789,7 @@ paths:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/inventorySurfaceQuery'
         - $ref: '#/components/parameters/limitQuery'
         - name: category_id
           in: query
@@ -4413,6 +4416,13 @@ components:
       in: query
       schema:
         type: string
+    inventorySurfaceQuery:
+      name: surface
+      in: query
+      description: Inventory record surface. Omit for all records; pass asset for reviewable assets only.
+      schema:
+        type: string
+        enum: [asset, component, signal, alias, raw_record, all]
     limitQuery:
       name: limit
       in: query
