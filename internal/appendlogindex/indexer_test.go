@@ -9,12 +9,14 @@ import (
 )
 
 type fakeIndexSource struct {
-	scans []ports.RuntimeIndexScan
-	calls []uint64
+	scans   []ports.RuntimeIndexScan
+	calls   []uint64
+	batches []uint32
 }
 
-func (f *fakeIndexSource) ScanRuntimeIndex(_ context.Context, fromSeq uint64, _ uint32) (ports.RuntimeIndexScan, error) {
+func (f *fakeIndexSource) ScanRuntimeIndex(_ context.Context, fromSeq uint64, batch uint32) (ports.RuntimeIndexScan, error) {
 	f.calls = append(f.calls, fromSeq)
+	f.batches = append(f.batches, batch)
 	idx := len(f.calls) - 1
 	if idx < len(f.scans) {
 		return f.scans[idx], nil
@@ -134,6 +136,9 @@ func TestPrepareReplaySucceedsWhenCaughtUp(t *testing.T) {
 
 	if err := PrepareReplay(context.Background(), source, writer, 0, 0); err != nil {
 		t.Fatalf("PrepareReplay() error = %v", err)
+	}
+	if got := source.batches; len(got) != 1 || got[0] != DefaultReplayPrepareBatch {
+		t.Fatalf("scan batches = %#v, want default replay prepare batch %d", got, DefaultReplayPrepareBatch)
 	}
 }
 

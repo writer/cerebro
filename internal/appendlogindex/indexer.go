@@ -10,9 +10,17 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-// DefaultMaxBatches bounds how many scan windows a single population run
-// advances before yielding, keeping each job invocation bounded.
-const DefaultMaxBatches = 20
+const (
+	// DefaultMaxBatches bounds how many scan windows a single population run
+	// advances before yielding, keeping each job invocation bounded.
+	DefaultMaxBatches = 20
+
+	// DefaultReplayPrepareBatch and DefaultReplayPrepareMaxBatches are larger
+	// than the maintenance-job defaults because user-facing evaluations need a
+	// bounded cold-start catch-up attempt before failing as still warming.
+	DefaultReplayPrepareBatch      = 5000
+	DefaultReplayPrepareMaxBatches = 200
+)
 
 // ErrWarming indicates that a bounded index preparation advanced the index but
 // did not catch up to the append-log tail in this invocation.
@@ -70,6 +78,12 @@ func Populate(ctx context.Context, source ports.RuntimeIndexSource, writer ports
 // evaluations. It stays bounded, so callers can retry instead of falling back to
 // broad stream scans while the index is still catching up.
 func PrepareReplay(ctx context.Context, source ports.RuntimeIndexSource, writer ports.RuntimeIndexWriter, batch uint32, maxBatches uint32) error {
+	if batch == 0 {
+		batch = DefaultReplayPrepareBatch
+	}
+	if maxBatches == 0 {
+		maxBatches = DefaultReplayPrepareMaxBatches
+	}
 	result, err := Populate(ctx, source, writer, batch, maxBatches)
 	if err != nil {
 		return err
