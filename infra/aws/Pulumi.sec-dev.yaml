@@ -10,7 +10,7 @@ config:
   cerebro:imageTag: v2.1.566
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:webImageTag: sha-086dbade9d78
+  cerebro:webImageTag: sha-ba58bb8ab7eb
   cerebro:webDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webCertificateDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webApiBase: https://cerebro.adm.dev.qordobadev.com
