@@ -8224,8 +8224,12 @@ func captureBootstrapStderr(t *testing.T, fn func()) string {
 	return string(payload)
 }
 
-func decodeBootstrapTelemetryPayload(t *testing.T, stderr string) map[string]any {
+func decodeBootstrapTelemetryPayload(t *testing.T, stderr string, names ...string) map[string]any {
 	t.Helper()
+	wantName := ""
+	if len(names) > 0 {
+		wantName = names[0]
+	}
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		t.Fatal("telemetry stderr is empty")
@@ -8245,7 +8249,13 @@ func decodeBootstrapTelemetryPayload(t *testing.T, stderr string) map[string]any
 		if payload["kind"] == "span_start" {
 			continue
 		}
+		if wantName != "" && payload["name"] != wantName {
+			continue
+		}
 		return payload
+	}
+	if wantName != "" {
+		t.Fatalf("telemetry payload %q not found in stderr: %s", wantName, stderr)
 	}
 	t.Fatalf("non-http telemetry payload not found in stderr: %s", stderr)
 	return nil
