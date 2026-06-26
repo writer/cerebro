@@ -626,6 +626,8 @@ type recordingAppendLog struct {
 	replayRequests []ports.ReplayRequest
 	indexScans     []ports.RuntimeIndexScan
 	indexScanCalls int
+	enforceIndex   bool
+	indexReady     bool
 }
 
 func (s *recordingAppendLog) Ping(context.Context) error { return s.err }
@@ -641,6 +643,9 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	if s.err != nil {
 		return nil, s.err
+	}
+	if s.enforceIndex && request.RequireRuntimeIndex && !s.indexReady {
+		return nil, errors.New("runtime index required but not ready")
 	}
 	s.replayRequests = append(s.replayRequests, request)
 	source := s.events
@@ -676,7 +681,11 @@ func (s *recordingAppendLog) ScanRuntimeIndex(_ context.Context, fromSeq uint64,
 	s.indexScanCalls++
 	idx := s.indexScanCalls - 1
 	if idx < len(s.indexScans) {
-		return s.indexScans[idx], nil
+		scan := s.indexScans[idx]
+		if scan.Watermark > 0 {
+			s.indexReady = true
+		}
+		return scan, nil
 	}
 	return ports.RuntimeIndexScan{Watermark: fromSeq, CaughtUp: true}, nil
 }
@@ -5375,7 +5384,8 @@ func TestBootstrapServiceFindingCoreServicePreparesRuntimeIndexReplay(t *testing
 				replayEvents: []*cerebrov1.EventEnvelope{
 					findingPolicyRuleTestEvent("okta-policy-rule-inactive", "INACTIVE"),
 				},
-				indexScans: []ports.RuntimeIndexScan{{Watermark: 1, CaughtUp: true}},
+				indexScans:   []ports.RuntimeIndexScan{{Watermark: 1, CaughtUp: true}},
+				enforceIndex: true,
 			}
 			store := &stubRuntimeStore{
 				runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -5417,6 +5427,64 @@ func TestBootstrapServiceFindingCoreServicePreparesRuntimeIndexReplay(t *testing
 			}
 			if !appendLog.replayRequests[0].RequireRuntimeIndex {
 				t.Fatal("replay request RequireRuntimeIndex = false, want true")
+			}
+		})
+	}
+}
+
+func TestBootstrapServiceFindingCoreServiceAllowsReplayWhenRuntimeIndexDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		service func(*bootstrapService) *findings.Service
+	}{
+		{name: "core", service: (*bootstrapService).findingCoreService},
+		{name: "candidate", service: (*bootstrapService).findingCandidateService},
+		{name: "workflow", service: (*bootstrapService).findingWorkflowService},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			appendLog := &recordingAppendLog{
+				replayEvents: []*cerebrov1.EventEnvelope{
+					findingPolicyRuleTestEvent("okta-policy-rule-inactive", "INACTIVE"),
+				},
+				enforceIndex: true,
+			}
+			store := &stubRuntimeStore{
+				runtimes: map[string]*cerebrov1.SourceRuntime{
+					"writer-okta-policy-rule": {
+						Id:       "writer-okta-policy-rule",
+						SourceId: "okta",
+						TenantId: "writer",
+						Config:   map[string]string{"family": "policy_rule"},
+					},
+				},
+				claims:                map[string]*ports.ClaimRecord{},
+				findings:              map[string]*ports.FindingRecord{},
+				findingEvidence:       map[string]*cerebrov1.FindingEvidence{},
+				findingEvaluationRuns: map[string]*cerebrov1.FindingEvaluationRun{},
+			}
+			service := tc.service(&bootstrapService{
+				cfg: config.Config{AppendLog: config.AppendLogConfig{JetStreamRuntimeIndexEnabled: false}},
+				deps: Dependencies{
+					AppendLog:  appendLog,
+					StateStore: store,
+				},
+			})
+
+			_, err := service.EvaluateSourceRuntimeRules(context.Background(), findings.EvaluateRulesRequest{
+				RuntimeID: "writer-okta-policy-rule",
+				RuleIDs:   []string{"identity-okta-policy-rule-lifecycle-tampering"},
+			})
+			if err != nil {
+				t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+			}
+			if appendLog.indexScanCalls != 0 {
+				t.Fatalf("runtime index scan calls = %d, want 0 when disabled", appendLog.indexScanCalls)
+			}
+			if len(appendLog.replayRequests) != 1 {
+				t.Fatalf("replay requests = %d, want 1", len(appendLog.replayRequests))
+			}
+			if appendLog.replayRequests[0].RequireRuntimeIndex {
+				t.Fatal("replay request RequireRuntimeIndex = true, want false when runtime index is disabled")
 			}
 		})
 	}

@@ -880,7 +880,7 @@ func TestReplayExactKindFiltersForRulesIntersectRuntimeKind(t *testing.T) {
 		},
 	}
 
-	request := replayRequestForRules(runtime, runtime.GetId(), 25, rules)
+	request := replayRequestForRules(runtime, runtime.GetId(), 25, rules, true)
 	if !request.ExactKindFilters {
 		t.Fatal("ExactKindFilters = false, want true")
 	}

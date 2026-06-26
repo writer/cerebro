@@ -64,6 +64,7 @@ type Service struct {
 	runtimeStore              ports.SourceRuntimeStore
 	replayer                  ports.EventReplayer
 	replayPreparer            ReplayPreparer
+	requireRuntimeIndexReplay bool
 	store                     ports.FindingStore
 	runStore                  ports.FindingEvaluationRunStore
 	evidenceStore             ports.FindingEvidenceStore
@@ -277,6 +278,7 @@ func (s *Service) WithRuntimeIndexReplayPreparer(enabled bool, appendLog ports.A
 	if s == nil || !enabled {
 		return s
 	}
+	s.requireRuntimeIndexReplay = true
 	source, sourceOK := appendLog.(ports.RuntimeIndexSource)
 	writer, writerOK := stateStore.(ports.RuntimeIndexWriter)
 	return s.WithReplayPreparer(func(ctx context.Context) error {
@@ -386,7 +388,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			evaluationErr := fmt.Errorf("prepare replay runtime %q events: %w", runtimeID, err)
 			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
 		}
-		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, []Rule{rule}))
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, []Rule{rule}, s.requireRuntimeIndexReplay))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
 			return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
@@ -524,7 +526,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			evaluationErr := fmt.Errorf("prepare replay runtime %q events: %w", runtimeID, err)
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 		}
-		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromEvaluationStates(states)))
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromEvaluationStates(states), s.requireRuntimeIndexReplay))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
@@ -642,10 +644,10 @@ func rulesNeedReplay(runtime *cerebrov1.SourceRuntime, states []*ruleEvaluationS
 	return false
 }
 
-func replayRequestForRules(runtime *cerebrov1.SourceRuntime, runtimeID string, limit uint32, rules []Rule) ports.ReplayRequest {
+func replayRequestForRules(runtime *cerebrov1.SourceRuntime, runtimeID string, limit uint32, rules []Rule, requireRuntimeIndex bool) ports.ReplayRequest {
 	request := ports.ReplayRequest{
 		RuntimeID:           strings.TrimSpace(runtimeID),
-		RequireRuntimeIndex: true,
+		RequireRuntimeIndex: requireRuntimeIndex,
 		Limit:               limit,
 	}
 	kindPrefixes := replayExactKindFiltersForRules(runtime, rules)

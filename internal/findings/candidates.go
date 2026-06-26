@@ -160,7 +160,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 			evaluationErr := fmt.Errorf("prepare replay runtime %q events for candidates: %w", runtimeID, err)
 			return nil, s.markCandidateEvaluationsFailed(ctx, states, evaluationErr)
 		}
-		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromCandidateStates(states)))
+		events, err = s.replayer.Replay(ctx, replayRequestForRules(runtime, runtimeID, normalizedLimit, rulesFromCandidateStates(states), s.requireRuntimeIndexReplay))
 		if err != nil {
 			evaluationErr := fmt.Errorf("replay runtime %q events for candidates: %w", runtimeID, err)
 			return nil, s.markCandidateEvaluationsFailed(ctx, states, evaluationErr)
