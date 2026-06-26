@@ -2,6 +2,7 @@ package runtimeresponse
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -230,6 +231,24 @@ func TestCapabilitiesAdvertiseAperioExternalWorkflowActions(t *testing.T) {
 		}
 		if capability.Mode != "external_aperio_workflow" || capability.ExternalOwner != "aperio" || !capability.ApprovalRequired || !capability.DryRun {
 			t.Fatalf("Aperio external workflow capability %s drifted: %#v", action, capability)
+		}
+	}
+}
+
+func TestCapabilitiesDoNotEmitAperioApprovalFieldsForLocalActions(t *testing.T) {
+	capabilities := New(&recordingRuntimeBlocklistStore{}).Capabilities()
+	capability, ok := capabilityByAction(capabilities, ActionBlockIP)
+	if !ok {
+		t.Fatalf("Capabilities() missing %s", ActionBlockIP)
+	}
+	payload, err := json.Marshal(capability)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	encoded := string(payload)
+	for _, field := range []string{"dry_run", "approval_required", "external_owner"} {
+		if strings.Contains(encoded, field) {
+			t.Fatalf("local capability encoded %s in %s", field, encoded)
 		}
 	}
 }

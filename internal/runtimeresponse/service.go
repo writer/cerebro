@@ -40,8 +40,8 @@ type Capability struct {
 	ExternalOwner       string   `json:"external_owner,omitempty"`
 	TargetTypes         []string `json:"target_types,omitempty"`
 	RequiredContextKeys []string `json:"required_context_keys,omitempty"`
-	DryRun              bool     `json:"dry_run"`
-	ApprovalRequired    bool     `json:"approval_required"`
+	DryRun              bool     `json:"dry_run,omitempty"`
+	ApprovalRequired    bool     `json:"approval_required,omitempty"`
 }
 
 type ExecuteRequest struct {

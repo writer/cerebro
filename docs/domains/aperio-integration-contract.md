@@ -108,6 +108,7 @@ github.revoke_oauth_app
 okta.suspend_user
 microsoft_365.revoke_sessions
 atlassian.revoke_user_access
+salesforce.remove_admin_role
 ```
 
 Actions that are still owned by Aperio should still be represented as external refs and workflow events so Cerebro

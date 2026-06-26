@@ -676,7 +676,10 @@ export type ConnectorDefinitionResponse = {
 };
 
 export type ConnectorDefinitionScopeOption = {
+  control_domains?: string[];
+  control_refs?: CoverageControlRef[];
   default_enabled?: boolean;
+  evidence_types?: string[];
   families?: string[];
   id?: string;
   label?: string;
@@ -746,6 +749,12 @@ export type ConnectorDepositResponse = {
   runtime_id: string;
   source_id: string;
   tenant_id: string;
+};
+
+export type CoverageControlRef = {
+  control_id?: string;
+  framework_id?: string;
+  framework_name?: string;
 };
 
 export type CreatePlatformJobRequest = {
@@ -1346,9 +1355,15 @@ export type RuntimeResponseCapabilitiesResponse = {
 
 export type RuntimeResponseCapability = {
   action: string;
+  approval_required?: boolean;
+  dry_run?: boolean;
+  external_owner?: string;
   mode: string;
+  provider?: string;
+  required_context_keys?: string[];
   requires_trusted_scope: boolean;
   supported: boolean;
+  target_types?: string[];
 };
 
 export type RuntimeResponseExecuteRequest = {
@@ -1414,8 +1429,11 @@ export type SourceCDKScaffoldPlan = {
 export type SourceCoverageRecord = {
   authority_domain?: string;
   blind_spot?: boolean;
+  control_domains?: string[];
+  control_refs?: CoverageControlRef[];
   dimension_id?: string;
-  dimension_type?: "app_entitlement" | "audit_event" | "entity_family" | "incremental_sync" | "lifecycle_state" | "relationship" | "remediation_state";
+  dimension_type?: "alert_state" | "app_entitlement" | "audit_event" | "deployment_state" | "entity_family" | "incremental_sync" | "lifecycle_state" | "relationship" | "remediation_state";
+  evidence_types?: string[];
   family?: string;
   high_value?: boolean;
   known_unsupported_fields?: string[];
