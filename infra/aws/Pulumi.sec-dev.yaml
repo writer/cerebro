@@ -154,7 +154,7 @@ config:
     - writer-evidence-cas-cases
   cerebro:sourceRuntimeRollouts:
     - sourceId: archetype
-      enabled: false
+      enabled: true
       runtimePrefix: writer-archetype
       tokenKey: CEREBRO_SOURCE_ARCHETYPE_TOKEN
       commonConfig:
@@ -162,7 +162,7 @@ config:
         api_prefix: /api/v1
       schedule:
         cadenceHours: 1
-        name: archetype-vulnerability-sync
+        nameSuffix: sync
       families:
         - vulnerability
     - sourceId: anthropic
