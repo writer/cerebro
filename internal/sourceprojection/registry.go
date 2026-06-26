@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/attestedcompute"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -188,6 +189,7 @@ func kindSet(kinds []string) map[string]struct{} {
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
+	attestedcompute.EventKindGraphDelta:             attestedComputeGraphDeltaProjections,
 	"backstage.component":                           backstageComponentProjections,
 	"auth0.audit_events":                            auth0AuditEventsProjections,
 	"auth0.roles":                                   auth0RolesProjections,
