@@ -125,3 +125,28 @@ func TestPopulatePropagatesPutError(t *testing.T) {
 		t.Fatalf("Populate() error = %v, want put boom", err)
 	}
 }
+
+func TestPrepareReplaySucceedsWhenCaughtUp(t *testing.T) {
+	source := &fakeIndexSource{scans: []ports.RuntimeIndexScan{
+		{Entries: []ports.RuntimeIndexEntry{entry(1)}, Watermark: 100, CaughtUp: true},
+	}}
+	writer := &fakeIndexWriter{}
+
+	if err := PrepareReplay(context.Background(), source, writer, 0, 0); err != nil {
+		t.Fatalf("PrepareReplay() error = %v", err)
+	}
+}
+
+func TestPrepareReplayReturnsWarmingWhenStillBehind(t *testing.T) {
+	source := &fakeIndexSource{scans: []ports.RuntimeIndexScan{
+		{Entries: []ports.RuntimeIndexEntry{entry(1)}, Watermark: 100},
+	}}
+	writer := &fakeIndexWriter{}
+
+	if err := PrepareReplay(context.Background(), source, writer, 0, 1); !errors.Is(err, ErrWarming) {
+		t.Fatalf("PrepareReplay() error = %v, want ErrWarming", err)
+	}
+	if got := writer.putWatermarks; len(got) != 1 || got[0] != 100 {
+		t.Fatalf("put watermarks = %#v, want [100]", got)
+	}
+}

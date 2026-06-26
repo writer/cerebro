@@ -4,6 +4,8 @@ package appendlogindex
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -11,6 +13,10 @@ import (
 // DefaultMaxBatches bounds how many scan windows a single population run
 // advances before yielding, keeping each job invocation bounded.
 const DefaultMaxBatches = 20
+
+// ErrWarming indicates that a bounded index preparation advanced the index but
+// did not catch up to the append-log tail in this invocation.
+var ErrWarming = errors.New("append log runtime index is warming")
 
 // Result summarizes one population run.
 type Result struct {
@@ -58,4 +64,18 @@ func Populate(ctx context.Context, source ports.RuntimeIndexSource, writer ports
 		}
 	}
 	return result, nil
+}
+
+// PrepareReplay advances the runtime replay index before replay-backed
+// evaluations. It stays bounded, so callers can retry instead of falling back to
+// broad stream scans while the index is still catching up.
+func PrepareReplay(ctx context.Context, source ports.RuntimeIndexSource, writer ports.RuntimeIndexWriter, batch uint32, maxBatches uint32) error {
+	result, err := Populate(ctx, source, writer, batch, maxBatches)
+	if err != nil {
+		return err
+	}
+	if !result.CaughtUp {
+		return fmt.Errorf("%w: watermark %d after %d batches", ErrWarming, result.Watermark, result.Batches)
+	}
+	return nil
 }

@@ -2867,6 +2867,87 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 }
 
+func TestEvaluateSourceRuntimeRulesPreparesReplayBeforeReplaying(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-1",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{}
+	store := &stubFindingStore{}
+	prepareCalls := 0
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithReplayPreparer(func(context.Context) error {
+		prepareCalls++
+		return nil
+	})
+
+	if _, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"}); err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if prepareCalls != 1 {
+		t.Fatalf("prepare calls = %d, want 1", prepareCalls)
+	}
+	if replayer.calls != 1 {
+		t.Fatalf("Replay() calls = %d, want 1", replayer.calls)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesDoesNotReplayWhenPrepareFails(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-1",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	prepareErr := errors.New("runtime index warming")
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithReplayPreparer(func(context.Context) error {
+		return prepareErr
+	})
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if !errors.Is(err, prepareErr) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want %v", err, prepareErr)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0", replayer.calls)
+	}
+	if got := len(store.runs); got != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1 failed run", got)
+	}
+	for _, run := range store.runs {
+		if run.GetStatus() != "failed" {
+			t.Fatalf("run status = %q, want failed", run.GetStatus())
+		}
+	}
+}
+
 func TestEvaluateSourceRuntimeCandidateRulesDoesNotWriteProductionFindings(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},

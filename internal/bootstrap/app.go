@@ -1522,7 +1522,7 @@ func (a *App) findingService() *findings.Service {
 }
 
 func (a *App) newFindingService() *findings.Service {
-	return newFindingWorkflowFeatureService(newFindingFeatureDeps(a.deps))
+	return newFindingWorkflowFeatureService(newFindingFeatureDeps(a.deps)).WithRuntimeIndexReplayPreparer(a.cfg.AppendLog.JetStreamRuntimeIndexEnabled, a.deps.AppendLog, a.deps.StateStore)
 }
 
 func (s *bootstrapService) findingCoreService() *findings.Service {
