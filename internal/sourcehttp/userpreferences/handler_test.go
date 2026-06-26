@@ -52,8 +52,8 @@ func testHandler(store ports.StateStore) Handler {
 	})
 }
 
-func testRequest(method, target, body string) *http.Request {
-	request := httptest.NewRequest(method, target, strings.NewReader(body))
+func testRequest(method, body string) *http.Request {
+	request := httptest.NewRequest(method, "/user/preferences", strings.NewReader(body))
 	request.Header.Set("X-Cerebro-User-ID", "person@example.com")
 	return request
 }
@@ -64,7 +64,7 @@ func TestPutPersistsForResolvedUser(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	body := `{"preferences":{"homepage":{"sections":{"trends":false}},"display":{"density":"compact"}}}`
-	handler.Put(recorder, testRequest(http.MethodPut, "/user/preferences", body))
+	handler.Put(recorder, testRequest(http.MethodPut, body))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("put status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
 	}
@@ -90,7 +90,7 @@ func TestGetReturnsDefaultWhenMissing(t *testing.T) {
 	handler := testHandler(newStubStore())
 
 	recorder := httptest.NewRecorder()
-	handler.Get(recorder, testRequest(http.MethodGet, "/user/preferences", ""))
+	handler.Get(recorder, testRequest(http.MethodGet, ""))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("get status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
 	}
@@ -107,7 +107,7 @@ func TestPutRejectsNonObjectPayload(t *testing.T) {
 	handler := testHandler(newStubStore())
 
 	recorder := httptest.NewRecorder()
-	handler.Put(recorder, testRequest(http.MethodPut, "/user/preferences", `{"preferences":[]}`))
+	handler.Put(recorder, testRequest(http.MethodPut, `{"preferences":[]}`))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestTenantResolverErrorRejectsRequest(t *testing.T) {
 		return "", errors.New("tenant rejected")
 	})
 	recorder := httptest.NewRecorder()
-	handler.Get(recorder, testRequest(http.MethodGet, "/user/preferences", ""))
+	handler.Get(recorder, testRequest(http.MethodGet, ""))
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", recorder.Code)
 	}
