@@ -20,6 +20,14 @@
 - Do not hand-edit generated or contract-governed outputs without running `make contracts-check` or the matching focused `Makefile` check/sync target.
 - Public-facing config/example changes should run `make oss-audit`; generated docs changes should also run `make docs-drift-check`.
 
+## API Defaults And Inventory Surfaces
+
+- Preserve omitted query-parameter behavior for existing public endpoints. If a view needs a narrower default, make the client send the narrowing parameter explicitly instead of changing the server's omitted-parameter semantics.
+- For inventory endpoints, omitted `surface` means all records for API compatibility. The review queue and inventory UI must request `surface=asset` when they need reviewable assets only.
+- Inventory surface classification should be an explicit allowlist. Do not use broad suffix rules such as `.alert`, `_alert`, `.finding`, `_finding`, `.threat`, `_threat`, `.evidence`, `_evidence`, `.advisory`, or `_advisory` to demote future entity types out of the asset surface.
+- Metrics over mixed inventory records must use a denominator from the same population as the numerator. Owner/accountability coverage is asset-surface coverage; supporting records belong in `surface_counts` and record totals, not the owner-required denominator.
+- When changing inventory surface behavior, add focused tests for omitted `surface`, explicit `surface=asset`, unknown future entity types, and mixed-surface summaries. Run `go test ./internal/graphquery ./internal/grcinventory ./internal/bootstrap -count=1`, `make check-structural check-structural-test check-arch`, and `make contracts-check`.
+
 ## Public PR Data Safety
 
 - Treat public PR titles, descriptions, comments, commit messages, and check summaries as public internet content.
