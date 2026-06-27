@@ -626,21 +626,28 @@ jobs:
             fi
 
             registered=false
+            check_scope="--required"
             for _ in {1..60}; do
               check_count="$(gh pr checks "${pr_url}" --required --json name --jq 'length' 2>/dev/null || true)"
               if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
                 registered=true
                 break
               fi
+              check_count="$(gh pr checks "${pr_url}" --json name --jq 'length' 2>/dev/null || true)"
+              if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
+                registered=true
+                check_scope=""
+                break
+              fi
               sleep 10
             done
             if [ "${registered}" != "true" ]; then
-              echo "::notice::Required PR checks for ${pr_url} did not register within the wait window; leaving it open for the review-gated merge."
+              echo "::notice::PR checks for ${pr_url} did not register within the wait window; leaving it open for the review-gated merge."
               return 0
             fi
 
-            if ! gh pr checks "${pr_url}" --required --watch --interval 10 --fail-fast; then
-              echo "::notice::Required PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
+            if ! gh pr checks "${pr_url}" ${check_scope} --watch --interval 10 --fail-fast; then
+              echo "::notice::PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
               return 0
             fi
             if ! release_is_still_latest "${pr_url}"; then
