@@ -147,6 +147,34 @@ func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, l
 	return nil
 }
 
+type batchRecordingProjectionGraphStore struct {
+	recordingProjectionGraphStore
+	batchEntityCalls int
+	batchLinkCalls   int
+}
+
+func (s *batchRecordingProjectionGraphStore) UpsertProjectedEntities(ctx context.Context, entities []*ports.ProjectedEntity) error {
+	s.batchEntityCalls++
+	for _, entity := range entities {
+		if err := s.UpsertProjectedEntity(ctx, entity); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *batchRecordingProjectionGraphStore) UpsertProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) error {
+	s.batchLinkCalls++
+	for _, link := range links {
+		if err := s.UpsertProjectedLink(ctx, link); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var _ ports.ProjectionGraphBatchStore = (*batchRecordingProjectionGraphStore)(nil)
+
 type checkpointProjectionGraphStore struct {
 	recordingProjectionGraphStore
 	checkpoints map[string]graphstore.IngestCheckpoint
@@ -432,6 +460,54 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	}
 	if got := link.Attributes["event_id"]; got != "event-2" {
 		t.Fatalf("coalesced link event_id = %q, want latest event-2", got)
+	}
+}
+
+func TestProjectResponseCoalescedUsesBatchStoreWhenAvailable(t *testing.T) {
+	store := &batchRecordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return []*ports.ProjectedEntity{{
+				URN:        "urn:cerebro:writer:github_org:WriterInternal",
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityType: "github.org",
+				Label:      "WriterInternal",
+				Attributes: map[string]string{"event_id": event.GetId()},
+			}},
+			[]*ports.ProjectedLink{{
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				FromURN:    "urn:cerebro:writer:github_code_repository:WriterInternal/k8s",
+				Relation:   "belongs_to",
+				ToURN:      "urn:cerebro:writer:github_org:WriterInternal",
+				Attributes: map[string]string{"event_id": event.GetId()},
+			}}, nil
+	})
+	result, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "github",
+		RuntimeID: "writer-github-audit",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
+		{Id: "event-1", SourceId: "github"},
+		{Id: "event-2", SourceId: "github"},
+	}}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if store.batchEntityCalls != 1 || store.batchLinkCalls != 1 {
+		t.Fatalf("batch calls = entities %d links %d, want 1 and 1 (batch path used)", store.batchEntityCalls, store.batchLinkCalls)
+	}
+	if result.EntitiesProjected != 1 || result.LinksProjected != 1 {
+		t.Fatalf("projected counts = entities %d links %d, want 1 and 1", result.EntitiesProjected, result.LinksProjected)
+	}
+	if entity := store.entities["urn:cerebro:writer:github_org:WriterInternal"]; entity == nil || entity.Attributes["event_id"] != "event-2" {
+		t.Fatalf("coalesced entity = %#v, want latest event-2", entity)
+	}
+	if link := store.links["urn:cerebro:writer:github_code_repository:WriterInternal/k8s|belongs_to|urn:cerebro:writer:github_org:WriterInternal"]; link == nil || link.Attributes["event_id"] != "event-2" {
+		t.Fatalf("coalesced link = %#v, want latest event-2", link)
 	}
 }
 

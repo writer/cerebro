@@ -726,13 +726,36 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		}
 	}
 	entityKeys := sortedMapKeys(entities)
+	linkKeys := sortedMapKeys(links)
+	if batchStore, ok := graphStore.(ports.ProjectionGraphBatchStore); ok {
+		orderedEntities := make([]*ports.ProjectedEntity, 0, len(entityKeys))
+		for _, key := range entityKeys {
+			orderedEntities = append(orderedEntities, entities[key])
+		}
+		orderedLinks := make([]*ports.ProjectedLink, 0, len(linkKeys))
+		for _, key := range linkKeys {
+			orderedLinks = append(orderedLinks, links[key])
+		}
+		if err := batchStore.UpsertProjectedEntities(ctx, orderedEntities); err != nil {
+			return result, fmt.Errorf("upsert coalesced projected entities: %w", err)
+		}
+		if err := batchStore.UpsertProjectedLinks(ctx, orderedLinks); err != nil {
+			return result, fmt.Errorf("upsert coalesced projected links: %w", err)
+		}
+		for range orderedEntities {
+			result.EntitiesProjected++
+		}
+		for range orderedLinks {
+			result.LinksProjected++
+		}
+		return result, nil
+	}
 	for _, key := range entityKeys {
 		if err := graphStore.UpsertProjectedEntity(ctx, entities[key]); err != nil {
 			return result, fmt.Errorf("upsert coalesced projected entity %q: %w", key, err)
 		}
 		result.EntitiesProjected++
 	}
-	linkKeys := sortedMapKeys(links)
 	for _, key := range linkKeys {
 		if err := graphStore.UpsertProjectedLink(ctx, links[key]); err != nil {
 			return result, fmt.Errorf("upsert coalesced projected link %q: %w", key, err)
