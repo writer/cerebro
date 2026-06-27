@@ -56,7 +56,11 @@ type Store struct {
 	database     string
 	queryTimeout time.Duration
 
-	mu          sync.Mutex
+	projectionBatchSize        int
+	projectionWriteConcurrency int
+	writeSlots                 chan struct{}
+
+	schemaMu    sync.Mutex
 	schemaReady bool
 }
 
@@ -99,7 +103,25 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
 	}
-	return &Store{driver: driver, database: database, queryTimeout: cfg.Neo4jQueryTimeout}, nil
+	projectionBatchSize := cfg.Neo4jProjectionBatchSize
+	if projectionBatchSize <= 0 {
+		projectionBatchSize = defaultProjectionUpsertBatchSize
+	}
+	projectionWriteConcurrency := cfg.Neo4jProjectionWriteConcurrency
+	if projectionWriteConcurrency <= 0 {
+		projectionWriteConcurrency = defaultProjectionWriteConcurrency
+	}
+	if projectionWriteConcurrency > neo4jMaxConnectionPoolSize {
+		projectionWriteConcurrency = neo4jMaxConnectionPoolSize
+	}
+	return &Store{
+		driver:                     driver,
+		database:                   database,
+		queryTimeout:               cfg.Neo4jQueryTimeout,
+		projectionBatchSize:        projectionBatchSize,
+		projectionWriteConcurrency: projectionWriteConcurrency,
+		writeSlots:                 make(chan struct{}, projectionWriteConcurrency),
+	}, nil
 }
 
 // CloseContext closes the underlying driver.
@@ -537,8 +559,6 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if label == "" {
 		label = urn
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	params := map[string]any{
 		"urn":         urn,
 		"tenant_id":   tenantID,
@@ -595,8 +615,6 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureSchema(ctx); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	params := map[string]any{
 		"from_urn":   fromURN,
 		"to_urn":     toURN,
@@ -641,12 +659,18 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, errConcurrentAttributeMerge)
 }
 
-// projectionUpsertBatchSize bounds how many entities or links are written per
+// defaultProjectionUpsertBatchSize bounds how many entities or links are written per
 // UNWIND transaction. Batching collapses the two round-trips per element of the
 // per-item upsert path (merge/load attributes, then version-checked update) into
 // two round-trips per batch, which is the dominant cost of graph ingest against
 // a remote Aura instance.
-const projectionUpsertBatchSize = 500
+const defaultProjectionUpsertBatchSize = 500
+
+// defaultProjectionWriteConcurrency allows multiple independent graph writes to
+// share the driver's connection pool instead of serializing every write behind a
+// process-wide mutex. Attribute-version checks and transient retry handling keep
+// overlapping writes safe.
+const defaultProjectionWriteConcurrency = 4
 
 // mergeProjectedEntitiesQuery is the batched counterpart of
 // mergeEntityAndLoadAttributesQuery: it MERGEs every entity in the batch and
@@ -743,7 +767,7 @@ func (s *Store) UpsertProjectedEntities(ctx context.Context, entities []*ports.P
 	if err := s.ensureSchema(ctx); err != nil {
 		return err
 	}
-	for _, chunk := range chunkSlice(prepared, projectionUpsertBatchSize) {
+	for _, chunk := range chunkSlice(prepared, s.projectionBatchSizeOrDefault()) {
 		if err := s.upsertProjectedEntityChunk(ctx, chunk); err != nil {
 			return err
 		}
@@ -768,7 +792,7 @@ func (s *Store) UpsertProjectedLinks(ctx context.Context, links []*ports.Project
 	if err := s.ensureSchema(ctx); err != nil {
 		return err
 	}
-	for _, chunk := range chunkSlice(prepared, projectionUpsertBatchSize) {
+	for _, chunk := range chunkSlice(prepared, s.projectionBatchSizeOrDefault()) {
 		if err := s.upsertProjectedLinkChunk(ctx, chunk); err != nil {
 			return err
 		}
@@ -790,8 +814,6 @@ func (s *Store) upsertProjectedEntityChunk(ctx context.Context, chunk []*prepare
 }
 
 func (s *Store) writeProjectedEntityChunk(ctx context.Context, chunk []*preparedProjectedEntity) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		mergeRows := make([]map[string]any, 0, len(chunk))
 		for _, entity := range chunk {
@@ -857,8 +879,6 @@ func (s *Store) upsertProjectedLinkChunk(ctx context.Context, chunk []*preparedP
 }
 
 func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedProjectedLink) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		mergeRows := make([]map[string]any, 0, len(chunk))
 		for _, link := range chunk {
@@ -1877,8 +1897,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if err := s.requireConfigured(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	if s.schemaReady {
 		return nil
 	}
@@ -1912,6 +1932,25 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	return nil
 }
 
+func (s *Store) projectionBatchSizeOrDefault() int {
+	if s != nil && s.projectionBatchSize > 0 {
+		return s.projectionBatchSize
+	}
+	return defaultProjectionUpsertBatchSize
+}
+
+func (s *Store) acquireWriteSlot(ctx context.Context) (func(), error) {
+	if s == nil || s.writeSlots == nil {
+		return func() {}, nil
+	}
+	select {
+	case s.writeSlots <- struct{}{}:
+		return func() { <-s.writeSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver.ManagedTransaction) (any, error)) (any, error) {
 	attrs := neo4jTelemetryAttrs("read", s.database, s.queryTimeout)
 	if s.queryTimeout > 0 {
@@ -1938,6 +1977,11 @@ func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver
 }
 
 func (s *Store) write(ctx context.Context, work neo4jdriver.ManagedTransactionWork) (any, error) {
+	release, err := s.acquireWriteSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	started := time.Now()
 	ctx, span := telemetry.StartQuiet(ctx, "neo4j.write", neo4jTelemetryAttrs("write", s.database, 0))
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})

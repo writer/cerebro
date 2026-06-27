@@ -261,6 +261,14 @@ func builtinRulePacks() []RulePack {
 			},
 		},
 		{
+			ID:          "archetype",
+			Name:        "Archetype",
+			Description: "Archetype code vulnerability findings.",
+			Rules: []Rule{
+				newArchetypeVulnerabilityActiveRule(),
+			},
+		},
+		{
 			ID:          "aurelius",
 			Name:        "Aurelius",
 			Description: "Aurelius image attestation and promoted-image vulnerability posture findings.",

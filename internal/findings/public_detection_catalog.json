@@ -73,6 +73,58 @@
       ]
     },
     {
+      "id": "archetype-vulnerability-active",
+      "pack_id": "archetype",
+      "pack_name": "Archetype",
+      "name": "Archetype Active Code Vulnerability",
+      "description": "Detect current high or critical code vulnerabilities reported by Archetype scans.",
+      "source_id": "archetype",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "archetype.vulnerability"
+      ],
+      "output_kind": "finding.archetype_vulnerability_active",
+      "severity": "dynamic",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "archetype",
+        "attack.initial-access",
+        "code",
+        "repository",
+        "vulnerability"
+      ],
+      "references": [
+        "https://archetype.dev/"
+      ],
+      "false_positives": [
+        "The vulnerability was remediated after the latest scan, or the reported path is no longer reachable in the active codebase."
+      ],
+      "runbook": "Review the affected repository path and category in Archetype, apply the recommended code or dependency fix, then rescan to clear the current-state finding.",
+      "required_attributes": [
+        "category",
+        "file_path",
+        "owner",
+        "repo",
+        "scan_id",
+        "severity",
+        "vulnerability_id"
+      ],
+      "fingerprint_fields": [
+        "archetype_vulnerability_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        }
+      ]
+    },
+    {
       "id": "aurelius-promoted-vulnerability-active",
       "pack_id": "aurelius",
       "pack_name": "Aurelius",
