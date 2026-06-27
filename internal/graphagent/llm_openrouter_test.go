@@ -85,6 +85,71 @@ func TestOpenRouterLLMClient_DraftCypher(t *testing.T) {
 		t.Errorf("expected URL %s, got %s", openRouterBaseURL, doer.lastURL)
 	}
 	assertOpenRouterRequestModel(t, doer.lastBody, defaultOpenRouterModel)
+	if _, ok := openRouterRequestPayload(t, doer.lastBody)["temperature"]; ok {
+		t.Fatalf("temperature was sent by default: %s", string(doer.lastBody))
+	}
+}
+
+func TestOpenRouterLLMClient_SendsConfiguredTemperature(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{
+				"content": `{"rationale":"test rationale","cypher":"MATCH (n) RETURN n LIMIT 5","refusal":""}`,
+			},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{
+		APIKey:         "test-key",
+		HTTPDoer:       doer,
+		MaxTokens:      100,
+		Temperature:    0.25,
+		TemperatureSet: true,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{TenantID: "test", Question: "Show all nodes"})
+	if err != nil {
+		t.Fatalf("draft cypher: %v", err)
+	}
+	payload := openRouterRequestPayload(t, doer.lastBody)
+	if got := payload["temperature"]; got != 0.25 {
+		t.Fatalf("temperature = %#v, want 0.25", got)
+	}
+}
+
+func TestOpenRouterLLMClient_SendsExplicitZeroTemperature(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{
+				"content": `{"rationale":"test rationale","cypher":"MATCH (n) RETURN n LIMIT 5","refusal":""}`,
+			},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{
+		APIKey:         "test-key",
+		HTTPDoer:       doer,
+		MaxTokens:      100,
+		Temperature:    0,
+		TemperatureSet: true,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{TenantID: "test", Question: "Show all nodes"})
+	if err != nil {
+		t.Fatalf("draft cypher: %v", err)
+	}
+	payload := openRouterRequestPayload(t, doer.lastBody)
+	if got, ok := payload["temperature"]; !ok || got != float64(0) {
+		t.Fatalf("temperature = %#v (present %v), want explicit 0", got, ok)
+	}
 }
 
 func TestOpenRouterLLMClient_MapsAnthropicAliasToOpenRouterModel(t *testing.T) {
@@ -327,13 +392,17 @@ func TestOpenRouterLLMClient_HTTPDoerError(t *testing.T) {
 
 func assertOpenRouterRequestModel(t *testing.T, body []byte, want string) {
 	t.Helper()
-	var payload struct {
-		Model string `json:"model"`
+	payload := openRouterRequestPayload(t, body)
+	if got, _ := payload["model"].(string); got != want {
+		t.Fatalf("OpenRouter model = %q, want %q", got, want)
 	}
+}
+
+func openRouterRequestPayload(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("unmarshal OpenRouter request body: %v", err)
 	}
-	if payload.Model != want {
-		t.Fatalf("OpenRouter model = %q, want %q", payload.Model, want)
-	}
+	return payload
 }

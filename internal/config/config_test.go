@@ -109,7 +109,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.GraphStore.Driver != "" {
 		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
 	}
-	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 {
+	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 || cfg.GraphAgentLLM.TemperatureSet {
 		t.Fatalf("GraphAgentLLM = %#v, want empty/default", cfg.GraphAgentLLM)
 	}
 	if cfg.GraphActions.AccessApprovals.Timeout != 10*time.Second || cfg.GraphActions.AccessApprovals.BaseURL != "" || cfg.GraphActions.AccessApprovals.BearerToken != "" {
@@ -141,6 +141,22 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Auth.DeviceAuth.RefreshTTL != defaultDeviceAuthRefreshTTL {
 		t.Fatalf("DeviceAuth.RefreshTTL = %v, want %v", cfg.Auth.DeviceAuth.RefreshTTL, defaultDeviceAuthRefreshTTL)
+	}
+}
+
+func TestLoadPreservesExplicitZeroGraphAgentTemperature(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.GraphAgentLLM.TemperatureSet {
+		t.Fatal("GraphAgentLLM.TemperatureSet = false, want true")
+	}
+	if cfg.GraphAgentLLM.Temperature != 0 {
+		t.Fatalf("GraphAgentLLM.Temperature = %v, want 0", cfg.GraphAgentLLM.Temperature)
 	}
 }
 
@@ -306,7 +322,7 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.GraphStore.Neo4jQueryTimeout != 45*time.Second {
 		t.Fatalf("Neo4jQueryTimeout = %v, want 45s", cfg.GraphStore.Neo4jQueryTimeout)
 	}
-	if cfg.GraphAgentLLM.Provider != "stub" || cfg.GraphAgentLLM.MaxTokens != 900 || cfg.GraphAgentLLM.Temperature != 0.25 {
+	if cfg.GraphAgentLLM.Provider != "stub" || cfg.GraphAgentLLM.MaxTokens != 900 || cfg.GraphAgentLLM.Temperature != 0.25 || !cfg.GraphAgentLLM.TemperatureSet {
 		t.Fatalf("GraphAgentLLM = %#v", cfg.GraphAgentLLM)
 	}
 	if cfg.GraphAgentLLM.SonnetModel != "anthropic.claude-sonnet-example" || cfg.GraphAgentLLM.OpusModel == "" || cfg.GraphAgentLLM.HaikuModel == "" {
