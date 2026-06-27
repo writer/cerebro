@@ -4,6 +4,7 @@ description: Archetype code security scan lifecycle and vulnerability findings.
 emitted_kinds:
   - archetype.scan
   - archetype.vulnerability
+  - archetype.library_note
 coverage_contract:
   owner_domain: code_security
   authority_domain: archetype
@@ -24,6 +25,16 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+    - id: library_notes
+      type: entity_family
+      title: Archetype repository library notes
+      # Library notes are imported with the vulnerability runtime so GitOps
+      # does not need a second Archetype source family for repository context.
+      families: [vulnerability]
+      support: supported
+      high_value: true
+      evidence_types: [knowledge_context]
+      control_domains: [asset_inventory]
 event_contracts:
   - kind: archetype.scan
     schema_ref: archetype/scan/v1
@@ -33,3 +44,7 @@ event_contracts:
     schema_ref: archetype/vulnerability/v1
     required_attributes: [vulnerability_id, scan_id, severity, category, file_path]
     required_payload_fields: [id, scan_id, severity, category, file_path]
+  - kind: archetype.library_note
+    schema_ref: archetype/library-note/v1
+    required_attributes: [knowledge_slug, owner, repo]
+    required_payload_fields: [slug, title, summary]
