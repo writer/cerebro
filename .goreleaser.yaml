@@ -15,13 +15,9 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w -X github.com/writer/cerebro/internal/buildinfo.Version={{.Version}} -X github.com/writer/cerebro/internal/buildinfo.Commit={{.Commit}} -X github.com/writer/cerebro/internal/buildinfo.BuildDate={{.Date}}
 
@@ -30,10 +26,6 @@ archives:
     ids:
       - cerebro
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
 
 checksum:
   name_template: checksums.txt
