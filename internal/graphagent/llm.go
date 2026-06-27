@@ -56,14 +56,15 @@ type LLMProber interface {
 }
 
 type LLMConfig struct {
-	Provider    string
-	Model       string
-	SonnetModel string
-	OpusModel   string
-	HaikuModel  string
-	Region      string
-	MaxTokens   int
-	Temperature float64
+	Provider       string
+	Model          string
+	SonnetModel    string
+	OpusModel      string
+	HaikuModel     string
+	Region         string
+	MaxTokens      int
+	Temperature    float64
+	TemperatureSet bool
 }
 
 type LLMConfigWithSecrets struct {
@@ -86,13 +87,14 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 		return NewStubLLMClient(), nil
 	case "bedrock":
 		client, err := NewBedrockLLMClient(ctx, BedrockConfig{
-			DefaultModel: cfg.Model,
-			SonnetModel:  cfg.SonnetModel,
-			OpusModel:    cfg.OpusModel,
-			HaikuModel:   cfg.HaikuModel,
-			Region:       cfg.Region,
-			MaxTokens:    cfg.MaxTokens,
-			Temperature:  cfg.Temperature,
+			DefaultModel:   cfg.Model,
+			SonnetModel:    cfg.SonnetModel,
+			OpusModel:      cfg.OpusModel,
+			HaikuModel:     cfg.HaikuModel,
+			Region:         cfg.Region,
+			MaxTokens:      cfg.MaxTokens,
+			Temperature:    cfg.Temperature,
+			TemperatureSet: cfg.TemperatureSet,
 		})
 		if err != nil {
 			return nil, err
@@ -100,14 +102,15 @@ func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLM
 		return instrumentLLMClient(provider, client), nil
 	case "openrouter":
 		client, err := NewOpenRouterLLMClient(OpenRouterConfig{
-			APIKey:       cfg.OpenRouterAPIKey,
-			HTTPDoer:     cfg.HTTPDoer,
-			DefaultModel: cfg.Model,
-			SonnetModel:  cfg.SonnetModel,
-			OpusModel:    cfg.OpusModel,
-			HaikuModel:   cfg.HaikuModel,
-			MaxTokens:    cfg.MaxTokens,
-			Temperature:  cfg.Temperature,
+			APIKey:         cfg.OpenRouterAPIKey,
+			HTTPDoer:       cfg.HTTPDoer,
+			DefaultModel:   cfg.Model,
+			SonnetModel:    cfg.SonnetModel,
+			OpusModel:      cfg.OpusModel,
+			HaikuModel:     cfg.HaikuModel,
+			MaxTokens:      cfg.MaxTokens,
+			Temperature:    cfg.Temperature,
+			TemperatureSet: cfg.TemperatureSet,
 		})
 		if err != nil {
 			return nil, err

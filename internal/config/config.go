@@ -127,6 +127,7 @@ type GraphAgentLLMConfig struct {
 	HaikuModel       string
 	MaxTokens        int
 	Temperature      float64
+	TemperatureSet   bool
 	OpenRouterAPIKey string
 	BedrockRegion    string
 }
@@ -553,6 +554,7 @@ func Load() (Config, error) {
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
 		return Config{}, err
 	}
+	cfg.GraphAgentLLM.TemperatureSet = envHasValue("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE")
 	if cfg.AppendLog.JetStreamDrainTimeout, err = parseDurationEnv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", 0); err != nil {
 		return Config{}, err
 	}

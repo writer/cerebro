@@ -18,25 +18,27 @@ type HTTPDoer interface {
 }
 
 type OpenRouterLLMClient struct {
-	apiKey       string
-	httpDoer     HTTPDoer
-	defaultModel string
-	sonnetModel  string
-	opusModel    string
-	haikuModel   string
-	maxTokens    int
-	temperature  float64
+	apiKey         string
+	httpDoer       HTTPDoer
+	defaultModel   string
+	sonnetModel    string
+	opusModel      string
+	haikuModel     string
+	maxTokens      int
+	temperature    float64
+	temperatureSet bool
 }
 
 type OpenRouterConfig struct {
-	APIKey       string
-	HTTPDoer     HTTPDoer
-	DefaultModel string
-	SonnetModel  string
-	OpusModel    string
-	HaikuModel   string
-	MaxTokens    int
-	Temperature  float64
+	APIKey         string
+	HTTPDoer       HTTPDoer
+	DefaultModel   string
+	SonnetModel    string
+	OpusModel      string
+	HaikuModel     string
+	MaxTokens      int
+	Temperature    float64
+	TemperatureSet bool
 }
 
 type OpenRouterAuthenticationError struct {
@@ -75,14 +77,15 @@ func NewOpenRouterLLMClient(cfg OpenRouterConfig) (*OpenRouterLLMClient, error) 
 		cfg.MaxTokens = 1200
 	}
 	return &OpenRouterLLMClient{
-		apiKey:       strings.TrimSpace(cfg.APIKey),
-		httpDoer:     cfg.HTTPDoer,
-		defaultModel: strings.TrimSpace(cfg.DefaultModel),
-		sonnetModel:  strings.TrimSpace(cfg.SonnetModel),
-		opusModel:    strings.TrimSpace(cfg.OpusModel),
-		haikuModel:   strings.TrimSpace(cfg.HaikuModel),
-		maxTokens:    cfg.MaxTokens,
-		temperature:  cfg.Temperature,
+		apiKey:         strings.TrimSpace(cfg.APIKey),
+		httpDoer:       cfg.HTTPDoer,
+		defaultModel:   strings.TrimSpace(cfg.DefaultModel),
+		sonnetModel:    strings.TrimSpace(cfg.SonnetModel),
+		opusModel:      strings.TrimSpace(cfg.OpusModel),
+		haikuModel:     strings.TrimSpace(cfg.HaikuModel),
+		maxTokens:      cfg.MaxTokens,
+		temperature:    cfg.Temperature,
+		temperatureSet: cfg.TemperatureSet,
 	}, nil
 }
 
@@ -131,13 +134,15 @@ func (c *OpenRouterLLMClient) modelID(requested string) (string, error) {
 
 func (c *OpenRouterLLMClient) chat(ctx context.Context, model string, prompt string, maxTokens int) (string, error) {
 	body := map[string]any{
-		"model":       model,
-		"max_tokens":  maxTokens,
-		"temperature": c.temperature,
+		"model":      model,
+		"max_tokens": maxTokens,
 		"messages": []map[string]any{{
 			"role":    "user",
 			"content": prompt,
 		}},
+	}
+	if c.temperatureSet {
+		body["temperature"] = c.temperature
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {

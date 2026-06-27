@@ -24,24 +24,26 @@ type BedrockRuntimeInvoker interface {
 }
 
 type BedrockLLMClient struct {
-	client       BedrockRuntimeInvoker
-	defaultModel string
-	sonnetModel  string
-	opusModel    string
-	haikuModel   string
-	maxTokens    int
-	temperature  float64
+	client         BedrockRuntimeInvoker
+	defaultModel   string
+	sonnetModel    string
+	opusModel      string
+	haikuModel     string
+	maxTokens      int
+	temperature    float64
+	temperatureSet bool
 }
 
 type BedrockConfig struct {
-	DefaultModel string
-	SonnetModel  string
-	OpusModel    string
-	HaikuModel   string
-	Region       string
-	MaxTokens    int
-	Temperature  float64
-	Runtime      BedrockRuntimeInvoker
+	DefaultModel   string
+	SonnetModel    string
+	OpusModel      string
+	HaikuModel     string
+	Region         string
+	MaxTokens      int
+	Temperature    float64
+	TemperatureSet bool
+	Runtime        BedrockRuntimeInvoker
 }
 
 type BedrockAccessDeniedError struct {
@@ -92,13 +94,14 @@ func NewBedrockLLMClient(ctx context.Context, llmConfig BedrockConfig) (*Bedrock
 		llmConfig.MaxTokens = 1200
 	}
 	return &BedrockLLMClient{
-		client:       client,
-		defaultModel: strings.TrimSpace(llmConfig.DefaultModel),
-		sonnetModel:  strings.TrimSpace(llmConfig.SonnetModel),
-		opusModel:    strings.TrimSpace(llmConfig.OpusModel),
-		haikuModel:   strings.TrimSpace(llmConfig.HaikuModel),
-		maxTokens:    llmConfig.MaxTokens,
-		temperature:  llmConfig.Temperature,
+		client:         client,
+		defaultModel:   strings.TrimSpace(llmConfig.DefaultModel),
+		sonnetModel:    strings.TrimSpace(llmConfig.SonnetModel),
+		opusModel:      strings.TrimSpace(llmConfig.OpusModel),
+		haikuModel:     strings.TrimSpace(llmConfig.HaikuModel),
+		maxTokens:      llmConfig.MaxTokens,
+		temperature:    llmConfig.Temperature,
+		temperatureSet: llmConfig.TemperatureSet,
 	}, nil
 }
 
@@ -153,7 +156,7 @@ func (c *BedrockLLMClient) invokeMessages(ctx context.Context, modelID string, p
 	inferenceConfig := &bedrocktypes.InferenceConfiguration{
 		MaxTokens: &maxTokens32,
 	}
-	if c.temperature != 0 {
+	if c.temperatureSet {
 		temperature32 := float32(c.temperature)
 		inferenceConfig.Temperature = &temperature32
 	}

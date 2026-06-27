@@ -119,14 +119,15 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if graphAgentLLMConfigured(cfg.GraphAgentLLM) {
 		llm, err := graphagent.NewLLMClientWithSecrets(ctx, graphagent.LLMConfigWithSecrets{
 			LLMConfig: graphagent.LLMConfig{
-				Provider:    cfg.GraphAgentLLM.Provider,
-				Model:       cfg.GraphAgentLLM.Model,
-				SonnetModel: cfg.GraphAgentLLM.SonnetModel,
-				OpusModel:   cfg.GraphAgentLLM.OpusModel,
-				HaikuModel:  cfg.GraphAgentLLM.HaikuModel,
-				Region:      cfg.GraphAgentLLM.BedrockRegion,
-				MaxTokens:   cfg.GraphAgentLLM.MaxTokens,
-				Temperature: cfg.GraphAgentLLM.Temperature,
+				Provider:       cfg.GraphAgentLLM.Provider,
+				Model:          cfg.GraphAgentLLM.Model,
+				SonnetModel:    cfg.GraphAgentLLM.SonnetModel,
+				OpusModel:      cfg.GraphAgentLLM.OpusModel,
+				HaikuModel:     cfg.GraphAgentLLM.HaikuModel,
+				Region:         cfg.GraphAgentLLM.BedrockRegion,
+				MaxTokens:      cfg.GraphAgentLLM.MaxTokens,
+				Temperature:    cfg.GraphAgentLLM.Temperature,
+				TemperatureSet: cfg.GraphAgentLLM.TemperatureSet,
 			},
 			OpenRouterAPIKey: cfg.GraphAgentLLM.OpenRouterAPIKey,
 			HTTPDoer:         NewHTTPDoer(),
@@ -179,15 +180,10 @@ func OpenSourceRuntimeBootstrapDependencies(ctx context.Context, cfg config.Conf
 }
 
 func graphAgentLLMConfigured(cfg config.GraphAgentLLMConfig) bool {
-	return cfg.Provider != "" ||
-		cfg.Model != "" ||
-		cfg.SonnetModel != "" ||
-		cfg.OpusModel != "" ||
-		cfg.HaikuModel != "" ||
-		cfg.BedrockRegion != "" ||
-		cfg.OpenRouterAPIKey != "" ||
-		cfg.MaxTokens != 0 ||
-		cfg.Temperature != 0
+	return cfg.Provider != "" || cfg.Model != "" ||
+		cfg.SonnetModel != "" || cfg.OpusModel != "" || cfg.HaikuModel != "" ||
+		cfg.BedrockRegion != "" || cfg.OpenRouterAPIKey != "" || cfg.MaxTokens != 0 ||
+		cfg.TemperatureSet
 }
 
 // pingDependency runs Ping with its own dependencyPingTimeout-bounded context so
