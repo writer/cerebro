@@ -123,6 +123,7 @@ config:
       commonConfig:
         base_url: env:CEREBRO_SOURCE_ARCHETYPE_BASE_URL
         api_prefix: /api/v1
+        private_endpoint_allowlist: env:CEREBRO_SOURCE_ARCHETYPE_BASE_URL
       schedule:
         cadenceHours: 1
         nameSuffix: sync
