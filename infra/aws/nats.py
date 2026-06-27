@@ -31,8 +31,10 @@ def create_nats_service(
     enable_lag_probe: bool = True,
     lag_probe_interval_seconds: int = 60,
     lag_probe_image: str = "python:3.12-alpine",
+    extra_client_security_group_ids: list[pulumi.Input[str]] | None = None,
 ) -> dict:
     """Run a private NATS JetStream service backed by EFS."""
+    extra_client_security_group_ids = list(extra_client_security_group_ids or [])
     namespace = aws.servicediscovery.PrivateDnsNamespace(
         f"{name}-nats-namespace",
         name=f"{name}.local",
@@ -60,7 +62,7 @@ def create_nats_service(
                 protocol="tcp",
                 from_port=4222,
                 to_port=4222,
-                security_groups=[app_security_group_id],
+                security_groups=[app_security_group_id, *extra_client_security_group_ids],
             ),
             aws.ec2.SecurityGroupIngressArgs(
                 protocol="tcp",

@@ -71,6 +71,8 @@ config:
   cerebro:cacheMaxPayloadBytes: 1048576
   cerebro:natsCpu: 16384
   cerebro:natsMemory: 65536
+  cerebro:natsExtraClientSecurityGroupIds:
+    - sg-0cdebab26de6f7e50
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
   cerebro:jetstreamMaxBytes: "549755813888"

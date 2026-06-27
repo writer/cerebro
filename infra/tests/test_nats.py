@@ -149,6 +149,86 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         self.assertEqual(service_args[0]["deployment_maximum_percent"], 100)
         self.assertEqual(service_args[0]["deployment_minimum_healthy_percent"], 0)
 
+    def test_extra_client_security_group_ids_open_nats_client_port(self) -> None:
+        ingress_args: list[dict] = []
+
+        class FakeOutput:
+            def __init__(self, value: str):
+                self.value = value
+
+            def apply(self, callback):
+                return callback(self.value)
+
+        def fake_resource(*args, **kwargs):
+            name = kwargs.get("name", args[0])
+            return SimpleNamespace(
+                id=f"{name}-id",
+                arn=f"arn:aws:test::{name}",
+                name=FakeOutput(str(name)),
+            )
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        def fake_ingress_args(**kwargs):
+            ingress_args.append(kwargs)
+            return fake_args(**kwargs)
+
+        def fake_storage(*args, **kwargs):
+            return {
+                "file_system": SimpleNamespace(id="fs-1", arn="arn:aws:efs:us-east-1:123:file-system/fs-1"),
+                "access_point": SimpleNamespace(id="ap-1"),
+                "mount_targets": [],
+            }
+
+        with ExitStack() as stack:
+            for patcher in [
+                patch.object(nats.aws.servicediscovery, "PrivateDnsNamespace", side_effect=fake_resource),
+                patch.object(nats.aws.servicediscovery, "Service", side_effect=fake_resource),
+                patch.object(nats.aws.servicediscovery, "ServiceDnsConfigArgs", side_effect=fake_args),
+                patch.object(nats.aws.servicediscovery, "ServiceDnsConfigDnsRecordArgs", side_effect=fake_args),
+                patch.object(nats.aws.servicediscovery, "ServiceHealthCheckCustomConfigArgs", side_effect=fake_args),
+                patch.object(nats.aws.ec2, "SecurityGroup", side_effect=fake_resource),
+                patch.object(nats.aws.ec2, "SecurityGroupIngressArgs", side_effect=fake_ingress_args),
+                patch.object(nats.aws.ec2, "SecurityGroupEgressArgs", side_effect=fake_args),
+                patch.object(nats.storage, "create_efs_volume", side_effect=fake_storage),
+                patch.object(nats.aws.ecs, "Cluster", side_effect=fake_resource),
+                patch.object(nats.aws.ecs, "ClusterSettingArgs", side_effect=fake_args),
+                patch.object(nats, "_execution_role", return_value=SimpleNamespace(arn="exec-role")),
+                patch.object(nats, "_task_role", return_value=SimpleNamespace(arn="task-role")),
+                patch.object(nats.aws.cloudwatch, "LogGroup", side_effect=fake_resource),
+                patch.object(nats.aws, "get_region", return_value=SimpleNamespace(region="us-east-1")),
+                patch.object(nats.aws.ecs, "TaskDefinition", side_effect=fake_resource),
+                patch.object(nats.aws.ecs, "TaskDefinitionRuntimePlatformArgs", side_effect=fake_args),
+                patch.object(nats.aws.ecs, "TaskDefinitionVolumeArgs", side_effect=fake_args),
+                patch.object(nats.aws.ecs, "TaskDefinitionVolumeEfsVolumeConfigurationArgs", side_effect=fake_args),
+                patch.object(nats.aws.ecs, "TaskDefinitionVolumeEfsVolumeConfigurationAuthorizationConfigArgs", side_effect=fake_args),
+                patch.object(nats.aws.ecs, "Service", side_effect=fake_resource),
+                patch.object(nats.aws.ecs, "ServiceNetworkConfigurationArgs", side_effect=fake_args),
+                patch.object(nats.aws.ecs, "ServiceServiceRegistriesArgs", side_effect=fake_args),
+                patch.object(nats.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
+                patch.object(nats.pulumi, "ResourceOptions", side_effect=fake_args),
+                patch.object(nats.pulumi.Output, "concat", side_effect=lambda *values: "".join(str(value) for value in values)),
+            ]:
+                stack.enter_context(patcher)
+
+            nats.create_nats_service(
+                name="cerebro-sec-dev",
+                vpc_id="vpc-1",
+                subnet_ids=["subnet-1"],
+                app_security_group_id="sg-app",
+                kms_key_arn="kms-key",
+                efs_throughput_mode="elastic",
+                extra_client_security_group_ids=["sg-mender"],
+            )
+
+        client_ingress = [args for args in ingress_args if args.get("from_port") == 4222]
+        monitor_ingress = [args for args in ingress_args if args.get("from_port") == 8222]
+        self.assertEqual(len(client_ingress), 1)
+        self.assertEqual(client_ingress[0]["security_groups"], ["sg-app", "sg-mender"])
+        self.assertEqual(len(monitor_ingress), 1)
+        self.assertEqual(monitor_ingress[0]["security_groups"], ["sg-app"])
+
 
 if __name__ == "__main__":
     unittest.main()

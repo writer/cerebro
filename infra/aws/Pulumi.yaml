@@ -397,6 +397,12 @@ config:
     type: integer
     default: 1024
     description: NATS task memory in MB
+  cerebro:natsExtraClientSecurityGroupIds:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Additional security group IDs allowed to reach the NATS client port (4222) beyond the Cerebro app security group.
   cerebro:jetstreamSubjectPrefix:
     type: string
     default: events

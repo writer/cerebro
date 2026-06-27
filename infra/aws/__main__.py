@@ -326,6 +326,11 @@ jetstream_publish_client_retry_attempts = _config_int("jetstreamPublishClientRet
 jetstream_publish_client_retry_wait = config.get("jetstreamPublishClientRetryWait") or ""
 nats_efs_throughput_mode = config.get("natsEfsThroughputMode") or None
 nats_efs_provisioned_throughput_mibps = config.get_int("natsEfsProvisionedThroughputMibps")
+nats_extra_client_security_group_ids = [
+    str(group).strip()
+    for group in (config.get_object("natsExtraClientSecurityGroupIds") or [])
+    if str(group).strip()
+]
 enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
 jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSeconds", 60)
 jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
@@ -646,6 +651,7 @@ nats_stack = nats.create_nats_service(
     efs_provisioned_throughput_mibps=nats_efs_provisioned_throughput_mibps,
     enable_lag_probe=enable_jetstream_lag_probe,
     lag_probe_interval_seconds=jetstream_lag_probe_interval_seconds,
+    extra_client_security_group_ids=nats_extra_client_security_group_ids,
 )
 
 cache_stack = None
