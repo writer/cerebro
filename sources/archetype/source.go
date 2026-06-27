@@ -216,9 +216,22 @@ func libraryNoteEvent(st settings, scan scanRecord, entry knowledgeEntryRecord, 
 	}
 	attrs := map[string]string{
 		"knowledge_slug":    entry.Slug,
+		"title":             entry.Title,
 		"scan_id":           strconv.Itoa(scan.ID),
 		"repository_id":     strconv.Itoa(entry.RepositoryID),
 		"dominant_severity": entry.DominantSeverity,
+		"topics":            strings.Join(entry.Topics, ","),
+		"generated_at":      entry.GeneratedAt,
+		"source_files":      strings.Join(entry.SourceFiles, ","),
+		"context_pack":      metadataString(entry.Metadata, "context_pack"),
+		"context_kind":      metadataString(entry.Metadata, "context_kind"),
+		"health_score":      metadataString(entry.Metadata, "health_score"),
+		"freshness_state":   metadataString(entry.Metadata, "freshness_state"),
+		"recommended_depth": metadataString(entry.Metadata, "recommended_depth"),
+		"evidence_plane":    metadataString(entry.Metadata, "evidence_plane"),
+		"state_store":       metadataString(entry.Metadata, "state_store"),
+		"context_stale":     metadataString(entry.Metadata, "context_stale"),
+		"needs_learning":    metadataString(entry.Metadata, "needs_learning"),
 		"owner":             entry.Owner,
 		"repo":              entry.RepositoryName,
 	}
@@ -258,4 +271,20 @@ func compact(attrs map[string]string) map[string]string {
 		}
 	}
 	return attrs
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	switch value := metadata[key].(type) {
+	case string:
+		return strings.TrimSpace(value)
+	case float64:
+		return strconv.FormatFloat(value, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(value)
+	default:
+		return ""
+	}
 }

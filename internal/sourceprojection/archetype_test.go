@@ -91,7 +91,7 @@ func TestProjectArchetypeLibraryNoteLinksRepositoryContext(t *testing.T) {
 			"repo":              "Archetype",
 			"dominant_severity": "info",
 		},
-		Payload: []byte(`{"slug":"repository-commit-learning","title":"Repository commit learning","summary":"Archetype learned the latest repository head.","topics":["gitops","commits","librarian"]}`),
+		Payload: []byte(`{"slug":"repository-commit-learning","title":"Repository commit learning","summary":"Archetype learned the latest repository head.","topics":["gitops","commits","librarian"],"source_files":["services/archetype-runtime/src/state.rs"],"metadata":{"context_pack":"repository_context_pack_v2","context_kind":"repository-commit-learning","health_score":72,"freshness_state":"stale","recommended_depth":"deep","context_stale":true,"needs_learning":true}}`),
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
@@ -116,6 +116,27 @@ func TestProjectArchetypeLibraryNoteLinksRepositoryContext(t *testing.T) {
 		}
 		if got := entity.Attributes["dominant_severity"]; got != "info" {
 			t.Fatalf("dominant_severity attr = %q, want info", got)
+		}
+		if got := entity.Attributes["context_pack"]; got != "repository_context_pack_v2" {
+			t.Fatalf("context_pack attr = %q, want repository_context_pack_v2", got)
+		}
+		if got := entity.Attributes["context_kind"]; got != "repository-commit-learning" {
+			t.Fatalf("context_kind attr = %q, want repository-commit-learning", got)
+		}
+		if got := entity.Attributes["health_score"]; got != "72" {
+			t.Fatalf("health_score attr = %q, want 72", got)
+		}
+		if got := entity.Attributes["freshness_state"]; got != "stale" {
+			t.Fatalf("freshness_state attr = %q, want stale", got)
+		}
+		if got := entity.Attributes["recommended_depth"]; got != "deep" {
+			t.Fatalf("recommended_depth attr = %q, want deep", got)
+		}
+		if got := entity.Attributes["context_stale"]; got != "true" {
+			t.Fatalf("context_stale attr = %q, want true", got)
+		}
+		if got := entity.Attributes["source_files"]; got != "services/archetype-runtime/src/state.rs" {
+			t.Fatalf("source_files attr = %q, want state source", got)
 		}
 	}
 	if entity := state.entities[scanURN]; entity == nil || entity.EntityType != "archetype.scan" {

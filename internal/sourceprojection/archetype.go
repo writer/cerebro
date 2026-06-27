@@ -95,6 +95,7 @@ func archetypeLibraryNoteProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	}
 	attrs := event.GetAttributes()
 	payload := payloadMap(event)
+	metadata := archetypeMapValue(payload, "metadata")
 	slug := firstNonEmpty(attrs["knowledge_slug"], stringValue(payload, "slug"))
 	if slug == "" {
 		return nil, nil, nil
@@ -106,6 +107,8 @@ func archetypeLibraryNoteProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	if noteURN == "" {
 		return nil, nil, nil
 	}
+	contextPack := firstNonEmpty(attrs["context_pack"], stringValue(metadata, "context_pack"))
+	contextKind := firstNonEmpty(attrs["context_kind"], stringValue(metadata, "context_kind"))
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        noteURN,
 		TenantID:   tenantID,
@@ -117,6 +120,25 @@ func archetypeLibraryNoteProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 			"title":             firstNonEmpty(attrs["title"], stringValue(payload, "title")),
 			"summary":           stringValue(payload, "summary"),
 			"topics":            firstNonEmpty(attrs["topics"], archetypeStringSliceValue(payload, "topics")),
+			"source_files":      firstNonEmpty(attrs["source_files"], archetypeStringSliceValue(payload, "source_files")),
+			"generated_at":      firstNonEmpty(attrs["generated_at"], stringValue(payload, "generated_at")),
+			"context_pack":      contextPack,
+			"context_kind":      contextKind,
+			"health_score":      firstNonEmpty(attrs["health_score"], stringValue(metadata, "health_score")),
+			"freshness_state":   firstNonEmpty(attrs["freshness_state"], stringValue(metadata, "freshness_state")),
+			"recommended_depth": firstNonEmpty(attrs["recommended_depth"], stringValue(metadata, "recommended_depth")),
+			"evidence_plane":    firstNonEmpty(attrs["evidence_plane"], stringValue(metadata, "evidence_plane")),
+			"state_store":       firstNonEmpty(attrs["state_store"], stringValue(metadata, "state_store")),
+			"context_stale":     firstNonEmpty(attrs["context_stale"], stringValue(metadata, "context_stale")),
+			"needs_learning":    firstNonEmpty(attrs["needs_learning"], stringValue(metadata, "needs_learning")),
+			"missing_description": firstNonEmpty(
+				attrs["missing_description"],
+				stringValue(metadata, "missing_description"),
+			),
+			"missing_latest_commit": firstNonEmpty(
+				attrs["missing_latest_commit"],
+				stringValue(metadata, "missing_latest_commit"),
+			),
 			"repository":        repository,
 			"repository_id":     attrs["repository_id"],
 			"scan_id":           attrs["scan_id"],
@@ -127,7 +149,13 @@ func archetypeLibraryNoteProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	})
 	if repoURN := archetypeRepoURN(tenantID, attrs); repoURN != "" {
 		addArchetypeRepo(entities, tenantID, event.GetSourceId(), repoURN, attrs)
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, noteURN, relationHasEvidence, map[string]string{"event_id": event.GetId(), "evidence_type": "archetype_library_note"}))
+		linkAttrs := compactAttributes(map[string]string{
+			"event_id":      event.GetId(),
+			"evidence_type": "archetype_library_note",
+			"context_pack":  contextPack,
+			"context_kind":  contextKind,
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, noteURN, relationHasEvidence, linkAttrs))
 	}
 	if scanID := strings.TrimSpace(attrs["scan_id"]); scanID != "" {
 		scanURN := projectionURN(tenantID, "archetype_scan", scanID)
@@ -200,4 +228,13 @@ func archetypeStringSliceValue(values map[string]any, key string) string {
 	default:
 		return ""
 	}
+}
+
+func archetypeMapValue(values map[string]any, key string) map[string]any {
+	raw, ok := values[key]
+	if !ok {
+		return nil
+	}
+	typed, _ := raw.(map[string]any)
+	return typed
 }
