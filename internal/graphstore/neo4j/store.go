@@ -641,6 +641,423 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, errConcurrentAttributeMerge)
 }
 
+// projectionUpsertBatchSize bounds how many entities or links are written per
+// UNWIND transaction. Batching collapses the two round-trips per element of the
+// per-item upsert path (merge/load attributes, then version-checked update) into
+// two round-trips per batch, which is the dominant cost of graph ingest against
+// a remote Aura instance.
+const projectionUpsertBatchSize = 500
+
+// mergeProjectedEntitiesQuery is the batched counterpart of
+// mergeEntityAndLoadAttributesQuery: it MERGEs every entity in the batch and
+// returns each node's current attributes_json/version so the caller can deep-merge
+// client-side before the version-checked write. The label clause mirrors the
+// per-item query so existing labels survive fallback (urn-equal) labels.
+const mergeProjectedEntitiesQuery = `UNWIND $rows AS row
+MERGE (e:Entity {urn: row.urn})
+ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
+SET e.tenant_id = row.tenant_id,
+    e.source_id = row.source_id,
+    e.runtime_id = CASE WHEN row.runtime_id <> '' THEN row.runtime_id ELSE coalesce(e.runtime_id, '') END,
+    e.entity_type = row.entity_type,
+    e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END
+RETURN row.urn AS urn, coalesce(e.attributes_json, '{}') AS attributes_json, coalesce(e.attributes_version, 0) AS attributes_version`
+
+// updateProjectedEntitiesQuery is the batched counterpart of updateEntityAttributes.
+// The version guard is redundant within a single transaction (the MERGE above
+// write-locks each node for the batch's duration) but is retained so the on-disk
+// write semantics and monotonic version increment match the per-item path exactly.
+const updateProjectedEntitiesQuery = `UNWIND $rows AS row
+MATCH (e:Entity {urn: row.urn})
+WHERE coalesce(e.attributes_version, 0) = row.attributes_version
+SET e.attributes_json = row.attributes_json,
+    e.attributes_version = row.next_attributes_version,
+    e += row.typed_properties
+RETURN count(e)`
+
+// mergeProjectedLinksQuery is the batched counterpart of mergeLinkAndLoadAttributes.
+// Rows whose endpoints do not both exist are dropped by the MATCH and therefore
+// never returned, preserving the per-item rule that a link is only materialized
+// when both endpoints exist. The relation_lock bump mirrors the per-item write so
+// concurrent relationship creation against the same source node stays serialized.
+const mergeProjectedLinksQuery = `UNWIND $rows AS row
+MATCH (src:Entity {urn: row.from_urn}), (dst:Entity {urn: row.to_urn})
+SET src.relation_lock = coalesce(src.relation_lock, 0) + 1
+MERGE (src)-[r:RELATION {relation: row.relation}]->(dst)
+ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
+SET r.tenant_id = row.tenant_id,
+    r.source_id = row.source_id,
+    r.runtime_id = CASE WHEN row.runtime_id <> '' THEN row.runtime_id ELSE coalesce(r.runtime_id, '') END
+RETURN row.from_urn AS from_urn, row.relation AS relation, row.to_urn AS to_urn, coalesce(r.attributes_json, '{}') AS attributes_json, coalesce(r.attributes_version, 0) AS attributes_version`
+
+// updateProjectedLinksQuery is the batched counterpart of updateLinkAttributes.
+const updateProjectedLinksQuery = `UNWIND $rows AS row
+MATCH (:Entity {urn: row.from_urn})-[r:RELATION {relation: row.relation}]->(:Entity {urn: row.to_urn})
+WHERE coalesce(r.attributes_version, 0) = row.attributes_version
+SET r.attributes_json = row.attributes_json,
+    r.attributes_version = row.next_attributes_version
+RETURN count(r)`
+
+type loadedAttributeRow struct {
+	attributesJSON string
+	version        int64
+}
+
+type preparedProjectedEntity struct {
+	urn        string
+	tenantID   string
+	sourceID   string
+	runtimeID  string
+	entityType string
+	label      string
+	attributes map[string]string
+}
+
+type preparedProjectedLink struct {
+	fromURN    string
+	toURN      string
+	relation   string
+	tenantID   string
+	sourceID   string
+	runtimeID  string
+	attributes map[string]string
+}
+
+// UpsertProjectedEntities upserts normalized entities in batches. It preserves
+// the exact semantics of UpsertProjectedEntity (tenant-scope validation, entity
+// metadata application, attribute deep-merge, typed-property derivation, and the
+// monotonic attributes_version) while collapsing the per-entity round-trips into
+// two round-trips per batch. Entities are coalesced by URN and written in URN
+// order so concurrent batches acquire node locks in a stable order.
+func (s *Store) UpsertProjectedEntities(ctx context.Context, entities []*ports.ProjectedEntity) error {
+	prepared, err := prepareProjectedEntities(entities)
+	if err != nil {
+		return err
+	}
+	if len(prepared) == 0 {
+		return nil
+	}
+	if err := s.requireConfigured(); err != nil {
+		return err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return err
+	}
+	for _, chunk := range chunkSlice(prepared, projectionUpsertBatchSize) {
+		if err := s.upsertProjectedEntityChunk(ctx, chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpsertProjectedLinks upserts normalized links in batches, mirroring
+// UpsertProjectedLink (tenant-scope validation, attribute deep-merge, monotonic
+// attributes_version, and materializing a link only when both endpoints exist).
+func (s *Store) UpsertProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) error {
+	prepared, err := prepareProjectedLinks(links)
+	if err != nil {
+		return err
+	}
+	if len(prepared) == 0 {
+		return nil
+	}
+	if err := s.requireConfigured(); err != nil {
+		return err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return err
+	}
+	for _, chunk := range chunkSlice(prepared, projectionUpsertBatchSize) {
+		if err := s.upsertProjectedLinkChunk(ctx, chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) upsertProjectedEntityChunk(ctx context.Context, chunk []*preparedProjectedEntity) error {
+	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
+		err := s.writeProjectedEntityChunk(ctx, chunk)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errConcurrentAttributeMerge) {
+			return fmt.Errorf("upsert projected entities: %w", err)
+		}
+	}
+	return fmt.Errorf("upsert projected entities: %w", errConcurrentAttributeMerge)
+}
+
+func (s *Store) writeProjectedEntityChunk(ctx context.Context, chunk []*preparedProjectedEntity) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		mergeRows := make([]map[string]any, 0, len(chunk))
+		for _, entity := range chunk {
+			mergeRows = append(mergeRows, map[string]any{
+				"urn":         entity.urn,
+				"tenant_id":   entity.tenantID,
+				"source_id":   entity.sourceID,
+				"runtime_id":  entity.runtimeID,
+				"entity_type": entity.entityType,
+				"label":       entity.label,
+			})
+		}
+		loaded, err := loadAttributeRows(ctx, tx, mergeProjectedEntitiesQuery, mergeRows, entityAttributeRowKey)
+		if err != nil {
+			return nil, fmt.Errorf("load projected entity attributes: %w", err)
+		}
+		updateRows := make([]map[string]any, 0, len(chunk))
+		for _, entity := range chunk {
+			current, ok := loaded[entity.urn]
+			if !ok {
+				return nil, fmt.Errorf("merge projected entity %q returned no attributes", entity.urn)
+			}
+			existing, err := graphAttributesFromJSON(current.attributesJSON)
+			if err != nil {
+				return nil, fmt.Errorf("decode projected entity %q attributes: %w", entity.urn, err)
+			}
+			merged := mergeGraphAttributes(existing, entity.attributes)
+			mergedJSON, err := graphAttributesJSON(merged)
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected entity %q attributes: %w", entity.urn, err)
+			}
+			updateRows = append(updateRows, map[string]any{
+				"urn":                     entity.urn,
+				"attributes_version":      current.version,
+				"next_attributes_version": current.version + 1,
+				"attributes_json":         mergedJSON,
+				"typed_properties":        entityTypedPropertyParams(projectionmeta.DerivedEntityProperties(merged)),
+			})
+		}
+		updated, err := countQuery(ctx, tx, updateProjectedEntitiesQuery, map[string]any{"rows": updateRows})
+		if err != nil {
+			return nil, err
+		}
+		if updated != int64(len(updateRows)) {
+			return nil, errConcurrentAttributeMerge
+		}
+		return nil, nil
+	})
+	return err
+}
+
+func (s *Store) upsertProjectedLinkChunk(ctx context.Context, chunk []*preparedProjectedLink) error {
+	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
+		err := s.writeProjectedLinkChunk(ctx, chunk)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errConcurrentAttributeMerge) {
+			return fmt.Errorf("upsert projected links: %w", err)
+		}
+	}
+	return fmt.Errorf("upsert projected links: %w", errConcurrentAttributeMerge)
+}
+
+func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedProjectedLink) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		mergeRows := make([]map[string]any, 0, len(chunk))
+		for _, link := range chunk {
+			mergeRows = append(mergeRows, map[string]any{
+				"from_urn":   link.fromURN,
+				"to_urn":     link.toURN,
+				"relation":   link.relation,
+				"tenant_id":  link.tenantID,
+				"source_id":  link.sourceID,
+				"runtime_id": link.runtimeID,
+			})
+		}
+		loaded, err := loadAttributeRows(ctx, tx, mergeProjectedLinksQuery, mergeRows, linkAttributeRowKey)
+		if err != nil {
+			return nil, fmt.Errorf("load projected link attributes: %w", err)
+		}
+		updateRows := make([]map[string]any, 0, len(loaded))
+		for _, link := range chunk {
+			key := projectedLinkKey(link.fromURN, link.relation, link.toURN)
+			current, ok := loaded[key]
+			if !ok {
+				continue
+			}
+			existing, err := graphAttributesFromJSON(current.attributesJSON)
+			if err != nil {
+				return nil, fmt.Errorf("decode projected link %q attributes: %w", key, err)
+			}
+			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, link.attributes))
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected link %q attributes: %w", key, err)
+			}
+			updateRows = append(updateRows, map[string]any{
+				"from_urn":                link.fromURN,
+				"to_urn":                  link.toURN,
+				"relation":                link.relation,
+				"attributes_version":      current.version,
+				"next_attributes_version": current.version + 1,
+				"attributes_json":         mergedJSON,
+			})
+		}
+		if len(updateRows) == 0 {
+			return nil, nil
+		}
+		updated, err := countQuery(ctx, tx, updateProjectedLinksQuery, map[string]any{"rows": updateRows})
+		if err != nil {
+			return nil, err
+		}
+		if updated != int64(len(updateRows)) {
+			return nil, errConcurrentAttributeMerge
+		}
+		return nil, nil
+	})
+	return err
+}
+
+func loadAttributeRows(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, rows []map[string]any, key func([]any) string) (map[string]loadedAttributeRow, error) {
+	result, err := tx.Run(ctx, query, map[string]any{"rows": rows})
+	if err != nil {
+		return nil, err
+	}
+	loaded := make(map[string]loadedAttributeRow, len(rows))
+	for result.Next(ctx) {
+		values := result.Record().Values
+		loaded[key(values)] = loadedAttributeRow{
+			attributesJSON: stringValue(values[len(values)-2]),
+			version:        toInt64(values[len(values)-1]),
+		}
+	}
+	return loaded, result.Err()
+}
+
+func entityAttributeRowKey(values []any) string {
+	return stringValue(values[0])
+}
+
+func linkAttributeRowKey(values []any) string {
+	return projectedLinkKey(stringValue(values[0]), stringValue(values[1]), stringValue(values[2]))
+}
+
+func projectedLinkKey(fromURN string, relation string, toURN string) string {
+	return fromURN + "|" + relation + "|" + toURN
+}
+
+func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedProjectedEntity, error) {
+	prepared := make([]*preparedProjectedEntity, 0, len(entities))
+	index := make(map[string]*preparedProjectedEntity, len(entities))
+	for _, entity := range entities {
+		if entity == nil {
+			return nil, errors.New("projected entity is required")
+		}
+		urn := strings.TrimSpace(entity.URN)
+		if urn == "" {
+			return nil, errors.New("projected entity urn is required")
+		}
+		tenantID := strings.TrimSpace(entity.TenantID)
+		if tenantID == "" {
+			return nil, errors.New("projected entity tenant id is required")
+		}
+		sourceID := strings.TrimSpace(entity.SourceID)
+		if sourceID == "" {
+			return nil, errors.New("projected entity source id is required")
+		}
+		entityType := strings.TrimSpace(entity.EntityType)
+		if entityType == "" {
+			return nil, errors.New("projected entity type is required")
+		}
+		if err := ports.ValidateProjectedEntityTenantScope(entity); err != nil {
+			return nil, err
+		}
+		label := strings.TrimSpace(entity.Label)
+		if label == "" {
+			label = urn
+		}
+		incoming := projectionmeta.ApplyEntityMetadata(entityType, entity.Attributes)
+		if existing, ok := index[urn]; ok {
+			existing.tenantID = tenantID
+			existing.sourceID = sourceID
+			existing.runtimeID = strings.TrimSpace(entity.RuntimeID)
+			existing.entityType = entityType
+			existing.label = label
+			existing.attributes = mergeGraphAttributes(existing.attributes, incoming)
+			continue
+		}
+		entry := &preparedProjectedEntity{
+			urn:        urn,
+			tenantID:   tenantID,
+			sourceID:   sourceID,
+			runtimeID:  strings.TrimSpace(entity.RuntimeID),
+			entityType: entityType,
+			label:      label,
+			attributes: incoming,
+		}
+		index[urn] = entry
+		prepared = append(prepared, entry)
+	}
+	slices.SortFunc(prepared, func(left *preparedProjectedEntity, right *preparedProjectedEntity) int {
+		return strings.Compare(left.urn, right.urn)
+	})
+	return prepared, nil
+}
+
+func prepareProjectedLinks(links []*ports.ProjectedLink) ([]*preparedProjectedLink, error) {
+	prepared := make([]*preparedProjectedLink, 0, len(links))
+	index := make(map[string]*preparedProjectedLink, len(links))
+	for _, link := range links {
+		fromURN, toURN, relation, tenantID, sourceID, err := validateProjectedLink(link)
+		if err != nil {
+			return nil, err
+		}
+		key := projectedLinkKey(fromURN, relation, toURN)
+		if existing, ok := index[key]; ok {
+			existing.tenantID = tenantID
+			existing.sourceID = sourceID
+			existing.runtimeID = strings.TrimSpace(link.RuntimeID)
+			existing.attributes = mergeGraphAttributes(existing.attributes, link.Attributes)
+			continue
+		}
+		entry := &preparedProjectedLink{
+			fromURN:    fromURN,
+			toURN:      toURN,
+			relation:   relation,
+			tenantID:   tenantID,
+			sourceID:   sourceID,
+			runtimeID:  strings.TrimSpace(link.RuntimeID),
+			attributes: mergeGraphAttributes(nil, link.Attributes),
+		}
+		index[key] = entry
+		prepared = append(prepared, entry)
+	}
+	slices.SortFunc(prepared, func(left *preparedProjectedLink, right *preparedProjectedLink) int {
+		if cmp := strings.Compare(left.fromURN, right.fromURN); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(left.relation, right.relation); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(left.toURN, right.toURN)
+	})
+	return prepared, nil
+}
+
+func chunkSlice[T any](items []T, size int) [][]T {
+	if size <= 0 {
+		size = len(items)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	chunks := make([][]T, 0, (len(items)+size-1)/size)
+	for start := 0; start < len(items); start += size {
+		end := start + size
+		if end > len(items) {
+			end = len(items)
+		}
+		chunks = append(chunks, items[start:end])
+	}
+	return chunks
+}
+
 // DeleteProjectedLink removes one normalized link from the graph store.
 func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
 	fromURN, toURN, relation, err := validateProjectedLinkIdentity(link)

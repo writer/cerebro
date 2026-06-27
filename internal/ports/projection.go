@@ -155,6 +155,19 @@ type ProjectionGraphStore interface {
 	UpsertProjectedLink(context.Context, *ProjectedLink) error
 }
 
+// ProjectionGraphBatchStore upserts coalesced entities and links in batches,
+// collapsing the per-element merge/load and version-checked update round-trips
+// of ProjectionGraphStore into a handful of UNWIND transactions. Graph stores
+// that implement it are preferred by the projection writer; callers fall back
+// to the per-element ProjectionGraphStore methods when it is not implemented.
+// Batch methods preserve the exact per-element semantics: tenant-scope
+// validation, attribute deep-merge, typed-property derivation, monotonic
+// attributes_version, and links materialized only when both endpoints exist.
+type ProjectionGraphBatchStore interface {
+	UpsertProjectedEntities(context.Context, []*ProjectedEntity) error
+	UpsertProjectedLinks(context.Context, []*ProjectedLink) error
+}
+
 // ProjectionLinkDeleter removes normalized links from projection stores that support deletion.
 type ProjectionLinkDeleter interface {
 	DeleteProjectedLink(context.Context, *ProjectedLink) error

@@ -957,3 +957,302 @@ func waitForStore(t *testing.T, ctx context.Context, cfg config.GraphStoreConfig
 	t.Fatalf("neo4j did not become ready: %v", lastErr)
 	return nil
 }
+
+func TestProjectedEntitiesBatchQueryPreservesPerItemSemantics(t *testing.T) {
+	for _, clause := range []string{
+		"UNWIND $rows AS row",
+		"MERGE (e:Entity {urn: row.urn})",
+		"ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0",
+		"e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END",
+		"RETURN row.urn AS urn",
+	} {
+		if !strings.Contains(mergeProjectedEntitiesQuery, clause) {
+			t.Fatalf("mergeProjectedEntitiesQuery missing %q:\n%s", clause, mergeProjectedEntitiesQuery)
+		}
+	}
+	for _, clause := range []string{
+		"UNWIND $rows AS row",
+		"WHERE coalesce(e.attributes_version, 0) = row.attributes_version",
+		"e.attributes_version = row.next_attributes_version",
+		"e += row.typed_properties",
+		"RETURN count(e)",
+	} {
+		if !strings.Contains(updateProjectedEntitiesQuery, clause) {
+			t.Fatalf("updateProjectedEntitiesQuery missing %q:\n%s", clause, updateProjectedEntitiesQuery)
+		}
+	}
+}
+
+func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
+	for _, clause := range []string{
+		"UNWIND $rows AS row",
+		"MATCH (src:Entity {urn: row.from_urn}), (dst:Entity {urn: row.to_urn})",
+		"SET src.relation_lock = coalesce(src.relation_lock, 0) + 1",
+		"MERGE (src)-[r:RELATION {relation: row.relation}]->(dst)",
+		"RETURN row.from_urn AS from_urn",
+	} {
+		if !strings.Contains(mergeProjectedLinksQuery, clause) {
+			t.Fatalf("mergeProjectedLinksQuery missing %q:\n%s", clause, mergeProjectedLinksQuery)
+		}
+	}
+	for _, clause := range []string{
+		"UNWIND $rows AS row",
+		"WHERE coalesce(r.attributes_version, 0) = row.attributes_version",
+		"r.attributes_version = row.next_attributes_version",
+		"RETURN count(r)",
+	} {
+		if !strings.Contains(updateProjectedLinksQuery, clause) {
+			t.Fatalf("updateProjectedLinksQuery missing %q:\n%s", clause, updateProjectedLinksQuery)
+		}
+	}
+}
+
+func TestUpsertProjectedEntitiesRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
+	store := &Store{}
+	err := store.UpsertProjectedEntities(context.Background(), []*ports.ProjectedEntity{{
+		URN:        "urn:cerebro:victim:github_user:alice",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.user",
+	}})
+	if err == nil {
+		t.Fatal("UpsertProjectedEntities() error = nil, want cross-tenant Cerebro URN error")
+	}
+	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_user:alice") || !strings.Contains(got, "not projection tenant") {
+		t.Fatalf("UpsertProjectedEntities() error = %q", got)
+	}
+}
+
+func TestUpsertProjectedLinksRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
+	store := &Store{}
+	err := store.UpsertProjectedLinks(context.Background(), []*ports.ProjectedLink{{
+		TenantID: "writer",
+		SourceID: "github",
+		FromURN:  "urn:cerebro:writer:github_user:alice",
+		ToURN:    "urn:cerebro:victim:github_code_repository:writer/cerebro",
+		Relation: "owns",
+	}})
+	if err == nil {
+		t.Fatal("UpsertProjectedLinks() error = nil, want cross-tenant Cerebro URN error")
+	}
+	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_code_repository:writer/cerebro") || !strings.Contains(got, "not projection tenant") {
+		t.Fatalf("UpsertProjectedLinks() error = %q", got)
+	}
+}
+
+func TestPrepareProjectedEntitiesCoalescesValidatesAndSorts(t *testing.T) {
+	prepared, err := prepareProjectedEntities([]*ports.ProjectedEntity{
+		{
+			URN:        "urn:cerebro:writer:github_user:zoe",
+			TenantID:   "writer",
+			SourceID:   "github",
+			EntityType: "github.user",
+			Attributes: map[string]string{"login": "zoe"},
+		},
+		{
+			URN:        "urn:cerebro:writer:github_user:alice",
+			TenantID:   "writer",
+			SourceID:   "github",
+			EntityType: "github.user",
+			Attributes: map[string]string{"login": "alice"},
+		},
+		{
+			URN:        "urn:cerebro:writer:github_user:alice",
+			TenantID:   "writer",
+			SourceID:   "github",
+			RuntimeID:  "writer-github",
+			EntityType: "github.user",
+			Label:      "Alice",
+			Attributes: map[string]string{"email": "alice@example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepareProjectedEntities() error = %v", err)
+	}
+	if len(prepared) != 2 {
+		t.Fatalf("prepared len = %d, want 2 (alice coalesced)", len(prepared))
+	}
+	if prepared[0].urn != "urn:cerebro:writer:github_user:alice" || prepared[1].urn != "urn:cerebro:writer:github_user:zoe" {
+		t.Fatalf("prepared not sorted by urn: %q, %q", prepared[0].urn, prepared[1].urn)
+	}
+	alice := prepared[0]
+	if alice.attributes["login"] != "alice" || alice.attributes["email"] != "alice@example.com" {
+		t.Fatalf("coalesced alice attributes = %#v, want merged login+email", alice.attributes)
+	}
+	if alice.label != "Alice" || alice.runtimeID != "writer-github" {
+		t.Fatalf("coalesced alice scalars = label %q runtime %q, want latest occurrence to win", alice.label, alice.runtimeID)
+	}
+	zoe := prepared[1]
+	if zoe.label != zoe.urn {
+		t.Fatalf("zoe label = %q, want fallback to urn", zoe.label)
+	}
+}
+
+func TestPrepareProjectedEntitiesValidationErrors(t *testing.T) {
+	cases := map[string]*ports.ProjectedEntity{
+		"projected entity is required":      nil,
+		"projected entity urn is required":  {TenantID: "writer", SourceID: "github", EntityType: "github.user"},
+		"projected entity type is required": {URN: "urn:x", TenantID: "writer", SourceID: "github"},
+	}
+	for want, entity := range cases {
+		_, err := prepareProjectedEntities([]*ports.ProjectedEntity{entity})
+		if err == nil {
+			t.Fatalf("prepareProjectedEntities(%#v) error = nil, want %q", entity, want)
+		}
+		if got := err.Error(); !strings.Contains(got, want) {
+			t.Fatalf("prepareProjectedEntities(%#v) error = %q, want %q", entity, got, want)
+		}
+	}
+}
+
+func TestPrepareProjectedLinksCoalescesValidatesAndSorts(t *testing.T) {
+	prepared, err := prepareProjectedLinks([]*ports.ProjectedLink{
+		{
+			TenantID: "writer", SourceID: "github",
+			FromURN:  "urn:cerebro:writer:github_user:zoe",
+			Relation: "maintains",
+			ToURN:    "urn:cerebro:writer:github_code_repository:writer/cerebro",
+		},
+		{
+			TenantID: "writer", SourceID: "github",
+			FromURN:    "urn:cerebro:writer:github_user:alice",
+			Relation:   "maintains",
+			ToURN:      "urn:cerebro:writer:github_code_repository:writer/cerebro",
+			Attributes: map[string]string{"role": "admin"},
+		},
+		{
+			TenantID: "writer", SourceID: "github", RuntimeID: "writer-github",
+			FromURN:    "urn:cerebro:writer:github_user:alice",
+			Relation:   "maintains",
+			ToURN:      "urn:cerebro:writer:github_code_repository:writer/cerebro",
+			Attributes: map[string]string{"since": "2025"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepareProjectedLinks() error = %v", err)
+	}
+	if len(prepared) != 2 {
+		t.Fatalf("prepared len = %d, want 2 (alice link coalesced)", len(prepared))
+	}
+	if prepared[0].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[1].fromURN != "urn:cerebro:writer:github_user:zoe" {
+		t.Fatalf("prepared links not sorted by from urn: %q, %q", prepared[0].fromURN, prepared[1].fromURN)
+	}
+	alice := prepared[0]
+	if alice.attributes["role"] != "admin" || alice.attributes["since"] != "2025" {
+		t.Fatalf("coalesced alice link attributes = %#v, want merged role+since", alice.attributes)
+	}
+	if alice.runtimeID != "writer-github" {
+		t.Fatalf("coalesced alice link runtime = %q, want latest occurrence to win", alice.runtimeID)
+	}
+}
+
+func TestPrepareProjectedLinksValidationErrors(t *testing.T) {
+	cases := map[string]*ports.ProjectedLink{
+		"projected link is required":          nil,
+		"projected link from urn is required": {TenantID: "writer", SourceID: "github", Relation: "owns", ToURN: "urn:y"},
+		"projected link relation is required": {TenantID: "writer", SourceID: "github", FromURN: "urn:x", ToURN: "urn:y"},
+	}
+	for want, link := range cases {
+		_, err := prepareProjectedLinks([]*ports.ProjectedLink{link})
+		if err == nil {
+			t.Fatalf("prepareProjectedLinks(%#v) error = nil, want %q", link, want)
+		}
+		if got := err.Error(); !strings.Contains(got, want) {
+			t.Fatalf("prepareProjectedLinks(%#v) error = %q, want %q", link, got, want)
+		}
+	}
+}
+
+func TestChunkSlice(t *testing.T) {
+	chunks := chunkSlice([]int{1, 2, 3, 4, 5}, 2)
+	if len(chunks) != 3 || len(chunks[0]) != 2 || len(chunks[2]) != 1 {
+		t.Fatalf("chunkSlice(5, 2) = %#v, want [[1 2] [3 4] [5]]", chunks)
+	}
+	if chunks[2][0] != 5 {
+		t.Fatalf("chunkSlice remainder = %#v, want [5]", chunks[2])
+	}
+	if got := chunkSlice([]int(nil), 2); got != nil {
+		t.Fatalf("chunkSlice(nil) = %#v, want nil", got)
+	}
+	if got := chunkSlice([]int{1, 2}, 0); len(got) != 1 || len(got[0]) != 2 {
+		t.Fatalf("chunkSlice with size 0 = %#v, want single chunk", got)
+	}
+}
+
+func TestNeo4jDockerBatchProjectionMatchesPerItem(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
+		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	port := freePort(t)
+	name := fmt.Sprintf("cerebro-neo4j-batch-test-%d", time.Now().UnixNano())
+	password := "test-password"
+	image := os.Getenv("CEREBRO_NEO4J_DOCKER_IMAGE")
+	if image == "" {
+		image = "neo4j:5"
+	}
+	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name, // #nosec G204 G702 -- integration test invokes fixed docker binary with generated container arguments.
+		"-e", "NEO4J_AUTH=neo4j/"+password,
+		"-p", fmt.Sprintf("127.0.0.1:%d:7687", port),
+		image)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker run neo4j: %v\n%s", err, string(output))
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", name).Run() // #nosec G204 -- integration test cleanup invokes fixed docker binary with generated container name.
+	})
+	store := waitForStore(t, ctx, config.GraphStoreConfig{
+		Neo4jURI:      fmt.Sprintf("bolt://127.0.0.1:%d", port),
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: password,
+	})
+	defer func() { _ = store.CloseContext(context.Background()) }()
+
+	user := &ports.ProjectedEntity{
+		URN: "urn:cerebro:writer:github_user:alice", TenantID: "writer", SourceID: "github",
+		EntityType: "github_user", Label: "alice", Attributes: map[string]string{"login": "alice"},
+	}
+	repo := &ports.ProjectedEntity{
+		URN: "urn:cerebro:writer:github_code_repository:writer/cerebro", TenantID: "writer", SourceID: "github",
+		EntityType: "github_code_repository", Label: "writer/cerebro",
+	}
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{user, repo}); err != nil {
+		t.Fatalf("UpsertProjectedEntities() error = %v", err)
+	}
+	// Re-running the batch with new attributes must deep-merge, not clobber.
+	updatedUser := *user
+	updatedUser.Attributes = map[string]string{"team": "security"}
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{&updatedUser}); err != nil {
+		t.Fatalf("UpsertProjectedEntities(update) error = %v", err)
+	}
+	userAttributes := projectedEntityAttributes(t, ctx, store, user.URN)
+	for key, want := range map[string]string{"login": "alice", "team": "security"} {
+		if userAttributes[key] != want {
+			t.Fatalf("batch user attributes[%q] = %q, want %q in %#v", key, userAttributes[key], want, userAttributes)
+		}
+	}
+
+	maintains := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "github", FromURN: user.URN, Relation: "maintains", ToURN: repo.URN,
+		Attributes: map[string]string{"role": "admin"},
+	}
+	dangling := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "github", FromURN: user.URN, Relation: "maintains",
+		ToURN: "urn:cerebro:writer:github_code_repository:writer/missing",
+	}
+	if err := store.UpsertProjectedLinks(ctx, []*ports.ProjectedLink{maintains, dangling}); err != nil {
+		t.Fatalf("UpsertProjectedLinks() error = %v", err)
+	}
+	linkAttributes := projectedLinkAttributes(t, ctx, store, maintains)
+	if linkAttributes["role"] != "admin" {
+		t.Fatalf("batch link attributes = %#v, want role=admin", linkAttributes)
+	}
+	if neo4jProjectedLinkExists(t, ctx, store, dangling) {
+		t.Fatal("dangling link was materialized; batch must skip links whose endpoints do not both exist")
+	}
+}
