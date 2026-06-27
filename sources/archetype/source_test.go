@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -226,6 +227,82 @@ func TestSourceReadFetchesRepositoryKnowledgeOncePerRepo(t *testing.T) {
 	}
 	if libraryEvents != 1 {
 		t.Fatalf("library note events = %d, want 1", libraryEvents)
+	}
+}
+
+func TestSourceReadFetchesVulnerabilitiesConcurrentlyAndPreservesEventOrder(t *testing.T) {
+	started := make(chan int, 2)
+	release := make(chan struct{})
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		seen := map[int]bool{}
+		for len(seen) < 2 {
+			seen[<-started] = true
+		}
+		close(release)
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			writeJSON(t, w, []map[string]any{
+				{"id": 1, "repository_id": 7, "status": "completed", "completed_at": "2026-06-17T12:05:00Z"},
+				{"id": 2, "repository_id": 8, "status": "completed", "completed_at": "2026-06-17T12:06:00Z"},
+				{"id": 3, "repository_id": 9, "status": "completed", "completed_at": "2026-06-17T12:07:00Z"},
+			})
+		case "/api/v1/repositories":
+			writeJSON(t, w, []map[string]any{
+				{"id": 7, "owner": "WriterInternal", "name": "RepoOne"},
+				{"id": 8, "owner": "WriterInternal", "name": "RepoTwo"},
+				{"id": 9, "owner": "WriterInternal", "name": "RepoThree"},
+			})
+		case "/api/v1/scans/1/vulnerabilities":
+			started <- 1
+			<-release
+			writeJSON(t, w, []map[string]any{{"id": 10, "scan_id": 1, "severity": "high", "category": "dependency", "file_path": "one.lock"}})
+		case "/api/v1/scans/2/vulnerabilities":
+			started <- 2
+			<-release
+			writeJSON(t, w, []map[string]any{{"id": 20, "scan_id": 2, "severity": "critical", "category": "dependency", "file_path": "two.lock"}})
+		case "/api/v1/scans/3/vulnerabilities":
+			writeJSON(t, w, []map[string]any{{"id": 30, "scan_id": 3, "severity": "medium", "category": "dependency", "file_path": "three.lock"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	pull, err := source.ReadWithCheckpoint(ctx, sourcecdk.NewConfig(map[string]string{
+		"tenant_id":           "writer",
+		"base_url":            server.URL,
+		"request_concurrency": "2",
+	}), nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	<-released
+	if len(pull.Events) != 6 {
+		t.Fatalf("len(Events) = %d, want scan/vulnerability per scan", len(pull.Events))
+	}
+	wantKinds := []string{"archetype.scan", "archetype.vulnerability", "archetype.scan", "archetype.vulnerability", "archetype.scan", "archetype.vulnerability"}
+	wantVulns := map[int]string{1: "10", 3: "20", 5: "30"}
+	for i, event := range pull.Events {
+		if event.GetKind() != wantKinds[i] {
+			t.Fatalf("event %d kind = %q, want %q", i, event.GetKind(), wantKinds[i])
+		}
+		if want, ok := wantVulns[i]; ok {
+			if got := event.GetAttributes()["vulnerability_id"]; got != want {
+				t.Fatalf("event %d vulnerability_id = %q, want %q", i, got, want)
+			}
+		}
 	}
 }
 

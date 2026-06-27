@@ -294,7 +294,16 @@ func TestGraphStoreConfigExposesApprovedFields(t *testing.T) {
 		}
 		return false
 	})
-	want := []string{"Driver", "Neo4jURI", "Neo4jUsername", "Neo4jPassword", "Neo4jDatabase", "Neo4jQueryTimeout"}
+	want := []string{
+		"Driver",
+		"Neo4jURI",
+		"Neo4jUsername",
+		"Neo4jPassword",
+		"Neo4jDatabase",
+		"Neo4jQueryTimeout",
+		"Neo4jProjectionBatchSize",
+		"Neo4jProjectionWriteConcurrency",
+	}
 	if strings.Join(fields, ",") != strings.Join(want, ",") {
 		t.Fatalf("GraphStoreConfig fields = %v, want exactly %v", fields, want)
 	}

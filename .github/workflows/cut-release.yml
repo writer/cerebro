@@ -73,7 +73,37 @@ jobs:
             echo "Resolved automatic release tag ${RELEASE_TAG} from ${latest_tag}"
           fi
 
-          make verify
+          release_sha="$(git rev-parse HEAD)"
+          echo "Waiting for successful 'CI' workflow run for push to main at ${release_sha}"
+          for _ in {1..120}; do
+            ci_run="$(
+              gh run list \
+                --repo "${GITHUB_REPOSITORY}" \
+                --workflow "CI" \
+                --event push \
+                --branch main \
+                --limit 50 \
+                --json headSha,status,conclusion,url \
+                --jq ".[] | select(.headSha == \"${release_sha}\") | [.status, (.conclusion // \"\"), .url] | @tsv" \
+              | head -n 1
+            )" || true
+            if [ -n "${ci_run}" ]; then
+              IFS=$'\t' read -r ci_status ci_conclusion ci_url <<< "${ci_run}"
+              if [ "${ci_status}" = "completed" ] && [ "${ci_conclusion}" = "success" ]; then
+                echo "CI for ${release_sha} succeeded: ${ci_url}"
+                break
+              fi
+              if [ "${ci_status}" = "completed" ]; then
+                echo "ERROR: CI for ${release_sha} completed with ${ci_conclusion}: ${ci_url}" >&2
+                exit 1
+              fi
+            fi
+            sleep 15
+          done
+          if [ "${ci_status:-}" != "completed" ] || [ "${ci_conclusion:-}" != "success" ]; then
+            echo "ERROR: timed out waiting for successful 'CI' workflow run for push to main at ${release_sha}" >&2
+            exit 1
+          fi
 
           if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
             echo "ERROR: tag '${RELEASE_TAG}' already exists"

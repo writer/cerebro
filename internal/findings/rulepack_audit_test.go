@@ -985,6 +985,7 @@ func repoRelativePath(t *testing.T, relPath string) string {
 
 func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 	return []rulepackAuditClassification{
+		{RuleID: "archetype-vulnerability-active", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "archetype"},
 		{RuleID: "cloud-effective-admin-permission", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "cloud-privilege-path-granted", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "cloud-public-exposure-privileged-principal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloud"},

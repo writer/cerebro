@@ -5,7 +5,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -19,12 +18,18 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/archetypeclient"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 const sourceID = "archetype"
+
+const (
+	defaultFanoutConcurrency = 4
+	maxFanoutConcurrency     = 16
+)
 
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
@@ -38,42 +43,13 @@ type settings struct {
 	token                    string
 	apiPrefix                string
 	privateEndpointAllowlist []string
+	fanoutConcurrency        int
 }
-type scanRecord struct {
-	ID           int    `json:"id"`
-	RepositoryID int    `json:"repository_id"`
-	Status       string `json:"status"`
-	StartedAt    string `json:"started_at"`
-	CompletedAt  string `json:"completed_at"`
-	CreatedAt    string `json:"created_at"`
-}
-type vulnerabilityRecord struct {
-	ID            int     `json:"id"`
-	ScanID        int     `json:"scan_id"`
-	LineNumber    int     `json:"line_number"`
-	FilePath      string  `json:"file_path"`
-	Category      string  `json:"category"`
-	Severity      string  `json:"severity"`
-	Description   string  `json:"description"`
-	AnalyzerScore float64 `json:"analyzer_score"`
-	AnalyzerLabel string  `json:"analyzer_label"`
-	CreatedAt     string  `json:"created_at"`
-}
-type knowledgeEntryRecord struct {
-	Slug             string   `json:"slug"`
-	Title            string   `json:"title"`
-	Summary          string   `json:"summary"`
-	Topics           []string `json:"topics,omitempty"`
-	DominantSeverity string   `json:"dominant_severity,omitempty"`
-	RepositoryID     int      `json:"repository_id"`
-	RepositoryName   string   `json:"repository_name"`
-	Owner            string   `json:"owner"`
-}
-type repositoryRecord struct {
-	ID    int    `json:"id"`
-	Owner string `json:"owner"`
-	Name  string `json:"name"`
-}
+
+type scanRecord = archetypeclient.Scan
+type vulnerabilityRecord = archetypeclient.Vulnerability
+type knowledgeEntryRecord = archetypeclient.KnowledgeEntry
+type repositoryRecord = archetypeclient.Repository
 
 func New() (*Source, error) {
 	specBytes, err := catalogFS.ReadFile("catalog.yaml")
@@ -92,7 +68,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	return s.get(ctx, st, "/scans", new([]scanRecord))
+	return archetypeclient.Get(ctx, s.clientSettings(st), "/scans", new([]scanRecord))
 }
 func (s *Source) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
@@ -106,34 +82,42 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.Pull{}, err
 	}
 	var scans []scanRecord
-	if err := s.get(ctx, st, "/scans", &scans); err != nil {
+	clientSettings := s.clientSettings(st)
+	if err := archetypeclient.Get(ctx, clientSettings, "/scans", &scans); err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	sort.Slice(scans, func(i, j int) bool { return scans[i].ID < scans[j].ID })
 	last := lastScanID(cursor, checkpoint)
-	repos := map[int]repositoryRecord{}
+	newScans := make([]scanRecord, 0, len(scans))
+	for _, scan := range scans {
+		if scan.ID > last {
+			newScans = append(newScans, scan)
+		}
+	}
+	if len(newScans) == 0 {
+		return sourcecdk.NotModifiedPull(checkpoint), nil
+	}
+	repos := archetypeclient.Repositories(ctx, clientSettings)
+	vulnerabilities := make([][]vulnerabilityRecord, len(newScans))
+	if st.family != "scan" {
+		var err error
+		vulnerabilities, err = archetypeclient.VulnerabilitiesForScans(ctx, clientSettings, newScans)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+	}
 	knowledgeRepos := map[int]bool{}
 	events := []*primitives.Event{}
-	for _, scan := range scans {
-		if scan.ID <= last {
-			continue
-		}
-		if len(repos) == 0 {
-			repos = s.repositories(ctx, st)
-		}
+	for i, scan := range newScans {
 		events = append(events, scanEvent(st, scan, repos[scan.RepositoryID]))
 		if st.family == "scan" {
 			continue
 		}
-		var vulns []vulnerabilityRecord
-		if err := s.get(ctx, st, fmt.Sprintf("/scans/%d/vulnerabilities", scan.ID), &vulns); err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		for _, vuln := range vulns {
+		for _, vuln := range vulnerabilities[i] {
 			events = append(events, vulnerabilityEvent(st, scan, vuln, repos[scan.RepositoryID]))
 		}
 		if !knowledgeRepos[scan.RepositoryID] {
-			entries, cacheable := s.repositoryKnowledge(ctx, st, scan.RepositoryID)
+			entries, cacheable := archetypeclient.RepositoryKnowledge(ctx, clientSettings, scan.RepositoryID)
 			knowledgeRepos[scan.RepositoryID] = cacheable
 			for _, entry := range entries {
 				if event := libraryNoteEvent(st, scan, entry, repos[scan.RepositoryID]); event != nil {
@@ -158,6 +142,10 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		baseURL:   strings.TrimRight(sourcecdk.ConfigValue(cfg, "base_url"), "/"),
 		token:     first(sourcecdk.ConfigValue(cfg, "token"), sourcecdk.ConfigValue(cfg, "api_token")),
 		apiPrefix: first(sourcecdk.ConfigValue(cfg, "api_prefix"), "/api/v1"),
+	}
+	var err error
+	if st.fanoutConcurrency, err = parseFanoutConcurrency(sourcecdk.ConfigValue(cfg, "request_concurrency")); err != nil {
+		return st, err
 	}
 	if st.tenantID == "" || st.baseURL == "" {
 		return st, fmt.Errorf("%w: archetype tenant_id and base_url are required", sourcecdk.ErrInvalidConfig)
@@ -184,54 +172,30 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	st.privateEndpointAllowlist = privateEndpointAllowlist
 	return st, nil
 }
-func (s *Source) get(ctx context.Context, st settings, path string, out any) error {
-	requestPath, err := sourcehttp.NormalizeRequestPath(sourceID, st.apiPrefix+path)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, st.baseURL+requestPath, nil)
-	if err != nil {
-		return err
-	}
-	if st.token != "" {
-		req.Header.Set("Authorization", "Bearer "+st.token)
-	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := sourcehttp.DoWithRetry(ctx, sourcehttp.NewClient(sourcehttp.ClientOptions{
+func (s *Source) clientSettings(st settings) archetypeclient.Settings {
+	return archetypeclient.Settings{
 		SourceID:                 sourceID,
-		AllowLoopback:            s != nil && s.allowLoopbackBaseURL,
+		BaseURL:                  st.baseURL,
+		Token:                    st.token,
+		APIPrefix:                st.apiPrefix,
 		PrivateEndpointAllowlist: st.privateEndpointAllowlist,
-	}), req, sourcehttp.RetryOptions{})
+		AllowLoopback:            s != nil && s.allowLoopbackBaseURL,
+		FanoutConcurrency:        st.fanoutConcurrency,
+	}
+}
+func parseFanoutConcurrency(raw string) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultFanoutConcurrency, nil
+	}
+	value, err := strconv.Atoi(trimmed)
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("%w: archetype request_concurrency must be an integer", sourcecdk.ErrInvalidConfig)
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &sourcecdk.HTTPStatusError{Code: resp.StatusCode, Message: fmt.Sprintf("archetype GET %s failed with status %d", path, resp.StatusCode)}
+	if value <= 0 || value > maxFanoutConcurrency {
+		return 0, fmt.Errorf("%w: archetype request_concurrency must be between 1 and %d", sourcecdk.ErrInvalidConfig, maxFanoutConcurrency)
 	}
-	return json.Unmarshal(resp.Body, out)
-}
-func (s *Source) repositories(ctx context.Context, st settings) map[int]repositoryRecord {
-	var repos []repositoryRecord
-	if err := s.get(ctx, st, "/repositories", &repos); err != nil {
-		return nil
-	}
-	out := map[int]repositoryRecord{}
-	for _, repo := range repos {
-		out[repo.ID] = repo
-	}
-	return out
-}
-func (s *Source) repositoryKnowledge(ctx context.Context, st settings, repositoryID int) ([]knowledgeEntryRecord, bool) {
-	var response struct {
-		Entries []knowledgeEntryRecord `json:"entries"`
-	}
-	if err := s.get(ctx, st, fmt.Sprintf("/repositories/%d/knowledge", repositoryID), &response); err != nil {
-		if sourcecdk.IsHTTPStatus(err, http.StatusNotFound) || sourcecdk.IsHTTPStatus(err, http.StatusForbidden) || sourcecdk.IsRetryableHTTPStatus(err) {
-			return nil, !sourcecdk.IsRetryableHTTPStatus(err)
-		}
-		return nil, false
-	}
-	return response.Entries, true
+	return value, nil
 }
 func scanEvent(st settings, scan scanRecord, repo repositoryRecord) *primitives.Event {
 	attrs := map[string]string{"scan_id": strconv.Itoa(scan.ID), "repository_id": strconv.Itoa(scan.RepositoryID), "status": scan.Status, "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}

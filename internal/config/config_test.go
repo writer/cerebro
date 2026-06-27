@@ -49,6 +49,8 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "")
+	t.Setenv("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE", "")
+	t.Setenv("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY", "")
 	clearGraphAgentEnv(t)
 	clearOpenTelemetryEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
@@ -108,6 +110,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.GraphStore.Driver != "" {
 		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
+	}
+	if cfg.GraphStore.Neo4jProjectionBatchSize != 500 || cfg.GraphStore.Neo4jProjectionWriteConcurrency != 4 {
+		t.Fatalf("GraphStore projection defaults = %#v", cfg.GraphStore)
 	}
 	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 || cfg.GraphAgentLLM.TemperatureSet {
 		t.Fatalf("GraphAgentLLM = %#v, want empty/default", cfg.GraphAgentLLM)
@@ -199,6 +204,8 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
 	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "45s")
+	t.Setenv("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE", "750")
+	t.Setenv("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY", "8")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER", "stub")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL", "claude-sonnet-4-6")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET", "anthropic.claude-sonnet-example")
@@ -321,6 +328,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.GraphStore.Neo4jQueryTimeout != 45*time.Second {
 		t.Fatalf("Neo4jQueryTimeout = %v, want 45s", cfg.GraphStore.Neo4jQueryTimeout)
+	}
+	if cfg.GraphStore.Neo4jProjectionBatchSize != 750 || cfg.GraphStore.Neo4jProjectionWriteConcurrency != 8 {
+		t.Fatalf("GraphStore projection config = %#v", cfg.GraphStore)
 	}
 	if cfg.GraphAgentLLM.Provider != "stub" || cfg.GraphAgentLLM.MaxTokens != 900 || cfg.GraphAgentLLM.Temperature != 0.25 || !cfg.GraphAgentLLM.TemperatureSet {
 		t.Fatalf("GraphAgentLLM = %#v", cfg.GraphAgentLLM)
@@ -618,6 +628,8 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "")
+	t.Setenv("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE", "")
+	t.Setenv("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY", "")
 	clearGraphAgentEnv(t)
 	clearOpenTelemetryEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
@@ -1266,6 +1278,28 @@ func TestLoadRejectsMissingNeo4jPassword(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidNeo4jProjectionTuning(t *testing.T) {
+	cases := map[string]map[string]string{
+		"batch size zero":        {"CEREBRO_NEO4J_PROJECTION_BATCH_SIZE": "0"},
+		"write concurrency zero": {"CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY": "0"},
+	}
+	for name, env := range cases {
+		t.Run(name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
+			t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+			t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+			t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+			for key, value := range env {
+				t.Setenv(key, value)
+			}
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want non-nil")
+			}
+		})
 	}
 }
 

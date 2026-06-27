@@ -100,12 +100,14 @@ type StateStoreConfig struct {
 
 // GraphStoreConfig selects and configures the graph projection store driver.
 type GraphStoreConfig struct {
-	Driver            string
-	Neo4jURI          string
-	Neo4jUsername     string
-	Neo4jPassword     string
-	Neo4jDatabase     string
-	Neo4jQueryTimeout time.Duration
+	Driver                          string
+	Neo4jURI                        string
+	Neo4jUsername                   string
+	Neo4jPassword                   string
+	Neo4jDatabase                   string
+	Neo4jQueryTimeout               time.Duration
+	Neo4jProjectionBatchSize        int
+	Neo4jProjectionWriteConcurrency int
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -600,6 +602,18 @@ func Load() (Config, error) {
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
 	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
 		return Config{}, err
+	}
+	if cfg.GraphStore.Neo4jProjectionBatchSize, err = parseIntEnv("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE", 500); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphStore.Neo4jProjectionBatchSize <= 0 {
+		return Config{}, errors.New("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.GraphStore.Neo4jProjectionWriteConcurrency, err = parseIntEnv("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY", 4); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphStore.Neo4jProjectionWriteConcurrency <= 0 {
+		return Config{}, errors.New("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY must be greater than zero")
 	}
 	if cfg.GraphActions.AccessApprovals.Timeout, err = parseDurationEnv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", 10*time.Second); err != nil {
 		return Config{}, err
