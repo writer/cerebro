@@ -1095,8 +1095,12 @@ func TestPrepareProjectedEntitiesValidationErrors(t *testing.T) {
 		"projected entity type is required": {URN: "urn:x", TenantID: "writer", SourceID: "github"},
 	}
 	for want, entity := range cases {
-		if _, err := prepareProjectedEntities([]*ports.ProjectedEntity{entity}); err == nil || !strings.Contains(err.Error(), want) {
-			t.Fatalf("prepareProjectedEntities(%#v) error = %v, want %q", entity, err, want)
+		_, err := prepareProjectedEntities([]*ports.ProjectedEntity{entity})
+		if err == nil {
+			t.Fatalf("prepareProjectedEntities(%#v) error = nil, want %q", entity, want)
+		}
+		if got := err.Error(); !strings.Contains(got, want) {
+			t.Fatalf("prepareProjectedEntities(%#v) error = %q, want %q", entity, got, want)
 		}
 	}
 }
@@ -1149,8 +1153,12 @@ func TestPrepareProjectedLinksValidationErrors(t *testing.T) {
 		"projected link relation is required": {TenantID: "writer", SourceID: "github", FromURN: "urn:x", ToURN: "urn:y"},
 	}
 	for want, link := range cases {
-		if _, err := prepareProjectedLinks([]*ports.ProjectedLink{link}); err == nil || !strings.Contains(err.Error(), want) {
-			t.Fatalf("prepareProjectedLinks(%#v) error = %v, want %q", link, err, want)
+		_, err := prepareProjectedLinks([]*ports.ProjectedLink{link})
+		if err == nil {
+			t.Fatalf("prepareProjectedLinks(%#v) error = nil, want %q", link, want)
+		}
+		if got := err.Error(); !strings.Contains(got, want) {
+			t.Fatalf("prepareProjectedLinks(%#v) error = %q, want %q", link, got, want)
 		}
 	}
 }
