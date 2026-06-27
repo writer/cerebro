@@ -125,7 +125,7 @@ config:
         api_prefix: /api/v1
       schedule:
         cadenceHours: 1
-        name: archetype-vulnerability-sync
+        nameSuffix: sync
       families:
         - vulnerability
     - sourceId: aws
