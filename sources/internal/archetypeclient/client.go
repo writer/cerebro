@@ -49,14 +49,19 @@ type Vulnerability struct {
 }
 
 type KnowledgeEntry struct {
-	Slug             string   `json:"slug"`
-	Title            string   `json:"title"`
-	Summary          string   `json:"summary"`
-	Topics           []string `json:"topics,omitempty"`
-	DominantSeverity string   `json:"dominant_severity,omitempty"`
-	RepositoryID     int      `json:"repository_id"`
-	RepositoryName   string   `json:"repository_name"`
-	Owner            string   `json:"owner"`
+	Slug              string         `json:"slug"`
+	Title             string         `json:"title"`
+	Summary           string         `json:"summary"`
+	Topics            []string       `json:"topics,omitempty"`
+	GeneratedAt       string         `json:"generated_at,omitempty"`
+	SourceFiles       []string       `json:"source_files,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	SeverityTags      []string       `json:"severity_tags,omitempty"`
+	DominantSeverity  string         `json:"dominant_severity,omitempty"`
+	SeverityBreakdown []any          `json:"severity_breakdown,omitempty"`
+	RepositoryID      int            `json:"repository_id"`
+	RepositoryName    string         `json:"repository_name"`
+	Owner             string         `json:"owner"`
 }
 
 type Repository struct {

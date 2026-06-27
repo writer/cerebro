@@ -91,11 +91,21 @@ func TestSourceReadEmitsLibraryNoteEvents(t *testing.T) {
 		case "/api/v1/repositories/7/knowledge":
 			writeJSON(t, w, map[string]any{
 				"entries": []map[string]any{{
-					"slug":              "repository-commit-learning",
-					"title":             "Repository commit learning",
-					"summary":           "Archetype learned the latest repository head.",
-					"topics":            []string{"gitops", "commits", "librarian"},
-					"generated_at":      "2026-06-17T12:04:00Z",
+					"slug":         "repository-commit-learning",
+					"title":        "Repository commit learning",
+					"summary":      "Archetype learned the latest repository head.",
+					"topics":       []string{"gitops", "commits", "librarian"},
+					"generated_at": "2026-06-17T12:04:00Z",
+					"source_files": []string{"services/archetype-runtime/src/state.rs"},
+					"metadata": map[string]any{
+						"context_pack":      "repository_context_pack_v2",
+						"context_kind":      "repository-commit-learning",
+						"health_score":      72,
+						"freshness_state":   "stale",
+						"recommended_depth": "deep",
+						"context_stale":     true,
+						"needs_learning":    true,
+					},
 					"repository_id":     7,
 					"repository_name":   "Archetype",
 					"owner":             "WriterInternal",
@@ -139,6 +149,21 @@ func TestSourceReadEmitsLibraryNoteEvents(t *testing.T) {
 	if got := attrs["dominant_severity"]; got != "info" {
 		t.Fatalf("library dominant_severity attr = %q, want info", got)
 	}
+	if got := attrs["context_pack"]; got != "repository_context_pack_v2" {
+		t.Fatalf("library context_pack attr = %q, want repository_context_pack_v2", got)
+	}
+	if got := attrs["context_kind"]; got != "repository-commit-learning" {
+		t.Fatalf("library context_kind attr = %q, want repository-commit-learning", got)
+	}
+	if got := attrs["health_score"]; got != "72" {
+		t.Fatalf("library health_score attr = %q, want 72", got)
+	}
+	if got := attrs["freshness_state"]; got != "stale" {
+		t.Fatalf("library freshness_state attr = %q, want stale", got)
+	}
+	if got := attrs["source_files"]; got != "services/archetype-runtime/src/state.rs" {
+		t.Fatalf("library source_files attr = %q, want state source", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(pull.Events[1].GetPayload(), &payload); err != nil {
 		t.Fatalf("decode library payload: %v", err)
@@ -146,6 +171,10 @@ func TestSourceReadEmitsLibraryNoteEvents(t *testing.T) {
 	topics, ok := payload["topics"].([]any)
 	if !ok || len(topics) != 3 || topics[0] != "gitops" {
 		t.Fatalf("library payload topics = %#v, want gitops/commits/librarian", payload["topics"])
+	}
+	metadata, ok := payload["metadata"].(map[string]any)
+	if !ok || metadata["context_pack"] != "repository_context_pack_v2" {
+		t.Fatalf("library payload metadata = %#v, want context pack", payload["metadata"])
 	}
 }
 
