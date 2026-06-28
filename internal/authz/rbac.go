@@ -7,6 +7,7 @@ const (
 	ScopeFindingCandidatePromote   = "cerebro.finding_candidates.promote"
 	ScopeFindingLifecycleWrite     = "cerebro.findings.write"
 	ScopeGRCInventoryWrite         = "cerebro.grc.inventory.write"
+	ScopeGRCPolicyLifecycleWrite   = "cerebro.grc.policy_lifecycle.write"
 	ScopeConnectorCredentialsRead  = "cerebro.connector_credentials.read"
 	ScopeConnectorCredentialsWrite = "cerebro.connector_credentials.write"
 	ScopeRuntimeResponseWrite      = "cerebro.runtime_response.write"
@@ -40,6 +41,7 @@ var allScopes = []string{
 	ScopeFindingCandidatePromote,
 	ScopeFindingLifecycleWrite,
 	ScopeGRCInventoryWrite,
+	ScopeGRCPolicyLifecycleWrite,
 	ScopeConnectorCredentialsRead,
 	ScopeConnectorCredentialsWrite,
 	ScopeRuntimeResponseWrite,
@@ -69,6 +71,7 @@ var roleScopes = map[string][]string{
 		ScopeFindingCandidatePromote,
 		ScopeFindingLifecycleWrite,
 		ScopeGRCInventoryWrite,
+		ScopeGRCPolicyLifecycleWrite,
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
@@ -79,6 +82,7 @@ var roleScopes = map[string][]string{
 		ScopeFindingCandidatePromote,
 		ScopeFindingLifecycleWrite,
 		ScopeGRCInventoryWrite,
+		ScopeGRCPolicyLifecycleWrite,
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
@@ -89,12 +93,13 @@ var roleScopes = map[string][]string{
 		ScopeFindingCandidatePromote,
 		ScopeFindingLifecycleWrite,
 		ScopeGRCInventoryWrite,
+		ScopeGRCPolicyLifecycleWrite,
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
 	},
-	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite},
-	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeGRCInventoryWrite, ScopeAskQueriesWrite, ScopeDashboardsWrite, ScopeRiskScoringWrite},
+	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite},
+	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeGRCInventoryWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeDashboardsWrite, ScopeRiskScoringWrite},
 	RoleCerebroConnectorManager: {
 		ScopeCosmoSecurityRead,
 		ScopeUserPreferencesWrite,

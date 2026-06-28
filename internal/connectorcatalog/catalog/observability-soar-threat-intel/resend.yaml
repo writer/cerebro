@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: resend
     display_name: Resend
-    description: Resend connector definition catalog entry for high-value security and operations resources.
+    description: "Collects domains, API keys, and audit events from Resend and projects them into the Cerebro graph as assets, secrets, and audit events for alert, incident, service health, and response context."
     categories:
     - observability
     - email

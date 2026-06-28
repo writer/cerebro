@@ -7,8 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: three_sixty_learning
     display_name: Three Sixty Learning
-    description: Three Sixty Learning connector definition for high-value enterprise
-      SaaS records.
+    description: "Collects users, accounts, records, policies, and audit events from Three Sixty Learning and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
     categories:
     - saas
     - business_data_grc

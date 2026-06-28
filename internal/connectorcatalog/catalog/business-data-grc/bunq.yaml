@@ -17,7 +17,7 @@ entries:
       key: userid
       label: Userid
       required: true
-    description: "***UPDATE:*** *We have released a [beta version of the new bunq API documentation.](https://beta.doc.bunq.com)*"
+    description: "Collects event, user, credential password IP, and notification filter push from bunq and projects them into the Cerebro graph as audit events, users, secrets, and alerts for owner, account, evidence, and compliance context."
     display_name: bunq
     id: builtin_catalog-bunq
     resource_families:

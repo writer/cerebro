@@ -21,7 +21,7 @@ entries:
       key: test_id
       label: Test Id
       required: true
-    description: Generated from an OpenAPI description.
+    description: "Collects profile, resolution, and location from LambdaTest and projects them into the Cerebro graph as audit events and assets for repository, build, deployment, and release context."
     display_name: LambdaTest
     id: builtin_catalog-lambdatest
     resource_families:

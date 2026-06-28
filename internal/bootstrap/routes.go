@@ -122,6 +122,8 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /grc/query", routeSurfacePlatformHTTP, app.handleGRCQuery)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))
 	registerHTTPRoute(mux, "GET /grc/policy-lifecycle", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("policy.lifecycle", time.Minute, grcCacheScopeGraph), app.handleGRCPolicyLifecycle))
+	registerHTTPRoute(mux, "POST /grc/policy-lifecycle/actions", routeSurfacePlatformHTTP, app.handleGRCPolicyLifecycleAction)
+	registerHTTPRoute(mux, "GET /grc/policy-lifecycle/export", routeSurfacePlatformHTTP, app.handleGRCPolicyLifecycleExport)
 	registerHTTPRoute(mux, "GET /grc/trends", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("trends", time.Minute, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCTrends))
 	registerHTTPRoute(mux, "POST /grc/ask", routeSurfacePlatformHTTP, app.handleGRCAsk)
 	registerHTTPRoute(mux, "GET /grc/risk-scoring-config", routeSurfacePlatformHTTP, app.handleGetRiskScoringConfig)

@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/grccontrol"
 	"github.com/writer/cerebro/internal/grcfindings"
+	"github.com/writer/cerebro/internal/grcpolicylifecycle"
 	"github.com/writer/cerebro/internal/grcproductareas"
 	"github.com/writer/cerebro/internal/grctrends"
 	"github.com/writer/cerebro/internal/grcvendor"
@@ -1452,12 +1453,14 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable),
+		errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
 		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
 		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, grcpolicylifecycle.ErrInvalidRequest),
 		errors.Is(err, grcvendor.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest

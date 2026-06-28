@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: statuspage
     display_name: Statuspage
-    description: Statuspage connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, tickets, and audit events from Statuspage and projects them into the Cerebro graph as users, assets, and audit events for owner, account, evidence, and compliance context."
     categories:
     - itsm
     - incident

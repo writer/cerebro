@@ -21,12 +21,11 @@ const (
 	cloudPublicExposurePrivilegedPrincipalRuleID   = "cloud-public-exposure-privileged-principal"
 	cloudPublicExposurePrivilegedPrincipalKind     = "finding.cloud_public_exposure_privileged_principal"
 	cloudPublicExposurePrivilegedPrincipalRowLimit = 250
-	// cloudPublicExposurePrivilegedPrincipalPerAccountCap bounds the exposure x
-	// privileged-principal cross product per cloud account. Without it the join on
-	// the account hub materializes (exposed resources) x (privileged principals)
-	// for every account before ORDER BY/LIMIT, which sorts the whole product in
-	// memory and is the dominant cost on large accounts. Capping each side keeps a
-	// deterministic, lexicographically-ordered representative sample.
+	// cloudPublicExposurePrivilegedPrincipalPerAccountCap bounds the exposure and
+	// proof-path sample per cloud account. Without it broad accounts can return a
+	// very large number of exposure-to-principal paths before ORDER BY/LIMIT.
+	// Capping keeps a deterministic, lexicographically ordered representative
+	// sample.
 	//
 	// When the cap actually drops data the query emits graph_rule_truncated=true
 	// so the service marks the evaluation truncated and skips stale-finding
@@ -113,6 +112,9 @@ WHERE public.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'az
 WITH account, public, reach, exposed
 ORDER BY exposed.label, exposed.urn
 WITH account, collect(DISTINCT {
+       public: public,
+       reach: reach,
+       exposed: exposed,
        public_urn: public.urn,
        public_entity_type: public.entity_type,
        public_label: public.label,
@@ -123,7 +125,12 @@ WITH account, collect(DISTINCT {
      }) AS all_exposures
 WITH account, size(all_exposures) > $exposure_cap AS exposures_capped, all_exposures[0..$exposure_cap] AS exposures
 WHERE size(exposures) > 0
-MATCH (principal:Entity {tenant_id: $tenant_id})-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
+UNWIND exposures AS exposure
+WITH account, exposures_capped, exposure, exposure.exposed AS exposed
+MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})
+WHERE all(node IN nodes(proof_path) WHERE node.tenant_id = $tenant_id)
+  AND all(rel IN relationships(proof_path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $traversal_relations)
+MATCH (principal)-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
 WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
   AND (
     access.relation <> 'can_perform'
@@ -132,22 +139,21 @@ WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_imperso
     OR coalesce(access.attributes_json, '') CONTAINS 'AdministratorAccess'
     OR coalesce(access.attributes_json, '') CONTAINS '"permission":"*"'
   )
-WITH account, exposures, exposures_capped, principal, access, permission
-ORDER BY principal.label, permission.label
-WITH account, exposures, exposures_capped, collect(DISTINCT {
-       principal_urn: principal.urn,
-       principal_entity_type: principal.entity_type,
-       principal_label: principal.label,
-       permission_urn: permission.urn,
-       permission_entity_type: permission.entity_type,
-       permission_label: permission.label,
-       access_relation: access.relation,
-       access_attributes_json: coalesce(access.attributes_json, '')
-     }) AS all_grants
-WITH account, exposures, (exposures_capped OR size(all_grants) > $principal_cap) AS account_capped, all_grants[0..$principal_cap] AS grants
-WHERE size(grants) > 0
-UNWIND exposures AS exposure
-UNWIND grants AS grant
+WITH account, exposures_capped, exposure, principal, access, permission, proof_path
+ORDER BY length(proof_path), principal.label, principal.urn, permission.label, permission.urn
+WITH account, exposures_capped, exposure, principal, access, permission, head(collect(proof_path)) AS proof_path
+ORDER BY exposure.exposed_label, exposure.exposed_urn, principal.label, principal.urn, permission.label, permission.urn
+WITH account, exposures_capped, collect({
+       exposure: exposure,
+       principal: principal,
+       access: access,
+       permission: permission,
+       proof_path: proof_path
+     }) AS all_paths
+WITH account, (exposures_capped OR size(all_paths) > $path_cap) AS account_capped, all_paths[0..$path_cap] AS paths
+WHERE size(paths) > 0
+UNWIND paths AS path
+WITH account, account_capped, path.exposure AS exposure, path.principal AS principal, path.access AS access, path.permission AS permission, path.proof_path AS proof_path
 RETURN exposure.public_urn AS public_urn,
        exposure.public_entity_type AS public_entity_type,
        exposure.public_label AS public_label,
@@ -156,32 +162,45 @@ RETURN exposure.public_urn AS public_urn,
        exposure.exposed_label AS exposed_label,
        account.urn AS account_urn,
        account.label AS account_label,
-       grant.principal_urn AS principal_urn,
-       grant.principal_entity_type AS principal_entity_type,
-       grant.principal_label AS principal_label,
-       grant.permission_urn AS permission_urn,
-       grant.permission_entity_type AS permission_entity_type,
-       grant.permission_label AS permission_label,
+       principal.urn AS principal_urn,
+       principal.entity_type AS principal_entity_type,
+       principal.label AS principal_label,
+       permission.urn AS permission_urn,
+       permission.entity_type AS permission_entity_type,
+       permission.label AS permission_label,
        exposure.reach_relation AS reach_relation,
-       grant.access_relation AS access_relation,
-       grant.access_attributes_json AS access_attributes_json,
+       access.relation AS access_relation,
+       coalesce(access.attributes_json, '') AS access_attributes_json,
+       [rel IN relationships(proof_path) | rel.relation] AS relation_chain,
+       [idx IN range(0, length(proof_path) - 1) | {
+         from_urn: nodes(proof_path)[idx].urn,
+         from_label: nodes(proof_path)[idx].label,
+         from_entity_type: nodes(proof_path)[idx].entity_type,
+         relation: relationships(proof_path)[idx].relation,
+         to_urn: nodes(proof_path)[idx + 1].urn,
+         to_label: nodes(proof_path)[idx + 1].label,
+         to_entity_type: nodes(proof_path)[idx + 1].entity_type,
+         direction: CASE WHEN startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx] THEN 'forward' ELSE 'reverse' END,
+         attributes_json: coalesce(relationships(proof_path)[idx].attributes_json, '')
+       }] AS traversal_edges,
        account_capped AS graph_rule_truncated
 ORDER BY account_label, exposed_label, principal_label, permission_label
 LIMIT $row_limit`,
 		Params: map[string]any{
-			"tenant_id":     strings.TrimSpace(runtime.GetTenantId()),
-			"row_limit":     int64(cloudPublicExposurePrivilegedPrincipalRowLimit),
-			"exposure_cap":  int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
-			"principal_cap": int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
+			"tenant_id":           strings.TrimSpace(runtime.GetTenantId()),
+			"row_limit":           int64(cloudPublicExposurePrivilegedPrincipalRowLimit),
+			"exposure_cap":        int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
+			"path_cap":            int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
+			"traversal_relations": cloudAttackPathTraversalRelations(),
 		},
 		RowLimit: cloudPublicExposurePrivilegedPrincipalRowLimit,
 	}
 }
 
 // StaleResolutionScopeAttribute groups stale-finding resolution by cloud account.
-// The per-account cap can drop exposure x principal combinations for some accounts
-// while leaving others fully represented, so resolution must only touch accounts
-// that came back complete.
+// The per-account cap can drop exposure-to-principal proof paths for some
+// accounts while leaving others fully represented, so resolution must only touch
+// accounts that came back complete.
 func (r *cloudPublicExposurePrivilegedPrincipalRule) StaleResolutionScopeAttribute() string {
 	return "cloud_account_urn"
 }
@@ -227,6 +246,11 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 	if accountURN == "" || exposedURN == "" || principalURN == "" || permissionURN == "" {
 		return nil
 	}
+	relationChain := cloudAttackPathRelationChain(row)
+	traversalPaths := cloudAttackPathTraversalEvidencePaths(row)
+	if len(relationChain) == 0 || len(traversalPaths) == 0 {
+		return nil
+	}
 	accountLabel := cypherRowString(row, "account_label")
 	exposedLabel := cypherRowString(row, "exposed_label")
 	principalLabel := cypherRowString(row, "principal_label")
@@ -244,24 +268,30 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 		"public_principal_urn":  cypherRowString(row, "public_urn"),
 		"reach_relation":        cypherRowString(row, "reach_relation"),
 		"source_runtime_id":     strings.TrimSpace(runtime.GetId()),
+		"traversal_depth":       fmt.Sprintf("%d", len(relationChain)),
+		"traversal_relations":   strings.Join(relationChain, ","),
 	}
 	for key, value := range r.definition.AttributeMap() {
 		attributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(attributes)
 	fingerprint := hashFindingFingerprint(r.definition.ID, accountURN, exposedURN, principalURN, permissionURN)
-	summary := fmt.Sprintf("Publicly reachable cloud resource %s shares account %s with privileged principal %s via %s", firstNonEmpty(exposedLabel, exposedURN), firstNonEmpty(accountLabel, accountURN), firstNonEmpty(principalLabel, principalURN), firstNonEmpty(permissionLabel, permissionURN))
+	summary := fmt.Sprintf("Publicly reachable cloud resource %s reaches privileged principal %s via %s", firstNonEmpty(exposedLabel, exposedURN), firstNonEmpty(principalLabel, principalURN), firstNonEmpty(permissionLabel, permissionURN))
+	evidencePaths := []*cerebrov1.GraphEvidencePath{
+		newGraphEvidencePath(cypherRowString(row, "public_urn"), cypherRowString(row, "public_label"), cypherRowString(row, "public_entity_type"), cypherRowString(row, "reach_relation"), exposedURN, exposedLabel, cypherRowString(row, "exposed_entity_type"), nil),
+	}
+	evidencePaths = append(evidencePaths, traversalPaths...)
+	evidencePaths = append(evidencePaths, newGraphEvidencePath(principalURN, principalLabel, cypherRowString(row, "principal_entity_type"), cypherRowString(row, "access_relation"), permissionURN, permissionLabel, cypherRowString(row, "permission_entity_type"), edgeStringAttributes(cypherRowString(row, "access_attributes_json"))))
 	graphRows := []*cerebrov1.GraphEvidenceRow{
 		newGraphEvidenceRow("cloud_attack_path", map[string]string{
 			"account":    firstNonEmpty(accountLabel, accountURN),
 			"permission": firstNonEmpty(permissionLabel, permissionURN),
 			"principal":  firstNonEmpty(principalLabel, principalURN),
 			"resource":   firstNonEmpty(exposedLabel, exposedURN),
-		},
-			newGraphEvidencePath(cypherRowString(row, "public_urn"), cypherRowString(row, "public_label"), cypherRowString(row, "public_entity_type"), cypherRowString(row, "reach_relation"), exposedURN, exposedLabel, cypherRowString(row, "exposed_entity_type"), nil),
-			newGraphEvidencePath(principalURN, principalLabel, cypherRowString(row, "principal_entity_type"), cypherRowString(row, "access_relation"), permissionURN, permissionLabel, cypherRowString(row, "permission_entity_type"), edgeStringAttributes(cypherRowString(row, "access_attributes_json"))),
-		),
+			"relations":  strings.Join(relationChain, ","),
+		}, evidencePaths...),
 	}
+	resourceURNs := cloudAttackPathResourceURNs(row, exposedURN, principalURN, permissionURN, accountURN)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
 		Fingerprint:       fingerprint,
@@ -272,7 +302,7 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 		Severity:          r.definition.Severity,
 		Status:            r.definition.Status,
 		Summary:           summary,
-		ResourceURNs:      deduplicateStrings([]string{exposedURN, principalURN, permissionURN, accountURN}),
+		ResourceURNs:      resourceURNs,
 		ObservedPolicyIDs: []string{permissionURN},
 		PolicyID:          permissionURN,
 		PolicyName:        firstNonEmpty(permissionLabel, permissionURN),
@@ -284,4 +314,82 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 		FirstObservedAt:   now,
 		LastObservedAt:    now,
 	}
+}
+
+func cloudAttackPathTraversalRelations() []string {
+	return []string{
+		"assigned_to",
+		"attached_to",
+		"can_assume",
+		"can_impersonate",
+		"depends_on",
+		"member_of",
+		"runs_as",
+	}
+}
+
+func cloudAttackPathRelationChain(row ports.CypherRow) []string {
+	items := cypherRowList(row, "relation_chain")
+	if len(items) == 0 {
+		return nil
+	}
+	relations := make([]string, 0, len(items))
+	for _, item := range items {
+		relation := ""
+		switch typed := item.(type) {
+		case string:
+			relation = strings.TrimSpace(typed)
+		case fmt.Stringer:
+			relation = strings.TrimSpace(typed.String())
+		default:
+			relation = strings.TrimSpace(fmt.Sprintf("%v", typed))
+		}
+		if relation != "" {
+			relations = append(relations, relation)
+		}
+	}
+	return relations
+}
+
+func cloudAttackPathTraversalEvidencePaths(row ports.CypherRow) []*cerebrov1.GraphEvidencePath {
+	items := cypherRowList(row, "traversal_edges")
+	if len(items) == 0 {
+		return nil
+	}
+	paths := make([]*cerebrov1.GraphEvidencePath, 0, len(items))
+	for _, item := range items {
+		fromURN := cypherListMapString(item, "from_urn")
+		toURN := cypherListMapString(item, "to_urn")
+		relation := cypherListMapString(item, "relation")
+		if fromURN == "" || toURN == "" || relation == "" {
+			continue
+		}
+		attributes := edgeStringAttributes(cypherListMapString(item, "attributes_json"))
+		if direction := cypherListMapString(item, "direction"); direction != "" {
+			if attributes == nil {
+				attributes = map[string]string{}
+			}
+			attributes["traversal_direction"] = direction
+		}
+		paths = append(paths, newGraphEvidencePath(
+			fromURN,
+			cypherListMapString(item, "from_label"),
+			cypherListMapString(item, "from_entity_type"),
+			relation,
+			toURN,
+			cypherListMapString(item, "to_label"),
+			cypherListMapString(item, "to_entity_type"),
+			attributes,
+		))
+	}
+	return paths
+}
+
+func cloudAttackPathResourceURNs(row ports.CypherRow, exposedURN string, principalURN string, permissionURN string, accountURN string) []string {
+	resourceURNs := []string{exposedURN}
+	for _, item := range cypherRowList(row, "traversal_edges") {
+		resourceURNs = append(resourceURNs, cypherListMapString(item, "from_urn"), cypherListMapString(item, "to_urn"))
+	}
+	resourceURNs = append(resourceURNs, principalURN, permissionURN, accountURN)
+	return deduplicateStrings(resourceURNs)
 }

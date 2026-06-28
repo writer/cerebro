@@ -28,7 +28,7 @@ func (s *Service) projectFindingTombstoned(ctx context.Context, event *cerebrov1
 
 func findingSnapshotWithTombstoneMetadata(payload *workflowevents.FindingTombstoned) workflowevents.FindingSnapshot {
 	finding := payload.Finding
-	metadata := make(map[string]string, len(finding.Metadata)+4)
+	metadata := make(map[string]string, len(finding.Metadata))
 	for key, value := range finding.Metadata {
 		metadata[key] = value
 	}

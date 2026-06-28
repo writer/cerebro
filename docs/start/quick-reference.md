@@ -15,6 +15,13 @@ docker compose up --build
 ```
 
 End-to-end local walkthrough: [`docs/start/getting-started.md`](getting-started.md).
+Coding agent handoff: [`docs/start/agent-onboarding.md`](agent-onboarding.md).
+
+First security onboarding run:
+
+```bash
+make secure-business-demo
+```
 
 Health and source catalog:
 
@@ -79,6 +86,8 @@ make verify
 make readme-check
 make docs-drift-check
 make oss-audit
+make agent-onboard-test
+make agent-onboard-e2e
 ```
 
 Focused targets:

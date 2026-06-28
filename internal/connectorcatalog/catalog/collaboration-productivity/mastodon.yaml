@@ -17,7 +17,7 @@ entries:
       key: id
       label: Id
       required: true
-    description: Generated from an OpenAPI description.
+    description: "Collects account, activity, verify credential, and notification from Mastodon and projects them into the Cerebro graph as users, audit events, secrets, and alerts for workspace, document, message, and collaboration context."
     display_name: Mastodon
     id: builtin_catalog-mastodon
     resource_families:

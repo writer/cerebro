@@ -206,6 +206,7 @@ func authorizeAgentPlatformClaimVerificationURNs(ctx context.Context, request ag
 	urns := []string{request.ScopeURN}
 	urns = append(urns, request.SupportingEvidenceURNs...)
 	urns = append(urns, request.CounterEvidenceURNs...)
+	urns = append(urns, request.MissingEvidence...)
 	for _, urn := range urns {
 		urn = strings.TrimSpace(urn)
 		if urn == "" || !strings.HasPrefix(urn, "urn:cerebro:") {

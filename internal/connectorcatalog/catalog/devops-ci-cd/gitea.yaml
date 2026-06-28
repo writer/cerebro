@@ -25,7 +25,7 @@ entries:
       key: index
       label: Index
       required: true
-    description: This documentation describes the Gitea API.
+    description: "Collects search, email, team, and timeline from Gitea and projects them into the Cerebro graph as findings, users, groups, and audit events for repository, build, deployment, and release context."
     display_name: Gitea
     id: builtin_catalog-gitea
     resource_families:

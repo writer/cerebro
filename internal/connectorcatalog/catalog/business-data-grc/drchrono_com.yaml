@@ -39,7 +39,7 @@ entries:
       token_url: https://drchrono.com/o/token/
     categories:
     - saas
-    description: This document is intended as a detailed reference for the precise behavior of the drchrono API. If this is your first time using the API, start with our <a href="/api-docs-old/tutorial">tutorial</a>. If you are upgrading from a previous version, take a look at the changelog section.
+    description: "Collects patient risk assessment, comm log, care team member, user, implantable device, and patient payment log from Drchrono Com and projects them into the Cerebro graph as findings, audit events, group memberships, users, and assets for owner, account, evidence, and compliance context."
     display_name: Drchrono Com
     id: builtin_catalog-drchrono_com
     ingest:

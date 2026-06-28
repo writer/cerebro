@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: cyberark_pam
     display_name: CyberArk PAM
-    description: CyberArk PAM connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, secrets, and audit events from CyberArk PAM and projects them into the Cerebro graph as users, secrets, and audit events for identity, access, device, and secret context."
     categories:
     - identity
     - secrets

@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: XTRF Home Portal API enables you to perform operations on Projects, Quotes, Customers, Vendors etc. as a XTRF Home Portal user. <br>The documentation is generated from OpenAPI specification 3.0 available <a href="/home-api/openapi.json">here</a> <br> The API client/consumer code may be easily generated in 60+ programming languages using an open source code generator available at the time of...
+    description: "Collects user, active, all, customer, ID, and invoices ID from XTRF Home Portal API and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
     display_name: XTRF Home Portal API
     id: builtin_catalog-xtrf_eu
     ingest:

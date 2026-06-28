@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "<div style='line-height: 30px;'> <strong>Welcome to the Big Red Cloud API</strong><br/> This API enables programmatic access to Big Red Cloud data.<br/> We have used Swagger to auto generate the API documentation on this page, and it also enables direct interaction with the API in this page. <br/> To get started, you will require an API Key - check out our guide at <a target='_blank'..."
+    description: "Collects account, ownertypegroup, analysiscategory, and bankaccount from Big Red Cloud and projects them into the Cerebro graph as users, groups, and assets for owner, account, evidence, and compliance context."
     display_name: Big Red Cloud
     id: builtin_catalog-bigredcloud
     resource_families:

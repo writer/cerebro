@@ -51,6 +51,7 @@ docker compose up --build
 | --- | --- |
 | Get the shortest runnable path | [Quick reference](docs/start/quick-reference.md) |
 | Walk through a local end-to-end flow | [Getting started](docs/start/getting-started.md) |
+| Hand setup to a coding agent | [Agent onboarding](docs/start/agent-onboarding.md) |
 | Understand runtime shape and stores | [Architecture](docs/reference/architecture.md) |
 | Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
 | Host or operate Cerebro | [Hosting](docs/operations/hosting.md), [runtime profiles](docs/operations/runtime-profiles.md), [deployment readiness](docs/operations/deployment-readiness.md), [cloud deployment](docs/operations/cloud-deployment.md), [deployment examples](docs/operations/deployment-examples.md), and [operations runbook](docs/operations/operations-runbook.md) |
@@ -92,6 +93,9 @@ See [Non-goals](docs/engineering/non-goals.md) before changing storage shape, So
 ```bash
 make build          # compile ./bin/cerebro
 make serve-dev      # run the local server with acknowledged dev-mode opt-out
+make secure-business-demo  # run local security onboarding and write a receipt
+make agent-onboard  # run an onboarding plan and write a redacted receipt
+make agent-onboard-e2e  # run the Docker-backed local onboarding workflow
 make test           # go test ./...
 make check          # build, tests, lint, proto lint, structural checks, arch tests
 make verify         # CI-parity local verification

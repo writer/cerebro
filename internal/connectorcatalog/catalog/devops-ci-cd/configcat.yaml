@@ -25,7 +25,7 @@ entries:
       key: productid
       label: Productid
       required: true
-    description: "**Base API URL**: https://api.configcat.com"
+    description: "Collects auditlog, organization, member, and permission from ConfigCat and projects them into the Cerebro graph as audit events, groups, users, and assets for repository, build, deployment, and release context."
     display_name: ConfigCat
     id: builtin_catalog-configcat
     resource_families:

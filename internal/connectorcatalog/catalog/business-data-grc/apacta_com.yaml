@@ -29,7 +29,7 @@ entries:
       key: user_id
       label: User Id
       required: true
-    description: 'API for a tool to craftsmen used to register working hours, material usage and quality assurance. # Endpoint The endpoint `https://app.apacta.com/api/v1` should be used to communicate with the API. API access is only allowed with SSL encrypted connection (https). # Authentication URL query authentication with an API key is used, so appending `?api_key={api_key}` to the URL where `{api_key}` is...'
+    description: "Collects activity, mass messages user, role, city, event, and changelog from Apacta and projects them into the Cerebro graph as audit events, users, groups, and assets for owner, account, evidence, and compliance context."
     display_name: Apacta
     id: builtin_catalog-apacta_com
     ingest:

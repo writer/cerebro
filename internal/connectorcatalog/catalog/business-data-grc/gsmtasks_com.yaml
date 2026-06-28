@@ -17,7 +17,7 @@ entries:
       label: API base URL
       placeholder: api.example.com
       required: true
-    description: The GSMtasks API is a RESTful web service for developers to programmatically interact with GSMtasks data, real-time delivery and task management and route optimization functionality.
+    description: "Collects task event, account, client role, formrule, notification, and device from GSMTasks Project API and projects them into the Cerebro graph as audit events, users, groups, policies, and alerts for owner, account, evidence, and compliance context."
     display_name: GSMTasks Project API
     id: builtin_catalog-gsmtasks_com
     ingest:

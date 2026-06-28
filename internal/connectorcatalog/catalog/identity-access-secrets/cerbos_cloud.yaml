@@ -7,8 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: cerbos_cloud
     display_name: Cerbos Cloud
-    description: Cerbos Cloud connector definition for high-value enterprise SaaS
-      records.
+    description: "Collects users, groups, roles, applications, and audit events from Cerbos Cloud and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
     categories:
     - saas
     - identity_access_secrets

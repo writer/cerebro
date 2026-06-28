@@ -25,7 +25,7 @@ entries:
       key: kind
       label: Kind
       required: true
-    description: This is an API definition for CyberArk Conjur Open Source. You can find out more at [Conjur.org](https://www.conjur.org/).
+    description: "Collects authenticator, resource 2, and resource 3 from CyberArk Conjur and projects them into the Cerebro graph as assets for identity, access, device, and secret context."
     display_name: CyberArk Conjur
     id: builtin_catalog-conjur
     ingest:

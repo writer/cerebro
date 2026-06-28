@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: codefresh
     display_name: Codefresh
-    description: Codefresh connector definition catalog entry for high-value security and operations resources.
+    description: "Collects projects, builds, and audit events from Codefresh and projects them into the Cerebro graph as repositories, assets, and audit events for repository, build, deployment, and release context."
     categories:
     - devops
     - ci

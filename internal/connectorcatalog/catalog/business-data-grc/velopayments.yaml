@@ -20,7 +20,7 @@ entries:
       token_url: https://api.sandbox.velopayments.com/v1/login
     categories:
     - saas
-    description: "## Terms and Definitions"
+    description: "Collects delta, sourceaccount, paymentchannelrule, and webhook from Velo Payments and projects them into the Cerebro graph as audit events, users, policies, and assets for owner, account, evidence, and compliance context."
     display_name: Velo Payments
     id: builtin_catalog-velopayments
     resource_families:

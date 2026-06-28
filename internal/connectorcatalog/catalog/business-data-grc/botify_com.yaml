@@ -37,7 +37,7 @@ entries:
       key: source
       label: Source
       required: true
-    description: Botify Saas API
+    description: "Collects filter, export, out of config, sitemap only, report, and project from Botify API and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
     display_name: Botify API
     id: builtin_catalog-botify_com
     ingest:

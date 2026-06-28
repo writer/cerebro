@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: calcom
     display_name: Cal.com
-    description: Cal.com connector definition catalog entry for high-value security and operations resources.
+    description: "Collects bookings, users, and audit events from Cal.com and projects them into the Cerebro graph as audit events and users for owner, account, evidence, and compliance context."
     categories:
     - business
     - productivity

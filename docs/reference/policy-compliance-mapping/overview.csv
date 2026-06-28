@@ -1,0 +1,75 @@
+metric,value
+policy finding rules,1500
+policy-control rows,10012
+tag rows,14986
+unique tags,1021
+domains,36
+frameworks,23
+
+evidence mode,rules
+cel,992
+query,507
+graph,1
+
+domain,rules
+identity,427
+github,346
+aws,135
+cerebro,122
+gcp,67
+kubernetes,57
+azure,55
+ai,52
+m365,26
+api,21
+cicd,18
+runtime,18
+vulnerability,17
+compliance,15
+endpoint,15
+container,14
+pci,11
+org,8
+certificate,7
+salesforce,7
+database,6
+dspm,6
+hipaa,6
+backup,5
+network,5
+okta,5
+vendor,5
+secrets,4
+sentinelone,4
+slack,4
+hubspot,3
+stripe,3
+cross-provider,2
+zendesk,2
+graph,1
+telemetry,1
+
+framework,rules
+SOC 2,1406
+NIST 800-53 r5,1029
+ISO 27001:2022,964
+CIS Controls v8,513
+PCI DSS v4.0.1,428
+CIS AWS Foundations Benchmark v2.0,50
+CIS Kubernetes Benchmark,42
+ISO 42001,39
+EU AI Act,32
+HIPAA,26
+Cerebro Revenue Operations,10
+CIS GKE Benchmark v1.4,9
+Cerebro Organizational Resilience,8
+Cerebro Operational Resilience,7
+GDPR,6
+Cerebro Financial Controls,4
+CIS Benchmarks,3
+CIS GitHub Benchmark,3
+Cerebro AI Governance,2
+ISO 27701,2
+CCPA,1
+CIS EKS Benchmark v1.3,1
+CIS Google Workspace Benchmark,1

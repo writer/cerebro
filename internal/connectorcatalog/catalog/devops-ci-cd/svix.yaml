@@ -29,7 +29,7 @@ entries:
       key: endpoint_id
       label: Endpoint Id
       required: true
-    description: Welcome to the Svix API documentation!
+    description: "Collects event type, endpoint, msg endpoint, and msg from Svix and projects them into the Cerebro graph as audit events and assets for repository, build, deployment, and release context."
     display_name: Svix
     id: builtin_catalog-svix
     resource_families:

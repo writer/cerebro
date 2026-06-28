@@ -16,7 +16,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: CallFire
+    description: "Collects account, credential, broadcast, and call from CallFire and projects them into the Cerebro graph as users, secrets, and assets for workspace, document, message, and collaboration context."
     display_name: CallFire
     id: builtin_catalog-callfire
     resource_families:

@@ -17,7 +17,7 @@ entries:
       key: org_id
       label: Org Id
       required: true
-    description: "> Version: **0.36.1** > > Date: **March 3, 2022**"
+    description: "Collects call event, sitegroup, alarmtemplate, and secpolicy from Juniper Mist and projects them into the Cerebro graph as audit events, groups, alerts, and policies for repository, build, deployment, and release context."
     display_name: Juniper Mist
     id: builtin_catalog-mist
     resource_families:

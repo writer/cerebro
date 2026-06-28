@@ -152,11 +152,13 @@ Recommended work items:
 
 The repo does not ship an end-user web UI. Lifecycle operations should be exposed as typed APIs and CLI surfaces, then consumed by a separate console.
 
-Implemented aggregate endpoint:
+Implemented endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /grc/policy-lifecycle` | Tenant-scoped aggregate of policy templates, policy records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and explicit control/evidence mappings. |
+| `POST /grc/policy-lifecycle/actions` | Append and project a lifecycle action event for template, draft, approval, publish, attestation, review, exception, reminder, or escalation work. |
+| `GET /grc/policy-lifecycle/export` | CSV export of policy versions, approvals, attestations, reviews, exceptions, lifecycle events, and control/evidence mappings, with optional `start` and `end` date filters. |
 
 Candidate follow-on read endpoints:
 
@@ -168,7 +170,7 @@ Candidate follow-on read endpoints:
 | `GET /grc/policies/{policyID}/acceptances` | List employee acceptance state for one policy/version. |
 | `GET /grc/policy-exceptions` | List active, expired, and upcoming policy exceptions. |
 
-Candidate write endpoints:
+Candidate resource-specific write endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |

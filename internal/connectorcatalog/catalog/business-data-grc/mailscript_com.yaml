@@ -21,7 +21,7 @@ entries:
       key: domain
       label: Domain
       required: true
-    description: Generated from an OpenAPI description.
+    description: "Collects workspace, workflow, key, action, addresses, and domain from Mailscript and projects them into the Cerebro graph as groups and assets for owner, account, evidence, and compliance context."
     display_name: Mailscript
     id: builtin_catalog-mailscript_com
     ingest:

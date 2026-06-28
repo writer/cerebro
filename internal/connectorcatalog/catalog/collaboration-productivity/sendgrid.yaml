@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: The Beta endpoints for the new Email Activity APIs - functionality is subject to change without notice. You may not have access to this Beta endpoint.
+    description: "Collects activity, API key, group, and invalid email from SendGrid and projects them into the Cerebro graph as audit events, secrets, groups, and users for workspace, document, message, and collaboration context."
     display_name: SendGrid
     id: builtin_catalog-sendgrid
     resource_families:

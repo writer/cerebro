@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: The general-purpose API
+    description: "Collects IP blocklist, host reputation, bin lookup, and geocode address from Neutrino API and projects them into the Cerebro graph as assets for alert, incident, service health, and response context."
     display_name: Neutrino API
     id: builtin_catalog-neutrinoapi
     resource_families:

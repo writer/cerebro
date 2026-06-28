@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: rippling
     display_name: Rippling
-    description: Rippling connector definition catalog entry for high-value HR, identity, device, and background-check resources.
+    description: "Collects workers, devices, and background checks from Rippling and projects them into the Cerebro graph as users, devices, and audit events for owner, account, evidence, and compliance context."
     categories:
     - hr
     - endpoint

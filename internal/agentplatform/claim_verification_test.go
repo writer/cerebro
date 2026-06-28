@@ -103,6 +103,22 @@ func TestBuildClaimVerificationBlocksCounterevidenceAndPrefersTenantScope(t *tes
 	if !claimVerificationHasBlocker(crossTenantOnly, "tenant-scope") {
 		t.Fatalf("cross-tenant blockers = %+v, want tenant-scope", crossTenantOnly.Blockers)
 	}
+
+	crossTenantMissingEvidence := BuildClaimVerification(ClaimVerificationRequest{
+		TenantID:               "tenant-1",
+		Claim:                  "This finding can be resolved.",
+		ScopeURN:               "urn:cerebro:tenant-1:finding:finding-1",
+		SupportingEvidenceURNs: []string{"urn:cerebro:tenant-1:evidence:evidence-1"},
+		MissingEvidence:        []string{"urn:cerebro:other:evidence:evidence-3"},
+		FreshnessState:         "fresh",
+		RequestedActionStage:   ActionStageRecommend,
+	})
+	if crossTenantMissingEvidence.Verdict != ClaimVerdictUnknown {
+		t.Fatalf("cross-tenant missing evidence verdict = %q, want unknown", crossTenantMissingEvidence.Verdict)
+	}
+	if !claimVerificationHasBlocker(crossTenantMissingEvidence, "tenant-scope") {
+		t.Fatalf("cross-tenant missing evidence blockers = %+v, want tenant-scope", crossTenantMissingEvidence.Blockers)
+	}
 }
 
 func TestBuildClaimVerificationApprovalFollowsMutatingActionStages(t *testing.T) {

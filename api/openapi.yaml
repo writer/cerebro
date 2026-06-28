@@ -2114,6 +2114,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GRCPolicyLifecycleResponse'
+  /grc/policy-lifecycle/export:
+    get:
+      summary: Export GRC policy lifecycle audit records
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - name: start
+          in: query
+          schema:
+            type: string
+          description: Inclusive start date or timestamp for dated lifecycle records.
+        - name: end
+          in: query
+          schema:
+            type: string
+          description: Inclusive end date or timestamp for dated lifecycle records.
+      responses:
+        '200':
+          description: CSV export of policy versions, approvals, attestations, reviews, exceptions, events, and mappings.
+          content:
+            text/csv:
+              schema:
+                type: string
+  /grc/policy-lifecycle/actions:
+    post:
+      summary: Record a GRC policy lifecycle action
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GRCPolicyLifecycleActionRequest'
+      responses:
+        '202':
+          description: Accepted policy lifecycle action event.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCPolicyLifecycleActionResponse'
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -2854,9 +2902,19 @@ paths:
           schema:
             type: string
             enum: [assigned, missing, all]
+        - name: lifecycle_state
+          in: query
+          schema:
+            type: string
+            enum: [discovered, candidate, active, in_review, approved, conditionally_approved, restricted, offboarding, retired, rejected, ignored, unknown, all]
+        - name: queue
+          in: query
+          description: Return vendors with open queue reasons.
+          schema:
+            type: boolean
       responses:
         '200':
-          description: Canonical vendor rows with owner, security review, contract, assurance, finding, and evidence counts.
+          description: Canonical vendor rows with lifecycle, explainable risk scoring, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, owner, security review, freshness, renewal, offboarding, queue, contract, assurance, finding, and evidence counts.
   /grc/vendors/{vendorID}:
     get:
       summary: Vendor detail
@@ -2879,7 +2937,7 @@ paths:
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
-          description: Vendor detail with relationships, open findings, evidence, and graph context.
+          description: Vendor detail with packet, relationships, open findings, evidence, and graph context.
   /grc/vendors/{vendorID}/packet:
     get:
       summary: Vendor packet
@@ -2902,7 +2960,7 @@ paths:
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
-          description: Vendor packet with relationships, open findings, evidence, and graph context.
+          description: Vendor packet with lifecycle, risk inputs, score factors, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, control posture, commercial context, freshness clocks, obligations, contacts, fourth parties, related records, open findings, evidence, and graph context.
   /grc/vendor-discoveries:
     get:
       summary: Vendor discoveries
@@ -2936,7 +2994,7 @@ paths:
             enum: [discovered, approved, rejected, ignored, linked, all]
       responses:
         '200':
-          description: Discovered vendor candidates with source status and local decision overlay state.
+          description: Discovered vendor candidates with source status, current local decision overlay state, and append-only local decision events.
   /grc/vendor-discoveries/{discoveryID}/decision:
     post:
       summary: Update vendor discovery decision
@@ -2976,7 +3034,7 @@ paths:
                     type: string
       responses:
         '200':
-          description: Updated local discovery decision. Source systems are not written by this endpoint.
+          description: Updated local discovery decision with decision_event_id and version. Source systems are not written by this endpoint.
   /grc/vendor-risk/vendors:
     get:
       summary: Vendor risk vendors
@@ -3011,9 +3069,19 @@ paths:
           schema:
             type: string
             enum: [assigned, missing, all]
+        - name: lifecycle_state
+          in: query
+          schema:
+            type: string
+            enum: [discovered, candidate, active, in_review, approved, conditionally_approved, restricted, offboarding, retired, rejected, ignored, unknown, all]
+        - name: queue
+          in: query
+          description: Return vendors with open queue reasons when true.
+          schema:
+            type: boolean
       responses:
         '200':
-          description: Vendors with owner, security review, contract, assurance, finding, and evidence counts.
+          description: Vendors with open queue reasons, lifecycle, risk score, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, owner, security review, renewal, offboarding, contract, assurance, finding, and evidence counts.
   /grc/vendor-risk/vendors/detail:
     get:
       summary: Vendor risk vendor detail
@@ -8276,6 +8344,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCPolicyReminder'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyLifecycleEvent'
+        available_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyLifecycleActionDefinition'
+        version_diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyVersionDiff'
+        reminder_plan:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyReminderPlan'
         mappings:
           type: array
           items:
@@ -8290,6 +8374,9 @@ components:
           type: integer
           minimum: 0
         templates:
+          type: integer
+          minimum: 0
+        lifecycle_events:
           type: integer
           minimum: 0
         draft_versions:
@@ -8312,6 +8399,9 @@ components:
           minimum: 0
           maximum: 100
         overdue_attestations:
+          type: integer
+          minimum: 0
+        next_reminders:
           type: integer
           minimum: 0
         mapped_controls:
@@ -8400,6 +8490,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCPolicyException'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyLifecycleEvent'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyLifecycleAction'
+        version_diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyVersionDiff'
+        reminder_plan:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyReminderPlan'
         assignments:
           type: array
           items:
@@ -8597,6 +8703,222 @@ components:
         due_at:
           type: string
         sent_at:
+          type: string
+    GRCPolicyLifecycleEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        policy_id:
+          type: string
+        policy_version_id:
+          type: string
+        record_urn:
+          type: string
+        record_type:
+          type: string
+        event_kind:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        occurred_at:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCPolicyLifecycleAction:
+      type: object
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+        label:
+          type: string
+        policy_id:
+          type: string
+        policy:
+          type: string
+        policy_version_id:
+          type: string
+        record_urn:
+          type: string
+        record_type:
+          type: string
+        status:
+          type: string
+        owner:
+          type: string
+        due_at:
+          type: string
+        reason:
+          type: string
+    GRCPolicyLifecycleActionDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        event_kind:
+          type: string
+        record_type:
+          type: string
+        status:
+          type: string
+        requires_policy_id:
+          type: boolean
+        requires_version_id:
+          type: boolean
+    GRCPolicyLifecycleActionRequest:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+        tenant_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        policy_id:
+          type: string
+        policy_version_id:
+          type: string
+        template_id:
+          type: string
+        record_id:
+          type: string
+        record_urn:
+          type: string
+        title:
+          type: string
+        version:
+          type: string
+        status:
+          type: string
+        actor_user_id:
+          type: string
+        reason:
+          type: string
+        due_at:
+          type: string
+        effective_at:
+          type: string
+        expires_at:
+          type: string
+        idempotency_key:
+          type: string
+        assignees:
+          type: array
+          items:
+            type: string
+        approvers:
+          type: array
+          items:
+            type: string
+        reviewers:
+          type: array
+          items:
+            type: string
+        control_ids:
+          type: array
+          items:
+            type: string
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCPolicyLifecycleActionResponse:
+      type: object
+      properties:
+        action:
+          type: string
+        status:
+          type: string
+        event_id:
+          type: string
+        event_kind:
+          type: string
+        schema_ref:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        generated_at:
+          type: string
+          format: date-time
+    GRCPolicyVersionDiff:
+      type: object
+      properties:
+        policy_id:
+          type: string
+        policy_title:
+          type: string
+        from_version_id:
+          type: string
+        from_version:
+          type: string
+        to_version_id:
+          type: string
+        to_version:
+          type: string
+        status:
+          type: string
+        change_summary:
+          type: string
+        diff_summary:
+          type: string
+        diff_url:
+          type: string
+        created_at:
+          type: string
+        approved_at:
+          type: string
+    GRCPolicyReminderPlan:
+      type: object
+      properties:
+        id:
+          type: string
+        policy_id:
+          type: string
+        policy:
+          type: string
+        record_urn:
+          type: string
+        record_type:
+          type: string
+        action:
+          type: string
+        owner:
+          type: string
+        recipients:
+          type: array
+          items:
+            type: string
+        due_at:
+          type: string
+        escalate_at:
+          type: string
+        channel:
+          type: string
+        reason:
           type: string
     GRCPolicyLifecycleMapping:
       type: object

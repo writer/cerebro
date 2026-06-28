@@ -27,7 +27,7 @@ entries:
       key: accountid
       label: Accountid
       required: true
-    description: "# Introduction"
+    description: "Collects webhook, campaign, contact, and conversation from Sakari and projects them into the Cerebro graph as assets for workspace, document, message, and collaboration context."
     display_name: Sakari
     id: builtin_catalog-sakari
     resource_families:

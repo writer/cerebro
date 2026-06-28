@@ -916,7 +916,8 @@ func TestAgentPlatformClaimVerificationRejectsCrossTenantURNs(t *testing.T) {
 		"tenant_id": "writer",
 		"claim": "Finding alert-1 should be remediated",
 		"scope_urn": "urn:cerebro:writer:finding:alert-1",
-		"supporting_evidence_urns": ["urn:cerebro:other:evidence:ev-1"],
+		"supporting_evidence_urns": ["urn:cerebro:writer:evidence:ev-1"],
+		"missing_evidence": ["urn:cerebro:other:evidence:ev-2"],
 		"freshness_state": "fresh"
 	}`)))
 	if err != nil {

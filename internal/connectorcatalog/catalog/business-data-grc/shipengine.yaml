@@ -17,7 +17,7 @@ entries:
       key: label_id
       label: Label Id
       required: true
-    description: ShipEngine's easy-to-use REST API lets you manage all of your shipping needs without worrying about the complexities of different carrier APIs and protocols. We handle all the heavy lifting so you can focus on providing a first-class shipping experience for your customers at the best possible prices.
+    description: "Collects tracking, package, track, and webhook from ShipEngine and projects them into the Cerebro graph as audit events and assets for owner, account, evidence, and compliance context."
     display_name: ShipEngine
     id: builtin_catalog-shipengine
     resource_families:

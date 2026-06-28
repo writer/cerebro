@@ -38,6 +38,11 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRule(t *testing.T) {
 		"reach_relation":         "can_reach",
 		"access_relation":        "can_perform",
 		"access_attributes_json": `{"privilege_level":"admin"}`,
+		"relation_chain":         []any{"attached_to", "runs_as"},
+		"traversal_edges": []any{
+			map[string]any{"from_urn": "urn:cerebro:writer:aws_network_interface:eni-1", "from_label": "prod-web", "from_entity_type": "aws.network.interface", "relation": "attached_to", "to_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "to_label": "prod-web", "to_entity_type": "aws.ec2.instance", "direction": "forward", "attributes_json": `{}`},
+			map[string]any{"from_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "from_label": "prod-web", "from_entity_type": "aws.ec2.instance", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_user:admin@writer.com", "to_label": "admin@writer.com", "to_entity_type": "aws.user", "direction": "forward", "attributes_json": `{"at":"2026-04-23T00:00:00Z"}`},
+		},
 	}}})
 	if err != nil {
 		t.Fatalf("EvaluateRows() error = %v", err)
@@ -51,6 +56,12 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRule(t *testing.T) {
 	}
 	if len(finding.GraphEvidenceRows) != 1 {
 		t.Fatalf("len(GraphEvidenceRows) = %d, want 1", len(finding.GraphEvidenceRows))
+	}
+	if got := finding.Attributes["traversal_relations"]; got != "attached_to,runs_as" {
+		t.Fatalf("traversal_relations = %q", got)
+	}
+	if len(finding.GraphEvidenceRows[0].Paths) != 4 {
+		t.Fatalf("len(GraphEvidenceRows[0].Paths) = %d, want reach, two traversal edges, and access", len(finding.GraphEvidenceRows[0].Paths))
 	}
 	if got := finding.Attributes["cloud_account_urn"]; got != "urn:cerebro:writer:cloud_account:123456789012" {
 		t.Fatalf("cloud_account_urn = %q", got)
@@ -74,6 +85,10 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRule(t *testing.T) {
 		"reach_relation":         "can_reach",
 		"access_relation":        "can_admin",
 		"access_attributes_json": `{}`,
+		"relation_chain":         []any{"runs_as"},
+		"traversal_edges": []any{
+			map[string]any{"from_urn": "urn:cerebro:writer:aws_cloudfront_distribution:dist-1", "from_label": "cdn.writer.dev", "from_entity_type": "aws.cloudfront.distribution", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:AdminRole", "to_label": "AdminRole", "to_entity_type": "aws.role", "direction": "forward", "attributes_json": `{}`},
+		},
 	}}})
 	if err != nil {
 		t.Fatalf("EvaluateRows(can_admin) error = %v", err)
@@ -83,6 +98,32 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRule(t *testing.T) {
 	}
 	if got := adminFindings[0].Attributes["access_relation"]; got != "can_admin" {
 		t.Fatalf("can_admin finding access_relation = %q", got)
+	}
+
+	withoutTraversal, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{{Values: map[string]any{
+		"public_urn":             "urn:cerebro:writer:aws_public_principal:public_internet",
+		"public_entity_type":     "aws.public_principal",
+		"public_label":           "public internet",
+		"exposed_urn":            "urn:cerebro:writer:aws_cloudfront_distribution:dist-2",
+		"exposed_entity_type":    "aws.cloudfront.distribution",
+		"exposed_label":          "static.writer.dev",
+		"account_urn":            "urn:cerebro:writer:cloud_account:123456789012",
+		"account_label":          "123456789012",
+		"principal_urn":          "urn:cerebro:writer:aws_role:UnlinkedAdminRole",
+		"principal_entity_type":  "aws.role",
+		"principal_label":        "UnlinkedAdminRole",
+		"permission_urn":         "urn:cerebro:writer:aws_admin_role:AdministratorAccess",
+		"permission_entity_type": "aws.admin_role",
+		"permission_label":       "AdministratorAccess",
+		"reach_relation":         "can_reach",
+		"access_relation":        "can_admin",
+		"access_attributes_json": `{}`,
+	}}})
+	if err != nil {
+		t.Fatalf("EvaluateRows(missing traversal) error = %v", err)
+	}
+	if len(withoutTraversal) != 0 {
+		t.Fatalf("len(withoutTraversal) = %d, want 0 without traversal proof", len(withoutTraversal))
 	}
 }
 
@@ -132,7 +173,11 @@ func TestCloudPublicExposurePrivilegedPrincipalSignalsPerAccountCapTruncation(t 
 	query := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-effective-permission", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "effective_permission"}})
 	for _, fragment := range []string{
 		"size(all_exposures) > $exposure_cap AS exposures_capped",
-		"(exposures_capped OR size(all_grants) > $principal_cap) AS account_capped",
+		"MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})",
+		"rel.relation IN $traversal_relations",
+		"(exposures_capped OR size(all_paths) > $path_cap) AS account_capped",
+		"[rel IN relationships(proof_path) | rel.relation] AS relation_chain",
+		"traversal_edges",
 		"account_capped AS graph_rule_truncated",
 	} {
 		if !strings.Contains(query.Query, fragment) {

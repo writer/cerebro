@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: This is the official API documentation for the Public Hetzner Cloud.
+    description: "Collects placement group, certificate, firewall, and ssh key from Hetzner Cloud and projects them into the Cerebro graph as groups and assets for repository, build, deployment, and release context."
     display_name: Hetzner Cloud
     id: builtin_catalog-hetzner
     resource_families:

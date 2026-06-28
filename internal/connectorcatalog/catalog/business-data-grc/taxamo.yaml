@@ -17,7 +17,7 @@ entries:
       key: key
       label: Key
       required: true
-    description: Taxamo’s elegant suite of APIs and comprehensive reporting dashboard enables digital merchants to easily comply with EU regulatory requirements on tax calculation, evidence collection, tax return creation and data storage.
+    description: "Collects payment, refund, transaction, and vy from Taxamo and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
     display_name: Taxamo
     id: builtin_catalog-taxamo
     resource_families:
