@@ -56,28 +56,20 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		for _, dimension := range contract.Dimensions {
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
-			declaredMatches, declaredExactMatch := matchingCoverageControlRefs(detection.ControlRefs, dimension.ControlRefs)
-			matchedControls := make([]ports.FindingControlRef, 0, len(declaredMatches))
-			exactControlMatch := false
-			if len(declaredMatches) != 0 && coverageControlMatchAllowed(sourceMatched, dimensionMatched, evidenceMatched, declaredExactMatch) {
-				matchedControls = appendUniqueMatchedCoverageRefs(matchedControls, declaredMatches)
-				exactControlMatch = declaredExactMatch
-			}
+			coverageRefs := dimension.ControlRefs
 			// Domain-derived control coverage is credited only within the
 			// detection's own (or explicitly named) source and only when the
 			// coverage dimension or evidence type also matches. This lets broad
 			// control_domains fill missing refs without letting every dimension
 			// from the same source inherit every matching framework control.
 			if sourceMatched && (dimensionMatched || evidenceMatched) {
-				derivedMatches, derivedExactMatch := matchingCoverageControlRefs(detection.ControlRefs, controlRefsForControlDomains(dimension.ControlDomains))
-				if len(derivedMatches) != 0 {
-					matchedControls = appendUniqueMatchedCoverageRefs(matchedControls, derivedMatches)
-					exactControlMatch = exactControlMatch || derivedExactMatch
-				}
+				coverageRefs = effectiveCoverageControlRefs(dimension)
 			}
-			if len(matchedControls) == 0 {
+			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
+			if len(matches) == 0 || !coverageControlMatchAllowed(sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
+			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
 			ref := SourceCoverageRef{
 				SourceID:           sourceID,
 				DimensionID:        strings.TrimSpace(dimension.ID),
