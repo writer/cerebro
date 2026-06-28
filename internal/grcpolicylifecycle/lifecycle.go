@@ -19,10 +19,11 @@ const (
 )
 
 type Scope struct {
-	TenantID  string
-	SourceID  string
-	RuntimeID string
-	Limit     uint32
+	TenantID    string
+	SourceID    string
+	RuntimeID   string
+	Limit       uint32
+	RuleProfile string
 }
 
 var grcPolicyLifecycleEntityTypes = []string{
@@ -173,6 +174,8 @@ type Response struct {
 	Documents         []grcPolicyDocumentItem       `json:"documents"`
 	RiskRegister      []grcPolicyRiskRegisterItem   `json:"risk_register"`
 	GovernanceGaps    []grcPolicyGovernanceGap      `json:"governance_gaps"`
+	GovernanceRules   []grcPolicyGovernanceRule     `json:"governance_rules,omitempty"`
+	GapRollups        grcPolicyGovernanceGapRollups `json:"governance_gap_rollups"`
 	WorkQueue         []grcPolicyLifecycleWork      `json:"work_queue"`
 	DocumentWorkQueue []grcPolicyDocumentWork       `json:"document_work_queue"`
 	Reminders         []grcPolicyReminderItem       `json:"reminders"`
@@ -198,6 +201,13 @@ type grcPolicyLifecycleSummary struct {
 	GovernanceGaps         int `json:"governance_gaps"`
 	PolicyDocumentGaps     int `json:"policy_document_gaps"`
 	RiskRegisterGaps       int `json:"risk_register_gaps"`
+	OpenGovernanceGaps     int `json:"open_governance_gaps"`
+	InProgressGaps         int `json:"in_progress_governance_gaps"`
+	AcknowledgedGaps       int `json:"acknowledged_governance_gaps"`
+	SnoozedGaps            int `json:"snoozed_governance_gaps"`
+	AcceptedGaps           int `json:"accepted_governance_gaps"`
+	ResolvedGaps           int `json:"resolved_governance_gaps"`
+	HighGovernanceGaps     int `json:"high_governance_gaps"`
 	OpenExceptions         int `json:"open_exceptions"`
 	ExpiringExceptions     int `json:"expiring_exceptions"`
 	OpenRisks              int `json:"open_risks"`
@@ -280,18 +290,64 @@ type grcPolicyRiskRegisterItem struct {
 }
 
 type grcPolicyGovernanceGap struct {
-	ID         string `json:"id"`
-	Subject    string `json:"subject"`
-	SubjectID  string `json:"subject_id,omitempty"`
-	Title      string `json:"title"`
+	ID             string                        `json:"id"`
+	Subject        string                        `json:"subject"`
+	SubjectID      string                        `json:"subject_id,omitempty"`
+	Title          string                        `json:"title"`
+	Status         string                        `json:"status,omitempty"`
+	Owner          string                        `json:"owner,omitempty"`
+	Severity       string                        `json:"severity"`
+	Reason         string                        `json:"reason"`
+	Action         string                        `json:"action"`
+	ActionID       string                        `json:"action_id,omitempty"`
+	RuleID         string                        `json:"rule_id,omitempty"`
+	GapState       string                        `json:"gap_state"`
+	DueAt          string                        `json:"due_at,omitempty"`
+	StateReason    string                        `json:"state_reason,omitempty"`
+	StateUpdatedAt string                        `json:"state_updated_at,omitempty"`
+	LastAction     string                        `json:"last_action,omitempty"`
+	LastActor      string                        `json:"last_actor,omitempty"`
+	MissingFields  []string                      `json:"missing_fields,omitempty"`
+	SourceFields   map[string]string             `json:"source_fields,omitempty"`
+	Trace          []grcPolicyGovernanceGapTrace `json:"trace,omitempty"`
+	PolicyID       string                        `json:"policy_id,omitempty"`
+	DocumentID     string                        `json:"document_id,omitempty"`
+	RiskID         string                        `json:"risk_id,omitempty"`
+}
+
+type grcPolicyGovernanceGapTrace struct {
+	EventID    string `json:"event_id,omitempty"`
+	Action     string `json:"action,omitempty"`
+	Actor      string `json:"actor,omitempty"`
 	Status     string `json:"status,omitempty"`
-	Owner      string `json:"owner,omitempty"`
-	Severity   string `json:"severity"`
-	Reason     string `json:"reason"`
-	Action     string `json:"action"`
-	PolicyID   string `json:"policy_id,omitempty"`
-	DocumentID string `json:"document_id,omitempty"`
-	RiskID     string `json:"risk_id,omitempty"`
+	OccurredAt string `json:"occurred_at,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+type grcPolicyGovernanceRule struct {
+	ID         string   `json:"id"`
+	Profile    string   `json:"profile"`
+	Subject    string   `json:"subject"`
+	Field      string   `json:"field"`
+	Label      string   `json:"label"`
+	Severity   string   `json:"severity"`
+	Required   bool     `json:"required"`
+	ActionID   string   `json:"action_id"`
+	Action     string   `json:"action"`
+	AppliesTo  []string `json:"applies_to,omitempty"`
+	Confidence string   `json:"confidence,omitempty"`
+}
+
+type grcPolicyGovernanceGapRollups struct {
+	ByState    []grcPolicyGovernanceGapRollup `json:"by_state,omitempty"`
+	ByOwner    []grcPolicyGovernanceGapRollup `json:"by_owner,omitempty"`
+	BySeverity []grcPolicyGovernanceGapRollup `json:"by_severity,omitempty"`
+	BySubject  []grcPolicyGovernanceGapRollup `json:"by_subject,omitempty"`
+}
+
+type grcPolicyGovernanceGapRollup struct {
+	Key   string `json:"key"`
+	Count int    `json:"count"`
 }
 
 type grcPolicyLifecyclePolicy struct {
@@ -618,7 +674,7 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 	if err != nil {
 		return Response{}, err
 	}
-	return grcPolicyLifecycleFromGraph(entityRows, relationRows, time.Now().UTC()), nil
+	return grcPolicyLifecycleFromGraphWithScope(entityRows, relationRows, time.Now().UTC(), scope), nil
 }
 
 func grcPolicyLifecycleEntityTypeLimit(limit int) int {
@@ -644,6 +700,10 @@ func grcPolicyLifecycleEntityRowLimit(typeLimit int) int {
 }
 
 func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []ports.CypherRow, generatedAt time.Time) Response {
+	return grcPolicyLifecycleFromGraphWithScope(entityRows, relationRows, generatedAt, Scope{})
+}
+
+func grcPolicyLifecycleFromGraphWithScope(entityRows []ports.CypherRow, relationRows []ports.CypherRow, generatedAt time.Time, scope Scope) Response {
 	nodes := map[string]*grcPolicyGraphNode{}
 	entityNodeURNs := map[string]struct{}{}
 	for _, row := range entityRows {
@@ -780,9 +840,11 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 			reminders = append(reminders, item)
 		case "policy.lifecycle.event":
 			item := grcPolicyLifecycleEventFromNode(node, relations)
-			policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
-			item.PolicyID = policy.ID
-			policy.Events = append(policy.Events, item)
+			if firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)) != "" || item.RecordType != "governance.gap" {
+				policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
+				item.PolicyID = policy.ID
+				policy.Events = append(policy.Events, item)
+			}
 			events = append(events, item)
 		}
 	}
@@ -840,7 +902,8 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 		}
 		return left.Before(right)
 	})
-	governanceGaps := grcPolicyGovernanceGaps(documents, riskRegister)
+	governanceRules := grcPolicyGovernanceRules(scope.RuleProfile)
+	governanceGaps := grcPolicyGovernanceGapsFor(documents, riskRegister, governanceRules, events, generatedAt)
 	return Response{
 		Summary:           grcPolicyLifecycleSummaryFrom(policies, templates, documents, riskRegister, mappings, governanceGaps, generatedAt),
 		Templates:         templates,
@@ -848,6 +911,8 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 		Documents:         documents,
 		RiskRegister:      riskRegister,
 		GovernanceGaps:    governanceGaps,
+		GovernanceRules:   governanceRules,
+		GapRollups:        grcPolicyGovernanceGapRollupsFrom(governanceGaps),
 		WorkQueue:         grcPolicyLifecycleWorkQueue(policies, generatedAt),
 		DocumentWorkQueue: grcPolicyDocumentWorkQueue(documents, riskRegister, generatedAt),
 		Reminders:         reminders,
@@ -1244,6 +1309,23 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 	}
 	for _, gap := range governanceGaps {
 		summary.GovernanceGaps++
+		switch gap.GapState {
+		case "acknowledged":
+			summary.AcknowledgedGaps++
+		case "snoozed":
+			summary.SnoozedGaps++
+		case "accepted":
+			summary.AcceptedGaps++
+		case "resolved":
+			summary.ResolvedGaps++
+		case "in_progress":
+			summary.InProgressGaps++
+		default:
+			summary.OpenGovernanceGaps++
+		}
+		if gap.Severity == "high" {
+			summary.HighGovernanceGaps++
+		}
 		switch gap.Subject {
 		case "document":
 			summary.PolicyDocumentGaps++
@@ -1257,7 +1339,12 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 }
 
 func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem) []grcPolicyGovernanceGap {
+	return grcPolicyGovernanceGapsFor(documents, riskRegister, grcPolicyGovernanceRules(""), nil, time.Time{})
+}
+
+func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, rules []grcPolicyGovernanceRule, events []grcPolicyLifecycleEventItem, now time.Time) []grcPolicyGovernanceGap {
 	gaps := []grcPolicyGovernanceGap{}
+	rulesByID := grcPolicyGovernanceRuleMap(rules)
 	for _, document := range documents {
 		// Drafts are still authored; no-status imports stay in scope for metadata gaps.
 		if grcPolicyDraftStatus(document.Status) {
@@ -1265,17 +1352,23 @@ func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []g
 		}
 		policyID := grcPolicyFirstDocumentRefID(document.Policies)
 		documentID := firstNonEmpty(document.ID, document.URN)
-		if strings.TrimSpace(document.Owner) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:owner", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Severity: "medium", Reason: "Missing owner", Action: "Assign owner", PolicyID: policyID, DocumentID: document.ID})
+		sourceFields := grcPolicyDocumentGapSourceFields(document)
+		if rule, ok := rulesByID["document.owner"]; ok && strings.TrimSpace(document.Owner) == "" {
+			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "owner", "Missing owner"))
 		}
-		if strings.TrimSpace(document.NextReviewDueAt) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:review_date", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Owner: document.Owner, Severity: "medium", Reason: "Missing review date", Action: "Set review date", PolicyID: policyID, DocumentID: document.ID})
+		if rule, ok := rulesByID["document.review_date"]; ok && strings.TrimSpace(document.NextReviewDueAt) == "" {
+			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "next_review_due_at", "Missing review date"))
 		}
-		if len(document.Policies) == 0 {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:policy", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Owner: document.Owner, Severity: "medium", Reason: "No linked policy", Action: "Link policy", DocumentID: document.ID})
+		if rule, ok := rulesByID["document.policy"]; ok && len(document.Policies) == 0 {
+			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "policies", "No linked policy"))
 		}
-		if grcPolicyDocumentNeedsControlMapping(document) && len(document.Controls) == 0 {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:controls", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Owner: document.Owner, Severity: "low", Reason: "No mapped controls", Action: "Map controls", PolicyID: policyID, DocumentID: document.ID})
+		if rule, ok := rulesByID["document.controls"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Controls) == 0 {
+			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "controls", "No mapped controls"))
+		}
+		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Evidence) == 0 {
+			gap := grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "evidence", "No evidence")
+			gap.SourceFields = sourceFields
+			gaps = append(gaps, gap)
 		}
 	}
 	for _, risk := range riskRegister {
@@ -1285,32 +1378,38 @@ func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []g
 		policyID := grcPolicyFirstDocumentRefID(risk.Policies)
 		riskID := firstNonEmpty(risk.ID, risk.URN)
 		severity := grcPolicyRiskGapSeverity(risk)
-		if strings.TrimSpace(risk.Owner) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:owner", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Severity: severity, Reason: "Missing owner", Action: "Assign owner", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.owner"]; ok && strings.TrimSpace(risk.Owner) == "" {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule.withSeverity(severity), riskID, policyID, "owner", "Missing owner"))
 		}
-		if strings.TrimSpace(risk.Treatment) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:treatment", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "Missing treatment", Action: "Add treatment", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.treatment"]; ok && strings.TrimSpace(risk.Treatment) == "" {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule.withSeverity(severity), riskID, policyID, "treatment", "Missing treatment"))
 		}
-		if strings.TrimSpace(risk.TreatmentDueAt) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:treatment_due", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "Missing treatment date", Action: "Set treatment date", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.treatment_due"]; ok && strings.TrimSpace(risk.TreatmentDueAt) == "" {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule.withSeverity(severity), riskID, policyID, "treatment_due_at", "Missing treatment date"))
 		}
-		if strings.TrimSpace(risk.ReviewDueAt) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:review_date", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: "medium", Reason: "Missing review date", Action: "Set review date", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.review_date"]; ok && strings.TrimSpace(risk.ReviewDueAt) == "" {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule, riskID, policyID, "review_due_at", "Missing review date"))
 		}
-		if strings.TrimSpace(risk.SourceDocumentID) == "" {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:source_document", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "No source document", Action: "Link source document", PolicyID: policyID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.source_document"]; ok && strings.TrimSpace(risk.SourceDocumentID) == "" {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule.withSeverity(severity), riskID, policyID, "source_document_id", "No source document"))
 		}
-		if len(risk.Policies) == 0 {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:policy", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "No linked policy", Action: "Link policy", DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.policy"]; ok && len(risk.Policies) == 0 {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule.withSeverity(severity), riskID, policyID, "policies", "No linked policy"))
 		}
-		if len(risk.Controls) == 0 {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:controls", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "No mapped controls", Action: "Map controls", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.controls"]; ok && len(risk.Controls) == 0 {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule.withSeverity(severity), riskID, policyID, "controls", "No mapped controls"))
 		}
-		if len(risk.Evidence) == 0 {
-			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:evidence", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: "medium", Reason: "No evidence", Action: "Attach evidence", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		if rule, ok := rulesByID["risk.evidence"]; ok && len(risk.Evidence) == 0 {
+			gaps = append(gaps, grcPolicyRiskGovernanceGap(risk, rule, riskID, policyID, "evidence", "No evidence"))
 		}
 	}
+	grcPolicyApplyGapEvents(gaps, events, now)
 	sort.Slice(gaps, func(i, j int) bool {
+		leftState := grcPolicyGapStateRank(gaps[i].GapState)
+		rightState := grcPolicyGapStateRank(gaps[j].GapState)
+		if leftState != rightState {
+			return leftState < rightState
+		}
 		left := grcPolicyGapSeverityRank(gaps[i].Severity)
 		right := grcPolicyGapSeverityRank(gaps[j].Severity)
 		if left != right {
@@ -1325,6 +1424,293 @@ func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []g
 		return gaps[i].Reason < gaps[j].Reason
 	})
 	return gaps
+}
+
+func (rule grcPolicyGovernanceRule) withSeverity(severity string) grcPolicyGovernanceRule {
+	rule.Severity = severity
+	return rule
+}
+
+func grcPolicyGovernanceRuleMap(rules []grcPolicyGovernanceRule) map[string]grcPolicyGovernanceRule {
+	out := make(map[string]grcPolicyGovernanceRule, len(rules))
+	for _, rule := range rules {
+		out[rule.ID] = rule
+	}
+	return out
+}
+
+func grcPolicyDocumentGovernanceGap(document grcPolicyDocumentItem, rule grcPolicyGovernanceRule, documentID string, policyID string, missingField string, reason string) grcPolicyGovernanceGap {
+	return grcPolicyGovernanceGap{
+		ID:            document.URN + ":gap:" + strings.TrimPrefix(rule.ID, "document."),
+		Subject:       "document",
+		SubjectID:     documentID,
+		Title:         document.Title,
+		Status:        document.Status,
+		Owner:         document.Owner,
+		Severity:      rule.Severity,
+		Reason:        reason,
+		Action:        rule.Action,
+		ActionID:      rule.ActionID,
+		RuleID:        rule.ID,
+		GapState:      "open",
+		MissingFields: []string{missingField},
+		SourceFields:  grcPolicyDocumentGapSourceFields(document),
+		PolicyID:      policyID,
+		DocumentID:    document.ID,
+	}
+}
+
+func grcPolicyRiskGovernanceGap(risk grcPolicyRiskRegisterItem, rule grcPolicyGovernanceRule, riskID string, policyID string, missingField string, reason string) grcPolicyGovernanceGap {
+	return grcPolicyGovernanceGap{
+		ID:            risk.URN + ":gap:" + strings.TrimPrefix(rule.ID, "risk."),
+		Subject:       "risk",
+		SubjectID:     riskID,
+		Title:         risk.Title,
+		Status:        risk.Status,
+		Owner:         risk.Owner,
+		Severity:      rule.Severity,
+		Reason:        reason,
+		Action:        rule.Action,
+		ActionID:      rule.ActionID,
+		RuleID:        rule.ID,
+		GapState:      "open",
+		MissingFields: []string{missingField},
+		SourceFields:  grcPolicyRiskGapSourceFields(risk),
+		PolicyID:      policyID,
+		DocumentID:    risk.SourceDocumentID,
+		RiskID:        risk.ID,
+	}
+}
+
+func grcPolicyGovernanceRules(profile string) []grcPolicyGovernanceRule {
+	profile = grcPolicyGovernanceRuleProfile(profile)
+	rules := []grcPolicyGovernanceRule{
+		{ID: "document.owner", Profile: profile, Subject: "document", Field: "owner", Label: "Document owner", Severity: "medium", Required: true, ActionID: "governance_gap.assign_owner", Action: "Assign owner"},
+		{ID: "document.review_date", Profile: profile, Subject: "document", Field: "next_review_due_at", Label: "Document review date", Severity: "medium", Required: true, ActionID: "governance_gap.set_review_date", Action: "Set review date"},
+		{ID: "document.policy", Profile: profile, Subject: "document", Field: "policies", Label: "Linked policy", Severity: "medium", Required: true, ActionID: "governance_gap.link_policy", Action: "Link policy"},
+		{ID: "document.controls", Profile: profile, Subject: "document", Field: "controls", Label: "Mapped controls", Severity: "low", Required: true, ActionID: "governance_gap.map_controls", Action: "Map controls", AppliesTo: []string{"policy", "procedure", "standard", "control_narrative"}},
+		{ID: "risk.owner", Profile: profile, Subject: "risk", Field: "owner", Label: "Risk owner", Severity: "medium", Required: true, ActionID: "governance_gap.assign_owner", Action: "Assign owner"},
+		{ID: "risk.treatment", Profile: profile, Subject: "risk", Field: "treatment", Label: "Risk treatment", Severity: "medium", Required: true, ActionID: "governance_gap.add_treatment", Action: "Add treatment"},
+		{ID: "risk.treatment_due", Profile: profile, Subject: "risk", Field: "treatment_due_at", Label: "Treatment date", Severity: "medium", Required: true, ActionID: "governance_gap.set_treatment_date", Action: "Set treatment date"},
+		{ID: "risk.review_date", Profile: profile, Subject: "risk", Field: "review_due_at", Label: "Risk review date", Severity: "medium", Required: true, ActionID: "governance_gap.set_review_date", Action: "Set review date"},
+		{ID: "risk.source_document", Profile: profile, Subject: "risk", Field: "source_document_id", Label: "Source document", Severity: "medium", Required: true, ActionID: "governance_gap.link_source_document", Action: "Link source document"},
+		{ID: "risk.policy", Profile: profile, Subject: "risk", Field: "policies", Label: "Linked policy", Severity: "medium", Required: true, ActionID: "governance_gap.link_policy", Action: "Link policy"},
+		{ID: "risk.controls", Profile: profile, Subject: "risk", Field: "controls", Label: "Mapped controls", Severity: "medium", Required: true, ActionID: "governance_gap.map_controls", Action: "Map controls"},
+		{ID: "risk.evidence", Profile: profile, Subject: "risk", Field: "evidence", Label: "Risk evidence", Severity: "medium", Required: true, ActionID: "governance_gap.attach_evidence", Action: "Attach evidence"},
+	}
+	if profile == "strict" {
+		rules = append(rules, grcPolicyGovernanceRule{ID: "document.evidence", Profile: profile, Subject: "document", Field: "evidence", Label: "Document evidence", Severity: "low", Required: true, ActionID: "governance_gap.attach_evidence", Action: "Attach evidence", AppliesTo: []string{"policy", "procedure", "standard", "control_narrative"}, Confidence: "strict"})
+	}
+	return rules
+}
+
+func grcPolicyGovernanceRuleProfile(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "strict", "strict_evidence", "evidence":
+		return "strict"
+	default:
+		return "baseline"
+	}
+}
+
+func grcPolicyDocumentGapSourceFields(document grcPolicyDocumentItem) map[string]string {
+	return map[string]string{
+		"document_id":        document.ID,
+		"document_class":     document.DocumentClass,
+		"document_type":      document.DocumentType,
+		"status":             document.Status,
+		"owner":              document.Owner,
+		"next_review_due_at": document.NextReviewDueAt,
+		"policy_count":       fmt.Sprint(len(document.Policies)),
+		"control_count":      fmt.Sprint(len(document.Controls)),
+		"evidence_count":     fmt.Sprint(len(document.Evidence)),
+	}
+}
+
+func grcPolicyRiskGapSourceFields(risk grcPolicyRiskRegisterItem) map[string]string {
+	return map[string]string{
+		"risk_id":            risk.ID,
+		"status":             risk.Status,
+		"owner":              risk.Owner,
+		"residual_risk":      risk.ResidualRisk,
+		"inherent_risk":      risk.InherentRisk,
+		"treatment":          risk.Treatment,
+		"review_due_at":      risk.ReviewDueAt,
+		"treatment_due_at":   risk.TreatmentDueAt,
+		"source_document_id": risk.SourceDocumentID,
+		"policy_count":       fmt.Sprint(len(risk.Policies)),
+		"control_count":      fmt.Sprint(len(risk.Controls)),
+		"evidence_count":     fmt.Sprint(len(risk.Evidence)),
+	}
+}
+
+func grcPolicyApplyGapEvents(gaps []grcPolicyGovernanceGap, events []grcPolicyLifecycleEventItem, now time.Time) {
+	if len(gaps) == 0 || len(events) == 0 {
+		return
+	}
+	eventsByGapID := map[string][]grcPolicyLifecycleEventItem{}
+	for _, event := range events {
+		for _, gapID := range grcPolicyLifecycleEventGapIDs(event) {
+			eventsByGapID[gapID] = append(eventsByGapID[gapID], event)
+		}
+	}
+	for gapID := range eventsByGapID {
+		sort.Slice(eventsByGapID[gapID], func(i, j int) bool {
+			left := grcPolicySortDate(eventsByGapID[gapID][i].OccurredAt)
+			right := grcPolicySortDate(eventsByGapID[gapID][j].OccurredAt)
+			if left.Equal(right) {
+				return eventsByGapID[gapID][i].ID < eventsByGapID[gapID][j].ID
+			}
+			return left.Before(right)
+		})
+	}
+	for idx := range gaps {
+		gapEvents := eventsByGapID[gaps[idx].ID]
+		for _, event := range gapEvents {
+			grcPolicyApplyGapEvent(&gaps[idx], event, now)
+		}
+	}
+}
+
+func grcPolicyLifecycleEventGapIDs(event grcPolicyLifecycleEventItem) []string {
+	gapIDs := []string{}
+	if event.Attributes != nil {
+		for _, value := range grcPolicyListValue(event.Attributes["gap_ids"]) {
+			if strings.Contains(value, ":gap:") {
+				gapIDs = append(gapIDs, value)
+			}
+		}
+		if value := firstNonEmpty(event.Attributes["gap_id"], event.Attributes["record_id"], event.Attributes["record_urn"]); strings.Contains(value, ":gap:") {
+			gapIDs = append(gapIDs, value)
+		}
+	}
+	if strings.Contains(event.RecordURN, ":gap:") {
+		gapIDs = append(gapIDs, event.RecordURN)
+	}
+	if strings.Contains(event.ID, ":gap:") {
+		gapIDs = append(gapIDs, event.ID)
+	}
+	return uniqueStrings(gapIDs)
+}
+
+func grcPolicyListValue(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	})
+}
+
+func grcPolicyApplyGapEvent(gap *grcPolicyGovernanceGap, event grcPolicyLifecycleEventItem, now time.Time) {
+	if gap == nil {
+		return
+	}
+	state := firstNonEmpty(event.Attributes["gap_state"], event.Status)
+	if state == "" {
+		state = grcPolicyGapStateForAction(event.Action)
+	}
+	state = grcPolicyNormalizeGapState(state)
+	if state == "" {
+		state = grcPolicyGapStateForAction(event.Action)
+	}
+	if state == "" {
+		state = "in_progress"
+	}
+	gap.GapState = state
+	gap.StateReason = event.Reason
+	gap.StateUpdatedAt = firstNonEmpty(event.OccurredAt, now.Format(time.RFC3339))
+	gap.LastAction = event.Action
+	gap.LastActor = event.Actor
+	gap.DueAt = firstNonEmpty(event.Attributes["due_at"], event.Attributes["expires_at"], gap.DueAt)
+	if gap.Owner == "" {
+		gap.Owner = firstNonEmpty(event.Attributes["assigned_user_ids"], event.Actor)
+	}
+	gap.Trace = append(gap.Trace, grcPolicyGovernanceGapTrace{
+		EventID:    event.ID,
+		Action:     event.Action,
+		Actor:      event.Actor,
+		Status:     state,
+		OccurredAt: event.OccurredAt,
+		Reason:     event.Reason,
+	})
+}
+
+func grcPolicyGapStateForAction(action string) string {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "governance_gap.acknowledge":
+		return "acknowledged"
+	case "governance_gap.snooze":
+		return "snoozed"
+	case "governance_gap.accept":
+		return "accepted"
+	case "governance_gap.resolve":
+		return "resolved"
+	case "governance_gap.assign_owner", "governance_gap.set_review_date", "governance_gap.link_policy", "governance_gap.map_controls", "governance_gap.add_treatment", "governance_gap.set_treatment_date", "governance_gap.link_source_document", "governance_gap.attach_evidence":
+		return "in_progress"
+	default:
+		return ""
+	}
+}
+
+func grcPolicyNormalizeGapState(state string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "open", "in_progress", "acknowledged", "snoozed", "accepted", "resolved":
+		return strings.ToLower(strings.TrimSpace(state))
+	case "done", "closed", "complete", "completed":
+		return "resolved"
+	case "risk_accepted":
+		return "accepted"
+	default:
+		return ""
+	}
+}
+
+func grcPolicyGapStateRank(state string) int {
+	switch grcPolicyNormalizeGapState(state) {
+	case "open":
+		return 0
+	case "in_progress":
+		return 1
+	case "acknowledged":
+		return 2
+	case "snoozed":
+		return 3
+	case "accepted":
+		return 4
+	case "resolved":
+		return 5
+	default:
+		return 0
+	}
+}
+
+func grcPolicyGovernanceGapRollupsFrom(gaps []grcPolicyGovernanceGap) grcPolicyGovernanceGapRollups {
+	return grcPolicyGovernanceGapRollups{
+		ByState:    grcPolicyGovernanceGapRollupFor(gaps, func(gap grcPolicyGovernanceGap) string { return firstNonEmpty(gap.GapState, "open") }),
+		ByOwner:    grcPolicyGovernanceGapRollupFor(gaps, func(gap grcPolicyGovernanceGap) string { return firstNonEmpty(gap.Owner, "unassigned") }),
+		BySeverity: grcPolicyGovernanceGapRollupFor(gaps, func(gap grcPolicyGovernanceGap) string { return firstNonEmpty(gap.Severity, "unknown") }),
+		BySubject:  grcPolicyGovernanceGapRollupFor(gaps, func(gap grcPolicyGovernanceGap) string { return firstNonEmpty(gap.Subject, "unknown") }),
+	}
+}
+
+func grcPolicyGovernanceGapRollupFor(gaps []grcPolicyGovernanceGap, keyFn func(grcPolicyGovernanceGap) string) []grcPolicyGovernanceGapRollup {
+	counts := map[string]int{}
+	for _, gap := range gaps {
+		key := strings.TrimSpace(keyFn(gap))
+		if key == "" {
+			key = "unknown"
+		}
+		counts[key]++
+	}
+	items := make([]grcPolicyGovernanceGapRollup, 0, len(counts))
+	for key, count := range counts {
+		items = append(items, grcPolicyGovernanceGapRollup{Key: key, Count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
+		return items[i].Key < items[j].Key
+	})
+	return items
 }
 
 func grcPolicyFirstDocumentRefID(refs []grcPolicyDocumentRef) string {
@@ -2186,7 +2572,7 @@ func grcPolicyListAttr(node *grcPolicyGraphNode, keys ...string) []string {
 
 func grcPolicyPublicAttrs(attrs map[string]string) map[string]string {
 	allowed := map[string]string{}
-	for _, key := range []string{"category", "document_class", "document_type", "framework", "frameworks", "impact", "inherent_risk", "inherent_risk_level", "likelihood", "residual_risk", "residual_risk_level", "review_cadence", "risk_category", "source_system", "status", "treatment"} {
+	for _, key := range []string{"action", "assigned_user_ids", "category", "control_ids", "document_class", "document_id", "document_type", "due_at", "event_kind", "evidence_cas_uri", "expires_at", "framework", "frameworks", "gap_id", "gap_ids", "gap_state", "impact", "inherent_risk", "inherent_risk_level", "likelihood", "lifecycle_action", "policy_id", "policy_version_id", "reason", "record_id", "record_type", "record_urn", "residual_risk", "residual_risk_level", "review_cadence", "review_due_at", "risk_category", "risk_id", "source_document_id", "source_event_id", "source_system", "state_updated_at", "status", "target_policy_id", "treatment", "treatment_due_at"} {
 		if value := strings.TrimSpace(attrs[key]); value != "" {
 			allowed[key] = value
 		}

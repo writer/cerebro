@@ -35,6 +35,9 @@ type ActionRequest struct {
 	PolicyID        string            `json:"policy_id,omitempty"`
 	PolicyVersionID string            `json:"policy_version_id,omitempty"`
 	TemplateID      string            `json:"template_id,omitempty"`
+	GapID           string            `json:"gap_id,omitempty"`
+	GapIDs          []string          `json:"gap_ids,omitempty"`
+	GapState        string            `json:"gap_state,omitempty"`
 	RecordID        string            `json:"record_id,omitempty"`
 	RecordURN       string            `json:"record_urn,omitempty"`
 	Title           string            `json:"title,omitempty"`
@@ -72,6 +75,11 @@ type ActionDefinition struct {
 	Status            string `json:"status"`
 	RequiresPolicyID  bool   `json:"requires_policy_id,omitempty"`
 	RequiresVersionID bool   `json:"requires_version_id,omitempty"`
+	RequiresRecordID  bool   `json:"requires_record_id,omitempty"`
+	RequiresGapID     bool   `json:"requires_gap_id,omitempty"`
+	DateField         string `json:"date_field,omitempty"`
+	ValueField        string `json:"value_field,omitempty"`
+	ValueLabel        string `json:"value_label,omitempty"`
 }
 
 type policyLifecycleActionDefinition struct {
@@ -99,6 +107,18 @@ var policyLifecycleActionDefinitions = []policyLifecycleActionDefinition{
 	{ActionDefinition: ActionDefinition{ID: "exception.close", Label: "Close exception", EventKind: "grc.policy_exception", RecordType: "policy.exception", Status: "closed", RequiresPolicyID: true}, idAttribute: "exception_id"},
 	{ActionDefinition: ActionDefinition{ID: "reminder.send", Label: "Send reminder", EventKind: "grc.policy_reminder", RecordType: "policy.reminder", Status: "sent", RequiresPolicyID: true}, idAttribute: "reminder_id"},
 	{ActionDefinition: ActionDefinition{ID: "reminder.escalate", Label: "Escalate reminder", EventKind: "grc.policy_reminder", RecordType: "policy.reminder", Status: "escalated", RequiresPolicyID: true}, idAttribute: "reminder_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.assign_owner", Label: "Assign owner", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, ValueField: "assigned_user_ids", ValueLabel: "Owner"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.set_review_date", Label: "Set review date", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, DateField: "due_at"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.link_policy", Label: "Link policy", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, ValueField: "policy_id", ValueLabel: "Policy ID"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.map_controls", Label: "Map controls", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, ValueField: "control_ids", ValueLabel: "Control IDs"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.add_treatment", Label: "Add treatment", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, ValueField: "treatment", ValueLabel: "Treatment"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.set_treatment_date", Label: "Set treatment date", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, DateField: "due_at"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.link_source_document", Label: "Link source document", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, ValueField: "source_document_id", ValueLabel: "Source document ID"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.attach_evidence", Label: "Attach evidence", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "in_progress", RequiresRecordID: true, RequiresGapID: true, ValueField: "evidence_urns", ValueLabel: "Evidence URNs"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.acknowledge", Label: "Acknowledge gap", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "acknowledged", RequiresRecordID: true, RequiresGapID: true}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.snooze", Label: "Snooze gap", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "snoozed", RequiresRecordID: true, RequiresGapID: true, DateField: "due_at"}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.accept", Label: "Accept gap", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "accepted", RequiresRecordID: true, RequiresGapID: true}, idAttribute: "gap_id"},
+	{ActionDefinition: ActionDefinition{ID: "governance_gap.resolve", Label: "Resolve gap", EventKind: "grc.policy_lifecycle_event", RecordType: "governance.gap", Status: "resolved", RequiresRecordID: true, RequiresGapID: true}, idAttribute: "gap_id"},
 }
 
 func ActionDefinitions() []ActionDefinition {
@@ -127,6 +147,9 @@ func BuildActionEvent(request ActionRequest, now time.Time) (*cerebrov1.EventEnv
 	}
 	if definition.RequiresVersionID && request.PolicyVersionID == "" {
 		return nil, ActionResponse{}, fmt.Errorf("%w: policy_version_id is required for %s", ErrInvalidRequest, definition.ID)
+	}
+	if definition.RequiresGapID && request.GapID == "" && request.RecordID == "" && request.RecordURN == "" && len(request.GapIDs) == 0 {
+		return nil, ActionResponse{}, fmt.Errorf("%w: gap_id is required for %s", ErrInvalidRequest, definition.ID)
 	}
 
 	recordID := policyLifecycleRecordID(request, definition, now)
@@ -190,6 +213,8 @@ func normalizeActionRequest(request ActionRequest) ActionRequest {
 	request.PolicyID = strings.TrimSpace(request.PolicyID)
 	request.PolicyVersionID = strings.TrimSpace(request.PolicyVersionID)
 	request.TemplateID = strings.TrimSpace(request.TemplateID)
+	request.GapID = strings.TrimSpace(request.GapID)
+	request.GapState = strings.TrimSpace(request.GapState)
 	request.RecordID = strings.TrimSpace(request.RecordID)
 	request.RecordURN = strings.TrimSpace(request.RecordURN)
 	request.Title = strings.TrimSpace(request.Title)
@@ -206,6 +231,7 @@ func normalizeActionRequest(request ActionRequest) ActionRequest {
 	request.Reviewers = uniqueStrings(request.Reviewers)
 	request.ControlIDs = uniqueStrings(request.ControlIDs)
 	request.EvidenceURNs = uniqueStrings(request.EvidenceURNs)
+	request.GapIDs = uniqueStrings(request.GapIDs)
 	return request
 }
 
@@ -214,6 +240,11 @@ func policyLifecycleRecordID(request ActionRequest, definition policyLifecycleAc
 		return request.RecordID
 	}
 	switch definition.idAttribute {
+	case "gap_id":
+		if len(request.GapIDs) > 0 {
+			return policyLifecycleSlug(strings.Join(request.GapIDs, "-"))
+		}
+		return firstNonEmpty(request.GapID, request.RecordID, request.RecordURN)
 	case "template_id":
 		if request.TemplateID != "" {
 			return request.TemplateID
@@ -286,6 +317,18 @@ func policyLifecycleActionAttributes(request ActionRequest, definition policyLif
 	if request.TemplateID != "" {
 		attrs["template_id"] = request.TemplateID
 	}
+	if request.GapID != "" {
+		attrs["gap_id"] = request.GapID
+	}
+	if len(request.GapIDs) > 0 {
+		attrs["gap_ids"] = strings.Join(request.GapIDs, ",")
+	}
+	if request.GapState != "" {
+		attrs["gap_state"] = request.GapState
+	}
+	if request.RecordID != "" {
+		attrs["record_id"] = request.RecordID
+	}
 	if request.RecordURN != "" {
 		attrs["record_urn"] = request.RecordURN
 	}
@@ -339,6 +382,20 @@ func policyLifecycleActionAttributes(request ActionRequest, definition policyLif
 
 func policyLifecycleActionSpecificAttributes(attrs map[string]string, request ActionRequest, definition policyLifecycleActionDefinition, now time.Time) {
 	switch definition.ID {
+	case "governance_gap.assign_owner", "governance_gap.set_review_date", "governance_gap.link_policy", "governance_gap.map_controls", "governance_gap.add_treatment", "governance_gap.set_treatment_date", "governance_gap.link_source_document", "governance_gap.attach_evidence", "governance_gap.acknowledge", "governance_gap.snooze", "governance_gap.accept", "governance_gap.resolve":
+		attrs["gap_state"] = firstNonEmpty(attrs["gap_state"], definition.Status)
+		attrs["state_updated_at"] = firstNonEmpty(attrs["state_updated_at"], now.Format(time.RFC3339))
+		attrs["record_urn"] = firstNonEmpty(attrs["record_urn"], attrs["gap_id"])
+		attrs["record_id"] = firstNonEmpty(attrs["record_id"], attrs["gap_id"])
+		if definition.ID == "governance_gap.set_review_date" {
+			attrs["review_due_at"] = firstNonEmpty(attrs["review_due_at"], request.DueAt)
+		}
+		if definition.ID == "governance_gap.set_treatment_date" {
+			attrs["treatment_due_at"] = firstNonEmpty(attrs["treatment_due_at"], request.DueAt)
+		}
+		if definition.ID == "governance_gap.link_policy" && request.PolicyID != "" {
+			attrs["target_policy_id"] = firstNonEmpty(attrs["target_policy_id"], request.PolicyID)
+		}
 	case "draft.submit", "approval.request":
 		attrs["requested_at"] = firstNonEmpty(attrs["requested_at"], now.Format(time.RFC3339))
 		attrs["requested_by_user_id"] = firstNonEmpty(attrs["requested_by_user_id"], request.ActorUserID)
@@ -489,6 +546,12 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 	}
 	for _, mapping := range response.Mappings {
 		rows = append(rows, []string{"policy.mapping", "", mapping.PolicyID, mapping.PolicyTitle, "", "", "", "", "mapping", "", "", "", "", "", exportControls(mapping.Controls), exportEvidence(mapping.Evidence), mapping.SourceURN})
+	}
+	for _, gap := range response.GovernanceGaps {
+		if !exportWindowIncludesAny(window, gap.DueAt, gap.StateUpdatedAt) {
+			continue
+		}
+		rows = append(rows, []string{"governance.gap", gap.SubjectID, gap.PolicyID, gap.Title, "", gap.GapState, gap.Owner, "", gap.Action, gap.LastActor, gap.StateUpdatedAt, gap.DueAt, "", "", strings.Join(gap.MissingFields, "; "), gap.RuleID, gap.ID})
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i][0] == rows[j][0] {

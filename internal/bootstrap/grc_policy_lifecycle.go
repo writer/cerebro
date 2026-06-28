@@ -23,10 +23,11 @@ func (a *App) handleGRCPolicyLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
-		TenantID:  scope.TenantID,
-		SourceID:  scope.SourceID,
-		RuntimeID: scope.RuntimeID,
-		Limit:     scope.Limit,
+		TenantID:    scope.TenantID,
+		SourceID:    scope.SourceID,
+		RuntimeID:   scope.RuntimeID,
+		Limit:       scope.Limit,
+		RuleProfile: strings.TrimSpace(r.URL.Query().Get("rule_profile")),
 	})
 	if err != nil {
 		writeGRCError(w, err)
@@ -103,10 +104,11 @@ func (a *App) handleGRCPolicyLifecycleExport(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
-		TenantID:  scope.TenantID,
-		SourceID:  scope.SourceID,
-		RuntimeID: scope.RuntimeID,
-		Limit:     grcExportLimit,
+		TenantID:    scope.TenantID,
+		SourceID:    scope.SourceID,
+		RuntimeID:   scope.RuntimeID,
+		Limit:       grcExportLimit,
+		RuleProfile: strings.TrimSpace(r.URL.Query().Get("rule_profile")),
 	})
 	if err != nil {
 		writeGRCError(w, err)

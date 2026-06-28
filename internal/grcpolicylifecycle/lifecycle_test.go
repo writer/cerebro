@@ -355,9 +355,128 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 	}
 }
 
+func TestGovernanceGapEventsApplyStateTraceAndRollups(t *testing.T) {
+	document := grcPolicyDocumentItem{
+		ID:            "secure-development",
+		URN:           "urn:document:secure-development",
+		Title:         "Secure Development Policy",
+		DocumentClass: "policy",
+		Status:        "approved",
+	}
+	gapID := document.URN + ":gap:owner"
+	events := []grcPolicyLifecycleEventItem{{
+		ID:         "event-1",
+		RecordURN:  gapID,
+		RecordType: "governance.gap",
+		Action:     "governance_gap.assign_owner",
+		Status:     "in_progress",
+		Actor:      "owner@example.com",
+		Reason:     "Assigned for cleanup",
+		OccurredAt: "2026-02-02T12:00:00Z",
+		Attributes: map[string]string{
+			"gap_id":            gapID,
+			"gap_state":         "in_progress",
+			"assigned_user_ids": "owner@example.com",
+			"due_at":            "2026-02-15",
+		},
+	}}
+
+	gaps := grcPolicyGovernanceGapsFor([]grcPolicyDocumentItem{document}, nil, grcPolicyGovernanceRules("baseline"), events, time.Date(2026, 2, 2, 12, 0, 0, 0, time.UTC))
+
+	var ownerGap grcPolicyGovernanceGap
+	for _, gap := range gaps {
+		if gap.ID == gapID {
+			ownerGap = gap
+			break
+		}
+	}
+	if ownerGap.ID == "" {
+		t.Fatalf("gaps = %+v, want owner gap", gaps)
+	}
+	if ownerGap.GapState != "in_progress" || ownerGap.Owner != "owner@example.com" || ownerGap.DueAt != "2026-02-15" {
+		t.Fatalf("owner gap = %+v, want assigned in-progress gap", ownerGap)
+	}
+	if ownerGap.RuleID != "document.owner" || ownerGap.ActionID != "governance_gap.assign_owner" || !stringSliceContains(ownerGap.MissingFields, "owner") || ownerGap.SourceFields["policy_count"] != "0" {
+		t.Fatalf("owner gap metadata = %+v, want rule, action, missing field, and source fields", ownerGap)
+	}
+	if len(ownerGap.Trace) != 1 || ownerGap.Trace[0].EventID != "event-1" {
+		t.Fatalf("trace = %+v, want event trace", ownerGap.Trace)
+	}
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, gaps, time.Date(2026, 2, 2, 12, 0, 0, 0, time.UTC))
+	if summary.InProgressGaps != 1 || summary.OpenGovernanceGaps != len(gaps)-1 || summary.HighGovernanceGaps != 0 {
+		t.Fatalf("summary = %+v, want state counts", summary)
+	}
+	rollups := grcPolicyGovernanceGapRollupsFrom(gaps)
+	if len(rollups.ByState) == 0 || rollups.ByState[0].Key != "open" || len(rollups.ByOwner) == 0 {
+		t.Fatalf("rollups = %+v, want state and owner groups", rollups)
+	}
+}
+
+func TestStrictGovernanceRulesRequireDocumentEvidence(t *testing.T) {
+	document := grcPolicyDocumentItem{
+		ID:              "secure-development",
+		URN:             "urn:document:secure-development",
+		Title:           "Secure Development Policy",
+		DocumentClass:   "policy",
+		Status:          "approved",
+		Owner:           "owner@example.com",
+		NextReviewDueAt: "2026-12-31",
+		Policies: []grcPolicyDocumentRef{
+			{ID: "secure-development", URN: "urn:policy:secure-development", Title: "Secure Development Policy"},
+		},
+		Controls: []grcPolicyControlRef{{URN: "urn:control:CC6.1", ControlID: "CC6.1"}},
+	}
+
+	baseline := grcPolicyGovernanceGapsFor([]grcPolicyDocumentItem{document}, nil, grcPolicyGovernanceRules("baseline"), nil, time.Time{})
+	strict := grcPolicyGovernanceGapsFor([]grcPolicyDocumentItem{document}, nil, grcPolicyGovernanceRules("strict"), nil, time.Time{})
+
+	if len(baseline) != 0 {
+		t.Fatalf("baseline gaps = %+v, want none", baseline)
+	}
+	if len(strict) != 1 || strict[0].RuleID != "document.evidence" || strict[0].ActionID != "governance_gap.attach_evidence" {
+		t.Fatalf("strict gaps = %+v, want document evidence gap", strict)
+	}
+}
+
+func TestGovernanceGapLifecycleEventsDoNotCreateUnmappedPolicy(t *testing.T) {
+	document := policyLifecycleTestRow("urn:document:secure-development", "document", "Secure Development Policy", map[string]string{
+		"document_id":    "secure-development",
+		"document_class": "policy",
+		"status":         "approved",
+	})
+	gapEvent := policyLifecycleTestRow("urn:cerebro:writer:policy_lifecycle_event:policyops:gap-event-1", "policy.lifecycle.event", "Gap acknowledged", map[string]string{
+		"lifecycle_event_id": "gap-event-1",
+		"record_type":        "governance.gap",
+		"record_urn":         "urn:document:secure-development:gap:owner",
+		"gap_id":             "urn:document:secure-development:gap:owner",
+		"gap_state":          "acknowledged",
+		"action":             "governance_gap.acknowledge",
+		"status":             "acknowledged",
+		"occurred_at":        "2026-02-02T12:00:00Z",
+	})
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{document, gapEvent}, nil, time.Date(2026, 2, 2, 12, 0, 0, 0, time.UTC))
+
+	if len(response.Policies) != 0 {
+		t.Fatalf("policies = %+v, want no unmapped policy for gap event", response.Policies)
+	}
+	if !grcPolicyGapHasState(response.GovernanceGaps, "urn:document:secure-development:gap:owner", "acknowledged") {
+		t.Fatalf("gaps = %+v, want acknowledged owner gap", response.GovernanceGaps)
+	}
+}
+
 func grcPolicyGapExists(gaps []grcPolicyGovernanceGap, subject string, subjectID string, reason string) bool {
 	for _, gap := range gaps {
 		if gap.Subject == subject && gap.SubjectID == subjectID && gap.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
+func grcPolicyGapHasState(gaps []grcPolicyGovernanceGap, id string, state string) bool {
+	for _, gap := range gaps {
+		if gap.ID == id && gap.GapState == state {
 			return true
 		}
 	}
@@ -473,6 +592,36 @@ func TestBuildActionEventCreatesNormalizedLifecycleEvent(t *testing.T) {
 	}
 	if response.EventID == "" || response.Status != "approved" {
 		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestBuildActionEventCreatesGovernanceGapEvent(t *testing.T) {
+	now := time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC)
+	gapID := "urn:document:secure-development:gap:owner"
+	event, response, err := BuildActionEvent(ActionRequest{
+		Action:         "governance_gap.assign_owner",
+		TenantID:       "writer",
+		SourceID:       "grc",
+		RuntimeID:      "rt-1",
+		GapID:          gapID,
+		RecordURN:      gapID,
+		ActorUserID:    "operator@example.com",
+		Reason:         "Owner found",
+		Assignees:      []string{"owner@example.com"},
+		IdempotencyKey: "assign-owner",
+	}, now)
+	if err != nil {
+		t.Fatalf("BuildActionEvent() error = %v", err)
+	}
+	attrs := event.GetAttributes()
+	if event.GetKind() != "grc.policy_lifecycle_event" || attrs["gap_id"] != gapID || attrs["gap_state"] != "in_progress" || attrs["assigned_user_ids"] != "owner@example.com" {
+		t.Fatalf("event kind/attrs = %q/%#v, want governance gap lifecycle event", event.GetKind(), attrs)
+	}
+	if attrs["record_type"] != "governance.gap" || attrs["record_urn"] != gapID || attrs["state_updated_at"] == "" {
+		t.Fatalf("event attrs = %#v, want gap record metadata", attrs)
+	}
+	if response.Status != "in_progress" || response.EventKind != "grc.policy_lifecycle_event" {
+		t.Fatalf("response = %#v, want governance gap response", response)
 	}
 }
 

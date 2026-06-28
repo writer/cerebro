@@ -267,6 +267,34 @@ func grcPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	return entities, links, nil
 }
 
+func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	ctx, err := newGRCProjectionContext(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	recordType := firstNonEmpty(firstAttribute(ctx.attrs, "record_type"), "policy.lifecycle.event")
+	recordID := firstAttribute(ctx.attrs, "record_id", "gap_id", "external_id")
+	if recordID == "" && firstAttribute(ctx.attrs, "record_urn") != "" {
+		recordID = firstAttribute(ctx.attrs, "record_urn")
+	}
+	if recordID == "" {
+		recordID = ctx.event.GetId()
+	}
+	recordURN := firstAttribute(ctx.attrs, "record_urn", "gap_id")
+	if recordURN == "" {
+		recordURN = ctx.resourceURN("policy_lifecycle_subject", recordID)
+	}
+	policyID := firstAttribute(ctx.attrs, "policy_id", "target_policy_id")
+	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
+	addGRCPolicyLifecycleEvent(ctx, recordURN, recordType, recordID, policyID, versionID)
+	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
+	addGRCPolicyRiskScenarioReferenceLinks(ctx, recordURN)
+	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider)
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
+	entities, links := ctx.done()
+	return entities, links, nil
+}
+
 func grcPolicyURN(tenantID string, provider string, policyID string) string {
 	return projectionURN(tenantID, "policy", provider, "policy", policyID)
 }

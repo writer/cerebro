@@ -169,6 +169,51 @@ func TestProjectGRCPolicyApprovalLinksApproversAndVersion(t *testing.T) {
 	}
 }
 
+func TestProjectGRCPolicyLifecycleEventPreservesGovernanceGapState(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "gap-event-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_lifecycle_event",
+		Attributes: map[string]string{
+			"provider":           "policyops",
+			"source_event_id":    "gap-event-1",
+			"record_type":        "governance.gap",
+			"record_urn":         "urn:document:secure-development:gap:owner",
+			"gap_id":             "urn:document:secure-development:gap:owner",
+			"gap_state":          "acknowledged",
+			"action":             "governance_gap.acknowledge",
+			"status":             "acknowledged",
+			"actor_user_id":      "operator-1",
+			"reason":             "Owner tracked in source",
+			"policy_id":          "secure-development",
+			"document_id":        "secure-development-doc",
+			"risk_id":            "privileged-access",
+			"control_ids":        "CC6.1",
+			"evidence_cas_uri":   "evidencecas://policy/gap-owner",
+			"state_updated_at":   "2026-02-02T12:00:00Z",
+			"source_document_id": "secure-development-doc",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	lifecycleEventURN := "urn:cerebro:writer:policy_lifecycle_event:policyops:gap-event-1"
+	gapURN := "urn:document:secure-development:gap:owner"
+	policyURN := "urn:cerebro:writer:policy:policyops:policy:secure-development"
+	operatorURN := "urn:cerebro:writer:user:policyops:operator-1"
+	if entity := state.entities[lifecycleEventURN]; entity == nil || entity.EntityType != "policy.lifecycle.event" || entity.Attributes["gap_state"] != "acknowledged" || entity.Attributes["gap_id"] != gapURN {
+		t.Fatalf("lifecycle event entity = %#v, want gap state attributes", entity)
+	}
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, gapURN)
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, policyURN)
+	assertProjectedLink(t, state, operatorURN, relationActedOn, lifecycleEventURN)
+}
+
 func TestProjectGRCPolicyAcceptanceLinksEmployeeAndAssignment(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
