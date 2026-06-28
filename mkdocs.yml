@@ -41,6 +41,7 @@ nav:
       - Policies: domains/policies.md
       - Policy Lifecycle: domains/policy-lifecycle.md
       - Policy Rule Extensions: domains/policy-rule-extensions.md
+      - Policy Compliance Mapping: domains/policy-compliance-mapping.md
       - Findings Platform Architecture: domains/findings-platform-architecture.md
       - Finding Candidate Operations: domains/finding-candidate-operations.md
       - Agent Platform Contract: domains/agent-platform-contract.md

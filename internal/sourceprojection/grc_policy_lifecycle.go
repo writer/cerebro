@@ -2,9 +2,11 @@ package sourceprojection
 
 import (
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func grcPolicyTemplateProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -33,6 +35,7 @@ func grcPolicyTemplateProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, ctx.provider, ctx.attrs)
 	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, "policy_template_framework", firstAttribute(ctx.attrs, "frameworks", "framework"))
 	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, "policy_template_category", firstAttribute(ctx.attrs, "category", "policy_category"))
+	addGRCPolicyLifecycleEvent(ctx, templateURN, "policy.template", templateID, "", "")
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -72,6 +75,7 @@ func grcPolicyVersionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	addGRCPolicyAssignmentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, versionURN, ctx.provider, ctx.attrs)
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, versionURN, ctx.provider, ctx.attrs)
 	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "author_user_id", "created_by_user_id"), versionURN, "authored")
+	addGRCPolicyLifecycleEvent(ctx, versionURN, "policy.version", versionID, policyID, versionID)
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -108,6 +112,7 @@ func grcPolicyApprovalProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	addGRCPolicyUserActionLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, approvalURN, firstAttribute(ctx.attrs, "approver_user_id", "approver_user_ids", "approved_by_user_id", "reviewer_user_id", "reviewer_user_ids"), grcPolicyApprovalAction(ctx.attrs))
 	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "requested_by_user_id"), approvalURN, "requested_approval")
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, approvalURN, ctx.provider, ctx.attrs)
+	addGRCPolicyLifecycleEvent(ctx, approvalURN, "policy.approval", approvalID, policyID, versionID)
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -143,6 +148,7 @@ func grcPolicyAcceptanceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	addGRCPolicyPersonEvidenceLinks(ctx, acceptanceURN)
 	addGRCPolicyAssignmentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, acceptanceURN, ctx.provider, ctx.attrs)
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, acceptanceURN, ctx.provider, ctx.attrs)
+	addGRCPolicyLifecycleEvent(ctx, acceptanceURN, "policy.acceptance", acceptanceID, policyID, versionID)
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -179,6 +185,7 @@ func grcPolicyReviewProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	addGRCPolicyUserActionLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, reviewURN, firstAttribute(ctx.attrs, "reviewer_user_id", "reviewer_user_ids", "reviewed_by_user_id"), "reviewed")
 	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reviewURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "policy_owner_user_id"))
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reviewURN, ctx.provider, ctx.attrs)
+	addGRCPolicyLifecycleEvent(ctx, reviewURN, "policy.review", reviewID, policyID, versionID)
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -215,6 +222,7 @@ func grcPolicyReminderProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "sent_by_user_id", "created_by_user_id"), reminderURN, "sent_reminder")
 	addGRCPolicyUserActionLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, reminderURN, firstAttribute(ctx.attrs, "escalated_to_user_id", "escalated_to_user_ids"), "escalated")
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reminderURN, ctx.provider, ctx.attrs)
+	addGRCPolicyLifecycleEvent(ctx, reminderURN, "policy.reminder", reminderID, policyID, versionID)
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -254,6 +262,7 @@ func grcPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	addGRCPolicyExceptionIdentityTargetLinks(ctx, exceptionURN)
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, exceptionURN, ctx.provider, ctx.attrs)
 	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, exceptionURN, "policy_exception_status", firstAttribute(ctx.attrs, "status", "exception_status", "waiver_status"))
+	addGRCPolicyLifecycleEvent(ctx, exceptionURN, "policy.exception", exceptionID, policyID, versionID)
 	entities, links := ctx.done()
 	return entities, links, nil
 }
@@ -291,6 +300,67 @@ func addGRCPolicyLifecycleSubjectLinks(ctx *grcProjectionContext, fromURN string
 	if policyURN := addGRCPolicyReference(ctx, policyID); policyURN != "" {
 		ctx.addEventLink(fromURN, policyURN, relationAssociatedWith)
 	}
+}
+
+func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, recordType string, recordID string, policyID string, versionID string) {
+	if ctx == nil || subjectURN == "" {
+		return
+	}
+	eventID := firstAttribute(ctx.attrs, "lifecycle_event_id", "source_event_id")
+	if eventID == "" {
+		eventID = ctx.event.GetId()
+	}
+	if eventID == "" {
+		return
+	}
+	eventURN := ctx.resourceURN("policy_lifecycle_event", eventID)
+	action := firstAttribute(ctx.attrs, "action", "lifecycle_action")
+	if action == "" {
+		action = strings.TrimPrefix(ctx.event.GetKind(), "grc.")
+	}
+	ctx.addResourceEntity(
+		eventURN,
+		"policy.lifecycle.event",
+		firstNonEmptyString(firstAttribute(ctx.attrs, "title", "policy_name", "name"), action, eventID),
+		map[string]string{
+			"lifecycle_event_id": eventID,
+			"source_event_id":    ctx.event.GetId(),
+			"event_kind":         ctx.event.GetKind(),
+			"action":             action,
+			"status":             firstAttribute(ctx.attrs, "status", "approval_status", "acceptance_status", "review_status", "exception_status", "reminder_status", "lifecycle_state"),
+			"policy_id":          policyID,
+			"policy_version_id":  versionID,
+			"record_id":          recordID,
+			"record_type":        recordType,
+			"record_urn":         subjectURN,
+			"actor_user_id":      firstAttribute(ctx.attrs, "actor_user_id", "created_by_user_id", "updated_by_user_id", "author_user_id", "requested_by_user_id", "approver_user_id", "reviewer_user_id", "sent_by_user_id"),
+			"reason":             firstAttribute(ctx.attrs, "reason", "justification", "summary"),
+			"occurred_at":        sourceProjectionTimestampString(ctx.event.GetOccurredAt()),
+			"source_system":      ctx.provider,
+		},
+	)
+	ctx.addEventLink(eventURN, subjectURN, relationAssociatedWith)
+	if versionID != "" {
+		versionURN := ctx.resourceURN("policy_version", versionID)
+		ctx.addReferenceEntity(
+			versionURN,
+			"policy.version",
+			firstAttribute(ctx.attrs, "policy_name", "title", "name", "version", "policy_version_id", "version_id"),
+			map[string]string{"policy_id": policyID, "policy_version_id": versionID, "source_system": ctx.provider},
+		)
+		ctx.addEventLink(eventURN, versionURN, relationAssociatedWith)
+	}
+	if policyURN := addGRCPolicyReference(ctx, policyID); policyURN != "" {
+		ctx.addEventLink(eventURN, policyURN, relationAssociatedWith)
+	}
+	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "actor_user_id", "created_by_user_id", "updated_by_user_id", "author_user_id", "requested_by_user_id", "approver_user_id", "reviewer_user_id", "sent_by_user_id"), eventURN, action)
+}
+
+func sourceProjectionTimestampString(value *timestamppb.Timestamp) string {
+	if value == nil {
+		return ""
+	}
+	return value.AsTime().UTC().Format(time.RFC3339)
 }
 
 func addGRCPolicyDocumentLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, attrs map[string]string) {

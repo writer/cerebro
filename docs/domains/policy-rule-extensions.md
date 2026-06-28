@@ -34,4 +34,5 @@ After changing policies or extensions, run:
 ```bash
 make policy-rule-generate
 make detection-catalog-generate
+make policy-mapping-export
 ```

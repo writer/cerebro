@@ -100,6 +100,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/grc/control-packets/export", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Prefix: "/grc/control-packs", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/grc/evidence-packets", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodPost, Exact: "/grc/policy-lifecycle/actions", Scope: scopeGRCPolicyLifecycleWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/findings/triage", Scope: scopeFindingLifecycleWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/resource-scope", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/accountability", Scope: scopeGRCInventoryWrite, Static: true},
