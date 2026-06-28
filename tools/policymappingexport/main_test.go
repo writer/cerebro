@@ -362,6 +362,31 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	}
 }
 
+func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	rows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_coverage_candidates.csv"))
+	header := rows[0]
+	frameworkCol := columnIndex(t, header, "framework")
+	controlCol := columnIndex(t, header, "control_id")
+
+	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "CCPA", "1798.100")
+	assertCellContains(t, header, privacyRow, "coverage_status", "direct_control_only")
+	assertCellContains(t, header, privacyRow, "candidate_priority", "high")
+	assertCellContains(t, header, privacyRow, "candidate_type", "source_backing_candidate")
+	assertCellContains(t, header, privacyRow, "suggested_finding_domain", "privacy")
+	assertCellContains(t, header, privacyRow, "requirement_profiles", "privacy-rights")
+
+	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ISO 27001:2022", "A.7.8")
+	assertCellContains(t, header, catalogOnlyRow, "coverage_status", "framework_catalog_only")
+	assertCellContains(t, header, catalogOnlyRow, "candidate_priority", "low")
+	assertCellContains(t, header, catalogOnlyRow, "candidate_type", "scope_or_exclusion_candidate")
+	assertCellContains(t, header, catalogOnlyRow, "requirement_profiles", "baseline-control-review")
+}
+
 func TestComplianceReviewTagsAreDerivedFromControlRefs(t *testing.T) {
 	tags := complianceReviewTags([]controlRef{{
 		Framework: "SOC 2",
@@ -469,6 +494,17 @@ func findRequirementRow(t *testing.T, rows [][]string, frameworkCol int, control
 		}
 	}
 	t.Fatalf("requirement row not found for %s %s %s %s", framework, controlID, profile, source)
+	return nil
+}
+
+func findFrameworkControlRow(t *testing.T, rows [][]string, frameworkCol int, controlCol int, framework string, controlID string) []string {
+	t.Helper()
+	for _, row := range rows[1:] {
+		if row[frameworkCol] == framework && row[controlCol] == controlID {
+			return row
+		}
+	}
+	t.Fatalf("framework control row not found for %s %s", framework, controlID)
 	return nil
 }
 

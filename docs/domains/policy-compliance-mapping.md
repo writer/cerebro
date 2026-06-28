@@ -63,6 +63,7 @@ Finding domains resolve from `finding_domains` by finding ID, pack, source, then
 | `source_capability_review_map.csv` | One row per source/dimension comparing YAML capability refs with observed public catalog source coverage refs. |
 | `framework_control_enrichment_map.csv` | One row per framework control showing direct findings, source-backed findings, source capabilities, review areas, and relationships. |
 | `framework_control_gap_map.csv` | One row per framework control with direct, indirect, or no-coverage status plus the next action for coverage cleanup. |
+| `framework_coverage_candidates.csv` | One row per non-source-backed framework control that needs source backing, a source-backed finding, mapping review, or a scope decision. |
 | `control_evidence_requirements.csv` | One row per expanded control evidence requirement with required source, entity type, fields, freshness, assessment methods, catalog evidence refs, source capability refs, and current coverage status. |
 | `finding_evidence_requirement_map.csv` | One row per public finding-control-requirement link so reviewers can see which requirement source each mapped finding points toward. |
 | `yaml_layers.csv` | One row per extension layer so inherited audit language can be reviewed. |
@@ -134,6 +135,15 @@ Use `mapping_rationale` for the row-level reason before relying on a mapping in 
 `evidence_capabilities.yaml` declares what a source/dimension can support when source coverage is available. `source_capability_review_map.csv` compares those YAML declarations with the public detection catalog so capability gaps are visible without treating review context as evidence.
 
 `framework_control_enrichment_map.csv` is the control-centric view. It answers the reverse question for each framework control: which findings map directly, which findings are source-backed, which source capabilities can support it, which review areas use it, and which related controls should be inspected with it.
+
+`framework_coverage_candidates.csv` is the author queue for controls that should not be treated as fully supported yet:
+
+- `source_backing_candidate`: a finding maps directly, but the control is not source-backed.
+- `missing_finding_candidate`: a source capability exists, but no finding maps directly.
+- `mapping_review_candidate`: review context exists, but the control still needs a direct mapping or non-finding decision.
+- `scope_or_exclusion_candidate`: the control is in the framework catalog only and needs an in-scope decision.
+
+Candidate rows include suggested finding domain, evidence type, requirement profiles, requirement sources, source capabilities, review context, and next action. They are work queues, not control coverage.
 
 ## Evidence Requirements
 
