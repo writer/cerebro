@@ -790,14 +790,14 @@ func grcTelemetryErrorKind(err error) string {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
-		errors.Is(err, graphquery.ErrRuntimeUnavailable),
+		errors.Is(err, graphquery.ErrRuntimeUnavailable), errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
 		errors.Is(err, grcupload.ErrRuntimeUnavailable),
 		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
 		errors.Is(err, graphagent.ErrInvalidRequest),
-		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, grcpolicylifecycle.ErrInvalidRequest),
 		errors.Is(err, grcupload.ErrInvalidRequest),
 		errors.Is(err, grcvendor.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):

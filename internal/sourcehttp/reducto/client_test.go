@@ -98,6 +98,118 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	}
 }
 
+func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
+	var serverURL string
+	var sawResult bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/upload":
+			writeJSON(t, w, http.StatusOK, map[string]string{"file_id": "file-1"})
+		case "/parse":
+			writeJSON(t, w, http.StatusOK, map[string]any{
+				"parse_id":   "parse-1",
+				"status":     "completed",
+				"result_url": serverURL + "/result",
+			})
+		case "/result":
+			sawResult = true
+			if r.Method != http.MethodGet {
+				t.Fatalf("result method = %s, want GET", r.Method)
+			}
+			writeJSON(t, w, http.StatusOK, map[string]any{
+				"chunks": []map[string]string{
+					{"content": "Downloaded policy content"},
+				},
+				"page_count": 5,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client, err := NewClient(Config{
+		APIKey:  "reducto-token",
+		BaseURL: server.URL,
+		Timeout: time.Second,
+	}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	parsed, err := client.Parse(context.Background(), "Access Policy.pdf", "application/pdf", strings.NewReader("policy body"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !sawResult {
+		t.Fatal("result URL was not fetched")
+	}
+	if parsed.ChunkCount != 1 || parsed.PageCount != 5 || parsed.TextPreview != "Downloaded policy content" {
+		t.Fatalf("parsed result payload = %#v", parsed)
+	}
+}
+
+func TestReductoClientRejectsCrossOriginResultURL(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		APIKey:  "reducto-token",
+		BaseURL: server.URL,
+		Timeout: time.Second,
+	}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	_, err = client.fetchResultURL(context.Background(), "https://platform.reducto.ai/result")
+	if !errors.Is(err, grcupload.ErrRemote) {
+		t.Fatalf("fetchResultURL() error = %v, want ErrRemote", err)
+	}
+}
+
+func TestReductoClientPreservesNumericIdentifiers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/upload":
+			writeJSON(t, w, http.StatusOK, map[string]any{"file_id": 12345})
+		case "/parse":
+			var request map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode parse request: %v", err)
+			}
+			if request["input"] != "12345" {
+				t.Fatalf("parse input = %q, want 12345", request["input"])
+			}
+			writeJSON(t, w, http.StatusOK, map[string]any{
+				"parse_id": 67890,
+				"status":   "completed",
+				"chunks": []map[string]string{
+					{"content": "Numeric identifier policy content"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		APIKey:  "reducto-token",
+		BaseURL: server.URL,
+		Timeout: time.Second,
+	}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	parsed, err := client.Parse(context.Background(), "Access Policy.pdf", "application/pdf", strings.NewReader("policy body"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if parsed.ProviderFileID != "12345" || parsed.ParseID != "67890" {
+		t.Fatalf("parsed numeric identifiers = %#v", parsed)
+	}
+}
+
 func TestNewReductoClientRequiresAPIKey(t *testing.T) {
 	_, err := NewClient(Config{BaseURL: "https://platform.reducto.ai"})
 	if !errors.Is(err, grcupload.ErrRuntimeUnavailable) {

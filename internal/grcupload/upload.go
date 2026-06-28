@@ -358,16 +358,27 @@ func mergeAttrs(groups ...map[string]string) map[string]string {
 	return merged
 }
 
-func stableUploadID(request UploadRequest, parsed ParsedDocument, now time.Time) string {
-	seed := strings.Join([]string{
+func stableUploadID(request UploadRequest, _ ParsedDocument, _ time.Time) string {
+	parts := []string{
 		string(request.Target),
 		request.TenantID,
 		request.SourceID,
 		request.RuntimeID,
 		request.FileName,
-		parsed.ProviderFileID,
-		now.Format(time.RFC3339Nano),
-	}, "\x00")
+		request.ContentType,
+		fmt.Sprintf("%d", request.FileSize),
+	}
+	keys := make([]string, 0, len(request.Fields))
+	for key := range request.Fields {
+		if key != "upload_id" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		parts = append(parts, key, request.Fields[key])
+	}
+	seed := strings.Join(parts, "\x00")
 	return "upload-" + shortHash(seed, 16)
 }
 

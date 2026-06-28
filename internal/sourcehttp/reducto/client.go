@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 )
 
 const (
+	reductoSourceID                 = "reducto"
 	defaultReductoBaseURL           = "https://platform.reducto.ai"
 	defaultReductoTimeout           = 30 * time.Second
 	maxReductoErrorBodyBytes  int64 = 8192
@@ -32,9 +34,10 @@ type Config struct {
 }
 
 type Client struct {
-	baseURL    *url.URL
-	apiKey     string
-	httpClient *http.Client
+	baseURL     *url.URL
+	apiKey      string
+	httpClient  *http.Client
+	httpOptions sourcehttp.ClientOptions
 }
 
 type Option func(*Client)
@@ -42,7 +45,7 @@ type Option func(*Client)
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *Client) {
 		if client != nil {
-			c.httpClient = client
+			c.httpClient = sourcehttp.HardenClient(client, c.httpOptions)
 		}
 	}
 }
@@ -67,12 +70,16 @@ func NewClient(cfg Config, opts ...Option) (*Client, error) {
 	if timeout <= 0 {
 		timeout = defaultReductoTimeout
 	}
+	httpOptions := sourcehttp.ClientOptions{
+		SourceID:      reductoSourceID,
+		Timeout:       timeout,
+		AllowLoopback: parsed.Scheme == "http" && sourcehttp.IsLoopbackHost(parsed.Hostname()),
+	}
 	client := &Client{
-		baseURL: parsed,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+		baseURL:     parsed,
+		apiKey:      apiKey,
+		httpClient:  sourcehttp.NewClient(httpOptions),
+		httpOptions: httpOptions,
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -132,7 +139,10 @@ func (c *Client) upload(ctx context.Context, fileName string, contentType string
 	if err != nil {
 		return "", fmt.Errorf("%w: decode Reducto upload response: %w", grcupload.ErrRemote, err)
 	}
-	fileID := lookupFirstString(payload, "file_id", "document_url", "url", "id", "reducto_file_id")
+	fileID := lookupTopString(payload, "file_id", "document_url", "url", "id", "reducto_file_id")
+	if fileID == "" {
+		fileID = lookupTopString(lookupTopValue(payload, "result"), "file_id", "document_url", "reducto_file_id")
+	}
 	if fileID == "" {
 		return "", fmt.Errorf("%w: Reducto upload response missing file_id", grcupload.ErrRemote)
 	}
@@ -164,7 +174,7 @@ func (c *Client) parse(ctx context.Context, fileID string) (grcupload.ParsedDocu
 		return grcupload.ParsedDocument{}, fmt.Errorf("%w: decode Reducto parse response: %w", grcupload.ErrRemote, err)
 	}
 	parsed := parsedDocumentFromPayload(payload)
-	if resultURL := lookupFirstString(payload, "result_url", "download_url", "url"); parsed.ChunkCount == 0 && resultURL != "" {
+	if resultURL := lookupTopString(payload, "result_url", "download_url", "url"); parsed.ChunkCount == 0 && resultURL != "" {
 		if resultPayload, err := c.fetchResultURL(ctx, resultURL); err == nil {
 			parsed = mergeParsedDocument(parsed, parsedDocumentFromPayload(resultPayload))
 		}
@@ -174,14 +184,11 @@ func (c *Client) parse(ctx context.Context, fileID string) (grcupload.ParsedDocu
 }
 
 func (c *Client) fetchResultURL(ctx context.Context, rawURL string) (any, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("%w: Reducto result URL is invalid", grcupload.ErrRemote)
+	resultURL, err := sourcehttp.SameOriginAbsoluteURL(reductoSourceID, c.baseURL.String(), rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: Reducto result URL is invalid: %w", grcupload.ErrRemote, err)
 	}
-	if !allowedReductoURL(parsed) {
-		return nil, fmt.Errorf("%w: Reducto result URL must use https unless it targets loopback", grcupload.ErrRemote)
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, resultURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: build Reducto result request: %w", grcupload.ErrRemote, err)
 	}
@@ -198,25 +205,33 @@ func (c *Client) fetchResultURL(ctx context.Context, rawURL string) (any, error)
 }
 
 func parsedDocumentFromPayload(payload any) grcupload.ParsedDocument {
-	chunks := lookupArray(payload, "chunks")
+	result := lookupTopValue(payload, "result")
+	chunks := lookupTopArray(payload, "chunks")
+	if len(chunks) == 0 {
+		chunks = lookupArray(result, "chunks")
+	}
 	texts := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		texts = append(texts, contentStrings(chunk)...)
 	}
 	if len(texts) == 0 {
-		texts = contentStrings(lookupValue(payload, "result"))
+		texts = contentStrings(result)
 	}
 	if len(texts) == 0 {
 		texts = contentStrings(payload)
 	}
+	pageCount := lookupTopInt(payload, "page_count", "pages")
+	if pageCount == 0 {
+		pageCount = lookupFirstInt(result, "page_count", "pages")
+	}
 	preview := truncateRunes(compactWhitespace(strings.Join(texts, " ")), maxParsedTextPreviewChars)
 	return grcupload.ParsedDocument{
-		ProviderFileID: lookupFirstString(payload, "file_id", "document_url", "input", "reducto_file_id"),
-		ParseID:        lookupFirstString(payload, "parse_id", "job_id", "id"),
-		Status:         firstNonEmpty(lookupFirstString(payload, "status"), "parsed"),
+		ProviderFileID: lookupTopString(payload, "file_id", "document_url", "input", "reducto_file_id"),
+		ParseID:        lookupTopString(payload, "parse_id", "job_id", "id"),
+		Status:         firstNonEmpty(lookupTopString(payload, "status"), "parsed"),
 		TextPreview:    preview,
 		ChunkCount:     len(chunks),
-		PageCount:      lookupFirstInt(payload, "page_count", "pages"),
+		PageCount:      pageCount,
 	}
 }
 
@@ -244,7 +259,9 @@ func mergeParsedDocument(left grcupload.ParsedDocument, right grcupload.ParsedDo
 
 func readJSON(reader io.Reader, maxBytes int64) (any, error) {
 	var payload any
-	if err := json.NewDecoder(io.LimitReader(reader, maxBytes)).Decode(&payload); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(reader, maxBytes))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -276,38 +293,10 @@ func errorMessage(body []byte) string {
 	return truncateRunes(strings.TrimSpace(string(body)), 300)
 }
 
-func lookupFirstString(value any, keys ...string) string {
+func lookupTopString(value any, keys ...string) string {
 	for _, key := range keys {
-		if found := lookupString(value, key); found != "" {
+		if found := scalarString(lookupTopValue(value, key)); found != "" {
 			return found
-		}
-	}
-	return ""
-}
-
-func lookupString(value any, key string) string {
-	switch typed := value.(type) {
-	case map[string]any:
-		for rawKey, rawValue := range typed {
-			if strings.EqualFold(rawKey, key) {
-				if text, ok := rawValue.(string); ok {
-					return strings.TrimSpace(text)
-				}
-				if number, ok := rawValue.(json.Number); ok {
-					return number.String()
-				}
-			}
-		}
-		for _, rawValue := range typed {
-			if found := lookupString(rawValue, key); found != "" {
-				return found
-			}
-		}
-	case []any:
-		for _, rawValue := range typed {
-			if found := lookupString(rawValue, key); found != "" {
-				return found
-			}
 		}
 	}
 	return ""
@@ -322,18 +311,22 @@ func lookupFirstInt(value any, keys ...string) int {
 	return 0
 }
 
+func lookupTopInt(value any, keys ...string) int {
+	for _, key := range keys {
+		if found := scalarInt(lookupTopValue(value, key)); found > 0 {
+			return found
+		}
+	}
+	return 0
+}
+
 func lookupInt(value any, key string) int {
 	switch typed := value.(type) {
 	case map[string]any:
 		for rawKey, rawValue := range typed {
 			if strings.EqualFold(rawKey, key) {
-				switch v := rawValue.(type) {
-				case float64:
-					if v > 0 {
-						return int(v)
-					}
-				case int:
-					return v
+				if found := scalarInt(rawValue); found > 0 {
+					return found
 				}
 			}
 		}
@@ -377,27 +370,63 @@ func lookupArray(value any, key string) []any {
 	return nil
 }
 
-func lookupValue(value any, key string) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		for rawKey, rawValue := range typed {
-			if strings.EqualFold(rawKey, key) {
-				return rawValue
-			}
-		}
-		for _, rawValue := range typed {
-			if found := lookupValue(rawValue, key); found != nil {
-				return found
-			}
-		}
-	case []any:
-		for _, rawValue := range typed {
-			if found := lookupValue(rawValue, key); found != nil {
-				return found
-			}
+func lookupTopArray(value any, key string) []any {
+	if values, ok := lookupTopValue(value, key).([]any); ok {
+		return values
+	}
+	return nil
+}
+
+func lookupTopValue(value any, key string) any {
+	typed, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	for rawKey, rawValue := range typed {
+		if strings.EqualFold(rawKey, key) {
+			return rawValue
 		}
 	}
 	return nil
+}
+
+func scalarString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return strings.TrimSpace(typed.String())
+	case float64:
+		return strings.TrimSpace(strconv.FormatFloat(typed, 'f', -1, 64))
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	}
+	return ""
+}
+
+func scalarInt(value any) int {
+	switch typed := value.(type) {
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil && parsed > 0 {
+			return int(parsed)
+		}
+		if parsed, err := strconv.ParseFloat(typed.String(), 64); err == nil && parsed > 0 {
+			return int(parsed)
+		}
+	case float64:
+		if typed > 0 {
+			return int(typed)
+		}
+	case int:
+		return typed
+	case int64:
+		if typed > 0 {
+			return int(typed)
+		}
+	}
+	return 0
 }
 
 func contentStrings(value any) []string {
@@ -413,7 +442,10 @@ func contentStrings(value any) []string {
 					continue
 				}
 			}
-			texts = append(texts, contentStrings(rawValue)...)
+			switch rawValue.(type) {
+			case map[string]any, []any:
+				texts = append(texts, contentStrings(rawValue)...)
+			}
 		}
 		return texts
 	case []any:

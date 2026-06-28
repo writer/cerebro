@@ -410,9 +410,6 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if strings.TrimSpace(reductoAPIKey) == "" {
-		reductoAPIKey = strings.TrimSpace(os.Getenv("REDUCTO_API_KEY"))
-	}
 	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
 	if err != nil {
 		return Config{}, err

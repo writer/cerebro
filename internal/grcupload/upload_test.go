@@ -141,6 +141,28 @@ func TestBuildEventsBuildsVendorAndAssuranceDocumentEvents(t *testing.T) {
 	}
 }
 
+func TestStableUploadIDIgnoresParserIDsAndClock(t *testing.T) {
+	request := normalizeRequest(UploadRequest{
+		Target:      TargetPolicy,
+		TenantID:    "tenant-1",
+		SourceID:    "upload-source",
+		RuntimeID:   "runtime-1",
+		FileName:    "Access Policy.pdf",
+		ContentType: "application/pdf",
+		FileSize:    42,
+		Fields: map[string]string{
+			"policy_id": "access-policy",
+			"upload_id": "caller-supplied-id",
+		},
+	})
+
+	left := stableUploadID(request, ParsedDocument{ProviderFileID: "file-1"}, time.Date(2026, 6, 28, 10, 30, 0, 0, time.UTC))
+	right := stableUploadID(request, ParsedDocument{ProviderFileID: "file-2"}, time.Date(2026, 6, 28, 10, 31, 0, 0, time.UTC))
+	if left != right {
+		t.Fatalf("stableUploadID() = %q then %q, want retry-stable ID", left, right)
+	}
+}
+
 func TestBuildEventsRejectsMissingTenant(t *testing.T) {
 	_, _, err := BuildEvents(UploadRequest{
 		Target:   TargetPolicy,
