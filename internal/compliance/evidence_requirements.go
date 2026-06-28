@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -157,7 +158,7 @@ func ResolveControlEvidenceRequirements(index *CatalogIndex, catalog ControlEvid
 					ProfileID:             strings.TrimSpace(profile.ID),
 					ProfileName:           strings.TrimSpace(profile.Name),
 					SourceRequirement:     MergeControlEvidenceRequirementDefaults(catalog.Defaults, requirement),
-					ManualEvidenceAllowed: catalog.Defaults.ManualEvidenceAllowed,
+					ManualEvidenceAllowed: cloneBool(catalog.Defaults.ManualEvidenceAllowed),
 				})
 			}
 		}
@@ -245,21 +246,28 @@ func controlEvidenceRequirementProfileApplies(profile ControlEvidenceRequirement
 	if controlEvidenceRequirementSelectorEmpty(selector) {
 		return false
 	}
-	if values := trimNonEmptyStrings(selector.Frameworks); len(values) != 0 && containsStringFold(values, control.FrameworkName) {
-		return true
+
+	familyKeywords := trimNonEmptyStrings(selector.FamilyKeywords)
+	controlIDPrefixes := trimNonEmptyStrings(selector.ControlIDPrefixes)
+	if values := trimNonEmptyStrings(selector.Frameworks); len(values) != 0 {
+		if !containsStringFold(values, control.FrameworkName) {
+			return false
+		}
+		if len(familyKeywords) == 0 && len(controlIDPrefixes) == 0 {
+			return true
+		}
 	}
+
 	searchText := strings.Join([]string{
-		control.FrameworkName,
 		control.FamilyID,
 		control.FamilyName,
-		control.Control.ID,
 		control.Control.Title,
 		strings.Join(control.EffectiveTags, " "),
 	}, " ")
-	if values := trimNonEmptyStrings(selector.FamilyKeywords); len(values) != 0 && containsAnySubstringFold(searchText, values) {
+	if len(familyKeywords) != 0 && containsAnyKeywordFold(searchText, familyKeywords) {
 		return true
 	}
-	if values := trimNonEmptyStrings(selector.ControlIDPrefixes); len(values) != 0 && hasAnyPrefixFold(control.Control.ID, values) {
+	if len(controlIDPrefixes) != 0 && hasAnyPrefixFold(control.Control.ID, controlIDPrefixes) {
 		return true
 	}
 	return false
@@ -290,14 +298,27 @@ func containsStringFold(values []string, want string) bool {
 	return false
 }
 
-func containsAnySubstringFold(value string, needles []string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
+func containsAnyKeywordFold(value string, needles []string) bool {
+	value = normalizeKeywordText(value)
 	for _, needle := range needles {
-		if needle = strings.ToLower(strings.TrimSpace(needle)); needle != "" && strings.Contains(value, needle) {
+		needle = normalizeKeywordText(needle)
+		if needle != "" && strings.Contains(" "+value+" ", " "+needle+" ") {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeKeywordText(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteRune(' ')
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 func hasAnyPrefixFold(value string, prefixes []string) bool {
