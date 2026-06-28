@@ -32,6 +32,25 @@ as supported. Use `make sourcegen-check` when the change should prove that every
 built-in connector definition remains sourcegen-ready. The checker prints the
 catalog status summary that should be used in PR notes.
 
+Use `make connector-catalog-maintenance` before promoting or cleaning catalog
+entries. It runs the catalog proof gates and writes:
+
+- `tmp/connector-catalog-review.md`
+- `tmp/connector-catalog-review.json`
+
+The report is the review queue for this catalog. It lists sourcegen promotion
+candidates, graph projection coverage, cleanup findings such as duplicate
+provider roots, and review Q&A for each source. Treat cleanup findings as
+actionable before adding another broad connector wave. Treat Q&A as the
+operator checklist for creation and usage: graph targets, coverage value,
+auth scope, and promotion state should be answerable from the catalog entry or
+the linked Source CDK runtime.
+
+The repository also runs connector catalog maintenance on catalog PRs, on
+`main`, and every six hours. The scheduled job publishes the Markdown and JSON
+review artifacts so catalog drift, promotion backlog, and cleanup candidates
+stay visible even when no connector PR is open.
+
 Generateable entries can be promoted one integration at a time from the catalog:
 
 ```sh

@@ -19,6 +19,11 @@ class ChangedChecksTests(unittest.TestCase):
         names = self.command_names(["internal/connectorcatalog/catalog/devops-ci-cd.yaml"])
         self.assertIn("sourcegen-check", names)
         self.assertIn("catalog-check", names)
+        self.assertIn("connector-catalog-review", names)
+
+    def test_connector_review_tooling_selects_catalog_review(self):
+        names = self.command_names(["tools/connectorcatalogreview/main.go"])
+        self.assertIn("connector-catalog-review", names)
 
     def test_policy_paths_select_rule_and_detection_checks(self):
         names = self.command_names(["policies/aws/example.yaml"])
