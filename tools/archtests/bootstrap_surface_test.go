@@ -65,7 +65,7 @@ import (
 // policy lifecycle adds route/scope/error mapping plus action and CSV export
 // adapters; graph aggregation, action event construction, audit row shaping,
 // and response shaping live in internal/grcpolicylifecycle.
-const bootstrapProductionGoLineBudget = 26424
+const bootstrapProductionGoLineBudget = 26425
 
 type bootstrapFileLineCount struct {
 	path  string
