@@ -300,7 +300,7 @@ GDPR,Article 20,GDPR Article 20,GDPR Article Articles,0,0,0,,,,,framework_catalo
 GDPR,Article 21,GDPR Article 21,GDPR Article Articles,0,0,0,,,,,framework_catalog_only,,
 GDPR,Article 22,GDPR Article 22,GDPR Article Articles,0,0,0,,,,,framework_catalog_only,,
 GDPR,Article 23,GDPR Article 23,GDPR Article Articles,0,0,0,,,,,framework_catalog_only,,
-GDPR,Article 24,GDPR Article 24,GDPR Article Articles,2,0,0,,GDPR/processing-accountability,,GDPR Art.5 [accountability_dependency/review_hint],direct_control_only,compliance-gdpr-policy; compliance-ir-gdpr-addendum,
+GDPR,Article 24,GDPR Article 24,GDPR Article Articles,2,0,0,,GDPR/processing-accountability,,GDPR Article 5 [accountability_dependency/review_hint],direct_control_only,compliance-gdpr-policy; compliance-ir-gdpr-addendum,
 GDPR,Article 25,GDPR Article 25,GDPR Article Articles,1,0,0,,,,,direct_control_only,compliance-gdpr-policy,
 GDPR,Article 27,GDPR Article 27,GDPR Article Articles,0,0,0,,,,,framework_catalog_only,,
 GDPR,Article 28,GDPR Article 28,GDPR Article Articles,1,0,0,,GDPR/processing-accountability,,,direct_control_only,vendor-dpa-exists,

@@ -94,9 +94,8 @@ review_areas:
     evidence_use: review_group
     purpose: Review whether processing records, privacy ownership, processor oversight, and core data-protection principles have current evidence.
     control_refs:
-      - Art.5
+      - Article 5
       - Article 24
-      - Art.30
       - Article 30
       - Article 28
   - framework: GDPR
