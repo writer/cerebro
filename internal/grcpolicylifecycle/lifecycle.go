@@ -172,6 +172,7 @@ type Response struct {
 	Policies          []grcPolicyLifecyclePolicy    `json:"policies"`
 	Documents         []grcPolicyDocumentItem       `json:"documents"`
 	RiskRegister      []grcPolicyRiskRegisterItem   `json:"risk_register"`
+	GovernanceGaps    []grcPolicyGovernanceGap      `json:"governance_gaps"`
 	WorkQueue         []grcPolicyLifecycleWork      `json:"work_queue"`
 	DocumentWorkQueue []grcPolicyDocumentWork       `json:"document_work_queue"`
 	Reminders         []grcPolicyReminderItem       `json:"reminders"`
@@ -194,6 +195,9 @@ type grcPolicyLifecycleSummary struct {
 	PendingApprovals       int `json:"pending_approvals"`
 	OverdueReviews         int `json:"overdue_reviews"`
 	DocumentsDueForReview  int `json:"documents_due_for_review"`
+	GovernanceGaps         int `json:"governance_gaps"`
+	PolicyDocumentGaps     int `json:"policy_document_gaps"`
+	RiskRegisterGaps       int `json:"risk_register_gaps"`
 	OpenExceptions         int `json:"open_exceptions"`
 	ExpiringExceptions     int `json:"expiring_exceptions"`
 	OpenRisks              int `json:"open_risks"`
@@ -273,6 +277,21 @@ type grcPolicyRiskRegisterItem struct {
 	Controls            []grcPolicyControlRef  `json:"controls,omitempty"`
 	Evidence            []grcPolicyEvidenceRef `json:"evidence,omitempty"`
 	Attributes          map[string]string      `json:"attributes,omitempty"`
+}
+
+type grcPolicyGovernanceGap struct {
+	ID         string `json:"id"`
+	Subject    string `json:"subject"`
+	SubjectID  string `json:"subject_id,omitempty"`
+	Title      string `json:"title"`
+	Status     string `json:"status,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	Severity   string `json:"severity"`
+	Reason     string `json:"reason"`
+	Action     string `json:"action"`
+	PolicyID   string `json:"policy_id,omitempty"`
+	DocumentID string `json:"document_id,omitempty"`
+	RiskID     string `json:"risk_id,omitempty"`
 }
 
 type grcPolicyLifecyclePolicy struct {
@@ -821,12 +840,14 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 		}
 		return left.Before(right)
 	})
+	governanceGaps := grcPolicyGovernanceGaps(documents, riskRegister)
 	return Response{
-		Summary:           grcPolicyLifecycleSummaryFrom(policies, templates, documents, riskRegister, mappings, generatedAt),
+		Summary:           grcPolicyLifecycleSummaryFrom(policies, templates, documents, riskRegister, mappings, governanceGaps, generatedAt),
 		Templates:         templates,
 		Policies:          policies,
 		Documents:         documents,
 		RiskRegister:      riskRegister,
+		GovernanceGaps:    governanceGaps,
 		WorkQueue:         grcPolicyLifecycleWorkQueue(policies, generatedAt),
 		DocumentWorkQueue: grcPolicyDocumentWorkQueue(documents, riskRegister, generatedAt),
 		Reminders:         reminders,
@@ -1117,7 +1138,7 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	policy.Evidence = uniqueEvidence(policy.Evidence)
 }
 
-func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, templates []grcPolicyTemplateItem, documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, mappings []grcPolicyLifecycleMapping, now time.Time) grcPolicyLifecycleSummary {
+func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, templates []grcPolicyTemplateItem, documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, mappings []grcPolicyLifecycleMapping, governanceGaps []grcPolicyGovernanceGap, now time.Time) grcPolicyLifecycleSummary {
 	summary := grcPolicyLifecycleSummary{Policies: len(policies), Templates: len(templates), PolicyDocuments: len(documents), RiskRegisterItems: len(riskRegister)}
 	accepted := 0
 	totalAttestations := 0
@@ -1221,9 +1242,119 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 	if totalAttestations > 0 {
 		summary.AttestationCoveragePct = int(float64(accepted) / float64(totalAttestations) * 100)
 	}
+	for _, gap := range governanceGaps {
+		summary.GovernanceGaps++
+		switch gap.Subject {
+		case "document":
+			summary.PolicyDocumentGaps++
+		case "risk":
+			summary.RiskRegisterGaps++
+		}
+	}
 	summary.MappedControls = len(mappedControls)
 	summary.EvidenceItems = len(evidence)
 	return summary
+}
+
+func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem) []grcPolicyGovernanceGap {
+	gaps := []grcPolicyGovernanceGap{}
+	for _, document := range documents {
+		policyID := grcPolicyFirstDocumentRefID(document.Policies)
+		documentID := firstNonEmpty(document.ID, document.URN)
+		if strings.TrimSpace(document.Owner) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:owner", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Severity: "medium", Reason: "Missing owner", Action: "Assign owner", PolicyID: policyID, DocumentID: document.ID})
+		}
+		if strings.TrimSpace(document.NextReviewDueAt) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:review_date", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Owner: document.Owner, Severity: "medium", Reason: "Missing review date", Action: "Set review date", PolicyID: policyID, DocumentID: document.ID})
+		}
+		if len(document.Policies) == 0 {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:policy", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Owner: document.Owner, Severity: "medium", Reason: "No linked policy", Action: "Link policy", DocumentID: document.ID})
+		}
+		if grcPolicyDocumentNeedsControlMapping(document) && len(document.Controls) == 0 {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: document.URN + ":gap:controls", Subject: "document", SubjectID: documentID, Title: document.Title, Status: document.Status, Owner: document.Owner, Severity: "low", Reason: "No mapped controls", Action: "Map controls", PolicyID: policyID, DocumentID: document.ID})
+		}
+	}
+	for _, risk := range riskRegister {
+		if !grcPolicyRiskOpen(risk.Status) {
+			continue
+		}
+		policyID := grcPolicyFirstDocumentRefID(risk.Policies)
+		riskID := firstNonEmpty(risk.ID, risk.URN)
+		severity := grcPolicyRiskGapSeverity(risk)
+		if strings.TrimSpace(risk.Owner) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:owner", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Severity: severity, Reason: "Missing owner", Action: "Assign owner", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+		if strings.TrimSpace(risk.Treatment) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:treatment", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "Missing treatment", Action: "Add treatment", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+		if strings.TrimSpace(risk.TreatmentDueAt) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:treatment_due", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "Missing treatment date", Action: "Set treatment date", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+		if strings.TrimSpace(risk.ReviewDueAt) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:review_date", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: "medium", Reason: "Missing review date", Action: "Set review date", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+		if strings.TrimSpace(risk.SourceDocumentID) == "" {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:source_document", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "No source document", Action: "Link source document", PolicyID: policyID, RiskID: risk.ID})
+		}
+		if len(risk.Policies) == 0 {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:policy", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "No linked policy", Action: "Link policy", DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+		if len(risk.Controls) == 0 {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:controls", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: severity, Reason: "No mapped controls", Action: "Map controls", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+		if len(risk.Evidence) == 0 {
+			gaps = append(gaps, grcPolicyGovernanceGap{ID: risk.URN + ":gap:evidence", Subject: "risk", SubjectID: riskID, Title: risk.Title, Status: risk.Status, Owner: risk.Owner, Severity: "medium", Reason: "No evidence", Action: "Attach evidence", PolicyID: policyID, DocumentID: risk.SourceDocumentID, RiskID: risk.ID})
+		}
+	}
+	sort.Slice(gaps, func(i, j int) bool {
+		left := grcPolicyGapSeverityRank(gaps[i].Severity)
+		right := grcPolicyGapSeverityRank(gaps[j].Severity)
+		if left != right {
+			return left < right
+		}
+		if gaps[i].Subject != gaps[j].Subject {
+			return gaps[i].Subject < gaps[j].Subject
+		}
+		if gaps[i].Title != gaps[j].Title {
+			return strings.ToLower(gaps[i].Title) < strings.ToLower(gaps[j].Title)
+		}
+		return gaps[i].Reason < gaps[j].Reason
+	})
+	return gaps
+}
+
+func grcPolicyFirstDocumentRefID(refs []grcPolicyDocumentRef) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	return refs[0].ID
+}
+
+func grcPolicyDocumentNeedsControlMapping(document grcPolicyDocumentItem) bool {
+	switch document.DocumentClass {
+	case "policy", "procedure", "standard", "control_narrative":
+		return true
+	default:
+		return false
+	}
+}
+
+func grcPolicyRiskGapSeverity(risk grcPolicyRiskRegisterItem) string {
+	if grcPolicyHighRisk(risk.ResidualRisk, risk.InherentRisk) {
+		return "high"
+	}
+	return "medium"
+}
+
+func grcPolicyGapSeverityRank(severity string) int {
+	switch strings.ToLower(strings.TrimSpace(severity)) {
+	case "high":
+		return 0
+	case "medium":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func grcPolicyLifecycleWorkQueue(policies []grcPolicyLifecyclePolicy, now time.Time) []grcPolicyLifecycleWork {
