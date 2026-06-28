@@ -435,11 +435,41 @@ func TestGenerateFilesIncludesYAMLReviewContextMaps(t *testing.T) {
 			assertCellContains(t, frameworkControlHeader, row, "source_capability_refs", "okta/users")
 			assertCellContains(t, frameworkControlHeader, row, "review_area_refs", "SOC 2/access-authorization")
 			assertCellContains(t, frameworkControlHeader, row, "outbound_relationship_refs", "SOC 2 CC6.2")
-			assertCellContains(t, frameworkControlHeader, row, "enrichment_status", "direct_source_backed")
+			assertCellContains(t, frameworkControlHeader, row, "enrichment_status", "partial_source_backed")
 			return
 		}
 	}
 	t.Fatal("framework_control_enrichment_map.csv missing SOC 2 CC6.1 enrichment row")
+}
+
+func TestFrameworkControlEnrichmentStatusSeparatesPartialSourceBacking(t *testing.T) {
+	fullyBacked := frameworkControlEnrichment{
+		DirectFindingIDs:       []string{"finding-a", "finding-b"},
+		SourceBackedFindingIDs: []string{"finding-a", "finding-b"},
+	}
+	if got := frameworkControlEnrichmentStatus(fullyBacked); got != "direct_source_backed" {
+		t.Fatalf("fully backed status = %q, want direct_source_backed", got)
+	}
+	if got := frameworkControlGapType("direct_source_backed"); got != "none" {
+		t.Fatalf("fully backed gap type = %q, want none", got)
+	}
+
+	partial := frameworkControlEnrichment{
+		DirectFindingIDs:       []string{"finding-a", "finding-b"},
+		SourceBackedFindingIDs: []string{"finding-a"},
+	}
+	if got := frameworkControlEnrichmentStatus(partial); got != "partial_source_backed" {
+		t.Fatalf("partial status = %q, want partial_source_backed", got)
+	}
+	if got := frameworkControlCoverageLane("partial_source_backed"); got != "direct" {
+		t.Fatalf("partial coverage lane = %q, want direct", got)
+	}
+	if got := frameworkControlGapType("partial_source_backed"); got != "partial_source_backing" {
+		t.Fatalf("partial gap type = %q, want partial_source_backing", got)
+	}
+	if got := frameworkControlNextAction("partial_source_backed"); !strings.Contains(got, "Add source backing") {
+		t.Fatalf("partial next action = %q, want source backing action", got)
+	}
 }
 
 func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
@@ -467,9 +497,9 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	foundNone := false
 	for _, row := range gapRows[1:] {
 		if row[frameworkCol] == "SOC 2" && row[controlCol] == "CC6.1" {
-			assertCellContains(t, gapHeader, row, "coverage_status", "direct_source_backed")
+			assertCellContains(t, gapHeader, row, "coverage_status", "partial_source_backed")
 			assertCellContains(t, gapHeader, row, "coverage_lane", "direct")
-			assertCellContains(t, gapHeader, row, "gap_type", "none")
+			assertCellContains(t, gapHeader, row, "gap_type", "partial_source_backing")
 			foundDirect = true
 		}
 		if row[frameworkCol] == "ISO 27001:2022" && row[controlCol] == "A.7.8" {
