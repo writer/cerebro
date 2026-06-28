@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: postmark
     display_name: Postmark
-    description: Postmark connector definition catalog entry for high-value security and operations resources.
+    description: "Collects servers, domains, and audit events from Postmark and projects them into the Cerebro graph as assets and audit events for alert, incident, service health, and response context."
     categories:
     - observability
     - email

@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: snowflake
     display_name: Snowflake
-    description: Snowflake connector definition catalog entry for high-value security and operations resources.
+    description: "Collects data assets, cortex search services, audit events, and vulnerabilities from Snowflake and projects them into the Cerebro graph as assets, audit events, and vulnerabilities for owner, account, evidence, and compliance context."
     categories:
     - data
     - warehouse

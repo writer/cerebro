@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: API documentation for redirection.io
+    description: "Collects aggregate log, user, agent rule, notification, smart list, and log from redirection.io and projects them into the Cerebro graph as audit events, users, policies, alerts, and assets for owner, account, evidence, and compliance context."
     display_name: redirection.io
     id: builtin_catalog-redirection_io
     ingest:

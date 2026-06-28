@@ -25,7 +25,7 @@ entries:
       key: orgid
       label: Orgid
       required: true
-    description: "# Authentication"
+    description: "Collects log, user, secret, and dbrp from InfluxDB and projects them into the Cerebro graph as audit events, users, secrets, and policies for alert, incident, service health, and response context."
     display_name: InfluxDB
     id: builtin_catalog-influxdata
     resource_families:

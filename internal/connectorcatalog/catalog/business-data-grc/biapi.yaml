@@ -29,7 +29,7 @@ entries:
       key: id_webhook
       label: Id Webhook
       required: true
-    description: "# Budgea Development Guides"
+    description: "Collects logo, account, add to data, and alert from Powens (Budgea) and projects them into the Cerebro graph as audit events, users, assets, and alerts for owner, account, evidence, and compliance context."
     display_name: Powens (Budgea)
     id: builtin_catalog-biapi
     resource_families:

@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: harness
     display_name: Harness
-    description: Harness connector definition catalog entry for high-value security and operations resources.
+    description: "Collects pipelines, findings, and audit events from Harness and projects them into the Cerebro graph as assets, findings, and audit events for repository, build, deployment, and release context."
     categories:
     - dev
     - ci

@@ -84,7 +84,7 @@ entries:
       token_url: https://slack.com/api/oauth.access
     categories:
     - saas
-    description: One way to interact with the Slack platform is its HTTP RPC-based Web API, a collection of methods requiring OAuth 2.0-based user, bot, or workspace tokens blessed with related OAuth scopes.
+    description: "Collects usergroups list, team accesslog, admin conversations getteam, and apps permissions resources list from Slack and projects them into the Cerebro graph as users, audit events, groups, and assets for workspace, document, message, and collaboration context."
     display_name: Slack
     id: builtin_catalog-slack
     resource_families:

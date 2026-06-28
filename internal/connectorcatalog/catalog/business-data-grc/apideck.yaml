@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: Welcome to the Accounting API.
+    description: "Collects ledger account, bill, credit note, and customer from Apideck and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
     display_name: Apideck
     id: builtin_catalog-apideck
     resource_families:

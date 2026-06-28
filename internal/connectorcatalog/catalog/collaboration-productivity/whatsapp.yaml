@@ -21,7 +21,7 @@ entries:
       key: groupid
       label: Groupid
       required: true
-    description: See https://developers.facebook.com/docs/whatsapp
+    description: "Collects group, user, invite, and group 2 from WhatsApp Business and projects them into the Cerebro graph as groups, users, and assets for workspace, document, message, and collaboration context."
     display_name: WhatsApp Business
     id: builtin_catalog-whatsapp
     resource_families:

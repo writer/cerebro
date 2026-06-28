@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: jfrog_artifactory_xray
     display_name: JFrog Artifactory/Xray
-    description: JFrog Artifactory/Xray connector definition catalog entry for high-value security and operations resources.
+    description: "Collects assets, findings, and vulnerabilities from JFrog Artifactory/Xray and projects them into the Cerebro graph as assets, findings, and vulnerabilities for repository, build, deployment, and release context."
     categories:
     - dev
     - artifacts

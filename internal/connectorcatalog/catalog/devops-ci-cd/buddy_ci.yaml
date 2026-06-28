@@ -7,7 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: buddy_ci
     display_name: Buddy CI
-    description: Buddy CI connector definition for high-value enterprise SaaS records.
+    description: "Collects users, projects, repositories, deployments, and audit events from Buddy CI and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
     categories:
     - saas
     - devops_ci_cd

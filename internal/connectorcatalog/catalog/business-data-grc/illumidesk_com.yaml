@@ -33,7 +33,7 @@ entries:
       key: entity
       label: Entity
       required: true
-    description: Generated from an OpenAPI description.
+    description: "Collects team, email, notification, deployment, application, and group from IllumiDesk and projects them into the Cerebro graph as groups, users, alerts, deployments, and assets for owner, account, evidence, and compliance context."
     display_name: IllumiDesk
     id: builtin_catalog-illumidesk_com
     ingest:

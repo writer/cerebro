@@ -21,7 +21,7 @@ entries:
       key: id
       label: Id
       required: true
-    description: Public API for managing Clever-Cloud data and products
+    description: "Collects email, token, networkgroup, and deployment from Clever Cloud and projects them into the Cerebro graph as users, secrets, groups, and deployments for repository, build, deployment, and release context."
     display_name: Clever Cloud
     id: builtin_catalog-clever_cloud
     resource_families:

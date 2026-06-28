@@ -21,7 +21,7 @@ entries:
       key: logid
       label: Logid
       required: true
-    description: This is the public REST API for elmah.io. All of the integrations communicates with elmah.io through this API.<br/><br/>For additional help getting started with the API, visit the following help articles:<br/><ul><li>[Using the REST API](https://docs.elmah.io/using-the-rest-api/)</li><li>[Where is my API key?](https://docs.elmah.io/where-is-my-api-key/)</li><li>[Where is my log...
+    description: "Collects log, deployment, uptimecheck, and message from elmah.io and projects them into the Cerebro graph as audit events, deployments, and assets for alert, incident, service health, and response context."
     display_name: elmah.io
     id: builtin_catalog-elmah
     resource_families:

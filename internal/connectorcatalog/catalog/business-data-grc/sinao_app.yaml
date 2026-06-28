@@ -21,7 +21,7 @@ entries:
       key: appid
       label: Appid
       required: true
-    description: Sinao API for account management, apps administration and network exploration
+    description: "Collects product, account, organization, rule, access, and productcategory from Sinao API and projects them into the Cerebro graph as audit events, users, groups, policies, and assets for owner, account, evidence, and compliance context."
     display_name: Sinao API
     id: builtin_catalog-sinao_app
     ingest:

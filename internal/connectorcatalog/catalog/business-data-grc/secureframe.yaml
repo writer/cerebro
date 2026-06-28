@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: secureframe
     display_name: Secureframe
-    description: Secureframe connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, controls, and findings from Secureframe and projects them into the Cerebro graph as users, assets, and findings for owner, account, evidence, and compliance context."
     categories:
     - grc
     - compliance

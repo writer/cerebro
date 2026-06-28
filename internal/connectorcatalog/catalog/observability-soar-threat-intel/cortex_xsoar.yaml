@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: cortex_xsoar
     display_name: Cortex XSOAR
-    description: Cortex XSOAR connector definition catalog entry for high-value security and operations resources.
+    description: "Collects workflow events, cases, and assets from Cortex XSOAR and projects them into the Cerebro graph as audit events, findings, and assets for alert, incident, service health, and response context."
     categories:
     - soar
     - security

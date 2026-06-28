@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: ExaVaults API allows you to incorporate ExaVaults suite of file transfer and user management tools into your own application.\nExaVault supports both POST (recommended when requesting large data sets) and GET operations, and requires an API key in order to use.
+    description: "Collects email list, notification, session, and ssh key from ExaVault and projects them into the Cerebro graph as users, alerts, audit events, and assets for repository, build, deployment, and release context."
     display_name: ExaVault
     id: builtin_catalog-exavault
     resource_families:

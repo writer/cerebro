@@ -20,7 +20,7 @@ entries:
       token_url: https://accounts.salesloft.com/oauth/token
     categories:
     - saas
-    description: SalesLoft helps transform sales teams into modern sales organizations - converting more target accounts into customer accounts
+    description: "Collects crm activity fields json, account stages json, cadence memberships json, and groups json from Salesloft and projects them into the Cerebro graph as audit events, users, group memberships, and groups for owner, account, evidence, and compliance context."
     display_name: Salesloft
     id: builtin_catalog-salesloft
     resource_families:

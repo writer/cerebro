@@ -23,7 +23,7 @@ entries:
       key: customer_id
       label: Customer Id
       required: true
-    description: REST Web Services for DRACOON<br><br>This page provides an overview of all available and documented DRACOON APIs, which are grouped by tags.<br>Each tag provides a collection of APIs that are intended for a specific area of the DRACOON.<br><br><a title='Developer Information' href='https://developer.dracoon.com'>Developer Information</a>&emsp;&emsp;<a title='Get SDKs on GitHub'...
+    description: "Collects event type, group, user, and channel from DRACOON and projects them into the Cerebro graph as audit events, groups, users, and alerts for workspace, document, message, and collaboration context."
     display_name: DRACOON
     id: builtin_catalog-dracoon
     resource_families:

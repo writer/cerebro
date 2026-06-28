@@ -1,4 +1,4 @@
-# AI provider governance connector definitions.
+# AI provider governance sources.
 # Entries are sorted by source_id for deterministic review.
 entries:
   - classifier_output: supported
@@ -8,7 +8,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: cerebras
       display_name: Cerebras
-      description: "Cerebras connector definition for projects, API keys, usage reports, and model deployments."
+      description: "Collects projects, API keys, usage reports, and model deployments from Cerebras and projects them into the Cerebro graph as assets, secrets, and deployments for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -128,7 +128,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: fireworks_ai
       display_name: Fireworks AI
-      description: "Fireworks AI connector definition for deployments, service accounts, audit logs, and billing metrics."
+      description: "Collects model deployments, service accounts, audit logs, and billing metrics from Fireworks AI and projects them into the Cerebro graph as deployments, users, audit events, and assets for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -251,7 +251,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: huggingface
       display_name: Hugging Face
-      description: "Hugging Face connector definition for organization members, resource groups, audit logs, and repositories."
+      description: "Collects organization members, resource groups, audit logs, and repositories from Hugging Face and projects them into the Cerebro graph as users, groups, audit events, and repositories for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -380,7 +380,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: mistral
       display_name: Mistral AI
-      description: "Mistral AI connector definition for workspaces, API keys, audit logs, and usage reports."
+      description: "Collects workspaces, API keys, audit logs, and usage reports from Mistral AI and projects them into the Cerebro graph as assets, secrets, and audit events for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -499,7 +499,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: openrouter
       display_name: OpenRouter
-      description: "OpenRouter connector definition for organization members, API keys, provider keys, and usage reports."
+      description: "Collects organization members, API keys, provider keys, and usage reports from OpenRouter and projects them into the Cerebro graph as users, secrets, and assets for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -619,7 +619,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: perplexity
       display_name: Perplexity
-      description: "Perplexity connector definition for API groups, API keys, team members, and usage reports."
+      description: "Collects API groups, API keys, team members, and usage reports from Perplexity and projects them into the Cerebro graph as groups, secrets, users, and assets for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -739,7 +739,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: together_ai
       display_name: Together AI
-      description: "Together AI connector definition for projects, API keys, usage reports, and fine-tuning jobs."
+      description: "Collects projects, API keys, usage reports, and fine tuning jobs from Together AI and projects them into the Cerebro graph as assets and secrets for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance
@@ -859,7 +859,7 @@ entries:
       tenant_id: builtin_catalog
       source_id: xai
       display_name: xAI
-      description: "xAI connector definition for API keys, audit logs, usage reports, and model access."
+      description: "Collects API keys, audit logs, usage reports, and model access from xAI and projects them into the Cerebro graph as secrets, audit events, and assets for model access, API key, usage, and workspace governance context."
       categories:
         - ai
         - governance

@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: hitrust_mycsf
     display_name: HITRUST MyCSF
-    description: HITRUST MyCSF connector definition catalog entry for high-value assessment, control, and evidence resources.
+    description: "Collects assessments, controls, and evidence from HITRUST MyCSF and projects them into the Cerebro graph as assets and audit events for owner, account, evidence, and compliance context."
     categories:
     - grc
     - audit

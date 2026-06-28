@@ -25,7 +25,7 @@ entries:
       key: docid
       label: Docid
       required: true
-    description: "## Introduction The VisibleThread b API provides services for analyzing/searching documents and web pages. To use the service you need an API key."
+    description: "Collects webscan, document, weburl, and document 2 from VisibleThread API and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
     display_name: VisibleThread API
     id: builtin_catalog-visiblethread_com
     ingest:

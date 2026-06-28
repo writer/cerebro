@@ -17,7 +17,7 @@ entries:
       key: jobid
       label: Jobid
       required: true
-    description: AppVeyor is a hosted continuous integration service which runs on Microsoft Windows. The AppVeyor REST API provides a RESTful way to interact with the AppVeyor service. This includes managing projects, builds, deployments, and the teams that build them.
+    description: "Collects role, user, artifact, and collaborator from AppVeyor and projects them into the Cerebro graph as groups, users, deployments, and assets for repository, build, deployment, and release context."
     display_name: AppVeyor
     id: builtin_catalog-appveyor
     resource_families:

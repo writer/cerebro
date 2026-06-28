@@ -16,7 +16,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "# Overview"
+    description: "Collects eventlog, role, user, and permission from Apache Airflow and projects them into the Cerebro graph as audit events, groups, users, and assets for repository, build, deployment, and release context."
     display_name: Apache Airflow
     id: builtin_catalog-apache
     resource_families:

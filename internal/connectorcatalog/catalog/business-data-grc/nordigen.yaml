@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: Generated from an OpenAPI description.
+    description: "Collects account, creditor, enduser, and institution from Nordigen and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
     display_name: Nordigen
     id: builtin_catalog-nordigen
     resource_families:

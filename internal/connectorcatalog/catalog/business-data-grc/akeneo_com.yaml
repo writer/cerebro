@@ -33,7 +33,7 @@ entries:
       key: uuid
       label: Uuid
       required: true
-    description: Generated from an OpenAPI description.
+    description: "Collects attribute, attribute group, option, reference entities attribute, attributes option, and asset from Akeneo PIM REST API and projects them into the Cerebro graph as assets and groups for owner, account, evidence, and compliance context."
     display_name: Akeneo PIM REST API
     id: builtin_catalog-akeneo_com
     ingest:

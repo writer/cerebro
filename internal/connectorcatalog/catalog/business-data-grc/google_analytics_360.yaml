@@ -7,8 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: google_analytics_360
     display_name: Google Analytics 360
-    description: Google Analytics 360 connector definition for high-value enterprise
-      SaaS records.
+    description: "Collects users, accounts, records, policies, and audit events from Google Analytics 360 and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
     categories:
     - saas
     - business_data_grc

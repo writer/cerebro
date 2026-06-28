@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: heroku
     display_name: Heroku
-    description: Heroku connector definition catalog entry for high-value security and operations resources.
+    description: "Collects apps, collaborators, and audit events from Heroku and projects them into the Cerebro graph as assets, users, and audit events for repository, build, deployment, and release context."
     categories:
     - devops
     - paas

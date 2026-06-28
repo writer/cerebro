@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: doppler
     display_name: Doppler
-    description: Doppler connector definition catalog entry for high-value security and operations resources.
+    description: "Collects secrets, projects, and audit events from Doppler and projects them into the Cerebro graph as secrets, assets, and audit events for identity, access, device, and secret context."
     categories:
     - secrets
     - identity
