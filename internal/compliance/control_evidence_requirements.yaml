@@ -1,0 +1,488 @@
+version: "2026-06-28"
+defaults:
+  source_id: control_owner_review
+  entity_type: control_evidence_packet
+  required_fields:
+    - control_ref
+    - control_owner
+    - evidence_period
+    - observed_state
+    - exception_status
+    - reviewer
+    - reviewed_at
+  freshness_window: 90d
+  assessment_methods: [examine]
+  auditor_grade_evidence: Evidence identifies the control, owner, period, source system, observed state, exceptions, and reviewer action.
+profiles:
+  - profile_id: identity-access
+    name: Identity and Access Evidence
+    applies_to:
+      family_keywords:
+        - Access
+        - Account Management
+        - Authentication
+        - Authorization
+        - Identity
+        - MFA
+        - Password
+        - Privilege
+        - User
+    source_requirements:
+      - source_id: okta
+        entity_type: identity_user
+        required_fields:
+          - user_id
+          - status
+          - groups
+          - factors
+          - admin_roles
+          - last_login_at
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Current identity posture shows active status, authentication factors, groups, privileged roles, and last observed access for the sampled principal.
+      - source_id: github
+        entity_type: repository_access
+        required_fields:
+          - repository_id
+          - actor_id
+          - permission
+          - team_slug
+          - outside_collaborator
+          - last_seen_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Repository access evidence ties each actor or team to the permission granted, the asset in scope, and the review decision.
+      - source_id: aws
+        entity_type: iam_entitlement
+        required_fields:
+          - principal_arn
+          - policy_arn
+          - action
+          - resource
+          - effect
+          - last_used_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Cloud entitlement evidence shows the effective permission, principal, target resource, policy source, and recent use state.
+  - profile_id: logging-monitoring
+    name: Logging and Monitoring Evidence
+    applies_to:
+      family_keywords:
+        - Alert
+        - Audit
+        - Detection
+        - Event Log
+        - Incident
+        - Logging
+        - Monitoring
+        - Response
+    source_requirements:
+      - source_id: aws
+        entity_type: cloud_audit_event
+        required_fields:
+          - account_id
+          - event_source
+          - event_name
+          - event_time
+          - actor
+          - target_resource
+          - retention_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Cloud audit evidence proves logging is enabled, retained, attributable to an actor, and reviewable for the sampled system or event.
+      - source_id: github
+        entity_type: repository_audit_event
+        required_fields:
+          - organization
+          - repository
+          - action
+          - actor
+          - occurred_at
+          - target
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Repository audit evidence shows the administrative action, actor, target, timestamp, and retained event trail.
+      - source_id: okta
+        entity_type: identity_audit_event
+        required_fields:
+          - event_id
+          - event_type
+          - actor_id
+          - target_id
+          - outcome
+          - occurred_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Identity audit evidence shows actor, target, outcome, timestamp, and source-system retention for sampled identity activity.
+  - profile_id: vulnerability-remediation
+    name: Vulnerability and Remediation Evidence
+    applies_to:
+      family_keywords:
+        - Malware
+        - Patch
+        - Remediation
+        - Secure Configuration
+        - Threat
+        - Vulnerability
+    source_requirements:
+      - source_id: github
+        entity_type: code_security_alert
+        required_fields:
+          - repository_id
+          - alert_id
+          - severity
+          - package_or_secret
+          - introduced_at
+          - state
+          - fixed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Code security evidence identifies the affected repository, alert state, severity, age, fix state, and closure evidence.
+      - source_id: aws
+        entity_type: vulnerability_finding
+        required_fields:
+          - finding_id
+          - resource_arn
+          - severity
+          - package_or_cve
+          - first_observed_at
+          - status
+          - remediation_status
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Cloud vulnerability evidence identifies the affected asset, vulnerability, severity, age, current state, and remediation outcome.
+      - source_id: ticketing_system
+        entity_type: remediation_ticket
+        required_fields:
+          - ticket_id
+          - owner
+          - severity
+          - due_at
+          - status
+          - closure_evidence
+        freshness_window: 7d
+        assessment_methods: [examine]
+        auditor_grade_evidence: Remediation evidence shows ownership, due date, status, exception approval, and closure proof for sampled findings.
+  - profile_id: data-protection
+    name: Data Protection Evidence
+    applies_to:
+      family_keywords:
+        - Confidentiality
+        - Cryptographic
+        - Cryptography
+        - Data Protection
+        - Encryption
+        - Information Protection
+        - Privacy
+        - Secret
+      control_id_prefixes:
+        - A.8.24
+    source_requirements:
+      - source_id: aws
+        entity_type: protected_data_store
+        required_fields:
+          - resource_arn
+          - data_classification
+          - encryption_state
+          - key_id
+          - public_access_state
+          - owner
+          - last_scanned_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Data-store evidence proves classification, encryption state, key reference, exposure state, owner, and scan freshness.
+      - source_id: github
+        entity_type: secret_exposure_alert
+        required_fields:
+          - repository_id
+          - alert_id
+          - secret_type
+          - state
+          - first_detected_at
+          - revoked_at
+          - owner
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Secret exposure evidence shows the affected repository, secret type, alert state, revocation state, owner, and closure proof.
+  - profile_id: network-exposure
+    name: Network Exposure Evidence
+    applies_to:
+      family_keywords:
+        - Boundary
+        - Firewall
+        - Network
+        - Remote
+        - Segmentation
+        - Transmission
+        - Wireless
+    source_requirements:
+      - source_id: aws
+        entity_type: network_exposure
+        required_fields:
+          - resource_arn
+          - listener
+          - ingress_cidr
+          - protocol
+          - port
+          - exposure_path
+          - owner
+          - last_scanned_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Network evidence shows ingress, listener, protocol, exposure path, owner, and current scan time for the sampled boundary.
+  - profile_id: availability-resilience
+    name: Availability and Resilience Evidence
+    applies_to:
+      family_keywords:
+        - Availability
+        - Backup
+        - Capacity
+        - Continuity
+        - Recovery
+        - Resilience
+        - Restore
+    source_requirements:
+      - source_id: service_catalog
+        entity_type: service_resilience_record
+        required_fields:
+          - service_id
+          - owner
+          - recovery_objective
+          - dependency_scope
+          - last_reviewed_at
+          - exception_status
+        freshness_window: 30d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Service resilience evidence identifies the service boundary, owner, recovery objective, dependencies, review date, and approved exceptions.
+      - source_id: monitoring_system
+        entity_type: availability_signal
+        required_fields:
+          - service_id
+          - metric_name
+          - measurement_window
+          - target
+          - observed_value
+          - alert_route
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Availability evidence shows the service metric, target, observed state, measurement window, and alert routing.
+      - source_id: backup_system
+        entity_type: restore_test
+        required_fields:
+          - service_id
+          - backup_job_id
+          - restore_test_id
+          - tested_at
+          - result
+          - corrective_actions
+        freshness_window: 180d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Restore evidence shows backup coverage, restore test result, test date, owner, and corrective actions.
+  - profile_id: change-configuration
+    name: Change and Configuration Evidence
+    applies_to:
+      family_keywords:
+        - Change Management
+        - Configuration
+        - Development
+        - Release
+        - Secure Development
+        - Software
+        - System Acquisition
+    source_requirements:
+      - source_id: github
+        entity_type: change_record
+        required_fields:
+          - repository_id
+          - pull_request_id
+          - actor_id
+          - reviewers
+          - checks
+          - merged_at
+          - linked_issue
+        freshness_window: 30d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Change evidence shows the code change, approvers, automated checks, merge timestamp, linked work item, and release trace.
+      - source_id: ticketing_system
+        entity_type: change_ticket
+        required_fields:
+          - ticket_id
+          - requester
+          - approver
+          - affected_service
+          - risk_level
+          - implementation_at
+          - closure_state
+        freshness_window: 30d
+        assessment_methods: [examine]
+        auditor_grade_evidence: Change-ticket evidence shows approval, risk, affected service, implementation date, closure state, and rollback or exception notes.
+  - profile_id: governance-risk
+    name: Governance and Risk Evidence
+    applies_to:
+      family_keywords:
+        - Board
+        - Compliance
+        - Control Environment
+        - Governance
+        - Management
+        - Oversight
+        - Policy
+        - Risk
+        - Supplier
+        - Third Party
+        - Vendor
+    source_requirements:
+      - source_id: grc_policy_repository
+        entity_type: control_document
+        required_fields:
+          - document_id
+          - control_ref
+          - owner
+          - approval_state
+          - effective_at
+          - next_review_at
+          - exception_status
+        freshness_window: 365d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Governance evidence shows the approved document, accountable owner, effective period, review cycle, and exceptions.
+      - source_id: risk_register
+        entity_type: risk_record
+        required_fields:
+          - risk_id
+          - owner
+          - impact
+          - likelihood
+          - treatment
+          - due_at
+          - status
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Risk evidence shows owner, inherent or residual risk, treatment decision, due date, status, and acceptance or remediation proof.
+  - profile_id: privacy-rights
+    name: Privacy Rights Evidence
+    applies_to:
+      frameworks:
+        - CCPA
+        - GDPR
+        - ISO 27701
+        - ISO 27701:2025
+      family_keywords:
+        - Privacy
+        - PII
+        - Personal
+        - Data Subject
+        - Consumer
+        - Data Processing
+    source_requirements:
+      - source_id: data_inventory
+        entity_type: processing_activity
+        required_fields:
+          - processing_activity_id
+          - data_category
+          - purpose
+          - legal_basis
+          - system_owner
+          - retention_period
+          - last_reviewed_at
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Privacy inventory evidence shows purpose, personal-data category, legal basis, owner, retention period, and review date.
+      - source_id: privacy_request_system
+        entity_type: data_subject_request
+        required_fields:
+          - request_id
+          - request_type
+          - received_at
+          - completed_at
+          - verification_state
+          - response_state
+          - exception_reason
+        freshness_window: 30d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Request evidence shows intake, identity verification, response state, completion time, and any approved exception.
+  - profile_id: ai-governance
+    name: AI Governance Evidence
+    applies_to:
+      frameworks:
+        - ISO 42001
+      family_keywords:
+        - Artificial Intelligence
+        - Model
+        - Machine Learning
+    source_requirements:
+      - source_id: ai_system_register
+        entity_type: ai_system_record
+        required_fields:
+          - system_id
+          - owner
+          - intended_use
+          - risk_level
+          - data_sources
+          - approval_state
+          - last_reviewed_at
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: AI register evidence identifies the system, owner, intended use, data sources, risk level, approval state, and review date.
+      - source_id: ai_evaluation_store
+        entity_type: ai_risk_evaluation
+        required_fields:
+          - evaluation_id
+          - system_id
+          - risk_area
+          - test_method
+          - result
+          - mitigation
+          - evaluated_at
+        freshness_window: 90d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: AI evaluation evidence shows the tested system, risk area, method, result, mitigation, owner, and evaluation date.
+  - profile_id: payment-card-security
+    name: Payment Card Evidence
+    applies_to:
+      frameworks:
+        - PCI DSS v4.0.1
+    source_requirements:
+      - source_id: cardholder_data_environment
+        entity_type: scoped_asset
+        required_fields:
+          - asset_id
+          - owner
+          - pci_scope
+          - data_flow
+          - control_owner
+          - last_reviewed_at
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Payment-scope evidence identifies the in-scope asset, owner, cardholder-data flow, control owner, and review date.
+      - source_id: vulnerability_scanner
+        entity_type: pci_security_scan
+        required_fields:
+          - scan_id
+          - asset_id
+          - scan_type
+          - severity
+          - status
+          - remediation_state
+          - scanned_at
+        freshness_window: 30d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Payment security evidence shows scan scope, affected asset, severity, scan date, current status, and remediation state.
+  - profile_id: baseline-control-review
+    name: Baseline Control Review Evidence
+    fallback: true
+    source_requirements:
+      - source_id: control_owner_review
+        entity_type: control_evidence_packet
+        required_fields:
+          - control_ref
+          - control_owner
+          - evidence_period
+          - procedure_performed
+          - observed_state
+          - exception_status
+          - reviewer
+          - reviewed_at
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Baseline evidence shows the control owner, procedure performed, evidence period, observed state, exceptions, reviewer, and review timestamp.
