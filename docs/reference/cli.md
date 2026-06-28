@@ -9,6 +9,13 @@ make build
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
+Agent onboarding is a Makefile workflow around the CLI and HTTP API:
+
+```bash
+make agent-onboard PLAN=examples/onboarding/cerebro-onboarding.yaml
+make agent-onboard-e2e
+```
+
 ## Server And Version
 
 ```bash
