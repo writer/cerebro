@@ -3642,13 +3642,26 @@ func containsFold(values []string, want string) bool {
 }
 
 func containsAnyFold(value string, needles []string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
+	value = normalizeKeywordText(value)
 	for _, needle := range needles {
-		if needle = strings.ToLower(strings.TrimSpace(needle)); needle != "" && strings.Contains(value, needle) {
+		needle = normalizeKeywordText(needle)
+		if needle != "" && strings.Contains(" "+value+" ", " "+needle+" ") {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeKeywordText(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteRune(' ')
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 func hasAnyPrefixFold(value string, prefixes []string) bool {
