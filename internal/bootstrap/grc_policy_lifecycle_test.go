@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/querycache"
 )
 
 func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
@@ -190,6 +192,80 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 		if !strings.Contains(request.Query, "$source_id") || !strings.Contains(request.Query, "$runtime_id") {
 			t.Fatalf("cypher query %q does not reference source and runtime filters", request.Query)
 		}
+	}
+}
+
+func TestGRCPolicyLifecycleActionUsesAuthenticatedActor(t *testing.T) {
+	cache := querycache.NewMemory(querycache.Options{Namespace: "test"})
+	appendLog := &failAfterAppendLog{failAfter: 10}
+	graph := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		GraphStore: graph,
+		QueryCache: cache,
+	}, nil)
+	body := `{
+		"action":"review.complete",
+		"tenant_id":"writer",
+		"source_id":"grc",
+		"runtime_id":"writer-grc",
+		"policy_id":"access",
+		"record_id":"review-1",
+		"actor_user_id":"spoofed-user"
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/grc/policy-lifecycle/actions?tenant_id=writer&source_id=grc&runtime_id=writer-grc", strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{Name: "authenticated-user", TenantID: "writer"},
+	}))
+	recorder := httptest.NewRecorder()
+
+	app.handleGRCPolicyLifecycleAction(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("POST /grc/policy-lifecycle/actions status = %d, want %d; body = %s", recorder.Code, http.StatusAccepted, recorder.Body.String())
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("append log events = %d, want 1", len(appendLog.events))
+	}
+	attrs := appendLog.events[0].GetAttributes()
+	if got := attrs["actor_user_id"]; got != "authenticated-user" {
+		t.Fatalf("actor_user_id = %q, want authenticated-user", got)
+	}
+	if got := attrs["created_by_user_id"]; got != "authenticated-user" {
+		t.Fatalf("created_by_user_id = %q, want authenticated-user", got)
+	}
+}
+
+func TestGRCPolicyLifecycleActionBumpsGraphCacheVersion(t *testing.T) {
+	cache := querycache.NewMemory(querycache.Options{Namespace: "test"})
+	appendLog := &failAfterAppendLog{failAfter: 10}
+	graph := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		GraphStore: graph,
+		QueryCache: cache,
+	}, nil)
+	body := `{
+		"action":"review.complete",
+		"tenant_id":"writer",
+		"source_id":"grc",
+		"runtime_id":"writer-grc",
+		"policy_id":"access",
+		"record_id":"review-1"
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/grc/policy-lifecycle/actions?tenant_id=writer&source_id=grc&runtime_id=writer-grc", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	app.handleGRCPolicyLifecycleAction(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("POST /grc/policy-lifecycle/actions status = %d, want %d; body = %s", recorder.Code, http.StatusAccepted, recorder.Body.String())
+	}
+	if got, err := cache.Version(context.Background(), grcGlobalCacheVersionScope()); err != nil || got != "1" {
+		t.Fatalf("global cache version = %q, %v; want 1, nil", got, err)
+	}
+	if got, err := cache.Version(context.Background(), grcTenantCacheVersionScope("writer", grcCacheScopeGraph)); err != nil || got != "1" {
+		t.Fatalf("tenant graph cache version = %q, %v; want 1, nil", got, err)
 	}
 }
 
