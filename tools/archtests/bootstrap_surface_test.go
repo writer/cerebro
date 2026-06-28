@@ -59,8 +59,10 @@ import (
 // health mapping, and source coverage into the internal/grcprogram readiness
 // domain response. User preferences add only route wiring plus trusted actor
 // resolution; HTTP behavior lives in internal/sourcehttp/userpreferences and
-// storage stays behind the UserPreferenceStore port.
-const bootstrapProductionGoLineBudget = 26066
+// storage stays behind the UserPreferenceStore port. Agent claim verification
+// and durable work contracts add MCP tool/resource request mapping while claim
+// verdicts, gates, and work state live in internal/agentplatform.
+const bootstrapProductionGoLineBudget = 26236
 
 type bootstrapFileLineCount struct {
 	path  string

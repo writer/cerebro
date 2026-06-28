@@ -592,8 +592,14 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpGraphFactsExplain(r, args)
 	case "cerebro.graph.facts.trace":
 		return app.mcpGraphFactsTrace(r, args)
+	case "cerebro.agent.control_plane":
+		return app.mcpAgentControlPlane(r, args)
 	case "cerebro.agent.preflight":
 		return app.mcpAgentPreflight(r, args)
+	case "cerebro.agent.claims.verify":
+		return app.mcpAgentClaimVerify(r, args)
+	case "cerebro.agent.work.contract":
+		return app.mcpAgentWorkContract(r, args)
 	case "cerebro.graph.reason":
 		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
@@ -1711,6 +1717,101 @@ func (app *App) mcpAgentPreflight(r *http.Request, args map[string]any) (any, er
 	return value, nil
 }
 
+func (app *App) mcpAgentControlPlane(_ *http.Request, _ map[string]any) (any, error) {
+	snapshot := agentplatform.SecurityControlPlaneSnapshot()
+	value, err := jsonValue(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, len(snapshot.IntegrationStrategies), nil)), nil
+	}
+	return value, nil
+}
+
+func (app *App) mcpAgentClaimVerify(r *http.Request, args map[string]any) (any, error) {
+	request, err := mcpClaimVerificationRequest(args)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, request.ActorID, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.TenantID = resolved.TenantID
+	request.ActorID = resolved.ActorID
+	if err := authorizeMCPClaimVerificationURNs(r.Context(), request); err != nil {
+		return nil, err
+	}
+	value, err := jsonValue(agentplatform.BuildClaimVerification(request))
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, mcpMapArrayCount(typed, "verifier_results"), nil)), nil
+	}
+	return value, nil
+}
+
+func (app *App) mcpAgentWorkContract(_ *http.Request, _ map[string]any) (any, error) {
+	workContract := agentplatform.SecurityControlPlaneSnapshot().AgentWork
+	value, err := jsonValue(workContract)
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, len(workContract.RequiredArtifacts), nil)), nil
+	}
+	return value, nil
+}
+
+func mcpClaimVerificationRequest(args map[string]any) (agentplatform.ClaimVerificationRequest, error) {
+	request := agentplatform.ClaimVerificationRequest{
+		TenantID:               mcpStringArg(args, "tenant_id"),
+		ActorID:                mcpStringArg(args, "actor_id"),
+		Claim:                  mcpStringArg(args, "claim"),
+		ClaimType:              mcpStringArg(args, "claim_type"),
+		ScopeURN:               mcpStringArg(args, "scope_urn"),
+		SupportingEvidenceURNs: mcpStringListArg(args, "supporting_evidence_urns"),
+		CounterEvidenceURNs:    mcpStringListArg(args, "counter_evidence_urns"),
+		MissingEvidence:        mcpStringListArg(args, "missing_evidence"),
+		FreshnessState:         mcpStringArg(args, "freshness_state"),
+		RequestedActionStage:   mcpStringArg(args, "requested_action_stage"),
+		HumanApproved:          mcpBoolArg(args, "human_approved"),
+	}
+	if request.Claim == "" {
+		return agentplatform.ClaimVerificationRequest{}, fmt.Errorf("%w: claim is required", errInvalidHTTPRequest)
+	}
+	if rawCoverage, ok := args["coverage_context"]; ok {
+		payload, err := json.Marshal(rawCoverage)
+		if err != nil {
+			return agentplatform.ClaimVerificationRequest{}, fmt.Errorf("%w: invalid coverage_context", errInvalidHTTPRequest)
+		}
+		coverage := agentplatform.AgentCoverageContext{}
+		if err := json.Unmarshal(payload, &coverage); err != nil {
+			return agentplatform.ClaimVerificationRequest{}, fmt.Errorf("%w: invalid coverage_context", errInvalidHTTPRequest)
+		}
+		request.CoverageContext = &coverage
+	}
+	return request, nil
+}
+
+func authorizeMCPClaimVerificationURNs(ctx context.Context, request agentplatform.ClaimVerificationRequest) error {
+	urns := []string{request.ScopeURN}
+	urns = append(urns, request.SupportingEvidenceURNs...)
+	urns = append(urns, request.CounterEvidenceURNs...)
+	for _, urn := range urns {
+		urn = strings.TrimSpace(urn)
+		if urn == "" || !strings.HasPrefix(urn, "urn:cerebro:") {
+			continue
+		}
+		if err := authorizeCerebroURNTenant(ctx, urn); err != nil {
+			return mcpNormalizeIDLookupError(err, ports.ErrGraphEntityNotFound)
+		}
+	}
+	return nil
+}
+
 func (app *App) mcpInvestigationContext(r *http.Request, args map[string]any) (any, error) {
 	findingID := mcpStringArg(args, "finding_id")
 	if findingID == "" {
@@ -2284,6 +2385,14 @@ func mcpTools() []mcpTool {
 			Annotations: mcpReadOnlyAnnotations("Trace Graph Fact"),
 		},
 		{
+			Name:         "cerebro.agent.control_plane",
+			Title:        "Agent Control Plane",
+			Description:  "Return the security-agent control plane, including evidence packet, claim verification, agent work, verifier, action ladder, eval, memory, connector gate, and simulation contracts.",
+			InputSchema:  mcpObjectSchema(nil, nil),
+			OutputSchema: mcpOutputSchema(nil),
+			Annotations:  mcpReadOnlyAnnotations("Agent Control Plane"),
+		},
+		{
 			Name:        "cerebro.agent.preflight",
 			Title:       "Agent Run Preflight",
 			Description: "Resolve tenant-scoped capability, graph, connector, policy, and write-back preconditions before an agent plans work.",
@@ -2313,6 +2422,56 @@ func mcpTools() []mcpTool {
 				"provenance":           map[string]any{"type": "array"},
 			}),
 			Annotations: mcpReadOnlyAnnotations("Agent Run Preflight"),
+		},
+		{
+			Name:        "cerebro.agent.claims.verify",
+			Title:       "Verify Agent Claim",
+			Description: "Verify an agent conclusion as a typed claim with supporting evidence, counterevidence, missing evidence, freshness, coverage caveats, and an allowed next action stage.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"claim":                    map[string]any{"type": "string"},
+				"claim_type":               map[string]any{"type": "string"},
+				"scope_urn":                map[string]any{"type": "string"},
+				"supporting_evidence_urns": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"counter_evidence_urns":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"missing_evidence":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"freshness_state":          map[string]any{"type": "string", "enum": []string{"fresh", "stale", "failed", "unknown"}},
+				"coverage_context": map[string]any{
+					"type":                 "object",
+					"additionalProperties": true,
+				},
+				"requested_action_stage": map[string]any{"type": "string", "enum": []string{
+					agentplatform.ActionStageObserve,
+					agentplatform.ActionStageExplain,
+					agentplatform.ActionStageRecommend,
+					agentplatform.ActionStageDryRun,
+					agentplatform.ActionStageApprove,
+					agentplatform.ActionStageExecute,
+					agentplatform.ActionStageVerify,
+					agentplatform.ActionStageCloseLoop,
+				}},
+				"human_approved": map[string]any{"type": "boolean"},
+			}, []string{"claim"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"claim":               map[string]any{"type": "string"},
+				"verdict":             map[string]any{"type": "string"},
+				"allowed_next_stage":  map[string]any{"type": "string"},
+				"blockers":            map[string]any{"type": "array"},
+				"warnings":            map[string]any{"type": "array"},
+				"supporting_evidence": map[string]any{"type": "array"},
+				"counter_evidence":    map[string]any{"type": "array"},
+				"missing_evidence":    map[string]any{"type": "array"},
+				"verifier_results":    map[string]any{"type": "array"},
+				"required_write_back": map[string]any{"type": "array"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Verify Agent Claim"),
+		},
+		{
+			Name:         "cerebro.agent.work.contract",
+			Title:        "Agent Work Contract",
+			Description:  "Return the durable agent work contract for resumable investigations, including state model, required artifacts, event vocabulary, and close conditions.",
+			InputSchema:  mcpObjectSchema(nil, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"id": map[string]any{"type": "string"}, "state_model": map[string]any{"type": "array"}, "required_artifacts": map[string]any{"type": "array"}, "event_vocabulary": map[string]any{"type": "array"}, "close_conditions": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("Agent Work Contract"),
 		},
 		{
 			Name:        "cerebro.graph.reason",
@@ -2950,6 +3109,8 @@ func mcpResources() []mcpResource {
 	return []mcpResource{
 		{URI: "cerebro://server/health", Name: "server_health", Title: "Server Health", Description: "Cerebro service health.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URI: "cerebro://server/version", Name: "server_version", Title: "Server Version", Description: "Cerebro service version/build metadata.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URI: "cerebro://agent/control-plane", Name: "agent_control_plane", Title: "Agent Control Plane", Description: "Security-agent control plane contract.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
+		{URI: "cerebro://agent/work-contract", Name: "agent_work_contract", Title: "Agent Work Contract", Description: "Durable agent work contract.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 		{URI: "cerebro://risk/summary", Name: "risk_summary", Title: "Risk Summary", Description: "Tenant-scoped risk summary for the authenticated caller.", MimeType: mcpResourceMIMEJSON, Annotations: annotations},
 	}
 }
@@ -3047,6 +3208,15 @@ func (app *App) mcpReadResource(r *http.Request, rawParams json.RawMessage) (mcp
 				BuildDate:   buildinfo.BuildDate,
 				ApiVersion:  buildinfo.APIVersion,
 			})
+		default:
+			err = ports.ErrGraphEntityNotFound
+		}
+	case "agent":
+		switch pathValue {
+		case "control-plane":
+			value, err = app.mcpAgentControlPlane(r, args)
+		case "work-contract":
+			value, err = app.mcpAgentWorkContract(r, args)
 		default:
 			err = ports.ErrGraphEntityNotFound
 		}
