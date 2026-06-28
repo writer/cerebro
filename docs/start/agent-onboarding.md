@@ -1,36 +1,57 @@
 # Agent Onboarding
 
-This workflow gives a coding agent one plan file, one command, and one receipt. It is for setup, source runtime onboarding, and security/compliance checks against a local or hosted Cerebro service.
+Use this when someone wants a coding agent to set up Cerebro, prove the basic security path works, and return a receipt.
 
-Use it when an operator wants an agent to:
+The first run does not need provider credentials. It starts Cerebro locally, creates a demo runtime, writes two posture claims, checks graph ingest, checks compliance coverage, and saves a receipt.
 
-- start from a declared intake file,
-- avoid committing provider secrets,
-- run deployment preflight,
-- create source runtimes,
-- write and read a sample claim,
-- run runtime sync and graph ingest checks,
-- check compliance coverage,
-- return a redacted setup receipt.
+```bash
+make secure-business-demo
+```
+
+Receipt:
+
+```text
+tmp/onboarding/e2e-receipt.json
+```
+
+The receipt answers the first operator questions:
+
+- Is Cerebro running?
+- Is auth configured?
+- Are Postgres, NATS, and Neo4j reachable?
+- Can Cerebro create a source runtime?
+- Can Cerebro write and read posture claims?
+- Can Cerebro run graph ingest?
+- Can Cerebro check a compliance profile?
+- Which secrets and next actions are still needed?
 
 ## Copy This Prompt
 
 ```text
-Set up Cerebro from examples/onboarding/cerebro-onboarding.yaml.
+I want to use Cerebro to secure my business.
 
-Use make agent-onboard.
-Do not put provider credentials, tenant-specific hostnames, account IDs, or live secret values in the repository.
-Use env: references for secret-bearing values.
-Run the local end-to-end target if Docker is available.
-Return the receipt status, failed checks, required secrets, source runtime ids, and next actions.
+Start with the local demo:
+make secure-business-demo
+
+Then read tmp/onboarding/e2e-receipt.json.
+
+Tell me:
+- receipt status
+- source runtime ids
+- failed checks, if any
+- required secret names
+- next actions before I connect real business systems
+
+Do not commit provider credentials, customer names, tenant-specific hostnames, account IDs, or live secret values.
+Use env: references for every secret-bearing value.
 ```
 
-## Local End-To-End Run
+## What The First Run Does
 
 The local plan uses the SDK source, local Docker services, and the bearer key from `docker-compose.yml`.
 
 ```bash
-make agent-onboard-e2e
+make secure-business-demo
 ```
 
 The target starts the local stack, builds `./bin/cerebro`, waits for `/health`, runs `deploy preflight`, creates `local-sdk-demo`, writes sample SDK claims, runs sync and graph ingest checks, checks control coverage, and writes:
@@ -38,6 +59,8 @@ The target starts the local stack, builds `./bin/cerebro`, waits for `/health`, 
 ```text
 tmp/onboarding/e2e-receipt.json
 ```
+
+Use `make agent-onboard-e2e` when you want the same run under the workflow name used by CI and docs.
 
 ## Run Against An Existing Service
 
@@ -80,6 +103,17 @@ Plan sections:
 | `compliance.profiles` | Control profiles to check after runtime setup. |
 | `acceptance_gates` | Operator expectations recorded with the plan. |
 
+Use the local sample as the first business checklist:
+
+| Plan value | First business decision |
+| --- | --- |
+| `tenant_id` | Pick the tenant or workspace name used in Cerebro records. |
+| `source_runtimes[].id` | Name the business system Cerebro should track. |
+| `config.integration` | Name the integration family, such as `jira`, `github`, or `okta`. |
+| `config.inventory_urns` | List the services, queues, repos, or apps that need ownership and posture checks. |
+| `claims` | Start with ownership, SSO, MFA, backup, or vendor-review claims that the team already understands. |
+| `compliance.profiles` | Pick the control set the business needs to show first. |
+
 ## Receipt
 
 The receipt records:
@@ -94,10 +128,13 @@ The receipt records:
 
 The receipt redacts secret-shaped keys and URL credentials. It should be stored with deployment records, not used as a secret store.
 
+If the receipt fails, fix the first failed check and rerun the same command. Do not add provider credentials until the local receipt passes.
+
 ## Checks For This Workflow
 
 ```bash
 python3 -m unittest scripts.tests.test_agent_onboard
 make agent-onboard PLAN=examples/onboarding/cerebro-onboarding.yaml
 make agent-onboard-e2e
+make secure-business-demo
 ```

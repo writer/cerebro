@@ -22,6 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RECEIPT = ROOT / "tmp" / "onboarding" / "receipt.json"
 DEFAULT_PLAN = ROOT / "examples" / "onboarding" / "cerebro-onboarding.yaml"
 SENSITIVE_NAME_RE = re.compile(r"(secret|token|password|credential|api[_-]?key|private[_-]?key|dsn)", re.I)
+SECRET_VALUE_RE = re.compile(
+    r"(?i)\b(access[_-]?token|api[_-]?key|authorization|client[_-]?secret|key|password|secret|token)=([^\s,;)&]+)"
+)
 
 
 class OnboardingError(Exception):
@@ -83,7 +86,7 @@ def validate_plan(plan: dict[str, Any]) -> list[str]:
     required_str(plan, "version")
     required_str(plan, "name")
     required_str(plan, "tenant_id")
-    required_str(plan, "base_url")
+    validate_base_url(required_str(plan, "base_url"))
     api_key_env = required_str(plan, "api_key_env")
     if "api_key" in plan:
         raise OnboardingError("plan.api_key is not allowed; use api_key_env")
@@ -122,12 +125,33 @@ def validate_plan(plan: dict[str, Any]) -> list[str]:
     return sorted(value for value in required_env if value)
 
 
+def validate_base_url(value: str) -> str:
+    parsed = urllib.parse.urlsplit(value.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise OnboardingError("plan.base_url must use http or https")
+    if not parsed.netloc or not parsed.hostname:
+        raise OnboardingError("plan.base_url must include a host")
+    if parsed.username or parsed.password:
+        raise OnboardingError("plan.base_url must not include credentials")
+    if parsed.query or parsed.fragment:
+        raise OnboardingError("plan.base_url must not include a query or fragment")
+    path = parsed.path.rstrip("/")
+    if path:
+        raise OnboardingError("plan.base_url must not include a path")
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
+
 def redact_url(value: str) -> str:
     parsed = urllib.parse.urlsplit(value)
     if not parsed.netloc or "@" not in parsed.netloc:
         return value
     host = parsed.netloc.rsplit("@", 1)[1]
     return urllib.parse.urlunsplit((parsed.scheme, f"redacted@{host}", parsed.path, parsed.query, parsed.fragment))
+
+
+def redact_message(value: str) -> str:
+    redacted = SECRET_VALUE_RE.sub(lambda match: f"{match.group(1)}=redacted", value)
+    return redact_url(redacted)
 
 
 def redact_value(key: str, value: Any) -> Any:
@@ -183,7 +207,7 @@ class AgentOnboardRunner:
     ) -> None:
         self.plan = plan
         self.receipt_path = receipt_path
-        self.base_url = (base_url or required_str(plan, "base_url")).rstrip("/")
+        self.base_url = validate_base_url(base_url or required_str(plan, "base_url"))
         self.api_key = api_key if api_key is not None else os.environ.get(required_str(plan, "api_key_env"), "")
         self.wait = wait
         self.require_server = require_server
@@ -525,9 +549,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         receipt = runner.run()
     except OnboardingError as err:
-        print(str(err), file=sys.stderr)
+        print(redact_message(str(err)), file=sys.stderr)
         return 1
-    print(f"agent-onboard: {receipt['status']} receipt={receipt_path}")
+    print(f"agent-onboard: {receipt['status']}; receipt written")
     return 0
 
 

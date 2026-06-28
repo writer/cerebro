@@ -3,8 +3,8 @@ import json
 import os
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
-from unittest import mock
 
 import scripts.agent_onboard as onboard
 
@@ -81,6 +81,22 @@ class AgentOnboardTests(unittest.TestCase):
             "postgres://redacted@db.example/cerebro?sslmode=require",
         )
 
+    def test_validate_base_url_rejects_credentials_and_paths(self):
+        for value in [
+            "https://user:pass@cerebro.example.com",
+            "https://cerebro.example.com/app",
+            "file:///tmp/cerebro",
+        ]:
+            with self.subTest(value=value):
+                with self.assertRaises(onboard.OnboardingError):
+                    onboard.validate_base_url(value)
+
+    def test_redact_message_masks_secret_assignments(self):
+        self.assertEqual(
+            onboard.redact_message("failed password=local-password token=abc123"),
+            "failed password=redacted token=redacted",
+        )
+
     def test_runner_writes_passed_receipt(self):
         plan = valid_plan()
         requested = []
@@ -134,7 +150,7 @@ class AgentOnboardTests(unittest.TestCase):
                 return 200, json.dumps({"selected_control_count": 5, "mapped_rule_count": 4})
             return 404, json.dumps({"error": parsed})
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, self.env(), clear=True):
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.dict(os.environ, self.env(), clear=True):
             receipt_path = Path(tmp) / "receipt.json"
             receipt = onboard.AgentOnboardRunner(plan, receipt_path, cmd=fake_cmd, http=fake_http).run()
             self.assertEqual(receipt["status"], "passed")
@@ -160,7 +176,7 @@ class AgentOnboardTests(unittest.TestCase):
                 return 503, json.dumps({"status": "down"})
             return 200, "{}"
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, self.env(), clear=True):
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.dict(os.environ, self.env(), clear=True):
             receipt_path = Path(tmp) / "receipt.json"
             with self.assertRaises(onboard.OnboardingError):
                 onboard.AgentOnboardRunner(plan, receipt_path, cmd=fake_cmd, http=fake_http).run()

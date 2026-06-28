@@ -93,6 +93,7 @@ See [Non-goals](docs/engineering/non-goals.md) before changing storage shape, So
 ```bash
 make build          # compile ./bin/cerebro
 make serve-dev      # run the local server with acknowledged dev-mode opt-out
+make secure-business-demo  # run local security onboarding and write a receipt
 make agent-onboard  # run an onboarding plan and write a redacted receipt
 make agent-onboard-e2e  # run the Docker-backed local onboarding workflow
 make test           # go test ./...

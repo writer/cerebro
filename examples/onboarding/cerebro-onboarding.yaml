@@ -1,6 +1,11 @@
 {
   "version": "2026-06-28",
   "name": "local-sdk-agent-onboarding",
+  "business": {
+    "name": "local-demo",
+    "goal": "Track ownership, SSO posture, graph readiness, and compliance coverage before connecting live systems.",
+    "first_system": "Example API"
+  },
   "tenant_id": "local",
   "runtime_profile": "graph-enabled",
   "base_url": "http://127.0.0.1:8080",
