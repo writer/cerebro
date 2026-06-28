@@ -127,7 +127,7 @@ func matchesGRCVendorReviewOverdue(event *cerebrov1.EventEnvelope) bool {
 		return false
 	}
 	attrs := event.GetAttributes()
-	if strings.TrimSpace(attrs["security_owner_user_id"]) == "" {
+	if firstNonEmpty(attrs["security_owner_user_id"], attrs["business_owner_user_id"]) == "" {
 		return true
 	}
 	due, ok := parseGRCTime(attrs["next_security_review_due_date"])

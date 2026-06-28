@@ -17,7 +17,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_RATE_LIMIT_RPS` | `100` | Global API rate-limit refill rate. |
 | `CEREBRO_RATE_LIMIT_BURST` | `150` | Global API rate-limit burst size. |
 | `CEREBRO_RATE_LIMIT_EXEMPT_PATHS` | liveness, metrics, and well-known metadata paths | Optional comma-separated path prefixes that bypass rate limiting. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | unset | Base URL for WriterInternal access-approvals. Required for access-approvals backed graph actions and reconciliation such as `identity.okta.suspend_user`. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | unset | Base URL for the access-approvals service. Required for access-approvals backed graph actions and reconciliation such as `identity.okta.suspend_user`. |
 | `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | unset | Bearer token Cerebro uses to call access-approvals graph action create/read endpoints. Supports `_FILE` via `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`. |
 | `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | `10s` | HTTP timeout for access-approvals graph action requests. |
 | `CEREBRO_APPEND_LOG_DRIVER` | inferred | Append-log driver. Supported: `jetstream`. |

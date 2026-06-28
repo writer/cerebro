@@ -149,6 +149,23 @@ spec:
 
 Use your orchestrator's equivalent primitives if you run on ECS, Nomad, systemd, a PaaS, or another scheduler. The hosting contract is the same: run the container, inject configuration, attach backing stores, expose HTTP through a trusted TLS boundary, and monitor health.
 
+## Infrastructure responsibilities
+
+This repository defines the runtime contract. Your deployment system owns the concrete infrastructure values.
+
+| Area | Cerebro release provides | Deployment system owns |
+| --- | --- | --- |
+| Runtime artifact | Container image, binary behavior, CLI/API contracts, source catalog, and release contract | Immutable tag selection, registry mirror, rollout record, and rollback tag |
+| API service | HTTP listen address, health routes, auth behavior, proxy-aware origin settings, and metrics | Load balancer, TLS certificate, DNS, ingress rules, replica count, CPU and memory sizing |
+| Backing stores | Supported Postgres, NATS JetStream, Neo4j/Aura, and optional cache configuration | Store provisioning, network access, backups, retention, maintenance windows, and capacity limits |
+| Secrets | Environment variable names, `env:` source config references, and file-backed secret support | Secret values, secret manager paths, rotation, and service-identity access |
+| Source runtimes | Source capabilities, deploy manifests, required secret names, and runtime commands | Runtime IDs, tenant bindings, schedules, concurrency, provider credentials, and provider rate-limit policy |
+| Scheduled jobs | CLI commands for sync, ingest, rebuild, and health checks | Scheduler type, cadence, retry policy, job resources, overlap prevention, and failure routing |
+| Observability | Metrics, structured events, trace attributes, and portable alert examples | Collector configuration, dashboards, alert thresholds, paging routes, and log retention |
+| Approvals | Public release and contract shape | Change review, production gates, emergency procedure, and environment-specific deploy notes |
+
+Do not publish live account IDs, hostnames, tenant IDs, secret paths, provider credentials, source schedules, or rollout steps in this repository. Keep those values in the deployment repository or platform records that operate the environment.
+
 ## Required network shape
 
 ```text
