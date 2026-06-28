@@ -35,7 +35,7 @@ func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	assertCellContains(t, header, cerebroRow, "compliance_review_tags", "control:soc-2:cc6-1")
 	assertCellContains(t, header, cerebroRow, "all_review_tags", "tenant-isolation")
 	assertCellContains(t, header, cerebroRow, "resolved_audit_domain", "api")
-	assertCellContains(t, header, cerebroRow, "audit_language_source", "yaml:domain:api")
+	assertCellEquals(t, header, cerebroRow, "audit_language_source", "catalog")
 	assertCellContains(t, header, cerebroRow, "evidence_type", "application_access_control")
 }
 
@@ -104,21 +104,34 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 	}
 	s3Row := findRow(t, reviewRows, reviewFindingCol, "aws-s3-bucket-no-public-access")
 	assertCellContains(t, reviewHeader, s3Row, "compliance_evidence_status", "partial_source_backed")
-	assertCellContains(t, reviewHeader, s3Row, "source_backed_control_ref_count", "2")
+	assertCellEquals(t, reviewHeader, s3Row, "source_matched_control_ref_count", "6")
+	assertCellEquals(t, reviewHeader, s3Row, "source_backed_control_ref_count", "6")
+	assertCellEquals(t, reviewHeader, s3Row, "control_refs_without_source_match_count", "8")
 	assertCellContains(t, reviewHeader, s3Row, "review_flags", "partial_source_backed_control_refs")
 
 	controlRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_control_map.csv"))
 	controlHeader := controlRows[0]
 	controlFindingCol := columnIndex(t, controlHeader, "finding_id")
 	controlRefCol := columnIndex(t, controlHeader, "control_ref")
+	controlMatchSourceCol := columnIndex(t, controlHeader, "control_match_source")
+	sourceBackedRows := 0
 	for _, row := range controlRows[1:] {
+		if row[controlFindingCol] == "aws-s3-bucket-no-public-access" && row[controlMatchSourceCol] == "finding_control_ref+source_coverage_ref" {
+			sourceBackedRows++
+		}
 		if row[controlFindingCol] == "aws-s3-bucket-no-public-access" && row[controlRefCol] == "SOC 2 CC6.6" {
-			assertCellContains(t, controlHeader, row, "control_match_source", "source_coverage_ref")
+			assertCellEquals(t, controlHeader, row, "control_match_source", "finding_control_ref+source_coverage_ref")
 			assertCellContains(t, controlHeader, row, "source_coverage_refs", "aws/s3_bucket")
-			return
 		}
 	}
-	t.Fatal("finding_control_map.csv missing SOC 2 CC6.6 row for aws-s3-bucket-no-public-access")
+	if sourceBackedRows != 6 {
+		t.Fatalf("source-backed control rows for aws-s3-bucket-no-public-access = %d, want 6", sourceBackedRows)
+	}
+	cc66Row := findRowByColumns(t, controlRows, map[int]string{
+		controlFindingCol: "aws-s3-bucket-no-public-access",
+		controlRefCol:     "SOC 2 CC6.6",
+	})
+	assertCellContains(t, controlHeader, cc66Row, "source_coverage_refs", "aws/s3_bucket")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
@@ -248,4 +261,30 @@ func assertCellContains(t *testing.T, header []string, row []string, column stri
 	if !strings.Contains(row[index], want) {
 		t.Fatalf("%s = %q, want it to contain %q", column, row[index], want)
 	}
+}
+
+func assertCellEquals(t *testing.T, header []string, row []string, column string, want string) {
+	t.Helper()
+	index := columnIndex(t, header, column)
+	if row[index] != want {
+		t.Fatalf("%s = %q, want %q", column, row[index], want)
+	}
+}
+
+func findRowByColumns(t *testing.T, rows [][]string, matches map[int]string) []string {
+	t.Helper()
+	for _, row := range rows[1:] {
+		matched := true
+		for column, value := range matches {
+			if row[column] != value {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return row
+		}
+	}
+	t.Fatalf("row with columns %#v not found", matches)
+	return nil
 }
