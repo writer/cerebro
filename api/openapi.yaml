@@ -2086,7 +2086,7 @@ paths:
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
-          description: Policy templates, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and control/evidence mappings.
+          description: Policy templates, documents, risk-register records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and control/evidence mappings.
           content:
             application/json:
               schema:
@@ -8174,10 +8174,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCPolicyLifecyclePolicy'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyDocument'
+        risk_register:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyRiskRegisterItem'
         work_queue:
           type: array
           items:
             $ref: '#/components/schemas/GRCPolicyLifecycleWork'
+        document_work_queue:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyDocumentWork'
         reminders:
           type: array
           items:
@@ -8217,7 +8229,16 @@ components:
         lifecycle_events:
           type: integer
           minimum: 0
+        policy_documents:
+          type: integer
+          minimum: 0
+        risk_register_items:
+          type: integer
+          minimum: 0
         draft_versions:
+          type: integer
+          minimum: 0
+        draft_documents:
           type: integer
           minimum: 0
         pending_approvals:
@@ -8226,10 +8247,19 @@ components:
         overdue_reviews:
           type: integer
           minimum: 0
+        documents_due_for_review:
+          type: integer
+          minimum: 0
         open_exceptions:
           type: integer
           minimum: 0
         expiring_exceptions:
+          type: integer
+          minimum: 0
+        open_risks:
+          type: integer
+          minimum: 0
+        high_risks:
           type: integer
           minimum: 0
         attestation_coverage_pct:
@@ -8267,6 +8297,126 @@ components:
             type: string
         owner:
           type: string
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyControlRef'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyEvidenceRef'
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCPolicyDocument:
+      type: object
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        title:
+          type: string
+        document_type:
+          type: string
+        document_class:
+          type: string
+        status:
+          type: string
+        owner:
+          type: string
+        version:
+          type: string
+        review_cadence:
+          type: string
+        next_review_due_at:
+          type: string
+        approved_at:
+          type: string
+        effective_at:
+          type: string
+        source_url:
+          type: string
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyDocumentRef'
+        risks:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyRiskRef'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyControlRef'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyEvidenceRef'
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCPolicyDocumentRef:
+      type: object
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        title:
+          type: string
+        reference:
+          type: string
+    GRCPolicyRiskRef:
+      type: object
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+    GRCPolicyRiskRegisterItem:
+      type: object
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        owner:
+          type: string
+        category:
+          type: string
+        inherent_risk:
+          type: string
+        residual_risk:
+          type: string
+        likelihood:
+          type: string
+        impact:
+          type: string
+        treatment:
+          type: string
+        review_due_at:
+          type: string
+        treatment_due_at:
+          type: string
+        source_document_id:
+          type: string
+        source_document_title:
+          type: string
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyDocumentRef'
         controls:
           type: array
           items:
@@ -8799,6 +8949,31 @@ components:
         due_at:
           type: string
         action:
+          type: string
+    GRCPolicyDocumentWork:
+      type: object
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+        document:
+          type: string
+        record_urn:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        owner:
+          type: string
+        due_at:
+          type: string
+        action:
+          type: string
+        policy_id:
+          type: string
+        risk_id:
           type: string
     GRCPolicyAcceptanceSummary:
       type: object

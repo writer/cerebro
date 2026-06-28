@@ -129,7 +129,7 @@ func TestMissingReviewStatusDoesNotCreateOverdueWork(t *testing.T) {
 			{URN: "urn:review:missing-status", ReviewDueAt: "2026-01-15"},
 		},
 	}
-	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, now)
+	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, nil, nil, now)
 	if summary.OverdueReviews != 0 {
 		t.Fatalf("summary = %+v, want missing-status review excluded from overdue count", summary)
 	}

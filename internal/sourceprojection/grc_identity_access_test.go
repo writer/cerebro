@@ -46,10 +46,15 @@ func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing
 		SourceId: "grc",
 		Kind:     "grc.risk_scenario",
 		Attributes: map[string]string{
-			"provider":    "vanta",
-			"risk_id":     "risk-1",
-			"description": "AI vendor risk",
-			"owner":       "alice@writer.com",
+			"provider":            "vanta",
+			"risk_id":             "risk-1",
+			"description":         "AI vendor risk",
+			"owner":               "alice@writer.com",
+			"policy_id":           "vendor-risk",
+			"document_id":         "risk-register",
+			"document_type":       "risk_register",
+			"control_ids":         "VR-1",
+			"residual_risk_level": "high",
 		},
 	})
 	if err != nil {
@@ -58,9 +63,15 @@ func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing
 
 	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-1"
 	contactURN := "urn:cerebro:writer:contact:vanta:owner:alice@writer.com"
+	policyURN := "urn:cerebro:writer:policy:vanta:policy:vendor-risk"
+	documentURN := "urn:cerebro:writer:document:vanta:risk-register"
+	controlURN := "urn:cerebro:writer:policy:vanta:control:VR-1"
 	personURN := "urn:cerebro:writer:person:vanta:owner:alice@writer.com"
 	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	assertProjectedLink(t, state, riskURN, relationAssignedTo, contactURN)
+	assertProjectedLink(t, state, riskURN, relationAssociatedWith, policyURN)
+	assertProjectedLink(t, state, riskURN, relationHasEvidence, documentURN)
+	assertProjectedLink(t, state, riskURN, relationAssociatedWith, controlURN)
 	if _, ok := state.entities[personURN]; ok {
 		t.Fatalf("risk owner projected as GRC person: %#v", state.entities[personURN])
 	}

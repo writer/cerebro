@@ -273,7 +273,7 @@ func buildCatalog() []Source {
 			ID:          "policy-lifecycle",
 			Domain:      "policies",
 			Title:       "Policy lifecycle",
-			Description: "Policy templates, versions, approvals, attestations, exceptions, reminders, and control mappings.",
+			Description: "Policy documents, risk-register rows, versions, approvals, attestations, exceptions, reminders, and control mappings.",
 			Method:      "GET",
 			Path:        "/grc/policy-lifecycle",
 			Params: []Param{
