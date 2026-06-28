@@ -22,12 +22,13 @@ func (a *App) handleGRCPolicyLifecycle(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return
 	}
+	ruleProfile := strings.TrimSpace(r.URL.Query().Get("rule_profile"))
 	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
 		TenantID:    scope.TenantID,
 		SourceID:    scope.SourceID,
 		RuntimeID:   scope.RuntimeID,
 		Limit:       scope.Limit,
-		RuleProfile: strings.TrimSpace(r.URL.Query().Get("rule_profile")),
+		RuleProfile: ruleProfile,
 	})
 	if err != nil {
 		writeGRCError(w, err)
@@ -103,12 +104,13 @@ func (a *App) handleGRCPolicyLifecycleExport(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, err)
 		return
 	}
+	ruleProfile := strings.TrimSpace(r.URL.Query().Get("rule_profile"))
 	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
 		TenantID:    scope.TenantID,
 		SourceID:    scope.SourceID,
 		RuntimeID:   scope.RuntimeID,
 		Limit:       grcExportLimit,
-		RuleProfile: strings.TrimSpace(r.URL.Query().Get("rule_profile")),
+		RuleProfile: ruleProfile,
 	})
 	if err != nil {
 		writeGRCError(w, err)
