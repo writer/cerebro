@@ -2061,14 +2061,6 @@ paths:
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
         - $ref: '#/components/parameters/limitQuery'
-        - name: rule_profile
-          in: query
-          schema:
-            type: string
-            enum:
-              - baseline
-              - strict
-          description: Governance rule profile for policy document and risk-register gap checks.
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
@@ -2085,14 +2077,6 @@ paths:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
-        - name: rule_profile
-          in: query
-          schema:
-            type: string
-            enum:
-              - baseline
-              - strict
-          description: Governance rule profile for exported gap records.
         - $ref: '#/components/parameters/limitQuery'
         - name: profile
           in: query
@@ -2123,6 +2107,14 @@ paths:
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
         - $ref: '#/components/parameters/limitQuery'
+        - name: rule_profile
+          in: query
+          schema:
+            type: string
+            enum:
+              - baseline
+              - strict
+          description: Governance rule profile for policy document and risk-register gap checks.
       responses:
         '200':
           description: Policy templates, documents, risk-register records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and control/evidence mappings.
@@ -2139,6 +2131,14 @@ paths:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - name: rule_profile
+          in: query
+          schema:
+            type: string
+            enum:
+              - baseline
+              - strict
+          description: Governance rule profile for exported gap records.
         - name: start
           in: query
           schema:
