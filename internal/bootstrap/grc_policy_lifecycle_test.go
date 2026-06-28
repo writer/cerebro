@@ -188,9 +188,9 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	if payload.Summary.Policies != 1 || payload.Summary.Templates != 1 {
 		t.Fatalf("summary = %+v, want one policy and one template", payload.Summary)
 	}
-	if payload.Summary.PolicyDocuments != 1 || payload.Summary.RiskRegisterItems != 1 || payload.Summary.DraftDocuments != 1 || payload.Summary.DocumentsDueForReview != 1 || payload.Summary.OpenRisks != 1 || payload.Summary.HighRisks != 1 {
-		t.Fatalf("summary document/risk rollups = %+v, want document and risk counts", payload.Summary)
-	}
+		if payload.Summary.PolicyDocuments != 1 || payload.Summary.RiskRegisterItems != 1 || payload.Summary.DraftDocuments != 1 || payload.Summary.DocumentsDueForReview != 0 || payload.Summary.OpenRisks != 1 || payload.Summary.HighRisks != 1 {
+			t.Fatalf("summary document/risk rollups = %+v, want document and risk counts", payload.Summary)
+		}
 	if payload.Summary.DraftVersions != 1 || payload.Summary.PendingApprovals != 1 || payload.Summary.OverdueReviews != 1 || payload.Summary.OverdueAttestations != 1 {
 		t.Fatalf("summary queues = %+v, want draft, approval, review, and attestation work", payload.Summary)
 	}

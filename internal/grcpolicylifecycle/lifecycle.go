@@ -1963,6 +1963,9 @@ func grcPolicyRiskTitle(node *grcPolicyGraphNode) string {
 }
 
 func grcPolicyDocumentDueForReview(document grcPolicyDocumentItem, now time.Time) bool {
+	if grcPolicyDraftStatus(document.Status) {
+		return false
+	}
 	return grcPolicyOverdue(document.NextReviewDueAt, document.Status, now)
 }
 
@@ -1971,7 +1974,7 @@ func grcPolicyRiskOpen(status string) bool {
 	if normalized == "" {
 		return false
 	}
-	return !grcPolicyAcceptedStatus(normalized) && normalized != "closed" && normalized != "resolved" && normalized != "retired"
+	return !grcPolicyAcceptedStatus(normalized) && !grcPolicyClosedStatus(normalized) && normalized != "resolved"
 }
 
 func grcPolicyHighRisk(values ...string) bool {

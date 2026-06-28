@@ -200,6 +200,30 @@ func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
 	}
 }
 
+func TestDraftDocumentDoesNotCreateReviewWork(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	document := grcPolicyDocumentItem{
+		ID:              "secure-development-draft",
+		URN:             "urn:document:secure-development-draft",
+		Title:           "Secure Development Draft",
+		DocumentClass:   "policy",
+		Status:          "draft",
+		NextReviewDueAt: "2026-01-15",
+	}
+
+	if grcPolicyDocumentDueForReview(document, now) {
+		t.Fatalf("draft document should not be due for review")
+	}
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, now)
+	if summary.DraftDocuments != 1 || summary.DocumentsDueForReview != 0 {
+		t.Fatalf("summary = %+v, want one draft document and no due review", summary)
+	}
+	items := grcPolicyDocumentWorkQueue([]grcPolicyDocumentItem{document}, nil, now)
+	if len(items) != 1 || items[0].Action != "Review draft document" {
+		t.Fatalf("document work queue = %+v, want only draft review work", items)
+	}
+}
+
 func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
 	summary := grcPolicyLifecycleSummaryFrom(nil, nil, nil, []grcPolicyRiskRegisterItem{
 		{ID: "open-high", Status: "open", ResidualRisk: "high"},
@@ -207,6 +231,8 @@ func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
 		{ID: "accepted-high", Status: "accepted", InherentRisk: "high"},
 		{ID: "completed-high", Status: "completed", ResidualRisk: "high"},
 		{ID: "acknowledged-high", Status: "acknowledged", ResidualRisk: "high"},
+		{ID: "expired-high", Status: "expired", ResidualRisk: "high"},
+		{ID: "rejected-high", Status: "rejected", ResidualRisk: "high"},
 		{ID: "open-medium", Status: "open", ResidualRisk: "medium"},
 	}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 
