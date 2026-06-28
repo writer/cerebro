@@ -2301,29 +2301,33 @@ func frameworkCoverageCandidateRows(catalog publicDetectionCatalog, index contro
 			continue
 		}
 		controlRequirements := requirementsByControl[key]
-		reviewContextRefs := append([]string{}, item.ReviewAreaRefs...)
-		reviewContextRefs = append(reviewContextRefs, item.OutboundRelationshipRefs...)
-		reviewContextRefs = append(reviewContextRefs, item.InboundRelationshipRefs...)
-		rows = append(rows, []string{
-			item.Ref.Framework,
-			item.Ref.ControlID,
-			item.Ref.Label(),
-			item.Ref.Family,
-			status,
-			frameworkControlGapType(status),
-			frameworkCoverageCandidatePriority(status),
-			candidateType,
-			suggestedFindingDomain(controlRequirements),
-			suggestedEvidenceType(controlRequirements),
-			joinList(requirementProfileIDs(controlRequirements)),
-			joinList(requirementSourceIDs(controlRequirements)),
-			joinList(item.SourceCapabilityRefs),
-			joinList(reviewContextRefs),
-			frameworkCoverageCandidateAction(status),
-		})
+		rows = append(rows, frameworkCoverageCandidateRow(item, status, controlRequirements))
 	}
 	sortRows(rows)
 	return rows
+}
+
+func frameworkCoverageCandidateRow(item frameworkControlEnrichment, status string, controlRequirements []expandedControlEvidenceRequirement) []string {
+	reviewContextRefs := append([]string{}, item.ReviewAreaRefs...)
+	reviewContextRefs = append(reviewContextRefs, item.OutboundRelationshipRefs...)
+	reviewContextRefs = append(reviewContextRefs, item.InboundRelationshipRefs...)
+	return []string{
+		item.Ref.Framework,
+		item.Ref.ControlID,
+		item.Ref.Label(),
+		item.Ref.Family,
+		status,
+		frameworkControlGapType(status),
+		frameworkCoverageCandidatePriority(status),
+		frameworkCoverageCandidateType(status),
+		suggestedFindingDomain(controlRequirements),
+		suggestedEvidenceType(controlRequirements),
+		joinList(requirementProfileIDs(controlRequirements)),
+		joinList(requirementSourceIDs(controlRequirements)),
+		joinList(item.SourceCapabilityRefs),
+		joinList(reviewContextRefs),
+		frameworkCoverageCandidateAction(status),
+	}
 }
 
 func expandedRequirementsByControl(requirements []expandedControlEvidenceRequirement) map[string][]expandedControlEvidenceRequirement {

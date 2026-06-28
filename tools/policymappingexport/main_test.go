@@ -604,6 +604,39 @@ func TestFrameworkCoverageCandidateClassifiersCoverAllStatuses(t *testing.T) {
 	}
 }
 
+func TestFrameworkCoverageCandidateRowsCoverAllStatuses(t *testing.T) {
+	header := frameworkCoverageCandidatesHeader()
+	item := frameworkControlEnrichment{
+		Ref: controlRef{
+			Framework: "test-framework",
+			ControlID: "C1",
+			Family:    "Test Control Family",
+		},
+		SourceCapabilityRefs:     []string{"source/dimension"},
+		ReviewAreaRefs:           []string{"test-framework/review-area"},
+		OutboundRelationshipRefs: []string{"test-framework C2 [sibling_scope/review_hint]"},
+		InboundRelationshipRefs:  []string{"test-framework C0 [evidence_dependency/review_hint]"},
+	}
+	cases := []struct {
+		status string
+		kind   string
+	}{
+		{status: "direct_with_source_context", kind: "source_link_review_candidate"},
+		{status: "direct_control_only", kind: "source_backing_candidate"},
+		{status: "source_capability_only", kind: "missing_finding_candidate"},
+		{status: "review_context_only", kind: "mapping_review_candidate"},
+		{status: "framework_catalog_only", kind: "scope_or_exclusion_candidate"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.status, func(t *testing.T) {
+			row := frameworkCoverageCandidateRow(item, tt.status, nil)
+			assertCellEquals(t, header, row, "coverage_status", tt.status)
+			assertCellEquals(t, header, row, "candidate_type", tt.kind)
+			assertCellContains(t, header, row, "next_action", frameworkCoverageCandidateAction(tt.status))
+		})
+	}
+}
+
 func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 	cases := []struct {
 		name string
