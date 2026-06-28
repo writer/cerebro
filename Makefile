@@ -71,8 +71,23 @@ CEREBRO_ONBOARD_BASE_URL ?=
 # is generated under tmp/ so each worktree keeps its own local database secret.
 CEREBRO_LOCAL_POSTGRES_USER ?= cerebro
 CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE ?= tmp/local-postgres-password
-CEREBRO_LOCAL_POSTGRES_PASSWORD ?= $(shell umask 077; mkdir -p "$$(dirname "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")"; if [ ! -s "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)" ]; then $(PYTHON) -c 'import pathlib, secrets; pathlib.Path("$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)").write_text(secrets.token_urlsafe(24) + "\n", encoding="utf-8")'; fi; cat "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")
-CEREBRO_LOCAL_POSTGRES_DSN ?= postgres://$(CEREBRO_LOCAL_POSTGRES_USER):$(CEREBRO_LOCAL_POSTGRES_PASSWORD)@127.0.0.1:5432/cerebro?sslmode=disable
+CEREBRO_LOCAL_POSTGRES_PASSWORD ?=
+CEREBRO_LOCAL_POSTGRES_DSN ?=
+define CEREBRO_LOCAL_POSTGRES_ENV_SH
+local_postgres_password="$(CEREBRO_LOCAL_POSTGRES_PASSWORD)"; \
+if [ -z "$$local_postgres_password" ]; then \
+	umask 077; \
+	mkdir -p "$$(dirname "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")"; \
+	if [ ! -s "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)" ]; then \
+		$(PYTHON) -c 'import pathlib, secrets; pathlib.Path("$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)").write_text(secrets.token_urlsafe(24) + "\n", encoding="utf-8")'; \
+	fi; \
+	local_postgres_password="$$(cat "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")"; \
+fi; \
+local_postgres_dsn="$(CEREBRO_LOCAL_POSTGRES_DSN)"; \
+if [ -z "$$local_postgres_dsn" ]; then \
+	local_postgres_dsn="postgres://$(CEREBRO_LOCAL_POSTGRES_USER):$$local_postgres_password@127.0.0.1:5432/cerebro?sslmode=disable"; \
+fi
+endef
 GITHUB_OWNER ?=
 GITHUB_REPO ?=
 GITHUB_TOKEN ?=
@@ -420,13 +435,15 @@ agent-onboard-test: ## Run agent onboarding workflow unit tests.
 
 agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflow.
 	@command -v docker >/dev/null || { echo "docker is required for agent-onboard-e2e" >&2; exit 2; }
-	@CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
-	CEREBRO_LOCAL_POSTGRES_PASSWORD="$(CEREBRO_LOCAL_POSTGRES_PASSWORD)" \
-	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
-	@CEREBRO_API_KEY="local-dev-key" \
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d; \
+	CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
-	CEREBRO_POSTGRES_DSN="$(CEREBRO_LOCAL_POSTGRES_DSN)" \
+	CEREBRO_POSTGRES_DSN="$$local_postgres_dsn" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \
 	CEREBRO_NEO4J_PASSWORD="local-password" \
@@ -443,16 +460,18 @@ github-business-demo-env: ## Check required GitHub demo environment.
 github-business-demo: github-business-demo-env build ## Connect a GitHub repo, sync it, ingest graph data, and write a receipt.
 	@command -v docker >/dev/null || { echo "docker is required for github-business-demo" >&2; exit 2; }
 	@# Scope the GitHub token to Docker Compose and onboarding. The receipt stores env: references, not token values.
-	@CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
 	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
 	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \
 	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
-	CEREBRO_LOCAL_POSTGRES_PASSWORD="$(CEREBRO_LOCAL_POSTGRES_PASSWORD)" \
-	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
-	@CEREBRO_API_KEY="local-dev-key" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d; \
+	CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
-	CEREBRO_POSTGRES_DSN="$(CEREBRO_LOCAL_POSTGRES_DSN)" \
+	CEREBRO_POSTGRES_DSN="$$local_postgres_dsn" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \
 	CEREBRO_NEO4J_PASSWORD="local-password" \

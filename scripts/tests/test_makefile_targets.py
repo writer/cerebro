@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -56,6 +57,21 @@ class MakefileTargetTests(unittest.TestCase):
         self.assertIn("CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE ?= tmp/local-postgres-password", makefile)
         self.assertIn("secrets.token_urlsafe", makefile)
         self.assertNotIn("CEREBRO_LOCAL_POSTGRES_PASSWORD ?= cerebro", makefile)
+        self.assertNotIn("CEREBRO_LOCAL_POSTGRES_PASSWORD ?= $(shell", makefile)
+
+    def test_make_help_does_not_generate_local_postgres_password(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            password_file = Path(tmpdir) / "local-postgres-password"
+            result = subprocess.run(
+                ["make", "--no-print-directory", "help"],
+                cwd=ROOT,
+                env=self.make_env(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE=str(password_file)),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(password_file.exists())
 
 
 if __name__ == "__main__":
