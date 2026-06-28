@@ -1,5 +1,12 @@
 package graphpaths
 
+import "strings"
+
+const (
+	CloudExposurePrivilegeTraversalDirectionForward = "forward"
+	CloudExposurePrivilegeTraversalDirectionReverse = "reverse"
+)
+
 // CloudExposurePrivilegeTraversalRelations are the graph relations allowed in a
 // bounded proof that a publicly exposed cloud resource can reach a privileged
 // principal without crossing through broad account-hub relationships.
@@ -12,6 +19,22 @@ func CloudExposurePrivilegeTraversalRelations() []string {
 		"depends_on",
 		"member_of",
 		"runs_as",
+	}
+}
+
+// CloudExposurePrivilegeTraversalAllowsStep returns whether a relation may be
+// traversed in the direction emitted for a proof path from exposed resource to
+// privileged principal.
+func CloudExposurePrivilegeTraversalAllowsStep(relation string, direction string) bool {
+	relation = strings.TrimSpace(relation)
+	direction = strings.TrimSpace(direction)
+	switch relation {
+	case "assigned_to", "attached_to", "can_assume", "can_impersonate", "depends_on", "runs_as":
+		return direction == CloudExposurePrivilegeTraversalDirectionForward
+	case "member_of":
+		return direction == CloudExposurePrivilegeTraversalDirectionReverse
+	default:
+		return false
 	}
 }
 

@@ -249,8 +249,11 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 		return nil
 	}
 	relationChain := cloudAttackPathRelationChain(row)
+	if !cloudAttackPathTraversalProofMatches(row, relationChain) {
+		return nil
+	}
 	traversalPaths := cloudAttackPathTraversalEvidencePaths(row)
-	if len(relationChain) == 0 || len(traversalPaths) == 0 {
+	if len(traversalPaths) == 0 {
 		return nil
 	}
 	accountLabel := cypherRowString(row, "account_label")
@@ -339,6 +342,26 @@ func cloudAttackPathRelationChain(row ports.CypherRow) []string {
 		}
 	}
 	return relations
+}
+
+func cloudAttackPathTraversalProofMatches(row ports.CypherRow, relationChain []string) bool {
+	items := cypherRowList(row, "traversal_edges")
+	if len(relationChain) == 0 || len(items) != len(relationChain) {
+		return false
+	}
+	for idx, item := range items {
+		relation := cypherListMapString(item, "relation")
+		if relation == "" || relation != strings.TrimSpace(relationChain[idx]) {
+			return false
+		}
+		if cypherListMapString(item, "from_urn") == "" || cypherListMapString(item, "to_urn") == "" {
+			return false
+		}
+		if !graphpaths.CloudExposurePrivilegeTraversalAllowsStep(relation, cypherListMapString(item, "direction")) {
+			return false
+		}
+	}
+	return true
 }
 
 func cloudAttackPathTraversalEvidencePaths(row ports.CypherRow) []*cerebrov1.GraphEvidencePath {

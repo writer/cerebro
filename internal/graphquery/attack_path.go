@@ -186,6 +186,8 @@ func attackPathCountsFromRow(row ports.CypherRow) AttackPathCounts {
 func attackPathsFromRows(rows []ports.CypherRow) []AttackPath {
 	result := make([]AttackPath, 0, len(rows))
 	for _, row := range rows {
+		relationChain := cypherStringList(row.Values["relation_chain"])
+		traversalEdges := attackPathEdgesFromRow(row)
 		path := AttackPath{
 			PublicPrincipal: GraphEntityRef{URN: cypherString(row, "public_urn"), EntityType: cypherString(row, "public_entity_type"), Label: cypherString(row, "public_label")},
 			ExposedResource: GraphEntityRef{URN: cypherString(row, "exposed_urn"), EntityType: cypherString(row, "exposed_entity_type"), Label: cypherString(row, "exposed_label")},
@@ -194,15 +196,32 @@ func attackPathsFromRows(rows []ports.CypherRow) []AttackPath {
 			Permission:      GraphEntityRef{URN: cypherString(row, "permission_urn"), EntityType: cypherString(row, "permission_entity_type"), Label: cypherString(row, "permission_label")},
 			ReachRelation:   cypherString(row, "reach_relation"),
 			AccessRelation:  cypherString(row, "access_relation"),
-			RelationChain:   cypherStringList(row.Values["relation_chain"]),
-			TraversalEdges:  attackPathEdgesFromRow(row),
+			RelationChain:   relationChain,
+			TraversalEdges:  traversalEdges,
 		}
-		if path.PublicPrincipal.URN == "" || path.ExposedResource.URN == "" || path.CloudAccount.URN == "" || path.Principal.URN == "" || path.Permission.URN == "" || len(path.RelationChain) == 0 || len(path.TraversalEdges) == 0 {
+		if path.PublicPrincipal.URN == "" || path.ExposedResource.URN == "" || path.CloudAccount.URN == "" || path.Principal.URN == "" || path.Permission.URN == "" || !attackPathTraversalProofMatches(relationChain, traversalEdges) {
 			continue
 		}
 		result = append(result, path)
 	}
 	return result
+}
+
+func attackPathTraversalProofMatches(relationChain []string, edges []AttackPathEdge) bool {
+	if len(relationChain) == 0 || len(edges) != len(relationChain) {
+		return false
+	}
+	for idx, relation := range relationChain {
+		relation = strings.TrimSpace(relation)
+		edge := edges[idx]
+		if relation == "" || relation != strings.TrimSpace(edge.Relation) {
+			return false
+		}
+		if edge.From.URN == "" || edge.To.URN == "" || !graphpaths.CloudExposurePrivilegeTraversalAllowsStep(edge.Relation, edge.Direction) {
+			return false
+		}
+	}
+	return true
 }
 
 func attackPathEdgesFromRow(row ports.CypherRow) []AttackPathEdge {
