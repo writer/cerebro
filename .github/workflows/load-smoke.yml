@@ -2,7 +2,7 @@ name: Cerebro Load Smoke
 
 on:
   schedule:
-    # Run daily after the compose smoke. The job skips cleanly unless a live target secret is configured.
+    # Run daily after the compose smoke. Empty schedules skip; configured schedules run against the live target.
     - cron: '30 6 * * *'
   workflow_dispatch:
     inputs:
@@ -51,7 +51,31 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - name: Check Infisical bootstrap
+        id: infisical
+        shell: bash
+        env:
+          INFISICAL_ORG_IDENTITY_UUID: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          INFISICAL_ORG_PROJECT_SLUG: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          INFISICAL_REPO_IDENTITY_UUID: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          INFISICAL_REPO_PROJECT_SLUG: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in INFISICAL_ORG_IDENTITY_UUID INFISICAL_ORG_PROJECT_SLUG INFISICAL_REPO_IDENTITY_UUID INFISICAL_REPO_PROJECT_SLUG; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Infisical bootstrap secrets are not configured: ${missing[*]}"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Fetch org-level secrets from Infisical
+        if: steps.infisical.outputs.configured == 'true'
         uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: oidc
@@ -61,6 +85,7 @@ jobs:
           env-slug: prod
           export-type: env
       - name: Fetch repo-level secrets from Infisical
+        if: steps.infisical.outputs.configured == 'true'
         uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: oidc
@@ -77,17 +102,22 @@ jobs:
           SECRET_BASE_URL: ${{ env.CEREBRO_LOAD_SMOKE_BASE_URL }}
           INPUT_DISPATCH_JSON: ${{ env.INPUT_DISPATCH_JSON }}
           EVENT_NAME: ${{ env.EVENT_NAME }}
+          INFISICAL_CONFIGURED: ${{ steps.infisical.outputs.configured }}
         run: |
           set -euo pipefail
           input_base_url="$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.base_url // empty')"
           target_url="${input_base_url:-$SECRET_BASE_URL}"
           if [ -z "$target_url" ]; then
-            if [ "$EVENT_NAME" = "schedule" ]; then
-              echo "Scheduled load smoke requires CEREBRO_LOAD_SMOKE_BASE_URL."
-              exit 1
-            fi
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No load-smoke target configured; set the CEREBRO_LOAD_SMOKE_BASE_URL secret or pass base_url manually."
+            if [ "$EVENT_NAME" = "schedule" ]; then
+              if [ "$INFISICAL_CONFIGURED" != "true" ]; then
+                echo "No Infisical bootstrap configured; skipping scheduled load smoke."
+              else
+                echo "No load-smoke target configured; skipping scheduled load smoke."
+              fi
+              exit 0
+            fi
+            echo "No load-smoke target configured; set CEREBRO_LOAD_SMOKE_BASE_URL or pass base_url manually."
             exit 0
           fi
           echo "::add-mask::$target_url"
