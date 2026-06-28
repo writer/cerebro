@@ -3,6 +3,7 @@ package catalogruntime
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -120,6 +121,12 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	if strings.TrimSpace(resource.Path) == "" {
 		return jsonapi.Family{}, fmt.Errorf("%s family %s path is required", sourceID, name)
 	}
+	method := strings.ToUpper(strings.TrimSpace(resource.Method))
+	switch method {
+	case "", http.MethodGet, http.MethodPost:
+	default:
+		return jsonapi.Family{}, fmt.Errorf("%s family %s method %q is not supported by catalogruntime", sourceID, name, method)
+	}
 	class := projectionClass(resource)
 	read := resource.Read
 	if read == nil {
@@ -147,7 +154,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		MapRecords:            cloneStringMap(read.MapRecords),
 		Singleton:             read.Singleton,
 		IncrementalWatermark:  resource.Incremental != nil && strings.TrimSpace(resource.Incremental.State) == "high_watermark",
-		Method:                strings.TrimSpace(resource.Method),
+		Method:                method,
 	}, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,6 +204,33 @@ func TestSourceDefinitionDoesNotSynthesizeCursorWithoutPageParam(t *testing.T) {
 	}
 	if pull.NextCursor != nil {
 		t.Fatalf("NextCursor = %#v, want nil", pull.NextCursor)
+	}
+}
+
+func TestSourceDefinitionRejectsUnsupportedMethods(t *testing.T) {
+	_, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: "https://api.example.test"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			Method:         http.MethodDelete,
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err == nil {
+		t.Fatal("NewDefinition() error = nil, want unsupported method error")
+	}
+	if got := err.Error(); !strings.Contains(got, `method "DELETE" is not supported`) {
+		t.Fatalf("NewDefinition() error = %q, want unsupported method", got)
 	}
 }
 
