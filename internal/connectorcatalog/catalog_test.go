@@ -9,7 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
-const wantBuiltinCatalogEntries = 780
+const wantBuiltinCatalogEntries = 788
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()

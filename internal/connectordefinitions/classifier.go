@@ -180,7 +180,7 @@ func Classify(definition Definition, grammar Grammar) (SupportReport, error) {
 			}
 			check("incremental", state, contains(incremental, state), fmt.Sprintf("family %s", family.ID))
 		}
-		if family.RecordSelector == "" && family.ListKey == "" {
+		if family.RecordSelector == "" && family.ListKey == "" && !family.Singleton {
 			check("record_selector", "jsonpath_or_list_key", false, fmt.Sprintf("family %s needs record_selector or list_key", family.ID))
 		} else {
 			check("record_selector", "jsonpath_or_list_key", true, fmt.Sprintf("family %s", family.ID))

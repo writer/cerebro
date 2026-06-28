@@ -4,6 +4,339 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-anthropic
+      tenant_id: builtin_catalog
+      source_id: anthropic
+      display_name: Anthropic
+      description: "Anthropic connector definition for models, organization members, API keys, workspaces, and organization invites."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: api_key
+        token_header: x-api-key
+        credential_fields:
+          - key: api_key
+            label: API key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.anthropic.com"
+        headers:
+          anthropic-version: "2023-06-01"
+        verification:
+          method: GET
+          path: /v1/models
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /v1/models
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: display_name
+          event:
+            kind: anthropic.model_catalog
+            schema_ref: anthropic/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: organization_members
+          label: Organization members
+          path: /v1/organizations/users
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: email
+          event:
+            kind: anthropic.organization_members
+            schema_ref: anthropic/organization_members/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: organization_members
+              type: entity_family
+              title: Organization members
+              families: [organization_members]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory, identity_access]
+          pagination:
+            type: cursor
+            cursor_param: after_id
+            cursor_json_path: "$.last_id"
+            page_size_param: limit
+            page_size: 100
+        - id: api_keys
+          label: API keys
+          path: /v1/organizations/api_keys
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: anthropic.api_keys
+            schema_ref: anthropic/api_keys/v1
+          projection:
+            template: secret
+          coverage:
+            - id: api_keys
+              type: app_entitlement
+              title: API keys
+              families: [api_keys]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: cursor
+            cursor_param: after_id
+            cursor_json_path: "$.last_id"
+            page_size_param: limit
+            page_size: 100
+        - id: workspaces
+          label: Workspaces
+          path: /v1/organizations/workspaces
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: anthropic.workspaces
+            schema_ref: anthropic/workspaces/v1
+          projection:
+            template: asset
+          coverage:
+            - id: workspaces
+              type: entity_family
+              title: Workspaces
+              families: [workspaces]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: after_id
+            cursor_json_path: "$.last_id"
+            page_size_param: limit
+            page_size: 100
+        - id: organization_invites
+          label: Organization invites
+          path: /v1/organizations/invites
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: email
+          event:
+            kind: anthropic.organization_invites
+            schema_ref: anthropic/organization_invites/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: organization_invites
+              type: app_entitlement
+              title: Organization invites
+              families: [organization_invites]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: cursor
+            cursor_param: after_id
+            cursor_json_path: "$.last_id"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-aws-bedrock
+      tenant_id: builtin_catalog
+      source_id: aws_bedrock
+      display_name: AWS Bedrock
+      description: "AWS Bedrock connector definition for foundation models, custom models, provisioned throughput, customization jobs, and guardrails."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: region
+          label: AWS region
+          required: true
+          placeholder: us-east-1
+        - key: service
+          label: AWS signing service
+          required: true
+          help: "Use bedrock for AWS Bedrock control-plane APIs."
+          placeholder: bedrock
+      auth:
+        model: aws_sigv4
+        credential_fields:
+          - key: access_key
+            label: Access key ID
+            secret: true
+            reference_only: true
+          - key: secret_key
+            label: Secret access key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://bedrock.${config.region}.amazonaws.com"
+        verification:
+          method: GET
+          path: /foundation-models
+          expect_status: [200]
+      resource_families:
+        - id: foundation_models
+          label: Foundation models
+          path: /foundation-models
+          method: GET
+          record_selector: "$.modelSummaries[*]"
+          id_field: modelId
+          name_field: modelName
+          event:
+            kind: aws_bedrock.foundation_models
+            schema_ref: aws_bedrock/foundation_models/v1
+          projection:
+            template: asset
+          coverage:
+            - id: foundation_models
+              type: entity_family
+              title: Foundation models
+              families: [foundation_models]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: custom_models
+          label: Custom models
+          path: /custom-models
+          method: GET
+          record_selector: "$.modelSummaries[*]"
+          id_field: modelArn
+          name_field: modelName
+          event:
+            kind: aws_bedrock.custom_models
+            schema_ref: aws_bedrock/custom_models/v1
+          projection:
+            template: asset
+          coverage:
+            - id: custom_models
+              type: entity_family
+              title: Custom models
+              families: [custom_models]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: nextToken
+            cursor_json_path: "$.nextToken"
+            page_size_param: maxResults
+            page_size: 100
+        - id: provisioned_model_throughputs
+          label: Provisioned model throughputs
+          path: /provisioned-model-throughputs
+          method: GET
+          record_selector: "$.provisionedModelSummaries[*]"
+          id_field: provisionedModelArn
+          name_field: provisionedModelName
+          event:
+            kind: aws_bedrock.provisioned_model_throughputs
+            schema_ref: aws_bedrock/provisioned_model_throughputs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: provisioned_model_throughputs
+              type: deployment_state
+              title: Provisioned model throughputs
+              families: [provisioned_model_throughputs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: nextToken
+            cursor_json_path: "$.nextToken"
+            page_size_param: maxResults
+            page_size: 100
+        - id: model_customization_jobs
+          label: Model customization jobs
+          path: /model-customization-jobs
+          method: GET
+          record_selector: "$.modelCustomizationJobSummaries[*]"
+          id_field: jobArn
+          name_field: jobName
+          event:
+            kind: aws_bedrock.model_customization_jobs
+            schema_ref: aws_bedrock/model_customization_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: model_customization_jobs
+              type: deployment_state
+              title: Model customization jobs
+              families: [model_customization_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: nextToken
+            cursor_json_path: "$.nextToken"
+            page_size_param: maxResults
+            page_size: 100
+        - id: guardrails
+          label: Guardrails
+          path: /guardrails
+          method: GET
+          record_selector: "$.guardrails[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: aws_bedrock.guardrails
+            schema_ref: aws_bedrock/guardrails/v1
+          projection:
+            template: policy
+          coverage:
+            - id: guardrails
+              type: lifecycle_state
+              title: Guardrails
+              families: [guardrails]
+              support: partial
+              high_value: true
+              evidence_types: [policy_configuration]
+              control_domains: [policy_management]
+          pagination:
+            type: cursor
+            cursor_param: nextToken
+            cursor_json_path: "$.nextToken"
+            page_size_param: maxResults
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-cerebras
       tenant_id: builtin_catalog
       source_id: cerebras
@@ -113,6 +446,131 @@ entries:
               type: deployment_state
               title: Model deployments
               families: [model_deployments]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-cohere
+      tenant_id: builtin_catalog
+      source_id: cohere
+      display_name: Cohere
+      description: "Cohere connector definition for models, connectors, datasets, and fine-tuned models."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.cohere.com"
+        verification:
+          method: GET
+          path: /v1/models
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /v1/models
+          method: GET
+          list_key: models
+          record_selector: "$.models[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: cohere.model_catalog
+            schema_ref: cohere/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: connectors
+          label: Connectors
+          path: /v1/connectors
+          method: GET
+          list_key: connectors
+          record_selector: "$.connectors[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: cohere.connectors
+            schema_ref: cohere/connectors/v1
+          projection:
+            template: asset
+          coverage:
+            - id: connectors
+              type: entity_family
+              title: Connectors
+              families: [connectors]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: datasets
+          label: Datasets
+          path: /v1/datasets
+          method: GET
+          list_key: datasets
+          record_selector: "$.datasets[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: cohere.datasets
+            schema_ref: cohere/datasets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: datasets
+              type: entity_family
+              title: Datasets
+              families: [datasets]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: fine_tuned_models
+          label: Fine-tuned models
+          path: /v1/finetuning/finetuned-models
+          method: GET
+          list_key: finetuned_models
+          record_selector: "$.finetuned_models[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: cohere.fine_tuned_models
+            schema_ref: cohere/fine_tuned_models/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: fine_tuned_models
+              type: deployment_state
+              title: Fine-tuned models
+              families: [fine_tuned_models]
               support: partial
               high_value: true
               evidence_types: [change_management]
@@ -247,6 +705,319 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-google-vertex-ai
+      tenant_id: builtin_catalog
+      source_id: google_vertex_ai
+      display_name: Google Vertex AI
+      description: "Google Vertex AI connector definition for models, endpoints, custom jobs, batch prediction jobs, indexes, and reasoning engines."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: project_id
+          label: Project ID
+          required: true
+        - key: location
+          label: Location
+          required: true
+          placeholder: us-central1
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.location}-aiplatform.googleapis.com"
+        verification:
+          method: GET
+          path: /v1/projects/${config.project_id}/locations/${config.location}/models
+          expect_status: [200]
+      resource_families:
+        - id: models
+          label: Models
+          path: /v1/projects/${config.project_id}/locations/${config.location}/models
+          method: GET
+          record_selector: "$.models[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_vertex_ai.models
+            schema_ref: google_vertex_ai/models/v1
+          projection:
+            template: asset
+          coverage:
+            - id: models
+              type: entity_family
+              title: Models
+              families: [models]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: endpoints
+          label: Endpoints
+          path: /v1/projects/${config.project_id}/locations/${config.location}/endpoints
+          method: GET
+          record_selector: "$.endpoints[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_vertex_ai.endpoints
+            schema_ref: google_vertex_ai/endpoints/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: endpoints
+              type: deployment_state
+              title: Endpoints
+              families: [endpoints]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: custom_jobs
+          label: Custom jobs
+          path: /v1/projects/${config.project_id}/locations/${config.location}/customJobs
+          method: GET
+          record_selector: "$.customJobs[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_vertex_ai.custom_jobs
+            schema_ref: google_vertex_ai/custom_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: custom_jobs
+              type: deployment_state
+              title: Custom jobs
+              families: [custom_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: batch_prediction_jobs
+          label: Batch prediction jobs
+          path: /v1/projects/${config.project_id}/locations/${config.location}/batchPredictionJobs
+          method: GET
+          record_selector: "$.batchPredictionJobs[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_vertex_ai.batch_prediction_jobs
+            schema_ref: google_vertex_ai/batch_prediction_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: batch_prediction_jobs
+              type: deployment_state
+              title: Batch prediction jobs
+              families: [batch_prediction_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: indexes
+          label: Indexes
+          path: /v1/projects/${config.project_id}/locations/${config.location}/indexes
+          method: GET
+          record_selector: "$.indexes[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_vertex_ai.indexes
+            schema_ref: google_vertex_ai/indexes/v1
+          projection:
+            template: asset
+          coverage:
+            - id: indexes
+              type: entity_family
+              title: Indexes
+              families: [indexes]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: reasoning_engines
+          label: Reasoning engines
+          path: /v1/projects/${config.project_id}/locations/${config.location}/reasoningEngines
+          method: GET
+          record_selector: "$.reasoningEngines[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_vertex_ai.reasoning_engines
+            schema_ref: google_vertex_ai/reasoning_engines/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: reasoning_engines
+              type: deployment_state
+              title: Reasoning engines
+              families: [reasoning_engines]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-groq
+      tenant_id: builtin_catalog
+      source_id: groq
+      display_name: Groq
+      description: "Groq connector definition for model catalog, files, batch jobs, and fine-tuning jobs."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.groq.com/openai/v1"
+        verification:
+          method: GET
+          path: /models
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /models
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: groq.model_catalog
+            schema_ref: groq/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: files
+          label: Files
+          path: /files
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: filename
+          event:
+            kind: groq.files
+            schema_ref: groq/files/v1
+          projection:
+            template: asset
+          coverage:
+            - id: files
+              type: entity_family
+              title: Files
+              families: [files]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: batch_jobs
+          label: Batch jobs
+          path: /batches
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: groq.batch_jobs
+            schema_ref: groq/batch_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: batch_jobs
+              type: deployment_state
+              title: Batch jobs
+              families: [batch_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: fine_tuning_jobs
+          label: Fine-tuning jobs
+          path: /fine_tuning/jobs
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          event:
+            kind: groq.fine_tuning_jobs
+            schema_ref: groq/fine_tuning_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: fine_tuning_jobs
+              type: deployment_state
+              title: Fine-tuning jobs
+              families: [fine_tuning_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-huggingface
       tenant_id: builtin_catalog
       source_id: huggingface
@@ -372,6 +1143,171 @@ entries:
             link_header: Link
             page_size_param: limit
             page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-microsoft-foundry
+      tenant_id: builtin_catalog
+      source_id: microsoft_foundry
+      display_name: Microsoft Foundry
+      description: "Microsoft Foundry connector definition for agents, datasets, indexes, evaluations, and project connections."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: endpoint
+          label: Foundry endpoint
+          required: true
+          help: "Host name for the Foundry project endpoint."
+        - key: project_name
+          label: Project name
+          required: true
+      auth:
+        model: api_key
+        token_header: api-key
+        credential_fields:
+          - key: api_key
+            label: API key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.endpoint}/api/projects/${config.project_name}"
+        verification:
+          method: GET
+          path: /agents?api-version=v1
+          expect_status: [200]
+      resource_families:
+        - id: agents
+          label: Agents
+          path: /agents
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          static_query:
+            api-version: v1
+          event:
+            kind: microsoft_foundry.agents
+            schema_ref: microsoft_foundry/agents/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: agents
+              type: deployment_state
+              title: Agents
+              families: [agents]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: datasets
+          label: Datasets
+          path: /datasets
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          static_query:
+            api-version: v1
+          event:
+            kind: microsoft_foundry.datasets
+            schema_ref: microsoft_foundry/datasets/v1
+          projection:
+            template: asset
+          coverage:
+            - id: datasets
+              type: entity_family
+              title: Datasets
+              families: [datasets]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: indexes
+          label: Indexes
+          path: /indexes
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          static_query:
+            api-version: v1
+          event:
+            kind: microsoft_foundry.indexes
+            schema_ref: microsoft_foundry/indexes/v1
+          projection:
+            template: asset
+          coverage:
+            - id: indexes
+              type: entity_family
+              title: Indexes
+              families: [indexes]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: evaluations
+          label: Evaluations
+          path: /evaluations
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          static_query:
+            api-version: v1
+          event:
+            kind: microsoft_foundry.evaluations
+            schema_ref: microsoft_foundry/evaluations/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: evaluations
+              type: audit_event
+              title: Evaluations
+              families: [evaluations]
+              support: partial
+              high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: connections
+          label: Connections
+          path: /connections
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          static_query:
+            api-version: v1
+          event:
+            kind: microsoft_foundry.connections
+            schema_ref: microsoft_foundry/connections/v1
+          projection:
+            template: asset
+          coverage:
+            - id: connections
+              type: entity_family
+              title: Connections
+              families: [connections]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -724,6 +1660,222 @@ entries:
               type: entity_family
               title: Usage reports
               families: [usage_reports]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-replicate
+      tenant_id: builtin_catalog
+      source_id: replicate
+      display_name: Replicate
+      description: "Replicate connector definition for models, deployments, collections, and predictions."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.replicate.com"
+        verification:
+          method: GET
+          path: /v1/models
+          expect_status: [200]
+      resource_families:
+        - id: models
+          label: Models
+          path: /v1/models
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: replicate.models
+            schema_ref: replicate/models/v1
+          projection:
+            template: asset
+          coverage:
+            - id: models
+              type: entity_family
+              title: Models
+              families: [models]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: deployments
+          label: Deployments
+          path: /v1/deployments
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: replicate.deployments
+            schema_ref: replicate/deployments/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: deployments
+              type: deployment_state
+              title: Deployments
+              families: [deployments]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: collections
+          label: Collections
+          path: /v1/collections
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: slug
+          name_field: name
+          event:
+            kind: replicate.collections
+            schema_ref: replicate/collections/v1
+          projection:
+            template: asset
+          coverage:
+            - id: collections
+              type: entity_family
+              title: Collections
+              families: [collections]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: predictions
+          label: Predictions
+          path: /v1/predictions
+          method: GET
+          record_selector: "$.results[*]"
+          id_field: id
+          event:
+            kind: replicate.predictions
+            schema_ref: replicate/predictions/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: predictions
+              type: deployment_state
+              title: Predictions
+              families: [predictions]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-stability-ai
+      tenant_id: builtin_catalog
+      source_id: stability_ai
+      display_name: Stability AI
+      description: "Stability AI connector definition for engines, account profile, and account balance."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.stability.ai"
+        verification:
+          method: GET
+          path: /v1/engines/list
+          expect_status: [200]
+      resource_families:
+        - id: engines
+          label: Engines
+          path: /v1/engines/list
+          method: GET
+          record_selector: "$[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: stability_ai.engines
+            schema_ref: stability_ai/engines/v1
+          projection:
+            template: asset
+          coverage:
+            - id: engines
+              type: entity_family
+              title: Engines
+              families: [engines]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: account
+          label: Account
+          path: /v1/user/account
+          method: GET
+          singleton: true
+          id_field: id
+          name_field: email
+          event:
+            kind: stability_ai.account
+            schema_ref: stability_ai/account/v1
+          projection:
+            template: asset
+          coverage:
+            - id: account
+              type: entity_family
+              title: Account
+              families: [account]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: account_balance
+          label: Account balance
+          path: /v1/user/balance
+          method: GET
+          singleton: true
+          id_field: id
+          event:
+            kind: stability_ai.account_balance
+            schema_ref: stability_ai/account_balance/v1
+          projection:
+            template: asset
+          coverage:
+            - id: account_balance
+              type: entity_family
+              title: Account balance
+              families: [account_balance]
               support: partial
               high_value: true
               evidence_types: [source_snapshot]

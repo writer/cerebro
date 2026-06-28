@@ -83,6 +83,7 @@ type Result struct {
 type normalizedRequest struct {
 	Request
 	FreshnessDuration time.Duration
+	TokenHeader       string
 	TokenScheme       string
 	TokenConfigKey    string
 	AuthTokenURL      string
@@ -94,6 +95,7 @@ type normalizedRequest struct {
 	DefaultFamily     string
 	DefaultPath       string
 	BaseURLTemplate   string
+	StaticHeaders     map[string]string
 	ConfigKeys        []string
 	CredentialKeys    []string
 	OAuth             *oauthClientCredentialsData
@@ -113,6 +115,7 @@ type familyData struct {
 	SchemaRef             string
 	IDKeys                []string
 	ListKeys              []string
+	Singleton             bool
 	CursorParam           string
 	NextCursorKeys        []string
 	LinkHeader            string
@@ -225,6 +228,9 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 	if err != nil {
 		return normalizedRequest{}, err
 	}
+	if customScheme := strings.TrimSpace(definition.Auth.TokenScheme); customScheme != "" {
+		tokenScheme = customScheme
+	}
 	oauth, err := oauthClientCredentialsForDefinition(definition.Auth)
 	if err != nil {
 		return normalizedRequest{}, err
@@ -270,6 +276,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 			Force:                request.Force,
 		},
 		FreshnessDuration: freshness,
+		TokenHeader:       strings.TrimSpace(definition.Auth.TokenHeader),
 		TokenScheme:       tokenScheme,
 		TokenConfigKey:    tokenConfigKey,
 		AuthTokenURL:      strings.TrimSpace(definition.Auth.TokenURL),
@@ -279,6 +286,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
 		BaseURLTemplate:   transportBaseURL(definition.Transport),
+		StaticHeaders:     transportHeaders(definition.Transport),
 		ConfigKeys:        fieldKeys(definition.ConfigFields),
 		CredentialKeys:    fieldKeys(definition.Auth.CredentialFields),
 		OAuth:             oauth,
@@ -490,6 +498,13 @@ func transportBaseURL(transport *connectordefinitions.TransportSpec) string {
 	return strings.TrimSpace(transport.BaseURL)
 }
 
+func transportHeaders(transport *connectordefinitions.TransportSpec) map[string]string {
+	if transport == nil || len(transport.Headers) == 0 {
+		return nil
+	}
+	return cloneStringMap(transport.Headers)
+}
+
 func fieldKeys(fields []connectordefinitions.Field) []string {
 	keys := make([]string, 0, len(fields))
 	seen := map[string]struct{}{}
@@ -657,6 +672,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			SchemaRef:             schemaRef,
 			IDKeys:                idKeysForResource(resource),
 			ListKeys:              listKeysForResource(resource),
+			Singleton:             resource.Singleton,
 			CursorParam:           cursorParamForResource(resource),
 			NextCursorKeys:        nextCursorKeysForResource(resource),
 			LinkHeader:            linkHeaderForResource(resource),
@@ -944,6 +960,7 @@ func renderDeploy(request normalizedRequest) string {
 	if request.TokenConfigKey == "api_token" {
 		tokenEnv = request.EnvPrefix + "_API_TOKEN"
 	}
+	authConfigKeys := deployAuthConfigKeys(request)
 	var b strings.Builder
 	fmt.Fprintf(&b, "sourceId: %s\n", request.SourceID)
 	fmt.Fprintf(&b, "secretKeys:\n")
@@ -954,12 +971,12 @@ func renderDeploy(request normalizedRequest) string {
 	for _, key := range request.ConfigKeys {
 		secretKeys = append(secretKeys, envNameForConfigKey(request, key))
 	}
-	if request.OAuth != nil {
-		for _, key := range request.CredentialKeys {
-			secretKeys = append(secretKeys, envNameForConfigKey(request, key))
+	for _, key := range authConfigKeys {
+		envName := envNameForConfigKey(request, key)
+		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
+			envName = tokenEnv
 		}
-	} else {
-		secretKeys = append(secretKeys, tokenEnv)
+		secretKeys = append(secretKeys, envName)
 	}
 	for _, key := range uniqueStrings(secretKeys) {
 		fmt.Fprintf(&b, "  - %s\n", key)
@@ -979,14 +996,41 @@ func renderDeploy(request normalizedRequest) string {
 	fmt.Fprintf(&b, "      expected_cadence_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
 	fmt.Fprintf(&b, "      stale_after_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
 	fmt.Fprintf(&b, "      per_page: %q\n", "100")
-	if request.OAuth != nil {
-		for _, key := range request.CredentialKeys {
-			fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
+	for _, key := range authConfigKeys {
+		envName := envNameForConfigKey(request, key)
+		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
+			envName = tokenEnv
 		}
-	} else {
-		fmt.Fprintf(&b, "      %s: env:%s\n", request.TokenConfigKey, tokenEnv)
+		fmt.Fprintf(&b, "      %s: env:%s\n", key, envName)
 	}
 	return b.String()
+}
+
+func deployAuthConfigKeys(request normalizedRequest) []string {
+	if request.OAuth != nil {
+		return uniqueStrings(request.CredentialKeys)
+	}
+	if request.AuthModel == AuthModelAWSSigV4 {
+		keys := uniqueStrings(request.CredentialKeys)
+		hasAccessKey := false
+		hasSecretKey := false
+		for _, key := range keys {
+			switch strings.TrimSpace(key) {
+			case "access_key", "client_id":
+				hasAccessKey = true
+			case "secret_key", "client_secret":
+				hasSecretKey = true
+			}
+		}
+		if !hasAccessKey {
+			keys = append(keys, "access_key")
+		}
+		if !hasSecretKey {
+			keys = append(keys, "secret_key")
+		}
+		return uniqueStrings(keys)
+	}
+	return []string{request.TokenConfigKey}
 }
 
 func envNameForConfigKey(request normalizedRequest, key string) string {
@@ -1018,6 +1062,7 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\tdefaultFamily = %s\n", request.Families[0].ConstName)
 	fmt.Fprintf(&b, "\tdefaultHealthPath = %s\n", strconv.Quote(request.HealthPath))
 	fmt.Fprintf(&b, "\tdefaultBaseURLTemplate = %s\n", strconv.Quote(request.BaseURLTemplate))
+	fmt.Fprintf(&b, "\ttokenHeader = %s\n", strconv.Quote(request.TokenHeader))
 	fmt.Fprintf(&b, "\ttokenScheme = %s\n", strconv.Quote(request.TokenScheme))
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "\toauthTokenURLTemplate = %s // #nosec G101 -- token endpoint URL template, not credential material.\n", strconv.Quote(request.OAuth.TokenURLTemplate))
@@ -1044,7 +1089,7 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "func New() (*Source, error) {\n")
 	fmt.Fprintf(&b, "\tspec, err := loadSpec()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n")
 	fmt.Fprintf(&b, "\tinner, err := jsonapi.New(spec, jsonapi.Options{\n")
-	fmt.Fprintf(&b, "\t\tSourceID: sourceID,\n\t\tDefaultFamily: defaultFamily,\n\t\tRequireTenantID: true,\n\t\tAuthModel: %s,\n\t\tTokenScheme: tokenScheme,\n", strconv.Quote(request.AuthModel))
+	fmt.Fprintf(&b, "\t\tSourceID: sourceID,\n\t\tDefaultFamily: defaultFamily,\n\t\tRequireTenantID: true,\n\t\tAuthModel: %s,\n\t\tTokenHeader: tokenHeader,\n\t\tTokenScheme: tokenScheme,\n", strconv.Quote(request.AuthModel))
 	if strings.TrimSpace(request.AuthTokenURL) != "" {
 		fmt.Fprintf(&b, "\t\tOAuthTokenURL: %s,\n", strconv.Quote(request.AuthTokenURL))
 	}
@@ -1056,6 +1101,9 @@ func renderSourceGo(request normalizedRequest) string {
 	}
 	if strings.TrimSpace(request.OAuthTokenMethod) != "" {
 		fmt.Fprintf(&b, "\t\tOAuthTokenRequestAuthMethod: %s,\n", strconv.Quote(request.OAuthTokenMethod))
+	}
+	if len(request.StaticHeaders) != 0 {
+		fmt.Fprintf(&b, "\t\tStaticHeaders: map[string]string{%s},\n", renderedAttributeMap(request.StaticHeaders))
 	}
 	fmt.Fprintf(&b, "\t\tFamilies: []jsonapi.Family{\n")
 	for _, family := range request.Families {
@@ -1084,6 +1132,9 @@ func renderSourceGo(request normalizedRequest) string {
 		}
 		if len(family.ListKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tListKeys: []string{%s},\n", quotedStrings(family.ListKeys))
+		}
+		if family.Singleton {
+			fmt.Fprintf(&b, "\t\t\t\tSingleton: true,\n")
 		}
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
@@ -1291,7 +1342,7 @@ func renderSourceTestGo(request normalizedRequest) string {
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "\t\tif r.URL.Path == \"/oauth/token\" {\n\t\t\ttokenRequests++\n\t\t\tif r.Method != http.MethodPost {\n\t\t\t\tt.Fatalf(\"token method = %%s\", r.Method)\n\t\t\t}\n\t\t\tr.Body = http.MaxBytesReader(w, r.Body, 1<<20)\n\t\t\tif err := r.ParseForm(); err != nil {\n\t\t\t\tt.Fatalf(\"ParseForm() error = %%v\", err)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"grant_type\"); got != \"client_credentials\" {\n\t\t\t\tt.Fatalf(\"grant_type = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_id\"); got != \"client-id\" {\n\t\t\t\tt.Fatalf(\"client_id = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_secret\"); got != \"client-secret\" {\n\t\t\t\tt.Fatalf(\"client_secret = %%q\", got)\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"access_token\": \"test-token\", \"expires_in\": 600})\n\t\t\treturn\n\t\t}\n")
 	}
-	fmt.Fprintf(&b, "\t\tif r.Header.Get(\"Authorization\") != %s {\n\t\t\tt.Fatalf(\"Authorization = %%q\", r.Header.Get(\"Authorization\"))\n\t\t}\n", strconv.Quote(request.TokenScheme+" test-token"))
+	fmt.Fprint(&b, generatedTestAuthAssertion(request))
 	if request.HealthPath != request.DefaultPath {
 		fmt.Fprintf(&b, "\t\tif r.URL.RequestURI() == %s {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n", strconv.Quote(renderTestPath(request.HealthPath)))
 	}
@@ -1316,6 +1367,9 @@ func renderSourceTestGo(request normalizedRequest) string {
 		emitCfgValue("token_url", "server.URL + \"/oauth/token\"")
 		emitCfgValue("client_id", strconv.Quote("client-id"))
 		emitCfgValue("client_secret", strconv.Quote("client-secret"))
+	} else if request.AuthModel == AuthModelAWSSigV4 {
+		emitCfgValue("access_key", strconv.Quote("test-access-key"))
+		emitCfgValue("secret_key", strconv.Quote("test-secret-key"))
 	} else {
 		emitCfgValue(request.TokenConfigKey, strconv.Quote("test-token"))
 	}
@@ -1350,6 +1404,32 @@ func testConfigValue(key string) string {
 	default:
 		return "test-" + strings.TrimSpace(key)
 	}
+}
+
+func generatedTestAuthHeader(request normalizedRequest) (string, string) {
+	header := strings.TrimSpace(request.TokenHeader)
+	if header == "" {
+		header = "Authorization"
+	}
+	if !strings.EqualFold(header, "Authorization") {
+		return header, "test-token"
+	}
+	scheme := strings.TrimSpace(request.TokenScheme)
+	if scheme == "" {
+		return header, "test-token"
+	}
+	if strings.HasSuffix(scheme, "=") {
+		return header, scheme + "test-token"
+	}
+	return header, scheme + " test-token"
+}
+
+func generatedTestAuthAssertion(request normalizedRequest) string {
+	header, value := generatedTestAuthHeader(request)
+	if request.AuthModel != AuthModelAWSSigV4 {
+		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\tt.Fatalf(%s+\" = %%q\", r.Header.Get(%s))\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header), strconv.Quote(header))
+	}
+	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\tt.Fatalf(%s+\" = %%q\", auth)\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\tt.Fatalf(%s+\" missing credential scope: %%q\", auth)\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
 }
 
 // renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}

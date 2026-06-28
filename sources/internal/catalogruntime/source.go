@@ -59,6 +59,8 @@ func NewDefinition(definition connectordefinitions.Definition) (*Source, error) 
 		DefaultFamily:               families[0].Name,
 		RequireTenantID:             true,
 		AuthModel:                   definition.Auth.Model,
+		TokenHeader:                 definition.Auth.TokenHeader,
+		TokenScheme:                 definition.Auth.TokenScheme,
 		OAuthTokenURL:               definition.Auth.TokenURL,
 		OAuthScopes:                 definition.Auth.Scopes,
 		OAuthTokenParams:            definition.Auth.TokenParams,
@@ -134,6 +136,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		PageSizeParams:   pageSizeParams(resource.Pagination),
 		DisablePageSize:  disablePageSize(resource.Pagination),
 		ListKeys:         listKeys(resource),
+		Singleton:        resource.Singleton,
 		Config: jsonapi.FamilyConfig{
 			StaticQuery: resource.StaticQuery,
 			ConfigQuery: resource.ConfigQuery,
