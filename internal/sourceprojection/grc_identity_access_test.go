@@ -79,6 +79,38 @@ func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing
 	assertProjectedLink(t, state, contactURN, relationAssociatedWith, identityURN)
 }
 
+func TestProjectGRCRiskScenarioPrefersReviewStatus(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-risk-risk-status",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.risk_scenario",
+		Attributes: map[string]string{
+			"provider":      "vanta",
+			"risk_id":       "risk-status",
+			"description":   "Conflicting risk status fields",
+			"status":        "open",
+			"risk_status":   "active",
+			"review_status": "accepted",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-status"
+	entity := state.entities[riskURN]
+	if entity == nil {
+		t.Fatalf("risk entity missing: %#v", state.entities)
+	}
+	if got := entity.Attributes["status"]; got != "accepted" {
+		t.Fatalf("risk status = %q, want review_status precedence", got)
+	}
+}
+
 func TestProjectGRCPersonIdentifier(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -30,7 +30,7 @@ func grcRiskScenarioProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			"risk_category":       firstAttribute(ctx.attrs, "risk_category", "category", "domain"),
 			"risk_id":             riskID,
 			"source_system":       ctx.provider,
-			"status":              firstAttribute(ctx.attrs, "status", "risk_status", "review_status"),
+			"status":              firstAttribute(ctx.attrs, "review_status", "risk_status", "status"),
 			"treatment":           firstAttribute(ctx.attrs, "treatment", "treatment_plan", "response", "mitigation"),
 			"treatment_due_at":    firstAttribute(ctx.attrs, "treatment_due_at", "mitigation_due_at", "target_due_at"),
 		},
