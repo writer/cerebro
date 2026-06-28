@@ -1,0 +1,191 @@
+version: "2026-06-28"
+review_areas:
+  - framework: SOC 2
+    area_id: access-authorization
+    name: Access authorization review
+    evidence_use: review_group
+    purpose: Review whether identity, authorization, access change, and privileged access findings tell one control story for the audit period.
+    control_refs:
+      - CC6.1
+      - CC6.2
+      - CC6.3
+      - CC6.6
+      - CC6.7
+      - CC6.8
+  - framework: SOC 2
+    area_id: security-operations
+    name: Security operations review
+    evidence_use: review_group
+    purpose: Review whether monitoring, alert handling, investigation, change control, and incident follow-up evidence are complete for active security risks.
+    control_refs:
+      - CC7.1
+      - CC7.2
+      - CC7.3
+      - CC7.4
+      - CC7.5
+      - CC8.1
+  - framework: "ISO 27001:2022"
+    area_id: identity-access-chain
+    name: Identity and access chain
+    evidence_use: review_group
+    purpose: Review whether access policy, identity proofing, authentication, entitlement review, and privilege-use findings support a complete access-control packet.
+    control_refs:
+      - 6.1.2
+      - 8.2
+      - A.5.15
+      - A.5.16
+      - A.5.17
+      - A.5.18
+      - A.6.1
+      - A.6.2
+      - A.6.3
+      - A.8.1
+      - A.8.2
+      - A.8.3
+      - A.8.5
+  - framework: "ISO 27001:2022"
+    area_id: operations-detection-response
+    name: Operations, detection, and response chain
+    evidence_use: review_group
+    purpose: Review whether vulnerability, logging, monitoring, cryptography, configuration, incident, continuity, and recovery findings line up for operational assurance.
+    control_refs:
+      - A.5.24
+      - A.5.25
+      - A.5.26
+      - A.5.29
+      - A.5.30
+      - A.8.8
+      - A.8.13
+      - A.8.15
+      - A.8.16
+      - A.8.20
+      - A.8.21
+      - A.8.22
+      - A.8.24
+      - A.8.25
+      - A.8.28
+      - A.8.32
+  - framework: HIPAA
+    area_id: administrative-safeguards
+    name: Administrative safeguards
+    evidence_use: review_group
+    purpose: Review whether risk analysis, workforce security, awareness, incident procedures, contingency planning, and business-associate evidence are represented together.
+    control_refs:
+      - 164.308(a)(1)(ii)(A)
+      - 164.308(a)(3)(ii)(C)
+      - 164.308(a)(5)(ii)(B)
+      - 164.308(a)(6)
+      - 164.308(a)(7)
+      - 164.308(b)(1)
+  - framework: HIPAA
+    area_id: technical-safeguards
+    name: Technical safeguards
+    evidence_use: review_group
+    purpose: Review whether access control, audit control, person or entity authentication, encryption, and transmission protection findings cover electronic protected health information.
+    control_refs:
+      - 164.312
+      - 164.312(a)(2)(ii)
+      - 164.312(a)(2)(iv)
+      - 164.312(b)
+      - 164.312(e)(1)
+  - framework: GDPR
+    area_id: processing-accountability
+    name: Processing accountability
+    evidence_use: review_group
+    purpose: Review whether processing records, privacy ownership, processor oversight, and core data-protection principles have current evidence.
+    control_refs:
+      - Article 5
+      - Article 24
+      - Article 30
+      - Article 28
+  - framework: GDPR
+    area_id: security-breach-response
+    name: Security and breach response
+    evidence_use: review_group
+    purpose: Review whether security measures, incident detection, regulator notification, and data-subject notification evidence are connected for personal-data incidents.
+    control_refs:
+      - Article 32
+      - Article 33
+      - Article 34
+  - framework: ISO 27701
+    area_id: privacy-management-evidence
+    name: Privacy management evidence
+    evidence_use: review_group
+    purpose: Review whether controller and processor privacy evidence, processing inventory, and personal-data handling responsibilities are represented together.
+    control_refs:
+      - 7.2.6
+      - 7.2.8
+      - 8.2.1
+  - framework: "PCI DSS v4.0.1"
+    area_id: network-exposure
+    name: Network exposure control
+    evidence_use: review_group
+    purpose: Review whether network boundary, public exposure, and encrypted transmission findings cover the cardholder-data environment entry points.
+    control_refs:
+      - "1.3"
+      - "1.3.1"
+      - "1.4"
+      - "4.2"
+      - "4.2.1"
+  - framework: "PCI DSS v4.0.1"
+    area_id: account-data-secret-protection
+    name: Account data and secret protection
+    evidence_use: review_group
+    purpose: Review whether stored account data, cryptographic material, secret handling, and automated credential use have current protection evidence.
+    control_refs:
+      - "3.3"
+      - "3.5"
+      - "3.5.1"
+      - "8.6"
+  - framework: "PCI DSS v4.0.1"
+    area_id: access-authentication
+    name: Access and authentication
+    evidence_use: review_group
+    purpose: Review whether access restriction, authentication strength, multifactor coverage, and service-account controls are complete for the cardholder-data environment.
+    control_refs:
+      - "7.2"
+      - "8.1.3"
+      - "8.3"
+      - "8.3.6"
+      - "8.3.7"
+      - "8.4"
+      - "8.4.2"
+  - framework: "PCI DSS v4.0.1"
+    area_id: logging-testing-response
+    name: Logging, testing, and response
+    evidence_use: review_group
+    purpose: Review whether audit logging, event detail, security testing, and incident response evidence support payment-card monitoring obligations.
+    control_refs:
+      - "10.2"
+      - "10.2.1"
+      - "10.3"
+      - "11.3"
+      - "12.10.1"
+  - framework: "ISO 42001"
+    area_id: ai-management-planning
+    name: AI management planning
+    evidence_use: review_group
+    purpose: Review whether AI risk planning, objectives, inventory, competence, and stakeholder awareness evidence form a complete management-system packet.
+    control_refs:
+      - "6.1"
+      - "6.2"
+      - "7.1"
+      - "7.2"
+      - "7.3"
+      - A.2.2
+  - framework: "ISO 42001"
+    area_id: ai-system-operation-monitoring
+    name: AI system operation and monitoring
+    evidence_use: review_group
+    purpose: Review whether AI system impact, deployment oversight, model monitoring, review, nonconformity, and corrective-action evidence are connected.
+    control_refs:
+      - "8.4"
+      - "9.1"
+      - "9.2"
+      - "9.3"
+      - "9.4"
+      - "10.1"
+      - "10.2"
+      - A.6.2.4
+      - A.8.2
+      - A.9.2

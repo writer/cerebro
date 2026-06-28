@@ -15,6 +15,10 @@ Extensions are applied in this order:
 
 More specific string fields replace earlier values. `assessment_methods` replace earlier values so query, manual, and domain-specific evidence can use the right assessment posture. `false_positives` are accumulated and de-duplicated.
 
+`finding_domains` is not part of the policy-rule copy merge. It supports all-finding mapping review by resolving non-policy detections into audit domains by finding ID, pack, source, or tag.
+
+Framework review areas, control relationships, and source evidence capabilities live in separate YAML files documented in `docs/domains/policy-compliance-mapping.md`.
+
 ## Generated Fields
 
 The generator uses extensions to populate:
