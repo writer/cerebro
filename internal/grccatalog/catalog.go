@@ -198,6 +198,15 @@ func withRuntimeScope(params ...Param) []Param {
 	return append(runtimeScopeParams(), params...)
 }
 
+func vendorListParams() []Param {
+	return withRuntimeScope(
+		Param{ID: "q", Type: ParamString, Description: "Free-text vendor search."},
+		Param{ID: "risk_level", Type: ParamEnum, AllowedValues: []string{"critical", "high", "medium", "low", "unknown", "all"}, Description: "Filter by normalized vendor risk level."},
+		Param{ID: "review_state", Type: ParamEnum, AllowedValues: []string{"current", "due_soon", "overdue", "not_scheduled", "all"}, Description: "Filter by security review state."},
+		Param{ID: "owner_state", Type: ParamEnum, AllowedValues: []string{"assigned", "missing", "all"}, Description: "Filter by vendor owner assignment."},
+	)
+}
+
 func buildCatalog() []Source {
 	return []Source{
 		{
@@ -324,6 +333,67 @@ func buildCatalog() []Source {
 			DefaultLimit:   DefaultLimit,
 			MaxLimit:       MaxLimit,
 			CacheScope:     "inventory",
+		},
+		{
+			ID:             "vendors",
+			Domain:         "vendors",
+			Title:          "Vendors",
+			Description:    "Canonical vendor rows with owners, review dates, contract counts, assurance counts, and open risk.",
+			Method:         "GET",
+			Path:           "/grc/vendors",
+			Params:         vendorListParams(),
+			Visualizations: []string{"table", "metric"},
+			DefaultLimit:   DefaultLimit,
+			MaxLimit:       MaxLimit,
+			CacheScope:     "vendors",
+			Exportable:     true,
+		},
+		{
+			ID:          "vendor-detail",
+			Domain:      "vendors",
+			Title:       "Vendor detail",
+			Description: "One vendor packet with linked contracts, reviews, questionnaires, assurance records, findings, evidence, and graph context.",
+			Method:      "GET",
+			Path:        "/grc/vendors/{vendorID}",
+			Params: withRuntimeScope(
+				Param{ID: "vendor_id", Type: ParamString, Required: true, Description: "Vendor ID or encoded Cerebro vendor URN."},
+			),
+			Visualizations: []string{"table"},
+			DefaultLimit:   DefaultLimit,
+			MaxLimit:       MaxLimit,
+			CacheScope:     "vendors",
+		},
+		{
+			ID:          "vendor-discoveries",
+			Domain:      "vendors",
+			Title:       "Vendor discoveries",
+			Description: "Discovered vendor candidates with source status and local approve, reject, ignore, or link decisions.",
+			Method:      "GET",
+			Path:        "/grc/vendor-discoveries",
+			Params: withRuntimeScope(
+				Param{ID: "q", Type: ParamString, Description: "Free-text discovery search."},
+				Param{ID: "status", Type: ParamEnum, AllowedValues: []string{"discovered", "approved", "rejected", "ignored", "linked", "all"}, Description: "Filter by source-emitted discovery status."},
+				Param{ID: "decision_state", Type: ParamEnum, AllowedValues: []string{"discovered", "approved", "rejected", "ignored", "linked", "all"}, Description: "Filter by effective local decision state."},
+			),
+			Visualizations: []string{"table", "metric"},
+			DefaultLimit:   DefaultLimit,
+			MaxLimit:       MaxLimit,
+			CacheScope:     "vendors",
+			Exportable:     true,
+		},
+		{
+			ID:             "vendor-risk-queue",
+			Domain:         "vendors",
+			Title:          "Vendor risk queue",
+			Description:    "Vendor rows for owner gaps, overdue reviews, due-soon reviews, and high residual risk work.",
+			Method:         "GET",
+			Path:           "/grc/vendors",
+			Params:         vendorListParams(),
+			Visualizations: []string{"table", "metric"},
+			DefaultLimit:   DefaultLimit,
+			MaxLimit:       MaxLimit,
+			CacheScope:     "vendors",
+			Exportable:     true,
 		},
 		{
 			ID:          "inventory-categories",

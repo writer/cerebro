@@ -2780,6 +2780,218 @@ paths:
       responses:
         '200':
           description: Inventory asset overview, related findings, evidence, controls, tests, vulnerabilities, timeline, and recommended actions.
+  /grc/vendors:
+    get:
+      summary: Vendors
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - name: runtime_ids
+          in: query
+          description: Comma-separated source runtime IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: risk_level
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low, unknown, all]
+        - name: review_state
+          in: query
+          schema:
+            type: string
+            enum: [current, due_soon, overdue, not_scheduled, all]
+        - name: owner_state
+          in: query
+          schema:
+            type: string
+            enum: [assigned, missing, all]
+      responses:
+        '200':
+          description: Canonical vendor rows with owner, security review, contract, assurance, finding, and evidence counts.
+  /grc/vendors/{vendorID}:
+    get:
+      summary: Vendor detail
+      tags:
+        - GRC
+      parameters:
+        - name: vendorID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - name: runtime_ids
+          in: query
+          description: Comma-separated source runtime IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Vendor detail with relationships, open findings, evidence, and graph context.
+  /grc/vendors/{vendorID}/packet:
+    get:
+      summary: Vendor packet
+      tags:
+        - GRC
+      parameters:
+        - name: vendorID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - name: runtime_ids
+          in: query
+          description: Comma-separated source runtime IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Vendor packet with relationships, open findings, evidence, and graph context.
+  /grc/vendor-discoveries:
+    get:
+      summary: Vendor discoveries
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - name: runtime_ids
+          in: query
+          description: Comma-separated source runtime IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Source-emitted discovery status.
+          schema:
+            type: string
+            enum: [discovered, approved, rejected, ignored, linked, all]
+        - name: decision_state
+          in: query
+          description: Effective local decision state after applying Cerebro overlay records.
+          schema:
+            type: string
+            enum: [discovered, approved, rejected, ignored, linked, all]
+      responses:
+        '200':
+          description: Discovered vendor candidates with source status and local decision overlay state.
+  /grc/vendor-discoveries/{discoveryID}/decision:
+    post:
+      summary: Update vendor discovery decision
+      tags:
+        - GRC
+      parameters:
+        - name: discoveryID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                tenant_id:
+                  type: string
+                discovery_urn:
+                  type: string
+                source_id:
+                  type: string
+                decision:
+                  type: string
+                  enum: [approved, rejected, ignored, linked]
+                reason:
+                  type: string
+                linked_vendor_urn:
+                  type: string
+                attributes:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Updated local discovery decision. Source systems are not written by this endpoint.
+  /grc/vendor-risk/vendors:
+    get:
+      summary: Vendor risk vendors
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - name: runtime_ids
+          in: query
+          description: Comma-separated source runtime IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: risk_level
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low, unknown, all]
+        - name: review_state
+          in: query
+          schema:
+            type: string
+            enum: [current, due_soon, overdue, not_scheduled, all]
+        - name: owner_state
+          in: query
+          schema:
+            type: string
+            enum: [assigned, missing, all]
+      responses:
+        '200':
+          description: Vendors with owner, security review, contract, assurance, finding, and evidence counts.
+  /grc/vendor-risk/vendors/detail:
+    get:
+      summary: Vendor risk vendor detail
+      tags:
+        - GRC
+      parameters:
+        - name: urn
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Vendor detail with graph relationships, open findings, and evidence.
   /grc/inventory/resource-scope:
     get:
       summary: Inventory resource scope

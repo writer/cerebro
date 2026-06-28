@@ -105,6 +105,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/grc/inventory/accountability", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/asset-reports", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPatch, Prefix: "/grc/inventory/asset-reports/", Suffix: "/triage", Scope: scopeGRCInventoryWrite},
+	{Method: http.MethodPost, Prefix: "/grc/vendor-discoveries/", Suffix: "/decision", Scope: scopeGRCInventoryWrite},
 	{Method: http.MethodGet, Exact: "/platform/runtime-freshness", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/neighborhood", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/graph/actions", Scope: scopeGraphActionsWrite, Static: true},
