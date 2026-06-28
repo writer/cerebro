@@ -362,6 +362,53 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	}
 }
 
+func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
+	cases := []struct {
+		name string
+		load func(string) error
+	}{
+		{
+			name: "framework review areas",
+			load: func(root string) error {
+				_, err := loadFrameworkReviewAreas(root)
+				return err
+			},
+		},
+		{
+			name: "control relationships",
+			load: func(root string) error {
+				_, err := loadControlRelationships(root)
+				return err
+			},
+		},
+		{
+			name: "evidence capabilities",
+			load: func(root string) error {
+				_, err := loadEvidenceCapabilities(root)
+				return err
+			},
+		},
+		{
+			name: "control evidence requirements",
+			load: func(root string) error {
+				_, err := loadControlEvidenceRequirements(root)
+				return err
+			},
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.load(t.TempDir())
+			if err == nil {
+				t.Fatal("loader error = nil, want missing-file error")
+			}
+			if !strings.Contains(err.Error(), "read internal/compliance/") {
+				t.Fatalf("loader error = %v, want read path context", err)
+			}
+		})
+	}
+}
+
 func TestComplianceReviewTagsAreDerivedFromControlRefs(t *testing.T) {
 	tags := complianceReviewTags([]controlRef{{
 		Framework: "SOC 2",
