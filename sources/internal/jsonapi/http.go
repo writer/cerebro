@@ -226,7 +226,7 @@ func (s *Source) getJSONWithHeader(ctx context.Context, settings settings, query
 }
 
 func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) (http.Header, error) {
-	endpoint, err := requestEndpoint(settings.baseURL, settings.path, path)
+	endpoint, err := requestEndpoint(s.options.SourceID, settings.baseURL, settings.path, path)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
@@ -288,7 +288,7 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	return resp.Header, nil
 }
 
-func requestEndpoint(baseURL string, defaultPath string, path string) (string, error) {
+func requestEndpoint(sourceID string, baseURL string, defaultPath string, path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return baseURL + defaultPath, nil
@@ -300,14 +300,7 @@ func requestEndpoint(baseURL string, defaultPath string, path string) (string, e
 	if !parsed.IsAbs() {
 		return baseURL + path, nil
 	}
-	base, err := url.Parse(baseURL)
-	if err != nil {
-		return "", err
-	}
-	if !strings.EqualFold(parsed.Scheme, base.Scheme) || !strings.EqualFold(parsed.Host, base.Host) {
-		return "", fmt.Errorf("next URL host %q does not match base host %q", parsed.Host, base.Host)
-	}
-	return parsed.String(), nil
+	return sourcehttp.SameOriginAbsoluteURL(sourceID, baseURL, path)
 }
 
 func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {

@@ -910,6 +910,40 @@ func TestReadUsesNextURLCursor(t *testing.T) {
 	}
 }
 
+func TestReadRejectsNextURLCursorWithUserInfo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"value":    []map[string]any{{"id": "item-1"}},
+			"nextLink": "http://user@" + r.Host + "/items?page=2",
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "item",
+		Path:            "/items",
+		NextCursorKeys:  []string{"nextLink"},
+		URNKind:         "item",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"value"},
+		DisablePageSize: true,
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), first.NextCursor)
+	if err == nil {
+		t.Fatal("Read(second) error = nil, want userinfo rejection")
+	}
+}
+
 func TestReadSingletonObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
