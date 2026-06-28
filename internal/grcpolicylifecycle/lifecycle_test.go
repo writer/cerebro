@@ -76,15 +76,17 @@ func TestAcceptanceRollupExcludesClosedUnacceptedAttestations(t *testing.T) {
 	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	summary := grcPolicyAcceptanceRollup([]grcPolicyAcceptanceItem{
 		{ID: "accepted", Status: "accepted"},
+		{ID: "date-only", AcceptedAt: "2026-01-10"},
 		{ID: "pending", Status: "pending", DueAt: "2026-02-15"},
 		{ID: "overdue", Status: "pending", DueAt: "2026-01-15"},
 		{ID: "sent", Status: "sent"},
+		{ID: "stale-open-date", Status: "sent", AcceptedAt: "2026-01-10"},
 		{ID: "rejected", Status: "rejected", DueAt: "2026-01-01"},
 		{ID: "expired", Status: "expired", DueAt: "2026-01-01"},
 		{ID: "stale-date", Status: "rejected", AcceptedAt: "2026-01-10"},
 	}, now)
 
-	if summary.Total != 4 || summary.Accepted != 1 || summary.Pending != 2 || summary.Overdue != 1 {
+	if summary.Total != 6 || summary.Accepted != 2 || summary.Pending != 3 || summary.Overdue != 1 {
 		t.Fatalf("rollup = %#v, want closed unaccepted attestations excluded", summary)
 	}
 }
@@ -95,12 +97,34 @@ func TestWorkQueueIncludesUnknownOpenAttestationStatus(t *testing.T) {
 		Title: "Access",
 		Attestations: []grcPolicyAcceptanceItem{
 			{URN: "urn:attestation:sent", Status: "sent"},
+			{URN: "urn:attestation:stale-open-date", Status: "sent", AcceptedAt: "2026-01-10"},
 			{URN: "urn:attestation:missing-status"},
 			{URN: "urn:attestation:rejected", Status: "rejected"},
 		},
 	}}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
-	if len(items) != 1 || items[0].RecordURN != "urn:attestation:sent" {
+	if len(items) != 2 || items[0].RecordURN != "urn:attestation:sent" || items[1].RecordURN != "urn:attestation:stale-open-date" {
 		t.Fatalf("work queue = %+v, want only open non-empty attestation status", items)
+	}
+}
+
+func TestMissingReviewStatusDoesNotCreateOverdueWork(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	if grcPolicyOverdue("2026-01-15", "", now) {
+		t.Fatalf("missing lifecycle status should not be overdue")
+	}
+	policy := grcPolicyLifecyclePolicy{
+		ID:    "access",
+		Title: "Access",
+		Reviews: []grcPolicyReviewItem{
+			{URN: "urn:review:missing-status", ReviewDueAt: "2026-01-15"},
+		},
+	}
+	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, now)
+	if summary.OverdueReviews != 0 {
+		t.Fatalf("summary = %+v, want missing-status review excluded from overdue count", summary)
+	}
+	if items := grcPolicyLifecycleWorkQueue([]grcPolicyLifecyclePolicy{policy}, now); len(items) != 0 {
+		t.Fatalf("work queue = %+v, want missing-status review excluded", items)
 	}
 }
 

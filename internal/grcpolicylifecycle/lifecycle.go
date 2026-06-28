@@ -851,7 +851,8 @@ func grcPolicyAcceptanceRollup(items []grcPolicyAcceptanceItem, now time.Time) g
 		if grcPolicyClosedStatus(item.Status) {
 			continue
 		}
-		if grcPolicyAcceptedStatus(item.Status) || item.AcceptedAt != "" {
+		status := strings.TrimSpace(item.Status)
+		if grcPolicyAcceptedStatus(item.Status) || (status == "" && item.AcceptedAt != "") {
 			summary.Total++
 			summary.Accepted++
 			continue
@@ -1203,7 +1204,7 @@ func grcPolicyExceptionOpen(status string) bool {
 }
 
 func grcPolicyOverdue(rawDueAt string, status string, now time.Time) bool {
-	if grcPolicyAcceptedStatus(status) || grcPolicyClosedStatus(status) {
+	if strings.TrimSpace(status) == "" || grcPolicyAcceptedStatus(status) || grcPolicyClosedStatus(status) {
 		return false
 	}
 	dueAt, ok := grcPolicyTime(rawDueAt)
