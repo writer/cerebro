@@ -1,0 +1,71 @@
+{
+  "version": "2026-06-28",
+  "name": "local-github-agent-onboarding",
+  "business": {
+    "name": "github-live-demo",
+    "goal": "Give a coding agent real GitHub evidence before it reasons about a repository.",
+    "first_system": "GitHub repository"
+  },
+  "tenant_id": "local",
+  "runtime_profile": "graph-enabled",
+  "base_url": "http://127.0.0.1:8080",
+  "api_key_env": "CEREBRO_API_KEY",
+  "server_wait_seconds": 180,
+  "environment": {
+    "CEREBRO_API_AUTH_ENABLED": "true",
+    "CEREBRO_API_KEYS": "env:CEREBRO_API_KEYS",
+    "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
+    "CEREBRO_JETSTREAM_URL": "env:CEREBRO_JETSTREAM_URL",
+    "CEREBRO_STATE_STORE_DRIVER": "postgres",
+    "CEREBRO_POSTGRES_DSN": "env:CEREBRO_POSTGRES_DSN",
+    "CEREBRO_GRAPH_STORE_DRIVER": "neo4j",
+    "CEREBRO_NEO4J_URI": "env:CEREBRO_NEO4J_URI",
+    "CEREBRO_NEO4J_USERNAME": "env:CEREBRO_NEO4J_USERNAME",
+    "CEREBRO_NEO4J_PASSWORD": "env:CEREBRO_NEO4J_PASSWORD"
+  },
+  "preflight": {
+    "enabled": true
+  },
+  "source_runtimes": [
+    {
+      "id": "local-github-live",
+      "source_id": "github",
+      "tenant_id": "local",
+      "config": {
+        "tenant_id": "local",
+        "owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+        "repo": "env:CEREBRO_SOURCE_GITHUB_REPO",
+        "token": "env:CEREBRO_SOURCE_GITHUB_TOKEN",
+        "state": "all",
+        "per_page": "10"
+      },
+      "preview": {
+        "check": true,
+        "discover": true,
+        "read": true
+      },
+      "sync": {
+        "enabled": true,
+        "page_limit": 1
+      },
+      "graph_ingest": {
+        "enabled": true,
+        "page_limit": 1
+      }
+    }
+  ],
+  "compliance": {
+    "enabled": true,
+    "profiles": [
+      "soc2-security-core"
+    ]
+  },
+  "acceptance_gates": {
+    "preflight_status": "pass",
+    "runtime_health": "reachable",
+    "live_source_preview": "required",
+    "graph_ingest": "required",
+    "compliance_coverage": "required",
+    "receipt_path": "tmp/onboarding/github-receipt.json"
+  }
+}

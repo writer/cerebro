@@ -337,6 +337,181 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-azure-openai
+      tenant_id: builtin_catalog
+      source_id: azure_openai
+      display_name: Azure OpenAI
+      description: "Azure OpenAI connector definition for deployments, regional model catalog, responsible AI policies, blocklists, and private endpoint connections."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: subscription_id
+          label: Subscription ID
+          required: true
+        - key: resource_group
+          label: Resource group
+          required: true
+        - key: account_name
+          label: Azure AI account name
+          required: true
+        - key: location
+          label: Azure region
+          required: true
+          placeholder: eastus
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            label: Azure access token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://management.azure.com"
+        verification:
+          method: GET
+          path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/deployments?api-version=2024-10-01
+          expect_status: [200]
+      resource_families:
+        - id: deployments
+          label: Deployments
+          path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/deployments
+          method: GET
+          static_query:
+            api-version: "2024-10-01"
+          record_selector: "$.value[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: azure_openai.deployments
+            schema_ref: azure_openai/deployments/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: deployments
+              type: deployment_state
+              title: Deployments
+              families: [deployments]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: next_url
+            next_url_json_path: "$.nextLink"
+            disable_page_size: true
+        - id: model_catalog
+          label: Model catalog
+          path: /subscriptions/${config.subscription_id}/providers/Microsoft.CognitiveServices/locations/${config.location}/models
+          method: GET
+          static_query:
+            api-version: "2024-10-01"
+          record_selector: "$.value[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: azure_openai.model_catalog
+            schema_ref: azure_openai/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: next_url
+            next_url_json_path: "$.nextLink"
+            disable_page_size: true
+        - id: rai_policies
+          label: RAI policies
+          path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/raiPolicies
+          method: GET
+          static_query:
+            api-version: "2024-10-01"
+          record_selector: "$.value[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: azure_openai.rai_policies
+            schema_ref: azure_openai/rai_policies/v1
+          projection:
+            template: policy
+          coverage:
+            - id: rai_policies
+              type: lifecycle_state
+              title: RAI policies
+              families: [rai_policies]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [security_operations]
+          pagination:
+            type: next_url
+            next_url_json_path: "$.nextLink"
+            disable_page_size: true
+        - id: rai_blocklists
+          label: RAI blocklists
+          path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/raiBlocklists
+          method: GET
+          static_query:
+            api-version: "2024-10-01"
+          record_selector: "$.value[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: azure_openai.rai_blocklists
+            schema_ref: azure_openai/rai_blocklists/v1
+          projection:
+            template: policy
+          coverage:
+            - id: rai_blocklists
+              type: lifecycle_state
+              title: RAI blocklists
+              families: [rai_blocklists]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [security_operations]
+          pagination:
+            type: next_url
+            next_url_json_path: "$.nextLink"
+            disable_page_size: true
+        - id: private_endpoint_connections
+          label: Private endpoint connections
+          path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/privateEndpointConnections
+          method: GET
+          static_query:
+            api-version: "2024-10-01"
+          record_selector: "$.value[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: azure_openai.private_endpoint_connections
+            schema_ref: azure_openai/private_endpoint_connections/v1
+          projection:
+            template: asset
+          coverage:
+            - id: private_endpoint_connections
+              type: network_exposure
+              title: Private endpoint connections
+              families: [private_endpoint_connections]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [network_security]
+          pagination:
+            type: next_url
+            next_url_json_path: "$.nextLink"
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-cerebras
       tenant_id: builtin_catalog
       source_id: cerebras
@@ -450,6 +625,201 @@ entries:
               high_value: true
               evidence_types: [change_management]
               control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-cloudflare-ai
+      tenant_id: builtin_catalog
+      source_id: cloudflare_ai
+      display_name: Cloudflare AI
+      description: "Collects Workers AI models, AI Gateway configuration, gateway provider configs, gateway evaluations, gateway logs, and Vectorize indexes from Cloudflare."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: account_id
+          label: Account ID
+          required: true
+        - key: gateway_id
+          label: AI Gateway ID
+          required: true
+          help: "Required for gateway-scoped provider config, evaluation, and log families."
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            label: API token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.cloudflare.com/client/v4"
+        verification:
+          method: GET
+          path: /accounts/${config.account_id}/ai/models/search
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /accounts/${config.account_id}/ai/models/search
+          method: GET
+          static_query:
+            format: openrouter
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: cloudflare_ai.model_catalog
+            schema_ref: cloudflare_ai/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            start_page: 1
+            page_size: 100
+        - id: ai_gateways
+          label: AI gateways
+          path: /accounts/${config.account_id}/ai-gateway/gateways
+          method: GET
+          record_selector: "$.result[*]"
+          id_field: id
+          name_field: id
+          event:
+            kind: cloudflare_ai.ai_gateways
+            schema_ref: cloudflare_ai/ai_gateways/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: ai_gateways
+              type: deployment_state
+              title: AI gateways
+              families: [ai_gateways]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [secure_delivery]
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            start_page: 1
+            page_size: 100
+        - id: gateway_provider_configs
+          label: Gateway provider configs
+          path: /accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/provider_configs
+          method: GET
+          record_selector: "$.result[*]"
+          id_field: id
+          name_field: alias
+          event:
+            kind: cloudflare_ai.gateway_provider_configs
+            schema_ref: cloudflare_ai/gateway_provider_configs/v1
+          projection:
+            template: secret
+          coverage:
+            - id: gateway_provider_configs
+              type: app_entitlement
+              title: Gateway provider configs
+              families: [gateway_provider_configs]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            start_page: 1
+            page_size: 100
+        - id: gateway_evaluations
+          label: Gateway evaluations
+          path: /accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/evaluations
+          method: GET
+          record_selector: "$.result[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: cloudflare_ai.gateway_evaluations
+            schema_ref: cloudflare_ai/gateway_evaluations/v1
+          projection:
+            template: policy
+          coverage:
+            - id: gateway_evaluations
+              type: lifecycle_state
+              title: Gateway evaluations
+              families: [gateway_evaluations]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [security_operations]
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            start_page: 1
+            page_size: 100
+        - id: gateway_logs
+          label: Gateway logs
+          path: /accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/logs
+          method: GET
+          record_selector: "$.result[*]"
+          id_field: id
+          updated_at_field: created_at
+          event:
+            kind: cloudflare_ai.gateway_logs
+            schema_ref: cloudflare_ai/gateway_logs/v1
+          projection:
+            template: audit_event
+          coverage:
+            - id: gateway_logs
+              type: audit_event
+              title: Gateway logs
+              families: [gateway_logs]
+              support: partial
+              high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            start_page: 1
+            page_size: 100
+        - id: vectorize_indexes
+          label: Vectorize indexes
+          path: /accounts/${config.account_id}/vectorize/v2/indexes
+          method: GET
+          record_selector: "$.result[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: cloudflare_ai.vectorize_indexes
+            schema_ref: cloudflare_ai/vectorize_indexes/v1
+          projection:
+            template: asset
+          coverage:
+            - id: vectorize_indexes
+              type: entity_family
+              title: Vectorize indexes
+              families: [vectorize_indexes]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: none
             disable_page_size: true
@@ -582,6 +952,260 @@ entries:
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
+      id: builtin-deepseek
+      tenant_id: builtin_catalog
+      source_id: deepseek
+      display_name: DeepSeek
+      description: "DeepSeek connector definition for model catalog and account balance governance."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            label: API key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.deepseek.com"
+        verification:
+          method: GET
+          path: /models
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /models
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: id
+          name_field: id
+          event:
+            kind: deepseek.model_catalog
+            schema_ref: deepseek/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: account_balances
+          label: Account balances
+          path: /user/balance
+          method: GET
+          record_selector: "$.balance_infos[*]"
+          id_field: currency
+          name_field: currency
+          event:
+            kind: deepseek.account_balances
+            schema_ref: deepseek/account_balances/v1
+          projection:
+            template: asset
+          coverage:
+            - id: account_balances
+              type: entity_family
+              title: Account balances
+              families: [account_balances]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-elevenlabs
+      tenant_id: builtin_catalog
+      source_id: elevenlabs
+      display_name: ElevenLabs
+      description: "Collects models, voices, service accounts, service-account API keys, webhooks, and workspace auth connections from ElevenLabs."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: service_account_user_id
+          label: Service account user ID
+          required: true
+          help: "Required for the service-account API keys family."
+      auth:
+        model: api_key
+        token_header: xi-api-key
+        credential_fields:
+          - key: api_key
+            label: API key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.elevenlabs.io"
+        verification:
+          method: GET
+          path: /v1/models
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /v1/models
+          method: GET
+          record_selector: "$[*]"
+          id_field: model_id
+          name_field: name
+          event:
+            kind: elevenlabs.model_catalog
+            schema_ref: elevenlabs/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: voices
+          label: Voices
+          path: /v2/voices
+          method: GET
+          record_selector: "$.voices[*]"
+          id_field: voice_id
+          name_field: name
+          event:
+            kind: elevenlabs.voices
+            schema_ref: elevenlabs/voices/v1
+          projection:
+            template: asset
+          coverage:
+            - id: voices
+              type: entity_family
+              title: Voices
+              families: [voices]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: next_page_token
+            cursor_json_path: "$.next_page_token"
+            page_size_param: page_size
+            page_size: 100
+            has_more_key: has_more
+        - id: service_accounts
+          label: Service accounts
+          path: /v1/service-accounts
+          method: GET
+          record_selector: "$.service-accounts[*]"
+          id_field: service_account_user_id
+          name_field: name
+          event:
+            kind: elevenlabs.service_accounts
+            schema_ref: elevenlabs/service_accounts/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: service_accounts
+              type: app_entitlement
+              title: Service accounts
+              families: [service_accounts]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: service_account_api_keys
+          label: Service-account API keys
+          path: /v1/service-accounts/${config.service_account_user_id}/api-keys
+          method: GET
+          record_selector: "$.api-keys[*]"
+          id_field: key_id
+          name_field: name
+          event:
+            kind: elevenlabs.service_account_api_keys
+            schema_ref: elevenlabs/service_account_api_keys/v1
+          projection:
+            template: secret
+          coverage:
+            - id: service_account_api_keys
+              type: app_entitlement
+              title: Service-account API keys
+              families: [service_account_api_keys]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: webhooks
+          label: Webhooks
+          path: /v1/workspace/webhooks
+          method: GET
+          record_selector: "$.webhooks[*]"
+          id_field: webhook_id
+          name_field: name
+          event:
+            kind: elevenlabs.webhooks
+            schema_ref: elevenlabs/webhooks/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: webhooks
+              type: deployment_state
+              title: Webhooks
+              families: [webhooks]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: auth_connections
+          label: Auth connections
+          path: /v1/workspace/auth-connections
+          method: GET
+          record_selector: "$.auth_connections[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: elevenlabs.auth_connections
+            schema_ref: elevenlabs/auth_connections/v1
+          projection:
+            template: secret
+          coverage:
+            - id: auth_connections
+              type: app_entitlement
+              title: Auth connections
+              families: [auth_connections]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
       id: builtin-fireworks-ai
       tenant_id: builtin_catalog
       source_id: fireworks_ai
@@ -701,6 +1325,168 @@ entries:
           pagination:
             type: none
             disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-google-gemini
+      tenant_id: builtin_catalog
+      source_id: google_gemini
+      display_name: Google Gemini
+      description: "Google Gemini connector definition for model catalog, tuned models, uploaded files, cached contents, and batch jobs."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: api_key
+        token_header: x-goog-api-key
+        credential_fields:
+          - key: api_key
+            label: API key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://generativelanguage.googleapis.com"
+        verification:
+          method: GET
+          path: /v1beta/models
+          expect_status: [200]
+      resource_families:
+        - id: model_catalog
+          label: Model catalog
+          path: /v1beta/models
+          method: GET
+          record_selector: "$.models[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_gemini.model_catalog
+            schema_ref: google_gemini/model_catalog/v1
+          projection:
+            template: asset
+          coverage:
+            - id: model_catalog
+              type: entity_family
+              title: Model catalog
+              families: [model_catalog]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: tuned_models
+          label: Tuned models
+          path: /v1beta/tunedModels
+          method: GET
+          record_selector: "$.tunedModels[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_gemini.tuned_models
+            schema_ref: google_gemini/tuned_models/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: tuned_models
+              type: deployment_state
+              title: Tuned models
+              families: [tuned_models]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: files
+          label: Files
+          path: /v1beta/files
+          method: GET
+          record_selector: "$.files[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_gemini.files
+            schema_ref: google_gemini/files/v1
+          projection:
+            template: asset
+          coverage:
+            - id: files
+              type: entity_family
+              title: Files
+              families: [files]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: cached_contents
+          label: Cached contents
+          path: /v1beta/cachedContents
+          method: GET
+          record_selector: "$.cachedContents[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_gemini.cached_contents
+            schema_ref: google_gemini/cached_contents/v1
+          projection:
+            template: asset
+          coverage:
+            - id: cached_contents
+              type: entity_family
+              title: Cached contents
+              families: [cached_contents]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
+        - id: batch_jobs
+          label: Batch jobs
+          path: /v1beta/batches
+          method: GET
+          record_selector: "$.batches[*]"
+          id_field: name
+          name_field: displayName
+          event:
+            kind: google_gemini.batch_jobs
+            schema_ref: google_gemini/batch_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: batch_jobs
+              type: deployment_state
+              title: Batch jobs
+              families: [batch_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: pageToken
+            cursor_json_path: "$.nextPageToken"
+            page_size_param: pageSize
+            page_size: 100
 
   - classifier_output: supported
     definition:
@@ -1143,6 +1929,176 @@ entries:
             link_header: Link
             page_size_param: limit
             page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-ibm-watsonx-ai
+      tenant_id: builtin_catalog
+      source_id: ibm_watsonx_ai
+      display_name: IBM watsonx.ai
+      description: "IBM watsonx.ai connector definition for foundation model specs, foundation model tasks, project custom models, project deployments, and project training jobs."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: region
+          label: IBM Cloud region
+          required: true
+          placeholder: us-south
+        - key: project_id
+          label: Project ID
+          required: true
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            label: IBM IAM access token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://${config.region}.ml.cloud.ibm.com"
+        verification:
+          method: GET
+          path: /ml/v1/foundation_model_specs?version=2024-03-14
+          expect_status: [200]
+      resource_families:
+        - id: foundation_model_specs
+          label: Foundation model specs
+          path: /ml/v1/foundation_model_specs
+          method: GET
+          static_query:
+            version: "2024-03-14"
+          record_selector: "$.resources[*]"
+          id_field: model_id
+          name_field: label
+          event:
+            kind: ibm_watsonx_ai.foundation_model_specs
+            schema_ref: ibm_watsonx_ai/foundation_model_specs/v1
+          projection:
+            template: asset
+          coverage:
+            - id: foundation_model_specs
+              type: entity_family
+              title: Foundation model specs
+              families: [foundation_model_specs]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: foundation_model_tasks
+          label: Foundation model tasks
+          path: /ml/v1/foundation_model_tasks
+          method: GET
+          static_query:
+            version: "2024-03-14"
+          record_selector: "$.resources[*]"
+          id_field: task_id
+          name_field: label
+          event:
+            kind: ibm_watsonx_ai.foundation_model_tasks
+            schema_ref: ibm_watsonx_ai/foundation_model_tasks/v1
+          projection:
+            template: asset
+          coverage:
+            - id: foundation_model_tasks
+              type: entity_family
+              title: Foundation model tasks
+              families: [foundation_model_tasks]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: custom_models
+          label: Custom models
+          path: /ml/v4/models
+          method: GET
+          static_query:
+            version: "2024-03-14"
+          config_query:
+            project_id: project_id
+          record_selector: "$.resources[*]"
+          id_field: metadata.id
+          name_field: entity.name
+          event:
+            kind: ibm_watsonx_ai.custom_models
+            schema_ref: ibm_watsonx_ai/custom_models/v1
+          projection:
+            template: asset
+          coverage:
+            - id: custom_models
+              type: entity_family
+              title: Custom models
+              families: [custom_models]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: deployments
+          label: Deployments
+          path: /ml/v4/deployments
+          method: GET
+          static_query:
+            version: "2024-03-14"
+          config_query:
+            project_id: project_id
+          record_selector: "$.resources[*]"
+          id_field: metadata.id
+          name_field: entity.name
+          event:
+            kind: ibm_watsonx_ai.deployments
+            schema_ref: ibm_watsonx_ai/deployments/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: deployments
+              type: deployment_state
+              title: Deployments
+              families: [deployments]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: training_jobs
+          label: Training jobs
+          path: /ml/v4/trainings
+          method: GET
+          static_query:
+            version: "2024-03-14"
+          config_query:
+            project_id: project_id
+          record_selector: "$.resources[*]"
+          id_field: metadata.id
+          name_field: entity.name
+          event:
+            kind: ibm_watsonx_ai.training_jobs
+            schema_ref: ibm_watsonx_ai/training_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: training_jobs
+              type: deployment_state
+              title: Training jobs
+              families: [training_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -1664,6 +2620,385 @@ entries:
               high_value: true
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-pinecone
+      tenant_id: builtin_catalog
+      source_id: pinecone
+      display_name: Pinecone
+      description: "Collects indexes, collections, backups, and restore jobs from Pinecone project control-plane APIs."
+      categories:
+        - ai
+        - governance
+      auth:
+        model: api_key
+        token_header: Api-Key
+        credential_fields:
+          - key: api_key
+            label: API key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.pinecone.io"
+        headers:
+          X-Pinecone-Api-Version: "2025-10"
+        verification:
+          method: GET
+          path: /indexes
+          expect_status: [200]
+      resource_families:
+        - id: indexes
+          label: Indexes
+          path: /indexes
+          method: GET
+          record_selector: "$.indexes[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: pinecone.indexes
+            schema_ref: pinecone/indexes/v1
+          projection:
+            template: asset
+          coverage:
+            - id: indexes
+              type: entity_family
+              title: Indexes
+              families: [indexes]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: collections
+          label: Collections
+          path: /collections
+          method: GET
+          record_selector: "$.collections[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: pinecone.collections
+            schema_ref: pinecone/collections/v1
+          projection:
+            template: asset
+          coverage:
+            - id: collections
+              type: entity_family
+              title: Collections
+              families: [collections]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: backups
+          label: Backups
+          path: /backups
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: backup_id
+          name_field: name
+          event:
+            kind: pinecone.backups
+            schema_ref: pinecone/backups/v1
+          projection:
+            template: asset
+          coverage:
+            - id: backups
+              type: lifecycle_state
+              title: Backups
+              families: [backups]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [security_operations]
+          pagination:
+            type: cursor
+            cursor_param: paginationToken
+            cursor_json_path: "$.pagination.next"
+            page_size_param: limit
+            page_size: 100
+        - id: restore_jobs
+          label: Restore jobs
+          path: /restore-jobs
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: restore_job_id
+          name_field: target_index_name
+          event:
+            kind: pinecone.restore_jobs
+            schema_ref: pinecone/restore_jobs/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: restore_jobs
+              type: deployment_state
+              title: Restore jobs
+              families: [restore_jobs]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: paginationToken
+            cursor_json_path: "$.pagination.next"
+            page_size_param: limit
+            page_size: 100
+
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-qdrant-cloud
+      tenant_id: builtin_catalog
+      source_id: qdrant_cloud
+      display_name: Qdrant Cloud
+      description: "Collects accounts, account members, clusters, database API keys, backups, backup restores, backup schedules, and IAM roles from Qdrant Cloud."
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: account_id
+          label: Account ID
+          required: true
+          help: "Required for account-scoped Qdrant Cloud families."
+        - key: cluster_id
+          label: Cluster ID
+          help: "Optional filter for cluster-scoped backup and database API key families."
+      auth:
+        model: api_key
+        token_header: Authorization
+        token_scheme: apikey
+        credential_fields:
+          - key: api_key
+            label: Management key
+            secret: true
+            reference_only: true
+      transport:
+        base_url: "https://api.cloud.qdrant.io"
+        verification:
+          method: GET
+          path: /api/account/v1/accounts
+          expect_status: [200]
+      resource_families:
+        - id: accounts
+          label: Accounts
+          path: /api/account/v1/accounts
+          method: GET
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.accounts
+            schema_ref: qdrant_cloud/accounts/v1
+          projection:
+            template: asset
+          coverage:
+            - id: accounts
+              type: entity_family
+              title: Accounts
+              families: [accounts]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: account_members
+          label: Account members
+          path: /api/account/v1/accounts/${config.account_id}/members
+          method: GET
+          record_selector: "$.items[*]"
+          id_field: account_member.id
+          name_field: account_member.email
+          event:
+            kind: qdrant_cloud.account_members
+            schema_ref: qdrant_cloud/account_members/v1
+          projection:
+            template: identity_user
+          coverage:
+            - id: account_members
+              type: app_entitlement
+              title: Account members
+              families: [account_members]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: clusters
+          label: Clusters
+          path: /api/cluster/v1/accounts/${config.account_id}/clusters
+          method: GET
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.clusters
+            schema_ref: qdrant_cloud/clusters/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: clusters
+              type: deployment_state
+              title: Clusters
+              families: [clusters]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: page_token
+            cursor_json_path: "$.next_page_token"
+            page_size_param: page_size
+            page_size: 250
+        - id: database_api_keys
+          label: Database API keys
+          path: /api/cluster/auth/v2/accounts/${config.account_id}/database-api-keys
+          method: GET
+          config_query:
+            cluster_id: cluster_id
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.database_api_keys
+            schema_ref: qdrant_cloud/database_api_keys/v1
+          projection:
+            template: secret
+          coverage:
+            - id: database_api_keys
+              type: app_entitlement
+              title: Database API keys
+              families: [database_api_keys]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+          pagination:
+            type: none
+            disable_page_size: true
+        - id: backups
+          label: Backups
+          path: /api/cluster/backup/v1/accounts/${config.account_id}/backups
+          method: GET
+          config_query:
+            cluster_id: cluster_id
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.backups
+            schema_ref: qdrant_cloud/backups/v1
+          projection:
+            template: asset
+          coverage:
+            - id: backups
+              type: lifecycle_state
+              title: Backups
+              families: [backups]
+              support: partial
+              high_value: true
+              evidence_types: [configuration_state]
+              control_domains: [security_operations]
+          pagination:
+            type: cursor
+            cursor_param: page_token
+            cursor_json_path: "$.next_page_token"
+            page_size_param: page_size
+            page_size: 250
+        - id: backup_restores
+          label: Backup restores
+          path: /api/cluster/backup/v1/accounts/${config.account_id}/backup_restores
+          method: GET
+          config_query:
+            cluster_id: cluster_id
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.backup_restores
+            schema_ref: qdrant_cloud/backup_restores/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: backup_restores
+              type: deployment_state
+              title: Backup restores
+              families: [backup_restores]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: page_token
+            cursor_json_path: "$.next_page_token"
+            page_size_param: page_size
+            page_size: 250
+        - id: backup_schedules
+          label: Backup schedules
+          path: /api/cluster/backup/v1/accounts/${config.account_id}/backup_schedules
+          method: GET
+          config_query:
+            cluster_id: cluster_id
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.backup_schedules
+            schema_ref: qdrant_cloud/backup_schedules/v1
+          projection:
+            template: policy
+          coverage:
+            - id: backup_schedules
+              type: lifecycle_state
+              title: Backup schedules
+              families: [backup_schedules]
+              support: partial
+              high_value: true
+              evidence_types: [policy_configuration]
+              control_domains: [policy_management]
+          pagination:
+            type: cursor
+            cursor_param: page_token
+            cursor_json_path: "$.next_page_token"
+            page_size_param: page_size
+            page_size: 250
+        - id: roles
+          label: Roles
+          path: /api/iam/v1/accounts/${config.account_id}/roles
+          method: GET
+          record_selector: "$.items[*]"
+          id_field: id
+          name_field: name
+          event:
+            kind: qdrant_cloud.roles
+            schema_ref: qdrant_cloud/roles/v1
+          projection:
+            template: identity_group
+          coverage:
+            - id: roles
+              type: app_entitlement
+              title: Roles
+              families: [roles]
+              support: partial
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
           pagination:
             type: none
             disable_page_size: true

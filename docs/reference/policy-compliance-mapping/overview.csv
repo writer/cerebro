@@ -1,6 +1,6 @@
 metric,value
 policy finding rules,1500
-policy-control rows,10012
+policy-control rows,10021
 tag rows,14986
 unique tags,1021
 domains,36
@@ -9,18 +9,18 @@ frameworks,23
 all finding metric,value
 public detections,1586
 non-policy detections,86
-finding-control rows,10196
-finding-tag rows,38434
-source-coverage rows,3415
+finding-control rows,10205
+finding-tag rows,38451
+source-coverage rows,4074
 finding compliance review rows,1586
-unique finding review tags,1569
+unique finding review tags,1573
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
-detections missing source coverage refs,586
-detections source-backed,17
-detections partial source-backed,983
-detections control-only,586
+detections missing source coverage refs,475
+detections source-backed,168
+detections partial source-backed,943
+detections control-only,475
 
 evidence mode,rules
 cel,992
@@ -80,13 +80,13 @@ Cerebro Revenue Operations,10
 CIS GKE Benchmark v1.4,9
 Cerebro Organizational Resilience,8
 Cerebro Operational Resilience,7
-GDPR,6
+GDPR,7
 Cerebro Financial Controls,4
+CCPA,3
 CIS Benchmarks,3
 CIS GitHub Benchmark,3
+ISO 27701,3
 Cerebro AI Governance,2
-ISO 27701,2
-CCPA,1
 CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
@@ -173,17 +173,17 @@ CIS Kubernetes Benchmark,133
 EU AI Act,62
 CIS AWS Foundations Benchmark v2.0,54
 HIPAA,27
-GDPR,16
+GDPR,21
 Cerebro Revenue Operations,13
 Cerebro Organizational Resilience,11
 CIS GKE Benchmark v1.4,9
 Cerebro Operational Resilience,7
+CCPA,4
 Cerebro Financial Controls,4
+ISO 27701,4
 CIS Benchmarks,3
 CIS GitHub Benchmark,3
 Cerebro AI Governance,3
-ISO 27701,3
-CCPA,1
 CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 NIST SP 800-177,1

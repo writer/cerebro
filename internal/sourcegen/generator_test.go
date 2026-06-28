@@ -691,6 +691,24 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 					LinkHeader:    "Link",
 					PageSizeParam: "limit",
 				},
+			}, {
+				ID:             "deployments",
+				Path:           "/deployments",
+				RecordSelector: "$.value[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "huggingface.deployments",
+					SchemaRef: "huggingface/deployments/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "deployment",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "deployment_state", Support: "partial"}},
+				Pagination: &connectordefinitions.PaginationSpec{
+					Type:            "next_url",
+					NextURLJSONPath: "$.nextLink",
+					DisablePageSize: true,
+				},
 			}},
 		},
 		OutputDir: outputDir,
@@ -703,6 +721,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`Path:             "/models"`,
 		`CursorParam:      "after"`,
 		`NextCursorKeys:   []string{"paging.continuation"}`,
+		`NextCursorKeys:   []string{"nextLink"}`,
 		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,

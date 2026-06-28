@@ -3,6 +3,7 @@ package graphquery
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -42,6 +43,10 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 			"reach_relation":         "can_reach",
 			"access_relation":        "can_perform",
 			"relation_chain":         []any{"attached_to", "runs_as"},
+			"traversal_edges": []any{
+				map[string]any{"from_urn": "urn:cerebro:writer:aws_network_interface:eni-1", "from_entity_type": "aws.network.interface", "from_label": "prod-web", "relation": "attached_to", "to_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "to_entity_type": "aws.ec2.instance", "to_label": "prod-web", "direction": "forward"},
+				map[string]any{"from_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "from_entity_type": "aws.ec2.instance", "from_label": "prod-web", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_user:admin@writer.com", "to_entity_type": "aws.user", "to_label": "admin@writer.com", "direction": "forward"},
+			},
 		}}},
 	}}
 
@@ -55,6 +60,18 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	}
 	if len(store.requests) != 2 {
 		t.Fatalf("query count = %d, want 2", len(store.requests))
+	}
+	for _, fragment := range []string{
+		"MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})",
+		"relationships(proof_path)[idx].relation = 'member_of'",
+		"startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx + 1]",
+		"relationships(proof_path)[idx].relation <> 'member_of'",
+		"startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx]",
+		"traversal_edges",
+	} {
+		if !strings.Contains(store.requests[1].Query, fragment) {
+			t.Fatalf("sample query missing %q:\n%s", fragment, store.requests[1].Query)
+		}
 	}
 	if got := store.requests[0].Params["tenant_id"]; got != "writer" {
 		t.Fatalf("tenant_id param = %v, want writer", got)
@@ -76,6 +93,9 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	}
 	if got := result.Paths[0].RelationChain; len(got) != 2 || got[0] != "attached_to" || got[1] != "runs_as" {
 		t.Fatalf("relation chain = %#v, want attached_to -> runs_as", got)
+	}
+	if got := result.Paths[0].TraversalEdges; len(got) != 2 || got[0].Relation != "attached_to" || got[1].To.URN != "urn:cerebro:writer:aws_user:admin@writer.com" {
+		t.Fatalf("traversal edges = %#v", got)
 	}
 	if result.NeighborhoodURN != "urn:cerebro:writer:aws_network_interface:eni-1" {
 		t.Fatalf("neighborhood hint = %q", result.NeighborhoodURN)
@@ -101,8 +121,9 @@ func TestAttackPathsFromRowsRequiresTraversalProof(t *testing.T) {
 		"permission_label":       "AdministratorAccess",
 		"reach_relation":         "can_reach",
 		"access_relation":        "can_perform",
+		"relation_chain":         []any{"runs_as"},
 	}}})
 	if len(paths) != 0 {
-		t.Fatalf("len(paths) = %d, want 0 without relation_chain proof", len(paths))
+		t.Fatalf("len(paths) = %d, want 0 without traversal edge proof", len(paths))
 	}
 }
