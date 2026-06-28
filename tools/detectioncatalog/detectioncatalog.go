@@ -86,6 +86,9 @@ func generateCatalog() ([]byte, error) {
 	if errs := findinganalysis.ValidateRuleMetadataCompleteness(findinganalysis.BuiltinRuleMetadata()); len(errs) != 0 {
 		return nil, errs[0]
 	}
+	if errs := findinganalysis.ValidatePublicDetectionAuditDepth(catalog); len(errs) != 0 {
+		return nil, errs[0]
+	}
 	content, err := json.MarshalIndent(catalog, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal public detection catalog: %w", err)
