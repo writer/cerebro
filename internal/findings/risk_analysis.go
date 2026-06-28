@@ -756,6 +756,14 @@ func AnalyzeFindingRiskContextWithConfig(finding *ports.FindingRecord, now time.
 	if eventCount := len(uniqueSortedStrings(finding.EventIDs)); eventCount > 1 {
 		applyRiskScoringFactor(settings, "multiple_events", "multiple_events", ports.RiskScoringFactorWeight{Likelihood: min(eventCount*2, 10), Confidence: 3}, &likelihood, &impact, &confidence, &reasons)
 	}
+	switch strings.TrimSpace(attributes[FindingConnectorValidationGradeAttribute]) {
+	case "fixture_validated":
+		applyRiskScoringFactor(settings, "connector_validated", "connector_validated:fixture", ports.RiskScoringFactorWeight{Confidence: 5}, &likelihood, &impact, &confidence, &reasons)
+	case "live_validated", "production_observed":
+		applyRiskScoringFactor(settings, "connector_validated", "connector_validated:live", ports.RiskScoringFactorWeight{Confidence: 8}, &likelihood, &impact, &confidence, &reasons)
+	case "generated_from_docs", "schema_validated":
+		applyRiskScoringFactor(settings, "connector_unvalidated", "connector_unvalidated:"+strings.TrimSpace(attributes[FindingConnectorValidationGradeAttribute]), ports.RiskScoringFactorWeight{Confidence: -20}, &likelihood, &impact, &confidence, &reasons)
+	}
 	if resourceCount := len(uniqueSortedStrings(finding.ResourceURNs)); resourceCount > 1 {
 		applyRiskScoringFactor(settings, "multiple_resources", "multiple_resources", ports.RiskScoringFactorWeight{Impact: min(resourceCount*2, 12)}, &likelihood, &impact, &confidence, &reasons)
 	}

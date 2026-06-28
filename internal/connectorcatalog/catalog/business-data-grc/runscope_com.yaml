@@ -15,11 +15,8 @@ entries:
       - account:email
       - api:read
       - bucket:auth_token
-      - bucket:write
-      - message:write
       - team:read
       - test:read
-      - test:write
       token_expiration_buffer_seconds: 300
       token_request_auth_method: client_secret_basic
       token_url: https://www.runscope.com/signin/oauth/access_token

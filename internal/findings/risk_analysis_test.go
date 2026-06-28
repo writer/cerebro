@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -98,6 +99,42 @@ func TestAnalyzeFindingExposureCorrelatesCrossSourceFindings(t *testing.T) {
 	}
 	if !findingAttackPathsContainPattern(report.AttackPaths, "okta.actor --acted_on--> okta.policy_rule --has_finding--> finding") {
 		t.Fatalf("AttackPaths = %#v, want generic Okta graph path", report.AttackPaths)
+	}
+}
+
+func TestEnrichFindingRiskUsesConnectorValidationConfidence(t *testing.T) {
+	now := time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)
+	base := compoundRiskFinding("connector-confidence", "rule-1", "HIGH", "", "", "urn:cerebro:writer:runtime_asset:1", "")
+	base.EventIDs = []string{"event-1"}
+	base.FirstObservedAt = now
+	base.LastObservedAt = now
+
+	validatedInput := cloneFindingWithoutAttributes(base)
+	generatedInput := cloneFindingWithoutAttributes(base)
+	validated := enrichFindingRisk(validatedInput, &cerebrov1.SourceRuntime{
+		Id:       "writer-okta-users",
+		SourceId: "okta",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "users"},
+	}, now)
+	generated := enrichFindingRisk(generatedInput, &cerebrov1.SourceRuntime{
+		Id:       "writer-unvalidated-users",
+		SourceId: "unvalidated_connector",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "users"},
+	}, now)
+
+	if validated.ConfidenceScore <= generated.ConfidenceScore {
+		t.Fatalf("validated confidence = %d, generated = %d, want validated higher", validated.ConfidenceScore, generated.ConfidenceScore)
+	}
+	if validated.Attributes[FindingConnectorValidationGradeAttribute] != "fixture_validated" {
+		t.Fatalf("validated grade attr = %q, want fixture_validated", validated.Attributes[FindingConnectorValidationGradeAttribute])
+	}
+	if !stringSliceContainsPrefix(validated.RiskReasons, "connector_validated") {
+		t.Fatalf("validated reasons = %#v, want connector_validated", validated.RiskReasons)
+	}
+	if !stringSliceContainsPrefix(generated.RiskReasons, "connector_unvalidated") {
+		t.Fatalf("generated reasons = %#v, want connector_unvalidated", generated.RiskReasons)
 	}
 }
 

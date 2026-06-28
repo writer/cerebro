@@ -15,7 +15,6 @@ entries:
       scopes:
       - offline_access
       - public_api_read
-      - public_api_write
       token_expiration_buffer_seconds: 300
       token_request_auth_method: client_secret_basic
       token_url: https://connect.signl4.com/identity/connect/token
@@ -61,7 +60,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           id: id
@@ -100,7 +98,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           id: id
@@ -139,7 +136,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           id: id
@@ -178,7 +174,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           alert_id: id
