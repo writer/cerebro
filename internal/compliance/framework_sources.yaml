@@ -1,0 +1,420 @@
+version: "2026-06-28"
+sources:
+  - framework: SOC 2
+    framework_id: soc2
+    version: Trust Services Criteria 2022
+    lifecycle: current
+    authority: AICPA
+    source_type: trust_services_criteria
+    source_url: https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services
+    source_status: official_landing
+    control_model: Trust services criteria and points of focus for service organization controls.
+    evidence_model: Control design and operating effectiveness evidence across security, availability, confidentiality, processing integrity, and privacy criteria.
+    assessment_notes: Use inquiry, observation, inspection, and reperformance evidence matched to the asserted trust service criterion.
+  - framework: "ISO 27001:2022"
+    framework_id: iso270012022
+    version: "2022"
+    lifecycle: current
+    authority: ISO/IEC
+    source_type: management_system_standard
+    source_url: https://www.iso.org/standard/27001
+    source_status: official_standard_page
+    control_model: Information security management system requirements with Annex A control references.
+    evidence_model: ISMS scope, risk treatment, Statement of Applicability, control operation, monitoring, and management review evidence.
+    assessment_notes: Pair requirement evidence from ISO 27001 with implementation guidance from the ISO 27002 control catalog when available.
+  - framework: ISO 27701
+    framework_id: iso27701
+    version: "2019"
+    lifecycle: withdrawn_replaced_by_2025
+    authority: ISO/IEC
+    source_type: privacy_information_management_extension
+    source_url: https://www.iso.org/standard/71670.html
+    source_status: official_standard_page
+    control_model: Privacy information management extension to ISO 27001 and ISO 27002.
+    evidence_model: PII controller and processor governance, privacy roles, processing records, notices, consent, and data subject request evidence.
+    assessment_notes: Preserve where still contractually referenced, but prefer the current ISO 27701 edition when building new evidence packs.
+  - framework: "ISO 27701:2025"
+    framework_id: iso277012025
+    version: "2025"
+    lifecycle: current
+    authority: ISO/IEC
+    source_type: privacy_information_management_standard
+    source_url: https://www.iso.org/standard/27701
+    source_status: official_standard_page
+    control_model: Privacy information management system requirements and guidance.
+    evidence_model: PIMS scope, lawful processing, privacy risk treatment, data subject rights, processor management, and privacy control evidence.
+    assessment_notes: Use this as the preferred ISO privacy source for new privacy evidence profiles.
+  - framework: ISO 42001
+    framework_id: iso42001
+    version: "2023"
+    lifecycle: current
+    authority: ISO/IEC
+    source_type: ai_management_system_standard
+    source_url: https://www.iso.org/standard/42001
+    source_status: official_standard_page
+    control_model: AI management system requirements for responsible development, deployment, and operation.
+    evidence_model: AI system inventory, impact assessment, risk treatment, model governance, monitoring, human oversight, and supplier evidence.
+    assessment_notes: Treat AI evidence as management-system evidence plus runtime model and data governance proof.
+  - framework: NIST 800-53 r5
+    framework_id: nist80053r5
+    version: Rev. 5 Update 1
+    lifecycle: current
+    authority: NIST
+    source_type: security_privacy_control_catalog
+    source_url: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+    source_status: official_publication
+    control_model: Security and privacy controls organized by control family with baselines and overlays.
+    evidence_model: Control implementation statements, assessment objectives, examined artifacts, interviews, tests, and inherited control evidence.
+    assessment_notes: Pair with NIST SP 800-53A Rev. 5 assessment procedures when defining exact evidence sufficiency.
+  - framework: CIS Controls v8
+    framework_id: ciscontrolsv8
+    version: v8.1
+    lifecycle: current
+    authority: Center for Internet Security
+    source_type: prioritized_safeguard_catalog
+    source_url: https://www.cisecurity.org/controls
+    source_status: official_landing
+    control_model: Prioritized cyber defense safeguards organized by Implementation Group.
+    evidence_model: Asset, software, vulnerability, access, logging, malware, data protection, and incident response evidence by safeguard.
+    assessment_notes: Use Implementation Group and safeguard granularity when prioritizing coverage gaps.
+  - framework: CIS AWS Foundations Benchmark v2.0
+    framework_id: cisawsfoundationsv20
+    version: v2.0
+    lifecycle: retained_catalog_version
+    authority: Center for Internet Security
+    source_type: cloud_configuration_benchmark
+    source_url: https://www.cisecurity.org/benchmark/amazon_web_services
+    source_status: official_benchmark_page
+    control_model: AWS account, IAM, logging, monitoring, and networking configuration recommendations.
+    evidence_model: Cloud configuration state, API settings, audit logs, monitoring rules, and remediation evidence.
+    assessment_notes: Treat benchmark recommendations as technical configuration evidence, not broad governance coverage.
+  - framework: CIS Kubernetes Benchmark
+    framework_id: ciskubernetesbenchmark
+    version: current
+    lifecycle: current
+    authority: Center for Internet Security
+    source_type: kubernetes_configuration_benchmark
+    source_url: https://www.cisecurity.org/benchmark/kubernetes
+    source_status: official_benchmark_page
+    control_model: Kubernetes control plane, node, policy, and workload hardening recommendations.
+    evidence_model: Cluster configuration, admission policy, RBAC, audit logging, network policy, and kubelet setting evidence.
+    assessment_notes: Scope evidence by Kubernetes distribution and benchmark version before claiming conformance.
+  - framework: CIS GKE Benchmark v1.4
+    framework_id: cisgkebenchmarkv14
+    version: v1.4
+    lifecycle: retained_catalog_version
+    authority: Center for Internet Security
+    source_type: managed_kubernetes_configuration_benchmark
+    source_url: https://www.cisecurity.org/benchmark/google_kubernetes_engine
+    source_status: official_benchmark_page
+    control_model: Google Kubernetes Engine configuration recommendations.
+    evidence_model: GKE cluster settings, workload identity, logging, network policy, private cluster, and release channel evidence.
+    assessment_notes: Bind evidence to the GKE benchmark version and the sampled cluster mode.
+  - framework: CIS EKS Benchmark v1.3
+    framework_id: ciseksbenchmarkv13
+    version: v1.3
+    lifecycle: retained_catalog_version
+    authority: Center for Internet Security
+    source_type: managed_kubernetes_configuration_benchmark
+    source_url: https://www.cisecurity.org/benchmark/amazon_eks
+    source_status: official_benchmark_page
+    control_model: Amazon EKS configuration recommendations.
+    evidence_model: EKS cluster settings, IAM integration, logging, network policy, encryption, and node configuration evidence.
+    assessment_notes: Bind evidence to the EKS benchmark version and the sampled cluster mode.
+  - framework: CIS Benchmarks
+    framework_id: cisbenchmarks
+    version: current
+    lifecycle: current
+    authority: Center for Internet Security
+    source_type: configuration_benchmark_catalog
+    source_url: https://www.cisecurity.org/cis-benchmarks
+    source_status: official_catalog
+    control_model: Secure configuration recommendations across operating systems, cloud services, databases, and applications.
+    evidence_model: Configuration state, benchmark scan result, exception, remediation, and sampled asset evidence.
+    assessment_notes: Always retain the product benchmark name and version with evidence.
+  - framework: PCI DSS v4.0.1
+    framework_id: pcidssv401
+    version: v4.0.1
+    lifecycle: current
+    authority: PCI Security Standards Council
+    source_type: payment_card_data_security_standard
+    source_url: https://www.pcisecuritystandards.org/standards/pci-dss/
+    source_status: official_standard_page
+    control_model: Cardholder data environment requirements and testing procedures.
+    evidence_model: CDE scope, network segmentation, secure configuration, vulnerability management, access control, logging, testing, and policy evidence.
+    assessment_notes: Keep requirement and testing procedure evidence distinct; testing evidence usually needs sampled systems and dates.
+  - framework: PCI DSS v4.0
+    framework_id: pcidssv40
+    version: v4.0
+    lifecycle: superseded_by_4_0_1
+    authority: PCI Security Standards Council
+    source_type: payment_card_data_security_standard
+    source_url: https://www.pcisecuritystandards.org/standards/pci-dss/
+    source_status: official_standard_page
+    control_model: Cardholder data environment requirements and testing procedures.
+    evidence_model: CDE scope, network segmentation, secure configuration, vulnerability management, access control, logging, testing, and policy evidence.
+    assessment_notes: Preserve for historical mappings, but prefer PCI DSS v4.0.1 for new evidence work.
+  - framework: PCI SAQ D-SP
+    framework_id: pcisaq_dsp
+    version: current
+    lifecycle: current
+    authority: PCI Security Standards Council
+    source_type: self_assessment_questionnaire
+    source_url: https://www.pcisecuritystandards.org/document_library/
+    source_status: official_document_library
+    control_model: Service-provider self-assessment questionnaire aligned to PCI DSS requirements.
+    evidence_model: Attestation responses, requirement evidence, service provider scope, compensating controls, and management sign-off.
+    assessment_notes: Treat SAQ rows as attestation evidence linked to PCI DSS requirement evidence.
+  - framework: HIPAA
+    framework_id: hipaa
+    version: current
+    lifecycle: current
+    authority: U.S. Department of Health and Human Services
+    source_type: regulation
+    source_url: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164
+    source_status: official_regulation
+    control_model: HIPAA Security, Privacy, and Breach Notification requirements for protected health information.
+    evidence_model: Administrative, physical, and technical safeguard evidence plus policies, risk analysis, access controls, audit controls, and breach procedures.
+    assessment_notes: Keep addressable implementation specifications distinct from required specifications and document rationale for alternatives.
+  - framework: GDPR
+    framework_id: gdpr
+    version: Regulation (EU) 2016/679
+    lifecycle: current
+    authority: European Union
+    source_type: regulation
+    source_url: https://eur-lex.europa.eu/eli/reg/2016/679/oj
+    source_status: official_regulation
+    control_model: Data protection principles, lawful processing, data subject rights, controller/processor duties, security, and breach requirements.
+    evidence_model: Records of processing, legal basis, data subject request handling, DPIA, processor agreement, security control, and breach notification evidence.
+    assessment_notes: Article 30 records and Article 32 security evidence should be separated from policy-only assertions.
+  - framework: CCPA
+    framework_id: ccpa
+    version: current
+    lifecycle: current
+    authority: California Legislature
+    source_type: regulation
+    source_url: https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5
+    source_status: official_statute
+    control_model: Consumer privacy rights, notices, disclosure, deletion, correction, opt-out, and sensitive information controls.
+    evidence_model: Consumer request intake, verification, fulfillment, denial rationale, disclosure inventory, opt-out, and retention evidence.
+    assessment_notes: Link each privacy finding to the consumer right, request state, and system inventory evidence.
+  - framework: US Data Privacy
+    framework_id: us_data_privacy
+    version: composite
+    lifecycle: composite
+    authority: Internal crosswalk
+    source_type: composite_privacy_crosswalk
+    source_url: internal/compliance/control_families.yaml
+    source_status: internal_crosswalk
+    control_model: Internal grouping for U.S. state privacy obligations.
+    evidence_model: Consumer rights, disclosure inventory, opt-out, retention, purpose limitation, and processor/vendor evidence.
+    assessment_notes: Use jurisdiction-specific statute rows before claiming legal conformance.
+  - framework: EU AI Act
+    framework_id: eu_ai_act
+    version: Regulation (EU) 2024/1689
+    lifecycle: current
+    authority: European Union
+    source_type: regulation
+    source_url: https://eur-lex.europa.eu/eli/reg/2024/1689/oj
+    source_status: official_regulation
+    control_model: Risk-based AI system obligations, governance, documentation, transparency, monitoring, and human oversight.
+    evidence_model: AI inventory, risk classification, technical documentation, data governance, transparency notice, human oversight, logging, and post-market monitoring evidence.
+    assessment_notes: Evidence must preserve AI system role, risk class, provider/deployer responsibility, and effective date.
+  - framework: HITRUST e1
+    framework_id: hitrust_e1
+    version: current
+    lifecycle: current
+    authority: HITRUST
+    source_type: assurance_framework
+    source_url: https://hitrustalliance.net/hitrust-csf/
+    source_status: official_landing
+    control_model: Essential cybersecurity control set for HITRUST assurance.
+    evidence_model: Control implementation, policy, procedure, sampled operation, and corrective-action evidence.
+    assessment_notes: Keep HITRUST requirement statements and assessment-object evidence traceable to licensed source materials.
+  - framework: CISA
+    framework_id: cisa
+    version: Cybersecurity Performance Goals
+    lifecycle: current
+    authority: CISA
+    source_type: cybersecurity_performance_goals
+    source_url: https://www.cisa.gov/resources-tools/resources/cybersecurity-performance-goals-cpgs
+    source_status: official_landing
+    control_model: Outcome-oriented cybersecurity performance goals for critical infrastructure and enterprise risk reduction.
+    evidence_model: Asset inventory, account security, vulnerability, logging, backup, incident response, and third-party risk evidence.
+    assessment_notes: Treat CISA goals as operating outcomes, not audit clauses, unless mapped to a formal assessment program.
+  - framework: DORA
+    framework_id: dora
+    version: Regulation (EU) 2022/2554
+    lifecycle: current
+    authority: European Union
+    source_type: regulation
+    source_url: https://eur-lex.europa.eu/eli/reg/2022/2554/oj
+    source_status: official_regulation
+    control_model: Digital operational resilience requirements for financial entities, including ICT risk management, incident reporting, resilience testing, third-party risk, and information sharing.
+    evidence_model: ICT risk register, resilience strategy, incident classification, reporting records, testing program, third-party contract, exit plan, and remediation evidence.
+    assessment_notes: Preserve financial-entity role, ICT service scope, materiality, incident date, testing scope, and third-party dependency when linking evidence to DORA controls.
+  - framework: FedRAMP Rev. 5
+    framework_id: fedramp_rev5
+    version: Rev. 5
+    lifecycle: current
+    authority: FedRAMP
+    source_type: federal_cloud_authorization_baseline
+    source_url: https://www.fedramp.gov/rev5/documents-templates/
+    source_status: official_document_library
+    control_model: Federal cloud authorization baselines derived from NIST SP 800-53 Rev. 5 with FedRAMP parameters, templates, and continuous monitoring expectations.
+    evidence_model: System security plan, control implementation statement, assessment procedure results, POA&M, vulnerability scan, continuous monitoring, authorization boundary, and inherited-control evidence.
+    assessment_notes: Keep FedRAMP authorization package evidence separate from plain NIST 800-53 control evidence because parameters, inheritance, and continuous monitoring obligations differ.
+  - framework: NIS2
+    framework_id: nis2
+    version: Directive (EU) 2022/2555
+    lifecycle: current
+    authority: European Union
+    source_type: directive
+    source_url: https://eur-lex.europa.eu/eli/dir/2022/2555/oj
+    source_status: official_directive
+    control_model: Cybersecurity risk-management and incident-reporting duties for essential and important entities.
+    evidence_model: Governance approval, risk-management measures, incident notification, supply-chain security, business continuity, vulnerability handling, encryption, access control, and training evidence.
+    assessment_notes: Preserve entity class, member-state implementation context, incident reporting clock, and management-body accountability when evaluating evidence.
+  - framework: CMMC 2.0
+    framework_id: cmmc20
+    version: "2.0"
+    lifecycle: current
+    authority: U.S. Department of Defense
+    source_type: defense_contracting_cybersecurity_model
+    source_url: https://dodcio.defense.gov/CMMC/Model/
+    source_status: official_landing
+    control_model: Cybersecurity maturity model for Federal Contract Information and Controlled Unclassified Information protection levels.
+    evidence_model: System security plan, assessment objective evidence, control implementation, asset scope, CUI handling, POA&M, policy, procedure, and technical configuration evidence.
+    assessment_notes: Bind evidence to CMMC level, assessment scope, CUI environment, and the underlying NIST SP 800-171 practice where applicable.
+  - framework: CJIS Security Policy
+    framework_id: cjis_security_policy
+    version: current
+    lifecycle: current
+    authority: Federal Bureau of Investigation
+    source_type: criminal_justice_information_security_policy
+    source_url: https://le.fbi.gov/cjis-division/cjis-security-policy-resource-center
+    source_status: official_policy_resource_center
+    control_model: Policy areas for protecting Criminal Justice Information across governance, access, identification, authentication, audit, encryption, media, incident response, and mobile access.
+    evidence_model: Agency agreement, security addendum, personnel screening, access authorization, MFA, audit log, encryption, media protection, incident response, and training evidence.
+    assessment_notes: Preserve agency role, CJI scope, user population, system boundary, and policy-area context before asserting coverage.
+  - framework: NIST CSF 2.0
+    framework_id: nist_csf_20
+    version: "2.0"
+    lifecycle: current
+    authority: NIST
+    source_type: cybersecurity_framework
+    source_url: https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf
+    source_status: official_publication
+    control_model: Outcome-oriented cybersecurity core organized by Govern, Identify, Protect, Detect, Respond, and Recover functions with categories and subcategories.
+    evidence_model: Current profile, target profile, tier rationale, risk register, governance record, asset inventory, protective control, detection, response, recovery, and improvement evidence.
+    assessment_notes: Treat CSF evidence as outcome and profile evidence; map to prescriptive control frameworks before claiming implementation sufficiency.
+  - framework: NIST AI RMF 1.0
+    framework_id: nist_ai_rmf_10
+    version: "1.0"
+    lifecycle: current_under_revision
+    authority: NIST
+    source_type: ai_risk_management_framework
+    source_url: https://nvlpubs.nist.gov/nistpubs/ai/nist.ai.100-1.pdf
+    source_status: official_publication
+    control_model: AI risk management functions organized by Govern, Map, Measure, and Manage for trustworthy AI risk practices.
+    evidence_model: AI system context, stakeholder impact analysis, risk register, governance decision, evaluation record, monitoring signal, incident response, model change, and residual-risk evidence.
+    assessment_notes: Preserve AI system lifecycle stage, actor role, intended use, affected population, measurement method, and residual-risk decision when evaluating evidence.
+  - framework: CSA CCM v4.0
+    framework_id: csa_ccm_v40
+    version: v4.0
+    lifecycle: current
+    authority: Cloud Security Alliance
+    source_type: cloud_control_matrix
+    source_url: https://cloudsecurityalliance.org/research/cloud-controls-matrix
+    source_status: official_landing
+    control_model: Cloud control domains for governance, risk, compliance, identity, infrastructure, data, application, interoperability, and assurance programs.
+    evidence_model: Cloud service scope, shared-responsibility statement, policy, configuration state, identity control, data protection, logging, vulnerability, supplier, and assurance evidence.
+    assessment_notes: Preserve cloud service model, deployment model, tenant boundary, shared-responsibility owner, and mapped CCM domain when asserting coverage.
+  - framework: Cerebro AI Governance
+    framework_id: cerebro_ai_governance
+    version: internal
+    lifecycle: active
+    authority: Writer
+    source_type: internal_control_pack
+    source_url: internal/compliance/control_families.yaml
+    source_status: internal
+    control_model: Internal AI governance controls for model, data, vendor, risk, and monitoring workflows.
+    evidence_model: AI inventory, risk assessment, policy, approval, evaluation, monitoring, and exception evidence.
+    assessment_notes: Use as a product operating control pack and map outward to ISO 42001 or the EU AI Act when required.
+  - framework: Cerebro Financial Controls
+    framework_id: cerebro_financial_controls
+    version: internal
+    lifecycle: active
+    authority: Writer
+    source_type: internal_control_pack
+    source_url: internal/compliance/control_families.yaml
+    source_status: internal
+    control_model: Internal finance and revenue operations control pack.
+    evidence_model: Approval, reconciliation, access, change, exception, and close-process evidence.
+    assessment_notes: Use as an operating-control layer before external SOX or finance-framework mapping exists.
+  - framework: Cerebro Operational Resilience
+    framework_id: cerebro_operational_resilience
+    version: internal
+    lifecycle: active
+    authority: Writer
+    source_type: internal_control_pack
+    source_url: internal/compliance/control_families.yaml
+    source_status: internal
+    control_model: Internal continuity, incident, service, vendor, and resilience control pack.
+    evidence_model: Incident timeline, continuity test, backup, service health, dependency, vendor, and corrective-action evidence.
+    assessment_notes: Map outward to DORA, ISO 22301, SOC 2 availability, or NIST contingency controls where needed.
+  - framework: Cerebro Organizational Resilience
+    framework_id: cerebro_organizational_resilience
+    version: internal
+    lifecycle: active
+    authority: Writer
+    source_type: internal_control_pack
+    source_url: internal/compliance/control_families.yaml
+    source_status: internal
+    control_model: Internal organizational governance, people, ownership, and accountability control pack.
+    evidence_model: Owner assignment, policy approval, training, exception, review cadence, role, and governance evidence.
+    assessment_notes: Use for owner and accountability coverage before mapping to formal external clauses.
+  - framework: Cerebro Revenue Operations
+    framework_id: cerebro_revenue_operations
+    version: internal
+    lifecycle: active
+    authority: Writer
+    source_type: internal_control_pack
+    source_url: internal/compliance/control_families.yaml
+    source_status: internal
+    control_model: Internal revenue operations, customer lifecycle, billing, and support control pack.
+    evidence_model: Approval, entitlement, billing, support, change, exception, and customer-impact evidence.
+    assessment_notes: Use as an operating control pack and map outward to customer assurance requirements as needed.
+  - framework: CIS GitHub Benchmark
+    framework_id: cisgithubbenchmark
+    version: current
+    lifecycle: current
+    authority: Center for Internet Security
+    source_type: application_configuration_benchmark
+    source_url: https://www.cisecurity.org/benchmark/github
+    source_status: official_benchmark_page
+    control_model: GitHub organization and repository secure configuration recommendations.
+    evidence_model: Organization settings, repository access, branch protection, secret scanning, audit log, and collaborator evidence.
+    assessment_notes: Scope evidence to the GitHub organization, repository class, and benchmark version.
+  - framework: CIS Google Workspace Benchmark
+    framework_id: cisgoogleworkspacebenchmark
+    version: current
+    lifecycle: current
+    authority: Center for Internet Security
+    source_type: application_configuration_benchmark
+    source_url: https://www.cisecurity.org/benchmark/google_workspace
+    source_status: official_benchmark_page
+    control_model: Google Workspace tenant and application secure configuration recommendations.
+    evidence_model: Admin configuration, identity, group, device, sharing, audit log, and application setting evidence.
+    assessment_notes: Scope evidence to tenant, organizational unit, and benchmark version.
+  - framework: NIST SP 800-177
+    framework_id: nistsp800177
+    version: final
+    lifecycle: current
+    authority: NIST
+    source_type: cloud_computing_guidance
+    source_url: https://csrc.nist.gov/pubs/sp/800/177/final
+    source_status: official_publication
+    control_model: Cloud computing security reference guidance.
+    evidence_model: Cloud service, cloud customer, provider responsibility, architecture, and operational evidence.
+    assessment_notes: Use as cloud responsibility and evidence-context guidance, not as a standalone audit framework.

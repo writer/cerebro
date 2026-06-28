@@ -517,6 +517,99 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	}
 }
 
+func TestGenerateFilesIncludesFrameworkSourceRegistry(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	sourceRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_sources.csv"))
+	sourceHeader := sourceRows[0]
+	sourceFrameworkCol := columnIndex(t, sourceHeader, "framework")
+	socSourceRow := findRow(t, sourceRows, sourceFrameworkCol, "SOC 2")
+	assertCellContains(t, sourceHeader, socSourceRow, "framework_authority", "AICPA")
+	assertCellContains(t, sourceHeader, socSourceRow, "framework_version", "Trust Services Criteria 2022")
+	assertCellContains(t, sourceHeader, socSourceRow, "framework_source_url", "aicpa-cima.com")
+
+	isoPrivacyRow := findRow(t, sourceRows, sourceFrameworkCol, "ISO 27701:2025")
+	assertCellContains(t, sourceHeader, isoPrivacyRow, "framework_source_url", "iso.org/standard/27701")
+	assertCellContains(t, sourceHeader, isoPrivacyRow, "framework_lifecycle", "current")
+
+	gapRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_control_gap_map.csv"))
+	gapHeader := gapRows[0]
+	gapFrameworkCol := columnIndex(t, gapHeader, "framework")
+	gapControlCol := columnIndex(t, gapHeader, "control_id")
+	socGapRow := findFrameworkControlRow(t, gapRows, gapFrameworkCol, gapControlCol, "SOC 2", "CC6.1")
+	assertCellContains(t, gapHeader, socGapRow, "framework_authority", "AICPA")
+	assertCellContains(t, gapHeader, socGapRow, "framework_source_type", "trust_services_criteria")
+	assertCellContains(t, gapHeader, socGapRow, "framework_evidence_model", "Control design and operating effectiveness")
+
+	requirementRows := readGeneratedCSV(t, generatedFileByName(t, files, "control_evidence_requirements.csv"))
+	requirementHeader := requirementRows[0]
+	requirementFrameworkCol := columnIndex(t, requirementHeader, "framework")
+	requirementControlCol := columnIndex(t, requirementHeader, "control_id")
+	requirementProfileCol := columnIndex(t, requirementHeader, "requirement_profile")
+	requirementSourceCol := columnIndex(t, requirementHeader, "requirement_source_id")
+	socRequirementRow := findRequirementRow(t, requirementRows, requirementFrameworkCol, requirementControlCol, requirementProfileCol, requirementSourceCol, "SOC 2", "CC6.1", "identity-access", "okta")
+	assertCellContains(t, requirementHeader, socRequirementRow, "framework_authority", "AICPA")
+	assertCellContains(t, requirementHeader, socRequirementRow, "framework_lifecycle", "current")
+
+	manifestRows := readGeneratedCSV(t, generatedFileByName(t, files, "workbook_manifest.csv"))
+	manifestHeader := manifestRows[0]
+	manifestCSVCol := columnIndex(t, manifestHeader, "csv_file")
+	sourceManifestRow := findRow(t, manifestRows, manifestCSVCol, "framework_sources.csv")
+	assertCellContains(t, manifestHeader, sourceManifestRow, "worksheet_name", "Framework Sources")
+	assertCellContains(t, manifestHeader, sourceManifestRow, "include_by_default", "true")
+}
+
+func TestValidateFrameworkSourcesRequiresCatalogCoverage(t *testing.T) {
+	catalog := complianceControlCatalog{
+		Frameworks: []complianceControlCatalogFramework{
+			{Name: "SOC 2"},
+			{Name: "ISO 27001:2022"},
+		},
+	}
+	sources := []frameworkSource{
+		{
+			Framework:       "SOC 2",
+			FrameworkID:     "soc2",
+			Version:         "Trust Services Criteria 2022",
+			Lifecycle:       "current",
+			Authority:       "AICPA",
+			SourceType:      "trust_services_criteria",
+			SourceURL:       "https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services",
+			SourceStatus:    "official_landing",
+			ControlModel:    "Trust services criteria.",
+			EvidenceModel:   "Control design and operating effectiveness evidence.",
+			AssessmentNotes: "Use control evidence.",
+		},
+		{
+			Framework:       "Unknown Framework",
+			FrameworkID:     "unknown",
+			Version:         "current",
+			Lifecycle:       "current",
+			Authority:       "Unknown",
+			SourceType:      "unknown",
+			SourceURL:       "https://example.com",
+			SourceStatus:    "placeholder",
+			ControlModel:    "Unknown controls.",
+			EvidenceModel:   "Unknown evidence.",
+			AssessmentNotes: "Unknown notes.",
+		},
+	}
+
+	err := validateFrameworkSources(catalog, sources)
+	if err == nil {
+		t.Fatal("validateFrameworkSources() error = nil, want coverage error")
+	}
+	if !strings.Contains(err.Error(), "missing source for ISO 27001:2022") {
+		t.Fatalf("validateFrameworkSources() error = %v, want missing framework source", err)
+	}
+	if !strings.Contains(err.Error(), "unknown framework Unknown Framework") {
+		t.Fatalf("validateFrameworkSources() error = %v, want unknown framework source", err)
+	}
+}
+
 func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	files, err := generateFiles(repoRoot(t))
 	if err != nil {
@@ -726,7 +819,7 @@ func TestFrameworkCoverageCandidateRowsCoverAllStatuses(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.status, func(t *testing.T) {
-			row := frameworkCoverageCandidateRow(item, tt.status, nil)
+			row := frameworkCoverageCandidateRow(item, tt.status, nil, frameworkSourceIndex{})
 			assertCellEquals(t, header, row, "coverage_status", tt.status)
 			assertCellEquals(t, header, row, "candidate_type", tt.kind)
 			assertCellContains(t, header, row, "next_action", frameworkCoverageCandidateAction(tt.status))
@@ -764,6 +857,13 @@ func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 			name: "control evidence requirements",
 			load: func(root string) error {
 				_, err := loadControlEvidenceRequirements(root)
+				return err
+			},
+		},
+		{
+			name: "framework sources",
+			load: func(root string) error {
+				_, err := loadFrameworkSources(root)
 				return err
 			},
 		},

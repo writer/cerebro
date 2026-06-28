@@ -20,6 +20,7 @@ import (
 const defaultOutputDir = "docs/reference/policy-compliance-mapping"
 const policyRuleExtensionsPath = "internal/compliance/policy_rule_extensions.yaml"
 const controlFamiliesPath = "internal/compliance/control_families.yaml"
+const frameworkSourcesPath = "internal/compliance/framework_sources.yaml"
 const frameworkReviewAreasPath = "internal/compliance/framework_review_areas.yaml"
 const controlRelationshipsPath = "internal/compliance/control_relationships.yaml"
 const evidenceCapabilitiesPath = "internal/compliance/evidence_capabilities.yaml"
@@ -50,6 +51,26 @@ type findingDomainAliases struct {
 	Tags     map[string]string `yaml:"tags"`
 	Findings map[string]string `yaml:"findings"`
 }
+
+type frameworkSourceCatalog struct {
+	Sources []frameworkSource `yaml:"sources"`
+}
+
+type frameworkSource struct {
+	Framework       string `yaml:"framework"`
+	FrameworkID     string `yaml:"framework_id"`
+	Version         string `yaml:"version"`
+	Lifecycle       string `yaml:"lifecycle"`
+	Authority       string `yaml:"authority"`
+	SourceType      string `yaml:"source_type"`
+	SourceURL       string `yaml:"source_url"`
+	SourceStatus    string `yaml:"source_status"`
+	ControlModel    string `yaml:"control_model"`
+	EvidenceModel   string `yaml:"evidence_model"`
+	AssessmentNotes string `yaml:"assessment_notes"`
+}
+
+type frameworkSourceIndex map[string]frameworkSource
 
 type frameworkReviewAreaCatalog struct {
 	ReviewAreas []frameworkReviewArea `yaml:"review_areas"`
@@ -320,6 +341,14 @@ func generateFiles(root string) ([]generatedFile, error) {
 		return nil, err
 	}
 	controlFamilies := controlFamilyIndexFromCatalog(controlCatalog)
+	frameworkSources, err := loadFrameworkSources(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFrameworkSources(controlCatalog, frameworkSources); err != nil {
+		return nil, err
+	}
+	frameworkSourceIndex := frameworkSourceIndexByFramework(frameworkSources)
 	reviewAreas, err := loadFrameworkReviewAreas(root)
 	if err != nil {
 		return nil, err
@@ -456,12 +485,13 @@ func generateFiles(root string) ([]generatedFile, error) {
 	findingRelationshipRows := findingControlRelationshipRows(catalog, controlFamilies, controlRelationships)
 	evidenceCapabilityRows := evidenceCapabilityRows(evidenceCapabilities, controlFamilies)
 	sourceCapabilityReviewRows := sourceCapabilityReviewRows(catalog, controlFamilies, evidenceCapabilities)
-	frameworkControlEnrichmentRows := frameworkControlEnrichmentRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
-	frameworkControlGapRows := frameworkControlGapRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
+	frameworkSourceCSVRows := frameworkSourceRows(frameworkSources)
+	frameworkControlEnrichmentRows := frameworkControlEnrichmentRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, frameworkSourceIndex)
+	frameworkControlGapRows := frameworkControlGapRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, frameworkSourceIndex)
 	controlRequirementItems := expandedControlEvidenceRequirements(controlCatalog, controlEvidenceRequirements, catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
-	controlRequirementRows := controlEvidenceRequirementRows(controlRequirementItems)
-	findingRequirementRows := findingEvidenceRequirementRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems)
-	coverageCandidateRows := frameworkCoverageCandidateRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, controlRequirementItems)
+	controlRequirementRows := controlEvidenceRequirementRows(controlRequirementItems, frameworkSourceIndex)
+	findingRequirementRows := findingEvidenceRequirementRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
+	coverageCandidateRows := frameworkCoverageCandidateRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
 	if err := validateControlEvidenceRequirementCoverage(controlCatalogRefs(controlCatalog), controlRequirementItems); err != nil {
 		return nil, err
 	}
@@ -481,6 +511,7 @@ func generateFiles(root string) ([]generatedFile, error) {
 		{Name: "finding_compliance_review_map.csv", Content: csvBytes(append([][]string{findingComplianceReviewMapHeader()}, findingComplianceRows...))},
 		{Name: "compliance_quality_issues.csv", Content: csvBytes(append([][]string{complianceQualityIssuesHeader()}, qualityIssueRows...))},
 		{Name: "finding_domain_aliases.csv", Content: csvBytes(append([][]string{findingDomainAliasesHeader()}, findingDomainAliasRows(extensions)...))},
+		{Name: "framework_sources.csv", Content: csvBytes(append([][]string{frameworkSourcesHeader()}, frameworkSourceCSVRows...))},
 		{Name: "framework_review_areas.csv", Content: csvBytes(append([][]string{frameworkReviewAreasHeader()}, reviewAreaRows...))},
 		{Name: "control_relationships.csv", Content: csvBytes(append([][]string{controlRelationshipsHeader()}, relationshipRows...))},
 		{Name: "finding_review_area_map.csv", Content: csvBytes(append([][]string{findingReviewAreaMapHeader()}, findingAreaRows...))},
@@ -512,6 +543,18 @@ func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {
 		return policyRuleExtensions{}, fmt.Errorf("decode %s: %w", policyRuleExtensionsPath, err)
 	}
 	return extensions, nil
+}
+
+func loadFrameworkSources(root string) ([]frameworkSource, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(frameworkSourcesPath)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", frameworkSourcesPath, err)
+	}
+	var catalog frameworkSourceCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", frameworkSourcesPath, err)
+	}
+	return catalog.Sources, nil
 }
 
 func loadFrameworkReviewAreas(root string) ([]frameworkReviewArea, error) {
@@ -644,6 +687,115 @@ func controlCatalogRefs(catalog complianceControlCatalog) []controlRef {
 		}
 	}
 	return uniqueControlRefs(refs)
+}
+
+func controlCatalogFrameworkNames(catalog complianceControlCatalog) []string {
+	names := make([]string, 0, len(catalog.Frameworks))
+	for _, framework := range catalog.Frameworks {
+		if name := strings.TrimSpace(framework.Name); name != "" {
+			names = append(names, name)
+		}
+	}
+	return uniqueSorted(names)
+}
+
+func validateFrameworkSources(catalog complianceControlCatalog, sources []frameworkSource) error {
+	var issues []string
+	catalogFrameworks := stringSet(controlCatalogFrameworkNames(catalog))
+	sourceFrameworks := map[string]struct{}{}
+	for _, source := range sources {
+		framework := strings.TrimSpace(source.Framework)
+		label := firstNonEmpty(framework, "<missing-framework>")
+		if framework == "" {
+			issues = append(issues, frameworkSourcesPath+": source missing framework")
+		} else {
+			if _, ok := catalogFrameworks[framework]; !ok {
+				issues = append(issues, frameworkSourcesPath+": source references unknown framework "+framework)
+			}
+			if _, ok := sourceFrameworks[framework]; ok {
+				issues = append(issues, frameworkSourcesPath+": duplicate source for "+framework)
+			}
+			sourceFrameworks[framework] = struct{}{}
+		}
+		if strings.TrimSpace(source.FrameworkID) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing framework_id")
+		}
+		if strings.TrimSpace(source.Version) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing version")
+		}
+		if strings.TrimSpace(source.Lifecycle) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing lifecycle")
+		}
+		if strings.TrimSpace(source.Authority) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing authority")
+		}
+		if strings.TrimSpace(source.SourceType) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing source_type")
+		}
+		sourceURL := strings.TrimSpace(source.SourceURL)
+		if sourceURL == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing source_url")
+		} else if !strings.HasPrefix(sourceURL, "https://") && !strings.HasPrefix(sourceURL, "internal/") {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" source_url must be https:// or internal/")
+		}
+		if strings.TrimSpace(source.SourceStatus) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing source_status")
+		}
+		if strings.TrimSpace(source.ControlModel) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing control_model")
+		}
+		if strings.TrimSpace(source.EvidenceModel) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing evidence_model")
+		}
+		if strings.TrimSpace(source.AssessmentNotes) == "" {
+			issues = append(issues, frameworkSourcesPath+": source "+label+" missing assessment_notes")
+		}
+	}
+	for _, framework := range sortedKeys(catalogFrameworks) {
+		if _, ok := sourceFrameworks[framework]; !ok {
+			issues = append(issues, frameworkSourcesPath+": missing source for "+framework)
+		}
+	}
+	if len(issues) != 0 {
+		sort.Strings(issues)
+		return fmt.Errorf("framework source validation failed: %s", strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func frameworkSourceIndexByFramework(sources []frameworkSource) frameworkSourceIndex {
+	index := frameworkSourceIndex{}
+	for _, source := range sources {
+		if framework := strings.TrimSpace(source.Framework); framework != "" {
+			index[framework] = frameworkSource{
+				Framework:       framework,
+				FrameworkID:     strings.TrimSpace(source.FrameworkID),
+				Version:         strings.TrimSpace(source.Version),
+				Lifecycle:       strings.TrimSpace(source.Lifecycle),
+				Authority:       strings.TrimSpace(source.Authority),
+				SourceType:      strings.TrimSpace(source.SourceType),
+				SourceURL:       strings.TrimSpace(source.SourceURL),
+				SourceStatus:    strings.TrimSpace(source.SourceStatus),
+				ControlModel:    strings.TrimSpace(source.ControlModel),
+				EvidenceModel:   strings.TrimSpace(source.EvidenceModel),
+				AssessmentNotes: strings.TrimSpace(source.AssessmentNotes),
+			}
+		}
+	}
+	return index
+}
+
+func frameworkSourceExportCells(index frameworkSourceIndex, framework string) []string {
+	source := index[strings.TrimSpace(framework)]
+	return []string{
+		source.Version,
+		source.Lifecycle,
+		source.Authority,
+		source.SourceType,
+		source.SourceStatus,
+		source.SourceURL,
+		source.EvidenceModel,
+	}
 }
 
 func controlFamilyForRef(index controlFamilyIndex, ref controlRef) string {
@@ -2050,6 +2202,27 @@ func appendFindingDomainAliasRows(rows [][]string, matchType string, aliases map
 	return rows
 }
 
+func frameworkSourceRows(sources []frameworkSource) [][]string {
+	rows := make([][]string, 0, len(sources))
+	for _, source := range sources {
+		rows = append(rows, []string{
+			strings.TrimSpace(source.Framework),
+			strings.TrimSpace(source.FrameworkID),
+			strings.TrimSpace(source.Version),
+			strings.TrimSpace(source.Lifecycle),
+			strings.TrimSpace(source.Authority),
+			strings.TrimSpace(source.SourceType),
+			strings.TrimSpace(source.SourceURL),
+			strings.TrimSpace(source.SourceStatus),
+			strings.TrimSpace(source.ControlModel),
+			strings.TrimSpace(source.EvidenceModel),
+			strings.TrimSpace(source.AssessmentNotes),
+		})
+	}
+	sortRows(rows)
+	return rows
+}
+
 func frameworkReviewAreaRows(reviewAreas []frameworkReviewArea, index controlFamilyIndex) [][]string {
 	var rows [][]string
 	for _, area := range reviewAreas {
@@ -2073,13 +2246,13 @@ func frameworkReviewAreaRows(reviewAreas []frameworkReviewArea, index controlFam
 	return rows
 }
 
-func frameworkControlEnrichmentRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) [][]string {
+func frameworkControlEnrichmentRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource, sourceIndex frameworkSourceIndex) [][]string {
 	enrichments := frameworkControlEnrichments(catalog, index, reviewAreas, relationships, capabilitySources)
 	keys := sortedKeys(enrichments)
 	rows := make([][]string, 0, len(keys))
 	for _, key := range keys {
 		item := enrichments[key]
-		rows = append(rows, []string{
+		row := []string{
 			item.Ref.Framework,
 			item.Ref.ControlID,
 			item.Ref.Label(),
@@ -2094,7 +2267,9 @@ func frameworkControlEnrichmentRows(catalog publicDetectionCatalog, index contro
 			frameworkControlEnrichmentStatus(item),
 			joinLimitedStrings(item.DirectFindingIDs, 25),
 			joinLimitedStrings(item.SourceBackedFindingIDs, 25),
-		})
+		}
+		row = append(row, frameworkSourceExportCells(sourceIndex, item.Ref.Framework)...)
+		rows = append(rows, row)
 	}
 	sortRows(rows)
 	return rows
@@ -2222,7 +2397,7 @@ func frameworkControlEnrichmentStatus(item frameworkControlEnrichment) string {
 	}
 }
 
-func frameworkControlGapRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) [][]string {
+func frameworkControlGapRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource, sourceIndex frameworkSourceIndex) [][]string {
 	enrichments := frameworkControlEnrichments(catalog, index, reviewAreas, relationships, capabilitySources)
 	keys := sortedKeys(enrichments)
 	rows := make([][]string, 0, len(keys))
@@ -2233,7 +2408,7 @@ func frameworkControlGapRows(catalog publicDetectionCatalog, index controlFamily
 		reviewContextRefs = append(reviewContextRefs, item.OutboundRelationshipRefs...)
 		reviewContextRefs = append(reviewContextRefs, item.InboundRelationshipRefs...)
 		reviewContextCount := len(uniqueSorted(reviewContextRefs))
-		rows = append(rows, []string{
+		row := []string{
 			item.Ref.Framework,
 			item.Ref.ControlID,
 			item.Ref.Label(),
@@ -2247,7 +2422,9 @@ func frameworkControlGapRows(catalog publicDetectionCatalog, index controlFamily
 			fmt.Sprint(len(uniqueSorted(item.SourceCapabilityRefs))),
 			fmt.Sprint(reviewContextCount),
 			frameworkControlNextAction(status),
-		})
+		}
+		row = append(row, frameworkSourceExportCells(sourceIndex, item.Ref.Framework)...)
+		rows = append(rows, row)
 	}
 	sortRows(rows)
 	return rows
@@ -2302,7 +2479,7 @@ func frameworkControlNextAction(status string) string {
 	}
 }
 
-func frameworkCoverageCandidateRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource, requirements []expandedControlEvidenceRequirement) [][]string {
+func frameworkCoverageCandidateRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource, requirements []expandedControlEvidenceRequirement, sourceIndex frameworkSourceIndex) [][]string {
 	enrichments := frameworkControlEnrichments(catalog, index, reviewAreas, relationships, capabilitySources)
 	requirementsByControl := expandedRequirementsByControl(requirements)
 	keys := sortedKeys(enrichments)
@@ -2315,17 +2492,17 @@ func frameworkCoverageCandidateRows(catalog publicDetectionCatalog, index contro
 			continue
 		}
 		controlRequirements := requirementsByControl[key]
-		rows = append(rows, frameworkCoverageCandidateRow(item, status, controlRequirements))
+		rows = append(rows, frameworkCoverageCandidateRow(item, status, controlRequirements, sourceIndex))
 	}
 	sortRows(rows)
 	return rows
 }
 
-func frameworkCoverageCandidateRow(item frameworkControlEnrichment, status string, controlRequirements []expandedControlEvidenceRequirement) []string {
+func frameworkCoverageCandidateRow(item frameworkControlEnrichment, status string, controlRequirements []expandedControlEvidenceRequirement, sourceIndex frameworkSourceIndex) []string {
 	reviewContextRefs := append([]string{}, item.ReviewAreaRefs...)
 	reviewContextRefs = append(reviewContextRefs, item.OutboundRelationshipRefs...)
 	reviewContextRefs = append(reviewContextRefs, item.InboundRelationshipRefs...)
-	return []string{
+	row := []string{
 		item.Ref.Framework,
 		item.Ref.ControlID,
 		item.Ref.Label(),
@@ -2342,6 +2519,8 @@ func frameworkCoverageCandidateRow(item frameworkControlEnrichment, status strin
 		joinList(reviewContextRefs),
 		frameworkCoverageCandidateAction(status),
 	}
+	row = append(row, frameworkSourceExportCells(sourceIndex, item.Ref.Framework)...)
+	return row
 }
 
 func expandedRequirementsByControl(requirements []expandedControlEvidenceRequirement) map[string][]expandedControlEvidenceRequirement {
@@ -2657,10 +2836,10 @@ func catalogEvidenceExpectationLabel(expectation complianceControlEvidenceExpect
 	return strings.Join(parts, " ")
 }
 
-func controlEvidenceRequirementRows(items []expandedControlEvidenceRequirement) [][]string {
+func controlEvidenceRequirementRows(items []expandedControlEvidenceRequirement, sourceIndex frameworkSourceIndex) [][]string {
 	rows := make([][]string, 0, len(items))
 	for _, item := range items {
-		rows = append(rows, []string{
+		row := []string{
 			item.Ref.Framework,
 			item.Ref.ControlID,
 			item.Ref.Label(),
@@ -2676,13 +2855,15 @@ func controlEvidenceRequirementRows(items []expandedControlEvidenceRequirement) 
 			joinList(item.SourceCapabilityRefs),
 			joinList(item.CatalogEvidenceRefs),
 			item.CoverageStatus,
-		})
+		}
+		row = append(row, frameworkSourceExportCells(sourceIndex, item.Ref.Framework)...)
+		rows = append(rows, row)
 	}
 	sortRows(rows)
 	return rows
 }
 
-func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index controlFamilyIndex, capabilitySources []evidenceCapabilitySource, items []expandedControlEvidenceRequirement) [][]string {
+func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index controlFamilyIndex, capabilitySources []evidenceCapabilitySource, items []expandedControlEvidenceRequirement, sourceIndex frameworkSourceIndex) [][]string {
 	byControl := map[string][]expandedControlEvidenceRequirement{}
 	for _, item := range items {
 		byControl[controlRefKey(item.Ref)] = append(byControl[controlRefKey(item.Ref)], item)
@@ -2694,7 +2875,7 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 		sourceCapabilityStatus := sourceCapabilityStatusForDetection(detection, capabilitySources)
 		for _, ref := range controlRefs {
 			for _, item := range byControl[controlRefKey(ref)] {
-				rows = append(rows, []string{
+				row := []string{
 					detection.ID,
 					detection.Name,
 					detection.PackID,
@@ -2712,7 +2893,9 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					sourceCapabilityStatus,
 					complianceReview.ComplianceEvidenceStatus,
 					findingRequirementMatchStatus(detection, item),
-				})
+				}
+				row = append(row, frameworkSourceExportCells(sourceIndex, ref.Framework)...)
+				rows = append(rows, row)
 			}
 		}
 	}
@@ -3272,27 +3455,28 @@ func workbookManifestRows() [][]string {
 		workbookManifestRow(1, "Overview", "overview.csv", "metric", "metric", "What changed and where should review start?", "generated summary", true),
 		workbookManifestRow(2, "Logic", "logic.csv", "generation step", "step", "What logic produced these review tables?", "tools/policymappingexport", true),
 		workbookManifestRow(3, "Quality Issues", "compliance_quality_issues.csv", "blocking quality issue", "scope; scope_id; quality_gate", "What must be fixed before claiming mapping quality?", "tools/policymappingexport", true),
-		workbookManifestRow(4, "Framework Gaps", "framework_control_gap_map.csv", "framework control", "framework; control_id", "Which controls are direct, indirect, or uncovered?", "internal/compliance/control_families.yaml", true),
-		workbookManifestRow(5, "Coverage Candidates", "framework_coverage_candidates.csv", "framework control work item", "framework; control_id; candidate_type", "What author or evidence work should happen next?", "derived from framework control enrichment", true),
-		workbookManifestRow(6, "Control Requirements", "control_evidence_requirements.csv", "control evidence requirement", "framework; control_id; requirement_profile; requirement_source_id", "What evidence does each control require?", "internal/compliance/control_evidence_requirements.yaml", true),
-		workbookManifestRow(7, "Finding Requirements", "finding_evidence_requirement_map.csv", "finding-control-requirement link", "finding_id; framework; control_id; requirement_profile; requirement_source_id", "Which requirement source does each mapped finding point toward?", "public catalog plus control evidence requirements", true),
-		workbookManifestRow(8, "Finding Map", "finding_map.csv", "public finding", "finding_id", "What controls, tags, evidence, and review signals attach to each finding?", "internal/findings/public_detection_catalog.json", true),
-		workbookManifestRow(9, "Finding Controls", "finding_control_map.csv", "finding-control link", "finding_id; framework; control_id", "Which control links are source-backed, direct-only, or review-needed?", "public catalog source coverage refs", true),
-		workbookManifestRow(10, "Finding Review", "finding_compliance_review_map.csv", "public finding review row", "finding_id", "Which findings need audit-language, source, or control review?", "policy_rule_extensions.yaml plus public catalog", true),
-		workbookManifestRow(11, "Source Coverage", "source_coverage_map.csv", "finding source coverage ref", "finding_id; coverage_source_id; coverage_dimension_id", "Which source coverage refs support or extend finding controls?", "public catalog source coverage refs", true),
-		workbookManifestRow(12, "Source Capability Review", "source_capability_review_map.csv", "source capability", "source_id; dimension_id", "Where do YAML capabilities and catalog coverage differ?", "internal/compliance/evidence_capabilities.yaml", true),
-		workbookManifestRow(13, "Evidence Capabilities", "evidence_capabilities.csv", "YAML source capability", "source_id; dimension_id", "What can each source and dimension support?", "internal/compliance/evidence_capabilities.yaml", true),
-		workbookManifestRow(14, "Framework Enrichment", "framework_control_enrichment_map.csv", "framework control", "framework; control_id", "What direct findings, source capabilities, and review context enrich each control?", "derived from all mapping layers", true),
-		workbookManifestRow(15, "Review Areas", "framework_review_areas.csv", "framework review area", "framework; area_id", "How should controls be grouped for reviewer queues?", "internal/compliance/framework_review_areas.yaml", false),
-		workbookManifestRow(16, "Control Relationships", "control_relationships.csv", "control relationship", "framework; control_id; related_framework; related_control_id", "Which controls should be reviewed together?", "internal/compliance/control_relationships.yaml", false),
-		workbookManifestRow(17, "Finding Review Areas", "finding_review_area_map.csv", "finding review-area link", "finding_id; framework; area_id", "Which findings enter each framework review queue?", "review areas plus direct control refs", false),
-		workbookManifestRow(18, "Finding Relationships", "finding_control_relationship_map.csv", "finding control relationship link", "finding_id; framework; control_id; related_control_id", "Which related controls should be inspected with each finding?", "control relationships plus direct control refs", false),
-		workbookManifestRow(19, "Policy Map", "policy_map.csv", "policy rule", "rule_id", "What YAML policy metadata, controls, tags, and audit language exist?", "policies/**/*.yaml", false),
-		workbookManifestRow(20, "Policy Controls", "control_map.csv", "policy-control link", "rule_id; framework; control_id", "Which policy rules map to each framework control?", "policies/**/*.yaml", false),
-		workbookManifestRow(21, "Policy Tags", "tag_map.csv", "policy-tag link", "rule_id; tag", "Which metadata and derived tags route each policy?", "policies/**/*.yaml", false),
-		workbookManifestRow(22, "Finding Tags", "finding_tag_map.csv", "finding-tag link", "finding_id; tag", "Which catalog and derived review tags attach to each finding?", "public catalog plus control refs", false),
-		workbookManifestRow(23, "Domain Aliases", "finding_domain_aliases.csv", "finding domain alias", "match_type; match_value", "How are non-policy findings assigned audit domains?", "internal/compliance/policy_rule_extensions.yaml", false),
-		workbookManifestRow(24, "YAML Layers", "yaml_layers.csv", "audit language layer", "scope_type; scope", "Which YAML layer supplied default audit language?", "internal/compliance/policy_rule_extensions.yaml", false),
+		workbookManifestRow(4, "Framework Sources", "framework_sources.csv", "framework source", "framework", "Which authority, version, and evidence model governs each framework?", "internal/compliance/framework_sources.yaml", true),
+		workbookManifestRow(5, "Framework Gaps", "framework_control_gap_map.csv", "framework control", "framework; control_id", "Which controls are direct, indirect, or uncovered?", "internal/compliance/control_families.yaml plus framework_sources.yaml", true),
+		workbookManifestRow(6, "Coverage Candidates", "framework_coverage_candidates.csv", "framework control work item", "framework; control_id; candidate_type", "What author or evidence work should happen next?", "derived from framework control enrichment", true),
+		workbookManifestRow(7, "Control Requirements", "control_evidence_requirements.csv", "control evidence requirement", "framework; control_id; requirement_profile; requirement_source_id", "What evidence does each control require?", "internal/compliance/control_evidence_requirements.yaml plus framework_sources.yaml", true),
+		workbookManifestRow(8, "Finding Requirements", "finding_evidence_requirement_map.csv", "finding-control-requirement link", "finding_id; framework; control_id; requirement_profile; requirement_source_id", "Which requirement source does each mapped finding point toward?", "public catalog plus control evidence requirements", true),
+		workbookManifestRow(9, "Finding Map", "finding_map.csv", "public finding", "finding_id", "What controls, tags, evidence, and review signals attach to each finding?", "internal/findings/public_detection_catalog.json", true),
+		workbookManifestRow(10, "Finding Controls", "finding_control_map.csv", "finding-control link", "finding_id; framework; control_id", "Which control links are source-backed, direct-only, or review-needed?", "public catalog source coverage refs", true),
+		workbookManifestRow(11, "Finding Review", "finding_compliance_review_map.csv", "public finding review row", "finding_id", "Which findings need audit-language, source, or control review?", "policy_rule_extensions.yaml plus public catalog", true),
+		workbookManifestRow(12, "Source Coverage", "source_coverage_map.csv", "finding source coverage ref", "finding_id; coverage_source_id; coverage_dimension_id", "Which source coverage refs support or extend finding controls?", "public catalog source coverage refs", true),
+		workbookManifestRow(13, "Source Capability Review", "source_capability_review_map.csv", "source capability", "source_id; dimension_id", "Where do YAML capabilities and catalog coverage differ?", "internal/compliance/evidence_capabilities.yaml", true),
+		workbookManifestRow(14, "Evidence Capabilities", "evidence_capabilities.csv", "YAML source capability", "source_id; dimension_id", "What can each source and dimension support?", "internal/compliance/evidence_capabilities.yaml", true),
+		workbookManifestRow(15, "Framework Enrichment", "framework_control_enrichment_map.csv", "framework control", "framework; control_id", "What direct findings, source capabilities, and review context enrich each control?", "derived from all mapping layers", true),
+		workbookManifestRow(16, "Review Areas", "framework_review_areas.csv", "framework review area", "framework; area_id", "How should controls be grouped for reviewer queues?", "internal/compliance/framework_review_areas.yaml", false),
+		workbookManifestRow(17, "Control Relationships", "control_relationships.csv", "control relationship", "framework; control_id; related_framework; related_control_id", "Which controls should be reviewed together?", "internal/compliance/control_relationships.yaml", false),
+		workbookManifestRow(18, "Finding Review Areas", "finding_review_area_map.csv", "finding review-area link", "finding_id; framework; area_id", "Which findings enter each framework review queue?", "review areas plus direct control refs", false),
+		workbookManifestRow(19, "Finding Relationships", "finding_control_relationship_map.csv", "finding control relationship link", "finding_id; framework; control_id; related_control_id", "Which related controls should be inspected with each finding?", "control relationships plus direct control refs", false),
+		workbookManifestRow(20, "Policy Map", "policy_map.csv", "policy rule", "rule_id", "What YAML policy metadata, controls, tags, and audit language exist?", "policies/**/*.yaml", false),
+		workbookManifestRow(21, "Policy Controls", "control_map.csv", "policy-control link", "rule_id; framework; control_id", "Which policy rules map to each framework control?", "policies/**/*.yaml", false),
+		workbookManifestRow(22, "Policy Tags", "tag_map.csv", "policy-tag link", "rule_id; tag", "Which metadata and derived tags route each policy?", "policies/**/*.yaml", false),
+		workbookManifestRow(23, "Finding Tags", "finding_tag_map.csv", "finding-tag link", "finding_id; tag", "Which catalog and derived review tags attach to each finding?", "public catalog plus control refs", false),
+		workbookManifestRow(24, "Domain Aliases", "finding_domain_aliases.csv", "finding domain alias", "match_type; match_value", "How are non-policy findings assigned audit domains?", "internal/compliance/policy_rule_extensions.yaml", false),
+		workbookManifestRow(25, "YAML Layers", "yaml_layers.csv", "audit language layer", "scope_type; scope", "Which YAML layer supplied default audit language?", "internal/compliance/policy_rule_extensions.yaml", false),
 	)
 	return rows
 }
@@ -3319,18 +3503,19 @@ func logicRows() [][]string {
 		{"4", "finding domain aliases", "Resolve non-policy detections to YAML domains by finding ID, pack, source, or tag."},
 		{"5", "policy or finding override", "Apply any explicit policy ID or finding ID override when a rule needs different audit language."},
 		{"6", "source catalog fields", "Use policy YAML and public detection catalog fields as the strongest direct source for controls, tags, severity, evidence, and audit language."},
-		{"7", "source coverage reconciliation", "Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."},
-		{"8", "mapping confidence", "Classify each finding-control edge as high, medium, or review using matched source coverage and YAML source capability status."},
-		{"9", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
-		{"10", "framework review areas", "Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."},
-		{"11", "control relationships", "Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
-		{"12", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
-		{"13", "quality gates", "Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."},
-		{"14", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
-		{"15", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."},
-		{"16", "coverage candidates", "Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."},
-		{"17", "workbook manifest", "Emit a sheet-order manifest with row grain, primary keys, review questions, source authority, and default workbook inclusion for every generated table."},
-		{"18", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"7", "framework source registry", "Require internal/compliance/framework_sources.yaml to define one authority, version, lifecycle, source URL, and evidence model for every cataloged framework."},
+		{"8", "source coverage reconciliation", "Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."},
+		{"9", "mapping confidence", "Classify each finding-control edge as high, medium, or review using matched source coverage and YAML source capability status."},
+		{"10", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
+		{"11", "framework review areas", "Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."},
+		{"12", "control relationships", "Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
+		{"13", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
+		{"14", "quality gates", "Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."},
+		{"15", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
+		{"16", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities, catalog evidence expectations, and framework source metadata."},
+		{"17", "coverage candidates", "Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."},
+		{"18", "workbook manifest", "Emit a sheet-order manifest with row grain, primary keys, review questions, source authority, and default workbook inclusion for every generated table."},
+		{"19", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -3409,6 +3594,15 @@ func findingDomainAliasesHeader() []string {
 	return []string{"match_type", "match_value", "resolved_domain"}
 }
 
+func frameworkSourcesHeader() []string {
+	return []string{
+		"framework", "framework_id", "framework_version", "framework_lifecycle",
+		"framework_authority", "framework_source_type", "framework_source_url",
+		"framework_source_status", "framework_control_model",
+		"framework_evidence_model", "assessment_notes",
+	}
+}
+
 func frameworkReviewAreasHeader() []string {
 	return []string{
 		"framework", "area_id", "area_name", "evidence_use", "control_refs",
@@ -3465,7 +3659,9 @@ func frameworkControlEnrichmentMapHeader() []string {
 		"direct_finding_count", "source_backed_finding_count", "source_matched_finding_count",
 		"source_capability_refs", "review_area_refs", "outbound_relationship_refs",
 		"inbound_relationship_refs", "enrichment_status", "sample_direct_finding_ids",
-		"sample_source_backed_finding_ids",
+		"sample_source_backed_finding_ids", "framework_version", "framework_lifecycle",
+		"framework_authority", "framework_source_type", "framework_source_status",
+		"framework_source_url", "framework_evidence_model",
 	}
 }
 
@@ -3475,6 +3671,9 @@ func frameworkControlGapMapHeader() []string {
 		"coverage_status", "coverage_lane", "gap_type", "direct_finding_count",
 		"source_backed_finding_count", "source_matched_finding_count",
 		"source_capability_count", "review_context_count", "next_action",
+		"framework_version", "framework_lifecycle", "framework_authority",
+		"framework_source_type", "framework_source_status", "framework_source_url",
+		"framework_evidence_model",
 	}
 }
 
@@ -3484,7 +3683,9 @@ func controlEvidenceRequirementsHeader() []string {
 		"requirement_profile", "requirement_name", "requirement_source_id",
 		"entity_type", "required_fields", "freshness_window", "assessment_methods",
 		"auditor_grade_evidence", "source_capability_refs", "catalog_evidence_refs",
-		"coverage_status",
+		"coverage_status", "framework_version", "framework_lifecycle",
+		"framework_authority", "framework_source_type", "framework_source_status",
+		"framework_source_url", "framework_evidence_model",
 	}
 }
 
@@ -3495,6 +3696,9 @@ func findingEvidenceRequirementMapHeader() []string {
 		"requirement_profile", "requirement_name", "requirement_source_id",
 		"entity_type", "freshness_window", "source_capability_status",
 		"compliance_evidence_status", "requirement_match_status",
+		"framework_version", "framework_lifecycle", "framework_authority",
+		"framework_source_type", "framework_source_status", "framework_source_url",
+		"framework_evidence_model",
 	}
 }
 
@@ -3504,7 +3708,9 @@ func frameworkCoverageCandidatesHeader() []string {
 		"coverage_status", "gap_type", "candidate_priority", "candidate_type",
 		"suggested_finding_domain", "suggested_evidence_type", "requirement_profiles",
 		"requirement_sources", "source_capability_refs", "review_context_refs",
-		"next_action",
+		"next_action", "framework_version", "framework_lifecycle",
+		"framework_authority", "framework_source_type", "framework_source_status",
+		"framework_source_url", "framework_evidence_model",
 	}
 }
 
