@@ -101,8 +101,8 @@ context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
 
-The GRC domain packages (grccatalog, grccontrol, grcinventory, grcprogram,
-grctrends, and compliance) are documented in
+The GRC domain packages (grccatalog, grccontrol, grcinventory, grcpolicylifecycle,
+grcprogram, grctrends, and compliance) are documented in
 [docs/domains/grc-architecture.md](../domains/grc-architecture.md). The
 bootstrap-budget paragraphs below describe only the transport-boundary adapters
 that wire those domain packages into HTTP routes.
@@ -114,6 +114,12 @@ metadata, and markdown rendering to `internal/grccontrol`. Profile resolution,
 rule coverage, evidence freshness, control status behavior, custom profile
 resolution, report metadata construction, and export rendering stay behind that
 domain package.
+
+The GRC policy lifecycle route adds a small HTTP adapter that resolves request
+scope, checks graph-query availability, and passes the graph store into
+`internal/grcpolicylifecycle`. Policy template aggregation, version and approval
+state, attestation coverage, exception queues, reminder shaping, and explicit
+policy-to-control/evidence mappings stay behind that domain package.
 
 The GRC finding-trends route adds a small HTTP adapter that resolves request
 scope, parses the interval and window parameters, fans out per-tenant runtime

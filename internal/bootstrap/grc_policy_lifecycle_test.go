@@ -118,7 +118,36 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /grc/policy-lifecycle status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	var payload grcPolicyLifecycleResponse
+	var payload struct {
+		Summary struct {
+			Policies               int `json:"policies"`
+			Templates              int `json:"templates"`
+			DraftVersions          int `json:"draft_versions"`
+			PendingApprovals       int `json:"pending_approvals"`
+			OverdueReviews         int `json:"overdue_reviews"`
+			AttestationCoveragePct int `json:"attestation_coverage_pct"`
+			OverdueAttestations    int `json:"overdue_attestations"`
+			MappedControls         int `json:"mapped_controls"`
+			EvidenceItems          int `json:"evidence_items"`
+		} `json:"summary"`
+		Policies []struct {
+			ID            string `json:"id"`
+			Owner         string `json:"owner"`
+			LatestVersion string `json:"latest_version"`
+			VersionStatus string `json:"version_status"`
+			Approvals     []any  `json:"approvals"`
+			Attestations  []any  `json:"attestations"`
+			Exceptions    []any  `json:"exceptions"`
+			Reviews       []any  `json:"reviews"`
+		} `json:"policies"`
+		WorkQueue []any `json:"work_queue"`
+		Templates []struct {
+			Controls []any `json:"controls"`
+		} `json:"templates"`
+		Reminders []struct {
+			Recipients []string `json:"recipients"`
+		} `json:"reminders"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode policy lifecycle: %v", err)
 	}
