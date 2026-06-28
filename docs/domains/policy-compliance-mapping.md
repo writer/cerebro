@@ -11,7 +11,7 @@ Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping
 | `policies/**.yaml` | Policy IDs, names, domains, severities, resources, remediation, control refs, metadata tags, risk categories, and MITRE refs. |
 | `internal/findings/public_detection_catalog.json` | Public detection IDs, packs, sources, evaluation modes, runtime tags, control refs, audit depth, and source coverage refs for every public finding type. |
 | `internal/compliance/control_families.yaml` | Framework names, control IDs, and control family labels. |
-| `internal/compliance/policy_rule_extensions.yaml` | Shared audit language by defaults, evidence mode, domain, and policy override. |
+| `internal/compliance/policy_rule_extensions.yaml` | Shared audit language by defaults, evidence mode, domain, policy override, finding-domain alias, and finding override. |
 | `tools/policymappingexport` | Generated CSV tables for spreadsheet review. |
 
 ## Merge Order
@@ -26,6 +26,16 @@ Audit language is merged in this order:
 
 Specific string fields replace earlier values. Assessment methods replace earlier values. False-positive guidance is accumulated and de-duplicated.
 
+All-finding audit language uses the same YAML file:
+
+1. `defaults`
+2. `evidence_modes.<evaluation-mode>`
+3. `domains.<resolved-domain>`
+4. `findings.<finding-id>`
+5. Public detection catalog fields
+
+Finding domains resolve from `finding_domains` by finding ID, pack, source, then tag. Direct catalog fields win when they are present. `audit_language_source` reports the final source of the emitted audit fields.
+
 ## Generated Tables
 
 | File | Use |
@@ -38,6 +48,8 @@ Specific string fields replace earlier values. Assessment methods replace earlie
 | `finding_control_map.csv` | One row per public detection-control mapping across policy and non-policy findings. |
 | `finding_tag_map.csv` | One row per public detection tag, including catalog tags and control-derived compliance review tags. |
 | `source_coverage_map.csv` | One row per public detection source coverage ref for evidence-source review. |
+| `finding_compliance_review_map.csv` | One row per public detection with resolved audit domain, audit language source, source-backed control counts, and review flags. |
+| `finding_domain_aliases.csv` | One row per YAML finding-domain alias used to resolve non-policy findings into audit domains. |
 | `yaml_layers.csv` | One row per extension layer so inherited audit language can be reviewed. |
 | `logic.csv` | The generation contract in spreadsheet form. |
 
@@ -61,6 +73,16 @@ The all-finding tables add `compliance_review_tags` from `control_refs`:
 - `control-family:<family>`
 
 These tags are for spreadsheet filtering and cleanup. They do not replace `control_refs`, and they are not added to the runtime finding tag set.
+
+## Source-Backed Controls
+
+The all-finding export compares detection `control_refs` with source coverage `matched_control_refs`:
+
+- `source_backed`: every direct finding control has a matching source coverage control.
+- `partial_source_backed`: at least one direct finding control has source coverage, and at least one does not.
+- `control_only`: the finding has control refs but no matching source coverage control refs.
+
+Use `control_refs_without_source_match` as a review queue. It does not mean the control is invalid; it means the spreadsheet cannot point to a matched source coverage lane for that direct control ref yet.
 
 ## Commands
 

@@ -34,6 +34,9 @@ func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	assertCellContains(t, header, cerebroRow, "compliance_review_tags", "framework:soc-2")
 	assertCellContains(t, header, cerebroRow, "compliance_review_tags", "control:soc-2:cc6-1")
 	assertCellContains(t, header, cerebroRow, "all_review_tags", "tenant-isolation")
+	assertCellContains(t, header, cerebroRow, "resolved_audit_domain", "api")
+	assertCellContains(t, header, cerebroRow, "audit_language_source", "yaml:domain:api")
+	assertCellContains(t, header, cerebroRow, "evidence_type", "application_access_control")
 }
 
 func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
@@ -74,6 +77,72 @@ func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
 	t.Fatal("source_coverage_map.csv missing aws/s3_bucket coverage for aws-s3-bucket-no-public-access")
 }
 
+func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	reviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_compliance_review_map.csv"))
+	reviewHeader := reviewRows[0]
+	reviewFindingCol := columnIndex(t, reviewHeader, "finding_id")
+	reviewFlagsCol := columnIndex(t, reviewHeader, "review_flags")
+	for _, row := range reviewRows[1:] {
+		flags := row[reviewFlagsCol]
+		for _, notWant := range []string{
+			"missing_evidence_type",
+			"missing_assessment_methods",
+			"missing_auditor_guidance",
+			"missing_risk_statement",
+			"missing_remediation_intent",
+			"unresolved_audit_domain",
+		} {
+			if strings.Contains(flags, notWant) {
+				t.Fatalf("finding_compliance_review_map.csv row %s has %s in review_flags %q", row[reviewFindingCol], notWant, flags)
+			}
+		}
+	}
+	s3Row := findRow(t, reviewRows, reviewFindingCol, "aws-s3-bucket-no-public-access")
+	assertCellContains(t, reviewHeader, s3Row, "compliance_evidence_status", "partial_source_backed")
+	assertCellContains(t, reviewHeader, s3Row, "source_backed_control_ref_count", "2")
+	assertCellContains(t, reviewHeader, s3Row, "review_flags", "partial_source_backed_control_refs")
+
+	controlRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_control_map.csv"))
+	controlHeader := controlRows[0]
+	controlFindingCol := columnIndex(t, controlHeader, "finding_id")
+	controlRefCol := columnIndex(t, controlHeader, "control_ref")
+	for _, row := range controlRows[1:] {
+		if row[controlFindingCol] == "aws-s3-bucket-no-public-access" && row[controlRefCol] == "SOC 2 CC6.6" {
+			assertCellContains(t, controlHeader, row, "control_match_source", "source_coverage_ref")
+			assertCellContains(t, controlHeader, row, "source_coverage_refs", "aws/s3_bucket")
+			return
+		}
+	}
+	t.Fatal("finding_control_map.csv missing SOC 2 CC6.6 row for aws-s3-bucket-no-public-access")
+}
+
+func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	aliasRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_domain_aliases.csv"))
+	header := aliasRows[0]
+	matchTypeCol := columnIndex(t, header, "match_type")
+	matchValueCol := columnIndex(t, header, "match_value")
+	resolvedDomainCol := columnIndex(t, header, "resolved_domain")
+	for _, row := range aliasRows[1:] {
+		if row[matchTypeCol] == "pack" && row[matchValueCol] == "anthropic" {
+			if got := row[resolvedDomainCol]; got != "secrets" {
+				t.Fatalf("anthropic resolved_domain = %q, want secrets", got)
+			}
+			return
+		}
+	}
+	t.Fatal("finding_domain_aliases.csv missing anthropic pack alias")
+}
+
 func TestComplianceReviewTagsAreDerivedFromControlRefs(t *testing.T) {
 	tags := complianceReviewTags([]controlRef{{
 		Framework: "SOC 2",
@@ -101,10 +170,11 @@ func TestFindingReviewFlagsUseProcessedMappingValues(t *testing.T) {
 		}},
 	}
 	flags := findingReviewFlags(
-		detection,
 		publicDetectionControlRefs(detection.ControlRefs, controlFamilyIndex{}),
 		uniqueSorted(detection.Tags),
 		sourceCoverageRefLabels(detection.SourceCoverageRefs),
+		resolvedFindingAuditDepth{},
+		findingComplianceReview{ComplianceEvidenceStatus: "missing_controls"},
 	)
 	joined := strings.Join(flags, "; ")
 	for _, want := range []string{"missing_control_refs", "missing_source_coverage_refs"} {
