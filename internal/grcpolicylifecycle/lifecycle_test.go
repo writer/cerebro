@@ -332,6 +332,9 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 		!grcPolicyGapExists(gaps, "document", "secure-development", "No mapped controls") {
 		t.Fatalf("document gaps = %+v, want owner, review date, policy, and controls", gaps)
 	}
+	if gap, ok := grcPolicyGapFor(gaps, "document", "secure-development", "No mapped controls"); !ok || gap.Severity != "medium" {
+		t.Fatalf("document controls gap = %+v, want medium severity", gap)
+	}
 	for _, reason := range []string{"Missing owner", "Missing treatment", "Missing treatment date", "Missing review date", "No source document", "No linked policy", "No mapped controls", "No evidence"} {
 		if !grcPolicyGapExists(gaps, "risk", "privileged-access", reason) {
 			t.Fatalf("risk gaps = %+v, want %q", gaps, reason)
@@ -467,12 +470,17 @@ func TestGovernanceGapLifecycleEventsDoNotCreateUnmappedPolicy(t *testing.T) {
 }
 
 func grcPolicyGapExists(gaps []grcPolicyGovernanceGap, subject string, subjectID string, reason string) bool {
+	_, ok := grcPolicyGapFor(gaps, subject, subjectID, reason)
+	return ok
+}
+
+func grcPolicyGapFor(gaps []grcPolicyGovernanceGap, subject string, subjectID string, reason string) (grcPolicyGovernanceGap, bool) {
 	for _, gap := range gaps {
 		if gap.Subject == subject && gap.SubjectID == subjectID && gap.Reason == reason {
-			return true
+			return gap, true
 		}
 	}
-	return false
+	return grcPolicyGovernanceGap{}, false
 }
 
 func grcPolicyGapHasState(gaps []grcPolicyGovernanceGap, id string, state string) bool {
