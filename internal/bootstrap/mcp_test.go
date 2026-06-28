@@ -1352,6 +1352,9 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
 					"relation_chain":         []any{"runs_as"},
+					"traversal_edges": []any{
+						map[string]any{"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:admin", "to_entity_type": "aws.role", "to_label": "admin", "direction": "forward"},
+					},
 				},
 			}},
 		},
@@ -2463,6 +2466,9 @@ func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
 					"relation_chain":         []any{"runs_as"},
+					"traversal_edges": []any{
+						map[string]any{"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:admin", "to_entity_type": "aws.role", "to_label": "admin", "direction": "forward"},
+					},
 				},
 			}},
 		},
