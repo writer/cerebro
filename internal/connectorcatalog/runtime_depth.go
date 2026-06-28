@@ -42,12 +42,21 @@ type RuntimeDepth struct {
 	RuntimeFamilies         []string `json:"runtime_families,omitempty"`
 	ReadFixtureFamilies     []string `json:"read_fixture_families,omitempty"`
 	DiscoverFixtureFamilies []string `json:"discover_fixture_families,omitempty"`
+	MissingReadFixtures     []string `json:"missing_read_fixtures,omitempty"`
+	MissingDiscoverFixtures []string `json:"missing_discover_fixtures,omitempty"`
+	RequiredProjectorKinds  []string `json:"required_projector_kinds,omitempty"`
+	ProjectedKinds          []string `json:"projected_kinds,omitempty"`
+	MissingProjectorKinds   []string `json:"missing_projector_kinds,omitempty"`
 }
 
 type runtimeCatalogFields struct {
 	ID              string   `yaml:"id"`
+	EmittedKinds    []string `yaml:"emitted_kinds"`
 	RuntimeFamilies []string `yaml:"runtime_families"`
-	EventContracts  []struct {
+	Families        []struct {
+		ID string `yaml:"id"`
+	} `yaml:"families"`
+	EventContracts []struct {
 		Kind string `yaml:"kind"`
 	} `yaml:"event_contracts"`
 	CoverageContract *struct{} `yaml:"coverage_contract"`
@@ -69,7 +78,7 @@ func DiscoverRuntimeDepth(root string) (RuntimeDepthInventory, error) {
 		_ = repoRoot.Close()
 	}()
 	inventory := RuntimeDepthInventory{}
-	projectorTests, err := discoverProjectorTestSources(repoRoot)
+	projectorTests, err := discoverProjectorTestKinds(repoRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +106,7 @@ func DiscoverRuntimeDepth(root string) (RuntimeDepthInventory, error) {
 	return inventory, nil
 }
 
-func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, projectorTests map[string]struct{}) (RuntimeDepth, error) {
+func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, projectorTests map[string]map[string]struct{}) (RuntimeDepth, error) {
 	sourceID := filepath.Base(sourceDir)
 	depth := RuntimeDepth{
 		SourceID:         sourceID,
@@ -113,7 +122,8 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		if strings.TrimSpace(catalog.ID) != "" {
 			depth.SourceID = strings.TrimSpace(catalog.ID)
 		}
-		depth.RuntimeFamilies = normalizedList(catalog.RuntimeFamilies)
+		depth.RuntimeFamilies = runtimeFamiliesFromCatalog(catalog)
+		depth.RequiredProjectorKinds = projectorKindsFromCatalog(catalog)
 		depth.HasEventContracts = len(catalog.EventContracts) > 0
 		depth.HasCoverageContract = catalog.CoverageContract != nil
 	}
@@ -123,12 +133,25 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 	depth.ReadFixtureFamilies, depth.DiscoverFixtureFamilies = fixtureFamilies(sourceDir)
 	depth.HasReadFixtures = len(depth.ReadFixtureFamilies) > 0
 	depth.HasDiscoverFixtures = len(depth.DiscoverFixtureFamilies) > 0
-	depth.HasFixturePair = hasFixturePair(depth.ReadFixtureFamilies, depth.DiscoverFixtureFamilies)
-	_, depth.HasProjectorTests = projectorTests[depth.SourceID]
+	depth.MissingReadFixtures = missingValues(depth.RuntimeFamilies, depth.ReadFixtureFamilies)
+	depth.MissingDiscoverFixtures = missingValues(depth.RuntimeFamilies, depth.DiscoverFixtureFamilies)
+	depth.HasFixturePair = hasRequiredFixturePair(depth.RuntimeFamilies, depth.ReadFixtureFamilies, depth.DiscoverFixtureFamilies)
+	depth.ProjectedKinds = sortedKeys(projectorTests[depth.SourceID])
+	depth.MissingProjectorKinds = missingValues(depth.RequiredProjectorKinds, depth.ProjectedKinds)
+	if len(depth.RequiredProjectorKinds) > 0 {
+		depth.HasProjectorTests = len(depth.MissingProjectorKinds) == 0
+	} else {
+		depth.HasProjectorTests = len(depth.ProjectedKinds) > 0
+	}
 	depth.Score, depth.Missing = runtimeDepthScore(depth)
 	sort.Strings(depth.RuntimeFamilies)
 	sort.Strings(depth.ReadFixtureFamilies)
 	sort.Strings(depth.DiscoverFixtureFamilies)
+	sort.Strings(depth.MissingReadFixtures)
+	sort.Strings(depth.MissingDiscoverFixtures)
+	sort.Strings(depth.RequiredProjectorKinds)
+	sort.Strings(depth.ProjectedKinds)
+	sort.Strings(depth.MissingProjectorKinds)
 	sort.Strings(depth.Missing)
 	return depth, nil
 }
@@ -177,6 +200,12 @@ func runtimeDepthScore(depth RuntimeDepth) (int, []string) {
 		score += 15
 	} else {
 		missing = append(missing, "runtime:fixture_pair")
+		for _, family := range depth.MissingReadFixtures {
+			missing = append(missing, "runtime:read_fixture:"+family)
+		}
+		for _, family := range depth.MissingDiscoverFixtures {
+			missing = append(missing, "runtime:discover_fixture:"+family)
+		}
 	}
 	if depth.HasDeployManifest {
 		score += 10
@@ -187,6 +216,9 @@ func runtimeDepthScore(depth RuntimeDepth) (int, []string) {
 		score += 10
 	} else {
 		missing = append(missing, "runtime:projector_tests")
+		for _, kind := range depth.MissingProjectorKinds {
+			missing = append(missing, "runtime:projector_kind:"+kind)
+		}
 	}
 	return score, missing
 }
@@ -228,6 +260,13 @@ func fixtureFamilies(sourceDir string) ([]string, []string) {
 	return sortedKeys(read), sortedKeys(discover)
 }
 
+func hasRequiredFixturePair(required []string, read []string, discover []string) bool {
+	if len(required) == 0 {
+		return hasFixturePair(read, discover)
+	}
+	return len(missingValues(required, read)) == 0 && len(missingValues(required, discover)) == 0
+}
+
 func hasFixturePair(read []string, discover []string) bool {
 	if len(read) == 0 || len(discover) == 0 {
 		return false
@@ -244,8 +283,8 @@ func hasFixturePair(read []string, discover []string) bool {
 	return false
 }
 
-func discoverProjectorTestSources(repoRoot *os.Root) (map[string]struct{}, error) {
-	sources := map[string]struct{}{}
+func discoverProjectorTestKinds(repoRoot *os.Root) (map[string]map[string]struct{}, error) {
+	sources := map[string]map[string]struct{}{}
 	const dir = "internal/sourceprojection"
 	err := fs.WalkDir(repoRoot.FS(), dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -258,8 +297,13 @@ func discoverProjectorTestSources(repoRoot *os.Root) (map[string]struct{}, error
 		if err != nil {
 			return fmt.Errorf("read %s: %w", path, err)
 		}
-		for _, sourceID := range sourceIDsFromProjectorTest(string(payload)) {
-			sources[sourceID] = struct{}{}
+		for sourceID, kinds := range sourceKindsFromProjectorTest(string(payload)) {
+			if sources[sourceID] == nil {
+				sources[sourceID] = map[string]struct{}{}
+			}
+			for _, kind := range kinds {
+				sources[sourceID][kind] = struct{}{}
+			}
 		}
 		return nil
 	})
@@ -273,12 +317,22 @@ func discoverProjectorTestSources(repoRoot *os.Root) (map[string]struct{}, error
 }
 
 func sourceIDsFromProjectorTest(content string) []string {
+	sourceKinds := sourceKindsFromProjectorTest(content)
+	sourceIDs := make([]string, 0, len(sourceKinds))
+	for sourceID := range sourceKinds {
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+	sort.Strings(sourceIDs)
+	return sourceIDs
+}
+
+func sourceKindsFromProjectorTest(content string) map[string][]string {
 	file, err := parser.ParseFile(token.NewFileSet(), "sourceprojection_test.go", content, 0)
 	if err != nil {
 		return nil
 	}
 	eventSources := map[string]struct{}{}
-	kindSources := map[string]struct{}{}
+	kindSources := map[string]map[string]struct{}{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.ImportSpec:
@@ -299,27 +353,22 @@ func sourceIDsFromProjectorTest(content string) []string {
 				}
 			case "Kind":
 				if sourceID, ok := sourceIDFromEventKindLiteral(value); ok {
-					kindSources[sourceID] = struct{}{}
+					if kindSources[sourceID] == nil {
+						kindSources[sourceID] = map[string]struct{}{}
+					}
+					kindSources[sourceID][value] = struct{}{}
 				}
-			}
-		case *ast.BasicLit:
-			value, ok := stringLiteralValue(n)
-			if !ok {
-				return true
-			}
-			if sourceID, ok := sourceIDFromEventKindLiteral(value); ok {
-				kindSources[sourceID] = struct{}{}
 			}
 		}
 		return true
 	})
-	covered := map[string]struct{}{}
+	covered := map[string][]string{}
 	for sourceID := range kindSources {
 		if _, ok := eventSources[sourceID]; ok {
-			covered[sourceID] = struct{}{}
+			covered[sourceID] = sortedKeys(kindSources[sourceID])
 		}
 	}
-	return sortedKeys(covered)
+	return covered
 }
 
 func stringLiteralValue(expression ast.Expr) (string, bool) {
@@ -376,6 +425,56 @@ func normalizedList(values []string) []string {
 		seen[value] = struct{}{}
 	}
 	return sortedKeys(seen)
+}
+
+func runtimeFamiliesFromCatalog(catalog runtimeCatalogFields) []string {
+	families := normalizedList(catalog.RuntimeFamilies)
+	if len(families) > 0 {
+		return families
+	}
+	seen := map[string]struct{}{}
+	for _, family := range catalog.Families {
+		if id := strings.TrimSpace(family.ID); id != "" {
+			seen[id] = struct{}{}
+		}
+	}
+	return sortedKeys(seen)
+}
+
+func projectorKindsFromCatalog(catalog runtimeCatalogFields) []string {
+	kinds := normalizedList(catalog.EmittedKinds)
+	if len(kinds) > 0 {
+		return kinds
+	}
+	seen := map[string]struct{}{}
+	for _, contract := range catalog.EventContracts {
+		if kind := strings.TrimSpace(contract.Kind); kind != "" {
+			seen[kind] = struct{}{}
+		}
+	}
+	return sortedKeys(seen)
+}
+
+func missingValues(required []string, present []string) []string {
+	if len(required) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, value := range present {
+		if value = strings.TrimSpace(value); value != "" {
+			seen[value] = struct{}{}
+		}
+	}
+	missing := map[string]struct{}{}
+	for _, value := range required {
+		if value = strings.TrimSpace(value); value == "" {
+			continue
+		}
+		if _, ok := seen[value]; !ok {
+			missing[value] = struct{}{}
+		}
+	}
+	return sortedKeys(missing)
 }
 
 func sortedKeys(values map[string]struct{}) []string {

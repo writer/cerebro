@@ -55,8 +55,11 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if len(discoverResp.Urns) != 2 {
-		t.Fatalf("len(Discover().Urns) = %d, want 2", len(discoverResp.Urns))
+	if len(discoverResp.Urns) != 1 {
+		t.Fatalf("len(Discover().Urns) = %d, want 1", len(discoverResp.Urns))
+	}
+	if got := discoverResp.Urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+		t.Fatalf("Discover().Urns[0] = %q, want default GitHub repository URN", got)
 	}
 
 	readResp, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{

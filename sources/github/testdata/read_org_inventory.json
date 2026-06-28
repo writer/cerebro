@@ -1,0 +1,59 @@
+[
+  {
+    "id": "github-org-member-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.org_member",
+    "occurred_at": "2026-04-24T15:00:00Z",
+    "schema_ref": "github/org_member/v1",
+    "payload": {
+      "login": "octocat",
+      "id": 583231,
+      "org": "writer",
+      "role": "member",
+      "html_url": "https://github.com/octocat"
+    },
+    "attributes": {
+      "family": "org_inventory",
+      "login": "octocat",
+      "owner": "writer",
+      "role": "member",
+      "user_id": "583231"
+    }
+  },
+  {
+    "id": "github-org-installation-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.org_installation",
+    "occurred_at": "2026-04-24T15:05:00Z",
+    "schema_ref": "github/org_installation/v1",
+    "payload": {
+      "id": 4242,
+      "app_slug": "writer-security",
+      "org": "writer",
+      "target_type": "Organization",
+      "repository_selection": "selected",
+      "permissions": [
+        "contents:read",
+        "security_events:read"
+      ],
+      "events": [
+        "dependabot_alert",
+        "secret_scanning_alert"
+      ],
+      "created_at": "2026-04-20T00:00:00Z",
+      "updated_at": "2026-04-24T15:05:00Z"
+    },
+    "attributes": {
+      "app_slug": "writer-security",
+      "events": "dependabot_alert,secret_scanning_alert",
+      "family": "org_inventory",
+      "installation_id": "4242",
+      "owner": "writer",
+      "permissions": "contents:read,security_events:read",
+      "repository_selection": "selected",
+      "target_type": "Organization"
+    }
+  }
+]

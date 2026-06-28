@@ -1,0 +1,63 @@
+[
+  {
+    "id": "github-pr-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.pull_request",
+    "occurred_at": "2026-04-22T18:05:00Z",
+    "schema_ref": "github/pull_request/v1",
+    "payload": {
+      "number": 441,
+      "action": "opened",
+      "repository": "writer/cerebro",
+      "title": "Add source runtime previews",
+      "state": "open",
+      "author": "alice",
+      "draft": false,
+      "head": "alice/source-runtime",
+      "base": "main",
+      "created_at": "2026-04-22T18:00:00Z",
+      "updated_at": "2026-04-22T18:05:00Z"
+    },
+    "attributes": {
+      "author": "alice",
+      "owner": "writer",
+      "pull_number": "441",
+      "repo": "cerebro",
+      "repository": "writer/cerebro",
+      "state": "open"
+    }
+  },
+  {
+    "id": "github-pr-2",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.pull_request",
+    "occurred_at": "2026-04-23T19:05:00Z",
+    "schema_ref": "github/pull_request/v1",
+    "payload": {
+      "number": 442,
+      "action": "closed",
+      "repository": "writer/cerebro",
+      "title": "Project source catalog coverage",
+      "state": "closed",
+      "author": "bob",
+      "draft": false,
+      "head": "bob/catalog-coverage",
+      "base": "main",
+      "created_at": "2026-04-23T18:00:00Z",
+      "updated_at": "2026-04-23T19:05:00Z",
+      "closed_at": "2026-04-23T19:05:00Z",
+      "merged_at": "2026-04-23T19:05:00Z"
+    },
+    "attributes": {
+      "author": "bob",
+      "merged": "true",
+      "owner": "writer",
+      "pull_number": "442",
+      "repo": "cerebro",
+      "repository": "writer/cerebro",
+      "state": "closed"
+    }
+  }
+]
