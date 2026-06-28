@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -87,6 +88,12 @@ func TenantID(raw string) string {
 func SameTenant(raw string, tenantID string) bool {
 	tenant := strings.TrimSpace(tenantID)
 	return tenant != "" && TenantID(raw) == tenant
+}
+
+// EncodeSegment escapes provider-controlled identifiers for Cerebro's colon-delimited URN parts.
+func EncodeSegment(value string) string {
+	escaped := url.PathEscape(strings.TrimSpace(value))
+	return strings.ReplaceAll(escaped, ":", "%3A")
 }
 
 func StableExternalID(value string, emptyFallback string) string {
