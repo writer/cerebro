@@ -130,8 +130,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	projection := h.projectEvents(r.Context(), events)
 	status := "accepted"
+	response.ProjectionStatus = "projected"
 	if projection.err != nil {
 		status = "accepted_with_projection_errors"
+		response.ProjectionStatus = status
+		response.ProjectionFailures = projection.failures
 	}
 	emitUploadTelemetry(r.Context(), uploadTelemetry{
 		target:             h.options.Target,

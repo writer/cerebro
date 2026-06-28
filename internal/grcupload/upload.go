@@ -70,18 +70,20 @@ type EventRef struct {
 }
 
 type Response struct {
-	UploadID       string     `json:"upload_id"`
-	Target         string     `json:"target"`
-	FileName       string     `json:"file_name"`
-	ContentType    string     `json:"content_type,omitempty"`
-	ReductoFileID  string     `json:"reducto_file_id,omitempty"`
-	ReductoParseID string     `json:"reducto_parse_id,omitempty"`
-	ParseStatus    string     `json:"parse_status,omitempty"`
-	TextPreview    string     `json:"text_preview,omitempty"`
-	ChunkCount     int        `json:"chunk_count,omitempty"`
-	PageCount      int        `json:"page_count,omitempty"`
-	Events         []EventRef `json:"events"`
-	GeneratedAt    time.Time  `json:"generated_at"`
+	UploadID           string     `json:"upload_id"`
+	Target             string     `json:"target"`
+	FileName           string     `json:"file_name"`
+	ContentType        string     `json:"content_type,omitempty"`
+	ReductoFileID      string     `json:"reducto_file_id,omitempty"`
+	ReductoParseID     string     `json:"reducto_parse_id,omitempty"`
+	ParseStatus        string     `json:"parse_status,omitempty"`
+	TextPreview        string     `json:"text_preview,omitempty"`
+	ChunkCount         int        `json:"chunk_count,omitempty"`
+	PageCount          int        `json:"page_count,omitempty"`
+	ProjectionStatus   string     `json:"projection_status,omitempty"`
+	ProjectionFailures int        `json:"projection_failures,omitempty"`
+	Events             []EventRef `json:"events"`
+	GeneratedAt        time.Time  `json:"generated_at"`
 }
 
 func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([]*cerebrov1.EventEnvelope, Response, error) {

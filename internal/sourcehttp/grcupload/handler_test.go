@@ -118,6 +118,9 @@ func TestHandlerAcceptsUploadWithEncodedRecordIDs(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
+	if got, want := payload.ProjectionStatus, "projected"; got != want {
+		t.Fatalf("projection_status = %q, want %q", got, want)
+	}
 	if len(payload.Events) != 2 {
 		t.Fatalf("response events = %d, want 2", len(payload.Events))
 	}
@@ -170,6 +173,16 @@ func TestHandlerAcceptsUploadWhenProjectionFailsAfterAppend(t *testing.T) {
 
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusAccepted)
+	}
+	var payload grcupload.Response
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got, want := payload.ProjectionStatus, "accepted_with_projection_errors"; got != want {
+		t.Fatalf("projection_status = %q, want %q", got, want)
+	}
+	if got, want := payload.ProjectionFailures, 1; got != want {
+		t.Fatalf("projection_failures = %d, want %d", got, want)
 	}
 	if len(appendLog.events) != 2 {
 		t.Fatalf("appended events = %d, want 2", len(appendLog.events))
