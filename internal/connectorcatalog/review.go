@@ -14,35 +14,47 @@ import (
 // and review questions that can be published by CI without mutating catalog
 // files.
 type ReviewReport struct {
-	Summary            ReviewSummary        `json:"summary"`
-	PromotionQueues    []PromotionQueue     `json:"promotion_queues,omitempty"`
-	FidelityQueue      []FidelityCandidate  `json:"fidelity_queue,omitempty"`
-	CleanupFindings    []ReviewFinding      `json:"cleanup_findings,omitempty"`
-	Questions          []ReviewQuestion     `json:"questions,omitempty"`
-	SourceReviews      []SourceReview       `json:"source_reviews,omitempty"`
-	ProjectionCoverage []ProjectionCoverage `json:"projection_coverage,omitempty"`
+	Summary            ReviewSummary           `json:"summary"`
+	PromotionQueues    []PromotionQueue        `json:"promotion_queues,omitempty"`
+	FidelityQueue      []FidelityCandidate     `json:"fidelity_queue,omitempty"`
+	RuntimeDepthQueue  []RuntimeDepthCandidate `json:"runtime_depth_queue,omitempty"`
+	CleanupFindings    []ReviewFinding         `json:"cleanup_findings,omitempty"`
+	Questions          []ReviewQuestion        `json:"questions,omitempty"`
+	SourceReviews      []SourceReview          `json:"source_reviews,omitempty"`
+	ProjectionCoverage []ProjectionCoverage    `json:"projection_coverage,omitempty"`
 }
 
 type ReviewSummary struct {
-	Total                    int            `json:"total"`
-	Generateable             int            `json:"generateable"`
-	CatalogReady             int            `json:"catalog_ready"`
-	NeedsAuthExtension       int            `json:"needs_auth_extension"`
-	NeedsBespokeRuntime      int            `json:"needs_bespoke_runtime"`
-	FidelityBaselineScore    int            `json:"fidelity_baseline_score"`
-	HighFidelitySources      int            `json:"high_fidelity_sources"`
-	NeedsFidelityReview      int            `json:"needs_fidelity_review"`
-	ResourceFamilies         int            `json:"resource_families"`
-	ProjectedFamilies        int            `json:"projected_families"`
-	HighValueFamilies        int            `json:"high_value_families"`
-	CoverageDimensions       int            `json:"coverage_dimensions"`
-	ProjectionTemplates      int            `json:"projection_templates"`
-	SourcesWithProjection    int            `json:"sources_with_projection"`
-	SourcesWithProjectionGap int            `json:"sources_with_projection_gap"`
-	CleanupFindings          int            `json:"cleanup_findings"`
-	Questions                int            `json:"questions"`
-	ByStatus                 map[string]int `json:"by_status,omitempty"`
-	ByProjectionTemplate     map[string]int `json:"by_projection_template,omitempty"`
+	Total                    int                  `json:"total"`
+	Generateable             int                  `json:"generateable"`
+	CatalogReady             int                  `json:"catalog_ready"`
+	NeedsAuthExtension       int                  `json:"needs_auth_extension"`
+	NeedsBespokeRuntime      int                  `json:"needs_bespoke_runtime"`
+	FidelityBaselineScore    int                  `json:"fidelity_baseline_score"`
+	HighFidelitySources      int                  `json:"high_fidelity_sources"`
+	NeedsFidelityReview      int                  `json:"needs_fidelity_review"`
+	RuntimeDepth             *RuntimeDepthSummary `json:"runtime_depth,omitempty"`
+	ResourceFamilies         int                  `json:"resource_families"`
+	ProjectedFamilies        int                  `json:"projected_families"`
+	HighValueFamilies        int                  `json:"high_value_families"`
+	CoverageDimensions       int                  `json:"coverage_dimensions"`
+	ProjectionTemplates      int                  `json:"projection_templates"`
+	SourcesWithProjection    int                  `json:"sources_with_projection"`
+	SourcesWithProjectionGap int                  `json:"sources_with_projection_gap"`
+	CleanupFindings          int                  `json:"cleanup_findings"`
+	Questions                int                  `json:"questions"`
+	ByStatus                 map[string]int       `json:"by_status,omitempty"`
+	ByProjectionTemplate     map[string]int       `json:"by_projection_template,omitempty"`
+}
+
+type RuntimeDepthSummary struct {
+	BaselineScore              int `json:"baseline_score"`
+	RuntimeBackedSources       int `json:"runtime_backed_sources"`
+	ReferenceRuntimeSources    int `json:"reference_runtime_sources"`
+	NeedsRuntimeDepth          int `json:"needs_runtime_depth"`
+	SourcesWithRuntimeFixtures int `json:"sources_with_runtime_fixtures"`
+	SourcesWithDeployManifest  int `json:"sources_with_deploy_manifest"`
+	SourcesWithProjectorTests  int `json:"sources_with_projector_tests"`
 }
 
 type PromotionQueue struct {
@@ -65,6 +77,16 @@ type FidelityCandidate struct {
 	SourceID    string   `json:"source_id"`
 	DisplayName string   `json:"display_name,omitempty"`
 	Path        string   `json:"path,omitempty"`
+	Score       int      `json:"score"`
+	Missing     []string `json:"missing,omitempty"`
+	NextAction  string   `json:"next_action"`
+}
+
+type RuntimeDepthCandidate struct {
+	SourceID    string   `json:"source_id"`
+	DisplayName string   `json:"display_name,omitempty"`
+	Path        string   `json:"path,omitempty"`
+	PackagePath string   `json:"package_path,omitempty"`
 	Score       int      `json:"score"`
 	Missing     []string `json:"missing,omitempty"`
 	NextAction  string   `json:"next_action"`
@@ -100,6 +122,7 @@ type SourceReview struct {
 	HighValueFamilies  int    `json:"high_value_families"`
 	CoverageDimensions int    `json:"coverage_dimensions"`
 	SourceFidelityFields
+	RuntimeDepthFields
 	SourceFamilyReadinessFields
 	ProjectionTemplates   []string `json:"projection_templates,omitempty"`
 	PromotionQueue        string   `json:"promotion_queue,omitempty"`
@@ -119,6 +142,21 @@ type SourceFidelityFields struct {
 	FidelityGaps  []string `json:"fidelity_gaps,omitempty"`
 }
 
+type RuntimeDepthFields struct {
+	RuntimeDepthScore        int      `json:"runtime_depth_score,omitempty"`
+	RuntimeDepthLevel        string   `json:"runtime_depth_level,omitempty"`
+	RuntimeDepthGaps         []string `json:"runtime_depth_gaps,omitempty"`
+	RuntimePackagePath       string   `json:"runtime_package_path,omitempty"`
+	HasRuntimePackage        bool     `json:"has_runtime_package,omitempty"`
+	HasRuntimeCatalog        bool     `json:"has_runtime_catalog,omitempty"`
+	HasRuntimeImplementation bool     `json:"has_runtime_implementation,omitempty"`
+	HasRuntimeTests          bool     `json:"has_runtime_tests,omitempty"`
+	HasRuntimeFixtures       bool     `json:"has_runtime_fixtures,omitempty"`
+	HasDeployManifest        bool     `json:"has_deploy_manifest,omitempty"`
+	HasProjectorTests        bool     `json:"has_projector_tests,omitempty"`
+	RuntimeFamilies          []string `json:"runtime_families,omitempty"`
+}
+
 type SourceFamilyReadinessFields struct {
 	FamiliesWithEvents    int `json:"families_with_events"`
 	FamiliesWithFieldMaps int `json:"families_with_field_maps"`
@@ -134,16 +172,32 @@ type ProjectionCoverage struct {
 }
 
 const fidelityReviewThreshold = 90
+const runtimeDepthReviewThreshold = 90
 
 // ReviewAnalysis builds a deterministic maintenance report from a catalog
 // analysis. It does not re-read files or run source generation.
 func ReviewAnalysis(analysis Analysis) ReviewReport {
+	return reviewAnalysis(analysis, nil, false)
+}
+
+// ReviewAnalysisWithRuntimeDepth builds a deterministic maintenance report and
+// folds in source package evidence gathered from the repository checkout.
+func ReviewAnalysisWithRuntimeDepth(analysis Analysis, runtimeInventory RuntimeDepthInventory) ReviewReport {
+	return reviewAnalysis(analysis, runtimeInventory, true)
+}
+
+func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, includeRuntimeDepth bool) ReviewReport {
 	review := ReviewReport{
 		Summary: ReviewSummary{
 			ByStatus:              map[string]int{},
 			ByProjectionTemplate:  map[string]int{},
 			FidelityBaselineScore: fidelityReviewThreshold,
 		},
+	}
+	if includeRuntimeDepth {
+		review.Summary.RuntimeDepth = &RuntimeDepthSummary{
+			BaselineScore: runtimeDepthReviewThreshold,
+		}
 	}
 	sourceIDs := map[string]Entry{}
 	displayNames := map[string][]Entry{}
@@ -161,7 +215,7 @@ func ReviewAnalysis(analysis Analysis) ReviewReport {
 			displayNames[key] = append(displayNames[key], entry)
 		}
 
-		sourceReview := buildSourceReview(entry)
+		sourceReview := buildSourceReview(entry, runtimeInventory[entry.Definition.SourceID], includeRuntimeDepth)
 		review.SourceReviews = append(review.SourceReviews, sourceReview)
 		review.Summary.Total++
 		review.Summary.ResourceFamilies += sourceReview.ResourceFamilies
@@ -182,6 +236,34 @@ func ReviewAnalysis(analysis Analysis) ReviewReport {
 				NextAction:  fidelityNextAction(),
 			})
 		}
+		if includeRuntimeDepth {
+			if sourceReview.HasRuntimePackage {
+				review.Summary.RuntimeDepth.RuntimeBackedSources++
+			}
+			if sourceReview.RuntimeDepthScore >= runtimeDepthReviewThreshold {
+				review.Summary.RuntimeDepth.ReferenceRuntimeSources++
+			} else {
+				review.Summary.RuntimeDepth.NeedsRuntimeDepth++
+				review.RuntimeDepthQueue = append(review.RuntimeDepthQueue, RuntimeDepthCandidate{
+					SourceID:    sourceReview.SourceID,
+					DisplayName: sourceReview.DisplayName,
+					Path:        sourceReview.Path,
+					PackagePath: sourceReview.RuntimePackagePath,
+					Score:       sourceReview.RuntimeDepthScore,
+					Missing:     append([]string(nil), sourceReview.RuntimeDepthGaps...),
+					NextAction:  runtimeDepthNextAction(),
+				})
+			}
+			if sourceReview.HasRuntimeFixtures {
+				review.Summary.RuntimeDepth.SourcesWithRuntimeFixtures++
+			}
+			if sourceReview.HasDeployManifest {
+				review.Summary.RuntimeDepth.SourcesWithDeployManifest++
+			}
+			if sourceReview.HasProjectorTests {
+				review.Summary.RuntimeDepth.SourcesWithProjectorTests++
+			}
+		}
 		if sourceReview.ProjectedFamilies > 0 {
 			review.Summary.SourcesWithProjection++
 		}
@@ -200,7 +282,7 @@ func ReviewAnalysis(analysis Analysis) ReviewReport {
 		if queueID != "" {
 			queueEntries[queueID] = append(queueEntries[queueID], candidate)
 		}
-		for _, question := range sourceQuestions(sourceReview, entry) {
+		for _, question := range sourceQuestions(sourceReview, entry, includeRuntimeDepth) {
 			review.Questions = append(review.Questions, question)
 			questionsBySource[question.SourceID]++
 		}
@@ -233,7 +315,7 @@ func ReviewAnalysis(analysis Analysis) ReviewReport {
 	return review
 }
 
-func buildSourceReview(entry Entry) SourceReview {
+func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDepth bool) SourceReview {
 	review := SourceReview{
 		SourceID:          entry.Definition.SourceID,
 		DisplayName:       entry.Definition.DisplayName,
@@ -275,13 +357,39 @@ func buildSourceReview(entry Entry) SourceReview {
 	review.FamiliesWithScopes = countFamilies(entry, func(family connectordefinitions.ResourceFamily) bool {
 		return familyHasScopeOption(entry.Definition.ScopeOptions, family.ID)
 	})
+	if includeRuntimeDepth {
+		review.RuntimeDepthScore = runtimeDepth.Score
+		review.RuntimeDepthGaps = append([]string(nil), runtimeDepth.Missing...)
+		review.RuntimePackagePath = runtimeDepth.PackagePath
+		review.HasRuntimePackage = runtimeDepth.HasSourcePackage
+		review.HasRuntimeCatalog = runtimeDepth.HasSourceCatalog
+		review.HasRuntimeImplementation = runtimeDepth.HasSourceImplementation
+		review.HasRuntimeTests = runtimeDepth.HasSourceTests
+		review.HasRuntimeFixtures = runtimeDepth.HasFixturePair
+		review.HasDeployManifest = runtimeDepth.HasDeployManifest
+		review.HasProjectorTests = runtimeDepth.HasProjectorTests
+		review.RuntimeFamilies = append([]string(nil), runtimeDepth.RuntimeFamilies...)
+		switch {
+		case review.RuntimeDepthScore >= runtimeDepthReviewThreshold:
+			review.RuntimeDepthLevel = "reference_runtime"
+		case review.HasRuntimePackage:
+			review.RuntimeDepthLevel = "runtime_package"
+		default:
+			review.RuntimeDepthLevel = "catalog_only"
+			if len(review.RuntimeDepthGaps) == 0 {
+				review.RuntimeDepthGaps = []string{"runtime:source_package"}
+			}
+		}
+	}
 	sort.Strings(review.ProjectionTemplates)
 	sort.Strings(review.ProjectionGapFamilies)
+	sort.Strings(review.RuntimeFamilies)
+	sort.Strings(review.RuntimeDepthGaps)
 	review.PromotionQueue, review.NextAction = promotionQueueAndAction(entry)
 	return review
 }
 
-func sourceQuestions(source SourceReview, entry Entry) []ReviewQuestion {
+func sourceQuestions(source SourceReview, entry Entry, includeRuntimeDepth bool) []ReviewQuestion {
 	var questions []ReviewQuestion
 	if source.ResourceFamilies > 0 {
 		questions = append(questions, ReviewQuestion{
@@ -364,6 +472,17 @@ func sourceQuestions(source SourceReview, entry Entry) []ReviewQuestion {
 			Question:   "Does this source meet the reference catalog depth baseline?",
 			Answer:     fmt.Sprintf("Score %d of 100. Missing: %s.", source.FidelityScore, listOrNone(limitStrings(source.FidelityGaps, 8))),
 			NextAction: fidelityNextAction(),
+		})
+	}
+	if includeRuntimeDepth && source.RuntimeDepthScore < runtimeDepthReviewThreshold {
+		questions = append(questions, ReviewQuestion{
+			ID:         questionID(source.SourceID, "runtime_depth"),
+			SourceID:   source.SourceID,
+			Path:       source.Path,
+			Category:   "runtime_depth",
+			Question:   "Does this source have a source package at the reference runtime bar?",
+			Answer:     fmt.Sprintf("Score %d of 100. Level: %s. Missing: %s.", source.RuntimeDepthScore, source.RuntimeDepthLevel, listOrNone(limitStrings(source.RuntimeDepthGaps, 8))),
+			NextAction: runtimeDepthNextAction(),
 		})
 	}
 	return questions
@@ -524,6 +643,10 @@ func wordCount(value string) int {
 
 func fidelityNextAction() string {
 	return "Raise the source to the reference connector baseline: add source verification, scope options, event schema fields, graph projection mappings, coverage evidence, control domains, and collection behavior for each family."
+}
+
+func runtimeDepthNextAction() string {
+	return "Promote this source from catalog-only to source-runtime depth: add a Source CDK package, source catalog, read/discover fixtures, source tests, deploy runtime, and projector tests for the graph items it emits."
 }
 
 func familyHasHighValueCoverage(family connectordefinitions.ResourceFamily) bool {
@@ -749,6 +872,12 @@ func sortReview(review *ReviewReport) {
 			return review.FidelityQueue[i].Score < review.FidelityQueue[j].Score
 		}
 		return review.FidelityQueue[i].SourceID < review.FidelityQueue[j].SourceID
+	})
+	sort.SliceStable(review.RuntimeDepthQueue, func(i int, j int) bool {
+		if review.RuntimeDepthQueue[i].Score != review.RuntimeDepthQueue[j].Score {
+			return review.RuntimeDepthQueue[i].Score < review.RuntimeDepthQueue[j].Score
+		}
+		return review.RuntimeDepthQueue[i].SourceID < review.RuntimeDepthQueue[j].SourceID
 	})
 	sort.SliceStable(review.CleanupFindings, func(i int, j int) bool {
 		if review.CleanupFindings[i].SourceID != review.CleanupFindings[j].SourceID {
