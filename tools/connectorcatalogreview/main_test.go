@@ -3,8 +3,51 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/connectorcatalog"
 )
+
+func TestBuildReviewReportFallsBackWhenRuntimeDepthUnavailable(t *testing.T) {
+	missingRoot := filepath.Join(t.TempDir(), "missing")
+
+	result, err := buildReviewReport(connectorcatalog.Analysis{}, missingRoot, true, false)
+	if err != nil {
+		t.Fatalf("buildReviewReport() error = %v", err)
+	}
+	if result.RuntimeDepthWarning == nil {
+		t.Fatal("runtime depth warning = nil, want warning")
+	}
+	if result.Report.Summary.RuntimeDepth != nil {
+		t.Fatalf("runtime depth summary = %#v, want nil fallback report", result.Report.Summary.RuntimeDepth)
+	}
+}
+
+func TestBuildReviewReportRequiresRuntimeDepthWhenConfigured(t *testing.T) {
+	missingRoot := filepath.Join(t.TempDir(), "missing")
+
+	_, err := buildReviewReport(connectorcatalog.Analysis{}, missingRoot, true, true)
+	if err == nil {
+		t.Fatal("buildReviewReport() error = nil, want runtime depth error")
+	}
+	if !strings.Contains(err.Error(), "discover runtime depth") {
+		t.Fatalf("buildReviewReport() error = %v, want discover runtime depth context", err)
+	}
+}
+
+func TestBuildReviewReportIncludesRuntimeDepthWhenAvailable(t *testing.T) {
+	result, err := buildReviewReport(connectorcatalog.Analysis{}, t.TempDir(), true, false)
+	if err != nil {
+		t.Fatalf("buildReviewReport() error = %v", err)
+	}
+	if result.RuntimeDepthWarning != nil {
+		t.Fatalf("runtime depth warning = %v, want nil", result.RuntimeDepthWarning)
+	}
+	if result.Report.Summary.RuntimeDepth == nil {
+		t.Fatal("runtime depth summary = nil, want runtime depth summary")
+	}
+}
 
 func TestWriteFileDoesNotChmodExistingParentDirectory(t *testing.T) {
 	root := t.TempDir()
