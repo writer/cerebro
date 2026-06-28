@@ -1,0 +1,26 @@
+[
+  {
+    "id": "auth0-role-role-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.roles",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/roles/v1",
+    "payload": {
+      "id": "role-1",
+      "name": "Security Administrators",
+      "description": "Manage identity security settings"
+    },
+    "attributes": {
+      "description": "Manage identity security settings",
+      "group_id": "role-1",
+      "group_name": "Security Administrators",
+      "resource_id": "role-1",
+      "resource_name": "Security Administrators",
+      "resource_type": "role",
+      "resource_urn": "urn:cerebro:tenant:runtime_roles:role-1",
+      "source_event_id": "role-1",
+      "tenant_id": "tenant"
+    }
+  }
+]

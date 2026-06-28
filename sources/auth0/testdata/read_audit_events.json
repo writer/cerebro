@@ -1,0 +1,32 @@
+[
+  {
+    "id": "auth0-audit-log-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/audit_events/v1",
+    "payload": {
+      "log_id": "log-1",
+      "type": "s",
+      "description": "Success Login",
+      "date": "2026-06-01T00:00:00Z",
+      "user_id": "auth0|user-1",
+      "user_name": "user@example.test",
+      "client_id": "client-1",
+      "client_name": "Workforce Portal"
+    },
+    "attributes": {
+      "actor_email": "user@example.test",
+      "actor_id": "auth0|user-1",
+      "actor_name": "User One",
+      "event_type": "s",
+      "resource_id": "client-1",
+      "resource_name": "Workforce Portal",
+      "resource_type": "application",
+      "resource_urn": "urn:cerebro:tenant:runtime_applications:client-1",
+      "source_event_id": "log-1",
+      "tenant_id": "tenant"
+    }
+  }
+]
