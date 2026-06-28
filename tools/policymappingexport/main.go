@@ -1931,10 +1931,10 @@ func frameworkControlEnrichments(catalog publicDetectionCatalog, index controlFa
 
 func frameworkControlEnrichmentStatus(item frameworkControlEnrichment) string {
 	switch {
-	case len(item.SourceBackedFindingIDs) != 0 && len(uniqueSorted(item.SourceBackedFindingIDs)) == len(uniqueSorted(item.DirectFindingIDs)):
+	case len(item.DirectFindingIDs) != 0 && len(item.SourceBackedFindingIDs) == len(item.DirectFindingIDs):
 		return "direct_source_backed"
-	case len(item.SourceBackedFindingIDs) != 0:
-		return "partial_direct_source_backed"
+	case len(item.DirectFindingIDs) != 0 && len(item.SourceBackedFindingIDs) != 0:
+		return "partial_source_backed"
 	case len(item.DirectFindingIDs) != 0 && len(item.SourceMatchedFindingIDs) != 0:
 		return "direct_with_source_context"
 	case len(item.DirectFindingIDs) != 0:
@@ -1981,7 +1981,7 @@ func frameworkControlGapRows(catalog publicDetectionCatalog, index controlFamily
 
 func frameworkControlCoverageLane(status string) string {
 	switch status {
-	case "direct_source_backed", "partial_direct_source_backed", "direct_with_source_context", "direct_control_only":
+	case "direct_source_backed", "partial_source_backed", "direct_with_source_context", "direct_control_only":
 		return "direct"
 	case "source_capability_only", "review_context_only":
 		return "indirect"
@@ -1994,7 +1994,7 @@ func frameworkControlGapType(status string) string {
 	switch status {
 	case "direct_source_backed":
 		return "none"
-	case "partial_direct_source_backed":
+	case "partial_source_backed":
 		return "partial_source_backing"
 	case "direct_with_source_context":
 		return "source_context_review"
@@ -2013,8 +2013,8 @@ func frameworkControlNextAction(status string) string {
 	switch status {
 	case "direct_source_backed":
 		return "Maintain evidence collection and sampling."
-	case "partial_direct_source_backed":
-		return "Add source coverage or evidence requirements for remaining direct findings."
+	case "partial_source_backed":
+		return "Add source backing for direct findings that still rely on control-only mapping."
 	case "direct_with_source_context":
 		return "Review source-matched controls and promote valid evidence links."
 	case "direct_control_only":

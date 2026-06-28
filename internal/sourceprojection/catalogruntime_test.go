@@ -34,15 +34,15 @@ func TestBuiltinRegistryRegistersGenerateableCatalogProjectors(t *testing.T) {
 }
 
 func TestGeneratedCatalogAssetProjectorMaterializesGraphAsset(t *testing.T) {
-	projector := BuiltinRegistry().projectors["akeneo_com.asset"]
+	projector := BuiltinRegistry().projectors["akeneo.asset"]
 	if projector == nil {
-		t.Fatal("BuiltinRegistry() missing akeneo_com.asset projector")
+		t.Fatal("BuiltinRegistry() missing akeneo.asset projector")
 	}
 	entities, links, err := projector(&cerebrov1.EventEnvelope{
 		Id:       "event-akeneo-asset-1",
 		TenantId: "tenant",
-		SourceId: "akeneo_com",
-		Kind:     "akeneo_com.asset",
+		SourceId: "akeneo",
+		Kind:     "akeneo.asset",
 		Attributes: map[string]string{
 			"resource_id":                       "asset-123",
 			"resource_name":                     "Laptop fleet",

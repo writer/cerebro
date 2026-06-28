@@ -62,11 +62,6 @@ func writeFile(path string, payload []byte) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
-	if dir != "." {
-		if err := os.Chmod(dir, 0o750); err != nil {
-			return fmt.Errorf("set output directory permissions: %w", err)
-		}
-	}
 	if err := os.WriteFile(path, payload, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
