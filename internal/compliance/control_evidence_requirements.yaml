@@ -365,10 +365,12 @@ profiles:
       frameworks:
         - CCPA
         - GDPR
+        - ISO 27701
         - ISO 27701:2025
       family_keywords:
         - Privacy
         - Personal
+        - PII
         - Data Subject
         - Consumer
         - Data Processing
