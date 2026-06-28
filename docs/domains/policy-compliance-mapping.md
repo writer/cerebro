@@ -141,6 +141,7 @@ Use `mapping_rationale` for the row-level reason before relying on a mapping in 
 `framework_coverage_candidates.csv` is the author queue for controls that should not be treated as fully supported yet:
 
 - `source_backing_candidate`: a finding maps directly, but the control is not source-backed.
+- `source_link_review_candidate`: a finding maps directly with source context, but the source link needs promotion to full source backing.
 - `missing_finding_candidate`: a source capability exists, but no finding maps directly.
 - `mapping_review_candidate`: review context exists, but the control still needs a direct mapping or non-finding decision.
 - `scope_or_exclusion_candidate`: the control is in the framework catalog only and needs an in-scope decision.

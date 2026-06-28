@@ -387,6 +387,59 @@ func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 	assertCellContains(t, header, catalogOnlyRow, "requirement_profiles", "baseline-control-review")
 }
 
+func TestFrameworkCoverageCandidateClassifiersCoverAllStatuses(t *testing.T) {
+	cases := []struct {
+		status   string
+		kind     string
+		priority string
+		action   string
+	}{
+		{
+			status:   "direct_with_source_context",
+			kind:     "source_link_review_candidate",
+			priority: "medium",
+			action:   "promote valid links",
+		},
+		{
+			status:   "direct_control_only",
+			kind:     "source_backing_candidate",
+			priority: "high",
+			action:   "Add source coverage",
+		},
+		{
+			status:   "source_capability_only",
+			kind:     "missing_finding_candidate",
+			priority: "high",
+			action:   "Create or map",
+		},
+		{
+			status:   "review_context_only",
+			kind:     "mapping_review_candidate",
+			priority: "medium",
+			action:   "review context",
+		},
+		{
+			status:   "framework_catalog_only",
+			kind:     "scope_or_exclusion_candidate",
+			priority: "low",
+			action:   "in-scope status",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.status, func(t *testing.T) {
+			if got := frameworkCoverageCandidateType(tt.status); got != tt.kind {
+				t.Fatalf("frameworkCoverageCandidateType(%q) = %q, want %q", tt.status, got, tt.kind)
+			}
+			if got := frameworkCoverageCandidatePriority(tt.status); got != tt.priority {
+				t.Fatalf("frameworkCoverageCandidatePriority(%q) = %q, want %q", tt.status, got, tt.priority)
+			}
+			if got := frameworkCoverageCandidateAction(tt.status); !strings.Contains(got, tt.action) {
+				t.Fatalf("frameworkCoverageCandidateAction(%q) = %q, want substring %q", tt.status, got, tt.action)
+			}
+		})
+	}
+}
+
 func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 	cases := []struct {
 		name string
