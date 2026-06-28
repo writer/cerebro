@@ -1,0 +1,581 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: source
+      label: Source
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: dataset_id
+      label: Dataset Id
+      required: true
+    description: Collects aggregate, page, dataset, facet, resource, and resource 2 from Opendatasoft and projects them into the Cerebro graph as assets and audit events for inventory, access review, audit, risk, and operational context.
+    display_name: Opendatasoft
+    id: builtin_catalog-opendatasoft
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - aggregate
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Aggregate
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: opendatasoft.aggregate
+        required_payload_fields:
+        - id
+        schema_ref: opendatasoft/aggregate/v1
+        urn_kind: opendatasoft_aggregate
+      event_kind: aggregate
+      id: aggregate
+      id_field: id
+      label: Aggregate
+      list_key: aggregations
+      method: GET
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/${config.source}/aggregates"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: audit_event
+      record_selector: "$.aggregations[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - page
+        id: page
+        support: partial
+        title: Page
+        type: entity_family
+      event:
+        kind: opendatasoft.page
+        required_payload_fields:
+        - links
+        schema_ref: opendatasoft/page/v1
+        urn_kind: opendatasoft_page
+      event_kind: page
+      id: page
+      id_field: links
+      label: Page
+      list_key: pages
+      method: GET
+      name_field: links
+      pagination:
+        type: none
+      path: "/pages"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: links
+          name: links
+          resource_id: links
+          resource_name: links
+          resource_type: page
+        template: asset
+      record_selector: "$.pages[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - dataset
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Dataset
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: opendatasoft.dataset
+        required_payload_fields:
+        - dataset
+        schema_ref: opendatasoft/dataset/v1
+        urn_kind: opendatasoft_dataset
+      event_kind: dataset
+      id: dataset
+      id_field: dataset
+      label: Dataset
+      list_key: datasets
+      method: GET
+      name_field: dataset
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/${config.source}/datasets"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: dataset
+          name: dataset
+          provider_id: dataset
+        template: audit_event
+      record_selector: "$.datasets[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - facet
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Facet
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: opendatasoft.facet
+        required_payload_fields:
+        - name
+        schema_ref: opendatasoft/facet/v1
+        urn_kind: opendatasoft_facet
+      event_kind: facet
+      id: facet
+      id_field: name
+      label: Facet
+      list_key: facets
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/${config.source}/facets"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: audit_event
+      record_selector: "$.facets[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - resource
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Resource
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: opendatasoft.resource
+        required_payload_fields:
+        - href
+        schema_ref: opendatasoft/resource/v1
+        urn_kind: opendatasoft_resource
+      event_kind: resource
+      id: resource
+      id_field: href
+      label: Resource
+      list_key: links
+      method: GET
+      name_field: href
+      pagination:
+        type: none
+      path: "/${config.source}"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: href
+          name: href
+          provider_id: href
+        template: audit_event
+      record_selector: "$.links[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - resource_2
+        id: resource_2
+        support: partial
+        title: Resource 2
+        type: entity_family
+      event:
+        kind: opendatasoft.resource_2
+        required_payload_fields:
+        - href
+        schema_ref: opendatasoft/resource_2/v1
+        urn_kind: opendatasoft_resource_2
+      event_kind: resource_2
+      id: resource_2
+      id_field: href
+      label: Resource 2
+      list_key: links
+      method: GET
+      name_field: href
+      pagination:
+        type: none
+      path: "/"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: href
+          name: href
+          resource_id: href
+          resource_name: href
+          resource_type: resource
+        template: asset
+      record_selector: "$.links[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - metadata_template
+        id: metadata_template
+        support: partial
+        title: Metadata Template
+        type: entity_family
+      event:
+        kind: opendatasoft.metadata_template
+        required_payload_fields:
+        - href
+        schema_ref: opendatasoft/metadata_template/v1
+        urn_kind: opendatasoft_metadata_template
+      event_kind: metadata_template
+      id: metadata_template
+      id_field: href
+      label: Metadata Template
+      list_key: links
+      method: GET
+      name_field: href
+      pagination:
+        type: none
+      path: "/${config.source}/metadata_templates"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: href
+          name: href
+          resource_id: href
+          resource_name: href
+          resource_type: metadata_template
+        template: asset
+      record_selector: "$.links[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - datasets_aggregate
+        id: datasets_aggregate
+        support: partial
+        title: Datasets Aggregate
+        type: entity_family
+      event:
+        kind: opendatasoft.datasets_aggregate
+        required_payload_fields:
+        - id
+        schema_ref: opendatasoft/datasets_aggregate/v1
+        urn_kind: opendatasoft_datasets_aggregate
+      event_kind: datasets_aggregate
+      id: datasets_aggregate
+      id_field: id
+      label: Datasets Aggregate
+      list_key: aggregations
+      method: GET
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/${config.source}/datasets/${config.dataset_id}/aggregates"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: aggregate
+        template: asset
+      record_selector: "$.aggregations[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - attachment
+        id: attachment
+        support: partial
+        title: Attachment
+        type: entity_family
+      event:
+        kind: opendatasoft.attachment
+        required_payload_fields:
+        - href
+        schema_ref: opendatasoft/attachment/v1
+        urn_kind: opendatasoft_attachment
+      event_kind: attachment
+      id: attachment
+      id_field: href
+      label: Attachment
+      list_key: attachments
+      method: GET
+      name_field: href
+      pagination:
+        type: none
+      path: "/${config.source}/datasets/${config.dataset_id}/attachments"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: href
+          name: href
+          resource_id: href
+          resource_name: href
+          resource_type: attachment
+        template: asset
+      record_selector: "$.attachments[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - datasets_facet
+        id: datasets_facet
+        support: partial
+        title: Datasets Facet
+        type: entity_family
+      event:
+        kind: opendatasoft.datasets_facet
+        required_payload_fields:
+        - name
+        schema_ref: opendatasoft/datasets_facet/v1
+        urn_kind: opendatasoft_datasets_facet
+      event_kind: datasets_facet
+      id: datasets_facet
+      id_field: name
+      label: Datasets Facet
+      list_key: facets
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/${config.source}/datasets/${config.dataset_id}/facets"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: facet
+        template: asset
+      record_selector: "$.facets[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - record
+        id: record
+        support: partial
+        title: Record
+        type: entity_family
+      event:
+        kind: opendatasoft.record
+        required_payload_fields:
+        - links
+        schema_ref: opendatasoft/record/v1
+        urn_kind: opendatasoft_record
+      event_kind: record
+      id: record
+      id_field: links
+      label: Record
+      list_key: records
+      method: GET
+      name_field: links
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/${config.source}/datasets/${config.dataset_id}/records"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: links
+          name: links
+          resource_id: links
+          resource_name: links
+          resource_type: record
+        template: asset
+      record_selector: "$.records[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - reuses
+        id: reuses
+        support: partial
+        title: Reuses
+        type: entity_family
+      event:
+        kind: opendatasoft.reuses
+        required_payload_fields:
+        - id
+        schema_ref: opendatasoft/reuses/v1
+        urn_kind: opendatasoft_reuses
+      event_kind: reuses
+      id: reuses
+      id_field: id
+      label: Reuses
+      list_key: reuses
+      method: GET
+      name_field: title
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/${config.source}/datasets/${config.dataset_id}/reuses"
+      permissions_needed:
+      - api_key
+      - basic
+      projection:
+        fields:
+          id: id
+          name: title
+          resource_id: id
+          resource_name: title
+          resource_type: reuses
+        template: asset
+      record_selector: "$.reuses[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - aggregate
+      id: aggregate
+      label: Aggregate
+    - families:
+      - page
+      id: page
+      label: Page
+    - default_enabled: true
+      families:
+      - dataset
+      id: dataset
+      label: Dataset
+    - default_enabled: true
+      families:
+      - facet
+      id: facet
+      label: Facet
+    - default_enabled: true
+      families:
+      - resource
+      id: resource
+      label: Resource
+    - families:
+      - resource_2
+      id: resource_2
+      label: Resource 2
+    - families:
+      - metadata_template
+      id: metadata_template
+      label: Metadata Template
+    - families:
+      - datasets_aggregate
+      id: datasets_aggregate
+      label: Datasets Aggregate
+    - families:
+      - attachment
+      id: attachment
+      label: Attachment
+    - families:
+      - datasets_facet
+      id: datasets_facet
+      label: Datasets Facet
+    - families:
+      - record
+      id: record
+      label: Record
+    - families:
+      - reuses
+      id: reuses
+      label: Reuses
+    source_id: opendatasoft
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://public.opendatasoft.com/api/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/${config.source}/aggregates"

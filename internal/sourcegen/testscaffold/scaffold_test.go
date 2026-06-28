@@ -1,6 +1,7 @@
 package testscaffold
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -37,6 +38,24 @@ func TestGenerateScaffold(t *testing.T) {
 				Path:   "/v1/groups",
 				Method: "GET",
 			},
+			{
+				ID:             "models",
+				Label:          "Models",
+				Path:           "/v1/models",
+				Method:         "GET",
+				RecordSelector: "$.resources[*]",
+				IDField:        "metadata.id",
+				NameField:      "entity.name",
+			},
+			{
+				ID:             "balances",
+				Label:          "Balances",
+				Path:           "/v1/balances",
+				Method:         "GET",
+				RecordSelector: "$.balance_infos[*]",
+				IDField:        "currency",
+				NameField:      "currency",
+			},
 		},
 	}
 
@@ -72,5 +91,39 @@ func TestGenerateScaffold(t *testing.T) {
 	}
 	if !strings.Contains(result.Fixtures["users.json"], "fixture-users-001") {
 		t.Errorf("expected fixture user_id, got:\n%s", result.Fixtures["users.json"])
+	}
+	var balancesFixture struct {
+		BalanceInfos []map[string]any `json:"balance_infos"`
+	}
+	if err := json.Unmarshal([]byte(result.Fixtures["balances.json"]), &balancesFixture); err != nil {
+		t.Fatalf("unmarshal balances fixture: %v", err)
+	}
+	if len(balancesFixture.BalanceInfos) != 1 {
+		t.Fatalf("balances fixture records = %d, want 1", len(balancesFixture.BalanceInfos))
+	}
+	if got := balancesFixture.BalanceInfos[0]["currency"]; got != "fixture-balances-001" {
+		t.Fatalf("balances fixture currency = %v, want fixture ID", got)
+	}
+
+	var modelsFixture struct {
+		Resources []map[string]any `json:"resources"`
+	}
+	if err := json.Unmarshal([]byte(result.Fixtures["models.json"]), &modelsFixture); err != nil {
+		t.Fatalf("unmarshal models fixture: %v", err)
+	}
+	if len(modelsFixture.Resources) != 1 {
+		t.Fatalf("models fixture resources = %d, want 1", len(modelsFixture.Resources))
+	}
+	model := modelsFixture.Resources[0]
+	if _, ok := model["metadata.id"]; ok {
+		t.Fatalf("models fixture used flat metadata.id key: %#v", model)
+	}
+	metadata, ok := model["metadata"].(map[string]any)
+	if !ok || metadata["id"] != "fixture-models-001" {
+		t.Fatalf("models fixture metadata = %#v, want nested id", model["metadata"])
+	}
+	entity, ok := model["entity"].(map[string]any)
+	if !ok || entity["name"] != "Test Models" {
+		t.Fatalf("models fixture entity = %#v, want nested name", model["entity"])
 	}
 }

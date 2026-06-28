@@ -20,8 +20,9 @@ spec:
     frameworks:
         - name: GDPR
           controls:
-            - Art.5
+            - Article 5
             - Article 24
+            - Article 25
             - Article 30
             - Article 32
     enabled: true

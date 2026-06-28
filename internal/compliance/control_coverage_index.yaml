@@ -115669,50 +115669,131 @@ profiles:
       name: Privacy and AI Governance
       description: Privacy and AI governance controls for data handling, governance accountability, and AI system oversight reviews.
       summary:
-        selected_controls: 162
-        mapped_controls: 25
-        unmapped_controls: 137
+        selected_controls: 171
+        mapped_controls: 29
+        unmapped_controls: 142
         mapped_rules: 44
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
-        placeholder_controls: 162
+        placeholder_controls: 171
       controls:
         - framework_name: CCPA
           family_id: "1798"
           family_name: Consumer Privacy Rights
           control_id: "1798.100"
+          title: Right to know about personal information collected
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
             - compliance-data-inventory-maintained
-        - framework_name: GDPR
-          family_id: Article
-          family_name: Articles
-          control_id: Art.30
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.105"
+          title: Right to delete personal information
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
-          rule_count: 2
+          rule_count: 1
           mapped_rules:
-            - ai-data-governance
-            - compliance-inventory-data-tracking
-        - framework_name: GDPR
-          family_id: Article
-          family_name: Articles
-          control_id: Art.5
+            - ai-data-retention-reviewed
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.106"
+          title: Right to correct inaccurate personal information
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.110"
+          title: Right to know what personal information is collected
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.115"
+          title: Right to know what personal information is sold or shared
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.120"
+          title: Right to opt out of sale or sharing of personal information
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.121"
+          title: Right to limit use and disclosure of sensitive personal information
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.125"
+          title: Right of no retaliation following opt out or exercise of rights
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.130"
+          title: Notice, disclosure, correction, and deletion request methods
+          audit_readiness:
+            status: placeholder
+            score: 4
           coverage_status: mapped
-          rule_count: 4
+          rule_count: 1
           mapped_rules:
-            - ai-data-governance
-            - compliance-gdpr-policy
-            - compliance-inventory-data-tracking
+            - compliance-data-inventory-maintained
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.135"
+          title: Methods of limiting use and disclosure of sensitive personal information
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: unmapped
+          rule_count: 0
+        - framework_name: CCPA
+          family_id: "1798"
+          family_name: Consumer Privacy Rights
+          control_id: "1798.150"
+          title: Personal information security and breach liability
+          audit_readiness:
+            status: placeholder
+            score: 4
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
             - compliance-ir-gdpr-addendum
         - framework_name: GDPR
           family_id: Article
@@ -115841,8 +115922,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 0
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - compliance-gdpr-policy
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -115871,10 +115954,12 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 3
+          rule_count: 5
           mapped_rules:
+            - ai-data-governance
             - compliance-data-inventory-maintained
             - compliance-gdpr-policy
+            - compliance-inventory-data-tracking
             - compliance-ir-gdpr-addendum
         - framework_name: GDPR
           family_id: Article
@@ -115884,9 +115969,10 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 2
+          rule_count: 3
           mapped_rules:
             - compliance-gdpr-policy
+            - compliance-inventory-data-tracking
             - compliance-ir-gdpr-addendum
         - framework_name: GDPR
           family_id: Article
@@ -115985,6 +116071,22 @@ profiles:
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
+          control_id: Article 5
+          audit_readiness:
+            status: placeholder
+            score: 0
+          coverage_status: mapped
+          rule_count: 6
+          mapped_rules:
+            - ai-data-governance
+            - ai-data-retention-reviewed
+            - compliance-data-inventory-maintained
+            - compliance-gdpr-policy
+            - compliance-inventory-data-tracking
+            - compliance-ir-gdpr-addendum
+        - framework_name: GDPR
+          family_id: Article
+          family_name: Articles
           control_id: Article 51
           audit_readiness:
             status: placeholder
@@ -115998,8 +116100,10 @@ profiles:
           audit_readiness:
             status: placeholder
             score: 0
-          coverage_status: unmapped
-          rule_count: 0
+          coverage_status: mapped
+          rule_count: 1
+          mapped_rules:
+            - ai-data-governance
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
@@ -117356,15 +117460,21 @@ profiles:
         - rule_id: ai-data-governance
           controls:
             - framework_name: GDPR
-              control_id: Art.30
+              control_id: Article 30
             - framework_name: GDPR
-              control_id: Art.5
+              control_id: Article 5
+            - framework_name: GDPR
+              control_id: Article 6
             - framework_name: ISO 42001
               control_id: "10.2"
             - framework_name: ISO 42001
               control_id: "7.3"
         - rule_id: ai-data-retention-reviewed
           controls:
+            - framework_name: CCPA
+              control_id: "1798.105"
+            - framework_name: GDPR
+              control_id: Article 5
             - framework_name: ISO 42001
               control_id: A.2.2
             - framework_name: ISO 42001
@@ -117661,28 +117771,36 @@ profiles:
           controls:
             - framework_name: CCPA
               control_id: "1798.100"
+            - framework_name: CCPA
+              control_id: "1798.130"
             - framework_name: GDPR
               control_id: Article 30
+            - framework_name: GDPR
+              control_id: Article 5
         - rule_id: compliance-gdpr-policy
           controls:
             - framework_name: GDPR
-              control_id: Art.5
-            - framework_name: GDPR
               control_id: Article 24
+            - framework_name: GDPR
+              control_id: Article 25
             - framework_name: GDPR
               control_id: Article 30
             - framework_name: GDPR
               control_id: Article 32
+            - framework_name: GDPR
+              control_id: Article 5
         - rule_id: compliance-inventory-data-tracking
           controls:
             - framework_name: GDPR
-              control_id: Art.30
+              control_id: Article 30
             - framework_name: GDPR
-              control_id: Art.5
+              control_id: Article 32
+            - framework_name: GDPR
+              control_id: Article 5
         - rule_id: compliance-ir-gdpr-addendum
           controls:
-            - framework_name: GDPR
-              control_id: Art.5
+            - framework_name: CCPA
+              control_id: "1798.150"
             - framework_name: GDPR
               control_id: Article 24
             - framework_name: GDPR
@@ -117693,6 +117811,8 @@ profiles:
               control_id: Article 33
             - framework_name: GDPR
               control_id: Article 34
+            - framework_name: GDPR
+              control_id: Article 5
         - rule_id: gcp-vertex-dataset-cmek
           controls:
             - framework_name: ISO 42001
@@ -117718,6 +117838,20 @@ profiles:
             - framework_name: GDPR
               control_id: Article 28
       unmapped_controls:
+        - framework_name: CCPA
+          control_id: "1798.106"
+        - framework_name: CCPA
+          control_id: "1798.110"
+        - framework_name: CCPA
+          control_id: "1798.115"
+        - framework_name: CCPA
+          control_id: "1798.120"
+        - framework_name: CCPA
+          control_id: "1798.121"
+        - framework_name: CCPA
+          control_id: "1798.125"
+        - framework_name: CCPA
+          control_id: "1798.135"
         - framework_name: GDPR
           control_id: Article 12
         - framework_name: GDPR
@@ -117743,8 +117877,6 @@ profiles:
         - framework_name: GDPR
           control_id: Article 23
         - framework_name: GDPR
-          control_id: Article 25
-        - framework_name: GDPR
           control_id: Article 27
         - framework_name: GDPR
           control_id: Article 35
@@ -117764,8 +117896,6 @@ profiles:
           control_id: Article 48
         - framework_name: GDPR
           control_id: Article 51
-        - framework_name: GDPR
-          control_id: Article 6
         - framework_name: GDPR
           control_id: Article 7
         - framework_name: ISO 27701:2025

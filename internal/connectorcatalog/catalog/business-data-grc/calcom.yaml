@@ -1,113 +1,136 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-calcom
-    tenant_id: builtin_catalog
-    source_id: calcom
-    display_name: Cal.com
-    description: "Collects bookings, users, and audit events from Cal.com and projects them into the Cerebro graph as audit events and users for owner, account, evidence, and compliance context."
-    categories:
-    - business
-    - productivity
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.cal.com/v1
-      verification:
-        method: GET
-        path: "/me"
-        expect_status:
-        - 200
-    resource_families:
-    - id: bookings
-      label: Bookings
-      path: "/bookings"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: calcom.bookings
-        schema_ref: calcom/bookings/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: bookings
-        type: audit_event
-        title: Bookings
-        families:
-        - bookings
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: users
-      label: Users
-      path: "/users"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: calcom.users
-        schema_ref: calcom/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Users
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/audit-events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: calcom.audit_events
-        schema_ref: calcom/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - business
+        - productivity
+      description: Collects bookings, users, and audit events from Cal.com and projects them into the Cerebro graph as audit events and users for owner, account, evidence, and compliance context.
+      display_name: Cal.com
+      id: builtin-calcom
+      resource_families:
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - bookings
+              high_value: true
+              id: bookings
+              support: partial
+              title: Bookings
+              type: audit_event
+          event:
+            kind: calcom.bookings
+            required_payload_fields:
+              - id
+            schema_ref: calcom/bookings/v1
+            urn_kind: calcom_bookings
+          id: bookings
+          id_field: id
+          label: Bookings
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /bookings
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Users
+              type: entity_family
+          event:
+            kind: calcom.users
+            required_payload_fields:
+              - id
+            schema_ref: calcom/users/v1
+            urn_kind: calcom_users
+          id: users
+          id_field: id
+          label: Users
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /users
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: calcom.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: calcom/audit_events/v1
+            urn_kind: calcom_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /audit-events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: calcom
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.cal.com/v1
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /me

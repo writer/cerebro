@@ -22,7 +22,7 @@ CLI / JSON HTTP / Connect / MCP clients
               +--> Optional graph store: Neo4j/Aura
 ```
 
-With no external drivers configured, the server can still start and serve lightweight routes such as `/health`, `/healthz`, `/livez`, `/openapi.yaml`, and `/sources`. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
+With no external drivers configured, the server can still start and serve lightweight routes such as `/health`, `/healthz`, `/livez`, `/openapi.yaml`, `/sources`, and stateless MCP source previews. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
 
 ## First Run
 
@@ -41,25 +41,30 @@ curl -sS http://127.0.0.1:8080/sources
 For a durable local stack:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
+
+Plain Compose initializes the local Postgres volume with the compose-file password. The onboarding Make targets use `tmp/local-postgres-password`. Before switching from plain Compose to `make agent-onboard-e2e` or `make github-business-demo`, run `docker compose down -v` to recreate local volumes, or run the Make target with `CEREBRO_LOCAL_POSTGRES_PASSWORD=cerebro` to reuse that volume. `docker compose down -v` deletes local stack data.
 
 ## Agent Compliance Quickstart
 
-Run the local onboarding flow, then give the receipt to your coding agent:
+Start Cerebro and connect it to your coding agent over MCP:
 
 ```bash
-make secure-business-demo
+make serve-dev
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
+  --header "Authorization: Bearer local-dev-key"
 ```
 
 ```text
-Use Cerebro as compliance context for this change.
-Read tmp/onboarding/e2e-receipt.json, then tell me which checks passed,
-which evidence exists, which controls apply, and what must happen before
-this can ship.
+Use Cerebro as compliance context for this repo.
+Call cerebro.sources.read for source_id=github with config owner=<owner>,
+repo=<repo>, and per_page=5. Summarize the live evidence and the security
+or compliance context that applies before this can ship.
 ```
 
-For live integrations, connect an MCP client to `POST /api/v1/mcp` so agents can query policy memory, compliance evidence, graph context, and safe action-planning contracts.
+For durable evidence and graph context, run `make github-business-demo` with `GITHUB_OWNER`, `GITHUB_REPO`, and `GITHUB_TOKEN`, then give `tmp/onboarding/github-receipt.json` to the agent. For hosted integrations, connect an MCP client to `POST /api/v1/mcp` so agents can query policy memory, compliance evidence, graph context, and safe action-planning contracts.
 
 ## Main Docs
 
