@@ -33,9 +33,9 @@
       "tenant_id": "local",
       "config": {
         "tenant_id": "local",
-        "owner": "env:GITHUB_OWNER",
-        "repo": "env:GITHUB_REPO",
-        "token": "env:GITHUB_TOKEN",
+        "owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+        "repo": "env:CEREBRO_SOURCE_GITHUB_REPO",
+        "token": "env:CEREBRO_SOURCE_GITHUB_TOKEN",
         "state": "all",
         "per_page": "10"
       },

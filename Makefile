@@ -67,6 +67,15 @@ AGENT_ONBOARD_RECEIPT ?= tmp/onboarding/receipt.json
 AGENT_ONBOARD_E2E_RECEIPT ?= tmp/onboarding/e2e-receipt.json
 AGENT_ONBOARD_GITHUB_RECEIPT ?= tmp/onboarding/github-receipt.json
 CEREBRO_ONBOARD_BASE_URL ?=
+CEREBRO_LOCAL_POSTGRES_USER ?= cerebro
+CEREBRO_LOCAL_POSTGRES_PASSWORD ?= cerebro
+CEREBRO_LOCAL_POSTGRES_DSN ?= postgres://$(CEREBRO_LOCAL_POSTGRES_USER):$(CEREBRO_LOCAL_POSTGRES_PASSWORD)@127.0.0.1:5432/cerebro?sslmode=disable
+GITHUB_OWNER ?=
+GITHUB_REPO ?=
+GITHUB_TOKEN ?=
+CEREBRO_SOURCE_GITHUB_OWNER ?= $(GITHUB_OWNER)
+CEREBRO_SOURCE_GITHUB_REPO ?= $(GITHUB_REPO)
+CEREBRO_SOURCE_GITHUB_TOKEN ?= $(GITHUB_TOKEN)
 MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
 MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
 MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
@@ -404,7 +413,7 @@ agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflo
 	@CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
-	CEREBRO_POSTGRES_DSN="postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable" \
+	CEREBRO_POSTGRES_DSN="$(CEREBRO_LOCAL_POSTGRES_DSN)" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \
 	CEREBRO_NEO4J_PASSWORD="local-password" \
@@ -415,17 +424,20 @@ agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflo
 
 github-business-demo: build ## Connect a GitHub repo, sync it, ingest graph data, and write a receipt.
 	@command -v docker >/dev/null || { echo "docker is required for github-business-demo" >&2; exit 2; }
+	@CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
+	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
+	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \
 	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 	@CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
-	CEREBRO_POSTGRES_DSN="*****************************************/cerebro?sslmode=disable" \
+	CEREBRO_POSTGRES_DSN="$(CEREBRO_LOCAL_POSTGRES_DSN)" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \
 	CEREBRO_NEO4J_PASSWORD="local-password" \
-	GITHUB_OWNER="$(GITHUB_OWNER)" \
-	GITHUB_REPO="$(GITHUB_REPO)" \
-	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
+	CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
+	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
+	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \
 	python3 scripts/agent_onboard.py \
 		--plan "$(AGENT_ONBOARD_GITHUB_PLAN)" \
 		--receipt "$(AGENT_ONBOARD_GITHUB_RECEIPT)" \

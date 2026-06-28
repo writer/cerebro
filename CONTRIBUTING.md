@@ -22,7 +22,14 @@ make serve
 Run the durable local stack:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
+```
+
+To force the stack to run the current checkout instead of the published image:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 ```
 
 ## Code Quality Checks

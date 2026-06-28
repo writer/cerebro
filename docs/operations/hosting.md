@@ -55,11 +55,14 @@ Routes that require a missing dependency should fail closed instead of silently 
 For local durable evaluation:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 export CEREBRO_API_KEY=local-dev-key
 curl -sS http://127.0.0.1:8080/health
 curl -sS --oauth2-bearer "$CEREBRO_API_KEY" http://127.0.0.1:8080/sources
 ```
+
+Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d` when local durable evaluation must run the current checkout instead of the published image.
 
 The checked-in compose file starts:
 

@@ -44,8 +44,11 @@ This profile is not enough for persisted source runtimes, claims, findings, repo
 Use the checked-in compose stack for local durable testing:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
+
+Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d` when local durable testing must run the current checkout instead of the published image.
 
 It starts:
 

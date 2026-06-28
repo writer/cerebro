@@ -26,8 +26,11 @@ make serve-dev
 Run the durable local stack with NATS JetStream, Postgres, Neo4j, Cerebro, and the local bearer key `local-dev-key`:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
+
+Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d` when you need the durable stack to run the current checkout instead of the published image.
 
 The compose stack uses service-local `CEREBRO_*` variables. For a standalone local template, start from `.env.example`.
 
