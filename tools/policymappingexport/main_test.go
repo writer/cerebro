@@ -271,6 +271,14 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 		controlRefCol:     "SOC 2 CC6.6",
 	})
 	assertCellContains(t, controlHeader, cc66Row, "source_coverage_refs", "aws/s3_bucket")
+
+	unbackedRow := findRowByColumns(t, controlRows, map[int]string{
+		controlFindingCol: "aws-s3-bucket-no-public-access",
+		controlRefCol:     "CIS AWS Foundations Benchmark v2.0 2.1.5",
+	})
+	assertCellEquals(t, controlHeader, unbackedRow, "control_match_source", "finding_control_ref")
+	assertCellEquals(t, controlHeader, unbackedRow, "mapping_confidence", "review")
+	assertCellContains(t, controlHeader, unbackedRow, "mapping_rationale", "does not currently back this control")
 }
 
 func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
@@ -423,7 +431,7 @@ func TestGenerateFilesIncludesYAMLReviewContextMaps(t *testing.T) {
 	frameworkControlFrameworkCol := columnIndex(t, frameworkControlHeader, "framework")
 	frameworkControlControlCol := columnIndex(t, frameworkControlHeader, "control_id")
 	for _, row := range frameworkControlRows[1:] {
-		if row[frameworkControlFrameworkCol] == "soc2" && row[frameworkControlControlCol] == "CC6.1" {
+		if row[frameworkControlFrameworkCol] == "SOC 2" && row[frameworkControlControlCol] == "CC6.1" {
 			assertCellContains(t, frameworkControlHeader, row, "source_capability_refs", "okta/users")
 			assertCellContains(t, frameworkControlHeader, row, "review_area_refs", "SOC 2/access-authorization")
 			assertCellContains(t, frameworkControlHeader, row, "outbound_relationship_refs", "SOC 2 CC6.2")
@@ -502,6 +510,13 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertCellContains(t, requirementHeader, isoCryptoRow, "required_fields", "encryption_state")
 	assertCellContains(t, requirementHeader, isoCryptoRow, "source_capability_refs", "aws/s3_bucket")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "ISO 27001:2022", "A.8.24", "logging-monitoring")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.18", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.30", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "A1.1", "ai-governance")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "PI1.1", "privacy-rights")
+
+	ccpaPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "CCPA", "1798.100", "privacy-rights", "data_inventory")
+	assertCellContains(t, requirementHeader, ccpaPrivacyRow, "required_fields", "legal_basis")
 
 	baselineRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review")
 	assertCellContains(t, requirementHeader, baselineRow, "assessment_methods", "interview")
@@ -640,6 +655,39 @@ func TestFrameworkCoverageCandidateClassifiersCoverAllStatuses(t *testing.T) {
 			if got := frameworkCoverageCandidateAction(tt.status); !strings.Contains(got, tt.action) {
 				t.Fatalf("frameworkCoverageCandidateAction(%q) = %q, want substring %q", tt.status, got, tt.action)
 			}
+		})
+	}
+}
+
+func TestFrameworkCoverageCandidateRowsCoverAllStatuses(t *testing.T) {
+	header := frameworkCoverageCandidatesHeader()
+	item := frameworkControlEnrichment{
+		Ref: controlRef{
+			Framework: "test-framework",
+			ControlID: "C1",
+			Family:    "Test Control Family",
+		},
+		SourceCapabilityRefs:     []string{"source/dimension"},
+		ReviewAreaRefs:           []string{"test-framework/review-area"},
+		OutboundRelationshipRefs: []string{"test-framework C2 [sibling_scope/review_hint]"},
+		InboundRelationshipRefs:  []string{"test-framework C0 [evidence_dependency/review_hint]"},
+	}
+	cases := []struct {
+		status string
+		kind   string
+	}{
+		{status: "direct_with_source_context", kind: "source_link_review_candidate"},
+		{status: "direct_control_only", kind: "source_backing_candidate"},
+		{status: "source_capability_only", kind: "missing_finding_candidate"},
+		{status: "review_context_only", kind: "mapping_review_candidate"},
+		{status: "framework_catalog_only", kind: "scope_or_exclusion_candidate"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.status, func(t *testing.T) {
+			row := frameworkCoverageCandidateRow(item, tt.status, nil)
+			assertCellEquals(t, header, row, "coverage_status", tt.status)
+			assertCellEquals(t, header, row, "candidate_type", tt.kind)
+			assertCellContains(t, header, row, "next_action", frameworkCoverageCandidateAction(tt.status))
 		})
 	}
 }
