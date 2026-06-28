@@ -588,6 +588,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"grc.policy_review":                             grcPolicyReviewProjections,
 	"grc.policy_exception":                          grcPolicyExceptionProjections,
 	"grc.policy_reminder":                           grcPolicyReminderProjections,
+	"grc.policy_lifecycle_event":                    grcPolicyLifecycleEventProjections,
 	"grc.document":                                  grcDocumentProjections,
 	"grc.contract":                                  grcContractProjections,
 	"grc.security_review":                           grcSecurityReviewProjections,

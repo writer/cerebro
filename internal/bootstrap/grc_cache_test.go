@@ -42,6 +42,41 @@ func TestGRCQueryCacheServesFreshHit(t *testing.T) {
 	}
 }
 
+func TestGRCQueryCacheKeysByQuery(t *testing.T) {
+	app := &App{
+		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test"})},
+	}
+	calls := 0
+	handler := app.cacheGRCJSON(app.grcCachePolicy("policy.lifecycle", time.Minute), func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		writeJSON(w, http.StatusOK, map[string]any{"calls": calls})
+	})
+
+	baseline := httptest.NewRecorder()
+	handler(baseline, httptest.NewRequest(http.MethodGet, "/grc/policy-lifecycle?tenant_id=writer&rule_profile=baseline", nil))
+	strict := httptest.NewRecorder()
+	handler(strict, httptest.NewRequest(http.MethodGet, "/grc/policy-lifecycle?tenant_id=writer&rule_profile=strict", nil))
+	baselineAgain := httptest.NewRecorder()
+	handler(baselineAgain, httptest.NewRequest(http.MethodGet, "/grc/policy-lifecycle?rule_profile=baseline&tenant_id=writer", nil))
+
+	if baseline.Header().Get("X-Cerebro-Cache") != "miss" || strict.Header().Get("X-Cerebro-Cache") != "miss" {
+		t.Fatalf("profile cache headers = %q/%q, want separate misses", baseline.Header().Get("X-Cerebro-Cache"), strict.Header().Get("X-Cerebro-Cache"))
+	}
+	if baselineAgain.Header().Get("X-Cerebro-Cache") != "hit" {
+		t.Fatalf("baseline repeat X-Cerebro-Cache = %q, want hit", baselineAgain.Header().Get("X-Cerebro-Cache"))
+	}
+	if calls != 2 {
+		t.Fatalf("handler calls = %d, want 2", calls)
+	}
+	if baseline.Body.String() == strict.Body.String() {
+		t.Fatalf("profile responses shared a cache entry: %s", baseline.Body.String())
+	}
+	if baselineAgain.Body.String() != baseline.Body.String() {
+		t.Fatalf("baseline repeat body = %q, want cached %q", baselineAgain.Body.String(), baseline.Body.String())
+	}
+}
+
 func TestGRCQueryCacheBypassesNoCacheRequest(t *testing.T) {
 	app := &App{
 		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
