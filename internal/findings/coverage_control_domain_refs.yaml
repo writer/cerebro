@@ -5,9 +5,11 @@
 # participate in the all-finding compliance mapping using one auditable table
 # instead of hand-authoring control_refs on 580+ individual dimensions.
 #
-# Matching stays bounded by the existing source / dimension / evidence gating and
-# only ever surfaces the intersection of a detection's controls and a dimension's
-# controls, so controls listed here that no detection maps simply never appear.
+# Matching stays bounded by source plus dimension / evidence gating and only ever
+# surfaces the intersection of a detection's controls and a dimension's controls,
+# so controls listed here that no detection maps simply never appear. Domains
+# that do not directly evidence framework controls (for example
+# source_operations) are intentionally left unmapped and guarded by tests.
 version: "2026-06-28"
 control_domains:
   identity_access:

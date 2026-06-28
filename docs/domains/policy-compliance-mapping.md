@@ -39,7 +39,7 @@ Policy findings inherit audit language from `policy_rule_extensions.yaml`. Non-p
 
 Rule-level values win. Policy-sourced detections are skipped so policy YAML stays authoritative. `detection-catalog-generate` validates that every public detection ends up with complete audit depth.
 
-Source coverage refs come from the source coverage contracts. When a contract declares only coarse `control_domains`, `coverage_control_domain_refs.yaml` maps those domains to defensible framework controls. Derived refs are added only when the detection matches the coverage source, so coverage stays source-bounded and avoids cross-source over-claiming.
+Source coverage refs come from the source coverage contracts. When a contract declares only coarse `control_domains`, `coverage_control_domain_refs.yaml` maps selected domains to defensible framework controls. Derived refs are added only when the detection matches the coverage source and the coverage dimension or evidence type also matches, so coverage stays source-bounded and avoids broad same-source over-claiming. Domains that do not directly evidence framework controls, such as `source_operations`, are explicitly exempted by tests instead of being silently ignored.
 
 ## Generated Tables
 

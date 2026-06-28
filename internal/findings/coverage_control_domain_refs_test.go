@@ -1,11 +1,19 @@
 package findings
 
 import (
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
+
+var intentionallyUnmappedCoverageControlDomains = map[string]struct{}{
+	"source_operations": {},
+}
 
 func TestCoverageControlDomainRefsLoad(t *testing.T) {
 	if coverageControlDomainRefSet.Version == "" {
@@ -51,8 +59,9 @@ func TestEffectiveCoverageControlRefsUnionsDerived(t *testing.T) {
 
 func TestSourceCoverageDerivedRefsAreSourceBounded(t *testing.T) {
 	detection := PublicDetection{
-		ID:       "gcp-storage-bucket-encryption-disabled",
-		SourceID: "gcp",
+		ID:                        "gcp-storage-bucket-encryption-disabled",
+		SourceID:                  "gcp",
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{EvidenceType: "encryption_configuration"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "NIST 800-53 r5", ControlID: "SC-28"},
 		},
@@ -64,6 +73,7 @@ func TestSourceCoverageDerivedRefsAreSourceBounded(t *testing.T) {
 			Title:          id,
 			Support:        sourcecdk.CoverageSupportSupported,
 			HighValue:      true,
+			EvidenceTypes:  []string{"encryption_configuration"},
 			ControlDomains: []string{"data_protection"},
 		}
 	}
@@ -80,5 +90,124 @@ func TestSourceCoverageDerivedRefsAreSourceBounded(t *testing.T) {
 		if ref.SourceID != "gcp" {
 			t.Fatalf("derived coverage crossed sources: got %q, want only gcp", ref.SourceID)
 		}
+	}
+}
+
+func TestSourceCoverageDerivedRefsRequireDimensionOrEvidenceMatch(t *testing.T) {
+	detection := PublicDetection{
+		ID:                        "aws-s3-bucket-no-public-access",
+		Name:                      "S3 Bucket Public Access",
+		SourceID:                  policyRuleSourceID,
+		Tags:                      []string{"aws", "policy", "s3"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{EvidenceType: "cloud_configuration"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "aws",
+		Dimensions: []sourcecdk.CoverageDimension{
+			{
+				ID:             "iam_credential_report",
+				Type:           "entity_family",
+				Families:       []string{"iam_credential_report"},
+				Support:        sourcecdk.CoverageSupportSupported,
+				EvidenceTypes:  []string{"identity_configuration"},
+				ControlDomains: []string{"identity_access"},
+			},
+			{
+				ID:             "s3_bucket",
+				Type:           "entity_family",
+				Families:       []string{"s3_bucket"},
+				Support:        sourcecdk.CoverageSupportSupported,
+				EvidenceTypes:  []string{"network_exposure"},
+				ControlDomains: []string{"network_security"},
+			},
+		},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want only the matching S3 dimension: %#v", len(refs), refs)
+	}
+	if refs[0].DimensionID != "s3_bucket" {
+		t.Fatalf("DimensionID = %q, want s3_bucket", refs[0].DimensionID)
+	}
+}
+
+func TestSourceCoverageExplicitRefsCanMatchSourceWithoutDimensionOrEvidence(t *testing.T) {
+	detection := PublicDetection{
+		ID:       "aws-access-baseline",
+		SourceID: "aws",
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "aws",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:            "iam_credential_report",
+			Type:          "entity_family",
+			Families:      []string{"iam_credential_report"},
+			Support:       sourcecdk.CoverageSupportSupported,
+			EvidenceTypes: []string{"identity_configuration"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.6",
+			}},
+		}},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want explicit control ref match: %#v", len(refs), refs)
+	}
+	if refs[0].DimensionID != "iam_credential_report" {
+		t.Fatalf("DimensionID = %q, want iam_credential_report", refs[0].DimensionID)
+	}
+}
+
+func TestCoverageControlDomainRefsCoverDeclaredSourceDomains(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "sources", "*", "catalog.yaml"))
+	if err != nil {
+		t.Fatalf("glob source catalogs: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("expected source catalogs")
+	}
+
+	var missing []string
+	for _, path := range paths {
+		payload, err := os.ReadFile(path) // #nosec G304 -- test reads repository source catalog fixtures.
+		if err != nil {
+			t.Fatalf("read source catalog %q: %v", path, err)
+		}
+		catalog, err := sourcecdk.LoadSourceCatalog(payload)
+		if err != nil {
+			t.Fatalf("load source catalog %q: %v", path, err)
+		}
+		if catalog.CoverageContract == nil {
+			continue
+		}
+		for _, dimension := range catalog.CoverageContract.Dimensions {
+			for _, domain := range dimension.ControlDomains {
+				domain = strings.TrimSpace(domain)
+				if domain == "" {
+					continue
+				}
+				if _, ok := coverageControlDomainRefSet.ControlDomains[domain]; ok {
+					continue
+				}
+				if _, ok := intentionallyUnmappedCoverageControlDomains[domain]; ok {
+					continue
+				}
+				rel, _ := filepath.Rel(filepath.Join("..", ".."), path)
+				missing = append(missing, rel+":"+dimension.ID+":"+domain)
+			}
+		}
+	}
+	if len(missing) != 0 {
+		sort.Strings(missing)
+		t.Fatalf("declared control_domains missing coverage mapping or explicit exemption: first=%s count=%d", missing[0], len(missing))
 	}
 }

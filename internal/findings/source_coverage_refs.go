@@ -55,26 +55,26 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		for _, dimension := range contract.Dimensions {
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
+			declaredMatches, declaredExactMatch := matchingCoverageControlRefs(detection.ControlRefs, dimension.ControlRefs)
+			matchedControls := make([]ports.FindingControlRef, 0, len(declaredMatches))
+			exactControlMatch := false
+			if len(declaredMatches) != 0 && coverageControlMatchAllowed(sourceMatched, dimensionMatched, evidenceMatched, declaredExactMatch) {
+				matchedControls = appendUniqueMatchedCoverageRefs(matchedControls, declaredMatches)
+				exactControlMatch = declaredExactMatch
+			}
 			// Domain-derived control coverage is credited only within the
-			// detection's own (or explicitly named) source, so a source's
-			// declared control_domains evidence its own detections without
-			// over-claiming that unrelated sources supply that evidence.
-			// Dimensions that declare explicit control_refs always use them.
-			dimensionControlRefs := dimension.ControlRefs
-			if sourceMatched {
-				dimensionControlRefs = effectiveCoverageControlRefs(dimension)
+			// detection's own (or explicitly named) source and only when the
+			// coverage dimension or evidence type also matches. This lets broad
+			// control_domains fill missing refs without letting every dimension
+			// from the same source inherit every matching framework control.
+			if sourceMatched && (dimensionMatched || evidenceMatched) {
+				derivedMatches, derivedExactMatch := matchingCoverageControlRefs(detection.ControlRefs, controlRefsForControlDomains(dimension.ControlDomains))
+				if len(derivedMatches) != 0 {
+					matchedControls = appendUniqueMatchedCoverageRefs(matchedControls, derivedMatches)
+					exactControlMatch = exactControlMatch || derivedExactMatch
+				}
 			}
-			if len(dimensionControlRefs) == 0 {
-				continue
-			}
-			matchedControls, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, dimensionControlRefs)
 			if len(matchedControls) == 0 {
-				continue
-			}
-			if !sourceMatched && !dimensionMatched {
-				continue
-			}
-			if !exactControlMatch && !dimensionMatched && !evidenceMatched {
 				continue
 			}
 			ref := SourceCoverageRef{
@@ -180,6 +180,41 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 		matchedControls = 3
 	}
 	return score + matchedControls
+}
+
+func coverageControlMatchAllowed(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {
+	if !sourceMatched && !dimensionMatched {
+		return false
+	}
+	if !exactControlMatch && !dimensionMatched && !evidenceMatched {
+		return false
+	}
+	return true
+}
+
+func appendUniqueMatchedCoverageRefs(base []ports.FindingControlRef, next []ports.FindingControlRef) []ports.FindingControlRef {
+	if len(next) == 0 {
+		return base
+	}
+	seen := map[string]struct{}{}
+	for _, ref := range base {
+		seen[controlRefKey(ref)] = struct{}{}
+	}
+	for _, ref := range next {
+		key := controlRefKey(ref)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		base = append(base, ref)
+	}
+	sort.Slice(base, func(i int, j int) bool {
+		if base[i].FrameworkName != base[j].FrameworkName {
+			return base[i].FrameworkName < base[j].FrameworkName
+		}
+		return base[i].ControlID < base[j].ControlID
+	})
+	return base
 }
 
 func sourceMatchesDetection(detection PublicDetection, sourceID string, searchText string) bool {
