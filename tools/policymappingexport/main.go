@@ -3648,13 +3648,40 @@ func containsFold(values []string, want string) bool {
 }
 
 func containsAnyFold(value string, needles []string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
+	rawValue := strings.ToLower(strings.TrimSpace(value))
+	normalizedValue := normalizeKeywordText(value)
 	for _, needle := range needles {
-		if needle = strings.ToLower(strings.TrimSpace(needle)); needle != "" && strings.Contains(value, needle) {
+		rawNeedle := strings.ToLower(strings.TrimSpace(needle))
+		normalizedNeedle := normalizeKeywordText(needle)
+		if normalizedNeedle != "" && strings.Contains(" "+normalizedValue+" ", " "+normalizedNeedle+" ") {
+			return true
+		}
+		if rawNeedle != "" && containsKeywordPunctuation(rawNeedle) && strings.Contains(rawValue, rawNeedle) {
 			return true
 		}
 	}
 	return false
+}
+
+func containsKeywordPunctuation(value string) bool {
+	for _, r := range value {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsSpace(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeKeywordText(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteRune(' ')
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 func hasAnyPrefixFold(value string, prefixes []string) bool {
