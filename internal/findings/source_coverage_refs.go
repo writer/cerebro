@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -405,7 +406,27 @@ func normalizeFramework(value string) string {
 }
 
 func normalizeControlID(value string) string {
-	return strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(value)), ""))
+	normalized := strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(value)), ""))
+	if normalized == "" {
+		return ""
+	}
+	return normalizeGDPRArticleControlID(normalized)
+}
+
+func normalizeGDPRArticleControlID(value string) string {
+	for _, prefix := range []string{"ART.", "ART-"} {
+		if suffix := strings.TrimPrefix(value, prefix); suffix != value && suffix != "" {
+			return "ARTICLE" + suffix
+		}
+	}
+	if len(value) > len("ART") && strings.HasPrefix(value, "ART") {
+		suffix := value[len("ART"):]
+		first, _ := utf8.DecodeRuneInString(suffix)
+		if unicode.IsDigit(first) {
+			return "ARTICLE" + suffix
+		}
+	}
+	return value
 }
 
 func sourceCoverageAliases(sourceID string) []string {

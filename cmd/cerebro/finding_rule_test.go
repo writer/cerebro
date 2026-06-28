@@ -580,11 +580,15 @@ func copyRepoTree(t *testing.T, srcDir, dstDir string) {
 
 func copyRepoFile(t *testing.T, src, dst string) {
 	t.Helper()
+	dstDir := filepath.Dir(dst)
+	if rel, err := filepath.Rel(dstDir, dst); err != nil || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
+		t.Fatalf("copy destination %q escaped %q", dst, dstDir)
+	}
 	payload, err := os.ReadFile(src) // #nosec G304 -- source path is a repository fixture copied into a temp shadow repo.
 	if err != nil {
 		t.Fatalf("read file %q: %v", src, err)
 	}
-	if err := os.WriteFile(dst, payload, 0o600); err != nil {
+	if err := os.WriteFile(dst, payload, 0o600); err != nil { // #nosec G703 -- destination is validated to remain in the requested temp shadow repo directory.
 		t.Fatalf("write file %q: %v", dst, err)
 	}
 }

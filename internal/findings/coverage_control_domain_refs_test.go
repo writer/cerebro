@@ -167,6 +167,25 @@ func TestSourceCoverageExplicitRefsCanMatchSourceWithoutDimensionOrEvidence(t *t
 	}
 }
 
+func TestCoverageControlIDMatchesGDPRArticleAliases(t *testing.T) {
+	for _, legacy := range []string{"Art.5", "Art-5", "Art 5"} {
+		matched, exact := coverageControlIDMatches(legacy, "Article 5")
+		if !matched || !exact {
+			t.Fatalf("coverageControlIDMatches(%q, Article 5) = (%v, %v), want exact match", legacy, matched, exact)
+		}
+	}
+
+	detectionRefs := []ports.FindingControlRef{{FrameworkName: "GDPR", ControlID: "Art.30"}}
+	coverageRefs := []sourcecdk.CoverageControlRef{{FrameworkName: "GDPR", ControlID: "Article 30"}}
+	matched, exact := matchingCoverageControlRefs(detectionRefs, coverageRefs)
+	if !exact || len(matched) != 1 {
+		t.Fatalf("matchingCoverageControlRefs legacy GDPR alias = exact %v refs %#v, want one exact match", exact, matched)
+	}
+	if matched[0].ControlID != "Article 30" {
+		t.Fatalf("matched control ID = %q, want Article 30", matched[0].ControlID)
+	}
+}
+
 func TestCoverageControlDomainRefsCoverDeclaredSourceDomains(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "sources", "*", "catalog.yaml"))
 	if err != nil {
