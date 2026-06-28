@@ -271,6 +271,14 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 		controlRefCol:     "SOC 2 CC6.6",
 	})
 	assertCellContains(t, controlHeader, cc66Row, "source_coverage_refs", "aws/s3_bucket")
+
+	unbackedRow := findRowByColumns(t, controlRows, map[int]string{
+		controlFindingCol: "aws-s3-bucket-no-public-access",
+		controlRefCol:     "CIS AWS Foundations Benchmark v2.0 2.1.5",
+	})
+	assertCellEquals(t, controlHeader, unbackedRow, "control_match_source", "finding_control_ref")
+	assertCellEquals(t, controlHeader, unbackedRow, "mapping_confidence", "review")
+	assertCellContains(t, controlHeader, unbackedRow, "mapping_rationale", "does not currently back this control")
 }
 
 func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {

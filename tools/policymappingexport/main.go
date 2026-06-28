@@ -1429,7 +1429,7 @@ func findingControlMappingReviewFor(sourceCoverageLabels []string, sourceCapabil
 			Confidence: "medium",
 			Rationale:  "Direct control ref is mapped from catalog metadata; no source coverage is attached to this finding.",
 		}
-	case "source_coverage_unkeyed", "missing_yaml_source_capability", "partial_yaml_source_capability":
+	case "source_capability_defined", "source_coverage_unkeyed", "missing_yaml_source_capability", "partial_yaml_source_capability":
 		return findingControlMappingReview{
 			Confidence: "review",
 			Rationale:  "Finding has source coverage, but it does not currently back this control with complete YAML capability context.",
