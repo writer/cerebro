@@ -271,6 +271,14 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 		controlRefCol:     "SOC 2 CC6.6",
 	})
 	assertCellContains(t, controlHeader, cc66Row, "source_coverage_refs", "aws/s3_bucket")
+
+	unbackedRow := findRowByColumns(t, controlRows, map[int]string{
+		controlFindingCol: "aws-s3-bucket-no-public-access",
+		controlRefCol:     "CIS AWS Foundations Benchmark v2.0 2.1.5",
+	})
+	assertCellEquals(t, controlHeader, unbackedRow, "control_match_source", "finding_control_ref")
+	assertCellEquals(t, controlHeader, unbackedRow, "mapping_confidence", "review")
+	assertCellContains(t, controlHeader, unbackedRow, "mapping_rationale", "does not currently back this control")
 }
 
 func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
@@ -423,7 +431,7 @@ func TestGenerateFilesIncludesYAMLReviewContextMaps(t *testing.T) {
 	frameworkControlFrameworkCol := columnIndex(t, frameworkControlHeader, "framework")
 	frameworkControlControlCol := columnIndex(t, frameworkControlHeader, "control_id")
 	for _, row := range frameworkControlRows[1:] {
-		if row[frameworkControlFrameworkCol] == "soc2" && row[frameworkControlControlCol] == "CC6.1" {
+		if row[frameworkControlFrameworkCol] == "SOC 2" && row[frameworkControlControlCol] == "CC6.1" {
 			assertCellContains(t, frameworkControlHeader, row, "source_capability_refs", "okta/users")
 			assertCellContains(t, frameworkControlHeader, row, "review_area_refs", "SOC 2/access-authorization")
 			assertCellContains(t, frameworkControlHeader, row, "outbound_relationship_refs", "SOC 2 CC6.2")
@@ -458,13 +466,13 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	foundDirect := false
 	foundNone := false
 	for _, row := range gapRows[1:] {
-		if row[frameworkCol] == "soc2" && row[controlCol] == "CC6.1" {
+		if row[frameworkCol] == "SOC 2" && row[controlCol] == "CC6.1" {
 			assertCellContains(t, gapHeader, row, "coverage_status", "direct_source_backed")
 			assertCellContains(t, gapHeader, row, "coverage_lane", "direct")
 			assertCellContains(t, gapHeader, row, "gap_type", "none")
 			foundDirect = true
 		}
-		if row[frameworkCol] == "iso270012022" && row[controlCol] == "A.7.8" {
+		if row[frameworkCol] == "ISO 27001:2022" && row[controlCol] == "A.7.8" {
 			assertCellContains(t, gapHeader, row, "coverage_status", "framework_catalog_only")
 			assertCellContains(t, gapHeader, row, "coverage_lane", "none")
 			assertCellContains(t, gapHeader, row, "gap_type", "no_mapping_or_evidence")
@@ -502,6 +510,13 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertCellContains(t, requirementHeader, isoCryptoRow, "required_fields", "encryption_state")
 	assertCellContains(t, requirementHeader, isoCryptoRow, "source_capability_refs", "aws/s3_bucket")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "ISO 27001:2022", "A.8.24", "logging-monitoring")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.18", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.30", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "A1.1", "ai-governance")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "PI1.1", "privacy-rights")
+
+	ccpaPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "CCPA", "1798.100", "privacy-rights", "data_inventory")
+	assertCellContains(t, requirementHeader, ccpaPrivacyRow, "required_fields", "legal_basis")
 
 	baselineRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review")
 	assertCellContains(t, requirementHeader, baselineRow, "assessment_methods", "interview")
@@ -537,14 +552,14 @@ func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 	frameworkCol := columnIndex(t, header, "framework")
 	controlCol := columnIndex(t, header, "control_id")
 
-	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ccpa", "1798.100")
+	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "CCPA", "1798.100")
 	assertCellContains(t, header, privacyRow, "coverage_status", "direct_control_only")
 	assertCellContains(t, header, privacyRow, "candidate_priority", "high")
 	assertCellContains(t, header, privacyRow, "candidate_type", "source_backing_candidate")
 	assertCellContains(t, header, privacyRow, "suggested_finding_domain", "privacy")
 	assertCellContains(t, header, privacyRow, "requirement_profiles", "privacy-rights")
 
-	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "iso270012022", "A.7.8")
+	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ISO 27001:2022", "A.7.8")
 	assertCellContains(t, header, catalogOnlyRow, "coverage_status", "framework_catalog_only")
 	assertCellContains(t, header, catalogOnlyRow, "candidate_priority", "low")
 	assertCellContains(t, header, catalogOnlyRow, "candidate_type", "scope_or_exclusion_candidate")

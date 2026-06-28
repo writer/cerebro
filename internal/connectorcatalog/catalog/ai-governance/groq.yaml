@@ -1,0 +1,162 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects model catalog, files, batch jobs, and fine-tuning jobs from Groq and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Groq
+      id: builtin-groq
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: groq.model_catalog
+            required_payload_fields:
+              - id
+            schema_ref: groq/model_catalog/v1
+            urn_kind: groq_model_catalog
+          id: model_catalog
+          id_field: id
+          label: Model catalog
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /models
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - files
+              high_value: true
+              id: files
+              support: partial
+              title: Files
+              type: entity_family
+          event:
+            kind: groq.files
+            required_payload_fields:
+              - id
+            schema_ref: groq/files/v1
+            urn_kind: groq_files
+          id: files
+          id_field: id
+          label: Files
+          method: GET
+          name_field: filename
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /files
+          projection:
+            fields:
+              resource_id: id
+              resource_name: filename
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - batch_jobs
+              high_value: true
+              id: batch_jobs
+              support: partial
+              title: Batch jobs
+              type: deployment_state
+          event:
+            kind: groq.batch_jobs
+            required_payload_fields:
+              - id
+            schema_ref: groq/batch_jobs/v1
+            urn_kind: groq_batch_jobs
+          id: batch_jobs
+          id_field: id
+          label: Batch jobs
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /batches
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - fine_tuning_jobs
+              high_value: true
+              id: fine_tuning_jobs
+              support: partial
+              title: Fine-tuning jobs
+              type: deployment_state
+          event:
+            kind: groq.fine_tuning_jobs
+            required_payload_fields:
+              - id
+            schema_ref: groq/fine_tuning_jobs/v1
+            urn_kind: groq_fine_tuning_jobs
+          id: fine_tuning_jobs
+          id_field: id
+          label: Fine-tuning jobs
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /fine_tuning/jobs
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: groq
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.groq.com/openai/v1
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /models

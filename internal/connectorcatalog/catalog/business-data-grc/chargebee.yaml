@@ -1,115 +1,137 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-chargebee
-    tenant_id: builtin_catalog
-    source_id: chargebee
-    display_name: Chargebee
-    description: "Collects subscriptions, customers, and audit events from Chargebee and projects them into the Cerebro graph as assets, users, and audit events for owner, account, evidence, and compliance context."
-    categories:
-    - business
-    - billing
-    auth:
-      model: basic
-      credential_fields:
-      - key: username
-        reference_only: true
-      - key: password
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://${config.site}.chargebee.com/api/v2
-      verification:
-        method: GET
-        path: "/customers"
-        expect_status:
-        - 200
-    resource_families:
-    - id: subscriptions
-      label: Subscriptions
-      path: "/subscriptions"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: chargebee.subscriptions
-        schema_ref: chargebee/subscriptions/v1
-      projection:
-        template: asset
-      coverage:
-      - id: subscriptions
-        type: entity_family
-        title: Subscriptions
-        families:
-        - subscriptions
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: customers
-      label: Customers
-      path: "/customers"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: chargebee.customers
-        schema_ref: chargebee/customers/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: customers
-        type: entity_family
-        title: Customers
-        families:
-        - customers
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: chargebee.audit_events
-        schema_ref: chargebee/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            reference_only: true
+          - key: password
+            reference_only: true
+            secret: true
+        model: basic
+      categories:
+        - business
+        - billing
+      description: Collects subscriptions, customers, and audit events from Chargebee and projects them into the Cerebro graph as assets, users, and audit events for owner, account, evidence, and compliance context.
+      display_name: Chargebee
+      id: builtin-chargebee
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - subscriptions
+              high_value: true
+              id: subscriptions
+              support: partial
+              title: Subscriptions
+              type: entity_family
+          event:
+            kind: chargebee.subscriptions
+            required_payload_fields:
+              - id
+            schema_ref: chargebee/subscriptions/v1
+            urn_kind: chargebee_subscriptions
+          id: subscriptions
+          id_field: id
+          label: Subscriptions
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /subscriptions
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - customers
+              high_value: true
+              id: customers
+              support: partial
+              title: Customers
+              type: entity_family
+          event:
+            kind: chargebee.customers
+            required_payload_fields:
+              - id
+            schema_ref: chargebee/customers/v1
+            urn_kind: chargebee_customers
+          id: customers
+          id_field: id
+          label: Customers
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /customers
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: chargebee.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: chargebee/audit_events/v1
+            urn_kind: chargebee_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: chargebee
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.site}.chargebee.com/api/v2
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /customers

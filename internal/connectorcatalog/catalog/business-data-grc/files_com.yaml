@@ -12,8 +12,8 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "Collects external event, API key, group, group user, action notification export result, and permission from Files.com API and projects them into the Cerebro graph as audit events, secrets, groups, users, and alerts for owner, account, evidence, and compliance context."
-    display_name: Files.com API
+    description: Collects external event, api key, group, group user, action notification export result, and permission from Files.com and projects them into the Cerebro graph as alerts, assets, audit events, groups, secrets, and users for inventory, access review, audit, risk, and operational context.
+    display_name: Files.com
     id: builtin_catalog-files_com
     ingest:
       mode: pull

@@ -1,0 +1,177 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            secret: true
+        model: api_key
+        token_header: Api-Key
+      categories:
+        - ai
+        - governance
+      description: Collects indexes, collections, backups, and restore jobs from Pinecone and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Pinecone
+      id: builtin-pinecone
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - indexes
+              high_value: true
+              id: indexes
+              support: partial
+              title: Indexes
+              type: entity_family
+          event:
+            kind: pinecone.indexes
+            required_payload_fields:
+              - name
+            schema_ref: pinecone/indexes/v1
+            urn_kind: pinecone_indexes
+          id: indexes
+          id_field: name
+          label: Indexes
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /indexes
+          projection:
+            fields:
+              resource_id: name
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.indexes[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - collections
+              high_value: true
+              id: collections
+              support: partial
+              title: Collections
+              type: entity_family
+          event:
+            kind: pinecone.collections
+            required_payload_fields:
+              - name
+            schema_ref: pinecone/collections/v1
+            urn_kind: pinecone_collections
+          id: collections
+          id_field: name
+          label: Collections
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /collections
+          projection:
+            fields:
+              resource_id: name
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.collections[*]
+        - coverage:
+            - control_domains:
+                - security_operations
+              evidence_types:
+                - configuration_state
+              families:
+                - backups
+              high_value: true
+              id: backups
+              support: partial
+              title: Backups
+              type: lifecycle_state
+          event:
+            kind: pinecone.backups
+            required_payload_fields:
+              - backup_id
+            schema_ref: pinecone/backups/v1
+            urn_kind: pinecone_backups
+          id: backups
+          id_field: backup_id
+          label: Backups
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.pagination.next
+            cursor_param: paginationToken
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /backups
+          projection:
+            fields:
+              resource_id: backup_id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - restore_jobs
+              high_value: true
+              id: restore_jobs
+              support: partial
+              title: Restore jobs
+              type: deployment_state
+          event:
+            kind: pinecone.restore_jobs
+            required_payload_fields:
+              - restore_job_id
+            schema_ref: pinecone/restore_jobs/v1
+            urn_kind: pinecone_restore_jobs
+          id: restore_jobs
+          id_field: restore_job_id
+          label: Restore jobs
+          method: GET
+          name_field: target_index_name
+          pagination:
+            cursor_json_path: $.pagination.next
+            cursor_param: paginationToken
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /restore-jobs
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: restore_job_id
+              deployment_name: target_index_name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: pinecone
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.pinecone.io
+        headers:
+          X-Pinecone-Api-Version: 2025-10
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /indexes

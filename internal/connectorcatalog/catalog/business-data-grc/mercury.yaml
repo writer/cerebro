@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-mercury
-    tenant_id: builtin_catalog
-    source_id: mercury
-    display_name: Mercury
-    description: "Collects accounts, transactions, and users from Mercury and projects them into the Cerebro graph as assets, audit events, and users for owner, account, evidence, and compliance context."
-    categories:
-    - finance
-    - identity
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.mercury.com
-      verification:
-        method: GET
-        path: "/v1/accounts"
-        expect_status:
-        - 200
-    resource_families:
-    - id: accounts
-      label: Accounts
-      path: "/v1/accounts"
-      method: GET
-      record_selector: "$.accounts[*]"
-      id_field: id
-      event:
-        kind: mercury.accounts
-        schema_ref: mercury/accounts/v1
-      projection:
-        template: asset
-      coverage:
-      - id: accounts
-        type: entity_family
-        title: Accounts
-        families:
-        - accounts
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: transactions
-      label: Transactions
-      path: "/v1/transactions"
-      method: GET
-      record_selector: "$.transactions[*]"
-      id_field: id
-      event:
-        kind: mercury.transactions
-        schema_ref: mercury/transactions/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: transactions
-        type: audit_event
-        title: Transactions
-        families:
-        - transactions
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: users
-      label: Users
-      path: "/v1/users"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: mercury.users
-        schema_ref: mercury/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Users
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - finance
+        - identity
+      description: Collects accounts, transactions, and users from Mercury and projects them into the Cerebro graph as assets, audit events, and users for owner, account, evidence, and compliance context.
+      display_name: Mercury
+      id: builtin-mercury
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - accounts
+              high_value: true
+              id: accounts
+              support: partial
+              title: Accounts
+              type: entity_family
+          event:
+            kind: mercury.accounts
+            required_payload_fields:
+              - id
+            schema_ref: mercury/accounts/v1
+            urn_kind: mercury_accounts
+          id: accounts
+          id_field: id
+          label: Accounts
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/accounts
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.accounts[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - transactions
+              high_value: true
+              id: transactions
+              support: partial
+              title: Transactions
+              type: audit_event
+          event:
+            kind: mercury.transactions
+            required_payload_fields:
+              - id
+            schema_ref: mercury/transactions/v1
+            urn_kind: mercury_transactions
+          id: transactions
+          id_field: id
+          label: Transactions
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/transactions
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.transactions[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Users
+              type: entity_family
+          event:
+            kind: mercury.users
+            required_payload_fields:
+              - id
+            schema_ref: mercury/users/v1
+            urn_kind: mercury_users
+          id: users
+          id_field: id
+          label: Users
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/users
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: mercury
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.mercury.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/accounts
