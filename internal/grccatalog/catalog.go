@@ -204,6 +204,8 @@ func vendorListParams() []Param {
 		Param{ID: "risk_level", Type: ParamEnum, AllowedValues: []string{"critical", "high", "medium", "low", "unknown", "all"}, Description: "Filter by normalized vendor risk level."},
 		Param{ID: "review_state", Type: ParamEnum, AllowedValues: []string{"current", "due_soon", "overdue", "not_scheduled", "all"}, Description: "Filter by security review state."},
 		Param{ID: "owner_state", Type: ParamEnum, AllowedValues: []string{"assigned", "missing", "all"}, Description: "Filter by vendor owner assignment."},
+		Param{ID: "lifecycle_state", Type: ParamEnum, AllowedValues: []string{"discovered", "candidate", "active", "in_review", "approved", "conditionally_approved", "restricted", "offboarding", "retired", "rejected", "ignored", "unknown", "all"}, Description: "Filter by normalized vendor lifecycle state."},
+		Param{ID: "queue", Type: ParamBool, Description: "Return vendors with open queue reasons."},
 	)
 }
 
@@ -354,7 +356,7 @@ func buildCatalog() []Source {
 			ID:             "vendors",
 			Domain:         "vendors",
 			Title:          "Vendors",
-			Description:    "Canonical vendor rows with owners, review dates, contract counts, assurance counts, and open risk.",
+			Description:    "Canonical vendor rows with lifecycle, score factors, exposure, packet readiness, assessment state, remediation state, monitoring state, owners, renewals, offboarding, evidence freshness, and open risk.",
 			Method:         "GET",
 			Path:           "/grc/vendors",
 			Params:         vendorListParams(),
@@ -368,7 +370,7 @@ func buildCatalog() []Source {
 			ID:          "vendor-detail",
 			Domain:      "vendors",
 			Title:       "Vendor detail",
-			Description: "One vendor packet with linked contracts, reviews, questionnaires, assurance records, findings, evidence, and graph context.",
+			Description: "One vendor packet with exposure, packet readiness, remediation posture, linked contracts, reviews, questionnaires, assurance records, findings, evidence, and graph context.",
 			Method:      "GET",
 			Path:        "/grc/vendors/{vendorID}",
 			Params: withRuntimeScope(
@@ -401,7 +403,7 @@ func buildCatalog() []Source {
 			ID:             "vendor-risk-queue",
 			Domain:         "vendors",
 			Title:          "Vendor risk queue",
-			Description:    "Vendor rows for owner gaps, overdue reviews, due-soon reviews, and high residual risk work.",
+			Description:    "Vendor rows with queue reasons for owner gaps, stale evidence, packet blockers, remediation deadlines, assessments, monitoring alerts, renewals, offboarding, missing agreements, restricted lifecycle, and open high-severity findings.",
 			Method:         "GET",
 			Path:           "/grc/vendors",
 			Params:         vendorListParams(),

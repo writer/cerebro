@@ -111,19 +111,44 @@ func TestDispatchGRCQueryBindsPathParameter(t *testing.T) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 	request := customDashboardTestRequest(http.MethodPost, "/grc/query", "")
-	query := grccatalog.WidgetQuery{SourceID: "vendor-detail", Params: map[string]string{"vendor_id": "vanta:acme", "runtime_id": "rt-1"}, Limit: 10}
+	query := grccatalog.WidgetQuery{SourceID: "vendor-detail", Params: map[string]string{"vendor_id": "vrm:acme", "runtime_id": "rt-1"}, Limit: 10}
 	captured := dispatchGRCQuery(stub, request, source, query)
 	if captured.statusCode != http.StatusOK {
 		t.Fatalf("dispatch status = %d, want 200", captured.statusCode)
 	}
-	if capturedPath != "/grc/vendors/vanta:acme" {
-		t.Fatalf("captured path = %q, want /grc/vendors/vanta:acme", capturedPath)
+	if capturedPath != "/grc/vendors/vrm:acme" {
+		t.Fatalf("captured path = %q, want /grc/vendors/vrm:acme", capturedPath)
 	}
 	values, err := url.ParseQuery(capturedQuery)
 	if err != nil {
 		t.Fatalf("parse forwarded query: %v", err)
 	}
 	if values.Get("vendor_id") != "" || values.Get("runtime_id") != "rt-1" || values.Get("limit") != "10" {
+		t.Fatalf("unexpected forwarded query %q", capturedQuery)
+	}
+}
+
+func TestDispatchGRCQueryPreservesVendorRiskQueueParams(t *testing.T) {
+	source, ok := grccatalog.Lookup("vendor-risk-queue")
+	if !ok {
+		t.Fatal("vendor-risk-queue source missing from catalog")
+	}
+	var capturedQuery string
+	stub := func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+	request := customDashboardTestRequest(http.MethodPost, "/grc/query", "")
+	query := grccatalog.WidgetQuery{SourceID: "vendor-risk-queue", Params: map[string]string{"lifecycle_state": "restricted"}, Limit: 25}
+	captured := dispatchGRCQuery(stub, request, source, query)
+	if captured.statusCode != http.StatusOK {
+		t.Fatalf("dispatch status = %d, want 200", captured.statusCode)
+	}
+	values, err := url.ParseQuery(capturedQuery)
+	if err != nil {
+		t.Fatalf("parse forwarded query: %v", err)
+	}
+	if values.Has("queue") || values.Get("lifecycle_state") != "restricted" || values.Get("limit") != "25" {
 		t.Fatalf("unexpected forwarded query %q", capturedQuery)
 	}
 }

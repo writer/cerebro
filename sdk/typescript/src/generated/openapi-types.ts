@@ -1070,6 +1070,220 @@ export type GRCDashboardResponse = {
   summary?: Record<string, unknown>;
 };
 
+export type GRCPolicyAcceptanceSummary = {
+  accepted?: number;
+  overdue?: number;
+  pending?: number;
+  total?: number;
+};
+
+export type GRCPolicyApproval = {
+  approved_at?: string;
+  approvers?: string[];
+  due_at?: string;
+  id?: string;
+  policy_id?: string;
+  policy_version_id?: string;
+  requested_at?: string;
+  requested_by?: string;
+  status?: string;
+  step?: string;
+  urn?: string;
+};
+
+export type GRCPolicyAssignment = {
+  label?: string;
+  scope?: string;
+  target_type?: string;
+  target_urn?: string;
+};
+
+export type GRCPolicyAttestation = {
+  accepted_at?: string;
+  assignees?: string[];
+  due_at?: string;
+  id?: string;
+  person?: string;
+  policy_id?: string;
+  policy_version_id?: string;
+  status?: string;
+  urn?: string;
+};
+
+export type GRCPolicyControlRef = {
+  control_id?: string;
+  framework?: string;
+  title?: string;
+  urn?: string;
+};
+
+export type GRCPolicyEvidenceRef = {
+  document_id?: string;
+  entity_type?: string;
+  evidence_type?: string;
+  title?: string;
+  urn?: string;
+};
+
+export type GRCPolicyException = {
+  approved_at?: string;
+  approvers?: string[];
+  controls?: GRCPolicyControlRef[];
+  expires_at?: string;
+  id?: string;
+  owner?: string;
+  policy_id?: string;
+  policy_version_id?: string;
+  reason?: string;
+  status?: string;
+  targets?: GRCPolicyTargetRef[];
+  title?: string;
+  urn?: string;
+};
+
+export type GRCPolicyExceptionSummary = {
+  active?: number;
+  expired?: number;
+  expiring?: number;
+};
+
+export type GRCPolicyLifecycleMapping = {
+  controls?: GRCPolicyControlRef[];
+  evidence?: GRCPolicyEvidenceRef[];
+  policy_id?: string;
+  policy_title?: string;
+  source_type?: string;
+  source_urn?: string;
+  target?: GRCPolicyTargetRef;
+};
+
+export type GRCPolicyLifecyclePolicy = {
+  acceptance_summary?: GRCPolicyAcceptanceSummary;
+  approval_status?: string;
+  approvals?: GRCPolicyApproval[];
+  assignments?: GRCPolicyAssignment[];
+  attestations?: GRCPolicyAttestation[];
+  attributes?: Record<string, string>;
+  controls?: GRCPolicyControlRef[];
+  evidence?: GRCPolicyEvidenceRef[];
+  exception_summary?: GRCPolicyExceptionSummary;
+  exceptions?: GRCPolicyException[];
+  id?: string;
+  latest_version?: string;
+  next_review_due_at?: string;
+  owner?: string;
+  review_cadence?: string;
+  reviewer?: string;
+  reviews?: GRCPolicyReview[];
+  status?: string;
+  title?: string;
+  urn?: string;
+  version_status?: string;
+  versions?: GRCPolicyVersion[];
+};
+
+export type GRCPolicyLifecycleResponse = {
+  generated_at?: string;
+  mappings?: GRCPolicyLifecycleMapping[];
+  policies?: GRCPolicyLifecyclePolicy[];
+  reminders?: GRCPolicyReminder[];
+  summary?: GRCPolicyLifecycleSummary;
+  templates?: GRCPolicyTemplate[];
+  work_queue?: GRCPolicyLifecycleWork[];
+};
+
+export type GRCPolicyLifecycleSummary = {
+  attestation_coverage_pct?: number;
+  draft_versions?: number;
+  evidence_items?: number;
+  expiring_exceptions?: number;
+  mapped_controls?: number;
+  open_exceptions?: number;
+  overdue_attestations?: number;
+  overdue_reviews?: number;
+  pending_approvals?: number;
+  policies?: number;
+  templates?: number;
+};
+
+export type GRCPolicyLifecycleWork = {
+  action?: string;
+  due_at?: string;
+  id?: string;
+  owner?: string;
+  policy?: string;
+  policy_id?: string;
+  record_urn?: string;
+  status?: string;
+  type?: string;
+};
+
+export type GRCPolicyReminder = {
+  channel?: string;
+  due_at?: string;
+  escalated_to?: string[];
+  id?: string;
+  policy_id?: string;
+  policy_version_id?: string;
+  recipients?: string[];
+  sent_at?: string;
+  status?: string;
+  title?: string;
+  urn?: string;
+};
+
+export type GRCPolicyReview = {
+  cadence?: string;
+  id?: string;
+  owner?: string;
+  policy_id?: string;
+  policy_version_id?: string;
+  review_due_at?: string;
+  reviewed_at?: string;
+  reviewers?: string[];
+  status?: string;
+  urn?: string;
+};
+
+export type GRCPolicyTargetRef = {
+  entity_type?: string;
+  label?: string;
+  urn?: string;
+};
+
+export type GRCPolicyTemplate = {
+  attributes?: Record<string, string>;
+  category?: string;
+  controls?: GRCPolicyControlRef[];
+  evidence?: GRCPolicyEvidenceRef[];
+  frameworks?: string[];
+  id?: string;
+  owner?: string;
+  status?: string;
+  title?: string;
+  urn?: string;
+};
+
+export type GRCPolicyVersion = {
+  approved_at?: string;
+  assignments?: GRCPolicyAssignment[];
+  author?: string;
+  change_summary?: string;
+  controls?: GRCPolicyControlRef[];
+  created_at?: string;
+  diff_summary?: string;
+  diff_url?: string;
+  effective_at?: string;
+  evidence?: GRCPolicyEvidenceRef[];
+  id?: string;
+  owner?: string;
+  policy_id?: string;
+  status?: string;
+  title?: string;
+  urn?: string;
+  version?: string;
+};
+
 export type GRCProductArea = {
   blind_spots?: SourceCoverageRecord[];
   control_domains?: string[];
