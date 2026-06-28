@@ -78,6 +78,7 @@ jobs:
           INPUT_DISPATCH_JSON: ${{ env.INPUT_DISPATCH_JSON }}
           EVENT_NAME: ${{ env.EVENT_NAME }}
         run: |
+          set -euo pipefail
           input_base_url="$(echo "${INPUT_DISPATCH_JSON}" | jq -r '.base_url // empty')"
           target_url="${input_base_url:-$SECRET_BASE_URL}"
           if [ -z "$target_url" ]; then
