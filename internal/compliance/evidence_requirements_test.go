@@ -159,6 +159,39 @@ func TestControlEvidenceRequirementFrameworksGateKeywords(t *testing.T) {
 	}
 }
 
+func TestControlEvidenceRequirementFrameworkGateAllowsKeywordOrPrefix(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "privacy-rights",
+		Name: "Privacy Rights Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			Frameworks:        []string{"CCPA"},
+			FamilyKeywords:    []string{"Privacy"},
+			ControlIDPrefixes: []string{"1798"},
+		},
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "CCPA",
+		FamilyName:    "Consumer Rights",
+		Control:       Control{ID: "1798.100", Title: "Consumer notices"},
+	}) {
+		t.Fatal("profile did not match selected framework plus control ID prefix")
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "CCPA",
+		FamilyName:    "Consumer Privacy Rights",
+		Control:       Control{ID: "1888.100", Title: "Consumer notices"},
+	}) {
+		t.Fatal("profile did not match selected framework plus keyword")
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyName:    "Consumer Privacy Rights",
+		Control:       Control{ID: "1798.100", Title: "Consumer notices"},
+	}) {
+		t.Fatal("profile matched keyword and prefix outside the selected framework")
+	}
+}
+
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTerms(t *testing.T) {
 	loggingProfile := ControlEvidenceRequirementProfile{
 		ID:   "logging-monitoring",
