@@ -50,6 +50,7 @@ docker compose up --build
 | --- | --- |
 | Short command reference | [Quick reference](start/quick-reference.md) |
 | Local end-to-end walkthrough | [Getting started](start/getting-started.md) |
+| Coding agent setup handoff | [Agent onboarding](start/agent-onboarding.md) |
 | Runtime shape and dependency boundaries | [Architecture](reference/architecture.md) |
 | Runtime configuration | [Configuration variables](reference/config-env-vars.md) |
 | Hosting and operations | [Hosting](operations/hosting.md), [runtime profiles](operations/runtime-profiles.md), [deployment readiness](operations/deployment-readiness.md), [cloud deployment](operations/cloud-deployment.md), [deployment examples](operations/deployment-examples.md), [operations runbook](operations/operations-runbook.md), and [troubleshooting](operations/troubleshooting.md) |
