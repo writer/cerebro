@@ -157,6 +157,33 @@ func (a *App) handleAgentPlatformEvidencePacket(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, agentplatform.BuildEvidencePacket(request))
 }
 
+func (a *App) handleAgentPlatformClaimVerification(w http.ResponseWriter, r *http.Request) {
+	var request agentplatform.ClaimVerificationRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProtoJSONBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, request.ActorID, nil)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	request.TenantID = resolved.TenantID
+	request.ActorID = resolved.ActorID
+	request.CoverageContext = a.agentCoverageContext(r.Context(), request.TenantID)
+	if strings.TrimSpace(request.Claim) == "" {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	if err := authorizeAgentPlatformClaimVerificationURNs(r.Context(), request); err != nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	writeJSON(w, http.StatusOK, agentplatform.BuildClaimVerification(request))
+}
+
 func authorizeAgentPlatformPacketURNs(ctx context.Context, request agentplatform.EvidencePacketRequest) error {
 	urns := append([]string{request.ScopeURN}, request.EvidenceURNs...)
 	urns = append(urns, request.Action.TargetURNs...)
@@ -166,6 +193,22 @@ func authorizeAgentPlatformPacketURNs(ctx context.Context, request agentplatform
 	for _, urn := range urns {
 		urn = strings.TrimSpace(urn)
 		if urn == "" {
+			continue
+		}
+		if err := authorizeCerebroURNTenant(ctx, urn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func authorizeAgentPlatformClaimVerificationURNs(ctx context.Context, request agentplatform.ClaimVerificationRequest) error {
+	urns := []string{request.ScopeURN}
+	urns = append(urns, request.SupportingEvidenceURNs...)
+	urns = append(urns, request.CounterEvidenceURNs...)
+	for _, urn := range urns {
+		urn = strings.TrimSpace(urn)
+		if urn == "" || !strings.HasPrefix(urn, "urn:cerebro:") {
 			continue
 		}
 		if err := authorizeCerebroURNTenant(ctx, urn); err != nil {

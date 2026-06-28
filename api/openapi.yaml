@@ -278,6 +278,29 @@ paths:
           description: Invalid evidence packet request.
         '403':
           description: Tenant or graph scope is not allowed.
+  /api/v1/agent-platform/claims/verify:
+    post:
+      operationId: verifyAgentPlatformClaim
+      summary: Verify an agent claim
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPlatformClaimVerificationRequest'
+      responses:
+        '200':
+          description: Claim verdict, evidence, blockers, warnings, verifier results, and the highest allowed next action stage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformClaimVerification'
+        '400':
+          description: Invalid claim verification request.
+        '403':
+          description: Tenant or claim evidence scope is not allowed.
   /api/v1/agent-platform/graph/reason:
     post:
       operationId: reasonOverAgentPlatformGraph
@@ -5497,6 +5520,145 @@ components:
           type: object
           additionalProperties: true
         required_write_back:
+          type: array
+          items:
+            type: string
+    AgentPlatformClaimVerificationRequest:
+      type: object
+      required:
+        - claim
+      properties:
+        tenant_id:
+          type: string
+          description: Optional tenant hint. Authenticated requests are forced to the tenant on the credential.
+        actor_id:
+          type: string
+          description: Optional actor hint. Authenticated requests are stamped with the principal actor.
+        claim:
+          type: string
+          minLength: 1
+          description: Agent conclusion to verify before recommendation, action proposal, finding update, or memory write.
+        claim_type:
+          type: string
+          description: Optional claim family, such as finding_triage, remediation_plan, ownership, or false_positive.
+        scope_urn:
+          type: string
+          description: Optional Cerebro URN inside the authenticated tenant that scopes the claim.
+        supporting_evidence_urns:
+          type: array
+          items:
+            type: string
+        counter_evidence_urns:
+          type: array
+          items:
+            type: string
+        missing_evidence:
+          type: array
+          items:
+            type: string
+        freshness_state:
+          type: string
+          enum: [fresh, stale, failed, unknown]
+        requested_action_stage:
+          type: string
+          enum: [observe, explain, recommend, dry_run, approve, execute, verify, close_loop]
+        human_approved:
+          type: boolean
+    AgentPlatformClaimVerification:
+      type: object
+      required:
+        - version
+        - claim
+        - verdict
+        - allowed_next_stage
+        - supporting_evidence
+        - counter_evidence
+        - verifier_results
+        - required_write_back
+      properties:
+        version:
+          type: string
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        claim:
+          type: string
+        claim_type:
+          type: string
+        scope_urn:
+          type: string
+        verdict:
+          type: string
+          enum: [supported, weakly_supported, contradicted, unknown]
+        allowed_next_stage:
+          type: string
+          enum: [observe, explain, recommend, dry_run, approve, execute, verify, close_loop]
+        requested_action_stage:
+          type: string
+          enum: [observe, explain, recommend, dry_run, approve, execute, verify, close_loop]
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformCapabilityDecisionBlocker'
+        warnings:
+          type: array
+          items:
+            type: string
+        supporting_evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformEvidenceReference'
+        counter_evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformEvidenceReference'
+        missing_evidence:
+          type: array
+          items:
+            type: string
+        freshness_state:
+          type: string
+        verifier_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPlatformVerifierResult'
+        required_write_back:
+          type: array
+          items:
+            type: string
+    AgentPlatformEvidenceReference:
+      type: object
+      required:
+        - urn
+        - kind
+        - citation_status
+      properties:
+        urn:
+          type: string
+        kind:
+          type: string
+        citation_status:
+          type: string
+        source_urns:
+          type: array
+          items:
+            type: string
+    AgentPlatformVerifierResult:
+      type: object
+      required:
+        - id
+        - status
+        - message
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [passed, warning, blocked]
+        message:
+          type: string
+        evidence:
           type: array
           items:
             type: string

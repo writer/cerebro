@@ -860,6 +860,104 @@ func TestAgentPlatformEvidencePacketRejectsCrossTenantPacketURNs(t *testing.T) {
 	}
 }
 
+func TestAgentPlatformClaimVerificationForcesAuthenticatedContextAndStageGates(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/claims/verify", bytes.NewReader([]byte(`{
+		"tenant_id": "writer",
+		"actor_id": "body-actor",
+		"claim": "Finding alert-1 should be remediated",
+		"claim_type": "finding_triage",
+		"scope_urn": "urn:cerebro:writer:finding:alert-1",
+		"supporting_evidence_urns": ["urn:cerebro:writer:evidence:ev-1"],
+		"freshness_state": "fresh",
+		"requested_action_stage": "execute",
+		"human_approved": false
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST claim verification: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var verification agentplatform.ClaimVerification
+	if err := json.NewDecoder(resp.Body).Decode(&verification); err != nil {
+		t.Fatalf("decode verification: %v", err)
+	}
+	if verification.TenantID != "writer" || verification.ActorID != "tester" {
+		t.Fatalf("verification context = %+v, want authenticated tenant/actor", verification)
+	}
+	if verification.Verdict != agentplatform.ClaimVerdictWeaklySupported || verification.AllowedNextStage != agentplatform.ActionStageExplain {
+		t.Fatalf("verification verdict/stage = %q/%q, want weakly_supported/explain", verification.Verdict, verification.AllowedNextStage)
+	}
+	if !claimVerificationHasBlocker(verification, "stage_skip") || !claimVerificationHasBlocker(verification, "unapproved_mutation") {
+		t.Fatalf("verification blockers = %+v, want stage and approval blockers", verification.Blockers)
+	}
+	if len(verification.RequiredWriteBack) == 0 || len(verification.VerifierResults) == 0 {
+		t.Fatalf("verification missing writeback or verifiers: %+v", verification)
+	}
+}
+
+func TestAgentPlatformClaimVerificationRejectsCrossTenantURNs(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/claims/verify", bytes.NewReader([]byte(`{
+		"tenant_id": "writer",
+		"claim": "Finding alert-1 should be remediated",
+		"scope_urn": "urn:cerebro:writer:finding:alert-1",
+		"supporting_evidence_urns": ["urn:cerebro:other:evidence:ev-1"],
+		"freshness_state": "fresh"
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST claim verification: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestAgentPlatformClaimVerificationRequiresClaim(t *testing.T) {
+	app := New(agentPlatformAuthConfig(), Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent-platform/claims/verify", bytes.NewReader([]byte(`{
+		"tenant_id": "writer",
+		"scope_urn": "urn:cerebro:writer:finding:alert-1"
+	}`)))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST claim verification: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestHandleAgentPlatformCapabilityDecisionReportsUnknownCapability(t *testing.T) {
 	body := []byte(`{"capability_id":"missing-capability","requested_scopes":["cosmo.security.read"]}`)
 	recorder := httptest.NewRecorder()
@@ -870,6 +968,15 @@ func TestHandleAgentPlatformCapabilityDecisionReportsUnknownCapability(t *testin
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", recorder.Code)
 	}
+}
+
+func claimVerificationHasBlocker(verification agentplatform.ClaimVerification, code string) bool {
+	for _, blocker := range verification.Blockers {
+		if blocker.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func agentPlatformAuthConfig() config.Config {
