@@ -52,6 +52,7 @@ Finding domains resolve from `finding_domains` by finding ID, pack, source, then
 | `finding_tag_map.csv` | One row per public detection tag, including catalog tags and control-derived compliance review tags. |
 | `source_coverage_map.csv` | One row per public detection source coverage ref for evidence-source review. |
 | `finding_compliance_review_map.csv` | One row per public detection with resolved audit domain, audit language source, source-backed control counts, and review flags. |
+| `compliance_quality_issues.csv` | Blocking quality-gate rows for findings that lack required framework, control, evidence, rationale, or source-capability status fields. An empty table after the header means the gate passes. |
 | `finding_domain_aliases.csv` | One row per YAML finding-domain alias used to resolve non-policy findings into audit domains. |
 | `framework_review_areas.csv` | One row per YAML framework review area with its control refs and purpose. |
 | `control_relationships.csv` | One row per YAML control relationship, including alias, child requirement, sibling scope, and evidence dependency hints. |
@@ -60,6 +61,7 @@ Finding domains resolve from `finding_domains` by finding ID, pack, source, then
 | `evidence_capabilities.csv` | One row per YAML source/dimension capability with declared source-backed control refs. |
 | `source_capability_review_map.csv` | One row per source/dimension comparing YAML capability refs with observed public catalog source coverage refs. |
 | `framework_control_enrichment_map.csv` | One row per framework control showing direct findings, source-backed findings, source capabilities, review areas, and relationships. |
+| `framework_control_gap_map.csv` | One row per framework control with direct, indirect, or no-coverage status plus the next action for coverage cleanup. |
 | `yaml_layers.csv` | One row per extension layer so inherited audit language can be reviewed. |
 | `logic.csv` | The generation contract in spreadsheet form. |
 
@@ -95,6 +97,24 @@ The all-finding export compares detection `control_refs` with source coverage `m
 - `control_only`: the finding has control refs but no matching source coverage control refs.
 
 Use `control_refs_without_source_match` as a review queue. It does not mean the control is invalid; it means the spreadsheet cannot point to a matched source coverage lane for that direct control ref yet.
+
+`source_capability_status` is emitted for every finding:
+
+- `source_capability_defined`: each keyed source coverage ref is declared in `evidence_capabilities.yaml`.
+- `partial_yaml_source_capability`: some keyed source coverage refs have YAML capability declarations and some do not.
+- `missing_yaml_source_capability`: source coverage exists but none of the keyed refs are declared in YAML.
+- `source_coverage_unkeyed`: source coverage exists but lacks source or dimension keys.
+- `no_source_coverage`: the finding has no source coverage refs.
+
+## Quality Gates
+
+`policy-mapping-check` fails when `compliance_quality_issues.csv` would contain rows. The gate checks that every public finding has framework-derived tags, control refs, an evaluation mode, resolved evidence type, assessment methods, auditor guidance, risk statement, remediation intent, and source capability status.
+
+`framework_control_gap_map.csv` does not fail the build for uncovered controls. It gives every control a coverage lane:
+
+- `direct`: at least one finding maps directly to the control.
+- `indirect`: review context or source capability exists, but no direct finding maps to the control.
+- `none`: the control is present in the framework catalog only.
 
 ## Review Context
 

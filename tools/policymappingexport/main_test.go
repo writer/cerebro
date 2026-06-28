@@ -270,6 +270,51 @@ func TestGenerateFilesIncludesYAMLReviewContextMaps(t *testing.T) {
 	t.Fatal("framework_control_enrichment_map.csv missing SOC 2 CC6.1 enrichment row")
 }
 
+func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	qualityRows := readGeneratedCSV(t, generatedFileByName(t, files, "compliance_quality_issues.csv"))
+	if len(qualityRows) != 1 {
+		t.Fatalf("compliance_quality_issues.csv rows = %d, want only header", len(qualityRows))
+	}
+
+	findingRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_map.csv"))
+	findingHeader := findingRows[0]
+	findingIDCol := columnIndex(t, findingHeader, "finding_id")
+	s3Row := findRow(t, findingRows, findingIDCol, "aws-s3-bucket-no-public-access")
+	assertCellContains(t, findingHeader, s3Row, "source_capability_status", "source_capability_defined")
+
+	gapRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_control_gap_map.csv"))
+	gapHeader := gapRows[0]
+	frameworkCol := columnIndex(t, gapHeader, "framework")
+	controlCol := columnIndex(t, gapHeader, "control_id")
+	foundDirect := false
+	foundNone := false
+	for _, row := range gapRows[1:] {
+		if row[frameworkCol] == "SOC 2" && row[controlCol] == "CC6.1" {
+			assertCellContains(t, gapHeader, row, "coverage_status", "direct_source_backed")
+			assertCellContains(t, gapHeader, row, "coverage_lane", "direct")
+			assertCellContains(t, gapHeader, row, "gap_type", "none")
+			foundDirect = true
+		}
+		if row[frameworkCol] == "ISO 27001:2022" && row[controlCol] == "A.7.8" {
+			assertCellContains(t, gapHeader, row, "coverage_status", "framework_catalog_only")
+			assertCellContains(t, gapHeader, row, "coverage_lane", "none")
+			assertCellContains(t, gapHeader, row, "gap_type", "no_mapping_or_evidence")
+			foundNone = true
+		}
+	}
+	if !foundDirect {
+		t.Fatal("framework_control_gap_map.csv missing SOC 2 CC6.1 direct coverage row")
+	}
+	if !foundNone {
+		t.Fatal("framework_control_gap_map.csv missing ISO 27001:2022 A.7.8 no-coverage row")
+	}
+}
+
 func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 	cases := []struct {
 		name string
