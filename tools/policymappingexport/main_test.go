@@ -526,6 +526,84 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	}
 }
 
+func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	rows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_coverage_candidates.csv"))
+	header := rows[0]
+	frameworkCol := columnIndex(t, header, "framework")
+	controlCol := columnIndex(t, header, "control_id")
+
+	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ccpa", "1798.100")
+	assertCellContains(t, header, privacyRow, "coverage_status", "direct_control_only")
+	assertCellContains(t, header, privacyRow, "candidate_priority", "high")
+	assertCellContains(t, header, privacyRow, "candidate_type", "source_backing_candidate")
+	assertCellContains(t, header, privacyRow, "suggested_finding_domain", "privacy")
+	assertCellContains(t, header, privacyRow, "requirement_profiles", "privacy-rights")
+
+	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "iso270012022", "A.7.8")
+	assertCellContains(t, header, catalogOnlyRow, "coverage_status", "framework_catalog_only")
+	assertCellContains(t, header, catalogOnlyRow, "candidate_priority", "low")
+	assertCellContains(t, header, catalogOnlyRow, "candidate_type", "scope_or_exclusion_candidate")
+	assertCellContains(t, header, catalogOnlyRow, "requirement_profiles", "baseline-control-review")
+}
+
+func TestFrameworkCoverageCandidateClassifiersCoverAllStatuses(t *testing.T) {
+	cases := []struct {
+		status   string
+		kind     string
+		priority string
+		action   string
+	}{
+		{
+			status:   "direct_with_source_context",
+			kind:     "source_link_review_candidate",
+			priority: "medium",
+			action:   "promote valid links",
+		},
+		{
+			status:   "direct_control_only",
+			kind:     "source_backing_candidate",
+			priority: "high",
+			action:   "Add source coverage",
+		},
+		{
+			status:   "source_capability_only",
+			kind:     "missing_finding_candidate",
+			priority: "high",
+			action:   "Create or map",
+		},
+		{
+			status:   "review_context_only",
+			kind:     "mapping_review_candidate",
+			priority: "medium",
+			action:   "review context",
+		},
+		{
+			status:   "framework_catalog_only",
+			kind:     "scope_or_exclusion_candidate",
+			priority: "low",
+			action:   "in-scope status",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.status, func(t *testing.T) {
+			if got := frameworkCoverageCandidateType(tt.status); got != tt.kind {
+				t.Fatalf("frameworkCoverageCandidateType(%q) = %q, want %q", tt.status, got, tt.kind)
+			}
+			if got := frameworkCoverageCandidatePriority(tt.status); got != tt.priority {
+				t.Fatalf("frameworkCoverageCandidatePriority(%q) = %q, want %q", tt.status, got, tt.priority)
+			}
+			if got := frameworkCoverageCandidateAction(tt.status); !strings.Contains(got, tt.action) {
+				t.Fatalf("frameworkCoverageCandidateAction(%q) = %q, want substring %q", tt.status, got, tt.action)
+			}
+		})
+	}
+}
+
 func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 	cases := []struct {
 		name string
@@ -680,6 +758,17 @@ func findRequirementRow(t *testing.T, rows [][]string, frameworkCol int, control
 		}
 	}
 	t.Fatalf("requirement row not found for %s %s %s %s", framework, controlID, profile, source)
+	return nil
+}
+
+func findFrameworkControlRow(t *testing.T, rows [][]string, frameworkCol int, controlCol int, framework string, controlID string) []string {
+	t.Helper()
+	for _, row := range rows[1:] {
+		if row[frameworkCol] == framework && row[controlCol] == controlID {
+			return row
+		}
+	}
+	t.Fatalf("framework control row not found for %s %s", framework, controlID)
 	return nil
 }
 
