@@ -1,0 +1,163 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects API keys, audit logs, usage reports, and model access from xAI and projects them into the Cerebro graph as secrets, audit events, and assets for model access, API key, usage, and workspace governance context.
+      display_name: xAI
+      id: builtin-xai
+      resource_families:
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API keys
+              type: app_entitlement
+          event:
+            kind: xai.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: xai/api_keys/v1
+            urn_kind: xai_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /management/api-keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_logs
+              high_value: true
+              id: audit_logs
+              support: partial
+              title: Audit logs
+              type: audit_event
+          event:
+            kind: xai.audit_logs
+            required_payload_fields:
+              - id
+            schema_ref: xai/audit_logs/v1
+            urn_kind: xai_audit_logs
+          id: audit_logs
+          id_field: id
+          label: Audit logs
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /management/audit-logs
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - usage_reports
+              high_value: true
+              id: usage_reports
+              support: partial
+              title: Usage reports
+              type: entity_family
+          event:
+            kind: xai.usage_reports
+            required_payload_fields:
+              - id
+            schema_ref: xai/usage_reports/v1
+            urn_kind: xai_usage_reports
+          id: usage_reports
+          id_field: id
+          label: Usage reports
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /management/usage
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - security_operations
+              evidence_types:
+                - configuration_state
+              families:
+                - model_access
+              high_value: true
+              id: model_access
+              support: partial
+              title: Model access
+              type: lifecycle_state
+          event:
+            kind: xai.model_access
+            required_payload_fields:
+              - id
+            schema_ref: xai/model_access/v1
+            urn_kind: xai_model_access
+          id: model_access
+          id_field: id
+          label: Model access
+          method: GET
+          name_field: model
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /management/model-access
+          projection:
+            fields:
+              resource_id: id
+              resource_name: model
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: xai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.x.ai
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

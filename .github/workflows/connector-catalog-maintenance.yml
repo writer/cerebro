@@ -9,6 +9,7 @@ on:
       - "internal/connectordefinitions/**"
       - "internal/sourcegen/**"
       - "tools/catalogcheck/**"
+      - "tools/connectorcatalogfidelity/**"
       - "tools/connectorcatalogreview/**"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "internal/connectordefinitions/**"
       - "internal/sourcegen/**"
       - "tools/catalogcheck/**"
+      - "tools/connectorcatalogfidelity/**"
       - "tools/connectorcatalogreview/**"
   schedule:
     - cron: "17 */6 * * *"
@@ -67,4 +69,5 @@ jobs:
           path: |
             tmp/connector-catalog-review.md
             tmp/connector-catalog-review.json
+            tmp/connector-catalog-fidelity.json
           if-no-files-found: warn
