@@ -316,10 +316,10 @@ policy-rule-generate: ## Regenerate generated policy rule catalog.
 policy-rule-check: finding-dsl-check ## Verify generated policy rule catalog is current.
 	go run ./tools/policyrulegen --check
 
-policy-mapping-export: ## Regenerate policy compliance mapping CSVs.
+policy-mapping-export: policy-rule-generate detection-catalog-generate ## Regenerate policy compliance mapping CSVs.
 	go run ./tools/policymappingexport --write
 
-policy-mapping-check: finding-dsl-check ## Verify policy compliance mapping CSVs are current.
+policy-mapping-check: policy-rule-check detection-catalog-check ## Verify policy compliance mapping CSVs are current.
 	go run ./tools/policymappingexport --check
 
 detection-catalog-generate: ## Regenerate public detection catalog.
@@ -355,7 +355,7 @@ new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_T
 	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
 	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-type="$(URN_TYPE)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
-docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate policy-mapping-export control-index-generate detection-catalog-generate openapi-ts-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	python3 scripts/docs_drift_check.py
@@ -517,7 +517,7 @@ hooks: ## Install repository git hooks.
 pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check finding-dsl-check policy-rule-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
+check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -533,4 +533,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check graph-action-check finding-dsl-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
