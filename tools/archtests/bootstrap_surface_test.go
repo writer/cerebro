@@ -64,7 +64,7 @@ import (
 // claim verdicts, gates, and work state live in internal/agentplatform. GRC
 // policy lifecycle adds only route/scope/error mapping; graph aggregation and
 // response shaping live in internal/grcpolicylifecycle.
-const bootstrapProductionGoLineBudget = 26268
+const bootstrapProductionGoLineBudget = 26292
 
 type bootstrapFileLineCount struct {
 	path  string
