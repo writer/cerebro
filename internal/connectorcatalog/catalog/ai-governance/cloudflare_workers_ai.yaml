@@ -20,8 +20,8 @@ entries:
           label: AI Gateway ID
           required: true
       description: Collects Workers AI models, AI Gateway configuration, gateway provider configs, gateway evaluations, gateway logs, and Vectorize indexes from Cloudflare.
-      display_name: Cloudflare AI
-      id: builtin-cloudflare-ai
+      display_name: Cloudflare Workers AI
+      id: builtin-cloudflare-workers-ai
       resource_families:
         - coverage:
             - control_domains:
@@ -36,11 +36,11 @@ entries:
               title: Model catalog
               type: entity_family
           event:
-            kind: cloudflare_ai.model_catalog
+            kind: cloudflare_workers_ai.model_catalog
             required_payload_fields:
               - id
-            schema_ref: cloudflare_ai/model_catalog/v1
-            urn_kind: cloudflare_ai_model_catalog
+            schema_ref: cloudflare_workers_ai/model_catalog/v1
+            urn_kind: cloudflare_workers_ai_model_catalog
           id: model_catalog
           id_field: id
           label: Model catalog
@@ -76,11 +76,11 @@ entries:
               title: AI gateways
               type: deployment_state
           event:
-            kind: cloudflare_ai.ai_gateways
+            kind: cloudflare_workers_ai.ai_gateways
             required_payload_fields:
               - id
-            schema_ref: cloudflare_ai/ai_gateways/v1
-            urn_kind: cloudflare_ai_ai_gateways
+            schema_ref: cloudflare_workers_ai/ai_gateways/v1
+            urn_kind: cloudflare_workers_ai_ai_gateways
           id: ai_gateways
           id_field: id
           label: AI gateways
@@ -115,11 +115,11 @@ entries:
               title: Gateway provider configs
               type: app_entitlement
           event:
-            kind: cloudflare_ai.gateway_provider_configs
+            kind: cloudflare_workers_ai.gateway_provider_configs
             required_payload_fields:
               - id
-            schema_ref: cloudflare_ai/gateway_provider_configs/v1
-            urn_kind: cloudflare_ai_gateway_provider_configs
+            schema_ref: cloudflare_workers_ai/gateway_provider_configs/v1
+            urn_kind: cloudflare_workers_ai_gateway_provider_configs
           id: gateway_provider_configs
           id_field: id
           label: Gateway provider configs
@@ -153,11 +153,11 @@ entries:
               title: Gateway evaluations
               type: lifecycle_state
           event:
-            kind: cloudflare_ai.gateway_evaluations
+            kind: cloudflare_workers_ai.gateway_evaluations
             required_payload_fields:
               - id
-            schema_ref: cloudflare_ai/gateway_evaluations/v1
-            urn_kind: cloudflare_ai_gateway_evaluations
+            schema_ref: cloudflare_workers_ai/gateway_evaluations/v1
+            urn_kind: cloudflare_workers_ai_gateway_evaluations
           id: gateway_evaluations
           id_field: id
           label: Gateway evaluations
@@ -191,11 +191,11 @@ entries:
               title: Gateway logs
               type: audit_event
           event:
-            kind: cloudflare_ai.gateway_logs
+            kind: cloudflare_workers_ai.gateway_logs
             required_payload_fields:
               - id
-            schema_ref: cloudflare_ai/gateway_logs/v1
-            urn_kind: cloudflare_ai_gateway_logs
+            schema_ref: cloudflare_workers_ai/gateway_logs/v1
+            urn_kind: cloudflare_workers_ai_gateway_logs
           id: gateway_logs
           id_field: id
           label: Gateway logs
@@ -229,11 +229,11 @@ entries:
               title: Vectorize indexes
               type: entity_family
           event:
-            kind: cloudflare_ai.vectorize_indexes
+            kind: cloudflare_workers_ai.vectorize_indexes
             required_payload_fields:
               - name
-            schema_ref: cloudflare_ai/vectorize_indexes/v1
-            urn_kind: cloudflare_ai_vectorize_indexes
+            schema_ref: cloudflare_workers_ai/vectorize_indexes/v1
+            urn_kind: cloudflare_workers_ai_vectorize_indexes
           id: vectorize_indexes
           id_field: name
           label: Vectorize indexes
@@ -252,7 +252,7 @@ entries:
             template: asset
           record_selector: $.result[*]
       schema_version: cerebro.integration/v1
-      source_id: cloudflare_ai
+      source_id: cloudflare_workers_ai
       tenant_id: builtin_catalog
       transport:
         base_url: https://api.cloudflare.com/client/v4
