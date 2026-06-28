@@ -927,6 +927,33 @@ entries:
             cursor_json_path: "$.next_cursor"
             page_size_param: limit
             page_size: 100
+        - id: model_serving_endpoints
+          label: "Model serving endpoints"
+          path: /api/2.0/serving-endpoints
+          method: GET
+          record_selector: "$.endpoints[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: databricks.model_serving_endpoints
+            schema_ref: databricks/model_serving_endpoints/v1
+          projection:
+            template: deployment
+          coverage:
+            - id: model_serving_endpoints
+              type: deployment_state
+              title: "Model serving endpoints"
+              families: [model_serving_endpoints]
+              support: partial
+              high_value: true
+              evidence_types: [change_management]
+              control_domains: [secure_delivery]
+          pagination:
+            type: cursor
+            cursor_param: page_token
+            cursor_json_path: "$.next_page_token"
+            page_size_param: page_size
+            page_size: 100
   - classifier_output: supported
     definition:
       schema_version: cerebro.integration/v1
@@ -2821,6 +2848,33 @@ entries:
               high_value: true
               evidence_types: [remediation_state]
               control_domains: [remediation]
+          pagination:
+            type: cursor
+            cursor_param: cursor
+            cursor_json_path: "$.next_cursor"
+            page_size_param: limit
+            page_size: 100
+        - id: cortex_search_services
+          label: "Cortex search services"
+          path: /api/v2/cortex/search-services
+          method: GET
+          record_selector: "$.data[*]"
+          id_field: name
+          name_field: name
+          event:
+            kind: snowflake.cortex_search_services
+            schema_ref: snowflake/cortex_search_services/v1
+          projection:
+            template: asset
+          coverage:
+            - id: cortex_search_services
+              type: entity_family
+              title: "Cortex search services"
+              families: [cortex_search_services]
+              support: partial
+              high_value: true
+              evidence_types: [source_snapshot]
+              control_domains: [asset_inventory]
           pagination:
             type: cursor
             cursor_param: cursor
