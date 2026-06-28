@@ -311,6 +311,253 @@ func TestSourceDefinitionUsesDeclarativeRuntimeDepthFields(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionCustomCursorHonorsHasMoreAndNativeToken(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("after") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items":    []map[string]any{{"id": "A"}},
+				"has_next": true,
+				"marker":   "M2",
+			})
+		case "M2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items":    []map[string]any{{"id": "B"}},
+				"has_next": false,
+				"marker":   "M3",
+			})
+		default:
+			t.Fatalf("after query = %q, want empty or M2", r.URL.Query().Get("after"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$.items[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:           "cursor",
+				CursorParam:    "after",
+				NextCursorKeys: []string{"marker"},
+				HasMoreKey:     "has_next",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "per_page": "1"})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if got := first.NextCursor.GetOpaque(); got != "M2" {
+		t.Fatalf("first NextCursor = %q, want native marker", got)
+	}
+	if _, ok := sourcecdk.DecodeCursorEnvelope(first.NextCursor.GetOpaque()); ok {
+		t.Fatalf("first NextCursor = %q, want native cursor not checkpoint envelope", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil when has_next=false", second.NextCursor)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want two cursor pages", len(requests))
+	}
+}
+
+func TestSourceDefinitionUsesOffsetPaginationMetadata(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit query = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("offset") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{{"id": "A"}, {"id": "B"}},
+				"total":   3,
+				"offset":  0,
+				"limit":   2,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{{"id": "C"}},
+				"total":   3,
+				"offset":  2,
+				"limit":   2,
+			})
+		default:
+			t.Fatalf("offset query = %q, want empty or 2", r.URL.Query().Get("offset"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$.records[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:        "offset",
+				OffsetParam: "offset",
+				LimitParam:  "limit",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "per_page": "2"})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if got := first.NextCursor.GetOpaque(); got != "2" {
+		t.Fatalf("first NextCursor = %q, want offset 2", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil at total", second.NextCursor)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want two offset pages", len(requests))
+	}
+}
+
+func TestSourceDefinitionDetailPathFallsBackWhenDetailUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "U1", "email": "base@example.com"}},
+			})
+		case "/users/U1/detail":
+			http.Error(w, "temporarily unavailable", http.StatusBadGateway)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "users",
+			Path:           "/users",
+			Read:           &connectordefinitions.ResourceReadSpec{DetailPath: "/users/{id}/detail", AllowBareDetailRecord: true},
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.users", SchemaRef: "example/users/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "identity_user"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["email"] != "base@example.com" {
+		t.Fatalf("events = %#v, want base record when detail request fails", pull.Events)
+	}
+}
+
+func TestSourceDefinitionConfigQuerySplitsOnlyArrayStyleKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if got := query["scope[]"]; len(got) != 2 || got[0] != "read" || got[1] != "write" {
+			t.Fatalf("scope[] query = %#v, want split read/write", got)
+		}
+		if got := query["tag"]; len(got) != 1 || got[0] != "alpha,beta" {
+			t.Fatalf("tag query = %#v, want unsplit scalar", got)
+		}
+		if got := query.Get("empty"); got != "" {
+			t.Fatalf("empty query = %q, want omitted", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "A"}}})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Config: &connectordefinitions.FamilyConfigSpec{
+				ConfigQuery: map[string]string{
+					"scope[]": "scopes",
+					"tag":     "tags",
+					"empty":   "empty",
+				},
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"scopes":    " read, write ",
+		"tags":      "alpha,beta",
+		"empty":     " ",
+	}), nil); err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+}
+
 func TestSourceDefinitionSupportsSingletonAndMapRecords(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
