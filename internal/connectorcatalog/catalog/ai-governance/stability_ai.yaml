@@ -1,0 +1,129 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects engines, account, and account balance from Stability AI and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context.
+      display_name: Stability AI
+      id: builtin-stability-ai
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - engines
+              high_value: true
+              id: engines
+              support: partial
+              title: Engines
+              type: entity_family
+          event:
+            kind: stability_ai.engines
+            required_payload_fields:
+              - id
+            schema_ref: stability_ai/engines/v1
+            urn_kind: stability_ai_engines
+          id: engines
+          id_field: id
+          label: Engines
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/engines/list
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - account
+              high_value: true
+              id: account
+              support: partial
+              title: Account
+              type: entity_family
+          event:
+            kind: stability_ai.account
+            required_payload_fields:
+              - id
+            schema_ref: stability_ai/account/v1
+            urn_kind: stability_ai_account
+          id: account
+          id_field: id
+          label: Account
+          method: GET
+          name_field: email
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/user/account
+          projection:
+            fields:
+              resource_id: id
+              resource_name: email
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          singleton: true
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - account_balance
+              high_value: true
+              id: account_balance
+              support: partial
+              title: Account balance
+              type: entity_family
+          event:
+            kind: stability_ai.account_balance
+            required_payload_fields:
+              - id
+            schema_ref: stability_ai/account_balance/v1
+            urn_kind: stability_ai_account_balance
+          id: account_balance
+          id_field: id
+          label: Account balance
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/user/balance
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          singleton: true
+      schema_version: cerebro.integration/v1
+      source_id: stability_ai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.stability.ai
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/engines/list

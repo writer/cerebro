@@ -30,7 +30,7 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 				Status:           StatusNeedsAuthExtension,
 				ClassifierOutput: "supported",
 				SourcegenError:   "auth model requires an extension",
-				Definition: reviewDefinition("azure_com", "Azure", []connectordefinitions.ResourceFamily{
+				Definition: reviewDefinition("azure_com", "Azure REST API", []connectordefinitions.ResourceFamily{
 					reviewFamily("users", "identity_user", true),
 					{ID: "roles", Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "app_entitlement", Support: "partial"}}},
 				}),
@@ -49,6 +49,9 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 	if !hasCleanupFinding(report, "azure_com", "source_id_cleanup") {
 		t.Fatalf("cleanup findings = %#v, want azure_com source_id_cleanup", report.CleanupFindings)
 	}
+	if !hasCleanupFinding(report, "azure_com", "display_name_cleanup") {
+		t.Fatalf("cleanup findings = %#v, want azure_com display_name_cleanup", report.CleanupFindings)
+	}
 	if !hasQueue(report, "sourcegen_ready", "azure") {
 		t.Fatalf("promotion queues = %#v, want azure in sourcegen_ready", report.PromotionQueues)
 	}
@@ -60,6 +63,108 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 	}
 	if !hasQuestion(report, "azure_com", "source_id_cleanup") {
 		t.Fatalf("questions = %#v, want azure_com source_id_cleanup", report.Questions)
+	}
+}
+
+func TestReviewAnalysisOmitsRuntimeDepthWithoutInventory(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 1, Generateable: 1},
+		Entries: []Entry{{
+			Path:         "identity/catalog_only.yaml",
+			Status:       StatusGenerateable,
+			Generateable: true,
+			Definition:   reviewDefinition("catalog_only", "Catalog Only", []connectordefinitions.ResourceFamily{reviewDetailedFamily("users", "identity_user")}),
+		}},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	if report.Summary.RuntimeDepth != nil {
+		t.Fatalf("runtime depth summary = %#v, want nil without runtime inventory", report.Summary.RuntimeDepth)
+	}
+	if len(report.RuntimeDepthQueue) != 0 {
+		t.Fatalf("runtime depth queue = %#v, want empty without runtime inventory", report.RuntimeDepthQueue)
+	}
+	if hasQuestion(report, "catalog_only", "runtime_depth") {
+		t.Fatalf("questions = %#v, did not expect runtime_depth question without runtime inventory", report.Questions)
+	}
+}
+
+func TestReviewAnalysisFlagsScrapedSourceIdentity(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{
+				Path:         "business/akeneo_com.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("akeneo_com", "Akeneo PIM REST API", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("products", "asset"),
+				}),
+			},
+			{
+				Path:         "business/monday_com.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("monday_com", "monday.com", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("boards", "asset"),
+				}),
+			},
+		},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	if !hasCleanupFinding(report, "akeneo_com", "source_id_cleanup") {
+		t.Fatalf("cleanup findings = %#v, want akeneo_com source_id_cleanup", report.CleanupFindings)
+	}
+	if !hasCleanupFinding(report, "akeneo_com", "display_name_cleanup") {
+		t.Fatalf("cleanup findings = %#v, want akeneo_com display_name_cleanup", report.CleanupFindings)
+	}
+	if hasCleanupFinding(report, "monday_com", "source_id_cleanup") {
+		t.Fatalf("cleanup findings = %#v, did not expect monday.com source cleanup", report.CleanupFindings)
+	}
+}
+
+func TestReviewAnalysisDisambiguatesOverlappingCleanupQuestions(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{
+				Path:         "business/acme_one.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("acme_one", "Acme REST API", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("records", "asset"),
+				}),
+			},
+			{
+				Path:         "business/acme_two.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("acme_two", "Acme REST API", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("records", "asset"),
+				}),
+			},
+		},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	questionIDs := map[string]struct{}{}
+	displayCleanupQuestions := 0
+	for _, question := range report.Questions {
+		if question.SourceID != "acme_one" || question.Category != "display_name_cleanup" {
+			continue
+		}
+		displayCleanupQuestions++
+		if _, exists := questionIDs[question.ID]; exists {
+			t.Fatalf("duplicate cleanup question ID %q in questions %#v", question.ID, report.Questions)
+		}
+		questionIDs[question.ID] = struct{}{}
+	}
+	if displayCleanupQuestions != 2 {
+		t.Fatalf("display cleanup questions = %d, want 2; questions = %#v", displayCleanupQuestions, report.Questions)
 	}
 }
 
@@ -76,6 +181,12 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 				NextAction: "Generate the runtime package.",
 			}},
 		}},
+		FidelityQueue: []FidelityCandidate{{
+			SourceID:   "okta",
+			Score:      70,
+			Missing:    []string{"family:users:event_contract"},
+			NextAction: "Add event schema fields.",
+		}},
 		Questions: []ReviewQuestion{{
 			SourceID:   "okta",
 			Category:   "graph_projection",
@@ -86,7 +197,7 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 	}
 
 	markdown := RenderReviewMarkdown(report, 10)
-	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Review Q&A", "Do users project?"} {
+	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Fidelity Queue", "family:users:event_contract", "## Review Q&A", "Do users project?"} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, markdown)
 		}
@@ -122,6 +233,113 @@ func TestReviewAnalysisFlagsFamiliesWithoutCoverageIndividually(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisBuildsFidelityQueue(t *testing.T) {
+	deepDefinition := reviewDefinition("deep", "Deep", []connectordefinitions.ResourceFamily{
+		reviewDetailedFamily("users", "identity_user"),
+		reviewDetailedFamily("groups", "identity_group"),
+	})
+	deepDefinition.Description = "Collects users and groups from Deep and projects them into the graph with evidence, inventory, access, and review context for operators."
+	deepDefinition.ScopeOptions = []connectordefinitions.ScopeOption{
+		{ID: "users", Label: "Users", Families: []string{"users"}, DefaultEnabled: true},
+		{ID: "groups", Label: "Groups", Families: []string{"groups"}, DefaultEnabled: true},
+	}
+	deepDefinition.Transport.Verification.ExpectStatus = []int{200}
+	shallowDefinition := reviewDefinition("shallow", "Shallow", []connectordefinitions.ResourceFamily{
+		{ID: "records", Projection: &connectordefinitions.ProjectionSpec{Template: "asset"}},
+	})
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{Path: "identity/deep.yaml", Status: StatusGenerateable, Generateable: true, Definition: deepDefinition},
+			{Path: "identity/shallow.yaml", Status: StatusGenerateable, Generateable: true, Definition: shallowDefinition},
+		},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	if report.Summary.HighFidelitySources != 1 {
+		t.Fatalf("high fidelity sources = %d, want 1", report.Summary.HighFidelitySources)
+	}
+	if report.Summary.NeedsFidelityReview != 1 {
+		t.Fatalf("needs fidelity review = %d, want 1", report.Summary.NeedsFidelityReview)
+	}
+	if _, ok := fidelityFor(report, "deep"); ok {
+		t.Fatalf("fidelity queue = %#v, did not expect deep source", report.FidelityQueue)
+	}
+	candidate, ok := fidelityFor(report, "shallow")
+	if !ok {
+		t.Fatalf("fidelity queue = %#v, want shallow source", report.FidelityQueue)
+	}
+	if candidate.Score >= report.Summary.FidelityBaselineScore {
+		t.Fatalf("shallow score = %d, want below baseline %d", candidate.Score, report.Summary.FidelityBaselineScore)
+	}
+	if !hasQuestion(report, "shallow", "fidelity") {
+		t.Fatalf("questions = %#v, want shallow fidelity question", report.Questions)
+	}
+}
+
+func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{
+				Path:         "devops/github.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition:   reviewDefinition("github", "GitHub", []connectordefinitions.ResourceFamily{reviewDetailedFamily("audit", "audit_event")}),
+			},
+			{
+				Path:         "identity/catalog_only.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition:   reviewDefinition("catalog_only", "Catalog Only", []connectordefinitions.ResourceFamily{reviewDetailedFamily("users", "identity_user")}),
+			},
+		},
+	}
+	inventory := RuntimeDepthInventory{
+		"github": {
+			SourceID:                "github",
+			PackagePath:             "sources/github",
+			Score:                   100,
+			HasSourcePackage:        true,
+			HasSourceCatalog:        true,
+			HasSourceImplementation: true,
+			HasSourceTests:          true,
+			HasFixturePair:          true,
+			HasDeployManifest:       true,
+			HasProjectorTests:       true,
+			HasEventContracts:       true,
+			HasCoverageContract:     true,
+			RuntimeFamilies:         []string{"audit"},
+		},
+	}
+
+	report := ReviewAnalysisWithRuntimeDepth(analysis, inventory)
+
+	if report.Summary.RuntimeDepth == nil {
+		t.Fatal("runtime depth summary = nil, want runtime depth summary")
+	}
+	if report.Summary.RuntimeDepth.ReferenceRuntimeSources != 1 {
+		t.Fatalf("reference runtime sources = %d, want 1", report.Summary.RuntimeDepth.ReferenceRuntimeSources)
+	}
+	if report.Summary.RuntimeDepth.NeedsRuntimeDepth != 1 {
+		t.Fatalf("needs runtime depth = %d, want 1", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+	}
+	if _, ok := runtimeDepthFor(report, "github"); ok {
+		t.Fatalf("runtime depth queue = %#v, did not expect github source", report.RuntimeDepthQueue)
+	}
+	candidate, ok := runtimeDepthFor(report, "catalog_only")
+	if !ok {
+		t.Fatalf("runtime depth queue = %#v, want catalog_only source", report.RuntimeDepthQueue)
+	}
+	if !containsString(candidate.Missing, "runtime:source_package") {
+		t.Fatalf("catalog_only missing = %v, want runtime:source_package", candidate.Missing)
+	}
+	if !hasQuestion(report, "catalog_only", "runtime_depth") {
+		t.Fatalf("questions = %#v, want runtime_depth question", report.Questions)
+	}
+}
+
 func reviewDefinition(sourceID string, displayName string, families []connectordefinitions.ResourceFamily) connectordefinitions.Definition {
 	return connectordefinitions.Definition{
 		SourceID:         sourceID,
@@ -130,6 +348,49 @@ func reviewDefinition(sourceID string, displayName string, families []connectord
 		Auth:             connectordefinitions.AuthSpec{Model: "bearer_token"},
 		Transport:        &connectordefinitions.TransportSpec{Verification: &connectordefinitions.VerificationSpec{Path: "/healthz"}},
 		ResourceFamilies: families,
+	}
+}
+
+func reviewDetailedFamily(id string, template string) connectordefinitions.ResourceFamily {
+	return connectordefinitions.ResourceFamily{
+		ID:             id,
+		Label:          id,
+		Path:           "/v1/" + id,
+		Method:         "GET",
+		RecordSelector: "$.data[*]",
+		IDField:        "id",
+		NameField:      "name",
+		Event: connectordefinitions.EventMappingSpec{
+			Kind:                  "deep." + id,
+			SchemaRef:             "deep/" + id + "/v1",
+			URNKind:               "deep_" + id,
+			RequiredPayloadFields: []string{"id"},
+		},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: template,
+			Fields: map[string]string{
+				"id":   "id",
+				"name": "name",
+			},
+		},
+		Coverage: []connectordefinitions.CoverageDimensionSpec{{
+			ID:             id,
+			Type:           "entity_family",
+			Title:          id,
+			Families:       []string{id},
+			Support:        "partial",
+			HighValue:      true,
+			EvidenceTypes:  []string{"source_snapshot"},
+			ControlDomains: []string{"asset_inventory"},
+		}},
+		Pagination: &connectordefinitions.PaginationSpec{
+			Type:           "cursor",
+			CursorParam:    "cursor",
+			CursorJSONPath: "$.next_cursor",
+			PageSizeParam:  "limit",
+			PageSize:       100,
+		},
+		DefaultEnabled: true,
 	}
 }
 
@@ -154,6 +415,24 @@ func hasCleanupFinding(report ReviewReport, sourceID string, category string) bo
 		}
 	}
 	return false
+}
+
+func fidelityFor(report ReviewReport, sourceID string) (FidelityCandidate, bool) {
+	for _, candidate := range report.FidelityQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return FidelityCandidate{}, false
+}
+
+func runtimeDepthFor(report ReviewReport, sourceID string) (RuntimeDepthCandidate, bool) {
+	for _, candidate := range report.RuntimeDepthQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return RuntimeDepthCandidate{}, false
 }
 
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {
@@ -182,4 +461,13 @@ func questionFor(report ReviewReport, sourceID string, category string) (ReviewQ
 		}
 	}
 	return ReviewQuestion{}, false
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

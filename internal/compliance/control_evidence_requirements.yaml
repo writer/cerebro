@@ -19,7 +19,7 @@ profiles:
     applies_to:
       family_keywords:
         - Access
-        - Account
+        - Account Management
         - Authentication
         - Authorization
         - Identity
@@ -72,7 +72,7 @@ profiles:
         - Alert
         - Audit
         - Detection
-        - Event
+        - Event Log
         - Incident
         - Logging
         - Monitoring
@@ -168,14 +168,12 @@ profiles:
     name: Data Protection Evidence
     applies_to:
       family_keywords:
-        - Classification
         - Confidentiality
         - Cryptographic
         - Cryptography
-        - Data
+        - Data Protection
         - Encryption
         - Information Protection
-        - Key
         - Privacy
         - Secret
       control_id_prefixes:
@@ -285,7 +283,7 @@ profiles:
     name: Change and Configuration Evidence
     applies_to:
       family_keywords:
-        - Change
+        - Change Management
         - Configuration
         - Development
         - Release
@@ -373,7 +371,7 @@ profiles:
         - Personal
         - Data Subject
         - Consumer
-        - Processing
+        - Data Processing
     source_requirements:
       - source_id: data_inventory
         entity_type: processing_activity
@@ -407,7 +405,6 @@ profiles:
       frameworks:
         - ISO 42001
       family_keywords:
-        - AI
         - Artificial Intelligence
         - Model
         - Machine Learning
