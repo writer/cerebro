@@ -3,6 +3,7 @@ package catalogruntime
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -120,10 +121,12 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.inner.Read(ctx, cfg, cursor)
 }
 
+// ReadWithCheckpoint pages records while applying family-level checkpoint policy.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.inner.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily) (jsonapi.Family, error) {
-	if method := strings.ToUpper(strings.TrimSpace(resource.Method)); method != "" && method != "GET" {
-		return jsonapi.Family{}, fmt.Errorf("%s family %s method %q is not supported", sourceID, resource.ID, resource.Method)
-	}
 	name := strings.TrimSpace(resource.ID)
 	if name == "" {
 		return jsonapi.Family{}, fmt.Errorf("%s family id is required", sourceID)
@@ -131,27 +134,41 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	if strings.TrimSpace(resource.Path) == "" {
 		return jsonapi.Family{}, fmt.Errorf("%s family %s path is required", sourceID, name)
 	}
+	method := strings.ToUpper(strings.TrimSpace(resource.Method))
+	switch method {
+	case "", http.MethodGet, http.MethodPost:
+	default:
+		return jsonapi.Family{}, fmt.Errorf("%s family %s method %q is not supported by catalogruntime", sourceID, name, method)
+	}
 	class := projectionClass(resource)
+	read := resource.Read
+	if read == nil {
+		read = &connectordefinitions.ResourceReadSpec{}
+	}
 	return jsonapi.Family{
-		Name:             name,
-		Path:             resource.Path,
-		CursorParam:      cursorParam(resource.Pagination),
-		NextCursorKeys:   nextCursorKeys(resource.Pagination),
-		LinkHeader:       linkHeader(resource.Pagination),
-		PageFirstCursor:  pageFirstCursor(resource.Pagination),
-		URNKind:          firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
-		IDKeys:           idKeys(resource, class),
-		TimestampKeys:    timestampKeys(resource),
-		Attributes:       attributePaths(resource, class),
-		StaticAttributes: staticAttributes(sourceID, name, class),
-		PageSizeParams:   pageSizeParams(resource.Pagination),
-		DisablePageSize:  disablePageSize(resource.Pagination),
-		ListKeys:         listKeys(resource),
-		Singleton:        resource.Singleton,
-		Config: jsonapi.FamilyConfig{
-			StaticQuery: resource.StaticQuery,
-			ConfigQuery: resource.ConfigQuery,
-		},
+		Name:                  name,
+		Path:                  resource.Path,
+		DetailPath:            read.DetailPath,
+		AllowBareDetailRecord: read.AllowBareDetailRecord,
+		PathParams:            append([]string(nil), read.PathParams...),
+		CursorParam:           cursorParam(resource.Pagination),
+		NextCursorKeys:        nextCursorKeys(resource.Pagination),
+		HasMoreKey:            hasMoreKey(resource.Pagination),
+		LinkHeader:            linkHeader(resource.Pagination),
+		PageFirstCursor:       pageFirstCursor(resource.Pagination),
+		URNKind:               firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
+		IDKeys:                idKeys(resource, class),
+		TimestampKeys:         timestampKeys(resource),
+		Attributes:            attributePaths(resource, class),
+		StaticAttributes:      staticAttributes(sourceID, name, class),
+		Config:                familyConfig(resource),
+		PageSizeParams:        pageSizeParams(resource.Pagination),
+		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
+		ListKeys:              listKeys(resource),
+		MapRecords:            cloneStringMap(read.MapRecords),
+		Singleton:             read.Singleton || resource.Singleton,
+		IncrementalWatermark:  resource.Incremental != nil && strings.TrimSpace(resource.Incremental.State) == "high_watermark",
+		Method:                method,
 	}, nil
 }
 
@@ -165,6 +182,9 @@ func cursorParam(pagination *connectordefinitions.PaginationSpec) string {
 func nextCursorKeys(pagination *connectordefinitions.PaginationSpec) []string {
 	if pagination == nil {
 		return nil
+	}
+	if len(pagination.NextCursorKeys) > 0 {
+		return append([]string(nil), pagination.NextCursorKeys...)
 	}
 	key := cursorJSONPathKey(pagination.CursorJSONPath)
 	if key == "" {
@@ -198,6 +218,51 @@ func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {
 		return ""
 	}
 	return strconv.Itoa(pagination.StartPage)
+}
+
+func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
+	if pagination == nil {
+		return ""
+	}
+	return strings.TrimSpace(pagination.HasMoreKey)
+}
+
+func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyConfig {
+	out := jsonapi.FamilyConfig{
+		StaticQuery: cloneStringMap(resource.StaticQuery),
+		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+	}
+	if resource.Config != nil {
+		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
+		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
+		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
+	}
+	return out
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func mergeStringMaps(base map[string]string, values map[string]string) map[string]string {
+	out := cloneStringMap(base)
+	if len(values) == 0 {
+		return out
+	}
+	if out == nil {
+		out = make(map[string]string, len(values))
+	}
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }
 
 func pageSizeParams(pagination *connectordefinitions.PaginationSpec) []string {
