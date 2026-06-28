@@ -135,6 +135,8 @@ Use `control_refs_without_source_match` as a review queue. It does not mean the 
 - `indirect`: review context or source capability exists, but no direct finding maps to the control.
 - `none`: the control is present in the framework catalog only.
 
+Within the `direct` lane, `direct_source_backed` means every direct finding for that control has source-backed evidence. `partial_source_backed` means some direct findings are source-backed and the remaining direct findings still need source backing or an explicit review decision.
+
 ## Review Context
 
 `framework_review_areas.yaml` groups related controls into reviewer queues such as access authorization, technical safeguards, privacy incident response, payment-card authentication, and AI management planning. A finding enters `finding_review_area_map.csv` when one of its direct control refs is in the YAML area.
