@@ -2107,6 +2107,14 @@ paths:
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
         - $ref: '#/components/parameters/limitQuery'
+        - name: rule_profile
+          in: query
+          schema:
+            type: string
+            enum:
+              - baseline
+              - strict
+          description: Governance rule profile for policy document and risk-register gap checks.
       responses:
         '200':
           description: Policy templates, documents, risk-register records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and control/evidence mappings.
@@ -2123,6 +2131,14 @@ paths:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
         - $ref: '#/components/parameters/sourceIDQuery'
+        - name: rule_profile
+          in: query
+          schema:
+            type: string
+            enum:
+              - baseline
+              - strict
+          description: Governance rule profile for exported gap records.
         - name: start
           in: query
           schema:
@@ -2135,7 +2151,7 @@ paths:
           description: Inclusive end date or timestamp for dated lifecycle records.
       responses:
         '200':
-          description: CSV export of policy versions, approvals, attestations, reviews, exceptions, events, and mappings.
+          description: CSV export of policy versions, approvals, attestations, reviews, exceptions, events, governance gaps, and mappings.
           content:
             text/csv:
               schema:
@@ -8448,6 +8464,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCPolicyGovernanceGap'
+        governance_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceRule'
+        governance_gap_rollups:
+          $ref: '#/components/schemas/GRCPolicyGovernanceGapRollups'
         work_queue:
           type: array
           items:
@@ -8523,6 +8545,27 @@ components:
           type: integer
           minimum: 0
         risk_register_gaps:
+          type: integer
+          minimum: 0
+        open_governance_gaps:
+          type: integer
+          minimum: 0
+        in_progress_governance_gaps:
+          type: integer
+          minimum: 0
+        acknowledged_governance_gaps:
+          type: integer
+          minimum: 0
+        snoozed_governance_gaps:
+          type: integer
+          minimum: 0
+        accepted_governance_gaps:
+          type: integer
+          minimum: 0
+        resolved_governance_gaps:
+          type: integer
+          minimum: 0
+        high_governance_gaps:
           type: integer
           minimum: 0
         open_exceptions:
@@ -8729,12 +8772,123 @@ components:
           type: string
         action:
           type: string
+        action_id:
+          type: string
+        rule_id:
+          type: string
+        gap_state:
+          type: string
+          enum:
+            - open
+            - in_progress
+            - acknowledged
+            - snoozed
+            - accepted
+            - resolved
+        due_at:
+          type: string
+        state_reason:
+          type: string
+        state_updated_at:
+          type: string
+        last_action:
+          type: string
+        last_actor:
+          type: string
+        missing_fields:
+          type: array
+          items:
+            type: string
+        source_fields:
+          type: object
+          additionalProperties:
+            type: string
+        trace:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceGapTrace'
         policy_id:
           type: string
         document_id:
           type: string
         risk_id:
           type: string
+    GRCPolicyGovernanceGapTrace:
+      type: object
+      properties:
+        event_id:
+          type: string
+        action:
+          type: string
+        actor:
+          type: string
+        status:
+          type: string
+        occurred_at:
+          type: string
+        reason:
+          type: string
+    GRCPolicyGovernanceRule:
+      type: object
+      properties:
+        id:
+          type: string
+        profile:
+          type: string
+          enum:
+            - baseline
+            - strict
+        subject:
+          type: string
+        field:
+          type: string
+        label:
+          type: string
+        severity:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        required:
+          type: boolean
+        action_id:
+          type: string
+        action:
+          type: string
+        applies_to:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: string
+    GRCPolicyGovernanceGapRollups:
+      type: object
+      properties:
+        by_state:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceGapRollup'
+        by_owner:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceGapRollup'
+        by_severity:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceGapRollup'
+        by_subject:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceGapRollup'
+    GRCPolicyGovernanceGapRollup:
+      type: object
+      properties:
+        key:
+          type: string
+        count:
+          type: integer
+          minimum: 0
     GRCPolicyLifecyclePolicy:
       type: object
       properties:
@@ -9073,6 +9227,16 @@ components:
           type: boolean
         requires_version_id:
           type: boolean
+        requires_record_id:
+          type: boolean
+        requires_gap_id:
+          type: boolean
+        date_field:
+          type: string
+        value_field:
+          type: string
+        value_label:
+          type: string
     GRCPolicyLifecycleActionRequest:
       type: object
       required:
@@ -9092,6 +9256,21 @@ components:
           type: string
         template_id:
           type: string
+        gap_id:
+          type: string
+        gap_ids:
+          type: array
+          items:
+            type: string
+        gap_state:
+          type: string
+          enum:
+            - open
+            - in_progress
+            - acknowledged
+            - snoozed
+            - accepted
+            - resolved
         record_id:
           type: string
         record_urn:
