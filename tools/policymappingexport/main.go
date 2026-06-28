@@ -127,7 +127,12 @@ type complianceControlCatalogControl struct {
 	ID string `yaml:"id"`
 }
 
-type controlFamilyIndex map[string]string
+type controlFamilyIndex map[string]controlFamilyEntry
+
+type controlFamilyEntry struct {
+	Ref    controlRef
+	Family string
+}
 
 type publicDetectionCatalog struct {
 	Version    string            `json:"version"`
@@ -504,12 +509,17 @@ func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
 			for _, control := range family.Controls {
 				controlID := strings.TrimSpace(control.ID)
 				if controlID != "" {
-					index[controlRefKey(controlRef{Framework: frameworkName, ControlID: controlID})] = familyLabel
+					ref := controlRef{Framework: frameworkName, ControlID: controlID, Family: familyLabel}
+					index[controlRefKey(ref)] = controlFamilyEntry{Ref: ref, Family: familyLabel}
 				}
 			}
 		}
 	}
 	return index, nil
+}
+
+func controlFamilyForRef(index controlFamilyIndex, ref controlRef) string {
+	return index[controlRefKey(ref)].Family
 }
 
 func validateMappingCatalogs(index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) error {
@@ -742,7 +752,7 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 			refs = append(refs, controlRef{
 				Framework: frameworkName,
 				ControlID: controlID,
-				Family:    index[key],
+				Family:    index[key].Family,
 			})
 		}
 	}
@@ -1002,7 +1012,7 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 		refs = append(refs, controlRef{
 			Framework: frameworkName,
 			ControlID: controlID,
-			Family:    index[key],
+			Family:    index[key].Family,
 		})
 	}
 	sort.Slice(refs, func(i, j int) bool {
@@ -1833,7 +1843,7 @@ func frameworkControlEnrichments(catalog publicDetectionCatalog, index controlFa
 		ref.Framework = strings.TrimSpace(ref.Framework)
 		ref.ControlID = strings.TrimSpace(ref.ControlID)
 		if ref.Family == "" {
-			ref.Family = index[controlRefKey(ref)]
+			ref.Family = controlFamilyForRef(index, ref)
 		}
 		key := controlRefKey(ref)
 		item := enrichments[key]
@@ -1846,12 +1856,9 @@ func frameworkControlEnrichments(catalog publicDetectionCatalog, index controlFa
 		enrichments[controlRefKey(item.Ref)] = item
 	}
 
-	for key, family := range index {
-		framework, controlID, ok := strings.Cut(key, "\x00")
-		if !ok {
-			continue
-		}
-		ref := controlRef{Framework: framework, ControlID: controlID, Family: family}
+	for _, entry := range index {
+		ref := entry.Ref
+		ref.Family = entry.Family
 		item := ensure(ref)
 		store(item)
 	}
@@ -2217,7 +2224,7 @@ func frameworkReviewAreaControlRefs(area frameworkReviewArea, index controlFamil
 		if ref.Framework == "" || ref.ControlID == "" {
 			continue
 		}
-		ref.Family = index[controlRefKey(ref)]
+		ref.Family = controlFamilyForRef(index, ref)
 		refs = append(refs, ref)
 	}
 	return uniqueControlRefs(refs)
@@ -2249,7 +2256,7 @@ func controlRelationshipEdges(relationships []controlRelationship, index control
 		if control.Framework == "" || control.ControlID == "" {
 			continue
 		}
-		control.Family = index[controlRefKey(control)]
+		control.Family = controlFamilyForRef(index, control)
 		for _, related := range item.RelatedControls {
 			relatedRef := controlRef{
 				Framework: firstNonEmpty(related.Framework, control.Framework),
@@ -2258,7 +2265,7 @@ func controlRelationshipEdges(relationships []controlRelationship, index control
 			if relatedRef.Framework == "" || relatedRef.ControlID == "" {
 				continue
 			}
-			relatedRef.Family = index[controlRefKey(relatedRef)]
+			relatedRef.Family = controlFamilyForRef(index, relatedRef)
 			edge := controlRelationshipEdge{
 				Control:      control,
 				Related:      relatedRef,
@@ -2453,7 +2460,7 @@ func evidenceCapabilityControlRefs(dimension evidenceCapabilityDimension, index 
 		if ref.Framework == "" || ref.ControlID == "" {
 			continue
 		}
-		ref.Family = index[controlRefKey(ref)]
+		ref.Family = controlFamilyForRef(index, ref)
 		refs = append(refs, ref)
 	}
 	return uniqueControlRefs(refs)
