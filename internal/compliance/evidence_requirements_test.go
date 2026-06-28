@@ -224,6 +224,25 @@ func TestControlEvidenceRequirementKeywordsOrPrefixesMatch(t *testing.T) {
 	}
 }
 
+func TestControlEvidenceRequirementKeywordSearchMatchesExporterScope(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "identity-access",
+		Name: "Identity and Access Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			FamilyKeywords: []string{"Access"},
+		},
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyID:      "access",
+		FamilyName:    "Control Activities",
+		EffectiveTags: []string{"access"},
+		Control:       Control{ID: "CC5.1", Title: "Controls are selected and developed"},
+	}) {
+		t.Fatal("profile matched family ID or tags outside exporter keyword scope")
+	}
+}
+
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTerms(t *testing.T) {
 	loggingProfile := ControlEvidenceRequirementProfile{
 		ID:   "logging-monitoring",

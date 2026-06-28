@@ -584,6 +584,9 @@ func TestControlEvidenceKeywordMatchingUsesWholeTerms(t *testing.T) {
 	if !containsAnyFold("SOC 2 CC6.1 Access Control", []string{"6.1"}) {
 		t.Fatal("punctuated keyword did not match control identifier fragment")
 	}
+	if !containsAnyFold("ISO 27001:2022 A.8 Information Protection", []string{"Information Protection"}) {
+		t.Fatal("Information Protection keyword did not match phrase")
+	}
 }
 
 func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {

@@ -259,7 +259,6 @@ func controlEvidenceRequirementProfileApplies(profile ControlEvidenceRequirement
 	}
 
 	searchText := strings.Join([]string{
-		control.FamilyID,
 		control.FamilyName,
 		control.Control.Title,
 	}, " ")
