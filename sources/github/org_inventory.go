@@ -53,7 +53,7 @@ func (s *Source) discoverOrgInventory(ctx context.Context, client *gogithub.Clie
 	if err := s.checkOrgInventory(ctx, client, settings); err != nil {
 		return nil, err
 	}
-	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:github_org_inventory:%s", settings.owner, settings.owner))}, nil
+	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:org_inventory", settings.owner))}, nil
 }
 
 func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, settings settings, checkpoint *cerebrov1.SourceCheckpoint, configHash string) (sourcecdk.Pull, error) {

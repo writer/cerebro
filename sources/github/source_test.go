@@ -721,6 +721,55 @@ func TestRepositoryMetadataCanaryReturnsProviderError(t *testing.T) {
 	}
 }
 
+func TestLiveDiscoverKeepsLegacyOrgFamilyURNs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/members",
+			"/api/v3/orgs/writer/secret-scanning/alerts":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode discover check response: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+
+	for _, tc := range []struct {
+		family string
+		want   sourcecdk.URN
+	}{
+		{family: familyOrgInventory, want: "urn:cerebro:writer:org_inventory"},
+		{family: familySecretScanning, want: "urn:cerebro:writer:secret_scanning"},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			cfg := sourcecdk.NewConfig(map[string]string{
+				"base_url": server.URL,
+				"family":   tc.family,
+				"owner":    "writer",
+				"token":    "test-token",
+			})
+			discover, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover(%s) error = %v", tc.family, err)
+			}
+			if len(discover) != 1 {
+				t.Fatalf("len(Discover(%s)) = %d, want 1", tc.family, len(discover))
+			}
+			if discover[0] != tc.want {
+				t.Fatalf("Discover(%s)[0] = %q, want legacy URN %q", tc.family, discover[0], tc.want)
+			}
+		})
+	}
+}
+
 func encodeRepositoryPage(t *testing.T, w http.ResponseWriter, updatedAt string) {
 	t.Helper()
 	if err := json.NewEncoder(w).Encode([]map[string]any{{
