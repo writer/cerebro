@@ -67,6 +67,8 @@ AGENT_ONBOARD_RECEIPT ?= tmp/onboarding/receipt.json
 AGENT_ONBOARD_E2E_RECEIPT ?= tmp/onboarding/e2e-receipt.json
 AGENT_ONBOARD_GITHUB_RECEIPT ?= tmp/onboarding/github-receipt.json
 CEREBRO_ONBOARD_BASE_URL ?=
+# Local Docker Compose defaults for agent onboarding smoke tests. Override these
+# values for any non-local Postgres instance.
 CEREBRO_LOCAL_POSTGRES_USER ?= cerebro
 CEREBRO_LOCAL_POSTGRES_PASSWORD ?= cerebro
 CEREBRO_LOCAL_POSTGRES_DSN ?= postgres://$(CEREBRO_LOCAL_POSTGRES_USER):$(CEREBRO_LOCAL_POSTGRES_PASSWORD)@127.0.0.1:5432/cerebro?sslmode=disable
@@ -437,6 +439,7 @@ github-business-demo-env: ## Check required GitHub demo environment.
 
 github-business-demo: github-business-demo-env build ## Connect a GitHub repo, sync it, ingest graph data, and write a receipt.
 	@command -v docker >/dev/null || { echo "docker is required for github-business-demo" >&2; exit 2; }
+	@# Scope the GitHub token to Docker Compose and onboarding. The receipt stores env: references, not token values.
 	@CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
 	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
 	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \

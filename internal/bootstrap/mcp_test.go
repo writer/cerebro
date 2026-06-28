@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 func TestMCPRequiresAuth(t *testing.T) {
@@ -451,6 +452,27 @@ func TestMCPSourceToolsReturnSafeErrors(t *testing.T) {
 	forbiddenError := forbiddenResult["structuredContent"].(map[string]any)["error"].(map[string]any)
 	if forbiddenError["kind"] != "tenant_forbidden" || forbiddenError["message"] != "tenant forbidden" {
 		t.Fatalf("forbidden source error = %#v", forbiddenError)
+	}
+
+	reservedConfigResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.sources.check",
+			"arguments": map[string]any{
+				"source_id": "github",
+				"config":    map[string]any{sourceconfig.RuntimeIDKey: "runtime-a"},
+			},
+		},
+	})
+	reservedConfigResult := reservedConfigResp["result"].(map[string]any)
+	if reservedConfigResult["isError"] != true {
+		t.Fatalf("reserved config response = %#v, want tool error", reservedConfigResp)
+	}
+	reservedConfigError := reservedConfigResult["structuredContent"].(map[string]any)["error"].(map[string]any)
+	if reservedConfigError["kind"] != "invalid_request" || !strings.Contains(reservedConfigError["message"].(string), "reserved") {
+		t.Fatalf("reserved config error = %#v", reservedConfigError)
 	}
 }
 
