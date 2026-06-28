@@ -1,0 +1,171 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects model catalog, connectors, datasets, and fine-tuned models from Cohere and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Cohere
+      id: builtin-cohere
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: cohere.model_catalog
+            required_payload_fields:
+              - name
+            schema_ref: cohere/model_catalog/v1
+            urn_kind: cohere_model_catalog
+          id: model_catalog
+          id_field: name
+          label: Model catalog
+          list_key: models
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/models
+          projection:
+            fields:
+              resource_id: name
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.models[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - connectors
+              high_value: true
+              id: connectors
+              support: partial
+              title: Connectors
+              type: entity_family
+          event:
+            kind: cohere.connectors
+            required_payload_fields:
+              - id
+            schema_ref: cohere/connectors/v1
+            urn_kind: cohere_connectors
+          id: connectors
+          id_field: id
+          label: Connectors
+          list_key: connectors
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/connectors
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.connectors[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - datasets
+              high_value: true
+              id: datasets
+              support: partial
+              title: Datasets
+              type: entity_family
+          event:
+            kind: cohere.datasets
+            required_payload_fields:
+              - id
+            schema_ref: cohere/datasets/v1
+            urn_kind: cohere_datasets
+          id: datasets
+          id_field: id
+          label: Datasets
+          list_key: datasets
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/datasets
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.datasets[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - fine_tuned_models
+              high_value: true
+              id: fine_tuned_models
+              support: partial
+              title: Fine-tuned models
+              type: deployment_state
+          event:
+            kind: cohere.fine_tuned_models
+            required_payload_fields:
+              - id
+            schema_ref: cohere/fine_tuned_models/v1
+            urn_kind: cohere_fine_tuned_models
+          id: fine_tuned_models
+          id_field: id
+          label: Fine-tuned models
+          list_key: finetuned_models
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/finetuning/finetuned-models
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.finetuned_models[*]
+      schema_version: cerebro.integration/v1
+      source_id: cohere
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.cohere.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

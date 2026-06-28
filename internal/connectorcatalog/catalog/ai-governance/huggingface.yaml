@@ -1,0 +1,174 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: organization
+          label: Organization
+          required: true
+      description: Collects organization members, resource groups, audit logs, and repositories from Hugging Face and projects them into the Cerebro graph as users, groups, audit events, and repositories for model access, API key, usage, and workspace governance context.
+      display_name: Hugging Face
+      id: builtin-huggingface
+      resource_families:
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - organization_members
+              high_value: true
+              id: organization_members
+              support: partial
+              title: Organization members
+              type: app_entitlement
+          event:
+            kind: huggingface.organization_members
+            required_payload_fields:
+              - id
+            schema_ref: huggingface/organization_members/v1
+            urn_kind: huggingface_organization_members
+          id: organization_members
+          id_field: id
+          label: Organization members
+          method: GET
+          name_field: fullname
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /organizations/${config.organization}/members
+          projection:
+            fields:
+              display_name: fullname
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.members[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - resource_groups
+              high_value: true
+              id: resource_groups
+              support: partial
+              title: Resource groups
+              type: app_entitlement
+          event:
+            kind: huggingface.resource_groups
+            required_payload_fields:
+              - id
+            schema_ref: huggingface/resource_groups/v1
+            urn_kind: huggingface_resource_groups
+          id: resource_groups
+          id_field: id
+          label: Resource groups
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /organizations/${config.organization}/resource-groups
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $.resource_groups[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_logs
+              high_value: true
+              id: audit_logs
+              support: partial
+              title: Audit logs
+              type: audit_event
+          event:
+            kind: huggingface.audit_logs
+            required_payload_fields:
+              - id
+            schema_ref: huggingface/audit_logs/v1
+            urn_kind: huggingface_audit_logs
+          id: audit_logs
+          id_field: id
+          label: Audit logs
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /organizations/${config.organization}/audit-logs
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.audit_logs[*]
+        - config_query:
+            author: organization
+          coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - repositories
+              high_value: true
+              id: repositories
+              support: partial
+              title: Repositories
+              type: entity_family
+          event:
+            kind: huggingface.repositories
+            required_payload_fields:
+              - id
+            schema_ref: huggingface/repositories/v1
+            urn_kind: huggingface_repositories
+          id: repositories
+          id_field: id
+          label: Repositories
+          method: GET
+          name_field: id
+          pagination:
+            cursor_param: cursor
+            link_header: Link
+            page_size: 100
+            page_size_param: limit
+            type: link
+          path: /models
+          projection:
+            fields:
+              resource_id: id
+              resource_name: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: repository
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      source_id: huggingface
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://huggingface.co/api
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /whoami-v2

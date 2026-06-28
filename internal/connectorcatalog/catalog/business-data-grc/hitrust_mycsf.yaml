@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-hitrust_mycsf
-    tenant_id: builtin_catalog
-    source_id: hitrust_mycsf
-    display_name: HITRUST MyCSF
-    description: "Collects assessments, controls, and evidence from HITRUST MyCSF and projects them into the Cerebro graph as assets and audit events for owner, account, evidence, and compliance context."
-    categories:
-    - grc
-    - audit
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://${config.api_base_url}
-      verification:
-        method: GET
-        path: "/api/v1/me"
-        expect_status:
-        - 200
-    resource_families:
-    - id: assessments
-      label: Assessments
-      path: "/api/v1/assessments"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: hitrust_mycsf.assessments
-        schema_ref: hitrust_mycsf/assessments/v1
-      projection:
-        template: asset
-      coverage:
-      - id: assessments
-        type: entity_family
-        title: Assessments
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: controls
-      label: Controls
-      path: "/api/v1/controls"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: hitrust_mycsf.controls
-        schema_ref: hitrust_mycsf/controls/v1
-      projection:
-        template: asset
-      coverage:
-      - id: controls
-        type: entity_family
-        title: Controls
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: evidence
-      label: Evidence
-      path: "/api/v1/evidence"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: hitrust_mycsf.evidence
-        schema_ref: hitrust_mycsf/evidence/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: evidence
-        type: audit_event
-        title: Evidence
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - grc
+        - audit
+      description: Collects assessments, controls, and evidence from HITRUST MyCSF and projects them into the Cerebro graph as assets and audit events for owner, account, evidence, and compliance context.
+      display_name: HITRUST MyCSF
+      id: builtin-hitrust_mycsf
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: assessments
+              support: partial
+              title: Assessments
+              type: entity_family
+          event:
+            kind: hitrust_mycsf.assessments
+            required_payload_fields:
+              - id
+            schema_ref: hitrust_mycsf/assessments/v1
+            urn_kind: hitrust_mycsf_assessments
+          id: assessments
+          id_field: id
+          label: Assessments
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/v1/assessments
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: controls
+              support: partial
+              title: Controls
+              type: entity_family
+          event:
+            kind: hitrust_mycsf.controls
+            required_payload_fields:
+              - id
+            schema_ref: hitrust_mycsf/controls/v1
+            urn_kind: hitrust_mycsf_controls
+          id: controls
+          id_field: id
+          label: Controls
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/v1/controls
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: evidence
+              support: partial
+              title: Evidence
+              type: audit_event
+          event:
+            kind: hitrust_mycsf.evidence
+            required_payload_fields:
+              - id
+            schema_ref: hitrust_mycsf/evidence/v1
+            urn_kind: hitrust_mycsf_evidence
+          id: evidence
+          id_field: id
+          label: Evidence
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/v1/evidence
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: hitrust_mycsf
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.api_base_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/v1/me

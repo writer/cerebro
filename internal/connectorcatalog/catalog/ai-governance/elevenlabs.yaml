@@ -1,0 +1,248 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            secret: true
+        model: api_key
+        token_header: xi-api-key
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - help: Required for the service-account API keys family.
+          key: service_account_user_id
+          label: Service account user ID
+          required: true
+      description: Collects model catalog, voices, service accounts, service-account api keys, webhooks, and auth connections from ElevenLabs and projects them into the Cerebro graph as assets, deployments, secrets, and users for inventory, access review, audit, risk, and operational context.
+      display_name: ElevenLabs
+      id: builtin-elevenlabs
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: elevenlabs.model_catalog
+            required_payload_fields:
+              - model_id
+            schema_ref: elevenlabs/model_catalog/v1
+            urn_kind: elevenlabs_model_catalog
+          id: model_catalog
+          id_field: model_id
+          label: Model catalog
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/models
+          projection:
+            fields:
+              resource_id: model_id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - voices
+              high_value: true
+              id: voices
+              support: partial
+              title: Voices
+              type: entity_family
+          event:
+            kind: elevenlabs.voices
+            required_payload_fields:
+              - voice_id
+            schema_ref: elevenlabs/voices/v1
+            urn_kind: elevenlabs_voices
+          id: voices
+          id_field: voice_id
+          label: Voices
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_page_token
+            cursor_param: next_page_token
+            has_more_key: has_more
+            page_size: 100
+            page_size_param: page_size
+            type: cursor
+          path: /v2/voices
+          projection:
+            fields:
+              resource_id: voice_id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.voices[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - service_accounts
+              high_value: true
+              id: service_accounts
+              support: partial
+              title: Service accounts
+              type: app_entitlement
+          event:
+            kind: elevenlabs.service_accounts
+            required_payload_fields:
+              - service_account_user_id
+            schema_ref: elevenlabs/service_accounts/v1
+            urn_kind: elevenlabs_service_accounts
+          id: service_accounts
+          id_field: service_account_user_id
+          label: Service accounts
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/service-accounts
+          projection:
+            fields:
+              display_name: name
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: service_account_user_id
+            template: identity_user
+          record_selector: $.service-accounts[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - service_account_api_keys
+              high_value: true
+              id: service_account_api_keys
+              support: partial
+              title: Service-account API keys
+              type: app_entitlement
+          event:
+            kind: elevenlabs.service_account_api_keys
+            required_payload_fields:
+              - key_id
+            schema_ref: elevenlabs/service_account_api_keys/v1
+            urn_kind: elevenlabs_service_account_api_keys
+          id: service_account_api_keys
+          id_field: key_id
+          label: Service-account API keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/service-accounts/${config.service_account_user_id}/api-keys
+          projection:
+            fields:
+              secret_id: key_id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.api-keys[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - configuration_state
+              families:
+                - webhooks
+              high_value: true
+              id: webhooks
+              support: partial
+              title: Webhooks
+              type: deployment_state
+          event:
+            kind: elevenlabs.webhooks
+            required_payload_fields:
+              - webhook_id
+            schema_ref: elevenlabs/webhooks/v1
+            urn_kind: elevenlabs_webhooks
+          id: webhooks
+          id_field: webhook_id
+          label: Webhooks
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/workspace/webhooks
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: webhook_id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.webhooks[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - auth_connections
+              high_value: true
+              id: auth_connections
+              support: partial
+              title: Auth connections
+              type: app_entitlement
+          event:
+            kind: elevenlabs.auth_connections
+            required_payload_fields:
+              - name
+            schema_ref: elevenlabs/auth_connections/v1
+            urn_kind: elevenlabs_auth_connections
+          id: auth_connections
+          id_field: name
+          label: Auth connections
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/workspace/auth-connections
+          projection:
+            fields:
+              secret_id: name
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.auth_connections[*]
+      schema_version: cerebro.integration/v1
+      source_id: elevenlabs
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.elevenlabs.io
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

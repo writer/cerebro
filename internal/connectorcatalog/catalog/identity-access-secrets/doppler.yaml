@@ -1,137 +1,151 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-doppler
-    tenant_id: builtin_catalog
-    source_id: doppler
-    display_name: Doppler
-    description: "Collects secrets, projects, and audit events from Doppler and projects them into the Cerebro graph as secrets, assets, and audit events for identity, access, device, and secret context."
-    categories:
-    - secrets
-    - identity
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.doppler.com
-      verification:
-        method: GET
-        path: "/v3/workplace"
-        expect_status:
-        - 200
-    resource_families:
-    - id: secrets
-      label: Secrets
-      path: "/v3/workplace/secrets"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: doppler.secrets
-        schema_ref: doppler/secrets/v1
-      projection:
-        template: secret
-        entity:
-          entity_type: secret
-          urn_kind: secret
-          id_attributes:
-          - secret_id
-          label_attribute: secret_name
-        fields:
-          project_id: project.id|project_id|project
-        relationships:
-        - relation: belongs_to
-          to:
-            entity_type: doppler.project
-            urn_kind: doppler_project
-            id_attributes:
-            - project_id
-          required_attributes:
-          - project_id
-          match_type: secret_project
-      coverage:
-      - id: secrets
-        type: entity_family
-        title: Secrets
-        families:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
         - secrets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: projects
-      label: Projects
-      path: "/v3/workplace/projects"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: doppler.projects
-        schema_ref: doppler/projects/v1
-      projection:
-        template: asset
-        entity:
-          entity_type: doppler.project
-          urn_kind: doppler_project
-          id_attributes:
-          - resource_id
-          label_attribute: resource_name
-      coverage:
-      - id: projects
-        type: entity_family
-        title: Projects
-        families:
-        - projects
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/v3/workplace/logs"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: doppler.audit_events
-        schema_ref: doppler/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+        - identity
+      description: Collects secrets, projects, and audit events from Doppler and projects them into the Cerebro graph as secrets, assets, and audit events for identity, access, device, and secret context.
+      display_name: Doppler
+      id: builtin-doppler
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - secrets
+              high_value: true
+              id: secrets
+              support: partial
+              title: Secrets
+              type: entity_family
+          event:
+            kind: doppler.secrets
+            required_payload_fields:
+              - id
+            schema_ref: doppler/secrets/v1
+            urn_kind: doppler_secrets
+          id: secrets
+          id_field: id
+          label: Secrets
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v3/workplace/secrets
+          projection:
+            entity:
+              entity_type: secret
+              id_attributes:
+                - secret_id
+              label_attribute: secret_name
+              urn_kind: secret
+            fields:
+              project_id: project.id|project_id|project
+            relationships:
+              - match_type: secret_project
+                relation: belongs_to
+                required_attributes:
+                  - project_id
+                to:
+                  entity_type: doppler.project
+                  id_attributes:
+                    - project_id
+                  urn_kind: doppler_project
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - projects
+              high_value: true
+              id: projects
+              support: partial
+              title: Projects
+              type: entity_family
+          event:
+            kind: doppler.projects
+            required_payload_fields:
+              - id
+            schema_ref: doppler/projects/v1
+            urn_kind: doppler_projects
+          id: projects
+          id_field: id
+          label: Projects
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v3/workplace/projects
+          projection:
+            entity:
+              entity_type: doppler.project
+              id_attributes:
+                - resource_id
+              label_attribute: resource_name
+              urn_kind: doppler_project
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: doppler.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: doppler/audit_events/v1
+            urn_kind: doppler_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v3/workplace/logs
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: doppler
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.doppler.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v3/workplace

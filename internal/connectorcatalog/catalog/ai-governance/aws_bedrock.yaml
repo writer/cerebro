@@ -1,0 +1,230 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: access_key
+            label: Access key ID
+            reference_only: true
+            secret: true
+          - key: secret_key
+            label: Secret access key
+            reference_only: true
+            secret: true
+        model: aws_sigv4
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: region
+          label: AWS region
+          placeholder: us-east-1
+          required: true
+        - help: Use bedrock for AWS Bedrock control-plane APIs.
+          key: service
+          label: AWS signing service
+          placeholder: bedrock
+          required: true
+      description: Collects foundation models, custom models, provisioned model throughputs, model customization jobs, and guardrails from AWS Bedrock and projects them into the Cerebro graph as assets, deployments, and policies for inventory, access review, audit, risk, and operational context.
+      display_name: AWS Bedrock
+      id: builtin-aws-bedrock
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - foundation_models
+              high_value: true
+              id: foundation_models
+              support: partial
+              title: Foundation models
+              type: entity_family
+          event:
+            kind: aws_bedrock.foundation_models
+            required_payload_fields:
+              - modelId
+            schema_ref: aws_bedrock/foundation_models/v1
+            urn_kind: aws_bedrock_foundation_models
+          id: foundation_models
+          id_field: modelId
+          label: Foundation models
+          method: GET
+          name_field: modelName
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /foundation-models
+          projection:
+            fields:
+              resource_id: modelId
+              resource_name: modelName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.modelSummaries[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - custom_models
+              high_value: true
+              id: custom_models
+              support: partial
+              title: Custom models
+              type: entity_family
+          event:
+            kind: aws_bedrock.custom_models
+            required_payload_fields:
+              - modelArn
+            schema_ref: aws_bedrock/custom_models/v1
+            urn_kind: aws_bedrock_custom_models
+          id: custom_models
+          id_field: modelArn
+          label: Custom models
+          method: GET
+          name_field: modelName
+          pagination:
+            cursor_json_path: $.nextToken
+            cursor_param: nextToken
+            page_size: 100
+            page_size_param: maxResults
+            type: cursor
+          path: /custom-models
+          projection:
+            fields:
+              resource_id: modelArn
+              resource_name: modelName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.modelSummaries[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - provisioned_model_throughputs
+              high_value: true
+              id: provisioned_model_throughputs
+              support: partial
+              title: Provisioned model throughputs
+              type: deployment_state
+          event:
+            kind: aws_bedrock.provisioned_model_throughputs
+            required_payload_fields:
+              - provisionedModelArn
+            schema_ref: aws_bedrock/provisioned_model_throughputs/v1
+            urn_kind: aws_bedrock_provisioned_model_throughputs
+          id: provisioned_model_throughputs
+          id_field: provisionedModelArn
+          label: Provisioned model throughputs
+          method: GET
+          name_field: provisionedModelName
+          pagination:
+            cursor_json_path: $.nextToken
+            cursor_param: nextToken
+            page_size: 100
+            page_size_param: maxResults
+            type: cursor
+          path: /provisioned-model-throughputs
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: provisionedModelArn
+              deployment_name: provisionedModelName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.provisionedModelSummaries[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - model_customization_jobs
+              high_value: true
+              id: model_customization_jobs
+              support: partial
+              title: Model customization jobs
+              type: deployment_state
+          event:
+            kind: aws_bedrock.model_customization_jobs
+            required_payload_fields:
+              - jobArn
+            schema_ref: aws_bedrock/model_customization_jobs/v1
+            urn_kind: aws_bedrock_model_customization_jobs
+          id: model_customization_jobs
+          id_field: jobArn
+          label: Model customization jobs
+          method: GET
+          name_field: jobName
+          pagination:
+            cursor_json_path: $.nextToken
+            cursor_param: nextToken
+            page_size: 100
+            page_size_param: maxResults
+            type: cursor
+          path: /model-customization-jobs
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: jobArn
+              deployment_name: jobName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.modelCustomizationJobSummaries[*]
+        - coverage:
+            - control_domains:
+                - policy_management
+              evidence_types:
+                - policy_configuration
+              families:
+                - guardrails
+              high_value: true
+              id: guardrails
+              support: partial
+              title: Guardrails
+              type: lifecycle_state
+          event:
+            kind: aws_bedrock.guardrails
+            required_payload_fields:
+              - id
+            schema_ref: aws_bedrock/guardrails/v1
+            urn_kind: aws_bedrock_guardrails
+          id: guardrails
+          id_field: id
+          label: Guardrails
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.nextToken
+            cursor_param: nextToken
+            page_size: 100
+            page_size_param: maxResults
+            type: cursor
+          path: /guardrails
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_status: policy_status|status|state|enabled
+              policy_type: policy_type|type|kind|category
+            template: policy
+          record_selector: $.guardrails[*]
+      schema_version: cerebro.integration/v1
+      source_id: aws_bedrock
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://bedrock.${config.region}.amazonaws.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /foundation-models

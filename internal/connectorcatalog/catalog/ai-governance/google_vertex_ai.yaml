@@ -1,0 +1,266 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: project_id
+          label: Project ID
+          required: true
+        - key: location
+          label: Location
+          placeholder: us-central1
+          required: true
+      description: Collects models, endpoints, custom jobs, batch prediction jobs, indexes, and reasoning engines from Google Vertex AI and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Google Vertex AI
+      id: builtin-google-vertex-ai
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - models
+              high_value: true
+              id: models
+              support: partial
+              title: Models
+              type: entity_family
+          event:
+            kind: google_vertex_ai.models
+            required_payload_fields:
+              - name
+            schema_ref: google_vertex_ai/models/v1
+            urn_kind: google_vertex_ai_models
+          id: models
+          id_field: name
+          label: Models
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1/projects/${config.project_id}/locations/${config.location}/models
+          projection:
+            fields:
+              resource_id: name
+              resource_name: displayName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.models[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - endpoints
+              high_value: true
+              id: endpoints
+              support: partial
+              title: Endpoints
+              type: deployment_state
+          event:
+            kind: google_vertex_ai.endpoints
+            required_payload_fields:
+              - name
+            schema_ref: google_vertex_ai/endpoints/v1
+            urn_kind: google_vertex_ai_endpoints
+          id: endpoints
+          id_field: name
+          label: Endpoints
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1/projects/${config.project_id}/locations/${config.location}/endpoints
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: name
+              deployment_name: displayName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.endpoints[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - custom_jobs
+              high_value: true
+              id: custom_jobs
+              support: partial
+              title: Custom jobs
+              type: deployment_state
+          event:
+            kind: google_vertex_ai.custom_jobs
+            required_payload_fields:
+              - name
+            schema_ref: google_vertex_ai/custom_jobs/v1
+            urn_kind: google_vertex_ai_custom_jobs
+          id: custom_jobs
+          id_field: name
+          label: Custom jobs
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1/projects/${config.project_id}/locations/${config.location}/customJobs
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: name
+              deployment_name: displayName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.customJobs[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - batch_prediction_jobs
+              high_value: true
+              id: batch_prediction_jobs
+              support: partial
+              title: Batch prediction jobs
+              type: deployment_state
+          event:
+            kind: google_vertex_ai.batch_prediction_jobs
+            required_payload_fields:
+              - name
+            schema_ref: google_vertex_ai/batch_prediction_jobs/v1
+            urn_kind: google_vertex_ai_batch_prediction_jobs
+          id: batch_prediction_jobs
+          id_field: name
+          label: Batch prediction jobs
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1/projects/${config.project_id}/locations/${config.location}/batchPredictionJobs
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: name
+              deployment_name: displayName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.batchPredictionJobs[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - indexes
+              high_value: true
+              id: indexes
+              support: partial
+              title: Indexes
+              type: entity_family
+          event:
+            kind: google_vertex_ai.indexes
+            required_payload_fields:
+              - name
+            schema_ref: google_vertex_ai/indexes/v1
+            urn_kind: google_vertex_ai_indexes
+          id: indexes
+          id_field: name
+          label: Indexes
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1/projects/${config.project_id}/locations/${config.location}/indexes
+          projection:
+            fields:
+              resource_id: name
+              resource_name: displayName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.indexes[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - reasoning_engines
+              high_value: true
+              id: reasoning_engines
+              support: partial
+              title: Reasoning engines
+              type: deployment_state
+          event:
+            kind: google_vertex_ai.reasoning_engines
+            required_payload_fields:
+              - name
+            schema_ref: google_vertex_ai/reasoning_engines/v1
+            urn_kind: google_vertex_ai_reasoning_engines
+          id: reasoning_engines
+          id_field: name
+          label: Reasoning engines
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1/projects/${config.project_id}/locations/${config.location}/reasoningEngines
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: name
+              deployment_name: displayName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.reasoningEngines[*]
+      schema_version: cerebro.integration/v1
+      source_id: google_vertex_ai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.location}-aiplatform.googleapis.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/projects/${config.project_id}/locations/${config.location}/models
