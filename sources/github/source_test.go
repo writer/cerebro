@@ -140,8 +140,11 @@ func TestNewFixtureReturnsFixtureURNs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if len(urns) != 2 {
-		t.Fatalf("len(Discover()) = %d, want 2", len(urns))
+	if len(urns) != 1 {
+		t.Fatalf("len(Discover()) = %d, want 1", len(urns))
+	}
+	if got := urns[0].String(); got != "urn:cerebro:writer:repo:writer/cerebro" {
+		t.Fatalf("Discover()[0] = %q, want pull request repository URN", got)
 	}
 }
 
@@ -237,6 +240,50 @@ func TestNewFixtureReplaysRepositoryFamily(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["owner_login"]; got != "writer" {
 		t.Fatalf("owner_login = %q, want writer", got)
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+
+	for _, tc := range []struct {
+		family string
+		kinds  []string
+	}{
+		{family: familyAudit, kinds: []string{"github.audit"}},
+		{family: familyDependabot, kinds: []string{"github.dependabot_alert"}},
+		{family: familyOrgInventory, kinds: []string{"github.org_member", "github.org_installation"}},
+		{family: familyPullRequest, kinds: []string{"github.pull_request", "github.pull_request"}},
+		{family: familyRepository, kinds: []string{"github.code.repository"}},
+		{family: familySecretScanning, kinds: []string{"github.secret_scanning_alert"}},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			cfg := sourcecdk.NewConfig(map[string]string{"family": tc.family, "token": "test"})
+			_, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover(%s) error = %v", tc.family, err)
+			}
+
+			for index, wantKind := range tc.kinds {
+				var cursor *cerebrov1.SourceCursor
+				if index > 0 {
+					cursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(index)}
+				}
+				pull, err := source.Read(context.Background(), cfg, cursor)
+				if err != nil {
+					t.Fatalf("Read(%s, cursor=%v) error = %v", tc.family, cursor, err)
+				}
+				if len(pull.Events) != 1 {
+					t.Fatalf("len(Read(%s).Events) = %d, want 1", tc.family, len(pull.Events))
+				}
+				if got := pull.Events[0].Kind; got != wantKind {
+					t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tc.family, got, wantKind)
+				}
+			}
+		})
 	}
 }
 
@@ -668,6 +715,55 @@ func TestRepositoryMetadataCanaryReturnsProviderError(t *testing.T) {
 	}
 	if fullRequests != 0 {
 		t.Fatalf("full requests = %d, want canary failure before full read", fullRequests)
+	}
+}
+
+func TestLiveDiscoverKeepsLegacyOrgFamilyURNs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/orgs/writer/members",
+			"/api/v3/orgs/writer/secret-scanning/alerts":
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode discover check response: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+
+	for _, tc := range []struct {
+		family string
+		want   sourcecdk.URN
+	}{
+		{family: familyOrgInventory, want: "urn:cerebro:writer:org_inventory"},
+		{family: familySecretScanning, want: "urn:cerebro:writer:secret_scanning"},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			cfg := sourcecdk.NewConfig(map[string]string{
+				"base_url": server.URL,
+				"family":   tc.family,
+				"owner":    "writer",
+				"token":    "test-token",
+			})
+			discover, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover(%s) error = %v", tc.family, err)
+			}
+			if len(discover) != 1 {
+				t.Fatalf("len(Discover(%s)) = %d, want 1", tc.family, len(discover))
+			}
+			if discover[0] != tc.want {
+				t.Fatalf("Discover(%s)[0] = %q, want legacy URN %q", tc.family, discover[0], tc.want)
+			}
+		})
 	}
 }
 

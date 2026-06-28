@@ -178,13 +178,9 @@ func (s *fixtureSource) family(cfg Config) (FixtureFamily, error) {
 
 // LoadFixtureURNs loads a JSON string array of URNs from a fixture filesystem.
 func LoadFixtureURNs(fsys fs.FS, path string) ([]URN, error) {
-	urnBytes, err := fs.ReadFile(fsys, path)
+	rawURNs, err := loadFixtureURNStrings(fsys, path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	var rawURNs []string
-	if err := json.Unmarshal(urnBytes, &rawURNs); err != nil {
-		return nil, fmt.Errorf("unmarshal %s: %w", path, err)
+		return nil, err
 	}
 	urns := make([]URN, 0, len(rawURNs))
 	for _, rawURN := range rawURNs {
@@ -195,6 +191,18 @@ func LoadFixtureURNs(fsys fs.FS, path string) ([]URN, error) {
 		urns = append(urns, urn)
 	}
 	return urns, nil
+}
+
+func loadFixtureURNStrings(fsys fs.FS, path string) ([]string, error) {
+	urnBytes, err := fs.ReadFile(fsys, path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var rawURNs []string
+	if err := json.Unmarshal(urnBytes, &rawURNs); err != nil {
+		return nil, fmt.Errorf("unmarshal %s: %w", path, err)
+	}
+	return rawURNs, nil
 }
 
 // LoadFixtureEvents loads normalized event fixtures.
