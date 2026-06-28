@@ -1259,6 +1259,9 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem) []grcPolicyGovernanceGap {
 	gaps := []grcPolicyGovernanceGap{}
 	for _, document := range documents {
+		if grcPolicyDraftStatus(document.Status) {
+			continue
+		}
 		policyID := grcPolicyFirstDocumentRefID(document.Policies)
 		documentID := firstNonEmpty(document.ID, document.URN)
 		if strings.TrimSpace(document.Owner) == "" {

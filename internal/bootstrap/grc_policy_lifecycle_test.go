@@ -76,8 +76,8 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	document := grcPolicyLifecycleTestNode("urn:cerebro:writer:document:policyops:doc-1", "document", "Access Control PDF", map[string]string{
 		"document_id":   "doc-1",
 		"document_type": "policy_pdf",
-		"status":        "draft",
-		"review_due_at": "2026-01-01",
+		"status":        "approved",
+		"review_due_at": "2099-01-01",
 	})
 	risk := grcPolicyLifecycleTestNode("urn:cerebro:writer:claim:policyops:risk_scenario:risk-1", "claim", "Access review risk", map[string]string{
 		"claim_type":          "risk_scenario",
@@ -194,7 +194,7 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	if payload.Summary.Policies != 1 || payload.Summary.Templates != 1 {
 		t.Fatalf("summary = %+v, want one policy and one template", payload.Summary)
 	}
-	if payload.Summary.PolicyDocuments != 1 || payload.Summary.RiskRegisterItems != 1 || payload.Summary.DraftDocuments != 1 || payload.Summary.DocumentsDueForReview != 0 || payload.Summary.OpenRisks != 1 || payload.Summary.HighRisks != 1 {
+	if payload.Summary.PolicyDocuments != 1 || payload.Summary.RiskRegisterItems != 1 || payload.Summary.DraftDocuments != 0 || payload.Summary.DocumentsDueForReview != 0 || payload.Summary.OpenRisks != 1 || payload.Summary.HighRisks != 1 {
 		t.Fatalf("summary document/risk rollups = %+v, want document and risk counts", payload.Summary)
 	}
 	if payload.Summary.DraftVersions != 1 || payload.Summary.PendingApprovals != 1 || payload.Summary.OverdueReviews != 1 || payload.Summary.OverdueAttestations != 1 {
@@ -231,8 +231,8 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 		!grcPolicyLifecycleBootstrapGapExists(payload.GovernanceGaps, "risk", "risk-1", "Missing treatment date") {
 		t.Fatalf("governance gaps = %+v, want document ownership/control and risk treatment gaps", payload.GovernanceGaps)
 	}
-	if len(payload.DocumentWorkQueue) < 2 {
-		t.Fatalf("document work queue len = %d, want draft document and risk work", len(payload.DocumentWorkQueue))
+	if len(payload.DocumentWorkQueue) < 1 {
+		t.Fatalf("document work queue len = %d, want risk work", len(payload.DocumentWorkQueue))
 	}
 	if len(payload.Templates) != 1 || len(payload.Templates[0].Controls) != 1 {
 		t.Fatalf("templates = %+v, want template control mapping", payload.Templates)

@@ -291,6 +291,13 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 		DocumentClass: "policy",
 		Status:        "approved",
 	}
+	draftDocument := grcPolicyDocumentItem{
+		ID:            "draft-policy",
+		URN:           "urn:document:draft-policy",
+		Title:         "Draft Policy",
+		DocumentClass: "policy",
+		Status:        "draft",
+	}
 	openRisk := grcPolicyRiskRegisterItem{
 		ID:           "privileged-access",
 		URN:          "urn:risk:privileged-access",
@@ -306,7 +313,7 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 		ResidualRisk: "high",
 	}
 
-	gaps := grcPolicyGovernanceGaps([]grcPolicyDocumentItem{document}, []grcPolicyRiskRegisterItem{openRisk, closedRisk})
+	gaps := grcPolicyGovernanceGaps([]grcPolicyDocumentItem{document, draftDocument}, []grcPolicyRiskRegisterItem{openRisk, closedRisk})
 
 	if !grcPolicyGapExists(gaps, "document", "secure-development", "Missing owner") ||
 		!grcPolicyGapExists(gaps, "document", "secure-development", "Missing review date") ||
@@ -321,6 +328,9 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 	}
 	if grcPolicyGapExists(gaps, "risk", "closed-risk", "Missing owner") {
 		t.Fatalf("gaps = %+v, want closed risk excluded", gaps)
+	}
+	if grcPolicyGapExists(gaps, "document", "draft-policy", "Missing owner") {
+		t.Fatalf("gaps = %+v, want draft document excluded", gaps)
 	}
 	if len(gaps) == 0 || gaps[0].Subject != "risk" || gaps[0].Severity != "high" {
 		t.Fatalf("first gap = %+v, want high risk gap first", gaps)

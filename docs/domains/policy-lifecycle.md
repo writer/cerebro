@@ -144,8 +144,8 @@ Recommended summary fields:
 | `acceptance_overdue_policies` | Assigned policies with overdue employee acceptance. |
 | `exceptions_active` | Active policy exceptions in scope. |
 | `exceptions_expiring_soon` | Active exceptions nearing expiration. |
-| `governance_gaps` | Document and risk-register records missing ownership, review dates, links, controls, treatment, or evidence. |
-| `policy_document_gaps` | Policy document records with missing operating metadata or mappings. |
+| `governance_gaps` | Non-draft document and open risk-register records missing ownership, review dates, links, controls, treatment, or evidence. |
+| `policy_document_gaps` | Non-draft policy document records with missing operating metadata or mappings. |
 | `risk_register_gaps` | Open risk-register records missing owner, treatment, dates, links, controls, or evidence. |
 
 Recommended work items:
