@@ -37,7 +37,7 @@ entries:
       key: activityid
       label: Activityid
       required: true
-    description: Use MotaWord API to post and track your translation projects.
+    description: "Collects comment, user, permission, corporates user, user group, and user group 2 from MotaWord API and projects them into the Cerebro graph as audit events, users, and assets for owner, account, evidence, and compliance context."
     display_name: MotaWord API
     id: builtin_catalog-motaword_com
     ingest:

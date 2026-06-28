@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: beyondtrust
     display_name: BeyondTrust
-    description: BeyondTrust connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, secrets, and audit events from BeyondTrust and projects them into the Cerebro graph as users, secrets, and audit events for identity, access, device, and secret context."
     categories:
     - identity
     - secrets

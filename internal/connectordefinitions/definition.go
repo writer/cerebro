@@ -145,6 +145,8 @@ type Field struct {
 type AuthSpec struct {
 	Model                         string            `json:"model"`
 	CredentialFields              []Field           `json:"credential_fields,omitempty"`
+	TokenHeader                   string            `json:"token_header,omitempty"`
+	TokenScheme                   string            `json:"token_scheme,omitempty"`
 	SupportedStoreIDs             []string          `json:"supported_store_ids,omitempty"`
 	RequiresReferences            bool              `json:"requires_references,omitempty"`
 	AuthorizationURL              string            `json:"authorization_url,omitempty"`
@@ -189,19 +191,21 @@ type RetrySpec struct {
 
 // PaginationSpec describes one supported pagination strategy.
 type PaginationSpec struct {
-	Type            string `json:"type,omitempty"`
-	CursorParam     string `json:"cursor_param,omitempty"`
-	CursorJSONPath  string `json:"cursor_json_path,omitempty"`
-	PageParam       string `json:"page_param,omitempty"`
-	PageSizeParam   string `json:"page_size_param,omitempty"`
-	OffsetParam     string `json:"offset_param,omitempty"`
-	LimitParam      string `json:"limit_param,omitempty"`
-	LinkHeader      string `json:"link_header,omitempty"`
-	NextURLJSONPath string `json:"next_url_json_path,omitempty"`
-	StartPage       int    `json:"start_page,omitempty"`
-	PageSize        int    `json:"page_size,omitempty"`
-	InjectFirstPage bool   `json:"inject_first_page,omitempty"`
-	DisablePageSize bool   `json:"disable_page_size,omitempty"`
+	Type            string   `json:"type,omitempty"`
+	CursorParam     string   `json:"cursor_param,omitempty"`
+	CursorJSONPath  string   `json:"cursor_json_path,omitempty"`
+	PageParam       string   `json:"page_param,omitempty"`
+	PageSizeParam   string   `json:"page_size_param,omitempty"`
+	OffsetParam     string   `json:"offset_param,omitempty"`
+	LimitParam      string   `json:"limit_param,omitempty"`
+	LinkHeader      string   `json:"link_header,omitempty"`
+	NextURLJSONPath string   `json:"next_url_json_path,omitempty"`
+	NextCursorKeys  []string `json:"next_cursor_keys,omitempty"`
+	HasMoreKey      string   `json:"has_more_key,omitempty"`
+	StartPage       int      `json:"start_page,omitempty"`
+	PageSize        int      `json:"page_size,omitempty"`
+	InjectFirstPage bool     `json:"inject_first_page,omitempty"`
+	DisablePageSize bool     `json:"disable_page_size,omitempty"`
 }
 
 // IncrementalSpec describes durable state for changed-record reads.
@@ -282,6 +286,8 @@ type ResourceFamily struct {
 	Method                string                  `json:"method,omitempty"`
 	RecordSelector        string                  `json:"record_selector,omitempty"`
 	ListKey               string                  `json:"list_key,omitempty"`
+	Read                  *ResourceReadSpec       `json:"read,omitempty"`
+	Singleton             bool                    `json:"singleton,omitempty"`
 	IDField               string                  `json:"id_field"`
 	NameField             string                  `json:"name_field,omitempty"`
 	UpdatedAtField        string                  `json:"updated_at_field,omitempty"`
@@ -291,11 +297,29 @@ type ResourceFamily struct {
 	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
+	Config                *FamilyConfigSpec       `json:"config,omitempty"`
 	Projection            *ProjectionSpec         `json:"projection,omitempty"`
 	Coverage              []CoverageDimensionSpec `json:"coverage,omitempty"`
 	PermissionsNeeded     []string                `json:"permissions_needed,omitempty"`
 	SensitivePayloadPaths []string                `json:"sensitive_payload_paths,omitempty"`
 	DefaultEnabled        bool                    `json:"default_enabled,omitempty"`
+}
+
+// ResourceReadSpec extends the generic JSON API read shape without adding bespoke code.
+type ResourceReadSpec struct {
+	DetailPath            string            `json:"detail_path,omitempty"`
+	AllowBareDetailRecord bool              `json:"allow_bare_detail_record,omitempty"`
+	PathParams            []string          `json:"path_params,omitempty"`
+	MapRecords            map[string]string `json:"map_records,omitempty"`
+	Singleton             bool              `json:"singleton,omitempty"`
+	DisablePageSize       bool              `json:"disable_page_size,omitempty"`
+}
+
+// FamilyConfigSpec binds static and runtime config values into a resource-family request.
+type FamilyConfigSpec struct {
+	StaticQuery      map[string]string `json:"static_query,omitempty"`
+	ConfigQuery      map[string]string `json:"config_query,omitempty"`
+	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
 }
 
 // ScopeOption exposes a resource family as a selectable scope option in the UI.
@@ -395,6 +419,8 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.ScopeSeparator = strings.TrimSpace(definition.Auth.ScopeSeparator)
 	definition.Auth.TokenRequestAuthMethod = strings.TrimSpace(definition.Auth.TokenRequestAuthMethod)
 	definition.Auth.PKCE = strings.TrimSpace(definition.Auth.PKCE)
+	definition.Auth.TokenHeader = strings.TrimSpace(definition.Auth.TokenHeader)
+	definition.Auth.TokenScheme = strings.TrimSpace(definition.Auth.TokenScheme)
 	definition.Auth.AlternateAccessTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateAccessTokenJSONPath)
 	definition.Auth.AlternateRefreshTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateRefreshTokenJSONPath)
 	definition.Auth.Scopes = normalizeStringList(definition.Auth.Scopes)
@@ -691,6 +717,12 @@ func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
 	if auth.TokenExpirationBufferSeconds < 0 {
 		add(blocking("auth_token_expiration_buffer", "Token expiration buffer", "Token expiration buffer must not be negative."))
 	}
+	if header := strings.TrimSpace(auth.TokenHeader); header != "" && strings.ContainsAny(header, "\r\n\t :") {
+		add(blocking("auth_token_header", "Token header", "Token header must be an HTTP header name such as Authorization or x-api-key."))
+	}
+	if scheme := strings.TrimSpace(auth.TokenScheme); scheme != "" && strings.ContainsAny(scheme, "\r\n\t") {
+		add(blocking("auth_token_scheme", "Token scheme", "Token scheme must not contain whitespace or control characters."))
+	}
 }
 
 func validateTransport(transport *TransportSpec, add func(ValidationCheck)) {
@@ -777,6 +809,26 @@ func isDepositResourceFamily(definition Definition, familyID string) bool {
 }
 
 func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationCheck)) {
+	if family.Read != nil {
+		if strings.TrimSpace(family.Read.DetailPath) != "" && !validRelativePath(family.Read.DetailPath) {
+			add(blocking("detail_path_"+family.ID, "Detail path", "Detail paths must be relative API paths such as /v1/assets/{id}."))
+		}
+		for _, param := range family.Read.PathParams {
+			if !idPattern.MatchString(strings.TrimSpace(param)) {
+				add(blocking("path_param_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter", "Path parameters must be lowercase identifiers."))
+			}
+		}
+		for key, value := range family.Read.MapRecords {
+			if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+				add(blocking("map_records_"+family.ID, "Map records", "Map record bindings require non-empty source object and value keys."))
+			}
+		}
+	}
+	if family.Config != nil {
+		validateFamilyConfigMap(family.ID, "static_query", family.Config.StaticQuery, add)
+		validateFamilyConfigMap(family.ID, "config_query", family.Config.ConfigQuery, add)
+		validateFamilyConfigMap(family.ID, "config_attributes", family.Config.ConfigAttributes, add)
+	}
 	if family.Pagination != nil {
 		if _, ok := paginationTypes[family.Pagination.Type]; !ok {
 			add(blocking("pagination_"+family.ID, "Pagination", "Pagination type must be none, cursor, page, offset, link, or next_url."))
@@ -808,6 +860,14 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 			if strings.TrimSpace(ref.ControlID) == "" || (strings.TrimSpace(ref.FrameworkID) == "" && strings.TrimSpace(ref.FrameworkName) == "") {
 				add(blocking("coverage_control_refs_"+family.ID, "Coverage control refs", "Coverage control refs require framework_name or framework_id and control_id."))
 			}
+		}
+	}
+}
+
+func validateFamilyConfigMap(familyID string, name string, values map[string]string, add func(ValidationCheck)) {
+	for key, value := range values {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			add(blocking(name+"_"+familyID, "Family config", "Family config bindings require non-empty keys and values."))
 		}
 	}
 }
@@ -944,6 +1004,14 @@ func knownProjectionAttributes(family ResourceFamily) map[string]struct{} {
 	}
 	addKnown(family.Event.RequiredAttributes...)
 	addKnown(family.IDField, family.NameField, family.UpdatedAtField)
+	if family.Read != nil {
+		addKnown(family.Read.PathParams...)
+	}
+	if family.Config != nil {
+		for key := range family.Config.ConfigAttributes {
+			addKnown(key)
+		}
+	}
 	switch strings.TrimSpace(family.Projection.Template) {
 	case "finding", "vulnerability":
 		addKnown("finding_id", "severity", "status", "title", "description")
@@ -1026,6 +1094,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		seen[family.ID] = struct{}{}
 		family.Label = strings.TrimSpace(family.Label)
 		family.Path = strings.TrimSpace(family.Path)
+		family.Read = normalizeResourceReadSpec(family.Read)
 		family.Method = strings.ToUpper(strings.TrimSpace(family.Method))
 		if family.Method == "" {
 			family.Method = "GET"
@@ -1045,6 +1114,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
+		family.Config = normalizeFamilyConfigSpec(family.Config)
 		family.Projection = normalizeProjectionSpec(family.Projection)
 		family.PermissionsNeeded = normalizeStringList(family.PermissionsNeeded)
 		family.SensitivePayloadPaths = normalizeStringList(family.SensitivePayloadPaths)
@@ -1127,6 +1197,36 @@ func normalizePaginationSpec(pagination *PaginationSpec) *PaginationSpec {
 	next.LimitParam = strings.TrimSpace(next.LimitParam)
 	next.LinkHeader = strings.TrimSpace(next.LinkHeader)
 	next.NextURLJSONPath = strings.TrimSpace(next.NextURLJSONPath)
+	next.NextCursorKeys = normalizeOrderedStringList(next.NextCursorKeys)
+	next.HasMoreKey = strings.TrimSpace(next.HasMoreKey)
+	return &next
+}
+
+func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
+	if read == nil {
+		return nil
+	}
+	next := *read
+	next.DetailPath = strings.TrimSpace(next.DetailPath)
+	next.PathParams = normalizeOrderedStringList(next.PathParams)
+	next.MapRecords = normalizeStringMap(next.MapRecords)
+	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.MapRecords) == 0 && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+		return nil
+	}
+	return &next
+}
+
+func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
+	if config == nil {
+		return nil
+	}
+	next := *config
+	next.StaticQuery = normalizeStringMap(next.StaticQuery)
+	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
+	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
+	if len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 {
+		return nil
+	}
 	return &next
 }
 

@@ -100,13 +100,13 @@ func DefaultGrammar() Grammar {
 		},
 		ProjectionTemplates: []string{
 			"alert",
-			"app_entitlement",
 			"asset",
 			"audit_event",
 			"cloud_resource",
 			"compliance_control",
 			"deployment",
 			"endpoint_device",
+			"evidence_cas_reference",
 			"finding",
 			"group_membership",
 			"identity_group",
@@ -180,8 +180,9 @@ func Classify(definition Definition, grammar Grammar) (SupportReport, error) {
 			}
 			check("incremental", state, contains(incremental, state), fmt.Sprintf("family %s", family.ID))
 		}
-		if family.RecordSelector == "" && family.ListKey == "" {
-			check("record_selector", "jsonpath_or_list_key", false, fmt.Sprintf("family %s needs record_selector or list_key", family.ID))
+		read := family.Read
+		if family.RecordSelector == "" && family.ListKey == "" && (read == nil || len(read.MapRecords) == 0) && !family.Singleton && (read == nil || !read.Singleton) {
+			check("record_selector", "jsonpath_or_list_key", false, fmt.Sprintf("family %s needs record_selector, list_key, map_records, or singleton", family.ID))
 		} else {
 			check("record_selector", "jsonpath_or_list_key", true, fmt.Sprintf("family %s", family.ID))
 		}

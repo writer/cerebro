@@ -48,6 +48,36 @@ func TestNormalizeBuildsValidatedDefinition(t *testing.T) {
 	}
 }
 
+func TestNormalizeTrimsTokenHeaderAndScheme(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth: AuthSpec{ //nolint:gosec // Test auth descriptor only; no credential value is stored.
+			Model:       "api_key",
+			TokenHeader: " x-api-key ",
+			TokenScheme: " Token ",
+			CredentialFields: []Field{{
+				Key:           "api_key",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "assets",
+			Path:           "/v1/assets",
+			IDField:        "id",
+			RecordSelector: "$.data[*]",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Auth.TokenHeader != "x-api-key" || definition.Auth.TokenScheme != "Token" {
+		t.Fatalf("auth header/scheme = %q/%q, want trimmed values", definition.Auth.TokenHeader, definition.Auth.TokenScheme)
+	}
+}
+
 func TestNormalizeBackfillsEventKindFromLegacyField(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID:    "tenant-a",
@@ -120,6 +150,37 @@ func TestValidateBlocksUnsafeDynamicDefinition(t *testing.T) {
 	}
 	if len(blocked) < 2 {
 		t.Fatalf("blocking checks = %#v, want secret/path blockers", blocked)
+	}
+}
+
+func TestValidateBlocksUnsafeTokenHeader(t *testing.T) {
+	definition, err := Normalize(Definition{
+		ID:          "example",
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Runtime:     RuntimeJSONAPI,
+		Auth: AuthSpec{ //nolint:gosec // Test auth descriptor only; no credential value is stored.
+			Model:       "api_key",
+			TokenHeader: "x-api-key: bad",
+			CredentialFields: []Field{{
+				Key:    "api_key",
+				Secret: true,
+			}},
+		},
+		Transport: &TransportSpec{BaseURL: "https://api.example.test"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "assets",
+			Path:           "/v1/assets",
+			IDField:        "id",
+			RecordSelector: "$.data[*]",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !hasBlockingCheck(definition.Validation.Checks, "auth_token_header") {
+		t.Fatalf("validation checks = %#v, want auth_token_header blocker", definition.Validation.Checks)
 	}
 }
 
@@ -302,6 +363,122 @@ func TestValidateAcceptsProjectionRelationships(t *testing.T) {
 	relationship := definition.ResourceFamilies[0].Projection.Relationships[0]
 	if relationship.Relation != "belongs_to" || relationship.MatchType != "secret_vault" {
 		t.Fatalf("relationship normalization = %#v", relationship)
+	}
+}
+
+func TestValidateAcceptsProjectionRelationshipsFromDeclarativeRuntimeAttributes(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "users",
+			Path:           "/v1/accounts/{account_id}/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          EventMappingSpec{Kind: "example.users", SchemaRef: "example/users/v1"},
+			Read:           &ResourceReadSpec{PathParams: []string{"account_id"}},
+			Config: &FamilyConfigSpec{
+				ConfigAttributes: map[string]string{"account_label": "account_label"},
+			},
+			Projection: &ProjectionSpec{
+				Template: "identity_user",
+				Relationships: []ProjectionRelationshipSpec{{
+					Relation: "belongs_to",
+					To: ProjectionEntitySpec{
+						EntityType:     "example.account",
+						URNKind:        "example_account",
+						IDAttributes:   []string{"account_id"},
+						LabelAttribute: "account_label",
+					},
+					MatchType: "configured_account",
+				}},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Validation.Status != ValidationReady {
+		t.Fatalf("validation status = %q, want ready: %#v", definition.Validation.Status, definition.Validation.Checks)
+	}
+}
+
+func TestNormalizePrunesEmptyDeclarativeRuntimeSpecs(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "records",
+			Path:           "/v1/records",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Read: &ResourceReadSpec{
+				DetailPath: " ",
+				PathParams: []string{" ", ""},
+				MapRecords: map[string]string{
+					"":       "items",
+					"groups": " ",
+				},
+			},
+			Config: &FamilyConfigSpec{
+				StaticQuery:      map[string]string{"": "ignored", "include": " "},
+				ConfigQuery:      map[string]string{"scope[]": ""},
+				ConfigAttributes: map[string]string{"account": " "},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	family := definition.ResourceFamilies[0]
+	if family.Read != nil {
+		t.Fatalf("read spec = %#v, want nil after pruning empty values", family.Read)
+	}
+	if family.Config != nil {
+		t.Fatalf("family config = %#v, want nil after pruning empty values", family.Config)
+	}
+}
+
+func TestValidateBlocksUnsafeDeclarativeRuntimeFields(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "users",
+			Path:           "/v1/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Read: &ResourceReadSpec{
+				DetailPath: "//evil.example/users/{id}",
+				PathParams: []string{"account id", "AccountID"},
+			},
+			Pagination: &PaginationSpec{
+				Type:     "graphql",
+				PageSize: -1,
+			},
+			Incremental: &IncrementalSpec{
+				State: "delta",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	for _, want := range []string{
+		"detail_path_users",
+		"path_param_users_account-id",
+		"path_param_users_accountid",
+		"pagination_users",
+		"pagination_page_size_users",
+		"incremental_users",
+		"incremental_cursor_users",
+	} {
+		if !hasBlockingCheck(definition.Validation.Checks, want) {
+			t.Fatalf("validation checks = %#v, want blocker %q", definition.Validation.Checks, want)
+		}
 	}
 }
 
@@ -577,9 +754,15 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		},
 		ResourceFamilies: []ResourceFamily{{
 			ID:             "users",
-			Path:           "/v1/users",
+			Path:           "/v1/accounts/{account_id}/users",
 			RecordSelector: "$.data[*]",
-			IDField:        "id",
+			Read: &ResourceReadSpec{
+				DetailPath:            "/v1/users/{id}",
+				AllowBareDetailRecord: true,
+				PathParams:            []string{"account_id", "account_id"},
+				MapRecords:            map[string]string{"": "ignored", "members": "items"},
+			},
+			IDField: "id",
 			Event: EventMappingSpec{
 				Kind:      "example.user",
 				SchemaRef: "example/user/v1",
@@ -588,9 +771,16 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 				Type:           "cursor",
 				CursorParam:    "cursor",
 				CursorJSONPath: "$.next_cursor",
+				NextCursorKeys: []string{"next_cursor", "next_cursor"},
+				HasMoreKey:     "has_more",
 			},
 			Incremental: &IncrementalSpec{
 				CursorField: "updated_at",
+			},
+			Config: &FamilyConfigSpec{
+				StaticQuery:      map[string]string{"include": "members", "empty": ""},
+				ConfigQuery:      map[string]string{"scope[]": "scopes"},
+				ConfigAttributes: map[string]string{"account_label": "account_label"},
 			},
 			Projection: &ProjectionSpec{
 				Template: "identity_user",
@@ -619,6 +809,19 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 	}
 	if got := definition.ResourceFamilies[0].Coverage[0].ID; got != "users_entity_family" {
 		t.Fatalf("coverage id = %q, want users_entity_family", got)
+	}
+	family := definition.ResourceFamilies[0]
+	if family.Read == nil || len(family.Read.PathParams) != 1 || family.Read.PathParams[0] != "account_id" {
+		t.Fatalf("read spec = %#v, want deduped account_id path param", family.Read)
+	}
+	if family.Read.MapRecords["members"] != "items" || len(family.Read.MapRecords) != 1 {
+		t.Fatalf("map records = %#v, want members->items", family.Read.MapRecords)
+	}
+	if family.Pagination == nil || len(family.Pagination.NextCursorKeys) != 1 || family.Pagination.NextCursorKeys[0] != "next_cursor" || family.Pagination.HasMoreKey != "has_more" {
+		t.Fatalf("pagination = %#v, want next cursor and has_more metadata", family.Pagination)
+	}
+	if family.Config == nil || family.Config.StaticQuery["include"] != "members" || family.Config.ConfigQuery["scope[]"] != "scopes" || family.Config.ConfigAttributes["account_label"] != "account_label" {
+		t.Fatalf("family config = %#v, want normalized config maps", family.Config)
 	}
 	coverage := definition.ResourceFamilies[0].Coverage[0]
 	if len(coverage.EvidenceTypes) != 1 || coverage.EvidenceTypes[0] != "identity_configuration" {
@@ -685,6 +888,117 @@ func TestClassifyReportsSupportedDefinition(t *testing.T) {
 	}
 }
 
+func TestClassifySupportsSingletonAndMapRecordFamilies(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth:          AuthSpec{Model: "none"},
+		Transport: &TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &VerificationSpec{Path: "/v1/me"},
+		},
+		ResourceFamilies: []ResourceFamily{
+			{
+				ID:      "settings",
+				Path:    "/v1/settings",
+				IDField: "id",
+				Event:   EventMappingSpec{Kind: "example.settings", SchemaRef: "example/settings/v1"},
+				Read:    &ResourceReadSpec{Singleton: true},
+				Projection: &ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			},
+			{
+				ID:      "groups",
+				Path:    "/v1/groups",
+				Read:    &ResourceReadSpec{MapRecords: map[string]string{"groups": "members"}},
+				IDField: "id",
+				Event:   EventMappingSpec{Kind: "example.groups", SchemaRef: "example/groups/v1"},
+				Projection: &ProjectionSpec{
+					Template: "identity_group",
+				},
+				Coverage: []CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			},
+		},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if report.Verdict != SupportVerdictSupported {
+		t.Fatalf("verdict = %q, want supported; missing=%#v checks=%#v", report.Verdict, report.MissingFeatures, report.Checks)
+	}
+}
+
+func TestClassifySupportsEvidenceCASReferenceProjectionTemplate(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth:          AuthSpec{Model: "none"},
+		Transport: &TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &VerificationSpec{Path: "/v1/me"},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "cas_references",
+			Path:           "/v1/cas/references",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          EventMappingSpec{Kind: "example.cas_references", SchemaRef: "example/cas_references/v1"},
+			Projection:     &ProjectionSpec{Template: "evidence_cas_reference"},
+			Coverage:       []CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+		}},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if report.Verdict != SupportVerdictSupported {
+		t.Fatalf("verdict = %q, want supported; missing=%#v checks=%#v", report.Verdict, report.MissingFeatures, report.Checks)
+	}
+	if containsString(report.MissingFeatures, "projection.template") {
+		t.Fatalf("missing features = %#v, want evidence_cas_reference projection support", report.MissingFeatures)
+	}
+}
+
+func TestClassifyEmptyReadSpecDoesNotMaskMissingRecordSelector(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth:          AuthSpec{Model: "none"},
+		Transport: &TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &VerificationSpec{Path: "/v1/me"},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:         "users",
+			Path:       "/v1/users",
+			Read:       &ResourceReadSpec{},
+			IDField:    "id",
+			Event:      EventMappingSpec{Kind: "example.users", SchemaRef: "example/users/v1"},
+			Projection: &ProjectionSpec{Template: "identity_user"},
+			Coverage:   []CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+		}},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if report.Verdict != SupportVerdictBespokeRequired {
+		t.Fatalf("verdict = %q, want bespoke_required", report.Verdict)
+	}
+	if !containsString(report.MissingFeatures, "record_selector.jsonpath_or_list_key") {
+		t.Fatalf("missing features = %#v, want missing record selector", report.MissingFeatures)
+	}
+}
+
 func TestClassifyReportsMissingFeatures(t *testing.T) {
 	report, err := Classify(Definition{
 		SchemaVersion: SchemaVersionIntegrationV1,
@@ -724,6 +1038,52 @@ func TestClassifyReportsMissingFeatures(t *testing.T) {
 		if !containsString(report.MissingFeatures, want) {
 			t.Fatalf("missing features = %#v, want %q", report.MissingFeatures, want)
 		}
+	}
+}
+
+func TestClassifyAcceptsSingletonWithoutRecordSelector(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth: AuthSpec{
+			Model: "bearer_token",
+			CredentialFields: []Field{{
+				Key:           "token",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		Transport: &TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &VerificationSpec{Path: "/v1/account"},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:        "account",
+			Path:      "/v1/account",
+			IDField:   "id",
+			Singleton: true,
+			Event: EventMappingSpec{
+				Kind:      "example.account",
+				SchemaRef: "example/account/v1",
+			},
+			Projection: &ProjectionSpec{Template: "asset"},
+			Coverage: []CoverageDimensionSpec{{
+				Type:    "entity_family",
+				Support: "partial",
+			}},
+		}},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if report.Verdict != SupportVerdictSupported {
+		t.Fatalf("verdict = %q missing=%#v, want supported", report.Verdict, report.MissingFeatures)
+	}
+	if !containsString(report.SupportedFeatures, "record_selector.jsonpath_or_list_key") {
+		t.Fatalf("supported features = %#v, want singleton record selector support", report.SupportedFeatures)
 	}
 }
 

@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: digitalocean
     display_name: DigitalOcean
-    description: DigitalOcean connector definition catalog entry for high-value security and operations resources.
+    description: "Collects droplets, teams, and audit events from DigitalOcean and projects them into the Cerebro graph as cloud resources, groups, and audit events for repository, build, deployment, and release context."
     categories:
     - devops
     - cloud

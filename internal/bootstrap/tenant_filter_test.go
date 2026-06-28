@@ -117,6 +117,21 @@ func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
 	}
 }
 
+func TestGRCPolicyLifecycleActionRequiresWriteScope(t *testing.T) {
+	request, err := http.NewRequest(http.MethodPost, "/grc/policy-lifecycle/actions", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error = %v", err)
+	}
+	if got := httpRoutePolicyForRequest(request).Scope; got != scopeGRCPolicyLifecycleWrite {
+		t.Fatalf("scopeForHTTPRequest(policy action) = %q, want %q", got, scopeGRCPolicyLifecycleWrite)
+	}
+
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	if err := authorizePrincipalScope(readOnly, scopeGRCPolicyLifecycleWrite); err == nil {
+		t.Fatal("read-only scoped principal authorized for policy lifecycle write scope")
+	}
+}
+
 func TestRequireMatchingJobTenantRejectsMismatchedTargetTenant(t *testing.T) {
 	if err := requireMatchingJobTenant("tenant-a", "tenant-a"); err != nil {
 		t.Fatalf("matching tenants error = %v", err)

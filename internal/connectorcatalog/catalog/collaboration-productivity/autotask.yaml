@@ -17,7 +17,7 @@ entries:
       key: parentid
       label: Parentid
       required: true
-    description: Generated from an OpenAPI description.
+    description: "Collects field, userdefinedfield, excludedrole, and entityinformation field from Datto Autotask PSA and projects them into the Cerebro graph as audit events, users, groups, and alerts for workspace, document, message, and collaboration context."
     display_name: Datto Autotask PSA
     id: builtin_catalog-autotask
     resource_families:

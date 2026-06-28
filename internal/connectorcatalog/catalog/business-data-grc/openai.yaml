@@ -17,7 +17,7 @@ entries:
       key: fine_tune_id
       label: Fine Tune Id
       required: true
-    description: APIs for sampling from and fine-tuning language models
+    description: "Collects event, file, fine tune, and model from OpenAI and projects them into the Cerebro graph as audit events and assets for owner, account, evidence, and compliance context."
     display_name: OpenAI
     id: builtin_catalog-openai
     resource_families:

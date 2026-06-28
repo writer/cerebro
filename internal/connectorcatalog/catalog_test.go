@@ -9,7 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
-const wantBuiltinCatalogEntries = 780
+const wantBuiltinCatalogEntries = 788
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()
@@ -185,6 +185,13 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	counted := analysis.Summary.CatalogReady + analysis.Summary.Generateable + analysis.Summary.NeedsAuthExtension + analysis.Summary.NeedsBespokeRuntime
 	if counted != analysis.Summary.Total {
 		t.Fatalf("status counts = %d, want total %d: %#v", counted, analysis.Summary.Total, analysis.Summary)
+	}
+	for _, entry := range analysis.Entries {
+		for _, family := range entry.Definition.ResourceFamilies {
+			if family.Projection != nil && family.Projection.Template == "app_entitlement" {
+				t.Fatalf("builtin catalog entry %s family %s uses retired app_entitlement projection template", entry.Definition.SourceID, family.ID)
+			}
+		}
 	}
 	t.Logf("builtin connector catalog summary: total=%d generateable=%d needs_auth_extension=%d needs_bespoke_runtime=%d catalog_ready=%d",
 		analysis.Summary.Total,

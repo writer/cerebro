@@ -225,6 +225,7 @@ func evaluateClaimVerification(request ClaimVerificationRequest) []AgentVerifier
 	results := []AgentVerifierResult{}
 	tenantEvidence := append([]string{request.ScopeURN}, request.SupportingEvidenceURNs...)
 	tenantEvidence = append(tenantEvidence, request.CounterEvidenceURNs...)
+	tenantEvidence = append(tenantEvidence, request.MissingEvidence...)
 	if request.TenantID == "" {
 		results = append(results, verifierBlocked("tenant-scope", "Claim verification requires an authenticated tenant.", nil))
 	} else if crossTenantURN(request.TenantID, tenantEvidence...) {

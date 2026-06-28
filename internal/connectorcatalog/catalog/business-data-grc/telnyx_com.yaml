@@ -17,7 +17,7 @@ entries:
       key: sim_card_id
       label: Sim Card Id
       required: true
-    description: SIP trunking, SMS, MMS, Call Control and Telephony Data Services.
+    description: "Collects call event, billing group, credential connection, managed account, call control application, and notification channel from Telnyx API and projects them into the Cerebro graph as audit events, groups, secrets, users, and policies for owner, account, evidence, and compliance context."
     display_name: Telnyx API
     id: builtin_catalog-telnyx_com
     ingest:

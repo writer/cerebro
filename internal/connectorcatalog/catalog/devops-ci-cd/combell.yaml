@@ -21,7 +21,7 @@ entries:
       key: accountid
       label: Accountid
       required: true
-    description: "# Introduction"
+    description: "Collects account, ssh, user, and account 2 from Combell and projects them into the Cerebro graph as users and assets for repository, build, deployment, and release context."
     display_name: Combell
     id: builtin_catalog-combell
     resource_families:

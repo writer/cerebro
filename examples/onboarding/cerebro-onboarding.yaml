@@ -1,0 +1,91 @@
+{
+  "version": "2026-06-28",
+  "name": "local-sdk-agent-onboarding",
+  "business": {
+    "name": "local-demo",
+    "goal": "Track ownership, SSO posture, graph readiness, and compliance coverage before connecting live systems.",
+    "first_system": "Example API"
+  },
+  "tenant_id": "local",
+  "runtime_profile": "graph-enabled",
+  "base_url": "http://127.0.0.1:8080",
+  "api_key_env": "CEREBRO_API_KEY",
+  "server_wait_seconds": 180,
+  "environment": {
+    "CEREBRO_API_AUTH_ENABLED": "true",
+    "CEREBRO_API_KEYS": "env:CEREBRO_API_KEYS",
+    "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
+    "CEREBRO_JETSTREAM_URL": "env:CEREBRO_JETSTREAM_URL",
+    "CEREBRO_STATE_STORE_DRIVER": "postgres",
+    "CEREBRO_POSTGRES_DSN": "env:CEREBRO_POSTGRES_DSN",
+    "CEREBRO_GRAPH_STORE_DRIVER": "neo4j",
+    "CEREBRO_NEO4J_URI": "env:CEREBRO_NEO4J_URI",
+    "CEREBRO_NEO4J_USERNAME": "env:CEREBRO_NEO4J_USERNAME",
+    "CEREBRO_NEO4J_PASSWORD": "env:CEREBRO_NEO4J_PASSWORD"
+  },
+  "preflight": {
+    "enabled": true
+  },
+  "source_runtimes": [
+    {
+      "id": "local-sdk-demo",
+      "source_id": "sdk",
+      "tenant_id": "local",
+      "config": {
+        "integration": "demo",
+        "inventory_urns": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api,urn:cerebro:local:runtime:local-sdk-demo:queue:jobs"
+      },
+      "preview": {
+        "check": true,
+        "discover": true
+      },
+      "sync": {
+        "enabled": true,
+        "page_limit": 1
+      },
+      "graph_ingest": {
+        "enabled": true,
+        "page_limit": 1
+      },
+      "claims": [
+        {
+          "subject_urn": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api",
+          "subject_ref": {
+            "urn": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api",
+            "entity_type": "service",
+            "label": "Example API"
+          },
+          "predicate": "owner",
+          "object_value": "platform",
+          "claim_type": "attribute",
+          "source_event_id": "local-sdk-demo-owner-1"
+        },
+        {
+          "subject_urn": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api",
+          "subject_ref": {
+            "urn": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api",
+            "entity_type": "service",
+            "label": "Example API"
+          },
+          "predicate": "sso_required",
+          "object_value": "true",
+          "claim_type": "attribute",
+          "source_event_id": "local-sdk-demo-sso-1"
+        }
+      ]
+    }
+  ],
+  "compliance": {
+    "enabled": true,
+    "profiles": [
+      "soc2-security-core"
+    ]
+  },
+  "acceptance_gates": {
+    "preflight_status": "pass",
+    "runtime_health": "reachable",
+    "claim_round_trip": "required",
+    "compliance_coverage": "required",
+    "receipt_path": "tmp/onboarding/receipt.json"
+  }
+}

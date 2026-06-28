@@ -45,6 +45,56 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	if !strings.Contains(entityRequest.Query, "UNWIND $entity_types AS entity_type") || !strings.Contains(entityRequest.Query, "LIMIT $type_limit") {
 		t.Fatalf("entity query %q does not apply a per-type limit", entityRequest.Query)
 	}
+	foundLifecycleEvent := false
+	for _, entityType := range entityRequest.Params["entity_types"].([]string) {
+		if entityType == "policy.lifecycle.event" {
+			foundLifecycleEvent = true
+			break
+		}
+	}
+	if !foundLifecycleEvent {
+		t.Fatalf("entity types = %#v, want policy.lifecycle.event", entityRequest.Params["entity_types"])
+	}
+	if entityRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
+		t.Fatalf("entity params = %#v, want risk scenario filter", entityRequest.Params)
+	}
+	documentFragments, ok := entityRequest.Params["document_attr_fragments"].([]string)
+	if !ok || !stringSliceContains(documentFragments, `"policy_id":"`) || !stringSliceContains(documentFragments, `"risk_scenario_id":"`) {
+		t.Fatalf("entity params = %#v, want document attr filters", entityRequest.Params)
+	}
+	for _, fragment := range []string{
+		`"document_class":"control_narrative"`,
+		`"document_class":"exception_register"`,
+		`"document_class":"training_material"`,
+		`"document_class":"waiver_register"`,
+	} {
+		if !stringSliceContains(documentFragments, fragment) {
+			t.Fatalf("document fragments = %#v, want %s", documentFragments, fragment)
+		}
+	}
+	if !strings.Contains(entityRequest.Query, "entity_type <> 'claim'") || !strings.Contains(entityRequest.Query, "entity_type <> 'document'") {
+		t.Fatalf("entity query %q does not filter broad claim/document types", entityRequest.Query)
+	}
+	relationRequest := store.requests[1]
+	if relationRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
+		t.Fatalf("relation params = %#v, want risk scenario filter", relationRequest.Params)
+	}
+	anchorTypes, ok := relationRequest.Params["policy_anchor_entity_types"].([]string)
+	if !ok || !stringSliceContains(anchorTypes, "policy.version") {
+		t.Fatalf("relation params = %#v, want policy anchor types", relationRequest.Params)
+	}
+	if !strings.Contains(relationRequest.Query, "left.entity_type <> 'claim'") || !strings.Contains(relationRequest.Query, "right.entity_type <> 'document'") {
+		t.Fatalf("relation query %q does not filter broad claim/document types", relationRequest.Query)
+	}
+}
+
+func stringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEntityTypeLimitStaysWithinGraphRowCeiling(t *testing.T) {
@@ -119,12 +169,117 @@ func TestMissingReviewStatusDoesNotCreateOverdueWork(t *testing.T) {
 			{URN: "urn:review:missing-status", ReviewDueAt: "2026-01-15"},
 		},
 	}
-	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, now)
+	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, nil, nil, now)
 	if summary.OverdueReviews != 0 {
 		t.Fatalf("summary = %+v, want missing-status review excluded from overdue count", summary)
 	}
 	if items := grcPolicyLifecycleWorkQueue([]grcPolicyLifecyclePolicy{policy}, now); len(items) != 0 {
 		t.Fatalf("work queue = %+v, want missing-status review excluded", items)
+	}
+}
+
+func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	document := grcPolicyDocumentItem{
+		ID:              "risk-register",
+		URN:             "urn:document:risk-register",
+		Title:           "Risk Register",
+		DocumentClass:   "risk_register",
+		NextReviewDueAt: "2026-01-15",
+	}
+
+	if grcPolicyDocumentDueForReview(document, now) {
+		t.Fatalf("missing document status should not be due for review")
+	}
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, now)
+	if summary.DocumentsDueForReview != 0 {
+		t.Fatalf("summary = %+v, want missing-status document excluded from due count", summary)
+	}
+	if items := grcPolicyDocumentWorkQueue([]grcPolicyDocumentItem{document}, nil, now); len(items) != 0 {
+		t.Fatalf("document work queue = %+v, want missing-status document excluded", items)
+	}
+}
+
+func TestDraftDocumentDoesNotCreateReviewWork(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	document := grcPolicyDocumentItem{
+		ID:              "secure-development-draft",
+		URN:             "urn:document:secure-development-draft",
+		Title:           "Secure Development Draft",
+		DocumentClass:   "policy",
+		Status:          "draft",
+		NextReviewDueAt: "2026-01-15",
+	}
+
+	if grcPolicyDocumentDueForReview(document, now) {
+		t.Fatalf("draft document should not be due for review")
+	}
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, now)
+	if summary.DraftDocuments != 1 || summary.DocumentsDueForReview != 0 {
+		t.Fatalf("summary = %+v, want one draft document and no due review", summary)
+	}
+	items := grcPolicyDocumentWorkQueue([]grcPolicyDocumentItem{document}, nil, now)
+	if len(items) != 1 || items[0].Action != "Review draft document" {
+		t.Fatalf("document work queue = %+v, want only draft review work", items)
+	}
+}
+
+func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, nil, []grcPolicyRiskRegisterItem{
+		{ID: "open-high", Status: "open", ResidualRisk: "high"},
+		{ID: "closed-critical", Status: "closed", ResidualRisk: "critical"},
+		{ID: "accepted-high", Status: "accepted", InherentRisk: "high"},
+		{ID: "completed-high", Status: "completed", ResidualRisk: "high"},
+		{ID: "acknowledged-high", Status: "acknowledged", ResidualRisk: "high"},
+		{ID: "expired-high", Status: "expired", ResidualRisk: "high"},
+		{ID: "rejected-high", Status: "rejected", ResidualRisk: "high"},
+		{ID: "mitigated-high", Status: "mitigated", ResidualRisk: "high"},
+		{ID: "remediated-high", Status: "remediated", ResidualRisk: "high"},
+		{ID: "transferred-high", Status: "transferred", ResidualRisk: "high"},
+		{ID: "open-medium", Status: "open", ResidualRisk: "medium"},
+	}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if summary.OpenRisks != 2 || summary.HighRisks != 1 {
+		t.Fatalf("risk summary = %+v, want two open risks and one open high risk", summary)
+	}
+}
+
+func TestCompletedRiskDoesNotCreateWork(t *testing.T) {
+	items := grcPolicyDocumentWorkQueue(nil, []grcPolicyRiskRegisterItem{
+		{
+			ID:             "completed-high",
+			URN:            "urn:risk:completed-high",
+			Title:          "Completed high risk",
+			Status:         "completed",
+			ResidualRisk:   "high",
+			TreatmentDueAt: "2026-01-15",
+		},
+	}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if len(items) != 0 {
+		t.Fatalf("risk work queue = %+v, want completed risk excluded", items)
+	}
+}
+
+func TestRiskWorkQueueIncludesLinkedPolicy(t *testing.T) {
+	items := grcPolicyDocumentWorkQueue(nil, []grcPolicyRiskRegisterItem{
+		{
+			ID:           "privileged-access",
+			URN:          "urn:risk:privileged-access",
+			Title:        "Privileged access drift",
+			Status:       "open",
+			ResidualRisk: "high",
+			Policies: []grcPolicyDocumentRef{
+				{ID: "access", URN: "urn:policy:access", Title: "Access Control Policy"},
+			},
+		},
+	}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if len(items) != 1 {
+		t.Fatalf("risk work queue = %+v, want one high-risk work item", items)
+	}
+	if items[0].RiskID != "privileged-access" || items[0].PolicyID != "access" {
+		t.Fatalf("risk work item = %+v, want linked risk and policy IDs", items[0])
 	}
 }
 
@@ -209,6 +364,81 @@ func TestRelationEnrichmentDoesNotAttachRelationOnlyLifecycleChild(t *testing.T)
 	}
 	if len(response.Policies[0].Versions) != 0 {
 		t.Fatalf("versions = %+v, want relation-only lifecycle child excluded", response.Policies[0].Versions)
+	}
+}
+
+func TestBuildActionEventCreatesNormalizedLifecycleEvent(t *testing.T) {
+	now := time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC)
+	event, response, err := BuildActionEvent(ActionRequest{
+		Action:          "approval.approve",
+		TenantID:        "writer",
+		SourceID:        "grc",
+		RuntimeID:       "rt-1",
+		PolicyID:        "access",
+		PolicyVersionID: "access-2",
+		RecordID:        "approval-1",
+		ActorUserID:     "reviewer@example.com",
+		Reason:          "Ready for publish",
+		IdempotencyKey:  "approval-1-approved",
+	}, now)
+	if err != nil {
+		t.Fatalf("BuildActionEvent() error = %v", err)
+	}
+	if event.GetKind() != "grc.policy_approval" || event.GetSchemaRef() != policyLifecycleSchemaRef {
+		t.Fatalf("event kind/schema = %q/%q", event.GetKind(), event.GetSchemaRef())
+	}
+	if event.GetAttributes()["status"] != "approved" || event.GetAttributes()["approver_user_id"] != "reviewer@example.com" {
+		t.Fatalf("event attributes = %#v", event.GetAttributes())
+	}
+	if response.EventID == "" || response.Status != "approved" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:policy:access", "policy", "Access", map[string]string{
+		"policy_id":   "access",
+		"policy_type": "policy",
+	})
+	version := policyLifecycleTestRow("urn:cerebro:writer:policy_version:policyops:access-2", "policy.version", "Access v2", map[string]string{
+		"policy_id":         "access",
+		"policy_version_id": "access-2",
+		"status":            "draft",
+		"version":           "2",
+		"change_summary":    "Updated owner review.",
+		"diff_summary":      "Added review cadence.",
+		"created_at":        "2026-01-20",
+	})
+	attestation := policyLifecycleTestRow("urn:cerebro:writer:policy_acceptance:policyops:attest-1", "policy.acceptance", "Access attestation", map[string]string{
+		"acceptance_id":     "attest-1",
+		"policy_id":         "access",
+		"policy_version_id": "access-2",
+		"status":            "pending",
+		"due_at":            "2026-01-15",
+	})
+	event := policyLifecycleTestRow("urn:cerebro:writer:policy_lifecycle_event:policyops:event-1", "policy.lifecycle.event", "Approval event", map[string]string{
+		"lifecycle_event_id": "event-1",
+		"policy_id":          "access",
+		"policy_version_id":  "access-2",
+		"action":             "approval.request",
+		"status":             "requested",
+		"occurred_at":        "2026-01-20T10:00:00Z",
+	})
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy, version, attestation, event}, nil, now)
+	if response.Summary.LifecycleEvents != 1 || response.Summary.NextReminders != 1 {
+		t.Fatalf("summary = %+v, want lifecycle events and reminder plan", response.Summary)
+	}
+	if len(response.Policies) != 1 {
+		t.Fatalf("policies len = %d", len(response.Policies))
+	}
+	got := response.Policies[0]
+	if len(got.Events) != 1 || len(got.Actions) == 0 || len(got.VersionDiffs) != 1 || len(got.ReminderPlan) != 1 {
+		t.Fatalf("policy aggregate = %+v", got)
+	}
+	if len(response.VersionDiffs) != 1 || len(response.ReminderPlan) != 1 {
+		t.Fatalf("response diffs/reminders = %+v/%+v", response.VersionDiffs, response.ReminderPlan)
 	}
 }
 

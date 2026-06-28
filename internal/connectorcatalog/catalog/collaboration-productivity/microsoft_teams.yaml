@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: microsoft_teams
     display_name: Microsoft Teams
-    description: Microsoft Teams connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, content assets, and audit events from Microsoft Teams and projects them into the Cerebro graph as users, assets, and audit events for workspace, document, message, and collaboration context."
     categories:
     - saas
     - collaboration

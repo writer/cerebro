@@ -6,11 +6,34 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/connectorvalidation"
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, now time.Time) *ports.FindingRecord {
+const FindingConnectorValidationGradeAttribute = "connector_validation_grade"
+
+func enrichFindingRisk(record *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) *ports.FindingRecord {
+	record = applyConnectorValidationRiskContext(record, runtime)
 	return enrichFindingRiskWithConfig(record, now, nil)
+}
+
+func applyConnectorValidationRiskContext(record *ports.FindingRecord, runtime *cerebrov1.SourceRuntime) *ports.FindingRecord {
+	if record == nil || runtime == nil {
+		return record
+	}
+	if record.Attributes == nil {
+		record.Attributes = map[string]string{}
+	}
+	family := ""
+	if runtime.Config != nil {
+		family = strings.TrimSpace(runtime.Config["family"])
+	}
+	grade := connectorvalidation.BuiltinGradeForSourceFamily(runtime.GetSourceId(), family)
+	if grade == "" {
+		grade = connectorvalidation.GradeGeneratedFromDocs
+	}
+	record.Attributes[FindingConnectorValidationGradeAttribute] = string(grade)
+	return record
 }
 
 func enrichFindingRiskWithConfig(record *ports.FindingRecord, now time.Time, config *ports.RiskScoringConfig) *ports.FindingRecord {

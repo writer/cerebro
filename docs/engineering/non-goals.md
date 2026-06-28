@@ -202,7 +202,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
   - It does not own response automation as its primary product surface; runtime response is a constrained subsystem with explicit gates, not a SOAR.
   - It does not author cloud posture from Cerebro's own scanners as the source of truth; cloud posture findings come from typed sources whose budgets are explicit.
 - Why: Cerebro's value is the typed substrate (events, claims, evidence, decisions, workflows, the read graph, and the safety boundary). Promising a replacement promise would force the codebase to take on operational scope that is incompatible with that substrate.
-- Enforced in: [`README.md`](../../README.md) "Operations data platform" and the current route surface in [`docs/reference/api-reference.md`](../reference/api-reference.md).
+- Enforced in: [`README.md`](../../README.md) "Runtime Boundaries" and the current route surface in [`docs/reference/api-reference.md`](../reference/api-reference.md).
 - What would change this: nothing in this repo. Category-shaped products belong on top of Cerebro, not inside it.
 
 ## Operational And Distribution
@@ -211,7 +211,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 - The repo exposes JSON HTTP, Connect RPC, and CLI surfaces. It will not host an end-user web console, a dashboarding UI, an investigation workbench, or a chat surface.
 - Why: a console is a separate product with separate distribution, accessibility, and security constraints. Pulling it into the bootstrap repo would couple every release of either to the other.
-- Enforced in: cmd/cerebro entrypoints and the documented HTTP route surface in [`README.md`](../../README.md) "HTTP and Connect API surface".
+- Enforced in: cmd/cerebro entrypoints and the documented CLI, JSON HTTP, Connect RPC, SDK, and MCP surfaces in [`README.md`](../../README.md).
 - What would change this: nothing. Console-shaped products consume Cerebro through its typed APIs from a separate repository.
 
 ### Cerebro does not host or proxy LLM providers.

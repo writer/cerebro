@@ -15,7 +15,6 @@ entries:
       scopes:
       - offline_access
       - public_api_read
-      - public_api_write
       token_expiration_buffer_seconds: 300
       token_request_auth_method: client_secret_basic
       token_url: https://connect.signl4.com/identity/connect/token
@@ -26,7 +25,7 @@ entries:
       key: teamid
       label: Teamid
       required: true
-    description: "<p>Use our API for systems integration or to build your own use cases. Sample scenarios include but are not limited to:</p><ul><li>2-way integration: Triggering of Signls and updates in the third party systems when alert state changes occur</li><li>Retrieving alarms for logging purposes</li><li>Calendar integrations: Creation and management of on-call duties</li><li>Punch users in and out based..."
+    description: "Collects team, user, membership, and image from SIGNL4 and projects them into the Cerebro graph as groups, users, group memberships, and alerts for alert, incident, service health, and response context."
     display_name: SIGNL4
     id: builtin_catalog-signl4
     resource_families:
@@ -61,7 +60,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           id: id
@@ -100,7 +98,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           id: id
@@ -139,7 +136,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           id: id
@@ -178,7 +174,6 @@ entries:
       permissions_needed:
       - offline_access
       - public_api_read
-      - public_api_write
       projection:
         fields:
           alert_id: id

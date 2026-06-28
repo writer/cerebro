@@ -39,6 +39,8 @@ Policy lifecycle should model these records:
 | Policy exception | `exception_id` or `waiver_id` | Time-bound waiver, deferral, or scoped exception. |
 | Policy reminder | `reminder_id` | Reminder or escalation record for an approval, review, exception, or employee attestation. |
 | Policy assignment | policy or version plus group/user | Employee group or user population required to accept the policy. |
+| Policy document | `document_id` | Approved policy, standard, procedure, risk register, exception register, or training document evidence. |
+| Risk register item | `risk_id` | One risk scenario with owner, treatment, review date, residual risk, controls, and source document links. |
 
 Lifecycle states should stay concrete:
 
@@ -77,6 +79,8 @@ The source projection layer now accepts imported policy lifecycle event kinds. T
 | `grc.policy_review` | `review_id` or derived policy/version/review date | `policy.review` |
 | `grc.policy_exception` | `exception_id`, `waiver_id`, or derived policy/target/expiration | `policy.exception` |
 | `grc.policy_reminder` | `reminder_id`, `policy_reminder_id`, `escalation_id`, or derived policy/target/date | `policy.reminder` |
+| `grc.document` | `document_id` | `document` |
+| `grc.risk_scenario` | `risk_id` | `claim` with `claim_type=risk_scenario` |
 
 Common attributes:
 
@@ -94,7 +98,10 @@ Common attributes:
 | `person_id`, `user_id`, `email` | Employee acceptance subject. |
 | `group_id`, `employee_group_id`, `acceptance_group_id` | Assigned employee group. |
 | `control_id`, `control_ids`, `control_references` | Explicit policy-to-control mappings. |
-| `document_id`, `approved_document_id`, `url` | Approved document evidence. |
+| `document_id`, `approved_document_id`, `url` | Approved document evidence or source document identity. |
+| `document_type`, `document_class` | Policy document class such as `policy`, `standard`, `procedure`, `risk_register`, `control_narrative`, `exception_register`, or `training_material`. |
+| `risk_id`, `risk_ids`, `risk_register_id` | Risk scenario or risk register identity. |
+| `risk_category`, `inherent_risk_level`, `residual_risk_level`, `likelihood`, `impact`, `treatment`, `treatment_due_at` | Risk register posture and treatment metadata. |
 | `evidence_id`, `evidence_cas_uri` | Runtime evidence packet link. |
 | `target_id`, `resource_id`, `asset_id`, `service_id`, `system_id`, `person_id`, `user_id` | Scoped exception target. |
 
@@ -116,6 +123,10 @@ Graph relationships:
 | Sender or escalation owner | `acted_on` | Reminder |
 | Policy exception | `targeted` | Scoped asset, service, system, resource, or user target |
 | Policy exception | `associated_with` | Control |
+| Document | `associated_with` | Policy, policy version, or risk scenario |
+| Document | `supports` | Control |
+| Risk scenario | `associated_with` | Policy or control |
+| Risk scenario | `has_evidence` | Source risk register document or runtime evidence |
 
 ## Readiness Semantics
 
@@ -152,11 +163,13 @@ Recommended work items:
 
 The repo does not ship an end-user web UI. Lifecycle operations should be exposed as typed APIs and CLI surfaces, then consumed by a separate console.
 
-Implemented aggregate endpoint:
+Implemented endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /grc/policy-lifecycle` | Tenant-scoped aggregate of policy templates, policy records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and explicit control/evidence mappings. |
+| `GET /grc/policy-lifecycle` | Tenant-scoped aggregate of policy templates, policy records, documents, risk-register records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and explicit control/evidence mappings. |
+| `POST /grc/policy-lifecycle/actions` | Append and project a lifecycle action event for template, draft, approval, publish, attestation, review, exception, reminder, or escalation work. |
+| `GET /grc/policy-lifecycle/export` | CSV export of policy versions, approvals, attestations, reviews, exceptions, lifecycle events, and control/evidence mappings, with optional `start` and `end` date filters. |
 
 Candidate follow-on read endpoints:
 
@@ -168,7 +181,7 @@ Candidate follow-on read endpoints:
 | `GET /grc/policies/{policyID}/acceptances` | List employee acceptance state for one policy/version. |
 | `GET /grc/policy-exceptions` | List active, expired, and upcoming policy exceptions. |
 
-Candidate write endpoints:
+Candidate resource-specific write endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |

@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: The fire.com API allows you to deeply integrate Business Account features into your application or back-office systems.
+    description: "Collects account, aspsp, user, and batche from Fire and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
     display_name: Fire
     id: builtin_catalog-fire
     resource_families:

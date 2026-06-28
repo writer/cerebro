@@ -20,12 +20,29 @@ func grcDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	ctx.addResourceEntity(
 		documentURN,
 		"document",
-		firstAttribute(ctx.attrs, "title", "document_id"),
-		map[string]string{"document_id": documentID, "source_system": ctx.provider},
+		firstAttribute(ctx.attrs, "title", "name", "document_title", "document_id"),
+		map[string]string{
+			"approved_at":          firstAttribute(ctx.attrs, "approved_at"),
+			"document_class":       firstAttribute(ctx.attrs, "document_class", "document_type", "category"),
+			"document_id":          documentID,
+			"document_type":        firstAttribute(ctx.attrs, "document_type", "file_type", "category"),
+			"effective_at":         firstAttribute(ctx.attrs, "effective_at"),
+			"next_review_due_at":   firstAttribute(ctx.attrs, "next_review_due_at", "review_due_at", "due_at"),
+			"policy_document_type": firstAttribute(ctx.attrs, "policy_document_type"),
+			"review_cadence":       firstAttribute(ctx.attrs, "review_cadence", "cadence"),
+			"source_system":        ctx.provider,
+			"status":               firstAttribute(ctx.attrs, "status", "document_status", "lifecycle_state"),
+			"url":                  firstAttribute(ctx.attrs, "url", "document_url", "file_url", "download_url"),
+			"version":              firstAttribute(ctx.attrs, "version", "version_number"),
+		},
 	)
-	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id"))
-	addInternetHostLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, relationHasIdentifier, firstAttribute(ctx.attrs, "url"), "grc_document_url_host", "0.9")
-	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, "grc_category", firstAttribute(ctx.attrs, "category"))
+	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "policy_owner_user_id", "document_owner_user_id"))
+	addInternetHostLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, relationHasIdentifier, firstAttribute(ctx.attrs, "url", "document_url", "file_url", "download_url"), "grc_document_url_host", "0.9")
+	addGRCPolicyLifecycleSubjectLinks(ctx, documentURN, firstAttribute(ctx.attrs, "policy_id"), firstAttribute(ctx.attrs, "policy_version_id", "version_id"))
+	addGRCPolicyRiskScenarioReferenceLinks(ctx, documentURN)
+	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, ctx.provider)
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, ctx.provider, ctx.attrs)
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, documentURN, "grc_category", strings.Join([]string{ctx.attrs["category"], ctx.attrs["document_type"], ctx.attrs["document_class"]}, ","))
 	entities, links := ctx.done()
 	return entities, links, nil
 }

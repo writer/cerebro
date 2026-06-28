@@ -17,7 +17,7 @@ entries:
       key: accountid
       label: Accountid
       required: true
-    description: The DocuSign REST API provides you with a powerful, convenient, and simple Web services API for interacting with DocuSign.
+    description: "Collects bcc email archive, signing group, request log, and permission profile from DocuSign and projects them into the Cerebro graph as users, groups, audit events, and assets for owner, account, evidence, and compliance context."
     display_name: DocuSign
     id: builtin_catalog-docusign
     resource_families:

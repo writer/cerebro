@@ -1,8 +1,8 @@
 # Cerebro Documentation
 
-Cerebro is an operations data platform for cloud, SaaS, identity, workflow, finding, compliance, and graph signals.
+Cerebro gives coding agents compliance superpowers.
 
-The current `main` branch is centered on a Go bootstrap service with JSON HTTP and Connect APIs, built-in source integrations, source runtime sync, finding and report workflows, compliance-control coverage, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
+The current `main` branch is centered on a Go bootstrap service that turns security, identity, cloud, SaaS, workflow, policy, and compliance signals into evidence-backed context. Agents and operators can query that context through JSON HTTP, Connect APIs, CLI workflows, SDK helpers, MCP access, and optional graph projection/query tooling.
 
 ## Mental Model
 
@@ -44,12 +44,30 @@ For a durable local stack:
 docker compose up --build
 ```
 
+## Agent Compliance Quickstart
+
+Run the local onboarding flow, then give the receipt to your coding agent:
+
+```bash
+make secure-business-demo
+```
+
+```text
+Use Cerebro as compliance context for this change.
+Read tmp/onboarding/e2e-receipt.json, then tell me which checks passed,
+which evidence exists, which controls apply, and what must happen before
+this can ship.
+```
+
+For live integrations, connect an MCP client to `POST /api/v1/mcp` so agents can query policy memory, compliance evidence, graph context, and safe action-planning contracts.
+
 ## Main Docs
 
 | Need | Document |
 | --- | --- |
 | Short command reference | [Quick reference](start/quick-reference.md) |
 | Local end-to-end walkthrough | [Getting started](start/getting-started.md) |
+| Coding agent setup handoff | [Agent onboarding](start/agent-onboarding.md) |
 | Runtime shape and dependency boundaries | [Architecture](reference/architecture.md) |
 | Runtime configuration | [Configuration variables](reference/config-env-vars.md) |
 | Hosting and operations | [Hosting](operations/hosting.md), [runtime profiles](operations/runtime-profiles.md), [deployment readiness](operations/deployment-readiness.md), [cloud deployment](operations/cloud-deployment.md), [deployment examples](operations/deployment-examples.md), [operations runbook](operations/operations-runbook.md), and [troubleshooting](operations/troubleshooting.md) |

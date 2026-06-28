@@ -1740,6 +1740,7 @@ func (app *App) mcpAgentClaimVerify(r *http.Request, args map[string]any) (any, 
 	}
 	request.TenantID = resolved.TenantID
 	request.ActorID = resolved.ActorID
+	request.CoverageContext = app.agentCoverageContext(r.Context(), request.TenantID)
 	if err := authorizeMCPClaimVerificationURNs(r.Context(), request); err != nil {
 		return nil, err
 	}
@@ -1800,6 +1801,7 @@ func authorizeMCPClaimVerificationURNs(ctx context.Context, request agentplatfor
 	urns := []string{request.ScopeURN}
 	urns = append(urns, request.SupportingEvidenceURNs...)
 	urns = append(urns, request.CounterEvidenceURNs...)
+	urns = append(urns, request.MissingEvidence...)
 	for _, urn := range urns {
 		urn = strings.TrimSpace(urn)
 		if urn == "" || !strings.HasPrefix(urn, "urn:cerebro:") {

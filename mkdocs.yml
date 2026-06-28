@@ -1,5 +1,5 @@
 site_name: Cerebro
-site_description: Operations data platform for cloud, SaaS, identity, workflow, finding, compliance, and graph signals.
+site_description: Compliance superpowers for coding agents.
 repo_url: https://github.com/writer/cerebro
 theme:
   name: mkdocs
@@ -12,6 +12,7 @@ nav:
   - Start:
       - Quick Reference: start/quick-reference.md
       - Getting Started: start/getting-started.md
+      - Agent Onboarding: start/agent-onboarding.md
   - Reference:
       - Architecture: reference/architecture.md
       - CLI Reference: reference/cli.md
@@ -41,6 +42,7 @@ nav:
       - Policies: domains/policies.md
       - Policy Lifecycle: domains/policy-lifecycle.md
       - Policy Rule Extensions: domains/policy-rule-extensions.md
+      - Policy Compliance Mapping: domains/policy-compliance-mapping.md
       - Findings Platform Architecture: domains/findings-platform-architecture.md
       - Finding Candidate Operations: domains/finding-candidate-operations.md
       - Agent Platform Contract: domains/agent-platform-contract.md

@@ -239,11 +239,16 @@ func TestProjectGRCDocumentLinksURLAndCategory(t *testing.T) {
 		SourceId: "grc",
 		Kind:     "grc.document",
 		Attributes: map[string]string{
-			"provider":    "vanta",
-			"document_id": "doc-1",
-			"title":       "AWS Architecture",
-			"category":    "Infrastructure",
-			"url":         "https://docs.writer.com/security/aws-architecture",
+			"provider":      "vanta",
+			"document_id":   "doc-1",
+			"title":         "Risk Register",
+			"category":      "Risk register",
+			"document_type": "risk_register",
+			"policy_id":     "access",
+			"risk_id":       "risk-1",
+			"control_ids":   "CC6.1",
+			"status":        "draft",
+			"url":           "https://docs.writer.com/security/risk-register",
 		},
 	})
 	if err != nil {
@@ -252,9 +257,18 @@ func TestProjectGRCDocumentLinksURLAndCategory(t *testing.T) {
 
 	documentURN := "urn:cerebro:writer:document:vanta:doc-1"
 	hostURN := "urn:cerebro:writer:internet_host:docs.writer.com"
-	categoryURN := "urn:cerebro:writer:asset_tag:grc_category:infrastructure"
+	categoryURN := "urn:cerebro:writer:asset_tag:grc_category:risk_register"
+	policyURN := "urn:cerebro:writer:policy:vanta:policy:access"
+	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-1"
+	controlURN := "urn:cerebro:writer:policy:vanta:control:CC6.1"
 	assertProjectedLink(t, state, documentURN, relationHasIdentifier, hostURN)
 	assertProjectedLink(t, state, documentURN, relationTaggedAs, categoryURN)
+	assertProjectedLink(t, state, documentURN, relationAssociatedWith, policyURN)
+	assertProjectedLink(t, state, documentURN, relationAssociatedWith, riskURN)
+	assertProjectedLink(t, state, documentURN, relationSupports, controlURN)
+	if got := state.entities[documentURN].Attributes["document_type"]; got != "risk_register" {
+		t.Fatalf("document_type = %q, want risk_register", got)
+	}
 }
 
 func TestProjectGRCContractLinksVendorControlsOwnerAndEvidence(t *testing.T) {

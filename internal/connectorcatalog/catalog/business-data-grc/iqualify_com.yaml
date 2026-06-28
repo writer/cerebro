@@ -25,7 +25,7 @@ entries:
       key: groupid
       label: Groupid
       required: true
-    description: The iQualify API offers management responses for building learning experiences using your iQualify instance data.
+    description: "Collects learners progress, group, user, pulses, progress, and responses from iQualify Management API and projects them into the Cerebro graph as audit events, groups, users, and assets for owner, account, evidence, and compliance context."
     display_name: iQualify Management API
     id: builtin_catalog-iqualify_com
     ingest:

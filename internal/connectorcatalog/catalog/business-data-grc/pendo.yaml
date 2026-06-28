@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "## Who is this for?"
+    description: "Collects account, feature, user, and search from Pendo and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
     display_name: Pendo
     id: builtin_catalog-pendo
     resource_families:

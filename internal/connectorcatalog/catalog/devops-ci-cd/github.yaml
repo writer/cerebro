@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: GitHub's v3 REST API.
+    description: "Collects issue, event, email, and organization from GitHub and projects them into the Cerebro graph as findings, audit events, users, and groups for repository, build, deployment, and release context."
     display_name: GitHub
     id: builtin_catalog-github
     resource_families:

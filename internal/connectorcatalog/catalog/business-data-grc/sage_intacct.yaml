@@ -7,8 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: sage_intacct
     display_name: Sage Intacct
-    description: Sage Intacct connector definition for high-value enterprise SaaS
-      records.
+    description: "Collects users, accounts, records, policies, and audit events from Sage Intacct and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
     categories:
     - saas
     - business_data_grc

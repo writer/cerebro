@@ -152,8 +152,15 @@ func TestProjectGRCPolicyApprovalLinksApproversAndVersion(t *testing.T) {
 	firstApproverURN := "urn:cerebro:writer:user:policyops:approver-1"
 	secondApproverURN := "urn:cerebro:writer:user:policyops:approver-2"
 	requesterURN := "urn:cerebro:writer:user:policyops:author-1"
+	lifecycleEventURN := "urn:cerebro:writer:policy_lifecycle_event:policyops:grc-policy-approval-1"
+	if entity := state.entities[lifecycleEventURN]; entity == nil || entity.EntityType != "policy.lifecycle.event" {
+		t.Fatalf("policy lifecycle event missing: %#v", entity)
+	}
 	assertProjectedLink(t, state, approvalURN, relationAssociatedWith, versionURN)
 	assertProjectedLink(t, state, approvalURN, relationAssociatedWith, policyURN)
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, approvalURN)
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, versionURN)
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, policyURN)
 	assertProjectedLink(t, state, firstApproverURN, relationActedOn, approvalURN)
 	assertProjectedLink(t, state, secondApproverURN, relationActedOn, approvalURN)
 	assertProjectedLink(t, state, requesterURN, relationActedOn, approvalURN)

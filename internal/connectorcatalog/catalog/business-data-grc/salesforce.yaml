@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: salesforce
     display_name: Salesforce
-    description: Salesforce connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, business records, and audit events from Salesforce and projects them into the Cerebro graph as users, assets, and audit events for owner, account, evidence, and compliance context."
     categories:
     - business
     - crm

@@ -14,51 +14,32 @@ entries:
       scopes:
       - APPOINTMENTS_BUSINESS_SETTINGS_READ
       - APPOINTMENTS_READ
-      - APPOINTMENTS_WRITE
       - BANK_ACCOUNTS_READ
       - CASH_DRAWER_READ
       - CUSTOMERS_READ
-      - CUSTOMERS_WRITE
       - DEVICE_CREDENTIAL_MANAGEMENT
       - DISPUTES_READ
-      - DISPUTES_WRITE
       - EMPLOYEES_READ
-      - EMPLOYEES_WRITE
       - GIFTCARDS_READ
-      - GIFTCARDS_WRITE
       - INVENTORY_READ
-      - INVENTORY_WRITE
       - INVOICES_READ
-      - INVOICES_WRITE
       - ITEMS_READ
-      - ITEMS_WRITE
       - LOYALTY_READ
-      - LOYALTY_WRITE
       - MERCHANT_PROFILE_READ
-      - MERCHANT_PROFILE_WRITE
       - ONLINE_STORE_SITE_READ
       - ONLINE_STORE_SNIPPETS_READ
-      - ONLINE_STORE_SNIPPETS_WRITE
       - ORDERS_READ
-      - ORDERS_WRITE
       - PAYMENTS_READ
-      - PAYMENTS_WRITE
-      - PAYMENTS_WRITE_ADDITIONAL_RECIPIENTS
-      - PAYMENTS_WRITE_IN_PERSON
-      - PAYMENTS_WRITE_SHARED_ONFILE
       - SETTLEMENTS_READ
       - SUBSCRIPTIONS_READ
-      - SUBSCRIPTIONS_WRITE
       - TIMECARDS_READ
       - TIMECARDS_SETTINGS_READ
-      - TIMECARDS_SETTINGS_WRITE
-      - TIMECARDS_WRITE
       token_expiration_buffer_seconds: 300
       token_request_auth_method: client_secret_basic
       token_url: https://connect.squareup.com/oauth2/token
     categories:
     - saas
-    description: Client library for accessing the Square Connect APIs
+    description: "Collects activity, bank account, group, and team member booking profile from Square Connect API and projects them into the Cerebro graph as audit events, users, groups, and group memberships for owner, account, evidence, and compliance context."
     display_name: Square Connect API
     id: builtin_catalog-squareup_com
     ingest:

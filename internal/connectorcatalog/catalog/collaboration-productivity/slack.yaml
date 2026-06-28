@@ -12,79 +12,51 @@ entries:
       model: oauth_authorization_code
       requires_references: true
       scopes:
-      - admin
       - admin.apps:read
-      - admin.apps:write
       - admin.conversations:read
-      - admin.conversations:write
       - admin.invites:read
-      - admin.invites:write
       - admin.teams:read
-      - admin.teams:write
       - admin.usergroups:read
-      - admin.usergroups:write
       - admin.users:read
-      - admin.users:write
       - authorizations:read
       - bot
       - calls:read
-      - calls:write
       - channels:history
-      - channels:manage
       - channels:read
-      - channels:write
-      - chat:write
-      - chat:write:bot
-      - chat:write:user
       - conversations:history
       - conversations:read
-      - conversations:write
       - dnd:read
-      - dnd:write
       - emoji:read
       - files:read
-      - files:write:user
       - groups:history
       - groups:read
-      - groups:write
       - identity.basic
       - im:history
       - im:read
-      - im:write
-      - links:write
       - mpim:history
       - mpim:read
-      - mpim:write
       - none
       - pins:read
-      - pins:write
       - reactions:read
-      - reactions:write
       - reminders:read
-      - reminders:write
       - remote_files:read
       - remote_files:share
-      - remote_files:write
       - rtm:stream
       - search:read
       - stars:read
-      - stars:write
       - team:read
       - tokens.basic
       - usergroups:read
-      - usergroups:write
       - users.profile:read
-      - users.profile:write
       - users:read
       - users:read.email
-      - users:write
       - workflow.steps:execute
       token_expiration_buffer_seconds: 300
       token_request_auth_method: client_secret_basic
       token_url: https://slack.com/api/oauth.access
     categories:
     - saas
-    description: One way to interact with the Slack platform is its HTTP RPC-based Web API, a collection of methods requiring OAuth 2.0-based user, bot, or workspace tokens blessed with related OAuth scopes.
+    description: "Collects usergroups list, team accesslog, admin conversations getteam, and apps permissions resources list from Slack and projects them into the Cerebro graph as users, audit events, groups, and assets for workspace, document, message, and collaboration context."
     display_name: Slack
     id: builtin_catalog-slack
     resource_families:
@@ -159,7 +131,7 @@ entries:
         type: cursor
       path: "/team.accessLogs"
       permissions_needed:
-      - admin
+      - admin.teams:read
       projection:
         fields:
           id: count

@@ -60,11 +60,12 @@ import (
 // domain response. User preferences add only route wiring plus trusted actor
 // resolution; HTTP behavior lives in internal/sourcehttp/userpreferences and
 // storage stays behind the UserPreferenceStore port. Agent claim verification
-// and durable work contracts add MCP tool/resource request mapping while claim
-// verdicts, gates, and work state live in internal/agentplatform. GRC policy
-// lifecycle adds only route/scope/error mapping; graph aggregation and response
-// shaping live in internal/grcpolicylifecycle.
-const bootstrapProductionGoLineBudget = 26268
+// and durable work contracts add HTTP and MCP request/resource mapping while
+// claim verdicts, gates, and work state live in internal/agentplatform. GRC
+// policy lifecycle adds route/scope/error mapping plus action and CSV export
+// adapters; graph aggregation, action event construction, audit row shaping,
+// and response shaping live in internal/grcpolicylifecycle.
+const bootstrapProductionGoLineBudget = 26425
 
 type bootstrapFileLineCount struct {
 	path  string

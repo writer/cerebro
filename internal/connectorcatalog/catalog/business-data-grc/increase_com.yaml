@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: Generated from an OpenAPI description.
+    description: "Collects event, account, digital wallet token, ach prenotification, OAuth connection, and event subscription from Increase API and projects them into the Cerebro graph as audit events, users, secrets, alerts, and assets for owner, account, evidence, and compliance context."
     display_name: Increase API
     id: builtin_catalog-increase_com
     ingest:

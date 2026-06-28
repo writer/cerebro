@@ -103,7 +103,7 @@ func ClassifyEntity(entityType string, attributes map[string]string) Classificat
 
 func ApplyEntityMetadata(entityType string, attributes map[string]string) map[string]string {
 	classification := ClassifyEntity(entityType, attributes)
-	next := make(map[string]string, len(attributes)+2)
+	next := make(map[string]string, len(attributes))
 	for key, value := range attributes {
 		next[key] = value
 	}

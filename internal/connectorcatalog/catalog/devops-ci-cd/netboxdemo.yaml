@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: API to access NetBox
+    description: "Collects cluster group, secret, connected device, and device role from NetBox and projects them into the Cerebro graph as groups, secrets, and assets for repository, build, deployment, and release context."
     display_name: NetBox
     id: builtin_catalog-netboxdemo
     resource_families:

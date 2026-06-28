@@ -17,7 +17,7 @@ entries:
       key: storeid
       label: Storeid
       required: true
-    description: "# The REST API of BeezUP system ## Overview The REST APIs provide programmatic access to read and write BeezUP data. Basically, with this API you will be able to do everything like you were with your browser on https://go.beezup.com !"
+    description: "Collects channelcatalog, offer, filter, alert, catalogcolumn, and category from BeezUP Merchant API and projects them into the Cerebro graph as audit events, policies, assets, and alerts for owner, account, evidence, and compliance context."
     display_name: BeezUP Merchant API
     id: builtin_catalog-beezup_com
     ingest:

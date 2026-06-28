@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "# Introduction The Rebilly API is built on HTTP. Our API is RESTful. It has predictable resource URLs. It returns HTTP response codes to indicate errors. It also accepts and returns JSON in the HTTP body. You can use your favorite HTTP/REST library for your programming language to use Rebilly's API, or you can use one of our SDKs (currently available in..."
+    description: "Collects customer timeline custom event, authentication token, bank account, and aml from Rebilly and projects them into the Cerebro graph as audit events, secrets, users, and assets for owner, account, evidence, and compliance context."
     display_name: Rebilly
     id: builtin_catalog-rebilly
     resource_families:

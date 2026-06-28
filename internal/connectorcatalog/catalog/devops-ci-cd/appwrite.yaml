@@ -17,7 +17,7 @@ entries:
       key: teamid
       label: Teamid
       required: true
-    description: Appwrite backend as a service cuts up to 70% of the time and costs required for building a modern application. We abstract and simplify common development tasks behind a REST APIs, to help you develop your app in a fast and secure way. For full API documentation and tutorials go to [https://appwrite.io/docs](https://appwrite.io/docs)
+    description: "Collects team, log, membership, and continent from Appwrite and projects them into the Cerebro graph as groups, audit events, group memberships, and assets for repository, build, deployment, and release context."
     display_name: Appwrite
     id: builtin_catalog-appwrite
     resource_families:

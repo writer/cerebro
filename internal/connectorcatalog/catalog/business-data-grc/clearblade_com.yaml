@@ -21,7 +21,7 @@ entries:
       key: collectionname
       label: Collectionname
       required: true
-    description: A friendly little API to help you interact with the ClearBlade platform.
+    description: "Collects system, user, deployment, connection, platform system, and audit from ClearBlade API and projects them into the Cerebro graph as audit events, users, deployments, and assets for owner, account, evidence, and compliance context."
     display_name: ClearBlade API
     id: builtin_catalog-clearblade_com
     ingest:

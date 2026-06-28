@@ -17,7 +17,7 @@ entries:
       key: id
       label: Id
       required: true
-    description: Cenit IO is an Open Platform for Data and Business Integration (iPaaS)
+    description: "Collects observer, connection role, webhook, connection, data type, and flow from Cenit IO - REST API Specification and projects them into the Cerebro graph as audit events, groups, and assets for owner, account, evidence, and compliance context."
     display_name: Cenit IO - REST API Specification
     id: builtin_catalog-cenit_io
     ingest:

@@ -1,11 +1,39 @@
 # Cerebro
 
-**Operations data platform for cloud, SaaS, identity, workflow, finding, compliance, and graph signals.**
+**Compliance superpowers for coding agents.**
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Cerebro ingests operational and security signals, turns them into source runtime events, claims, findings, reports, workflow events, compliance evidence, and graph context, then exposes that substrate through a Go CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
+Cerebro turns security, identity, cloud, SaaS, workflow, policy, and compliance signals into evidence-backed context that coding agents can query through a Go CLI, JSON HTTP, Connect RPC, SDK helpers, and MCP.
+
+Use it to help agents answer:
+
+- Can this change ship?
+- Which controls, policies, findings, or approvals apply?
+- What evidence already exists?
+- What remediation or next action is safe to propose?
+- Which systems, identities, and risks are connected?
+
+## Give Your Coding Agent Compliance Context
+
+The fastest path is to run the local onboarding flow, then hand the receipt to your agent:
+
+```bash
+make secure-business-demo
+```
+
+```text
+Use Cerebro as compliance context for this change.
+Read tmp/onboarding/e2e-receipt.json, then tell me which checks passed,
+which evidence exists, which controls apply, and what must happen before
+this can ship.
+
+Do not commit provider credentials, customer names, tenant-specific hostnames,
+account IDs, or live secret values.
+```
+
+For a live agent integration, connect your MCP client to `POST /api/v1/mcp` and expose Cerebro as the source for policy memory, compliance evidence, graph context, and safe action planning. See [Agent onboarding](docs/start/agent-onboarding.md), [MCP native Droid setup](docs/domains/mcp-droid-setup.md), and [Agent platform contract](docs/domains/agent-platform-contract.md).
 
 ## Start Here
 
@@ -42,7 +70,7 @@ docker compose up --build
 - A Go bootstrap service built around `net/http`, Connect RPC, and `cmd/cerebro`.
 - Built-in source integrations for cloud, SaaS, identity, endpoint, vulnerability, compliance, and workflow signals.
 - Source runtime sync, append-log replay, claim/finding/report workflows, compliance control coverage, and optional graph projection, query, and action tooling.
-- Optional MCP, graph-agent, and device-authenticated telemetry surfaces.
+- Optional MCP, graph-agent, and device-authenticated telemetry surfaces for agent-readable evidence and control context.
 - Policy and FindingRule YAML DSL catalogs, generated detection catalogs, SDK helpers, OpenAPI/Connect contracts, release artifacts, and local validation tooling.
 
 ## Choose A Path
@@ -51,6 +79,7 @@ docker compose up --build
 | --- | --- |
 | Get the shortest runnable path | [Quick reference](docs/start/quick-reference.md) |
 | Walk through a local end-to-end flow | [Getting started](docs/start/getting-started.md) |
+| Hand setup to a coding agent | [Agent onboarding](docs/start/agent-onboarding.md) |
 | Understand runtime shape and stores | [Architecture](docs/reference/architecture.md) |
 | Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
 | Host or operate Cerebro | [Hosting](docs/operations/hosting.md), [runtime profiles](docs/operations/runtime-profiles.md), [deployment readiness](docs/operations/deployment-readiness.md), [cloud deployment](docs/operations/cloud-deployment.md), [deployment examples](docs/operations/deployment-examples.md), and [operations runbook](docs/operations/operations-runbook.md) |
@@ -92,6 +121,9 @@ See [Non-goals](docs/engineering/non-goals.md) before changing storage shape, So
 ```bash
 make build          # compile ./bin/cerebro
 make serve-dev      # run the local server with acknowledged dev-mode opt-out
+make secure-business-demo  # run local security onboarding and write a receipt
+make agent-onboard  # run an onboarding plan and write a redacted receipt
+make agent-onboard-e2e  # run the Docker-backed local onboarding workflow
 make test           # go test ./...
 make check          # build, tests, lint, proto lint, structural checks, arch tests
 make verify         # CI-parity local verification

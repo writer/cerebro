@@ -115,11 +115,13 @@ rule coverage, evidence freshness, control status behavior, custom profile
 resolution, report metadata construction, and export rendering stay behind that
 domain package.
 
-The GRC policy lifecycle route adds a small HTTP adapter that resolves request
-scope, checks graph-query availability, and passes the graph store into
-`internal/grcpolicylifecycle`. Policy template aggregation, version and approval
-state, attestation coverage, exception queues, reminder shaping, and explicit
-policy-to-control/evidence mappings stay behind that domain package.
+The GRC policy lifecycle routes add small HTTP adapters that resolve request
+scope, check graph-query or append-log availability, and pass graph reads or
+action events into `internal/grcpolicylifecycle`. Policy template aggregation,
+version and approval state, attestation coverage, exception queues, reminder
+shaping, audit export rows, action event construction, and explicit
+policy-to-control/evidence mappings stay behind that domain package. Lifecycle
+mutations append normalized events and project graph state from those events.
 
 The GRC finding-trends route adds a small HTTP adapter that resolves request
 scope, parses the interval and window parameters, fans out per-tenant runtime
@@ -212,9 +214,10 @@ Outbound webhook delivery remains a governed event contract until backed by a
 source/runtime adapter and durable delivery store.
 
 Agent claim verification and agent work ledger semantics also live in
-`internal/agentplatform`. The bootstrap budget includes only authenticated MCP
-tool/resource mapping for the control-plane snapshot, claim verification request
-shape, tenant/URN authorization boundary, and durable work contract response.
+`internal/agentplatform`. The bootstrap budget includes only authenticated HTTP
+and MCP request/response mapping for the control-plane snapshot, claim
+verification request shape, tenant/URN authorization boundary, and durable work
+contract response.
 
 The append-log runtime replay index is populated by a global maintenance job
 whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap

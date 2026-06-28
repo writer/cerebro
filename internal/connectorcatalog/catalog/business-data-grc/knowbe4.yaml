@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: knowbe4
     display_name: KnowBe4
-    description: KnowBe4 connector definition catalog entry for high-value security awareness training, learner, and phishing campaign resources.
+    description: "Collects learners, groups, training enrollments, and phishing campaigns from KnowBe4 and projects them into the Cerebro graph as users, groups, audit events, and assets for owner, account, evidence, and compliance context."
     categories:
     - security_training
     - grc

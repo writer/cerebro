@@ -17,7 +17,7 @@ entries:
       key: networkid
       label: Networkid
       required: true
-    description: The Cisco Meraki Dashboard API is a modern REST API based on the OpenAPI specification.
+    description: "Collects eventtype, organization, merakiauthuser, and accesspolicy from Cisco Meraki and projects them into the Cerebro graph as audit events, groups, users, and policies for repository, build, deployment, and release context."
     display_name: Cisco Meraki
     id: builtin_catalog-meraki
     resource_families:

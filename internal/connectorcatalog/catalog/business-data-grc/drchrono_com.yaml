@@ -13,33 +13,22 @@ entries:
       requires_references: true
       scopes:
       - billing:patient-payment:read
-      - billing:patient-payment:write
       - billing:read
-      - billing:write
       - calendar:read
-      - calendar:write
       - clinical:read
-      - clinical:write
       - labs:read
-      - labs:write
       - messages:read
-      - messages:write
       - patients:read
       - patients:summary:read
-      - patients:summary:write
-      - patients:write
       - settings:read
-      - settings:write
       - tasks:read
-      - tasks:write
       - user:read
-      - user:write
       token_expiration_buffer_seconds: 300
       token_request_auth_method: client_secret_basic
       token_url: https://drchrono.com/o/token/
     categories:
     - saas
-    description: This document is intended as a detailed reference for the precise behavior of the drchrono API. If this is your first time using the API, start with our <a href="/api-docs-old/tutorial">tutorial</a>. If you are upgrading from a previous version, take a look at the changelog section.
+    description: "Collects patient risk assessment, comm log, care team member, user, implantable device, and patient payment log from Drchrono Com and projects them into the Cerebro graph as findings, audit events, group memberships, users, and assets for owner, account, evidence, and compliance context."
     display_name: Drchrono Com
     id: builtin_catalog-drchrono_com
     ingest:
@@ -79,7 +68,6 @@ entries:
       path: "/api/patient_risk_assessments"
       permissions_needed:
       - clinical:read
-      - clinical:write
       projection:
         fields:
           finding_id: id
@@ -124,7 +112,6 @@ entries:
       path: "/api/comm_logs"
       permissions_needed:
       - calendar:read
-      - calendar:write
       projection:
         fields:
           id: id
@@ -166,7 +153,6 @@ entries:
       path: "/api/care_team_members"
       permissions_needed:
       - clinical:read
-      - clinical:write
       projection:
         fields:
           id: id
@@ -249,7 +235,6 @@ entries:
       path: "/api/implantable_devices"
       permissions_needed:
       - clinical:read
-      - clinical:write
       projection:
         fields:
           id: id
@@ -293,7 +278,6 @@ entries:
       path: "/api/patient_payment_log"
       permissions_needed:
       - billing:read
-      - billing:write
       projection:
         fields:
           id: id
@@ -374,7 +358,6 @@ entries:
       path: "/api/allergies"
       permissions_needed:
       - clinical:read
-      - clinical:write
       projection:
         fields:
           id: id
@@ -416,7 +399,6 @@ entries:
       path: "/api/amendments"
       permissions_needed:
       - clinical:read
-      - clinical:write
       projection:
         fields:
           id: id
@@ -458,9 +440,7 @@ entries:
       path: "/api/appointments"
       permissions_needed:
       - calendar:read
-      - calendar:write
       - clinical:read
-      - clinical:write
       projection:
         fields:
           id: id
@@ -502,9 +482,7 @@ entries:
       path: "/api/appointment_profiles"
       permissions_needed:
       - calendar:read
-      - calendar:write
       - settings:read
-      - settings:write
       projection:
         fields:
           id: id
@@ -546,9 +524,7 @@ entries:
       path: "/api/appointment_templates"
       permissions_needed:
       - calendar:read
-      - calendar:write
       - settings:read
-      - settings:write
       projection:
         fields:
           id: id

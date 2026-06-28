@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: google_drive
     display_name: Google Drive
-    description: Google Drive connector definition catalog entry for high-value document, shared drive, and audit resources.
+    description: "Collects files, shared drives, and drive changes from Google Drive and projects them into the Cerebro graph as assets and audit events for workspace, document, message, and collaboration context."
     categories:
     - document_management
     - collaboration
