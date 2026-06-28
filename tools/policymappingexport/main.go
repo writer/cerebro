@@ -2300,8 +2300,13 @@ func controlEvidenceProfileApplies(profile controlEvidenceRequirementProfile, re
 	if selectorIsEmpty(selector) {
 		return false
 	}
-	if values := trimStrings(selector.Frameworks); len(values) != 0 && containsFold(values, ref.Framework) {
-		return true
+	if values := trimStrings(selector.Frameworks); len(values) != 0 {
+		if !containsFold(values, ref.Framework) {
+			return false
+		}
+		if len(trimStrings(selector.FamilyKeywords)) == 0 && len(trimStrings(selector.ControlIDPrefixes)) == 0 {
+			return true
+		}
 	}
 	if values := trimStrings(selector.FamilyKeywords); len(values) != 0 && containsAnyFold(searchText, values) {
 		return true
