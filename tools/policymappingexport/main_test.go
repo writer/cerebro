@@ -134,6 +134,20 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 	assertCellContains(t, controlHeader, cc66Row, "source_coverage_refs", "aws/s3_bucket")
 }
 
+func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4074")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "475")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "168")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "943")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "475")
+}
+
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
 	files, err := generateFiles(repoRoot(t))
 	if err != nil {
@@ -287,4 +301,17 @@ func findRowByColumns(t *testing.T, rows [][]string, matches map[int]string) []s
 	}
 	t.Fatalf("row with columns %#v not found", matches)
 	return nil
+}
+
+func assertOverviewMetric(t *testing.T, rows [][]string, metric string, want string) {
+	t.Helper()
+	for _, row := range rows {
+		if len(row) >= 2 && row[0] == metric {
+			if row[1] != want {
+				t.Fatalf("overview metric %q = %q, want %q", metric, row[1], want)
+			}
+			return
+		}
+	}
+	t.Fatalf("overview metric %q not found", metric)
 }
