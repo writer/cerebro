@@ -280,6 +280,44 @@ func TestValidateAcceptsProjectionRelationships(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsProjectionRelationshipsFromDeclarativeRuntimeAttributes(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID: "tenant-a",
+		SourceID: "example",
+		Auth:     AuthSpec{Model: "none"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "users",
+			Path:           "/v1/accounts/{account_id}/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          EventMappingSpec{Kind: "example.users", SchemaRef: "example/users/v1"},
+			Read:           &ResourceReadSpec{PathParams: []string{"account_id"}},
+			Config: &FamilyConfigSpec{
+				ConfigAttributes: map[string]string{"account_label": "account_label"},
+			},
+			Projection: &ProjectionSpec{
+				Template: "identity_user",
+				Relationships: []ProjectionRelationshipSpec{{
+					Relation: "belongs_to",
+					To: ProjectionEntitySpec{
+						EntityType:     "example.account",
+						URNKind:        "example_account",
+						IDAttributes:   []string{"account_id"},
+						LabelAttribute: "account_label",
+					},
+					MatchType: "configured_account",
+				}},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Validation.Status != ValidationReady {
+		t.Fatalf("validation status = %q, want ready: %#v", definition.Validation.Status, definition.Validation.Checks)
+	}
+}
+
 func TestValidateBlocksUnsafeProjectionRelationships(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID: "tenant-a",
@@ -552,9 +590,15 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		},
 		ResourceFamilies: []ResourceFamily{{
 			ID:             "users",
-			Path:           "/v1/users",
+			Path:           "/v1/accounts/{account_id}/users",
 			RecordSelector: "$.data[*]",
-			IDField:        "id",
+			Read: &ResourceReadSpec{
+				DetailPath:            "/v1/users/{id}",
+				AllowBareDetailRecord: true,
+				PathParams:            []string{"account_id", "account_id"},
+				MapRecords:            map[string]string{"": "ignored", "members": "items"},
+			},
+			IDField: "id",
 			Event: EventMappingSpec{
 				Kind:      "example.user",
 				SchemaRef: "example/user/v1",
@@ -563,9 +607,16 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 				Type:           "cursor",
 				CursorParam:    "cursor",
 				CursorJSONPath: "$.next_cursor",
+				NextCursorKeys: []string{"next_cursor", "next_cursor"},
+				HasMoreKey:     "has_more",
 			},
 			Incremental: &IncrementalSpec{
 				CursorField: "updated_at",
+			},
+			Config: &FamilyConfigSpec{
+				StaticQuery:      map[string]string{"include": "members", "empty": ""},
+				ConfigQuery:      map[string]string{"scope[]": "scopes"},
+				ConfigAttributes: map[string]string{"account_label": "account_label"},
 			},
 			Projection: &ProjectionSpec{
 				Template: "identity_user",
@@ -594,6 +645,19 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 	}
 	if got := definition.ResourceFamilies[0].Coverage[0].ID; got != "users_entity_family" {
 		t.Fatalf("coverage id = %q, want users_entity_family", got)
+	}
+	family := definition.ResourceFamilies[0]
+	if family.Read == nil || len(family.Read.PathParams) != 1 || family.Read.PathParams[0] != "account_id" {
+		t.Fatalf("read spec = %#v, want deduped account_id path param", family.Read)
+	}
+	if family.Read.MapRecords["members"] != "items" || len(family.Read.MapRecords) != 1 {
+		t.Fatalf("map records = %#v, want members->items", family.Read.MapRecords)
+	}
+	if family.Pagination == nil || len(family.Pagination.NextCursorKeys) != 1 || family.Pagination.NextCursorKeys[0] != "next_cursor" || family.Pagination.HasMoreKey != "has_more" {
+		t.Fatalf("pagination = %#v, want next cursor and has_more metadata", family.Pagination)
+	}
+	if family.Config == nil || family.Config.StaticQuery["include"] != "members" || family.Config.ConfigQuery["scope[]"] != "scopes" || family.Config.ConfigAttributes["account_label"] != "account_label" {
+		t.Fatalf("family config = %#v, want normalized config maps", family.Config)
 	}
 	coverage := definition.ResourceFamilies[0].Coverage[0]
 	if len(coverage.EvidenceTypes) != 1 || coverage.EvidenceTypes[0] != "identity_configuration" {
@@ -657,6 +721,51 @@ func TestClassifyReportsSupportedDefinition(t *testing.T) {
 	}
 	if len(report.MissingFeatures) != 0 {
 		t.Fatalf("missing features = %#v, want none", report.MissingFeatures)
+	}
+}
+
+func TestClassifySupportsSingletonAndMapRecordFamilies(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth:          AuthSpec{Model: "none"},
+		Transport: &TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &VerificationSpec{Path: "/v1/me"},
+		},
+		ResourceFamilies: []ResourceFamily{
+			{
+				ID:      "settings",
+				Path:    "/v1/settings",
+				IDField: "id",
+				Event:   EventMappingSpec{Kind: "example.settings", SchemaRef: "example/settings/v1"},
+				Read:    &ResourceReadSpec{Singleton: true},
+				Projection: &ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			},
+			{
+				ID:      "groups",
+				Path:    "/v1/groups",
+				Read:    &ResourceReadSpec{MapRecords: map[string]string{"groups": "members"}},
+				IDField: "id",
+				Event:   EventMappingSpec{Kind: "example.groups", SchemaRef: "example/groups/v1"},
+				Projection: &ProjectionSpec{
+					Template: "identity_group",
+				},
+				Coverage: []CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			},
+		},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if report.Verdict != SupportVerdictSupported {
+		t.Fatalf("verdict = %q, want supported; missing=%#v checks=%#v", report.Verdict, report.MissingFeatures, report.Checks)
 	}
 }
 
