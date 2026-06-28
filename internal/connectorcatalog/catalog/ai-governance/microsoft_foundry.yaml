@@ -1,0 +1,223 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            secret: true
+        model: api_key
+        token_header: api-key
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - help: Host name for the Foundry project endpoint.
+          key: endpoint
+          label: Foundry endpoint
+          required: true
+        - key: project_name
+          label: Project name
+          required: true
+      description: Collects agents, datasets, indexes, evaluations, and connections from Microsoft Foundry and projects them into the Cerebro graph as assets, audit events, and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Microsoft Foundry
+      id: builtin-microsoft-foundry
+      resource_families:
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - agents
+              high_value: true
+              id: agents
+              support: partial
+              title: Agents
+              type: deployment_state
+          event:
+            kind: microsoft_foundry.agents
+            required_payload_fields:
+              - id
+            schema_ref: microsoft_foundry/agents/v1
+            urn_kind: microsoft_foundry_agents
+          id: agents
+          id_field: id
+          label: Agents
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /agents
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.data[*]
+          static_query:
+            api-version: v1
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - datasets
+              high_value: true
+              id: datasets
+              support: partial
+              title: Datasets
+              type: entity_family
+          event:
+            kind: microsoft_foundry.datasets
+            required_payload_fields:
+              - id
+            schema_ref: microsoft_foundry/datasets/v1
+            urn_kind: microsoft_foundry_datasets
+          id: datasets
+          id_field: id
+          label: Datasets
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /datasets
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+          static_query:
+            api-version: v1
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - indexes
+              high_value: true
+              id: indexes
+              support: partial
+              title: Indexes
+              type: entity_family
+          event:
+            kind: microsoft_foundry.indexes
+            required_payload_fields:
+              - id
+            schema_ref: microsoft_foundry/indexes/v1
+            urn_kind: microsoft_foundry_indexes
+          id: indexes
+          id_field: id
+          label: Indexes
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /indexes
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+          static_query:
+            api-version: v1
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - evaluations
+              high_value: true
+              id: evaluations
+              support: partial
+              title: Evaluations
+              type: audit_event
+          event:
+            kind: microsoft_foundry.evaluations
+            required_payload_fields:
+              - id
+            schema_ref: microsoft_foundry/evaluations/v1
+            urn_kind: microsoft_foundry_evaluations
+          id: evaluations
+          id_field: id
+          label: Evaluations
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /evaluations
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+              name: name
+            template: audit_event
+          record_selector: $.data[*]
+          static_query:
+            api-version: v1
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - connections
+              high_value: true
+              id: connections
+              support: partial
+              title: Connections
+              type: entity_family
+          event:
+            kind: microsoft_foundry.connections
+            required_payload_fields:
+              - id
+            schema_ref: microsoft_foundry/connections/v1
+            urn_kind: microsoft_foundry_connections
+          id: connections
+          id_field: id
+          label: Connections
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /connections
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+          static_query:
+            api-version: v1
+      schema_version: cerebro.integration/v1
+      source_id: microsoft_foundry
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.endpoint}/api/projects/${config.project_name}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /agents?api-version=v1

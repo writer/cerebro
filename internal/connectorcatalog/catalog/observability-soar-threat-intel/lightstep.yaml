@@ -1,233 +1,237 @@
----
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-lightstep
-    tenant_id: builtin_catalog
-    source_id: lightstep
-    display_name: Lightstep
-    description: "Collects alerts, incidents, monitors, dashboards, and audit events from Lightstep and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context."
-    categories:
-    - saas
-    - observability_soar_threat_intel
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        label: Bearer token
-        secret: true
-        reference_only: true
-        required: true
-      requires_references: true
-    config_fields:
-    - key: base_url
-      label: API base URL
-      required: true
-      help: Tenant or regional API base URL.
-    transport:
-      base_url: "${config.base_url}"
-      verification:
-        method: GET
-        path: "/v1/me"
-        expect_status:
-        - 200
-    ingest:
-      mode: pull
-    resource_families:
-    - id: alerts
-      label: Alerts
-      path: "/v1/alerts"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      name_field: name
-      event:
-        kind: lightstep.alerts
-        schema_ref: lightstep/alerts/v1
-        required_payload_fields:
-        - id
-      projection:
-        template: alert
-        fields:
-          alert_id: id
-          alert_name: name
-          alert_severity: severity
-          alert_status: status
-      coverage:
-      - id: alerts
-        type: alert_state
-        title: Alerts
-        families:
-        - alerts
-        support: partial
-        high_value: true
-        evidence_types:
-        - security_monitoring
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-      default_enabled: true
-    - id: incidents
-      label: Incidents
-      path: "/v1/incidents"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      name_field: name
-      event:
-        kind: lightstep.incidents
-        schema_ref: lightstep/incidents/v1
-        required_payload_fields:
-        - id
-      projection:
-        template: finding
-        fields:
-          finding_id: id
-          title: title
-          severity: severity
-          status: status
-          resource_id: resource_id
-          resource_type: resource_type
-      coverage:
-      - id: incidents
-        type: finding
-        title: Incidents
-        families:
-        - incidents
-        support: partial
-        high_value: true
-        evidence_types:
-        - finding_snapshot
-        control_domains:
-        - incident_response
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-      default_enabled: true
-    - id: monitors
-      label: Monitors
-      path: "/v1/monitors"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      name_field: name
-      event:
-        kind: lightstep.monitors
-        schema_ref: lightstep/monitors/v1
-        required_payload_fields:
-        - id
-      projection:
-        template: asset
-        fields:
-          id: id
-          name: name
-          resource_id: id
-          resource_name: name
-          resource_type: monitor
-      coverage:
-      - id: monitors
-        type: entity_family
-        title: Monitors
-        families:
-        - monitors
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-      default_enabled: true
-    - id: dashboards
-      label: Dashboards
-      path: "/v1/dashboards"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      name_field: name
-      event:
-        kind: lightstep.dashboards
-        schema_ref: lightstep/dashboards/v1
-        required_payload_fields:
-        - id
-      projection:
-        template: asset
-        fields:
-          id: id
-          name: name
-          resource_id: id
-          resource_name: name
-          resource_type: dashboard
-      coverage:
-      - id: dashboards
-        type: entity_family
-        title: Dashboards
-        families:
-        - dashboards
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-      default_enabled: true
-    - id: audit_events
-      label: Audit events
-      path: "/v1/audit_events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      name_field: name
-      event:
-        kind: lightstep.audit_events
-        schema_ref: lightstep/audit_events/v1
-        required_payload_fields:
-        - id
-      projection:
-        template: audit_event
-        fields:
-          id: id
-          event_type: event_type
-          actor_id: actor_id
-          actor_email: actor_email
-          resource_id: resource_id
-          resource_type: resource_type
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-      default_enabled: true
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+        - observability_soar_threat_intel
+      config_fields:
+        - help: Tenant or regional API base URL.
+          key: base_url
+          label: API base URL
+          required: true
+      description: Collects alerts, incidents, monitors, dashboards, and audit events from Lightstep and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context.
+      display_name: Lightstep
+      id: builtin-lightstep
+      ingest:
+        mode: pull
+      resource_families:
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - security_monitoring
+              families:
+                - alerts
+              high_value: true
+              id: alerts
+              support: partial
+              title: Alerts
+              type: alert_state
+          default_enabled: true
+          event:
+            kind: lightstep.alerts
+            required_payload_fields:
+              - id
+            schema_ref: lightstep/alerts/v1
+            urn_kind: lightstep_alerts
+          id: alerts
+          id_field: id
+          label: Alerts
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/alerts
+          projection:
+            fields:
+              alert_id: id
+              alert_name: name
+              alert_severity: severity
+              alert_status: status
+            template: alert
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - incident_response
+              evidence_types:
+                - finding_snapshot
+              families:
+                - incidents
+              high_value: true
+              id: incidents
+              support: partial
+              title: Incidents
+              type: finding
+          default_enabled: true
+          event:
+            kind: lightstep.incidents
+            required_payload_fields:
+              - id
+            schema_ref: lightstep/incidents/v1
+            urn_kind: lightstep_incidents
+          id: incidents
+          id_field: id
+          label: Incidents
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/incidents
+          projection:
+            fields:
+              finding_id: id
+              resource_id: resource_id
+              resource_type: resource_type
+              severity: severity
+              status: status
+              title: title
+            template: finding
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - monitors
+              high_value: true
+              id: monitors
+              support: partial
+              title: Monitors
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: lightstep.monitors
+            required_payload_fields:
+              - id
+            schema_ref: lightstep/monitors/v1
+            urn_kind: lightstep_monitors
+          id: monitors
+          id_field: id
+          label: Monitors
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/monitors
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: monitor
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - dashboards
+              high_value: true
+              id: dashboards
+              support: partial
+              title: Dashboards
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: lightstep.dashboards
+            required_payload_fields:
+              - id
+            schema_ref: lightstep/dashboards/v1
+            urn_kind: lightstep_dashboards
+          id: dashboards
+          id_field: id
+          label: Dashboards
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/dashboards
+          projection:
+            fields:
+              id: id
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: dashboard
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: lightstep.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: lightstep/audit_events/v1
+            urn_kind: lightstep_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/audit_events
+          projection:
+            fields:
+              actor_email: actor_email
+              actor_id: actor_id
+              event_type: event_type
+              id: id
+              resource_id: resource_id
+              resource_type: resource_type
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: lightstep
+      tenant_id: builtin_catalog
+      transport:
+        base_url: ${config.base_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/me

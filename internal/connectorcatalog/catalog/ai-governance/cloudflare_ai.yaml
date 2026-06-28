@@ -1,0 +1,263 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: API token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: account_id
+          label: Account ID
+          required: true
+        - help: Required for gateway-scoped provider config, evaluation, and log families.
+          key: gateway_id
+          label: AI Gateway ID
+          required: true
+      description: Collects Workers AI models, AI Gateway configuration, gateway provider configs, gateway evaluations, gateway logs, and Vectorize indexes from Cloudflare.
+      display_name: Cloudflare AI
+      id: builtin-cloudflare-ai
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: cloudflare_ai.model_catalog
+            required_payload_fields:
+              - id
+            schema_ref: cloudflare_ai/model_catalog/v1
+            urn_kind: cloudflare_ai_model_catalog
+          id: model_catalog
+          id_field: id
+          label: Model catalog
+          method: GET
+          name_field: name
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/${config.account_id}/ai/models/search
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+          static_query:
+            format: openrouter
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - configuration_state
+              families:
+                - ai_gateways
+              high_value: true
+              id: ai_gateways
+              support: partial
+              title: AI gateways
+              type: deployment_state
+          event:
+            kind: cloudflare_ai.ai_gateways
+            required_payload_fields:
+              - id
+            schema_ref: cloudflare_ai/ai_gateways/v1
+            urn_kind: cloudflare_ai_ai_gateways
+          id: ai_gateways
+          id_field: id
+          label: AI gateways
+          method: GET
+          name_field: id
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/${config.account_id}/ai-gateway/gateways
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: id
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.result[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - gateway_provider_configs
+              high_value: true
+              id: gateway_provider_configs
+              support: partial
+              title: Gateway provider configs
+              type: app_entitlement
+          event:
+            kind: cloudflare_ai.gateway_provider_configs
+            required_payload_fields:
+              - id
+            schema_ref: cloudflare_ai/gateway_provider_configs/v1
+            urn_kind: cloudflare_ai_gateway_provider_configs
+          id: gateway_provider_configs
+          id_field: id
+          label: Gateway provider configs
+          method: GET
+          name_field: alias
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/provider_configs
+          projection:
+            fields:
+              secret_id: id
+              secret_name: alias
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.result[*]
+        - coverage:
+            - control_domains:
+                - security_operations
+              evidence_types:
+                - configuration_state
+              families:
+                - gateway_evaluations
+              high_value: true
+              id: gateway_evaluations
+              support: partial
+              title: Gateway evaluations
+              type: lifecycle_state
+          event:
+            kind: cloudflare_ai.gateway_evaluations
+            required_payload_fields:
+              - id
+            schema_ref: cloudflare_ai/gateway_evaluations/v1
+            urn_kind: cloudflare_ai_gateway_evaluations
+          id: gateway_evaluations
+          id_field: id
+          label: Gateway evaluations
+          method: GET
+          name_field: name
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/evaluations
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_status: policy_status|status|state|enabled
+              policy_type: policy_type|type|kind|category
+            template: policy
+          record_selector: $.result[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - gateway_logs
+              high_value: true
+              id: gateway_logs
+              support: partial
+              title: Gateway logs
+              type: audit_event
+          event:
+            kind: cloudflare_ai.gateway_logs
+            required_payload_fields:
+              - id
+            schema_ref: cloudflare_ai/gateway_logs/v1
+            urn_kind: cloudflare_ai_gateway_logs
+          id: gateway_logs
+          id_field: id
+          label: Gateway logs
+          method: GET
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/logs
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.result[*]
+          updated_at_field: created_at
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - vectorize_indexes
+              high_value: true
+              id: vectorize_indexes
+              support: partial
+              title: Vectorize indexes
+              type: entity_family
+          event:
+            kind: cloudflare_ai.vectorize_indexes
+            required_payload_fields:
+              - name
+            schema_ref: cloudflare_ai/vectorize_indexes/v1
+            urn_kind: cloudflare_ai_vectorize_indexes
+          id: vectorize_indexes
+          id_field: name
+          label: Vectorize indexes
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /accounts/${config.account_id}/vectorize/v2/indexes
+          projection:
+            fields:
+              resource_id: name
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.result[*]
+      schema_version: cerebro.integration/v1
+      source_id: cloudflare_ai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.cloudflare.com/client/v4
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /accounts/${config.account_id}/ai/models/search

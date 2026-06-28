@@ -30,7 +30,7 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 				Status:           StatusNeedsAuthExtension,
 				ClassifierOutput: "supported",
 				SourcegenError:   "auth model requires an extension",
-				Definition: reviewDefinition("azure_com", "Azure", []connectordefinitions.ResourceFamily{
+				Definition: reviewDefinition("azure_com", "Azure REST API", []connectordefinitions.ResourceFamily{
 					reviewFamily("users", "identity_user", true),
 					{ID: "roles", Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "app_entitlement", Support: "partial"}}},
 				}),
@@ -49,6 +49,9 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 	if !hasCleanupFinding(report, "azure_com", "source_id_cleanup") {
 		t.Fatalf("cleanup findings = %#v, want azure_com source_id_cleanup", report.CleanupFindings)
 	}
+	if !hasCleanupFinding(report, "azure_com", "display_name_cleanup") {
+		t.Fatalf("cleanup findings = %#v, want azure_com display_name_cleanup", report.CleanupFindings)
+	}
 	if !hasQueue(report, "sourcegen_ready", "azure") {
 		t.Fatalf("promotion queues = %#v, want azure in sourcegen_ready", report.PromotionQueues)
 	}
@@ -60,6 +63,42 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 	}
 	if !hasQuestion(report, "azure_com", "source_id_cleanup") {
 		t.Fatalf("questions = %#v, want azure_com source_id_cleanup", report.Questions)
+	}
+}
+
+func TestReviewAnalysisFlagsScrapedSourceIdentity(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{
+				Path:         "business/akeneo_com.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("akeneo_com", "Akeneo PIM REST API", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("products", "asset"),
+				}),
+			},
+			{
+				Path:         "business/monday_com.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("monday_com", "monday.com", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("boards", "asset"),
+				}),
+			},
+		},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	if !hasCleanupFinding(report, "akeneo_com", "source_id_cleanup") {
+		t.Fatalf("cleanup findings = %#v, want akeneo_com source_id_cleanup", report.CleanupFindings)
+	}
+	if !hasCleanupFinding(report, "akeneo_com", "display_name_cleanup") {
+		t.Fatalf("cleanup findings = %#v, want akeneo_com display_name_cleanup", report.CleanupFindings)
+	}
+	if hasCleanupFinding(report, "monday_com", "source_id_cleanup") {
+		t.Fatalf("cleanup findings = %#v, did not expect monday.com source cleanup", report.CleanupFindings)
 	}
 }
 
@@ -76,6 +115,12 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 				NextAction: "Generate the runtime package.",
 			}},
 		}},
+		FidelityQueue: []FidelityCandidate{{
+			SourceID:   "okta",
+			Score:      70,
+			Missing:    []string{"family:users:event_contract"},
+			NextAction: "Add event schema fields.",
+		}},
 		Questions: []ReviewQuestion{{
 			SourceID:   "okta",
 			Category:   "graph_projection",
@@ -86,7 +131,7 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 	}
 
 	markdown := RenderReviewMarkdown(report, 10)
-	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Review Q&A", "Do users project?"} {
+	for _, want := range []string{"# Connector Catalog Review", "## Promotion Queues", "## Fidelity Queue", "family:users:event_contract", "## Review Q&A", "Do users project?"} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, markdown)
 		}
@@ -122,6 +167,51 @@ func TestReviewAnalysisFlagsFamiliesWithoutCoverageIndividually(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisBuildsFidelityQueue(t *testing.T) {
+	deepDefinition := reviewDefinition("deep", "Deep", []connectordefinitions.ResourceFamily{
+		reviewDetailedFamily("users", "identity_user"),
+		reviewDetailedFamily("groups", "identity_group"),
+	})
+	deepDefinition.Description = "Collects users and groups from Deep and projects them into the graph with evidence, inventory, access, and review context for operators."
+	deepDefinition.ScopeOptions = []connectordefinitions.ScopeOption{
+		{ID: "users", Label: "Users", Families: []string{"users"}, DefaultEnabled: true},
+		{ID: "groups", Label: "Groups", Families: []string{"groups"}, DefaultEnabled: true},
+	}
+	deepDefinition.Transport.Verification.ExpectStatus = []int{200}
+	shallowDefinition := reviewDefinition("shallow", "Shallow", []connectordefinitions.ResourceFamily{
+		{ID: "records", Projection: &connectordefinitions.ProjectionSpec{Template: "asset"}},
+	})
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{Path: "identity/deep.yaml", Status: StatusGenerateable, Generateable: true, Definition: deepDefinition},
+			{Path: "identity/shallow.yaml", Status: StatusGenerateable, Generateable: true, Definition: shallowDefinition},
+		},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	if report.Summary.HighFidelitySources != 1 {
+		t.Fatalf("high fidelity sources = %d, want 1", report.Summary.HighFidelitySources)
+	}
+	if report.Summary.NeedsFidelityReview != 1 {
+		t.Fatalf("needs fidelity review = %d, want 1", report.Summary.NeedsFidelityReview)
+	}
+	if _, ok := fidelityFor(report, "deep"); ok {
+		t.Fatalf("fidelity queue = %#v, did not expect deep source", report.FidelityQueue)
+	}
+	candidate, ok := fidelityFor(report, "shallow")
+	if !ok {
+		t.Fatalf("fidelity queue = %#v, want shallow source", report.FidelityQueue)
+	}
+	if candidate.Score >= report.Summary.FidelityBaselineScore {
+		t.Fatalf("shallow score = %d, want below baseline %d", candidate.Score, report.Summary.FidelityBaselineScore)
+	}
+	if !hasQuestion(report, "shallow", "fidelity") {
+		t.Fatalf("questions = %#v, want shallow fidelity question", report.Questions)
+	}
+}
+
 func reviewDefinition(sourceID string, displayName string, families []connectordefinitions.ResourceFamily) connectordefinitions.Definition {
 	return connectordefinitions.Definition{
 		SourceID:         sourceID,
@@ -130,6 +220,49 @@ func reviewDefinition(sourceID string, displayName string, families []connectord
 		Auth:             connectordefinitions.AuthSpec{Model: "bearer_token"},
 		Transport:        &connectordefinitions.TransportSpec{Verification: &connectordefinitions.VerificationSpec{Path: "/healthz"}},
 		ResourceFamilies: families,
+	}
+}
+
+func reviewDetailedFamily(id string, template string) connectordefinitions.ResourceFamily {
+	return connectordefinitions.ResourceFamily{
+		ID:             id,
+		Label:          id,
+		Path:           "/v1/" + id,
+		Method:         "GET",
+		RecordSelector: "$.data[*]",
+		IDField:        "id",
+		NameField:      "name",
+		Event: connectordefinitions.EventMappingSpec{
+			Kind:                  "deep." + id,
+			SchemaRef:             "deep/" + id + "/v1",
+			URNKind:               "deep_" + id,
+			RequiredPayloadFields: []string{"id"},
+		},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: template,
+			Fields: map[string]string{
+				"id":   "id",
+				"name": "name",
+			},
+		},
+		Coverage: []connectordefinitions.CoverageDimensionSpec{{
+			ID:             id,
+			Type:           "entity_family",
+			Title:          id,
+			Families:       []string{id},
+			Support:        "partial",
+			HighValue:      true,
+			EvidenceTypes:  []string{"source_snapshot"},
+			ControlDomains: []string{"asset_inventory"},
+		}},
+		Pagination: &connectordefinitions.PaginationSpec{
+			Type:           "cursor",
+			CursorParam:    "cursor",
+			CursorJSONPath: "$.next_cursor",
+			PageSizeParam:  "limit",
+			PageSize:       100,
+		},
+		DefaultEnabled: true,
 	}
 }
 
@@ -154,6 +287,15 @@ func hasCleanupFinding(report ReviewReport, sourceID string, category string) bo
 		}
 	}
 	return false
+}
+
+func fidelityFor(report ReviewReport, sourceID string) (FidelityCandidate, bool) {
+	for _, candidate := range report.FidelityQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return FidelityCandidate{}, false
 }
 
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {

@@ -1,113 +1,134 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-segment
-    tenant_id: builtin_catalog
-    source_id: segment
-    display_name: Segment
-    description: "Collects workspaces, IAM users, and sources from Segment and projects them into the Cerebro graph as assets and users for owner, account, evidence, and compliance context."
-    categories:
-    - data
-    - customer_data
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.segmentapis.com
-      verification:
-        method: GET
-        path: "/workspaces"
-        expect_status:
-        - 200
-    resource_families:
-    - id: workspaces
-      label: Workspaces
-      path: "/workspaces"
-      method: GET
-      record_selector: "$.workspaces[*]"
-      id_field: id
-      event:
-        kind: segment.workspaces
-        schema_ref: segment/workspaces/v1
-      projection:
-        template: asset
-      coverage:
-      - id: workspaces
-        type: entity_family
-        title: Workspaces
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.pagination.next"
-        page_size_param: count
-        page_size: 100
-    - id: users
-      label: IAM users
-      path: "/users"
-      method: GET
-      record_selector: "$.users[*]"
-      id_field: id
-      event:
-        kind: segment.users
-        schema_ref: segment/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: IAM users
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.pagination.next"
-        page_size_param: count
-        page_size: 100
-    - id: sources
-      label: Sources
-      path: "/sources"
-      method: GET
-      record_selector: "$.sources[*]"
-      id_field: id
-      event:
-        kind: segment.sources
-        schema_ref: segment/sources/v1
-      projection:
-        template: asset
-      coverage:
-      - id: sources
-        type: entity_family
-        title: Sources
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.pagination.next"
-        page_size_param: count
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - data
+        - customer_data
+      description: Collects workspaces, IAM users, and sources from Segment and projects them into the Cerebro graph as assets and users for owner, account, evidence, and compliance context.
+      display_name: Segment
+      id: builtin-segment
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: workspaces
+              support: partial
+              title: Workspaces
+              type: entity_family
+          event:
+            kind: segment.workspaces
+            required_payload_fields:
+              - id
+            schema_ref: segment/workspaces/v1
+            urn_kind: segment_workspaces
+          id: workspaces
+          id_field: id
+          label: Workspaces
+          method: GET
+          pagination:
+            cursor_json_path: $.pagination.next
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: count
+            type: cursor
+          path: /workspaces
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.workspaces[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: IAM users
+              type: entity_family
+          event:
+            kind: segment.users
+            required_payload_fields:
+              - id
+            schema_ref: segment/users/v1
+            urn_kind: segment_users
+          id: users
+          id_field: id
+          label: IAM users
+          method: GET
+          pagination:
+            cursor_json_path: $.pagination.next
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: count
+            type: cursor
+          path: /users
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.users[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: sources
+              support: partial
+              title: Sources
+              type: entity_family
+          event:
+            kind: segment.sources
+            required_payload_fields:
+              - id
+            schema_ref: segment/sources/v1
+            urn_kind: segment_sources
+          id: sources
+          id_field: id
+          label: Sources
+          method: GET
+          pagination:
+            cursor_json_path: $.pagination.next
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: count
+            type: cursor
+          path: /sources
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.sources[*]
+      schema_version: cerebro.integration/v1
+      source_id: segment
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.segmentapis.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /workspaces
