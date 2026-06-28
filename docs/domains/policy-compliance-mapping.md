@@ -176,7 +176,7 @@ Use the default sheets for audit review packets. Use the non-default sheets when
 
 ## Evidence Requirements
 
-`control_evidence_requirements.yaml` defines reusable requirement profiles. A profile can apply by framework, control family or title keyword, or control ID prefix. When no specialized profile applies, the baseline control-review profile applies so every cataloged framework control has at least one evidence requirement.
+`control_evidence_requirements.yaml` defines reusable requirement profiles. A profile can apply by framework, control family or title keyword, or control ID prefix. When a profile combines frameworks with keywords or prefixes, the framework list gates the match and the keyword or prefix narrows it. Multiple specialized profiles can apply to the same control; when none apply, the baseline control-review profile applies so every cataloged framework control has at least one evidence requirement.
 
 Each requirement declares:
 
