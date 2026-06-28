@@ -1,6 +1,8 @@
 # Agent Onboarding
 
-Use this when someone wants a coding agent to set up Cerebro, prove the basic security path works, and return a receipt.
+Use this when someone wants to give a coding agent compliance superpowers with Cerebro.
+
+The flow sets up local Cerebro context, proves the basic security and compliance path works, and returns a receipt the agent can use before it reviews, changes, or ships code.
 
 The first run does not need provider credentials. It starts Cerebro locally, creates a demo runtime, writes two posture claims, checks graph ingest, checks compliance coverage, and saves a receipt.
 
@@ -28,7 +30,7 @@ The receipt answers the first operator questions:
 ## Copy This Prompt
 
 ```text
-I want to use Cerebro to secure my business.
+I want to use Cerebro as compliance context for my coding agent.
 
 Start with the local demo:
 make secure-business-demo
@@ -37,10 +39,12 @@ Then read tmp/onboarding/e2e-receipt.json.
 
 Tell me:
 - receipt status
+- whether this Cerebro setup is ready to answer ship/no-ship questions
 - source runtime ids
+- available compliance evidence and control coverage
 - failed checks, if any
 - required secret names
-- next actions before I connect real business systems
+- next actions before I connect real business systems or ask the agent to review a real PR
 
 Do not commit provider credentials, customer names, tenant-specific hostnames, account IDs, or live secret values.
 Use env: references for every secret-bearing value.

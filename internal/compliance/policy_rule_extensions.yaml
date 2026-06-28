@@ -29,6 +29,12 @@ evidence_modes:
       - examine
       - interview
     auditor_guidance: Confirm the attestation owner, approval trail, review date, and supporting document evidence.
+  event:
+    evidence_type: source_event
+    assessment_methods:
+      - examine
+      - test
+    auditor_guidance: Review the normalized event, affected subject, current state, owner, and any linked remediation evidence before relying on the finding.
 domains:
   ai:
     evidence_type: ai_governance
@@ -62,6 +68,14 @@ domains:
     evidence_type: attack_path_context
     risk_statement: Correlated resource context indicates a control weakness that may increase privilege, exposure, or data-risk impact.
     remediation_intent: Remediate the underlying resource state, reduce the correlated attack path, and retain graph/evidence context for review.
+  cloud:
+    evidence_type: cloud_configuration
+    risk_statement: Cloud exposure, identity, or resource posture may not satisfy the mapped security or compliance control.
+    remediation_intent: Update the cloud resource or identity state, validate effective access or exposure, and retain provider evidence.
+  collaboration:
+    evidence_type: collaboration_control
+    risk_statement: Collaboration access, sharing, authentication, or application controls may not provide sufficient collaboration evidence.
+    remediation_intent: Update collaboration user, channel, app, sharing, or authentication settings and retain admin evidence.
   cicd:
     evidence_type: delivery_pipeline_control
     risk_statement: Build, deployment, or release controls may allow unauthorized changes, secret exposure, or unreviewed execution.
@@ -97,6 +111,13 @@ domains:
     evidence_type: source_control_governance
     risk_statement: Source control, dependency, repository, or code-security evidence may not satisfy change or vulnerability controls.
     remediation_intent: Update repository controls, remediate the alert or configuration, and retain repository evidence.
+  grc:
+    evidence_type: governance_risk_compliance
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: Governance, risk, compliance, or control-owner evidence may be incomplete for the assessment period.
+    remediation_intent: Update the control record, owner, test, review, or linked evidence and retain approval or exception details.
   hipaa:
     evidence_type: regulated_data_control
     assessment_methods:
@@ -115,6 +136,21 @@ domains:
     evidence_type: identity_governance
     risk_statement: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.
     remediation_intent: Correct the identity or entitlement state, revoke inappropriate access, and retain access-review or system evidence.
+  incident_response:
+    evidence_type: incident_response_control
+    assessment_methods:
+      - examine
+      - interview
+      - test
+    risk_statement: Incident response, escalation, or case-handling evidence may not show timely triage, containment, or owner follow-up.
+    remediation_intent: Complete triage or escalation, document containment or case closure, and retain incident evidence.
+  integration:
+    evidence_type: integration_control
+    assessment_methods:
+      - examine
+      - test
+    risk_statement: Source integration, workflow, or coordination evidence may not show that the control signal is complete and actionable.
+    remediation_intent: Restore the integration or workflow state, validate the signal path, and retain test evidence.
   kubernetes:
     evidence_type: workload_configuration
     risk_statement: Kubernetes workload, network, or RBAC configuration may not satisfy workload security controls.
@@ -190,4 +226,50 @@ domains:
       - interview
     risk_statement: Support SLA or customer-response evidence may indicate an unmanaged operational control gap.
     remediation_intent: Update the ticket, complete customer action, and retain SLA review evidence.
+finding_domains:
+  findings:
+    cerebro-high-risk-api-access: api
+    slack-admin-without-sso: collaboration
+    slack-app-bot-token-unreviewed: collaboration
+    slack-external-shared-channel-unreviewed: collaboration
+    slack-guest-user-no-expiry: collaboration
+  packs:
+    anthropic: secrets
+    archetype: vulnerability
+    aurelius: vulnerability
+    backstage: org
+    cloudflare: network
+    cosmo: integration
+    data: dspm
+    duo: identity
+    email_domain: network
+    evidence_cas: compliance
+    grc: grc
+    kandji: endpoint
+    kolide: endpoint
+    openai: secrets
+    pagerduty: incident_response
+    panopticon: incident_response
+    sdk: integration
+    security_reviewer: cicd
+    security_tooling_map: grc
+    slack: collaboration
+    tailscale: network
+    trivy: vulnerability
+    trusted_endpoint: endpoint
+    vulnview: vulnerability
+  sources:
+    asset: dspm
+    graph: grc
+  tags:
+    api-key: secrets
+    credential: secrets
+    endpoint: endpoint
+    evidence-cas: compliance
+    incident-response: incident_response
+    integration: integration
+    mfa: identity
+    security-operations: incident_response
+    vulnerability: vulnerability
 policies: {}
+findings: {}

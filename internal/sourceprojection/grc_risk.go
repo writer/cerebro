@@ -6,47 +6,51 @@ import (
 )
 
 func grcRiskScenarioProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
+	ctx, err := newGRCProjectionContext(event)
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
-	riskID := firstAttribute(attrs, "risk_id", "external_id")
+	riskID := firstAttribute(ctx.attrs, "risk_id", "risk_register_id", "external_id")
 	if riskID == "" {
 		return nil, nil, nil
 	}
-	provider := grcProvider(attrs)
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	riskURN := projectionURN(tenantID, "claim", provider, "risk_scenario", riskID)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        riskURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: "claim",
-		Label:      firstAttribute(attrs, "description", "risk_id"),
-		Attributes: grcAttributes(attrs, map[string]string{
-			"claim_type":    "risk_scenario",
-			"predicate":     firstAttribute(attrs, "description"),
-			"source_system": provider,
-			"status":        firstAttribute(attrs, "review_status"),
-		}),
-	})
-	if owner := firstAttribute(attrs, "owner"); owner != "" {
-		ownerURN := projectionURN(tenantID, "contact", provider, "owner", owner)
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        ownerURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "contact",
-			Label:      owner,
-			Attributes: map[string]string{"source_system": provider, "owner": owner},
-		})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), riskURN, ownerURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
-		addGRCRiskOwnerEmailLink(entities, links, tenantID, event.GetSourceId(), event, ownerURN, owner)
+	riskURN := projectionURN(ctx.tenantID, "claim", ctx.provider, "risk_scenario", riskID)
+	ctx.addResourceEntity(
+		riskURN,
+		"claim",
+		firstAttribute(ctx.attrs, "title", "description", "risk_statement", "risk_id"),
+		map[string]string{
+			"claim_type":          "risk_scenario",
+			"impact":              firstAttribute(ctx.attrs, "impact", "impact_level"),
+			"inherent_risk_level": firstAttribute(ctx.attrs, "inherent_risk_level", "inherent_risk", "risk_level"),
+			"likelihood":          firstAttribute(ctx.attrs, "likelihood", "likelihood_level"),
+			"predicate":           firstAttribute(ctx.attrs, "risk_statement", "description"),
+			"residual_risk_level": firstAttribute(ctx.attrs, "residual_risk_level", "residual_risk"),
+			"review_due_at":       firstAttribute(ctx.attrs, "review_due_at", "next_review_due_at", "due_at"),
+			"risk_category":       firstAttribute(ctx.attrs, "risk_category", "category", "domain"),
+			"risk_id":             riskID,
+			"source_system":       ctx.provider,
+			"status":              firstAttribute(ctx.attrs, "review_status", "risk_status", "status"),
+			"treatment":           firstAttribute(ctx.attrs, "treatment", "treatment_plan", "response", "mitigation"),
+			"treatment_due_at":    firstAttribute(ctx.attrs, "treatment_due_at", "mitigation_due_at", "target_due_at"),
+		},
+	)
+	if owner := firstAttribute(ctx.attrs, "owner", "risk_owner", "owner_email"); owner != "" {
+		ownerURN := projectionURN(ctx.tenantID, "contact", ctx.provider, "owner", owner)
+		ctx.addReferenceEntity(ownerURN, "contact", owner, map[string]string{"source_system": ctx.provider, "owner": owner})
+		ctx.addEventLink(riskURN, ownerURN, relationAssignedTo)
+		addGRCRiskOwnerEmailLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ownerURN, owner)
 	}
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
-	return projectedEntities, projectedLinks, nil
+	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "risk_owner_user_id"))
+	addGRCPolicyLifecycleSubjectLinks(ctx, riskURN, firstAttribute(ctx.attrs, "policy_id"), firstAttribute(ctx.attrs, "policy_version_id", "version_id"))
+	addGRCControlAssociationLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, ctx.provider, relationAssociatedWith, "grc_risk_scenario")
+	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, ctx.provider, ctx.attrs)
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, ctx.provider, ctx.attrs)
+	addGRCTargetReferenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, ctx.provider, ctx.attrs, relationTargeted, "grc_risk_scenario")
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, "grc_risk_category", firstAttribute(ctx.attrs, "risk_category", "category", "domain"))
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, riskURN, "grc_risk_level", firstAttribute(ctx.attrs, "residual_risk_level", "residual_risk", "inherent_risk_level", "inherent_risk", "risk_level"))
+	entities, links := ctx.done()
+	return entities, links, nil
 }
 
 func addGRCRiskOwnerEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, contactURN string, owner string) {

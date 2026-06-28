@@ -1224,16 +1224,20 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		CatalogSourcePath     string                        `json:"catalog_source_path"`
 		DefinitionOrigin      string                        `json:"definition_origin"`
 		ReadinessStage        string                        `json:"readiness_stage"`
+		ValidationGrade       string                        `json:"validation_grade"`
+		Cataloged             bool                          `json:"cataloged"`
+		Callable              bool                          `json:"callable"`
 		IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth"`
 		AccessStatus          string                        `json:"access_status"`
 		SetupAllowed          bool                          `json:"setup_allowed"`
 		Requestable           bool                          `json:"requestable"`
 	}
 	var payload struct {
-		Connectors          []catalogConnector `json:"connectors"`
-		GeneratedAt         string             `json:"generated_at"`
-		CatalogVersion      string             `json:"catalog_version"`
-		CatalogSourceCommit string             `json:"catalog_source_commit"`
+		Connectors          []catalogConnector     `json:"connectors"`
+		Counts              connectorLibraryCounts `json:"counts"`
+		GeneratedAt         string                 `json:"generated_at"`
+		CatalogVersion      string                 `json:"catalog_version"`
+		CatalogSourceCommit string                 `json:"catalog_source_commit"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -1243,6 +1247,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	}
 	if len(payload.Connectors) < 109 {
 		t.Fatalf("connectors len = %d, want fixture source plus 108 catalog definitions", len(payload.Connectors))
+	}
+	if payload.Counts.Total != len(payload.Connectors) || payload.Counts.Cataloged == 0 || payload.Counts.Callable == payload.Counts.Cataloged {
+		t.Fatalf("counts = %#v for %d connectors, want distinct cataloged and callable counts", payload.Counts, len(payload.Connectors))
 	}
 	bySourceID := map[string]catalogConnector{}
 	for _, connector := range payload.Connectors {
@@ -1263,6 +1270,13 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	}
 	if jumpcloud.AuthModel != "api_key" || jumpcloud.VerificationEndpoint == "" {
 		t.Fatalf("jumpcloud auth/verification = %q/%q, want catalog metadata", jumpcloud.AuthModel, jumpcloud.VerificationEndpoint)
+	}
+	if !jumpcloud.Cataloged || jumpcloud.Callable {
+		t.Fatalf("jumpcloud cataloged=%v callable=%v, want cataloged but not callable", jumpcloud.Cataloged, jumpcloud.Callable)
+	}
+	okta := bySourceID["okta"]
+	if !okta.Cataloged || !okta.Callable || okta.ValidationGrade != "fixture_validated" {
+		t.Fatalf("okta cataloged=%v callable=%v grade=%q, want fixture-validated callable", okta.Cataloged, okta.Callable, okta.ValidationGrade)
 	}
 	entraID := bySourceID["microsoft_entra_id"]
 	if entraID.CatalogStatus != connectorcatalog.StatusGenerateable || !entraID.RuntimeExecutable {

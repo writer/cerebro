@@ -22,10 +22,12 @@ const controlFamiliesPath = "internal/compliance/control_families.yaml"
 const publicDetectionCatalogPath = "internal/findings/public_detection_catalog.json"
 
 type policyRuleExtensions struct {
-	Defaults      policyRuleExtension            `yaml:"defaults"`
-	EvidenceModes map[string]policyRuleExtension `yaml:"evidence_modes"`
-	Domains       map[string]policyRuleExtension `yaml:"domains"`
-	Policies      map[string]policyRuleExtension `yaml:"policies"`
+	Defaults       policyRuleExtension            `yaml:"defaults"`
+	EvidenceModes  map[string]policyRuleExtension `yaml:"evidence_modes"`
+	Domains        map[string]policyRuleExtension `yaml:"domains"`
+	Policies       map[string]policyRuleExtension `yaml:"policies"`
+	FindingDomains findingDomainAliases           `yaml:"finding_domains"`
+	Findings       map[string]policyRuleExtension `yaml:"findings"`
 }
 
 type policyRuleExtension struct {
@@ -35,6 +37,13 @@ type policyRuleExtension struct {
 	RiskStatement     string   `yaml:"risk_statement"`
 	RemediationIntent string   `yaml:"remediation_intent"`
 	FalsePositives    []string `yaml:"false_positives"`
+}
+
+type findingDomainAliases struct {
+	Packs    map[string]string `yaml:"packs"`
+	Sources  map[string]string `yaml:"sources"`
+	Tags     map[string]string `yaml:"tags"`
+	Findings map[string]string `yaml:"findings"`
 }
 
 type complianceControlCatalog struct {
@@ -107,15 +116,20 @@ type findingExportSummary struct {
 	ControlRowCount               int
 	TagRowCount                   int
 	SourceCoverageRowCount        int
+	ComplianceReviewRowCount      int
 	UniqueReviewTagCount          int
 	MissingCatalogTagCount        int
 	MissingControlRefCount        int
 	MissingAuditDepthCount        int
 	MissingSourceCoverageRefCount int
+	SourceBackedFindingCount      int
+	PartialSourceBackedCount      int
+	ControlOnlyFindingCount       int
 	Packs                         map[string]int
 	Sources                       map[string]int
 	EvaluationModes               map[string]int
 	Frameworks                    map[string]int
+	AuditDomains                  map[string]int
 }
 
 type generatedFile struct {
@@ -293,7 +307,7 @@ func generateFiles(root string) ([]generatedFile, error) {
 		return strings.Join(tagRows[i], "\x00") < strings.Join(tagRows[j], "\x00")
 	})
 
-	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingSummary := findingReviewRows(catalog, controlFamilies)
+	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingComplianceRows, findingSummary := findingReviewRows(catalog, controlFamilies, extensions)
 
 	files := []generatedFile{
 		{Name: "overview.csv", Content: csvBytes(overviewRows(len(rules), len(controlRows), len(tagRows), len(uniqueTags), domains, frameworks, evidenceModes, findingSummary))},
@@ -304,6 +318,8 @@ func generateFiles(root string) ([]generatedFile, error) {
 		{Name: "finding_control_map.csv", Content: csvBytes(append([][]string{findingControlMapHeader()}, findingControlRows...))},
 		{Name: "finding_tag_map.csv", Content: csvBytes(append([][]string{findingTagMapHeader()}, findingTagRows...))},
 		{Name: "source_coverage_map.csv", Content: csvBytes(append([][]string{sourceCoverageMapHeader()}, sourceCoverageRows...))},
+		{Name: "finding_compliance_review_map.csv", Content: csvBytes(append([][]string{findingComplianceReviewMapHeader()}, findingComplianceRows...))},
+		{Name: "finding_domain_aliases.csv", Content: csvBytes(append([][]string{findingDomainAliasesHeader()}, findingDomainAliasRows(extensions)...))},
 		{Name: "yaml_layers.csv", Content: csvBytes(yamlLayerRows(extensions))},
 		{Name: "logic.csv", Content: csvBytes(logicRows())},
 	}
@@ -417,6 +433,27 @@ func (ref controlRef) Label() string {
 	return strings.TrimSpace(ref.Framework + " " + ref.ControlID)
 }
 
+type resolvedFindingAuditDepth struct {
+	EvidenceType      string
+	AssessmentMethods []string
+	AuditorGuidance   string
+	RiskStatement     string
+	RemediationIntent string
+	Domain            string
+	FieldSources      []string
+	fieldSources      map[string]string
+}
+
+type findingComplianceReview struct {
+	SourceMatchedControlRefs       []controlRef
+	SourceBackedControlRefs        []controlRef
+	ControlRefsWithoutSourceMatch  []controlRef
+	SourceCoverageSupportLevels    []string
+	SourceCoverageHighValueCount   int
+	ComplianceEvidenceStatus       string
+	SourceCoverageRefsByControlKey map[string][]string
+}
+
 func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyIndex) []controlRef {
 	var refs []controlRef
 	seen := map[string]struct{}{}
@@ -448,17 +485,19 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 	return refs
 }
 
-func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex) ([][]string, [][]string, [][]string, [][]string, findingExportSummary) {
+func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, extensions policyRuleExtensions) ([][]string, [][]string, [][]string, [][]string, [][]string, findingExportSummary) {
 	var findingRows [][]string
 	var findingControlRows [][]string
 	var findingTagRows [][]string
 	var sourceCoverageRows [][]string
+	var findingComplianceRows [][]string
 	summary := findingExportSummary{
 		FindingCount:    len(catalog.Detections),
 		Packs:           map[string]int{},
 		Sources:         map[string]int{},
 		EvaluationModes: map[string]int{},
 		Frameworks:      map[string]int{},
+		AuditDomains:    map[string]int{},
 	}
 	uniqueReviewTags := map[string]struct{}{}
 
@@ -469,11 +508,14 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex)
 		complianceTags := complianceReviewTags(controlRefs)
 		allReviewTags := uniqueSorted(append(append([]string{}, catalogTags...), complianceTags...))
 		sourceCoverageRefs := sourceCoverageRefLabels(detection.SourceCoverageRefs)
-		reviewFlags := findingReviewFlags(detection, controlRefs, catalogTags, sourceCoverageRefs)
+		auditDepth := resolveFindingAuditDepth(detection, extensions)
+		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
+		reviewFlags := findingReviewFlags(controlRefs, catalogTags, sourceCoverageRefs, auditDepth, complianceReview)
 
 		summary.Packs[strings.TrimSpace(detection.PackID)]++
 		summary.Sources[strings.TrimSpace(detection.SourceID)]++
 		summary.EvaluationModes[strings.TrimSpace(detection.EvaluationMode)]++
+		summary.AuditDomains[firstNonEmpty(auditDepth.Domain, "unresolved")]++
 		if strings.TrimSpace(detection.PackID) != "policy" {
 			summary.NonPolicyFindingCount++
 		}
@@ -483,11 +525,19 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex)
 		if len(controlRefs) == 0 {
 			summary.MissingControlRefCount++
 		}
-		if len(findingAuditDepthFlags(detection)) != 0 {
+		if len(findingAuditDepthFlags(auditDepth)) != 0 {
 			summary.MissingAuditDepthCount++
 		}
 		if len(sourceCoverageRefs) == 0 {
 			summary.MissingSourceCoverageRefCount++
+		}
+		switch complianceReview.ComplianceEvidenceStatus {
+		case "source_backed":
+			summary.SourceBackedFindingCount++
+		case "partial_source_backed":
+			summary.PartialSourceBackedCount++
+		case "control_only":
+			summary.ControlOnlyFindingCount++
 		}
 		for _, ref := range controlRefs {
 			summary.Frameworks[ref.Framework]++
@@ -507,30 +557,45 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex)
 			normalizedSeverity(detection.Severity),
 			detection.Status,
 			detection.Maturity,
+			auditDepth.Domain,
+			joinList(auditDepth.FieldSources),
 			joinList(controlFrameworkNames(controlRefs)),
 			joinList(controlRefLabels(controlRefs)),
 			joinList(controlFamilies),
 			joinList(catalogTags),
 			joinList(complianceTags),
 			joinList(allReviewTags),
-			detection.EvidenceType,
-			joinList(detection.AssessmentMethods),
-			detection.AuditorGuidance,
-			detection.RiskStatement,
-			detection.RemediationIntent,
+			auditDepth.EvidenceType,
+			joinList(auditDepth.AssessmentMethods),
+			auditDepth.AuditorGuidance,
+			auditDepth.RiskStatement,
+			auditDepth.RemediationIntent,
 			fmt.Sprint(len(detection.SourceCoverageRefs)),
 			joinList(sourceCoverageRefs),
 			joinList(sourceCoverageEvidenceTypes(detection.SourceCoverageRefs)),
 			joinList(sourceCoverageControlDomains(detection.SourceCoverageRefs)),
+			joinList(controlRefLabels(complianceReview.SourceMatchedControlRefs)),
+			joinList(controlRefLabels(complianceReview.SourceBackedControlRefs)),
+			joinList(controlRefLabels(complianceReview.ControlRefsWithoutSourceMatch)),
+			joinList(complianceReview.SourceCoverageSupportLevels),
+			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
+			complianceReview.ComplianceEvidenceStatus,
 			joinList(reviewFlags),
 		})
 
 		for _, ref := range controlRefs {
+			sourceCoverageLabels := complianceReview.SourceCoverageRefsByControlKey[controlRefKey(ref)]
+			matchSource := "finding_control_ref"
+			if len(sourceCoverageLabels) != 0 {
+				matchSource = "finding_control_ref+source_coverage_ref"
+			}
 			findingControlRows = append(findingControlRows, []string{
 				ref.Framework,
 				ref.ControlID,
 				ref.Label(),
 				ref.Family,
+				matchSource,
+				joinList(sourceCoverageLabels),
 				detection.ID,
 				detection.Name,
 				detection.PackID,
@@ -571,6 +636,8 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex)
 
 		for _, coverageRef := range detection.SourceCoverageRefs {
 			matchedControlRefs := publicDetectionControlRefs(coverageRef.MatchedControlRefs, index)
+			matchedFindingControlRefs := intersectControlRefs(matchedControlRefs, controlRefs)
+			sourceOnlyControlRefs := differenceControlRefs(matchedControlRefs, controlRefs)
 			sourceCoverageRows = append(sourceCoverageRows, []string{
 				coverageRef.SourceID,
 				coverageRef.DimensionID,
@@ -582,6 +649,9 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex)
 				joinList(coverageRef.ControlDomains),
 				joinList(controlRefLabels(matchedControlRefs)),
 				joinList(uniqueControlFamilies(matchedControlRefs)),
+				sourceCoverageMatchStatus(matchedControlRefs, matchedFindingControlRefs, sourceOnlyControlRefs),
+				joinList(controlRefLabels(matchedFindingControlRefs)),
+				joinList(controlRefLabels(sourceOnlyControlRefs)),
 				detection.ID,
 				detection.Name,
 				detection.PackID,
@@ -592,18 +662,45 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex)
 				detection.Maturity,
 			})
 		}
+
+		findingComplianceRows = append(findingComplianceRows, []string{
+			detection.ID,
+			detection.Name,
+			detection.PackID,
+			detection.SourceID,
+			detection.EvaluationMode,
+			normalizedSeverity(detection.Severity),
+			detection.Status,
+			detection.Maturity,
+			auditDepth.Domain,
+			joinList(auditDepth.FieldSources),
+			auditDepth.EvidenceType,
+			joinList(auditDepth.AssessmentMethods),
+			fmt.Sprint(len(controlRefs)),
+			fmt.Sprint(len(complianceReview.SourceMatchedControlRefs)),
+			fmt.Sprint(len(complianceReview.SourceBackedControlRefs)),
+			fmt.Sprint(len(complianceReview.ControlRefsWithoutSourceMatch)),
+			joinList(controlRefLabels(complianceReview.ControlRefsWithoutSourceMatch)),
+			fmt.Sprint(len(detection.SourceCoverageRefs)),
+			joinList(complianceReview.SourceCoverageSupportLevels),
+			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
+			complianceReview.ComplianceEvidenceStatus,
+			joinList(reviewFlags),
+		})
 	}
 
 	summary.ControlRowCount = len(findingControlRows)
 	summary.TagRowCount = len(findingTagRows)
 	summary.SourceCoverageRowCount = len(sourceCoverageRows)
+	summary.ComplianceReviewRowCount = len(findingComplianceRows)
 	summary.UniqueReviewTagCount = len(uniqueReviewTags)
 
 	sortRows(findingRows)
 	sortRows(findingControlRows)
 	sortRows(findingTagRows)
 	sortRows(sourceCoverageRows)
-	return findingRows, findingControlRows, findingTagRows, sourceCoverageRows, summary
+	sortRows(findingComplianceRows)
+	return findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingComplianceRows, summary
 }
 
 func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFamilyIndex) []controlRef {
@@ -633,6 +730,284 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 		return refs[i].Framework < refs[j].Framework
 	})
 	return refs
+}
+
+func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleExtensions) resolvedFindingAuditDepth {
+	resolved := resolvedFindingAuditDepth{fieldSources: map[string]string{}}
+	mergeResolvedFindingAuditDepth(&resolved, extensions.Defaults, "yaml:defaults")
+	if mode := strings.TrimSpace(detection.EvaluationMode); mode != "" {
+		mergeResolvedFindingAuditDepth(&resolved, extensions.EvidenceModes[mode], "yaml:evidence_mode:"+mode)
+	}
+	domain := resolveFindingAuditDomain(detection, extensions)
+	if domain != "" {
+		mergeResolvedFindingAuditDepth(&resolved, extensions.Domains[domain], "yaml:domain:"+domain)
+	}
+	if extension, ok := lookupPolicyExtension(extensions.Findings, detection.ID); ok {
+		mergeResolvedFindingAuditDepth(&resolved, extension, "yaml:finding:"+detection.ID)
+	}
+	mergeResolvedFindingAuditDepth(&resolved, policyRuleExtension{
+		EvidenceType:      detection.EvidenceType,
+		AssessmentMethods: detection.AssessmentMethods,
+		AuditorGuidance:   detection.AuditorGuidance,
+		RiskStatement:     detection.RiskStatement,
+		RemediationIntent: detection.RemediationIntent,
+	}, "catalog")
+	resolved.Domain = domain
+	for _, source := range resolved.fieldSources {
+		resolved.FieldSources = append(resolved.FieldSources, source)
+	}
+	resolved.FieldSources = uniqueSorted(resolved.FieldSources)
+	return resolved
+}
+
+func mergeResolvedFindingAuditDepth(resolved *resolvedFindingAuditDepth, next policyRuleExtension, source string) {
+	if resolved == nil {
+		return
+	}
+	if resolved.fieldSources == nil {
+		resolved.fieldSources = map[string]string{}
+	}
+	if value := strings.TrimSpace(next.EvidenceType); value != "" {
+		resolved.EvidenceType = value
+		resolved.fieldSources["evidence_type"] = source
+	}
+	if values := uniqueSorted(next.AssessmentMethods); len(values) != 0 {
+		resolved.AssessmentMethods = values
+		resolved.fieldSources["assessment_methods"] = source
+	}
+	if value := strings.TrimSpace(next.AuditorGuidance); value != "" {
+		resolved.AuditorGuidance = value
+		resolved.fieldSources["auditor_guidance"] = source
+	}
+	if value := strings.TrimSpace(next.RiskStatement); value != "" {
+		resolved.RiskStatement = value
+		resolved.fieldSources["risk_statement"] = source
+	}
+	if value := strings.TrimSpace(next.RemediationIntent); value != "" {
+		resolved.RemediationIntent = value
+		resolved.fieldSources["remediation_intent"] = source
+	}
+}
+
+func resolveFindingAuditDomain(detection publicDetection, extensions policyRuleExtensions) string {
+	if domain := lookupDomainAlias(extensions.FindingDomains.Findings, detection.ID, extensions); domain != "" {
+		return domain
+	}
+	if domain := lookupDomainAlias(extensions.FindingDomains.Packs, detection.PackID, extensions); domain != "" {
+		return domain
+	}
+	if domain := lookupDomainAlias(extensions.FindingDomains.Sources, detection.SourceID, extensions); domain != "" {
+		return domain
+	}
+	for _, tag := range uniqueSorted(detection.Tags) {
+		if domain := lookupDomainAlias(extensions.FindingDomains.Tags, tag, extensions); domain != "" {
+			return domain
+		}
+	}
+	for _, candidate := range []string{detection.PackID, detection.SourceID} {
+		if domain := existingAuditDomain(candidate, extensions); domain != "" {
+			return domain
+		}
+	}
+	for _, tag := range uniqueSorted(detection.Tags) {
+		if domain := existingAuditDomain(tag, extensions); domain != "" {
+			return domain
+		}
+	}
+	return ""
+}
+
+func lookupDomainAlias(aliases map[string]string, key string, extensions policyRuleExtensions) string {
+	value, ok := lookupStringMap(aliases, key)
+	if !ok {
+		return ""
+	}
+	return existingAuditDomain(value, extensions)
+}
+
+func existingAuditDomain(value string, extensions policyRuleExtensions) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	for domain := range extensions.Domains {
+		if strings.EqualFold(strings.TrimSpace(domain), value) {
+			return strings.TrimSpace(domain)
+		}
+	}
+	return ""
+}
+
+func lookupPolicyExtension(extensions map[string]policyRuleExtension, key string) (policyRuleExtension, bool) {
+	if len(extensions) == 0 {
+		return policyRuleExtension{}, false
+	}
+	for candidate, extension := range extensions {
+		if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(key)) {
+			return extension, true
+		}
+	}
+	return policyRuleExtension{}, false
+}
+
+func lookupStringMap(values map[string]string, key string) (string, bool) {
+	if len(values) == 0 {
+		return "", false
+	}
+	key = strings.TrimSpace(key)
+	for candidate, value := range values {
+		if strings.EqualFold(strings.TrimSpace(candidate), key) {
+			return strings.TrimSpace(value), true
+		}
+	}
+	return "", false
+}
+
+func findingComplianceReviewFor(detection publicDetection, index controlFamilyIndex, directControlRefs []controlRef) findingComplianceReview {
+	sourceMatchedControlRefs := sourceCoverageMatchedControlRefs(detection.SourceCoverageRefs, index)
+	sourceBackedControlRefs := intersectControlRefs(directControlRefs, sourceMatchedControlRefs)
+	controlRefsWithoutSourceMatch := differenceControlRefs(directControlRefs, sourceMatchedControlRefs)
+	refsByControlKey := sourceCoverageRefsByControlKey(detection.SourceCoverageRefs, index)
+	return findingComplianceReview{
+		SourceMatchedControlRefs:       sourceMatchedControlRefs,
+		SourceBackedControlRefs:        sourceBackedControlRefs,
+		ControlRefsWithoutSourceMatch:  controlRefsWithoutSourceMatch,
+		SourceCoverageSupportLevels:    sourceCoverageSupportLevels(detection.SourceCoverageRefs),
+		SourceCoverageHighValueCount:   sourceCoverageHighValueCount(detection.SourceCoverageRefs),
+		ComplianceEvidenceStatus:       complianceEvidenceStatus(directControlRefs, sourceMatchedControlRefs, controlRefsWithoutSourceMatch),
+		SourceCoverageRefsByControlKey: refsByControlKey,
+	}
+}
+
+func sourceCoverageMatchedControlRefs(refs []publicDetectionSourceCoverageRef, index controlFamilyIndex) []controlRef {
+	var values []controlRef
+	for _, ref := range refs {
+		values = append(values, publicDetectionControlRefs(ref.MatchedControlRefs, index)...)
+	}
+	return uniqueControlRefs(values)
+}
+
+func sourceCoverageRefsByControlKey(refs []publicDetectionSourceCoverageRef, index controlFamilyIndex) map[string][]string {
+	values := map[string][]string{}
+	for _, coverageRef := range refs {
+		label := sourceCoverageRefLabel(coverageRef)
+		if label == "" {
+			continue
+		}
+		for _, ref := range publicDetectionControlRefs(coverageRef.MatchedControlRefs, index) {
+			key := controlRefKey(ref)
+			values[key] = append(values[key], label)
+		}
+	}
+	for key, labels := range values {
+		values[key] = uniqueSorted(labels)
+	}
+	return values
+}
+
+func sourceCoverageSupportLevels(refs []publicDetectionSourceCoverageRef) []string {
+	values := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if value := strings.TrimSpace(ref.SupportLevel); value != "" {
+			values = append(values, value)
+		}
+	}
+	return uniqueSorted(values)
+}
+
+func sourceCoverageHighValueCount(refs []publicDetectionSourceCoverageRef) int {
+	count := 0
+	for _, ref := range refs {
+		if ref.HighValue {
+			count++
+		}
+	}
+	return count
+}
+
+func complianceEvidenceStatus(directControlRefs []controlRef, sourceMatchedControlRefs []controlRef, controlRefsWithoutSourceMatch []controlRef) string {
+	switch {
+	case len(directControlRefs) == 0 && len(sourceMatchedControlRefs) == 0:
+		return "missing_controls"
+	case len(directControlRefs) == 0:
+		return "source_only"
+	case len(sourceMatchedControlRefs) == 0:
+		return "control_only"
+	case len(controlRefsWithoutSourceMatch) == 0:
+		return "source_backed"
+	default:
+		return "partial_source_backed"
+	}
+}
+
+func sourceCoverageMatchStatus(matchedControlRefs []controlRef, matchedFindingControlRefs []controlRef, sourceOnlyControlRefs []controlRef) string {
+	switch {
+	case len(matchedControlRefs) == 0:
+		return "no_matched_control_refs"
+	case len(sourceOnlyControlRefs) == 0:
+		return "matched_to_finding_control_refs"
+	case len(matchedFindingControlRefs) == 0:
+		return "source_only_control_refs"
+	default:
+		return "partial_finding_control_match"
+	}
+}
+
+func uniqueControlRefs(refs []controlRef) []controlRef {
+	seen := map[string]struct{}{}
+	values := make([]controlRef, 0, len(refs))
+	for _, ref := range refs {
+		if strings.TrimSpace(ref.Framework) == "" || strings.TrimSpace(ref.ControlID) == "" {
+			continue
+		}
+		key := controlRefKey(ref)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		values = append(values, ref)
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].Framework == values[j].Framework {
+			return values[i].ControlID < values[j].ControlID
+		}
+		return values[i].Framework < values[j].Framework
+	})
+	return values
+}
+
+func intersectControlRefs(left []controlRef, right []controlRef) []controlRef {
+	rightSet := controlRefSet(right)
+	var values []controlRef
+	for _, ref := range left {
+		if _, ok := rightSet[controlRefKey(ref)]; ok {
+			values = append(values, ref)
+		}
+	}
+	return uniqueControlRefs(values)
+}
+
+func differenceControlRefs(left []controlRef, right []controlRef) []controlRef {
+	rightSet := controlRefSet(right)
+	var values []controlRef
+	for _, ref := range left {
+		if _, ok := rightSet[controlRefKey(ref)]; !ok {
+			values = append(values, ref)
+		}
+	}
+	return uniqueControlRefs(values)
+}
+
+func controlRefSet(refs []controlRef) map[string]struct{} {
+	values := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		values[controlRefKey(ref)] = struct{}{}
+	}
+	return values
+}
+
+func controlRefKey(ref controlRef) string {
+	return strings.TrimSpace(ref.Framework) + "\x00" + strings.TrimSpace(ref.ControlID)
 }
 
 func policyEvidenceMode(rule findingdsl.PolicyFindingRule) string {
@@ -816,18 +1191,26 @@ func tagSlug(value string) string {
 func sourceCoverageRefLabels(refs []publicDetectionSourceCoverageRef) []string {
 	values := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		sourceID := strings.TrimSpace(ref.SourceID)
-		dimensionID := strings.TrimSpace(ref.DimensionID)
-		switch {
-		case sourceID != "" && dimensionID != "":
-			values = append(values, sourceID+"/"+dimensionID)
-		case sourceID != "":
-			values = append(values, sourceID)
-		case dimensionID != "":
-			values = append(values, dimensionID)
+		if label := sourceCoverageRefLabel(ref); label != "" {
+			values = append(values, label)
 		}
 	}
 	return uniqueSorted(values)
+}
+
+func sourceCoverageRefLabel(ref publicDetectionSourceCoverageRef) string {
+	sourceID := strings.TrimSpace(ref.SourceID)
+	dimensionID := strings.TrimSpace(ref.DimensionID)
+	switch {
+	case sourceID != "" && dimensionID != "":
+		return sourceID + "/" + dimensionID
+	case sourceID != "":
+		return sourceID
+	case dimensionID != "":
+		return dimensionID
+	default:
+		return ""
+	}
 }
 
 func sourceCoverageEvidenceTypes(refs []publicDetectionSourceCoverageRef) []string {
@@ -846,7 +1229,7 @@ func sourceCoverageControlDomains(refs []publicDetectionSourceCoverageRef) []str
 	return uniqueSorted(values)
 }
 
-func findingReviewFlags(detection publicDetection, controlRefs []controlRef, catalogTags []string, sourceCoverageRefs []string) []string {
+func findingReviewFlags(controlRefs []controlRef, catalogTags []string, sourceCoverageRefs []string, auditDepth resolvedFindingAuditDepth, complianceReview findingComplianceReview) []string {
 	flags := []string{}
 	if len(catalogTags) == 0 {
 		flags = append(flags, "missing_catalog_tags")
@@ -854,28 +1237,39 @@ func findingReviewFlags(detection publicDetection, controlRefs []controlRef, cat
 	if len(controlRefs) == 0 {
 		flags = append(flags, "missing_control_refs")
 	}
-	flags = append(flags, findingAuditDepthFlags(detection)...)
+	flags = append(flags, findingAuditDepthFlags(auditDepth)...)
+	if strings.TrimSpace(auditDepth.Domain) == "" {
+		flags = append(flags, "unresolved_audit_domain")
+	}
 	if len(sourceCoverageRefs) == 0 {
 		flags = append(flags, "missing_source_coverage_refs")
+	}
+	switch complianceReview.ComplianceEvidenceStatus {
+	case "control_only":
+		flags = append(flags, "control_refs_not_source_backed")
+	case "partial_source_backed":
+		flags = append(flags, "partial_source_backed_control_refs")
+	case "source_only":
+		flags = append(flags, "source_only_control_refs")
 	}
 	return uniqueSorted(flags)
 }
 
-func findingAuditDepthFlags(detection publicDetection) []string {
+func findingAuditDepthFlags(depth resolvedFindingAuditDepth) []string {
 	flags := []string{}
-	if strings.TrimSpace(detection.EvidenceType) == "" {
+	if strings.TrimSpace(depth.EvidenceType) == "" {
 		flags = append(flags, "missing_evidence_type")
 	}
-	if len(uniqueSorted(detection.AssessmentMethods)) == 0 {
+	if len(uniqueSorted(depth.AssessmentMethods)) == 0 {
 		flags = append(flags, "missing_assessment_methods")
 	}
-	if strings.TrimSpace(detection.AuditorGuidance) == "" {
+	if strings.TrimSpace(depth.AuditorGuidance) == "" {
 		flags = append(flags, "missing_auditor_guidance")
 	}
-	if strings.TrimSpace(detection.RiskStatement) == "" {
+	if strings.TrimSpace(depth.RiskStatement) == "" {
 		flags = append(flags, "missing_risk_statement")
 	}
-	if strings.TrimSpace(detection.RemediationIntent) == "" {
+	if strings.TrimSpace(depth.RemediationIntent) == "" {
 		flags = append(flags, "missing_remediation_intent")
 	}
 	return uniqueSorted(flags)
@@ -907,11 +1301,15 @@ func overviewRows(policyCount int, controlCount int, tagCount int, uniqueTagCoun
 		{"finding-control rows", fmt.Sprint(findingSummary.ControlRowCount)},
 		{"finding-tag rows", fmt.Sprint(findingSummary.TagRowCount)},
 		{"source-coverage rows", fmt.Sprint(findingSummary.SourceCoverageRowCount)},
+		{"finding compliance review rows", fmt.Sprint(findingSummary.ComplianceReviewRowCount)},
 		{"unique finding review tags", fmt.Sprint(findingSummary.UniqueReviewTagCount)},
 		{"detections missing catalog tags", fmt.Sprint(findingSummary.MissingCatalogTagCount)},
 		{"detections missing control refs", fmt.Sprint(findingSummary.MissingControlRefCount)},
 		{"detections missing audit depth", fmt.Sprint(findingSummary.MissingAuditDepthCount)},
 		{"detections missing source coverage refs", fmt.Sprint(findingSummary.MissingSourceCoverageRefCount)},
+		{"detections source-backed", fmt.Sprint(findingSummary.SourceBackedFindingCount)},
+		{"detections partial source-backed", fmt.Sprint(findingSummary.PartialSourceBackedCount)},
+		{"detections control-only", fmt.Sprint(findingSummary.ControlOnlyFindingCount)},
 		{},
 		{"evidence mode", "rules"},
 	}
@@ -928,6 +1326,8 @@ func overviewRows(policyCount int, controlCount int, tagCount int, uniqueTagCoun
 	rows = appendCountRows(rows, findingSummary.Sources)
 	rows = append(rows, []string{}, []string{"finding framework", "control rows"})
 	rows = appendCountRows(rows, findingSummary.Frameworks)
+	rows = append(rows, []string{}, []string{"finding audit domain", "detections"})
+	rows = appendCountRows(rows, findingSummary.AuditDomains)
 	return rows
 }
 
@@ -966,6 +1366,26 @@ func yamlLayerRows(extensions policyRuleExtensions) [][]string {
 	for _, key := range sortedKeys(extensions.Policies) {
 		rows = append(rows, extensionRow("policy", key, extensions.Policies[key]))
 	}
+	for _, key := range sortedKeys(extensions.Findings) {
+		rows = append(rows, extensionRow("finding", key, extensions.Findings[key]))
+	}
+	return rows
+}
+
+func findingDomainAliasRows(extensions policyRuleExtensions) [][]string {
+	var rows [][]string
+	rows = appendFindingDomainAliasRows(rows, "finding", extensions.FindingDomains.Findings)
+	rows = appendFindingDomainAliasRows(rows, "pack", extensions.FindingDomains.Packs)
+	rows = appendFindingDomainAliasRows(rows, "source", extensions.FindingDomains.Sources)
+	rows = appendFindingDomainAliasRows(rows, "tag", extensions.FindingDomains.Tags)
+	sortRows(rows)
+	return rows
+}
+
+func appendFindingDomainAliasRows(rows [][]string, matchType string, aliases map[string]string) [][]string {
+	for _, key := range sortedKeys(aliases) {
+		rows = append(rows, []string{matchType, key, strings.TrimSpace(aliases[key])})
+	}
 	return rows
 }
 
@@ -986,13 +1406,14 @@ func logicRows() [][]string {
 	return [][]string{
 		{"step", "layer", "definition"},
 		{"1", "defaults", "Start with shared audit defaults from internal/compliance/policy_rule_extensions.yaml."},
-		{"2", "evidence mode", "Apply mode-specific defaults for cel, query, graph, or manual policies."},
-		{"3", "domain", "Apply the domain block keyed by the policy folder under policies/."},
-		{"4", "policy override", "Apply any explicit policy ID override when a rule needs different audit language."},
-		{"5", "policy YAML", "Use each PolicyFindingRule YAML file for controls, tags, severity, resource, remediation, risk categories, and MITRE references."},
-		{"6", "public detection catalog", "Use internal/findings/public_detection_catalog.json for all public finding types, including non-policy detections."},
-		{"7", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
-		{"8", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"2", "evidence mode", "Apply mode-specific defaults for cel, query, graph, manual, or event detections."},
+		{"3", "policy domain", "Apply the domain block keyed by the policy folder under policies/ for policy rules."},
+		{"4", "finding domain aliases", "Resolve non-policy detections to YAML domains by finding ID, pack, source, or tag."},
+		{"5", "policy or finding override", "Apply any explicit policy ID or finding ID override when a rule needs different audit language."},
+		{"6", "source catalog fields", "Use policy YAML and public detection catalog fields as the strongest direct source for controls, tags, severity, evidence, and audit language."},
+		{"7", "source coverage reconciliation", "Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."},
+		{"8", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
+		{"9", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -1016,16 +1437,23 @@ func tagMapHeader() []string {
 func findingMapHeader() []string {
 	return []string{
 		"finding_id", "name", "pack_id", "pack_name", "source_id", "evaluation_mode", "output_kind",
-		"severity", "status", "maturity", "frameworks", "control_refs", "control_families",
+		"severity", "status", "maturity", "resolved_audit_domain", "audit_language_source",
+		"frameworks", "control_refs", "control_families",
 		"catalog_tags", "compliance_review_tags", "all_review_tags", "evidence_type",
 		"assessment_methods", "auditor_guidance", "risk_statement", "remediation_intent",
 		"source_coverage_ref_count", "source_coverage_refs", "coverage_evidence_types",
-		"coverage_control_domains", "review_flags",
+		"coverage_control_domains", "source_matched_control_refs", "source_backed_control_refs",
+		"control_refs_without_source_match", "source_coverage_support_levels",
+		"source_coverage_high_value_count", "compliance_evidence_status", "review_flags",
 	}
 }
 
 func findingControlMapHeader() []string {
-	return []string{"framework", "control_id", "control_ref", "control_family", "finding_id", "name", "pack_id", "source_id", "evaluation_mode", "severity", "status", "maturity"}
+	return []string{
+		"framework", "control_id", "control_ref", "control_family", "control_match_source",
+		"source_coverage_refs", "finding_id", "name", "pack_id", "source_id", "evaluation_mode",
+		"severity", "status", "maturity",
+	}
 }
 
 func findingTagMapHeader() []string {
@@ -1036,9 +1464,26 @@ func sourceCoverageMapHeader() []string {
 	return []string{
 		"coverage_source_id", "coverage_dimension_id", "coverage_dimension_type", "support_level",
 		"high_value", "families", "evidence_types", "control_domains", "matched_control_refs",
-		"matched_control_families", "finding_id", "name", "pack_id", "finding_source_id",
+		"matched_control_families", "finding_control_match_status", "matched_finding_control_refs",
+		"source_only_control_refs", "finding_id", "name", "pack_id", "finding_source_id",
 		"evaluation_mode", "severity", "status", "maturity",
 	}
+}
+
+func findingComplianceReviewMapHeader() []string {
+	return []string{
+		"finding_id", "name", "pack_id", "source_id", "evaluation_mode", "severity", "status",
+		"maturity", "resolved_audit_domain", "audit_language_source", "evidence_type",
+		"assessment_methods", "control_ref_count", "source_matched_control_ref_count",
+		"source_backed_control_ref_count", "control_refs_without_source_match_count",
+		"control_refs_without_source_match", "source_coverage_ref_count",
+		"source_coverage_support_levels", "source_coverage_high_value_count",
+		"compliance_evidence_status", "review_flags",
+	}
+}
+
+func findingDomainAliasesHeader() []string {
+	return []string{"match_type", "match_value", "resolved_domain"}
 }
 
 func writeFiles(root string, output string, files []generatedFile) error {
