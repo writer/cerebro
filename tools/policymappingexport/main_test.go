@@ -332,10 +332,12 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertCellContains(t, requirementHeader, socAccessRow, "required_fields", "factors")
 	assertCellContains(t, requirementHeader, socAccessRow, "source_capability_refs", "okta/users")
 	assertCellContains(t, requirementHeader, socAccessRow, "coverage_status", "direct_source_backed")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC6.1", "logging-monitoring")
 
 	isoCryptoRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.8.24", "data-protection", "aws")
 	assertCellContains(t, requirementHeader, isoCryptoRow, "required_fields", "encryption_state")
 	assertCellContains(t, requirementHeader, isoCryptoRow, "source_capability_refs", "aws/s3_bucket")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "ISO 27001:2022", "A.8.24", "logging-monitoring")
 
 	baselineRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review")
 	assertCellContains(t, requirementHeader, baselineRow, "assessment_methods", "interview")
@@ -515,6 +517,15 @@ func findRequirementRow(t *testing.T, rows [][]string, frameworkCol int, control
 	}
 	t.Fatalf("requirement row not found for %s %s %s %s", framework, controlID, profile, source)
 	return nil
+}
+
+func assertRequirementRowMissing(t *testing.T, rows [][]string, frameworkCol int, controlCol int, profileCol int, framework string, controlID string, profile string) {
+	t.Helper()
+	for _, row := range rows[1:] {
+		if row[frameworkCol] == framework && row[controlCol] == controlID && row[profileCol] == profile {
+			t.Fatalf("unexpected requirement row found for %s %s %s", framework, controlID, profile)
+		}
+	}
 }
 
 func assertCellContains(t *testing.T, header []string, row []string, column string, want string) {

@@ -109,13 +109,12 @@ type controlEvidenceRequirementCatalog struct {
 }
 
 type controlEvidenceRequirementDefaults struct {
-	SourceID              string   `yaml:"source_id"`
-	EntityType            string   `yaml:"entity_type"`
-	RequiredFields        []string `yaml:"required_fields"`
-	FreshnessWindow       string   `yaml:"freshness_window"`
-	AssessmentMethods     []string `yaml:"assessment_methods"`
-	AuditorGradeEvidence  string   `yaml:"auditor_grade_evidence"`
-	ManualEvidenceAllowed *bool    `yaml:"manual_evidence_allowed"`
+	SourceID             string   `yaml:"source_id"`
+	EntityType           string   `yaml:"entity_type"`
+	RequiredFields       []string `yaml:"required_fields"`
+	FreshnessWindow      string   `yaml:"freshness_window"`
+	AssessmentMethods    []string `yaml:"assessment_methods"`
+	AuditorGradeEvidence string   `yaml:"auditor_grade_evidence"`
 }
 
 type controlEvidenceRequirementProfile struct {
