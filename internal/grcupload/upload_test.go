@@ -51,7 +51,7 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if policy.GetKind() != "grc.policy" || policy.GetSchemaRef() != SchemaRefPolicy || response.Events[0].RecordID != "access-policy" {
 		t.Fatalf("policy event = %#v, ref = %#v", policy, response.Events[0])
 	}
-	if response.Events[0].RecordURN != "urn:cerebro:tenant-1:policy:cerebro_upload:policy:access-policy" {
+	if response.Events[0].RecordURN != "urn:cerebro:tenant-1:policy:cerebro_upload:access-policy" {
 		t.Fatalf("policy record_urn = %q", response.Events[0].RecordURN)
 	}
 	if got := policy.GetAttributes()["record_urn"]; got != response.Events[0].RecordURN {

@@ -287,7 +287,7 @@ func recordURN(request UploadRequest, kind string, recordID string) string {
 	var err error
 	switch kind {
 	case "grc.policy":
-		urn, err = cerebrourn.Mint(request.TenantID, "policy", uploadProvider, "policy", recordID)
+		urn, err = cerebrourn.Mint(request.TenantID, "policy", uploadProvider, recordID)
 	case "grc.document":
 		urn, err = cerebrourn.Mint(request.TenantID, "document", uploadProvider, recordID)
 	case "grc.vendor":
