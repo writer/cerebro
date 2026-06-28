@@ -328,6 +328,12 @@ func TestBuiltinControlEvidenceRequirementsCoverCatalog(t *testing.T) {
 	if !resolvedRequirementExists(resolution.Requirements, "ISO 27001:2022", "A.8.24", "data-protection", "aws") {
 		t.Fatal("builtin requirements missing ISO 27001:2022 A.8.24 AWS data-protection requirement")
 	}
+	if !resolvedRequirementExists(resolution.Requirements, "ISO 27701", "7.2.6", "privacy-rights", "data_inventory") {
+		t.Fatal("builtin requirements missing ISO 27701 7.2.6 data inventory privacy requirement")
+	}
+	if !resolvedRequirementExists(resolution.Requirements, "ISO 27701", "7.2.6", "privacy-rights", "privacy_request_system") {
+		t.Fatal("builtin requirements missing ISO 27701 7.2.6 request system privacy requirement")
+	}
 }
 
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTokens(t *testing.T) {
