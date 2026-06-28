@@ -397,7 +397,8 @@ entries:
               evidence_types: [change_management]
               control_domains: [secure_delivery]
           pagination:
-            type: none
+            type: next_url
+            next_url_json_path: "$.nextLink"
             disable_page_size: true
         - id: model_catalog
           label: Model catalog
@@ -423,7 +424,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: none
+            type: next_url
+            next_url_json_path: "$.nextLink"
             disable_page_size: true
         - id: rai_policies
           label: RAI policies
@@ -449,7 +451,8 @@ entries:
               evidence_types: [configuration_state]
               control_domains: [security_operations]
           pagination:
-            type: none
+            type: next_url
+            next_url_json_path: "$.nextLink"
             disable_page_size: true
         - id: rai_blocklists
           label: RAI blocklists
@@ -475,7 +478,8 @@ entries:
               evidence_types: [configuration_state]
               control_domains: [security_operations]
           pagination:
-            type: none
+            type: next_url
+            next_url_json_path: "$.nextLink"
             disable_page_size: true
         - id: private_endpoint_connections
           label: Private endpoint connections
@@ -501,7 +505,8 @@ entries:
               evidence_types: [configuration_state]
               control_domains: [network_security]
           pagination:
-            type: none
+            type: next_url
+            next_url_json_path: "$.nextLink"
             disable_page_size: true
 
   - classifier_output: supported

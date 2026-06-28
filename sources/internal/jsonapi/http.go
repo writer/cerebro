@@ -52,11 +52,18 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if pageCursor == "" {
 		pageCursor = strings.TrimSpace(family.PageFirstCursor)
 	}
-	if pageCursor != "" {
+	useNextURL := strings.TrimSpace(family.NextURLKey) != "" && pageCursor != ""
+	if pageCursor != "" && !useNextURL {
 		query.Set(cursorParam(family), pageCursor)
 	}
 	var body json.RawMessage
-	headers, err := s.getJSONWithHeader(ctx, settings, query, &body)
+	var headers http.Header
+	var err error
+	if useNextURL {
+		headers, err = s.doRequest(ctx, settings, pageCursor, nil, &body, nil)
+	} else {
+		headers, err = s.getJSONWithHeader(ctx, settings, query, &body)
+	}
 	if err != nil {
 		return nil, "", err
 	}
@@ -211,9 +218,9 @@ func (s *Source) getJSONWithHeader(ctx context.Context, settings settings, query
 }
 
 func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) (http.Header, error) {
-	endpoint := settings.baseURL + settings.path
-	if strings.TrimSpace(path) != "" {
-		endpoint = settings.baseURL + path
+	endpoint, err := requestEndpoint(settings.baseURL, settings.path, path)
+	if err != nil {
+		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
@@ -271,6 +278,28 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 		return resp.Header, fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
 	}
 	return resp.Header, nil
+}
+
+func requestEndpoint(baseURL string, defaultPath string, path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return baseURL + defaultPath, nil
+	}
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return "", err
+	}
+	if !parsed.IsAbs() {
+		return baseURL + path, nil
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if !strings.EqualFold(parsed.Scheme, base.Scheme) || !strings.EqualFold(parsed.Host, base.Host) {
+		return "", fmt.Errorf("next URL host %q does not match base host %q", parsed.Host, base.Host)
+	}
+	return parsed.String(), nil
 }
 
 func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {
@@ -363,6 +392,9 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 
 func responseCursor(family Family, object map[string]json.RawMessage) string {
 	if value := offsetResponseCursor(family, object); value != "" {
+		return value
+	}
+	if value := rawStringAtPath(object, family.NextURLKey); value != "" {
 		return value
 	}
 	if !responseHasMore(family, object) {
