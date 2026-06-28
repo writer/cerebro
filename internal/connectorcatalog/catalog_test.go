@@ -165,7 +165,7 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	const wantBuiltinCatalogEntries = 570
+	const wantBuiltinCatalogEntries = 772
 	if analysis.Summary.Total != wantBuiltinCatalogEntries {
 		t.Fatalf("summary total = %d, want %d", analysis.Summary.Total, wantBuiltinCatalogEntries)
 	}
@@ -199,7 +199,7 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
 	}
-	const wantBuiltinCatalogEntries = 570
+	const wantBuiltinCatalogEntries = 772
 	if analysis.Summary.Total != wantBuiltinCatalogEntries || len(analysis.Entries) != wantBuiltinCatalogEntries {
 		t.Fatalf("runtime catalog size = total %d entries %d, want %d", analysis.Summary.Total, len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
