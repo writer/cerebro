@@ -37,6 +37,7 @@ nav:
       - Persona View Lenses: domains/persona-view-lenses.md
       - Compliance Controls: domains/compliance-controls.md
       - Policies: domains/policies.md
+      - Policy Lifecycle: domains/policy-lifecycle.md
       - Policy Rule Extensions: domains/policy-rule-extensions.md
       - Findings Platform Architecture: domains/findings-platform-architecture.md
       - Finding Candidate Operations: domains/finding-candidate-operations.md
