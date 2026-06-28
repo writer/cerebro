@@ -82,6 +82,17 @@ def ensure_no_literal_secret(path: str, key: str, value: Any) -> None:
     raise OnboardingError(f"{path}.{key} must use env:, credential:, or secret: instead of a literal value")
 
 
+def resolved_config_values(values: dict[str, Any]) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for key, value in values.items():
+        if isinstance(value, str) and env_ref(value):
+            env_name = env_ref(value) or ""
+            resolved[key] = os.environ[env_name]
+        elif value is not None:
+            resolved[key] = str(value)
+    return resolved
+
+
 def validate_plan(plan: dict[str, Any]) -> list[str]:
     required_str(plan, "version")
     required_str(plan, "name")
@@ -309,6 +320,9 @@ class AgentOnboardRunner:
         if runtime.get("preview", {}).get("discover", True):
             status, payload = self.source_preview(source_id, "discover", config)
             self.record_runtime_check(runtime_receipt, "source discover", status, payload)
+        if runtime.get("preview", {}).get("read", False):
+            status, payload = self.source_preview(source_id, "read", config)
+            self.record_runtime_check(runtime_receipt, "source read", status, payload)
         self.put_runtime(runtime)
         claims = runtime.get("claims", [])
         if claims:
@@ -328,9 +342,8 @@ class AgentOnboardRunner:
             )
 
     def source_preview(self, source_id: str, action: str, config: dict[str, Any]) -> tuple[int, Any]:
-        query = urllib.parse.urlencode({key: str(value) for key, value in config.items()})
-        suffix = f"?{query}" if query else ""
-        status, body = self.raw_request("GET", f"/sources/{quote(source_id)}/{action}{suffix}")
+        headers = {"X-Cerebro-Source-Config": json.dumps(resolved_config_values(config), sort_keys=True)}
+        status, body = self.raw_request("GET", f"/sources/{quote(source_id)}/{action}", headers=headers)
         payload = parse_optional_json(body)
         check_status = "passed" if 200 <= status < 300 else "failed"
         self.add_check(f"source {source_id} {action}", check_status, http_status=status, summary=summarize_payload(payload))
@@ -423,16 +436,27 @@ class AgentOnboardRunner:
         body = json.dumps(payload, sort_keys=True).encode("utf-8")
         return self.raw_request(method, path, body=body, content_type="application/json")
 
-    def raw_request(self, method: str, path: str, *, body: bytes | None = None, content_type: str | None = None, auth: bool = True) -> tuple[int, str]:
-        headers = {"Accept": "application/json"}
+    def raw_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: bytes | None = None,
+        content_type: str | None = None,
+        auth: bool = True,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, str]:
+        request_headers = {"Accept": "application/json"}
         if content_type:
-            headers["Content-Type"] = content_type
+            request_headers["Content-Type"] = content_type
+        if headers:
+            request_headers.update(headers)
         if auth:
             if not self.api_key:
                 raise OnboardingError(f"{required_str(self.plan, 'api_key_env')} is required for authenticated requests")
-            headers["Authorization"] = f"Bearer {self.api_key}"
+            request_headers["Authorization"] = f"Bearer {self.api_key}"
         url = self.base_url + path
-        return self.http(method, url, headers, body, 30)
+        return self.http(method, url, request_headers, body, 30)
 
     def build_receipt(self) -> dict[str, Any]:
         failed_checks = [check for check in self.checks if check.get("status") == "failed"]

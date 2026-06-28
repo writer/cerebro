@@ -27,6 +27,8 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/riskplan"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -38,6 +40,8 @@ const (
 	mcpEndpointPath             = "/api/v1/mcp"
 	defaultMCPListLimit         = 25
 	maxMCPListLimit             = 100
+	defaultMCPSourceReadLimit   = 10
+	maxMCPSourceReadLimit       = 50
 	defaultMCPAssetLimit        = 10
 	maxMCPAssetLimit            = 50
 	defaultMCPEvidenceLimit     = 25
@@ -552,6 +556,14 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 			BuildDate:   buildinfo.BuildDate,
 			ApiVersion:  buildinfo.APIVersion,
 		})
+	case "cerebro.sources.list":
+		return app.mcpListSources()
+	case "cerebro.sources.check":
+		return app.mcpCheckSource(r, args)
+	case "cerebro.sources.discover":
+		return app.mcpDiscoverSource(r, args)
+	case "cerebro.sources.read":
+		return app.mcpReadSource(r, args)
 	case "cerebro.source_runtimes.list":
 		return app.mcpListSourceRuntimes(r, args)
 	case "cerebro.connector_definitions.list":
@@ -611,6 +623,106 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 	default:
 		return nil, fmt.Errorf("%w: unknown tool %q", errInvalidHTTPRequest, name)
 	}
+}
+
+func (app *App) mcpListSources() (any, error) {
+	response := app.sourceService().List()
+	value, err := protoJSONValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpLiveSourceMetadata(len(response.GetSources()))), nil
+}
+
+func (app *App) mcpCheckSource(r *http.Request, args map[string]any) (any, error) {
+	sourceID, config, err := mcpSourceArgs(r.Context(), args)
+	if err != nil {
+		return nil, err
+	}
+	response, err := app.sourceService().Check(r.Context(), &cerebrov1.CheckSourceRequest{
+		SourceId: sourceID,
+		Config:   config,
+	})
+	if err != nil {
+		return nil, err
+	}
+	value, err := protoJSONValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpLiveSourceMetadata(1)), nil
+}
+
+func (app *App) mcpDiscoverSource(r *http.Request, args map[string]any) (any, error) {
+	sourceID, config, err := mcpSourceArgs(r.Context(), args)
+	if err != nil {
+		return nil, err
+	}
+	response, err := app.sourceService().Discover(r.Context(), &cerebrov1.DiscoverSourceRequest{
+		SourceId: sourceID,
+		Config:   config,
+	})
+	if err != nil {
+		return nil, err
+	}
+	value, err := protoJSONValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpLiveSourceMetadata(len(response.GetUrns()))), nil
+}
+
+func (app *App) mcpReadSource(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", defaultMCPSourceReadLimit, maxMCPSourceReadLimit)
+	if err != nil {
+		return nil, err
+	}
+	sourceID, config, err := mcpSourceArgs(r.Context(), args)
+	if err != nil {
+		return nil, err
+	}
+	request := &cerebrov1.ReadSourceRequest{
+		SourceId: sourceID,
+		Config:   config,
+	}
+	if cursor := mcpStringArg(args, "cursor"); cursor != "" {
+		request.Cursor = &cerebrov1.SourceCursor{Opaque: cursor}
+	}
+	response, err := app.sourceService().Read(r.Context(), request)
+	if err != nil {
+		return nil, err
+	}
+	totalEvents := len(response.GetEvents())
+	totalPreviewEvents := len(response.GetPreviewEvents())
+	if totalEvents > limit {
+		response.Events = response.Events[:limit]
+	}
+	if totalPreviewEvents > limit {
+		response.PreviewEvents = response.PreviewEvents[:limit]
+	}
+	value, err := protoJSONValue(response)
+	if err != nil {
+		return nil, err
+	}
+	return mcpAddResponseMetadata(value, mcpLiveSourceReadMetadata(limit, len(response.GetEvents()), totalEvents, len(response.GetPreviewEvents()), totalPreviewEvents)), nil
+}
+
+func mcpSourceArgs(ctx context.Context, args map[string]any) (string, map[string]string, error) {
+	sourceID := mcpStringArg(args, "source_id")
+	if sourceID == "" {
+		return "", nil, fmt.Errorf("%w: source_id is required", sourceops.ErrInvalidRequest)
+	}
+	config := mcpStringMapArg(args, "config")
+	if config == nil {
+		config = map[string]string{}
+	}
+	if err := sourceops.ValidatePreviewConfig(sourceID, config); err != nil {
+		return "", nil, err
+	}
+	if err := authorizeSourceConfigTenant(ctx, config); err != nil {
+		return "", nil, err
+	}
+	return sourceID, config, nil
 }
 
 func (app *App) mcpListSourceRuntimes(r *http.Request, args map[string]any) (any, error) {
@@ -2050,6 +2162,61 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Version"),
 		},
 		{
+			Name:         "cerebro.sources.list",
+			Title:        "List Sources",
+			Description:  "List built-in sources available for live stateless checks, discovery, and one-page reads.",
+			InputSchema:  mcpObjectSchema(nil, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"sources": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("List Sources"),
+		},
+		{
+			Name:        "cerebro.sources.check",
+			Title:       "Check Source",
+			Description: "Validate live source configuration without requiring durable stores or writing state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"source_id": map[string]any{"type": "string"},
+				"config":    mcpSourceConfigSchema(),
+			}, []string{"source_id"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"source": map[string]any{"type": "object"},
+				"status": map[string]any{"type": "string"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Check Source"),
+		},
+		{
+			Name:        "cerebro.sources.discover",
+			Title:       "Discover Source",
+			Description: "Discover current live source URNs without requiring durable stores or writing state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"source_id": map[string]any{"type": "string"},
+				"config":    mcpSourceConfigSchema(),
+			}, []string{"source_id"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"source": map[string]any{"type": "object"},
+				"urns":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Discover Source"),
+		},
+		{
+			Name:        "cerebro.sources.read",
+			Title:       "Read Source",
+			Description: "Read one live source page and decoded preview events without requiring durable stores or writing state.",
+			InputSchema: mcpObjectSchema(map[string]any{
+				"source_id": map[string]any{"type": "string"},
+				"config":    mcpSourceConfigSchema(),
+				"cursor":    map[string]any{"type": "string", "description": "Opaque cursor returned by a previous live source read."},
+				"limit":     mcpLimitSchema(maxMCPSourceReadLimit, "source events"),
+			}, []string{"source_id"}),
+			OutputSchema: mcpOutputSchema(map[string]any{
+				"source":         map[string]any{"type": "object"},
+				"events":         map[string]any{"type": "array"},
+				"preview_events": map[string]any{"type": "array"},
+				"checkpoint":     map[string]any{"type": "object"},
+				"next_cursor":    map[string]any{"type": "object"},
+			}),
+			Annotations: mcpReadOnlyAnnotations("Read Source"),
+		},
+		{
 			Name:        "cerebro.source_runtimes.list",
 			Title:       "List Source Runtimes",
 			Description: "List source runtimes visible to the authenticated caller. Runtime config values are redacted.",
@@ -2573,6 +2740,14 @@ func mcpOutputSchema(properties map[string]any) map[string]any {
 	}
 }
 
+func mcpSourceConfigSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"description":          "Source-specific config map. Use tenant_id only for tenant scoping, and pass secret values through client-side secret handling rather than committing them.",
+		"additionalProperties": map[string]any{"type": "string"},
+	}
+}
+
 func mcpGraphFactSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
@@ -3073,7 +3248,7 @@ func mcpToolsetForName(name string) string {
 		return "findings"
 	case strings.HasPrefix(name, "assets."):
 		return "assets"
-	case strings.HasPrefix(name, "source_runtimes.") || strings.HasPrefix(name, "runtimes.") || strings.HasPrefix(name, "connector_definitions."):
+	case strings.HasPrefix(name, "sources.") || strings.HasPrefix(name, "source_runtimes.") || strings.HasPrefix(name, "runtimes.") || strings.HasPrefix(name, "connector_definitions."):
 		return "operations"
 	case strings.HasPrefix(name, "agent."):
 		return "agent"
@@ -3834,6 +4009,30 @@ func mcpResponseMetadata(limit int, returned int, partialErrors []string) map[st
 	return metadata
 }
 
+func mcpLiveSourceMetadata(returned int) map[string]any {
+	metadata := mcpResponseMetadata(0, returned, nil)
+	metadata["freshness_note"] = "Snapshot is fetched directly from the source service at request time and does not require durable stores."
+	metadata["source_preview"] = true
+	return metadata
+}
+
+func mcpLiveSourceReadMetadata(limit int, returnedEvents int, totalEvents int, returnedPreviewEvents int, totalPreviewEvents int) map[string]any {
+	metadata := mcpLiveSourceMetadata(returnedEvents)
+	metadata["limit_applied"] = limit
+	metadata["events_available"] = totalEvents
+	metadata["preview_events_returned"] = returnedPreviewEvents
+	metadata["preview_events_available"] = totalPreviewEvents
+	truncated := totalEvents > returnedEvents || totalPreviewEvents > returnedPreviewEvents
+	metadata["truncated"] = truncated
+	if truncated {
+		metadata["truncation_reason"] = "limit_reached"
+		metadata["more_results_possible"] = true
+	} else if returnedEvents == limit || returnedPreviewEvents == limit {
+		metadata["more_results_possible"] = true
+	}
+	return metadata
+}
+
 func mcpRiskSummaryMetadata(limit int, returned int, total int) map[string]any {
 	metadata := mcpResponseMetadata(limit, returned, nil)
 	if total > returned {
@@ -4318,12 +4517,16 @@ func safeMCPToolError(err error) string {
 	case errors.Is(err, errTenantForbidden):
 		return "tenant forbidden"
 	case errors.Is(err, errInvalidHTTPRequest),
+		errors.Is(err, sourceops.ErrInvalidRequest),
+		errors.Is(err, sourcecdk.ErrInvalidConfig),
 		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findingdomain.ErrInvalidRequest),
 		errors.Is(err, graphfacts.ErrInvalidRequest):
 		return err.Error()
+	case errors.Is(err, sourceops.ErrSourceNotFound):
+		return "source not found"
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		return "source runtime not found"
 	case errors.Is(err, ports.ErrFindingNotFound):
