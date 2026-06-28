@@ -1366,18 +1366,6 @@ func grcLimitEvidence(items []grcEvidenceItem, limit int) []grcEvidenceItem {
 	return grcfindings.LimitEvidence(items, limit)
 }
 
-func primaryEntity(finding *ports.FindingRecord) string {
-	return grcfindings.PrimaryEntity(finding)
-}
-
-func normalizedFindingStatus(status string) string {
-	return grcfindings.NormalizedFindingStatus(status)
-}
-
-func grcSLAStatus(finding *ports.FindingRecord) string {
-	return grcfindings.SLAStatus(finding)
-}
-
 func grcRecommendedAction(finding grcFindingItem) string {
 	return grcfindings.RecommendedAction(finding)
 }

@@ -820,10 +820,6 @@ func grcInventoryTests(findings []grcFindingItem, controls []grcControlItem) []g
 	return grcinventory.Tests(findings, controls)
 }
 
-func inventoryTestStatus(finding grcFindingItem) string {
-	return grcinventory.TestStatus(finding)
-}
-
 func grcInventoryVulnerabilities(findings []grcFindingItem) []grcInventoryVulnerability {
 	return grcinventory.Vulnerabilities(findings)
 }
@@ -930,18 +926,6 @@ func grcInventoryTimeline(asset graphquery.InventoryAsset, findings []grcFinding
 
 func grcInventoryActions(asset graphquery.InventoryAsset, findings []grcFindingItem, controls []grcControlItem, tests []grcInventoryTestItem, vulnerabilities []grcInventoryVulnerability) []grcInventoryAction {
 	return grcinventory.Actions(asset, findings, controls, tests, vulnerabilities)
-}
-
-func failingGRCInventoryTests(tests []grcInventoryTestItem) int {
-	return grcinventory.FailingTests(tests)
-}
-
-func criticalHighGRCInventoryVulnerabilities(items []grcInventoryVulnerability) int {
-	return grcinventory.CriticalHighVulnerabilities(items)
-}
-
-func parseGRCInventoryTime(value string) *time.Time {
-	return grcinventory.ParseTime(value)
 }
 
 func grcInventoryUpdatedBy(r *http.Request) string {
