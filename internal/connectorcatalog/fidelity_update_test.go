@@ -88,6 +88,37 @@ func TestHardenDefinitionFidelityPreservesExistingProjectionFields(t *testing.T)
 	}
 }
 
+func TestHardenDefinitionFidelityNormalizesGeneratedEventKind(t *testing.T) {
+	definition := connectordefinitions.Definition{
+		SourceID:    "example-saas",
+		DisplayName: "Example SaaS",
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:        "audit-logs",
+			IDField:   "id",
+			NameField: "name",
+		}},
+	}
+
+	hardened, _ := HardenDefinitionFidelity(definition)
+	family := hardened.ResourceFamilies[0]
+
+	if family.Event.Kind != "example_saas.audit_logs" {
+		t.Fatalf("event kind = %q, want example_saas.audit_logs", family.Event.Kind)
+	}
+	if family.Event.URNKind != "example_saas_audit_logs" {
+		t.Fatalf("urn kind = %q, want example_saas_audit_logs", family.Event.URNKind)
+	}
+	normalized, err := connectordefinitions.Normalize(hardened)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	for _, check := range normalized.Validation.Checks {
+		if check.ID == "event_kind_audit-logs" && check.Status == connectordefinitions.ValidationBlocked {
+			t.Fatalf("event kind validation is blocking after normalization: %#v", check)
+		}
+	}
+}
+
 func TestHardenDefinitionFidelityMakesShallowSourceReferenceDepth(t *testing.T) {
 	definition := reviewDefinition("example_saas", "Example SaaS", []connectordefinitions.ResourceFamily{
 		{
