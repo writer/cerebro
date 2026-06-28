@@ -256,14 +256,20 @@ func sourceQuestions(source SourceReview, entry Entry) []ReviewQuestion {
 			NextAction: "Mark the primary evidence or inventory family as high value and include evidence types plus control domains.",
 		})
 	}
-	if source.CoverageDimensions < source.ResourceFamilies {
+	familiesWithoutCoverage := 0
+	for _, family := range entry.Definition.ResourceFamilies {
+		if len(family.Coverage) == 0 {
+			familiesWithoutCoverage++
+		}
+	}
+	if familiesWithoutCoverage > 0 {
 		questions = append(questions, ReviewQuestion{
 			ID:         questionID(source.SourceID, "coverage_depth"),
 			SourceID:   source.SourceID,
 			Path:       source.Path,
 			Category:   "coverage_depth",
 			Question:   "Does every collected family explain why it matters?",
-			Answer:     fmt.Sprintf("%d coverage dimensions are declared for %d families.", source.CoverageDimensions, source.ResourceFamilies),
+			Answer:     fmt.Sprintf("%d of %d families have no coverage dimensions.", familiesWithoutCoverage, source.ResourceFamilies),
 			NextAction: "Add coverage dimensions for each family that should appear in evidence, inventory, access, or finding workflows.",
 		})
 	}

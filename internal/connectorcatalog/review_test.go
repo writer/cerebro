@@ -22,7 +22,7 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 				Generateable:     true,
 				Definition: reviewDefinition("azure", "Azure", []connectordefinitions.ResourceFamily{
 					reviewFamily("users", "identity_user", true),
-					reviewFamily("groups", "identity_group", true),
+					reviewFamily("groups", "identity_group", false),
 				}),
 			},
 			{
@@ -93,6 +93,35 @@ func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisFlagsFamiliesWithoutCoverageIndividually(t *testing.T) {
+	familyWithTwoCoverageDimensions := reviewFamily("users", "identity_user", true)
+	familyWithTwoCoverageDimensions.Coverage = append(familyWithTwoCoverageDimensions.Coverage, connectordefinitions.CoverageDimensionSpec{
+		Type:    "access",
+		Support: "partial",
+	})
+	analysis := Analysis{
+		Summary: Summary{Total: 1, Generateable: 1},
+		Entries: []Entry{{
+			Path:         "identity/example.yaml",
+			Status:       StatusGenerateable,
+			Generateable: true,
+			Definition: reviewDefinition("example", "Example", []connectordefinitions.ResourceFamily{
+				familyWithTwoCoverageDimensions,
+				{ID: "groups", Projection: &connectordefinitions.ProjectionSpec{Template: "identity_group"}},
+			}),
+		}},
+	}
+
+	report := ReviewAnalysis(analysis)
+	question, ok := questionFor(report, "example", "coverage_depth")
+	if !ok {
+		t.Fatalf("questions = %#v, want coverage_depth question", report.Questions)
+	}
+	if !strings.Contains(question.Answer, "1 of 2 families have no coverage dimensions") {
+		t.Fatalf("coverage_depth answer = %q, want per-family gap count", question.Answer)
+	}
+}
+
 func reviewDefinition(sourceID string, displayName string, families []connectordefinitions.ResourceFamily) connectordefinitions.Definition {
 	return connectordefinitions.Definition{
 		SourceID:         sourceID,
@@ -142,10 +171,15 @@ func hasQueue(report ReviewReport, queueID string, sourceID string) bool {
 }
 
 func hasQuestion(report ReviewReport, sourceID string, category string) bool {
+	_, ok := questionFor(report, sourceID, category)
+	return ok
+}
+
+func questionFor(report ReviewReport, sourceID string, category string) (ReviewQuestion, bool) {
 	for _, question := range report.Questions {
 		if question.SourceID == sourceID && question.Category == category {
-			return true
+			return question, true
 		}
 	}
-	return false
+	return ReviewQuestion{}, false
 }

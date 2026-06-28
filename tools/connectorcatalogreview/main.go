@@ -58,11 +58,20 @@ func writeJSON(path string, report connectorcatalog.ReviewReport) error {
 }
 
 func writeFile(path string, payload []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	if dir != "." {
+		if err := os.Chmod(dir, 0o750); err != nil {
+			return fmt.Errorf("set output directory permissions: %w", err)
+		}
+	}
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("set %s permissions: %w", path, err)
 	}
 	return nil
 }
