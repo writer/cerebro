@@ -19,8 +19,10 @@ func (a *App) handleGRCPolicyLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
-		TenantID: scope.TenantID,
-		Limit:    scope.Limit,
+		TenantID:  scope.TenantID,
+		SourceID:  scope.SourceID,
+		RuntimeID: scope.RuntimeID,
+		Limit:     scope.Limit,
 	})
 	if err != nil {
 		writeGRCError(w, err)

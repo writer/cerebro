@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,7 +111,7 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/grc/policy-lifecycle?tenant_id=writer")
+	resp, err := server.Client().Get(server.URL + "/grc/policy-lifecycle?tenant_id=writer&source_id=grc&runtime_id=writer-grc")
 	if err != nil {
 		t.Fatalf("GET /grc/policy-lifecycle error = %v", err)
 	}
@@ -181,6 +182,14 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	}
 	if len(graph.cypherRequests) != 2 || graph.cypherRequests[0].Params["tenant_id"] != "writer" {
 		t.Fatalf("cypher requests = %#v, want scoped entity and relation reads", graph.cypherRequests)
+	}
+	for _, request := range graph.cypherRequests {
+		if request.Params["source_id"] != "grc" || request.Params["runtime_id"] != "writer-grc" {
+			t.Fatalf("cypher request params = %#v, want source and runtime filters", request.Params)
+		}
+		if !strings.Contains(request.Query, "$source_id") || !strings.Contains(request.Query, "$runtime_id") {
+			t.Fatalf("cypher query %q does not reference source and runtime filters", request.Query)
+		}
 	}
 }
 

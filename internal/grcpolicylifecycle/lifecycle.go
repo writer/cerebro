@@ -19,8 +19,10 @@ const (
 )
 
 type Scope struct {
-	TenantID string
-	Limit    uint32
+	TenantID  string
+	SourceID  string
+	RuntimeID string
+	Limit     uint32
 }
 
 var grcPolicyLifecycleEntityTypes = []string{
@@ -36,6 +38,8 @@ var grcPolicyLifecycleEntityTypes = []string{
 
 const grcPolicyLifecycleEntitiesQuery = `MATCH (e:Entity)
 WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
+  AND ($source_id = '' OR e.source_id = $source_id)
+  AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
   AND e.entity_type IN $entity_types
 RETURN e.urn AS urn,
        e.tenant_id AS tenant_id,
@@ -50,6 +54,16 @@ LIMIT $limit`
 const grcPolicyLifecycleRelationsQuery = `MATCH (left:Entity)-[r:RELATION]->(right:Entity)
 WHERE ($tenant_id = '' OR left.tenant_id = $tenant_id)
   AND ($tenant_id = '' OR right.tenant_id = $tenant_id)
+  AND (
+    $source_id = '' OR
+    (left.entity_type IN $entity_types AND left.source_id = $source_id) OR
+    (right.entity_type IN $entity_types AND right.source_id = $source_id)
+  )
+  AND (
+    $runtime_id = '' OR
+    (left.entity_type IN $entity_types AND coalesce(left.runtime_id, '') = $runtime_id) OR
+    (right.entity_type IN $entity_types AND coalesce(right.runtime_id, '') = $runtime_id)
+  )
   AND (left.entity_type IN $entity_types OR right.entity_type IN $entity_types)
 RETURN left.urn AS left_urn,
        left.tenant_id AS left_tenant_id,
@@ -310,6 +324,8 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 		Query: grcPolicyLifecycleEntitiesQuery,
 		Params: map[string]any{
 			"tenant_id":    scope.TenantID,
+			"source_id":    scope.SourceID,
+			"runtime_id":   scope.RuntimeID,
 			"entity_types": grcPolicyLifecycleEntityTypes,
 			"limit":        limit,
 		},
@@ -329,6 +345,8 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 		Query: grcPolicyLifecycleRelationsQuery,
 		Params: map[string]any{
 			"tenant_id":    scope.TenantID,
+			"source_id":    scope.SourceID,
+			"runtime_id":   scope.RuntimeID,
 			"entity_types": grcPolicyLifecycleEntityTypes,
 			"limit":        relationLimit,
 		},
@@ -1102,11 +1120,11 @@ func grcPolicyDraftStatus(status string) bool {
 
 func grcPolicyPendingStatus(status string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(status))
-	return normalized == "" || normalized == "pending" || normalized == "requested" || normalized == "in_review" || normalized == "due" || normalized == "overdue"
+	return normalized == "pending" || normalized == "requested" || normalized == "in_review" || normalized == "due" || normalized == "overdue"
 }
 
 func grcPolicyExceptionOpen(status string) bool {
-	return !grcPolicyClosedStatus(status)
+	return strings.TrimSpace(status) != "" && !grcPolicyClosedStatus(status)
 }
 
 func grcPolicyOverdue(rawDueAt string, status string, now time.Time) bool {
