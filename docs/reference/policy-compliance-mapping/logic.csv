@@ -14,4 +14,5 @@ step,layer,definition
 13,quality gates,"Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."
 14,control gap status,"Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."
 15,control evidence requirements,"Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."
-16,spreadsheet,"Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."
+16,coverage candidates,"Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."
+17,spreadsheet,"Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."
