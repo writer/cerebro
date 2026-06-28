@@ -390,10 +390,12 @@ func grcPolicyLifecycleEntityRowLimit(typeLimit int) int {
 
 func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []ports.CypherRow, generatedAt time.Time) Response {
 	nodes := map[string]*grcPolicyGraphNode{}
+	entityNodeURNs := map[string]struct{}{}
 	for _, row := range entityRows {
 		node := grcPolicyNodeFromRow(row, "")
 		if node != nil {
 			nodes[node.URN] = node
+			entityNodeURNs[node.URN] = struct{}{}
 		}
 	}
 	relations := make([]grcPolicyGraphRelation, 0, len(relationRows))
@@ -416,11 +418,14 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 	policyBuilders := map[string]*grcPolicyLifecyclePolicy{}
 	policyURNToID := map[string]string{}
 	for _, node := range nodes {
+		if _, ok := entityNodeURNs[node.URN]; !ok {
+			continue
+		}
 		if !grcPolicyIsPolicyNode(node) {
 			continue
 		}
 		item := grcPolicyLifecyclePolicy{
-			ID:              grcPolicyNodeID(node, "policy_id"),
+			ID:              grcPolicyPolicyID(node),
 			URN:             node.URN,
 			Title:           grcPolicyNodeTitle(node),
 			Status:          grcPolicyAttr(node, "status", "policy_status", "lifecycle_state"),
@@ -812,7 +817,7 @@ func grcPolicyLifecycleWorkQueue(policies []grcPolicyLifecyclePolicy, now time.T
 			}
 		}
 		for _, attestation := range policy.Attestations {
-			if grcPolicyOverdue(attestation.DueAt, attestation.Status, now) || grcPolicyPendingStatus(attestation.Status) {
+			if grcPolicyAcceptanceOpenStatus(attestation.Status) {
 				items = append(items, grcPolicyLifecycleWork{ID: attestation.URN + ":attestation", PolicyID: policy.ID, Policy: policy.Title, RecordURN: attestation.URN, Type: "attestation", Status: attestation.Status, Owner: firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), DueAt: attestation.DueAt, Action: "Send reminder"})
 			}
 		}
@@ -848,11 +853,13 @@ func grcPolicyAcceptanceRollup(items []grcPolicyAcceptanceItem, now time.Time) g
 			summary.Accepted++
 			continue
 		}
+		if !grcPolicyAcceptanceOpenStatus(item.Status) {
+			continue
+		}
+		summary.Total++
 		if grcPolicyOverdue(item.DueAt, item.Status, now) {
-			summary.Total++
 			summary.Overdue++
-		} else if grcPolicyPendingStatus(item.Status) {
-			summary.Total++
+		} else {
 			summary.Pending++
 		}
 	}
@@ -862,6 +869,9 @@ func grcPolicyAcceptanceRollup(items []grcPolicyAcceptanceItem, now time.Time) g
 func grcPolicyExceptionRollup(items []grcPolicyExceptionItem, now time.Time) grcPolicyExceptionSummary {
 	var summary grcPolicyExceptionSummary
 	for _, item := range items {
+		if strings.TrimSpace(item.Status) == "" {
+			continue
+		}
 		if grcPolicyClosedStatus(item.Status) {
 			if grcPolicyPast(item.ExpiresAt, now) {
 				summary.Expired++
@@ -1052,6 +1062,16 @@ func grcPolicyNodeID(node *grcPolicyGraphNode, keys ...string) string {
 	return strings.TrimSpace(parts[len(parts)-1])
 }
 
+func grcPolicyPolicyID(node *grcPolicyGraphNode) string {
+	if value := grcPolicyAttr(node, "policy_id"); value != "" {
+		return value
+	}
+	if node == nil {
+		return ""
+	}
+	return strings.TrimSpace(node.URN)
+}
+
 func grcPolicyNodeTitle(node *grcPolicyGraphNode) string {
 	if node == nil {
 		return ""
@@ -1169,6 +1189,10 @@ func grcPolicyDraftStatus(status string) bool {
 func grcPolicyPendingStatus(status string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(status))
 	return normalized == "pending" || normalized == "requested" || normalized == "in_review" || normalized == "due" || normalized == "overdue"
+}
+
+func grcPolicyAcceptanceOpenStatus(status string) bool {
+	return strings.TrimSpace(status) != "" && !grcPolicyAcceptedStatus(status) && !grcPolicyClosedStatus(status)
 }
 
 func grcPolicyExceptionOpen(status string) bool {

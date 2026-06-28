@@ -2,10 +2,12 @@ package grcpolicylifecycle
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -76,13 +78,39 @@ func TestAcceptanceRollupExcludesClosedUnacceptedAttestations(t *testing.T) {
 		{ID: "accepted", Status: "accepted"},
 		{ID: "pending", Status: "pending", DueAt: "2026-02-15"},
 		{ID: "overdue", Status: "pending", DueAt: "2026-01-15"},
+		{ID: "sent", Status: "sent"},
 		{ID: "rejected", Status: "rejected", DueAt: "2026-01-01"},
 		{ID: "expired", Status: "expired", DueAt: "2026-01-01"},
 		{ID: "stale-date", Status: "rejected", AcceptedAt: "2026-01-10"},
 	}, now)
 
-	if summary.Total != 3 || summary.Accepted != 1 || summary.Pending != 1 || summary.Overdue != 1 {
+	if summary.Total != 4 || summary.Accepted != 1 || summary.Pending != 2 || summary.Overdue != 1 {
 		t.Fatalf("rollup = %#v, want closed unaccepted attestations excluded", summary)
+	}
+}
+
+func TestWorkQueueIncludesUnknownOpenAttestationStatus(t *testing.T) {
+	items := grcPolicyLifecycleWorkQueue([]grcPolicyLifecyclePolicy{{
+		ID:    "access",
+		Title: "Access",
+		Attestations: []grcPolicyAcceptanceItem{
+			{URN: "urn:attestation:sent", Status: "sent"},
+			{URN: "urn:attestation:missing-status"},
+			{URN: "urn:attestation:rejected", Status: "rejected"},
+		},
+	}}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if len(items) != 1 || items[0].RecordURN != "urn:attestation:sent" {
+		t.Fatalf("work queue = %+v, want only open non-empty attestation status", items)
+	}
+}
+
+func TestExceptionRollupSkipsMissingStatus(t *testing.T) {
+	summary := grcPolicyExceptionRollup([]grcPolicyExceptionItem{
+		{ID: "missing", Status: "", ExpiresAt: "2026-03-01"},
+		{ID: "active", Status: "active", ExpiresAt: "2026-03-01"},
+	}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if summary.Active != 1 || summary.Expired != 0 || summary.Expiring != 1 {
+		t.Fatalf("exception summary = %+v, want missing status skipped", summary)
 	}
 }
 
@@ -104,6 +132,42 @@ func TestFinalizeUsesSortedReviewMetadata(t *testing.T) {
 	}
 }
 
+func TestPolicyIDFallsBackToURNWhenPolicyIDMissing(t *testing.T) {
+	left := policyLifecycleTestRow("urn:source-a:policy:policy-1", "policy", "Access A", map[string]string{"policy_type": "policy"})
+	right := policyLifecycleTestRow("urn:source-b:policy:policy-1", "policy", "Access B", map[string]string{"policy_type": "policy"})
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{left, right}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if len(response.Policies) != 2 {
+		t.Fatalf("policies len = %d, want both same-suffix policies", len(response.Policies))
+	}
+	ids := map[string]struct{}{}
+	for _, policy := range response.Policies {
+		ids[policy.ID] = struct{}{}
+	}
+	for _, want := range []string{"urn:source-a:policy:policy-1", "urn:source-b:policy:policy-1"} {
+		if _, ok := ids[want]; !ok {
+			t.Fatalf("policy ids = %+v, missing %q", ids, want)
+		}
+	}
+}
+
+func TestRelationEnrichmentDoesNotPromoteRelationOnlyPolicy(t *testing.T) {
+	version := policyLifecycleTestRow("urn:source-a:policy_version:v1", "policy.version", "Access v1", map[string]string{
+		"policy_id":         "access",
+		"policy_version_id": "v1",
+	})
+	foreignPolicy := policyLifecycleTestRow("urn:source-b:policy:access", "policy", "Foreign Access", map[string]string{"policy_type": "policy"})
+	relation := policyLifecycleTestRelation(version, fabriccontract.RelationBelongsTo, nil, foreignPolicy)
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{version}, []ports.CypherRow{relation}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if len(response.Policies) != 1 {
+		t.Fatalf("policies = %+v, want one policy created from in-scope version", response.Policies)
+	}
+	if response.Policies[0].URN == "urn:source-b:policy:access" {
+		t.Fatalf("relation-only foreign policy promoted to top-level policy: %+v", response.Policies[0])
+	}
+}
+
 type recordingPolicyLifecycleStore struct {
 	requests []ports.CypherQueryRequest
 }
@@ -119,4 +183,31 @@ func (s *recordingPolicyLifecycleStore) GetEntityNeighborhood(context.Context, s
 func (s *recordingPolicyLifecycleStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	s.requests = append(s.requests, request)
 	return nil, nil
+}
+
+func policyLifecycleTestRow(urn string, entityType string, label string, attrs map[string]string) ports.CypherRow {
+	rawAttrs, _ := json.Marshal(attrs)
+	return ports.CypherRow{Values: map[string]any{
+		"urn":             urn,
+		"tenant_id":       "writer",
+		"source_id":       "grc",
+		"runtime_id":      "writer-grc",
+		"entity_type":     entityType,
+		"label":           label,
+		"attributes_json": string(rawAttrs),
+	}}
+}
+
+func policyLifecycleTestRelation(left ports.CypherRow, relation string, attrs map[string]string, right ports.CypherRow) ports.CypherRow {
+	values := map[string]any{}
+	for key, value := range left.Values {
+		values["left_"+key] = value
+	}
+	for key, value := range right.Values {
+		values["right_"+key] = value
+	}
+	rawAttrs, _ := json.Marshal(attrs)
+	values["relation"] = relation
+	values["relation_attributes_json"] = string(rawAttrs)
+	return ports.CypherRow{Values: values}
 }
