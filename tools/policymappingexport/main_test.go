@@ -34,6 +34,8 @@ func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	assertCellContains(t, header, cerebroRow, "compliance_review_tags", "framework:soc-2")
 	assertCellContains(t, header, cerebroRow, "compliance_review_tags", "control:soc-2:cc6-1")
 	assertCellContains(t, header, cerebroRow, "all_review_tags", "tenant-isolation")
+	assertCellContains(t, header, cerebroRow, "framework_review_areas", "SOC 2/access-authorization")
+	assertCellContains(t, header, cerebroRow, "control_relationship_hints", "SOC 2 CC6.1 -> SOC 2 CC6.2")
 	assertCellContains(t, header, cerebroRow, "resolved_audit_domain", "api")
 	assertCellContains(t, header, cerebroRow, "audit_language_source", "yaml:domain:api")
 	assertCellContains(t, header, cerebroRow, "evidence_type", "application_access_control")
@@ -141,6 +143,131 @@ func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
 		}
 	}
 	t.Fatal("finding_domain_aliases.csv missing anthropic pack alias")
+}
+
+func TestGenerateFilesIncludesYAMLReviewContextMaps(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	relationshipRows := readGeneratedCSV(t, generatedFileByName(t, files, "control_relationships.csv"))
+	relationshipHeader := relationshipRows[0]
+	relationshipFrameworkCol := columnIndex(t, relationshipHeader, "framework")
+	relationshipControlCol := columnIndex(t, relationshipHeader, "control_id")
+	relationshipRelatedCol := columnIndex(t, relationshipHeader, "related_control_id")
+	relationshipUseCol := columnIndex(t, relationshipHeader, "evidence_use")
+	foundPCIChildHint := false
+	for _, row := range relationshipRows[1:] {
+		if row[relationshipFrameworkCol] == "PCI DSS v4.0.1" && row[relationshipControlCol] == "8.3" && row[relationshipRelatedCol] == "8.3.6" {
+			if row[relationshipUseCol] != "review_hint" {
+				t.Fatalf("PCI DSS 8.3 -> 8.3.6 evidence_use = %q, want review_hint", row[relationshipUseCol])
+			}
+			foundPCIChildHint = true
+			break
+		}
+	}
+	if !foundPCIChildHint {
+		t.Fatal("control_relationships.csv missing PCI DSS 8.3 -> 8.3.6 review hint")
+	}
+
+	areaRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_review_areas.csv"))
+	areaHeader := areaRows[0]
+	areaFrameworkCol := columnIndex(t, areaHeader, "framework")
+	areaIDCol := columnIndex(t, areaHeader, "area_id")
+	foundAIPlanningArea := false
+	for _, row := range areaRows[1:] {
+		if row[areaFrameworkCol] == "ISO 42001" && row[areaIDCol] == "ai-management-planning" {
+			assertCellContains(t, areaHeader, row, "control_refs", "ISO 42001 6.1")
+			foundAIPlanningArea = true
+			break
+		}
+	}
+	if !foundAIPlanningArea {
+		t.Fatal("framework_review_areas.csv missing ISO 42001 AI planning area")
+	}
+
+	findingRelationshipRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_control_relationship_map.csv"))
+	findingRelationshipHeader := findingRelationshipRows[0]
+	findingRelationshipFindingCol := columnIndex(t, findingRelationshipHeader, "finding_id")
+	findingRelationshipControlCol := columnIndex(t, findingRelationshipHeader, "control_id")
+	findingRelationshipRelatedCol := columnIndex(t, findingRelationshipHeader, "related_control_id")
+	foundFindingRelationship := false
+	for _, row := range findingRelationshipRows[1:] {
+		if row[findingRelationshipFindingCol] == "aws-alb-no-authentication" && row[findingRelationshipControlCol] == "8.3" && row[findingRelationshipRelatedCol] == "8.3.6" {
+			assertCellContains(t, findingRelationshipHeader, row, "relationship", "child_requirement")
+			foundFindingRelationship = true
+			break
+		}
+	}
+	if !foundFindingRelationship {
+		t.Fatal("finding_control_relationship_map.csv missing aws-alb-no-authentication PCI authentication review hint")
+	}
+
+	findingAreaRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_review_area_map.csv"))
+	findingAreaHeader := findingAreaRows[0]
+	findingAreaFindingCol := columnIndex(t, findingAreaHeader, "finding_id")
+	findingAreaIDCol := columnIndex(t, findingAreaHeader, "area_id")
+	foundFindingArea := false
+	for _, row := range findingAreaRows[1:] {
+		if row[findingAreaFindingCol] == "ai-risk-assessment" && row[findingAreaIDCol] == "ai-management-planning" {
+			assertCellContains(t, findingAreaHeader, row, "matched_control_refs", "ISO 42001 6.1")
+			foundFindingArea = true
+			break
+		}
+	}
+	if !foundFindingArea {
+		t.Fatal("finding_review_area_map.csv missing ai-risk-assessment ISO 42001 planning area")
+	}
+
+	capabilityRows := readGeneratedCSV(t, generatedFileByName(t, files, "evidence_capabilities.csv"))
+	capabilityHeader := capabilityRows[0]
+	capabilitySourceCol := columnIndex(t, capabilityHeader, "source_id")
+	capabilityDimensionCol := columnIndex(t, capabilityHeader, "dimension_id")
+	foundAWSS3Capability := false
+	for _, row := range capabilityRows[1:] {
+		if row[capabilitySourceCol] == "aws" && row[capabilityDimensionCol] == "s3_bucket" {
+			assertCellContains(t, capabilityHeader, row, "control_refs", "SOC 2 CC6.6")
+			assertCellContains(t, capabilityHeader, row, "control_refs", "ISO 27001:2022 A.8.24")
+			foundAWSS3Capability = true
+			break
+		}
+	}
+	if !foundAWSS3Capability {
+		t.Fatal("evidence_capabilities.csv missing aws/s3_bucket capability")
+	}
+
+	sourceCapabilityRows := readGeneratedCSV(t, generatedFileByName(t, files, "source_capability_review_map.csv"))
+	sourceCapabilityHeader := sourceCapabilityRows[0]
+	sourceCapabilitySourceCol := columnIndex(t, sourceCapabilityHeader, "source_id")
+	sourceCapabilityDimensionCol := columnIndex(t, sourceCapabilityHeader, "dimension_id")
+	foundSourceCapability := false
+	for _, row := range sourceCapabilityRows[1:] {
+		if row[sourceCapabilitySourceCol] == "github" && row[sourceCapabilityDimensionCol] == "code_security_alerts" {
+			assertCellContains(t, sourceCapabilityHeader, row, "yaml_capability_control_refs", "SOC 2 CC7.1")
+			assertCellContains(t, sourceCapabilityHeader, row, "catalog_matched_control_refs", "SOC 2 CC7.1")
+			foundSourceCapability = true
+			break
+		}
+	}
+	if !foundSourceCapability {
+		t.Fatal("source_capability_review_map.csv missing github/code_security_alerts capability review row")
+	}
+
+	frameworkControlRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_control_enrichment_map.csv"))
+	frameworkControlHeader := frameworkControlRows[0]
+	frameworkControlFrameworkCol := columnIndex(t, frameworkControlHeader, "framework")
+	frameworkControlControlCol := columnIndex(t, frameworkControlHeader, "control_id")
+	for _, row := range frameworkControlRows[1:] {
+		if row[frameworkControlFrameworkCol] == "SOC 2" && row[frameworkControlControlCol] == "CC6.1" {
+			assertCellContains(t, frameworkControlHeader, row, "source_capability_refs", "okta/users")
+			assertCellContains(t, frameworkControlHeader, row, "review_area_refs", "SOC 2/access-authorization")
+			assertCellContains(t, frameworkControlHeader, row, "outbound_relationship_refs", "SOC 2 CC6.2")
+			assertCellContains(t, frameworkControlHeader, row, "enrichment_status", "direct_source_backed")
+			return
+		}
+	}
+	t.Fatal("framework_control_enrichment_map.csv missing SOC 2 CC6.1 enrichment row")
 }
 
 func TestComplianceReviewTagsAreDerivedFromControlRefs(t *testing.T) {

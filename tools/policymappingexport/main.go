@@ -19,6 +19,9 @@ import (
 const defaultOutputDir = "docs/reference/policy-compliance-mapping"
 const policyRuleExtensionsPath = "internal/compliance/policy_rule_extensions.yaml"
 const controlFamiliesPath = "internal/compliance/control_families.yaml"
+const frameworkReviewAreasPath = "internal/compliance/framework_review_areas.yaml"
+const controlRelationshipsPath = "internal/compliance/control_relationships.yaml"
+const evidenceCapabilitiesPath = "internal/compliance/evidence_capabilities.yaml"
 const publicDetectionCatalogPath = "internal/findings/public_detection_catalog.json"
 
 type policyRuleExtensions struct {
@@ -44,6 +47,64 @@ type findingDomainAliases struct {
 	Sources  map[string]string `yaml:"sources"`
 	Tags     map[string]string `yaml:"tags"`
 	Findings map[string]string `yaml:"findings"`
+}
+
+type frameworkReviewAreaCatalog struct {
+	ReviewAreas []frameworkReviewArea `yaml:"review_areas"`
+}
+
+type frameworkReviewArea struct {
+	Framework   string   `yaml:"framework"`
+	AreaID      string   `yaml:"area_id"`
+	Name        string   `yaml:"name"`
+	EvidenceUse string   `yaml:"evidence_use"`
+	Purpose     string   `yaml:"purpose"`
+	ControlRefs []string `yaml:"control_refs"`
+}
+
+type controlRelationshipCatalog struct {
+	Relationships []controlRelationship `yaml:"relationships"`
+}
+
+type controlRelationship struct {
+	Framework       string                       `yaml:"framework"`
+	ControlID       string                       `yaml:"control_id"`
+	RelatedControls []relatedControlRelationship `yaml:"related_controls"`
+}
+
+type relatedControlRelationship struct {
+	Framework    string `yaml:"framework"`
+	ControlID    string `yaml:"control_id"`
+	Relationship string `yaml:"relationship"`
+	EvidenceUse  string `yaml:"evidence_use"`
+	Rationale    string `yaml:"rationale"`
+}
+
+type evidenceCapabilityCatalog struct {
+	Sources []evidenceCapabilitySource `yaml:"sources"`
+}
+
+type evidenceCapabilitySource struct {
+	SourceID   string                        `yaml:"source_id"`
+	Name       string                        `yaml:"name"`
+	Purpose    string                        `yaml:"purpose"`
+	Dimensions []evidenceCapabilityDimension `yaml:"dimensions"`
+}
+
+type evidenceCapabilityDimension struct {
+	DimensionID    string           `yaml:"dimension_id"`
+	DimensionType  string           `yaml:"dimension_type"`
+	SupportLevel   string           `yaml:"support_level"`
+	HighValue      bool             `yaml:"high_value"`
+	Families       []string         `yaml:"families"`
+	EvidenceTypes  []string         `yaml:"evidence_types"`
+	ControlDomains []string         `yaml:"control_domains"`
+	ControlRefs    []yamlControlRef `yaml:"control_refs"`
+}
+
+type yamlControlRef struct {
+	Framework string `yaml:"framework"`
+	ControlID string `yaml:"control_id"`
 }
 
 type complianceControlCatalog struct {
@@ -200,6 +261,21 @@ func generateFiles(root string) ([]generatedFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	reviewAreas, err := loadFrameworkReviewAreas(root)
+	if err != nil {
+		return nil, err
+	}
+	controlRelationships, err := loadControlRelationships(root)
+	if err != nil {
+		return nil, err
+	}
+	evidenceCapabilities, err := loadEvidenceCapabilities(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateMappingCatalogs(controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities); err != nil {
+		return nil, err
+	}
 	catalog, err := loadPublicDetectionCatalog(root)
 	if err != nil {
 		return nil, err
@@ -307,7 +383,14 @@ func generateFiles(root string) ([]generatedFile, error) {
 		return strings.Join(tagRows[i], "\x00") < strings.Join(tagRows[j], "\x00")
 	})
 
-	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingComplianceRows, findingSummary := findingReviewRows(catalog, controlFamilies, extensions)
+	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingComplianceRows, findingSummary := findingReviewRows(catalog, controlFamilies, extensions, reviewAreas, controlRelationships, evidenceCapabilities)
+	reviewAreaRows := frameworkReviewAreaRows(reviewAreas, controlFamilies)
+	relationshipRows := controlRelationshipRows(controlRelationships, controlFamilies)
+	findingAreaRows := findingReviewAreaRows(catalog, controlFamilies, reviewAreas)
+	findingRelationshipRows := findingControlRelationshipRows(catalog, controlFamilies, controlRelationships)
+	evidenceCapabilityRows := evidenceCapabilityRows(evidenceCapabilities, controlFamilies)
+	sourceCapabilityReviewRows := sourceCapabilityReviewRows(catalog, controlFamilies, evidenceCapabilities)
+	frameworkControlEnrichmentRows := frameworkControlEnrichmentRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
 
 	files := []generatedFile{
 		{Name: "overview.csv", Content: csvBytes(overviewRows(len(rules), len(controlRows), len(tagRows), len(uniqueTags), domains, frameworks, evidenceModes, findingSummary))},
@@ -320,6 +403,13 @@ func generateFiles(root string) ([]generatedFile, error) {
 		{Name: "source_coverage_map.csv", Content: csvBytes(append([][]string{sourceCoverageMapHeader()}, sourceCoverageRows...))},
 		{Name: "finding_compliance_review_map.csv", Content: csvBytes(append([][]string{findingComplianceReviewMapHeader()}, findingComplianceRows...))},
 		{Name: "finding_domain_aliases.csv", Content: csvBytes(append([][]string{findingDomainAliasesHeader()}, findingDomainAliasRows(extensions)...))},
+		{Name: "framework_review_areas.csv", Content: csvBytes(append([][]string{frameworkReviewAreasHeader()}, reviewAreaRows...))},
+		{Name: "control_relationships.csv", Content: csvBytes(append([][]string{controlRelationshipsHeader()}, relationshipRows...))},
+		{Name: "finding_review_area_map.csv", Content: csvBytes(append([][]string{findingReviewAreaMapHeader()}, findingAreaRows...))},
+		{Name: "finding_control_relationship_map.csv", Content: csvBytes(append([][]string{findingControlRelationshipMapHeader()}, findingRelationshipRows...))},
+		{Name: "evidence_capabilities.csv", Content: csvBytes(append([][]string{evidenceCapabilitiesHeader()}, evidenceCapabilityRows...))},
+		{Name: "source_capability_review_map.csv", Content: csvBytes(append([][]string{sourceCapabilityReviewMapHeader()}, sourceCapabilityReviewRows...))},
+		{Name: "framework_control_enrichment_map.csv", Content: csvBytes(append([][]string{frameworkControlEnrichmentMapHeader()}, frameworkControlEnrichmentRows...))},
 		{Name: "yaml_layers.csv", Content: csvBytes(yamlLayerRows(extensions))},
 		{Name: "logic.csv", Content: csvBytes(logicRows())},
 	}
@@ -339,6 +429,51 @@ func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {
 		return policyRuleExtensions{}, fmt.Errorf("decode %s: %w", policyRuleExtensionsPath, err)
 	}
 	return extensions, nil
+}
+
+func loadFrameworkReviewAreas(root string) ([]frameworkReviewArea, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(frameworkReviewAreasPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", frameworkReviewAreasPath, err)
+	}
+	var catalog frameworkReviewAreaCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", frameworkReviewAreasPath, err)
+	}
+	return catalog.ReviewAreas, nil
+}
+
+func loadControlRelationships(root string) ([]controlRelationship, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(controlRelationshipsPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", controlRelationshipsPath, err)
+	}
+	var catalog controlRelationshipCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", controlRelationshipsPath, err)
+	}
+	return catalog.Relationships, nil
+}
+
+func loadEvidenceCapabilities(root string) ([]evidenceCapabilitySource, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(evidenceCapabilitiesPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", evidenceCapabilitiesPath, err)
+	}
+	var catalog evidenceCapabilityCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", evidenceCapabilitiesPath, err)
+	}
+	return catalog.Sources, nil
 }
 
 func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
@@ -377,6 +512,135 @@ func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
 		}
 	}
 	return index, nil
+}
+
+func validateMappingCatalogs(index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) error {
+	var issues []string
+	areaKeys := map[string]struct{}{}
+	for _, area := range reviewAreas {
+		framework := strings.TrimSpace(area.Framework)
+		areaID := strings.TrimSpace(area.AreaID)
+		key := framework + "\x00" + areaID
+		switch {
+		case framework == "":
+			issues = append(issues, frameworkReviewAreasPath+": review area missing framework")
+		case areaID == "":
+			issues = append(issues, frameworkReviewAreasPath+": review area for "+framework+" missing area_id")
+		case strings.TrimSpace(area.Name) == "":
+			issues = append(issues, frameworkReviewAreasPath+": review area "+framework+" "+areaID+" missing name")
+		case strings.TrimSpace(area.EvidenceUse) == "":
+			issues = append(issues, frameworkReviewAreasPath+": review area "+framework+" "+areaID+" missing evidence_use")
+		case strings.TrimSpace(area.Purpose) == "":
+			issues = append(issues, frameworkReviewAreasPath+": review area "+framework+" "+areaID+" missing purpose")
+		case len(trimStrings(area.ControlRefs)) == 0:
+			issues = append(issues, frameworkReviewAreasPath+": review area "+framework+" "+areaID+" missing control_refs")
+		}
+		if _, ok := areaKeys[key]; ok && framework != "" && areaID != "" {
+			issues = append(issues, frameworkReviewAreasPath+": duplicate review area "+framework+" "+areaID)
+		}
+		areaKeys[key] = struct{}{}
+		for _, ref := range frameworkReviewAreaControlRefs(area, index) {
+			if !knownControlRef(index, ref) {
+				issues = append(issues, frameworkReviewAreasPath+": review area "+framework+" "+areaID+" references unknown control "+ref.Label())
+			}
+		}
+	}
+
+	relationshipKeys := map[string]struct{}{}
+	for _, item := range relationships {
+		control := controlRef{Framework: strings.TrimSpace(item.Framework), ControlID: strings.TrimSpace(item.ControlID)}
+		if control.Framework == "" || control.ControlID == "" {
+			issues = append(issues, controlRelationshipsPath+": relationship missing framework or control_id")
+			continue
+		}
+		if !knownControlRef(index, control) {
+			issues = append(issues, controlRelationshipsPath+": relationship references unknown control "+control.Label())
+		}
+		if len(item.RelatedControls) == 0 {
+			issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" missing related_controls")
+		}
+		for _, related := range item.RelatedControls {
+			relatedRef := controlRef{Framework: firstNonEmpty(related.Framework, control.Framework), ControlID: strings.TrimSpace(related.ControlID)}
+			if relatedRef.Framework == "" || relatedRef.ControlID == "" {
+				issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" has related control missing framework or control_id")
+				continue
+			}
+			if !knownControlRef(index, relatedRef) {
+				issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" references unknown related control "+relatedRef.Label())
+			}
+			if controlRefKey(control) == controlRefKey(relatedRef) {
+				issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" points to itself")
+			}
+			if strings.TrimSpace(related.Relationship) == "" {
+				issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" -> "+relatedRef.Label()+" missing relationship")
+			}
+			if strings.TrimSpace(related.EvidenceUse) == "" {
+				issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" -> "+relatedRef.Label()+" missing evidence_use")
+			}
+			if strings.TrimSpace(related.Rationale) == "" {
+				issues = append(issues, controlRelationshipsPath+": relationship "+control.Label()+" -> "+relatedRef.Label()+" missing rationale")
+			}
+			key := strings.Join([]string{control.Framework, control.ControlID, relatedRef.Framework, relatedRef.ControlID, strings.TrimSpace(related.Relationship), strings.TrimSpace(related.EvidenceUse)}, "\x00")
+			if _, ok := relationshipKeys[key]; ok {
+				issues = append(issues, controlRelationshipsPath+": duplicate relationship "+control.Label()+" -> "+relatedRef.Label())
+			}
+			relationshipKeys[key] = struct{}{}
+		}
+	}
+
+	capabilityKeys := map[string]struct{}{}
+	for _, source := range capabilitySources {
+		sourceID := strings.TrimSpace(source.SourceID)
+		if sourceID == "" {
+			issues = append(issues, evidenceCapabilitiesPath+": source missing source_id")
+			continue
+		}
+		if strings.TrimSpace(source.Name) == "" {
+			issues = append(issues, evidenceCapabilitiesPath+": source "+sourceID+" missing name")
+		}
+		if strings.TrimSpace(source.Purpose) == "" {
+			issues = append(issues, evidenceCapabilitiesPath+": source "+sourceID+" missing purpose")
+		}
+		if len(source.Dimensions) == 0 {
+			issues = append(issues, evidenceCapabilitiesPath+": source "+sourceID+" missing dimensions")
+		}
+		for _, dimension := range source.Dimensions {
+			dimensionID := strings.TrimSpace(dimension.DimensionID)
+			key := sourceID + "\x00" + dimensionID
+			if dimensionID == "" {
+				issues = append(issues, evidenceCapabilitiesPath+": source "+sourceID+" has dimension missing dimension_id")
+				continue
+			}
+			if _, ok := capabilityKeys[key]; ok {
+				issues = append(issues, evidenceCapabilitiesPath+": duplicate capability "+sourceID+"/"+dimensionID)
+			}
+			capabilityKeys[key] = struct{}{}
+			if strings.TrimSpace(dimension.DimensionType) == "" {
+				issues = append(issues, evidenceCapabilitiesPath+": capability "+sourceID+"/"+dimensionID+" missing dimension_type")
+			}
+			if strings.TrimSpace(dimension.SupportLevel) == "" {
+				issues = append(issues, evidenceCapabilitiesPath+": capability "+sourceID+"/"+dimensionID+" missing support_level")
+			}
+			if len(dimension.ControlRefs) == 0 {
+				issues = append(issues, evidenceCapabilitiesPath+": capability "+sourceID+"/"+dimensionID+" missing control_refs")
+			}
+			for _, ref := range evidenceCapabilityControlRefs(dimension, index) {
+				if !knownControlRef(index, ref) {
+					issues = append(issues, evidenceCapabilitiesPath+": capability "+sourceID+"/"+dimensionID+" references unknown control "+ref.Label())
+				}
+			}
+		}
+	}
+	if len(issues) != 0 {
+		sort.Strings(issues)
+		return fmt.Errorf("compliance mapping catalog validation failed: %s", strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func knownControlRef(index controlFamilyIndex, ref controlRef) bool {
+	_, ok := index[controlRefKey(ref)]
+	return ok
 }
 
 func loadPublicDetectionCatalog(root string) (publicDetectionCatalog, error) {
@@ -454,6 +718,14 @@ type findingComplianceReview struct {
 	SourceCoverageRefsByControlKey map[string][]string
 }
 
+type controlRelationshipEdge struct {
+	Control      controlRef
+	Related      controlRef
+	Relationship string
+	EvidenceUse  string
+	Rationale    string
+}
+
 func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyIndex) []controlRef {
 	var refs []controlRef
 	seen := map[string]struct{}{}
@@ -485,7 +757,7 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 	return refs
 }
 
-func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, extensions policyRuleExtensions) ([][]string, [][]string, [][]string, [][]string, [][]string, findingExportSummary) {
+func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, extensions policyRuleExtensions, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilities []evidenceCapabilitySource) ([][]string, [][]string, [][]string, [][]string, [][]string, findingExportSummary) {
 	var findingRows [][]string
 	var findingControlRows [][]string
 	var findingTagRows [][]string
@@ -508,6 +780,9 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 		complianceTags := complianceReviewTags(controlRefs)
 		allReviewTags := uniqueSorted(append(append([]string{}, catalogTags...), complianceTags...))
 		sourceCoverageRefs := sourceCoverageRefLabels(detection.SourceCoverageRefs)
+		frameworkReviewAreas := frameworkReviewAreaLabelsForControlRefs(controlRefs, reviewAreas, index)
+		controlRelationshipHints := controlRelationshipLabelsForControlRefs(controlRefs, relationships, index)
+		sourceCapabilityRefs := sourceCapabilityLabelsForDetection(detection, capabilities)
 		auditDepth := resolveFindingAuditDepth(detection, extensions)
 		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
 		reviewFlags := findingReviewFlags(controlRefs, catalogTags, sourceCoverageRefs, auditDepth, complianceReview)
@@ -565,6 +840,9 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(catalogTags),
 			joinList(complianceTags),
 			joinList(allReviewTags),
+			joinList(frameworkReviewAreas),
+			joinList(controlRelationshipHints),
+			joinList(sourceCapabilityRefs),
 			auditDepth.EvidenceType,
 			joinList(auditDepth.AssessmentMethods),
 			auditDepth.AuditorGuidance,
@@ -1389,6 +1667,649 @@ func appendFindingDomainAliasRows(rows [][]string, matchType string, aliases map
 	return rows
 }
 
+func frameworkReviewAreaRows(reviewAreas []frameworkReviewArea, index controlFamilyIndex) [][]string {
+	var rows [][]string
+	for _, area := range reviewAreas {
+		framework := strings.TrimSpace(area.Framework)
+		areaID := strings.TrimSpace(area.AreaID)
+		if framework == "" || areaID == "" {
+			continue
+		}
+		controlRefs := frameworkReviewAreaControlRefs(area, index)
+		rows = append(rows, []string{
+			framework,
+			areaID,
+			strings.TrimSpace(area.Name),
+			strings.TrimSpace(area.EvidenceUse),
+			joinList(controlRefLabels(controlRefs)),
+			joinList(uniqueControlFamilies(controlRefs)),
+			strings.TrimSpace(area.Purpose),
+		})
+	}
+	sortRows(rows)
+	return rows
+}
+
+func frameworkControlEnrichmentRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) [][]string {
+	enrichments := frameworkControlEnrichments(catalog, index, reviewAreas, relationships, capabilitySources)
+	keys := sortedKeys(enrichments)
+	rows := make([][]string, 0, len(keys))
+	for _, key := range keys {
+		item := enrichments[key]
+		rows = append(rows, []string{
+			item.Ref.Framework,
+			item.Ref.ControlID,
+			item.Ref.Label(),
+			item.Ref.Family,
+			fmt.Sprint(len(uniqueSorted(item.DirectFindingIDs))),
+			fmt.Sprint(len(uniqueSorted(item.SourceBackedFindingIDs))),
+			fmt.Sprint(len(uniqueSorted(item.SourceMatchedFindingIDs))),
+			joinList(item.SourceCapabilityRefs),
+			joinList(item.ReviewAreaRefs),
+			joinList(item.OutboundRelationshipRefs),
+			joinList(item.InboundRelationshipRefs),
+			frameworkControlEnrichmentStatus(item),
+			joinLimitedStrings(item.DirectFindingIDs, 25),
+			joinLimitedStrings(item.SourceBackedFindingIDs, 25),
+		})
+	}
+	sortRows(rows)
+	return rows
+}
+
+type frameworkControlEnrichment struct {
+	Ref                      controlRef
+	DirectFindingIDs         []string
+	SourceBackedFindingIDs   []string
+	SourceMatchedFindingIDs  []string
+	SourceCapabilityRefs     []string
+	ReviewAreaRefs           []string
+	OutboundRelationshipRefs []string
+	InboundRelationshipRefs  []string
+}
+
+func frameworkControlEnrichments(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) map[string]frameworkControlEnrichment {
+	enrichments := map[string]frameworkControlEnrichment{}
+	ensure := func(ref controlRef) frameworkControlEnrichment {
+		ref.Framework = strings.TrimSpace(ref.Framework)
+		ref.ControlID = strings.TrimSpace(ref.ControlID)
+		if ref.Family == "" {
+			ref.Family = index[controlRefKey(ref)]
+		}
+		key := controlRefKey(ref)
+		item := enrichments[key]
+		if strings.TrimSpace(item.Ref.Framework) == "" {
+			item.Ref = ref
+		}
+		return item
+	}
+	store := func(item frameworkControlEnrichment) {
+		enrichments[controlRefKey(item.Ref)] = item
+	}
+
+	for key, family := range index {
+		framework, controlID, ok := strings.Cut(key, "\x00")
+		if !ok {
+			continue
+		}
+		ref := controlRef{Framework: framework, ControlID: controlID, Family: family}
+		item := ensure(ref)
+		store(item)
+	}
+
+	for _, detection := range catalog.Detections {
+		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
+		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
+		for _, ref := range controlRefs {
+			item := ensure(ref)
+			item.DirectFindingIDs = append(item.DirectFindingIDs, detection.ID)
+			store(item)
+		}
+		for _, ref := range complianceReview.SourceBackedControlRefs {
+			item := ensure(ref)
+			item.SourceBackedFindingIDs = append(item.SourceBackedFindingIDs, detection.ID)
+			store(item)
+		}
+		for _, ref := range complianceReview.SourceMatchedControlRefs {
+			item := ensure(ref)
+			item.SourceMatchedFindingIDs = append(item.SourceMatchedFindingIDs, detection.ID)
+			store(item)
+		}
+	}
+
+	for _, area := range reviewAreas {
+		label := frameworkReviewAreaLabel(area)
+		for _, ref := range frameworkReviewAreaControlRefs(area, index) {
+			item := ensure(ref)
+			item.ReviewAreaRefs = append(item.ReviewAreaRefs, label)
+			store(item)
+		}
+	}
+
+	for _, edge := range controlRelationshipEdges(relationships, index) {
+		outbound := strings.TrimSpace(edge.Related.Label() + " [" + edge.Relationship + "/" + edge.EvidenceUse + "]")
+		outboundItem := ensure(edge.Control)
+		outboundItem.OutboundRelationshipRefs = append(outboundItem.OutboundRelationshipRefs, outbound)
+		store(outboundItem)
+
+		inbound := strings.TrimSpace(edge.Control.Label() + " [" + edge.Relationship + "/" + edge.EvidenceUse + "]")
+		inboundItem := ensure(edge.Related)
+		inboundItem.InboundRelationshipRefs = append(inboundItem.InboundRelationshipRefs, inbound)
+		store(inboundItem)
+	}
+
+	for _, source := range capabilitySources {
+		sourceID := strings.TrimSpace(source.SourceID)
+		for _, dimension := range source.Dimensions {
+			label := sourceCapabilityLabel(sourceID, dimension)
+			for _, ref := range evidenceCapabilityControlRefs(dimension, index) {
+				item := ensure(ref)
+				item.SourceCapabilityRefs = append(item.SourceCapabilityRefs, label)
+				store(item)
+			}
+		}
+	}
+
+	for key, item := range enrichments {
+		item.DirectFindingIDs = uniqueSorted(item.DirectFindingIDs)
+		item.SourceBackedFindingIDs = uniqueSorted(item.SourceBackedFindingIDs)
+		item.SourceMatchedFindingIDs = uniqueSorted(item.SourceMatchedFindingIDs)
+		item.SourceCapabilityRefs = uniqueSorted(item.SourceCapabilityRefs)
+		item.ReviewAreaRefs = uniqueSorted(item.ReviewAreaRefs)
+		item.OutboundRelationshipRefs = uniqueSorted(item.OutboundRelationshipRefs)
+		item.InboundRelationshipRefs = uniqueSorted(item.InboundRelationshipRefs)
+		enrichments[key] = item
+	}
+	return enrichments
+}
+
+func frameworkControlEnrichmentStatus(item frameworkControlEnrichment) string {
+	switch {
+	case len(item.SourceBackedFindingIDs) != 0:
+		return "direct_source_backed"
+	case len(item.DirectFindingIDs) != 0 && len(item.SourceMatchedFindingIDs) != 0:
+		return "direct_with_source_context"
+	case len(item.DirectFindingIDs) != 0:
+		return "direct_control_only"
+	case len(item.SourceCapabilityRefs) != 0:
+		return "source_capability_only"
+	case len(item.ReviewAreaRefs) != 0 || len(item.OutboundRelationshipRefs) != 0 || len(item.InboundRelationshipRefs) != 0:
+		return "review_context_only"
+	default:
+		return "framework_catalog_only"
+	}
+}
+
+func controlRelationshipRows(relationships []controlRelationship, index controlFamilyIndex) [][]string {
+	var rows [][]string
+	for _, edge := range controlRelationshipEdges(relationships, index) {
+		rows = append(rows, []string{
+			edge.Control.Framework,
+			edge.Control.ControlID,
+			edge.Control.Label(),
+			edge.Control.Family,
+			edge.Related.Framework,
+			edge.Related.ControlID,
+			edge.Related.Label(),
+			edge.Related.Family,
+			edge.Relationship,
+			edge.EvidenceUse,
+			edge.Rationale,
+		})
+	}
+	sortRows(rows)
+	return rows
+}
+
+func frameworkReviewAreaLabelsForControlRefs(controlRefs []controlRef, reviewAreas []frameworkReviewArea, index controlFamilyIndex) []string {
+	var labels []string
+	for _, area := range reviewAreas {
+		if len(intersectControlRefs(controlRefs, frameworkReviewAreaControlRefs(area, index))) != 0 {
+			labels = append(labels, frameworkReviewAreaLabel(area))
+		}
+	}
+	return uniqueSorted(labels)
+}
+
+func controlRelationshipLabelsForControlRefs(controlRefs []controlRef, relationships []controlRelationship, index controlFamilyIndex) []string {
+	relationshipIndex := controlRelationshipIndex(relationships, index)
+	var labels []string
+	for _, ref := range controlRefs {
+		for _, edge := range relationshipIndex[controlRefKey(ref)] {
+			labels = append(labels, edge.Control.Label()+" -> "+edge.Related.Label()+" ["+edge.Relationship+"/"+edge.EvidenceUse+"]")
+		}
+	}
+	return uniqueSorted(labels)
+}
+
+func sourceCapabilityLabelsForDetection(detection publicDetection, sources []evidenceCapabilitySource) []string {
+	capabilities := evidenceCapabilityKeySet(sources)
+	var labels []string
+	for _, coverageRef := range detection.SourceCoverageRefs {
+		sourceID := strings.TrimSpace(coverageRef.SourceID)
+		dimensionID := strings.TrimSpace(coverageRef.DimensionID)
+		if sourceID == "" || dimensionID == "" {
+			continue
+		}
+		if _, ok := capabilities[sourceID+"\x00"+dimensionID]; ok {
+			labels = append(labels, sourceID+"/"+dimensionID)
+		}
+	}
+	return uniqueSorted(labels)
+}
+
+func evidenceCapabilityKeySet(sources []evidenceCapabilitySource) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, source := range sources {
+		sourceID := strings.TrimSpace(source.SourceID)
+		for _, dimension := range source.Dimensions {
+			dimensionID := strings.TrimSpace(dimension.DimensionID)
+			if sourceID != "" && dimensionID != "" {
+				out[sourceID+"\x00"+dimensionID] = struct{}{}
+			}
+		}
+	}
+	return out
+}
+
+func frameworkReviewAreaLabel(area frameworkReviewArea) string {
+	framework := strings.TrimSpace(area.Framework)
+	areaID := strings.TrimSpace(area.AreaID)
+	switch {
+	case framework != "" && areaID != "":
+		return framework + "/" + areaID
+	case framework != "":
+		return framework
+	default:
+		return areaID
+	}
+}
+
+func sourceCapabilityLabel(sourceID string, dimension evidenceCapabilityDimension) string {
+	label := strings.TrimSpace(sourceID) + "/" + strings.TrimSpace(dimension.DimensionID)
+	support := strings.TrimSpace(dimension.SupportLevel)
+	if support != "" {
+		label += " [" + support + "]"
+	}
+	return label
+}
+
+func findingReviewAreaRows(catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea) [][]string {
+	var rows [][]string
+	for _, detection := range catalog.Detections {
+		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
+		for _, area := range reviewAreas {
+			areaRefs := frameworkReviewAreaControlRefs(area, index)
+			matchedRefs := intersectControlRefs(controlRefs, areaRefs)
+			if len(matchedRefs) == 0 {
+				continue
+			}
+			rows = append(rows, []string{
+				strings.TrimSpace(area.Framework),
+				strings.TrimSpace(area.AreaID),
+				strings.TrimSpace(area.Name),
+				strings.TrimSpace(area.EvidenceUse),
+				joinList(controlRefLabels(areaRefs)),
+				joinList(controlRefLabels(matchedRefs)),
+				detection.ID,
+				detection.Name,
+				detection.PackID,
+				detection.SourceID,
+				detection.EvaluationMode,
+				normalizedSeverity(detection.Severity),
+				detection.Status,
+				detection.Maturity,
+				strings.TrimSpace(area.Purpose),
+			})
+		}
+	}
+	sortRows(rows)
+	return rows
+}
+
+func findingControlRelationshipRows(catalog publicDetectionCatalog, index controlFamilyIndex, relationships []controlRelationship) [][]string {
+	relationshipIndex := controlRelationshipIndex(relationships, index)
+	var rows [][]string
+	for _, detection := range catalog.Detections {
+		for _, ref := range publicDetectionControlRefs(detection.ControlRefs, index) {
+			for _, edge := range relationshipIndex[controlRefKey(ref)] {
+				rows = append(rows, []string{
+					edge.Control.Framework,
+					edge.Control.ControlID,
+					edge.Control.Label(),
+					edge.Control.Family,
+					edge.Related.Framework,
+					edge.Related.ControlID,
+					edge.Related.Label(),
+					edge.Related.Family,
+					edge.Relationship,
+					edge.EvidenceUse,
+					detection.ID,
+					detection.Name,
+					detection.PackID,
+					detection.SourceID,
+					detection.EvaluationMode,
+					normalizedSeverity(detection.Severity),
+					detection.Status,
+					detection.Maturity,
+					edge.Rationale,
+				})
+			}
+		}
+	}
+	sortRows(rows)
+	return rows
+}
+
+func frameworkReviewAreaControlRefs(area frameworkReviewArea, index controlFamilyIndex) []controlRef {
+	framework := strings.TrimSpace(area.Framework)
+	var refs []controlRef
+	for _, controlID := range area.ControlRefs {
+		ref := controlRef{
+			Framework: framework,
+			ControlID: strings.TrimSpace(controlID),
+		}
+		if ref.Framework == "" || ref.ControlID == "" {
+			continue
+		}
+		ref.Family = index[controlRefKey(ref)]
+		refs = append(refs, ref)
+	}
+	return uniqueControlRefs(refs)
+}
+
+func controlRelationshipIndex(relationships []controlRelationship, index controlFamilyIndex) map[string][]controlRelationshipEdge {
+	edges := controlRelationshipEdges(relationships, index)
+	out := make(map[string][]controlRelationshipEdge, len(edges))
+	for _, edge := range edges {
+		key := controlRefKey(edge.Control)
+		out[key] = append(out[key], edge)
+	}
+	for key := range out {
+		sort.Slice(out[key], func(i, j int) bool {
+			return strings.Join(controlRelationshipEdgeSortKey(out[key][i]), "\x00") < strings.Join(controlRelationshipEdgeSortKey(out[key][j]), "\x00")
+		})
+	}
+	return out
+}
+
+func controlRelationshipEdges(relationships []controlRelationship, index controlFamilyIndex) []controlRelationshipEdge {
+	var edges []controlRelationshipEdge
+	seen := map[string]struct{}{}
+	for _, item := range relationships {
+		control := controlRef{
+			Framework: strings.TrimSpace(item.Framework),
+			ControlID: strings.TrimSpace(item.ControlID),
+		}
+		if control.Framework == "" || control.ControlID == "" {
+			continue
+		}
+		control.Family = index[controlRefKey(control)]
+		for _, related := range item.RelatedControls {
+			relatedRef := controlRef{
+				Framework: firstNonEmpty(related.Framework, control.Framework),
+				ControlID: strings.TrimSpace(related.ControlID),
+			}
+			if relatedRef.Framework == "" || relatedRef.ControlID == "" {
+				continue
+			}
+			relatedRef.Family = index[controlRefKey(relatedRef)]
+			edge := controlRelationshipEdge{
+				Control:      control,
+				Related:      relatedRef,
+				Relationship: strings.TrimSpace(related.Relationship),
+				EvidenceUse:  strings.TrimSpace(related.EvidenceUse),
+				Rationale:    strings.TrimSpace(related.Rationale),
+			}
+			key := strings.Join(controlRelationshipEdgeSortKey(edge), "\x00")
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			edges = append(edges, edge)
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		return strings.Join(controlRelationshipEdgeSortKey(edges[i]), "\x00") < strings.Join(controlRelationshipEdgeSortKey(edges[j]), "\x00")
+	})
+	return edges
+}
+
+func controlRelationshipEdgeSortKey(edge controlRelationshipEdge) []string {
+	return []string{
+		edge.Control.Framework,
+		edge.Control.ControlID,
+		edge.Related.Framework,
+		edge.Related.ControlID,
+		edge.Relationship,
+		edge.EvidenceUse,
+		edge.Rationale,
+	}
+}
+
+func evidenceCapabilityRows(sources []evidenceCapabilitySource, index controlFamilyIndex) [][]string {
+	var rows [][]string
+	for _, source := range sources {
+		sourceID := strings.TrimSpace(source.SourceID)
+		for _, dimension := range source.Dimensions {
+			dimensionID := strings.TrimSpace(dimension.DimensionID)
+			if sourceID == "" || dimensionID == "" {
+				continue
+			}
+			controlRefs := evidenceCapabilityControlRefs(dimension, index)
+			rows = append(rows, []string{
+				sourceID,
+				strings.TrimSpace(source.Name),
+				dimensionID,
+				strings.TrimSpace(dimension.DimensionType),
+				strings.TrimSpace(dimension.SupportLevel),
+				fmt.Sprint(dimension.HighValue),
+				joinList(dimension.Families),
+				joinList(dimension.EvidenceTypes),
+				joinList(dimension.ControlDomains),
+				joinList(controlRefLabels(controlRefs)),
+				joinList(uniqueControlFamilies(controlRefs)),
+				strings.TrimSpace(source.Purpose),
+			})
+		}
+	}
+	sortRows(rows)
+	return rows
+}
+
+func sourceCapabilityReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, sources []evidenceCapabilitySource) [][]string {
+	capabilities := evidenceCapabilityIndex(sources, index)
+	coverage := sourceCoverageAggregate(catalog, index)
+	keys := map[string]struct{}{}
+	for key := range capabilities {
+		keys[key] = struct{}{}
+	}
+	for key := range coverage {
+		keys[key] = struct{}{}
+	}
+	var sorted []string
+	for key := range keys {
+		sorted = append(sorted, key)
+	}
+	sort.Strings(sorted)
+
+	var rows [][]string
+	for _, key := range sorted {
+		sourceID, dimensionID, _ := strings.Cut(key, "\x00")
+		capability := capabilities[key]
+		observed := coverage[key]
+		capabilityRefs := evidenceCapabilityControlRefs(capability.Dimension, index)
+		catalogRefs := observed.ControlRefs
+		rows = append(rows, []string{
+			sourceID,
+			dimensionID,
+			firstNonEmpty(capability.Dimension.DimensionType, observed.DimensionType),
+			firstNonEmpty(capability.Dimension.SupportLevel, joinList(observed.SupportLevels)),
+			fmt.Sprint(capability.Dimension.HighValue || observed.HighValue),
+			joinList(firstNonEmptyList(capability.Dimension.Families, observed.Families)),
+			joinList(firstNonEmptyList(capability.Dimension.EvidenceTypes, observed.EvidenceTypes)),
+			joinList(firstNonEmptyList(capability.Dimension.ControlDomains, observed.ControlDomains)),
+			joinList(controlRefLabels(capabilityRefs)),
+			joinList(controlRefLabels(catalogRefs)),
+			joinList(controlRefLabels(differenceControlRefs(capabilityRefs, catalogRefs))),
+			joinList(controlRefLabels(differenceControlRefs(catalogRefs, capabilityRefs))),
+			sourceCapabilityMatchStatus(capability.Exists, observed.Exists, capabilityRefs, catalogRefs),
+			fmt.Sprint(observed.FindingCount),
+			joinLimitedStrings(observed.FindingIDs, 25),
+		})
+	}
+	sortRows(rows)
+	return rows
+}
+
+type indexedEvidenceCapability struct {
+	Exists    bool
+	Source    evidenceCapabilitySource
+	Dimension evidenceCapabilityDimension
+}
+
+type sourceCoverageAggregateRow struct {
+	Exists         bool
+	DimensionType  string
+	SupportLevels  []string
+	HighValue      bool
+	Families       []string
+	EvidenceTypes  []string
+	ControlDomains []string
+	ControlRefs    []controlRef
+	FindingCount   int
+	FindingIDs     []string
+}
+
+func evidenceCapabilityIndex(sources []evidenceCapabilitySource, index controlFamilyIndex) map[string]indexedEvidenceCapability {
+	out := map[string]indexedEvidenceCapability{}
+	for _, source := range sources {
+		sourceID := strings.TrimSpace(source.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		for _, dimension := range source.Dimensions {
+			dimensionID := strings.TrimSpace(dimension.DimensionID)
+			if dimensionID == "" {
+				continue
+			}
+			key := sourceID + "\x00" + dimensionID
+			dimension.ControlRefs = yamlControlRefs(evidenceCapabilityControlRefs(dimension, index))
+			out[key] = indexedEvidenceCapability{Exists: true, Source: source, Dimension: dimension}
+		}
+	}
+	return out
+}
+
+func sourceCoverageAggregate(catalog publicDetectionCatalog, index controlFamilyIndex) map[string]sourceCoverageAggregateRow {
+	out := map[string]sourceCoverageAggregateRow{}
+	for _, detection := range catalog.Detections {
+		for _, coverageRef := range detection.SourceCoverageRefs {
+			sourceID := strings.TrimSpace(coverageRef.SourceID)
+			dimensionID := strings.TrimSpace(coverageRef.DimensionID)
+			if sourceID == "" || dimensionID == "" {
+				continue
+			}
+			key := sourceID + "\x00" + dimensionID
+			row := out[key]
+			row.Exists = true
+			row.DimensionType = firstNonEmpty(row.DimensionType, coverageRef.DimensionType)
+			if coverageRef.HighValue {
+				row.HighValue = true
+			}
+			row.SupportLevels = append(row.SupportLevels, coverageRef.SupportLevel)
+			row.Families = append(row.Families, coverageRef.Families...)
+			row.EvidenceTypes = append(row.EvidenceTypes, coverageRef.EvidenceTypes...)
+			row.ControlDomains = append(row.ControlDomains, coverageRef.ControlDomains...)
+			row.ControlRefs = append(row.ControlRefs, publicDetectionControlRefs(coverageRef.MatchedControlRefs, index)...)
+			if strings.TrimSpace(detection.ID) != "" {
+				row.FindingIDs = append(row.FindingIDs, detection.ID)
+			}
+			out[key] = row
+		}
+	}
+	for key, row := range out {
+		row.SupportLevels = uniqueSorted(row.SupportLevels)
+		row.Families = uniqueSorted(row.Families)
+		row.EvidenceTypes = uniqueSorted(row.EvidenceTypes)
+		row.ControlDomains = uniqueSorted(row.ControlDomains)
+		row.ControlRefs = uniqueControlRefs(row.ControlRefs)
+		row.FindingIDs = uniqueSorted(row.FindingIDs)
+		row.FindingCount = len(row.FindingIDs)
+		out[key] = row
+	}
+	return out
+}
+
+func evidenceCapabilityControlRefs(dimension evidenceCapabilityDimension, index controlFamilyIndex) []controlRef {
+	var refs []controlRef
+	for _, item := range dimension.ControlRefs {
+		ref := controlRef{Framework: strings.TrimSpace(item.Framework), ControlID: strings.TrimSpace(item.ControlID)}
+		if ref.Framework == "" || ref.ControlID == "" {
+			continue
+		}
+		ref.Family = index[controlRefKey(ref)]
+		refs = append(refs, ref)
+	}
+	return uniqueControlRefs(refs)
+}
+
+func yamlControlRefs(refs []controlRef) []yamlControlRef {
+	out := make([]yamlControlRef, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, yamlControlRef{Framework: ref.Framework, ControlID: ref.ControlID})
+	}
+	return out
+}
+
+func sourceCapabilityMatchStatus(capabilityExists bool, catalogExists bool, capabilityRefs []controlRef, catalogRefs []controlRef) string {
+	switch {
+	case !capabilityExists && catalogExists:
+		return "missing_yaml_capability"
+	case capabilityExists && !catalogExists:
+		return "yaml_only_capability"
+	case !capabilityExists && !catalogExists:
+		return "no_capability_or_catalog_coverage"
+	}
+	missingCatalogRefs := differenceControlRefs(capabilityRefs, catalogRefs)
+	catalogOnlyRefs := differenceControlRefs(catalogRefs, capabilityRefs)
+	switch {
+	case len(missingCatalogRefs) == 0 && len(catalogOnlyRefs) == 0:
+		return "matched"
+	case len(missingCatalogRefs) == 0:
+		return "catalog_extends_yaml"
+	case len(catalogOnlyRefs) == 0:
+		return "yaml_extends_catalog"
+	case len(intersectControlRefs(capabilityRefs, catalogRefs)) != 0:
+		return "partial_overlap"
+	default:
+		return "no_control_overlap"
+	}
+}
+
+func firstNonEmptyList(values ...[]string) []string {
+	for _, value := range values {
+		if trimmed := uniqueSorted(value); len(trimmed) != 0 {
+			return trimmed
+		}
+	}
+	return nil
+}
+
+func limitStrings(values []string, limit int) []string {
+	values = uniqueSorted(values)
+	if limit <= 0 || len(values) <= limit {
+		return values
+	}
+	limited := append([]string{}, values[:limit]...)
+	limited = append(limited, fmt.Sprintf("... %d more", len(values)-limit))
+	return limited
+}
+
+func joinLimitedStrings(values []string, limit int) string {
+	return strings.Join(limitStrings(values, limit), "; ")
+}
+
 func extensionRow(scopeType string, scope string, extension policyRuleExtension) []string {
 	return []string{
 		scopeType,
@@ -1413,7 +2334,10 @@ func logicRows() [][]string {
 		{"6", "source catalog fields", "Use policy YAML and public detection catalog fields as the strongest direct source for controls, tags, severity, evidence, and audit language."},
 		{"7", "source coverage reconciliation", "Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."},
 		{"8", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
-		{"9", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"9", "framework review areas", "Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."},
+		{"10", "control relationships", "Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
+		{"11", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
+		{"12", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -1439,7 +2363,8 @@ func findingMapHeader() []string {
 		"finding_id", "name", "pack_id", "pack_name", "source_id", "evaluation_mode", "output_kind",
 		"severity", "status", "maturity", "resolved_audit_domain", "audit_language_source",
 		"frameworks", "control_refs", "control_families",
-		"catalog_tags", "compliance_review_tags", "all_review_tags", "evidence_type",
+		"catalog_tags", "compliance_review_tags", "all_review_tags", "framework_review_areas",
+		"control_relationship_hints", "source_capability_refs", "evidence_type",
 		"assessment_methods", "auditor_guidance", "risk_statement", "remediation_intent",
 		"source_coverage_ref_count", "source_coverage_refs", "coverage_evidence_types",
 		"coverage_control_domains", "source_matched_control_refs", "source_backed_control_refs",
@@ -1484,6 +2409,66 @@ func findingComplianceReviewMapHeader() []string {
 
 func findingDomainAliasesHeader() []string {
 	return []string{"match_type", "match_value", "resolved_domain"}
+}
+
+func frameworkReviewAreasHeader() []string {
+	return []string{
+		"framework", "area_id", "area_name", "evidence_use", "control_refs",
+		"control_families", "purpose",
+	}
+}
+
+func controlRelationshipsHeader() []string {
+	return []string{
+		"framework", "control_id", "control_ref", "control_family",
+		"related_framework", "related_control_id", "related_control_ref",
+		"related_control_family", "relationship", "evidence_use", "rationale",
+	}
+}
+
+func findingReviewAreaMapHeader() []string {
+	return []string{
+		"framework", "area_id", "area_name", "evidence_use", "area_control_refs",
+		"matched_control_refs", "finding_id", "finding_name", "pack_id", "source_id",
+		"evaluation_mode", "severity", "status", "maturity", "purpose",
+	}
+}
+
+func findingControlRelationshipMapHeader() []string {
+	return []string{
+		"framework", "control_id", "control_ref", "control_family",
+		"related_framework", "related_control_id", "related_control_ref",
+		"related_control_family", "relationship", "evidence_use", "finding_id",
+		"finding_name", "pack_id", "source_id", "evaluation_mode", "severity",
+		"status", "maturity", "rationale",
+	}
+}
+
+func evidenceCapabilitiesHeader() []string {
+	return []string{
+		"source_id", "source_name", "dimension_id", "dimension_type", "support_level",
+		"high_value", "families", "evidence_types", "control_domains", "control_refs",
+		"control_families", "purpose",
+	}
+}
+
+func sourceCapabilityReviewMapHeader() []string {
+	return []string{
+		"source_id", "dimension_id", "dimension_type", "support_level", "high_value",
+		"families", "evidence_types", "control_domains", "yaml_capability_control_refs",
+		"catalog_matched_control_refs", "yaml_only_control_refs", "catalog_only_control_refs",
+		"capability_match_status", "finding_count", "sample_finding_ids",
+	}
+}
+
+func frameworkControlEnrichmentMapHeader() []string {
+	return []string{
+		"framework", "control_id", "control_ref", "control_family",
+		"direct_finding_count", "source_backed_finding_count", "source_matched_finding_count",
+		"source_capability_refs", "review_area_refs", "outbound_relationship_refs",
+		"inbound_relationship_refs", "enrichment_status", "sample_direct_finding_ids",
+		"sample_source_backed_finding_ids",
+	}
 }
 
 func writeFiles(root string, output string, files []generatedFile) error {
